@@ -20,7 +20,8 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "browser": "src/main.ts",
+            "browser": "src/angular/main.ts",
+            "index": "src/angular/index.html",
             "baseHref": "./",
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
@@ -30,9 +31,7 @@
                 "input": "public"
               }
             ],
-            "styles": [
-              "src/styles.scss"
-            ]
+            "styles": ["src/angular/styles.scss"]
           },
           "configurations": {
             "production": {

@@ -8,9 +8,9 @@ directories:
   output: release        # installers are written here (git-ignored)
   buildResources: build  # optional: put icon.icns / icon.ico / icon.png here
 
-# Only ship the Electron main/preload and the built Angular app.
+# Only ship the compiled Electron main/preload and the built Angular app.
 files:
-  - electron/**/*
+  - dist-electron/**/*
   - dist/onixlabs-studio/browser/**/*
   - package.json
 

@@ -1,0 +1,6 @@
+node_modules
+dist
+dist-electron
+release
+.angular
+package-lock.json

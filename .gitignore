@@ -146,5 +146,6 @@ vite.config.ts.timestamp-*
 .angular/
 
 # Electron build output
+/dist-electron
 /release
 /out
