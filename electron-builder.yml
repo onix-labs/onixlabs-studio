@@ -1,0 +1,37 @@
+# electron-builder configuration — produces distributable installers.
+# Docs: https://www.electron.build/configuration
+appId: com.onixlabs.studio
+productName: ONIXLabs Studio
+copyright: Copyright © 2026 ONIXLabs
+
+directories:
+  output: release        # installers are written here (git-ignored)
+  buildResources: build  # optional: put icon.icns / icon.ico / icon.png here
+
+# Only ship the Electron main/preload and the built Angular app.
+files:
+  - electron/**/*
+  - dist/onixlabs-studio/browser/**/*
+  - package.json
+
+asar: true
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  identity: null  # disable code signing for local/unsigned builds
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target:
+    - AppImage
+  category: Development

@@ -1,0 +1,60 @@
+{
+  "name": "onixlabs-studio",
+  "version": "0.0.1",
+  "description": "A modern cross-platform integrated development environment",
+  "keywords": [
+    "ONIXLabs",
+    "Studio",
+    "IDE"
+  ],
+  "homepage": "https://github.com/onix-labs/onixlabs-studio#readme",
+  "bugs": {
+    "url": "https://github.com/onix-labs/onixlabs-studio/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onix-labs/onixlabs-studio.git"
+  },
+  "license": "MIT",
+  "author": "ONIXlabs",
+  "main": "electron/main.js",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "electron": "electron .",
+    "electron:serve": "concurrently -k -n NG,ELECTRON -c blue,green \"ng serve\" \"wait-on tcp:127.0.0.1:4200 && cross-env ELECTRON_START_URL=http://localhost:4200 electron .\"",
+    "electron:build": "ng build && electron .",
+    "pack": "ng build && electron-builder --dir",
+    "dist": "ng build && electron-builder",
+    "dist:mac": "ng build && electron-builder --mac",
+    "dist:win": "ng build && electron-builder --win",
+    "dist:linux": "ng build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.0.0",
+    "@angular/cli": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "jsdom": "^28.0.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2",
+    "vitest": "^4.0.8",
+    "wait-on": "^9.0.10"
+  }
+}
