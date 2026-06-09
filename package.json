@@ -1,0 +1,71 @@
+{
+  "name": "onixlabs-studio",
+  "version": "0.0.1",
+  "description": "A modern cross-platform integrated development environment",
+  "keywords": [
+    "ONIXLabs",
+    "Studio",
+    "IDE"
+  ],
+  "homepage": "https://github.com/onix-labs/onixlabs-studio#readme",
+  "bugs": {
+    "url": "https://github.com/onix-labs/onixlabs-studio/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onix-labs/onixlabs-studio.git"
+  },
+  "license": "MIT",
+  "author": "ONIXlabs",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "build:electron": "tsc -p src/electron/tsconfig.json",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,html,scss,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,html,scss,json,md}\"",
+    "electron": "electron .",
+    "electron:serve": "concurrently -k -n NG,ELECTRON -c blue,green \"ng serve --host 127.0.0.1\" \"wait-on http://127.0.0.1:4200 && npm run build:electron && cross-env ELECTRON_START_URL=http://127.0.0.1:4200 electron .\"",
+    "electron:build": "ng build && npm run build:electron && electron .",
+    "pack": "ng build && npm run build:electron && electron-builder --dir",
+    "dist": "ng build && npm run build:electron && electron-builder",
+    "dist:mac": "ng build && npm run build:electron && electron-builder --mac",
+    "dist:win": "ng build && npm run build:electron && electron-builder --win",
+    "dist:linux": "ng build && npm run build:electron && electron-builder --linux"
+  },
+  "dependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.0.0",
+    "@angular/cli": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.1",
+    "@vitest/coverage-v8": "^4.1.8",
+    "angular-eslint": "^22.0.0",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "eslint": "^10.4.1",
+    "jsdom": "^28.0.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.0.8",
+    "wait-on": "^9.0.10"
+  }
+}
