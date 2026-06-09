@@ -3,6 +3,6 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/
 /**
  * Defines the application-wide Angular providers.
  */
-export const appConfig: ApplicationConfig = {
+export const config: ApplicationConfig = {
   providers: [provideBrowserGlobalErrorListeners()],
 };

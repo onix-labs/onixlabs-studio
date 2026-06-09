@@ -31,7 +31,7 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/angular/styles.scss"]
+            "styles": ["src/angular/styles/styles.scss"]
           },
           "configurations": {
             "production": {

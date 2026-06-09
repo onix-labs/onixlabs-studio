@@ -1,0 +1,4 @@
+@mixin theme-dark {
+  --body-background-color: var(--gray-900);
+  --body-foreground-color: var(--gray-100);
+}

@@ -1,0 +1,4 @@
+@mixin theme-light {
+  --body-background-color: var(--gray-500);
+  --body-foreground-color: var(--gray-900);
+}

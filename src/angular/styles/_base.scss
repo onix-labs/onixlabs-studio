@@ -1,0 +1,12 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--body-background-color);
+  color: var(--body-foreground-color);
+  user-select: none;
+  font-family: var(--font-sans), sans-serif;
+}
