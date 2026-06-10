@@ -1,17 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { DockNode, isSplitNode, isStackNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
+import { findStackOfPanel } from './dock-tree';
 
 /**
- * Reads the first stack found in depth-first order, failing the test when none exists.
- * @param node The subtree to search.
- * @returns Returns the first stack in the subtree.
+ * Asserts a stack holds the given panel and returns it, failing the test otherwise.
+ * @param tree The tree to search.
+ * @param panelId The panel whose stack to resolve.
+ * @returns Returns the stack holding the panel.
  */
-function firstStack(node: DockNode): StackNode {
-  if (isStackNode(node)) {
-    return node;
-  }
-  return firstStack(node.children[0]);
+function stackOf(tree: DockNode, panelId: string): StackNode {
+  const stack: StackNode | null = findStackOfPanel(tree, panelId);
+  expect(stack).not.toBeNull();
+  return stack!;
 }
 
 describe('DockState', () => {
@@ -26,81 +27,78 @@ describe('DockState', () => {
     expect(state).toBeTruthy();
   });
 
-  it('layout_whenCreated_startsWithAnEmptyDocumentWell', () => {
+  it('layout_whenCreated_seedsTheDefaultLayout', () => {
     const root: DockNode = state.layout();
 
-    expect(isStackNode(root)).toBe(true);
-    if (isStackNode(root)) {
-      expect(root.role).toBe('document');
-      expect(root.panels).toEqual([]);
-    }
+    expect(isSplitNode(root)).toBe(true);
+    expect(stackOf(root, 'doc1').role).toBe('document');
+    expect(stackOf(root, 'solution').role).toBe('tool');
   });
 
-  it('tabInto_whenCalled_replacesTheLayoutSignalWithTheUpdatedTree', () => {
+  it('tabInto_whenCalled_replacesTheLayoutSignalAndAddsTheTab', () => {
     const before: DockNode = state.layout();
-    const wellId: string = firstStack(before).id;
+    const wellId: string = stackOf(before, 'doc1').id;
 
-    state.tabInto(wellId, 'doc1');
+    state.tabInto(wellId, 'doc4');
 
     expect(state.layout()).not.toBe(before);
-    expect(firstStack(state.layout()).panels).toEqual(['doc1']);
+    const well: StackNode = stackOf(state.layout(), 'doc4');
+    expect(well.panels).toContain('doc1');
+    expect(well.active).toBe('doc4');
   });
 
   it('setActive_whenCalled_updatesTheActivePanel', () => {
-    const wellId: string = firstStack(state.layout()).id;
-    state.tabInto(wellId, 'doc1');
-    state.tabInto(wellId, 'doc2');
+    const wellId: string = stackOf(state.layout(), 'doc1').id;
 
-    state.setActive(wellId, 'doc1');
+    state.setActive(wellId, 'doc2');
 
-    expect(firstStack(state.layout()).active).toBe('doc1');
+    expect(stackOf(state.layout(), 'doc2').active).toBe('doc2');
   });
 
   it('splitStack_whenCalled_docksANewStackBesideTheTarget', () => {
-    const wellId: string = firstStack(state.layout()).id;
-    state.tabInto(wellId, 'doc1');
+    const solutionId: string = stackOf(state.layout(), 'solution').id;
 
-    state.splitStack(wellId, 'tool1', 'left', 'tool');
+    state.splitStack(solutionId, 'toolbox', 'bottom', 'tool');
 
-    const root: DockNode = state.layout();
-    expect(isSplitNode(root)).toBe(true);
-    if (isSplitNode(root)) {
-      expect(firstStack(root.children[0]).panels).toEqual(['tool1']);
-    }
+    expect(stackOf(state.layout(), 'toolbox').panels).toEqual(['toolbox']);
   });
 
-  it('dockEdge_whenCalled_docksAToolStackAgainstTheEdge', () => {
-    const wellId: string = firstStack(state.layout()).id;
-    state.tabInto(wellId, 'doc1');
-
-    state.dockEdge('output', 'bottom');
+  it('dockEdge_whenAxisDiffersFromRoot_wrapsTheWholeTree', () => {
+    state.dockEdge('toolbox', 'bottom');
 
     const root: DockNode = state.layout();
     expect(isSplitNode(root) && root.dir).toBe('col');
+    expect(stackOf(root, 'toolbox').role).toBe('tool');
   });
 
-  it('removeFromLayout_whenLastPanelInAToolStack_prunesTheStack', () => {
-    const wellId: string = firstStack(state.layout()).id;
-    state.tabInto(wellId, 'doc1');
-    state.dockEdge('output', 'bottom');
-
+  it('removeFromLayout_whenLastPanelInToolStack_prunesTheStack', () => {
     state.removeFromLayout('output');
+    state.removeFromLayout('errors');
 
-    // Only the document well remains, so the tree collapses back to a single stack.
-    expect(isStackNode(state.layout())).toBe(true);
+    expect(findStackOfPanel(state.layout(), 'output')).toBeNull();
+    expect(findStackOfPanel(state.layout(), 'errors')).toBeNull();
   });
 
-  it('reset_whenCalled_restoresTheEmptyDocumentWell', () => {
-    const wellId: string = firstStack(state.layout()).id;
-    state.tabInto(wellId, 'doc1');
-    state.dockEdge('output', 'bottom');
+  it('setSizes_whenCalledOnASplit_commitsTheNewWeights', () => {
+    const root: DockNode = state.layout();
+    expect(isSplitNode(root)).toBe(true);
+    const sizes: number[] = [2, 2, 2];
+
+    if (isSplitNode(root)) {
+      state.setSizes(root.id, sizes);
+    }
+
+    const updated: DockNode = state.layout();
+    expect(isSplitNode(updated) && updated.sizes).toEqual(sizes);
+  });
+
+  it('reset_whenCalled_restoresTheSeededLayout', () => {
+    const wellId: string = stackOf(state.layout(), 'doc1').id;
+    state.tabInto(wellId, 'doc4');
 
     state.reset();
 
-    const root: DockNode = state.layout();
-    expect(isStackNode(root)).toBe(true);
-    if (isStackNode(root)) {
-      expect(root.panels).toEqual([]);
-    }
+    expect(isStackNode(state.layout())).toBe(false);
+    expect(stackOf(state.layout(), 'doc1').panels).toEqual(['doc1', 'doc2', 'doc3']);
   });
 });

@@ -1,0 +1,155 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 2.625rem;
+  min-block-size: 2rem;
+  overflow: hidden;
+  background: var(--dock-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+}
+
+// Document wells render their tab strip on top with no title bar.
+:host(.dock-tab-group--documents) .dock-tab-group__tabstrip {
+  order: -1;
+}
+
+.dock-tab-group__title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  block-size: 1.5rem;
+  padding-inline: 0.5rem 0.25rem;
+  color: var(--dock-title-foreground-color);
+  background: var(--dock-title-background-color);
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+  font-weight: 600;
+  cursor: move;
+  -webkit-app-region: no-drag;
+
+  &-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+  }
+
+  &-buttons {
+    display: flex;
+    gap: 0.125rem;
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      block-size: 1.125rem;
+      inline-size: 1.125rem;
+      font-size: 0.875rem;
+      color: inherit;
+      background: transparent;
+      border: none;
+      border-radius: 0.25rem;
+      corner-shape: squircle;
+      cursor: pointer;
+      transition: var(--hover-transition);
+
+      &:hover {
+        background: var(--dock-title-background-color--focused);
+        color: var(--dock-title-foreground-color--focused);
+      }
+    }
+  }
+}
+
+.dock-tab-group__tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.125rem;
+  block-size: 1.625rem;
+  padding: 0.1875rem 0.25rem 0;
+  background: var(--dock-tabstrip-background-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 0 0 auto;
+}
+
+.dock-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-inline-size: 11.25rem;
+  padding: 0.1875rem 0.5rem;
+  color: var(--dock-tab-foreground-color);
+  background: var(--dock-tab-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+  border-block-end: none;
+  border-radius: 0.375rem 0.375rem 0 0;
+  corner-shape: squircle;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+  transition: var(--hover-transition);
+
+  &__icon {
+    font-size: 0.875rem;
+  }
+
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8rem;
+  }
+
+  &__close {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    block-size: 1rem;
+    inline-size: 1rem;
+    font-size: 0.75rem;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-radius: 0.25rem;
+    corner-shape: squircle;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--dock-title-background-color--focused);
+      color: var(--dock-title-foreground-color--focused);
+    }
+  }
+
+  &:hover &__close,
+  &--active &__close {
+    display: flex;
+  }
+
+  &--active {
+    color: var(--dock-tab-foreground-color--active);
+    background: var(--dock-tab-background-color--active);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.1875rem;
+  }
+}
+
+.dock-tab-group__body {
+  flex: 1;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+  overflow: auto;
+}
+
+.dock-tab-group__empty {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  padding: 1rem;
+  color: var(--dock-empty-foreground-color);
+  font-style: italic;
+  text-align: center;
+}

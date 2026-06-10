@@ -1,0 +1,30 @@
+<ng-template #render let-node>
+  @if (isStack(node)) {
+    <app-dock-tab-group [stack]="node" />
+  } @else {
+    <div
+      class="dock-node__split"
+      [class.dock-node__split--row]="node.dir === 'row'"
+      [class.dock-node__split--col]="node.dir === 'col'"
+    >
+      @for (child of node.children; track child.id; let i = $index, last = $last) {
+        <div class="dock-node__pane" [style.flex]="paneFlex(node.sizes[i])">
+          <ng-container
+            [ngTemplateOutlet]="render"
+            [ngTemplateOutletContext]="{ $implicit: child }"
+          />
+        </div>
+        @if (!last) {
+          <app-dock-splitter
+            [splitId]="node.id"
+            [index]="i"
+            [dir]="node.dir"
+            [sizes]="node.sizes"
+          />
+        }
+      }
+    </div>
+  }
+</ng-template>
+
+<ng-container [ngTemplateOutlet]="render" [ngTemplateOutletContext]="{ $implicit: node() }" />

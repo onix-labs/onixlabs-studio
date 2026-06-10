@@ -1,6 +1,14 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import { DockNode, DockSide, mkStack, StackRole } from './dock-node';
-import { dockEdge, removeFromLayout, setActive, splitStack, tabInto } from './dock-tree';
+import { DockNode, DockSide, StackRole } from './dock-node';
+import {
+  defaultLayout,
+  dockEdge,
+  removeFromLayout,
+  setActive,
+  setSizes,
+  splitStack,
+  tabInto,
+} from './dock-tree';
 
 /**
  * Holds the dock layout tree and exposes immutable mutations over it. Every mutation replaces the
@@ -11,7 +19,7 @@ export class DockState {
   /**
    * Holds the current layout tree.
    */
-  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.createDefaultLayout());
+  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(defaultLayout());
 
   /**
    * Gets the current layout tree.
@@ -65,18 +73,18 @@ export class DockState {
   }
 
   /**
-   * Restores the seeded default layout, discarding the current arrangement.
+   * Replaces the flex-grow weights of a split, used to commit a splitter drag.
+   * @param splitId The identifier of the split whose weights change.
+   * @param sizes The new flex-grow weight of each child.
    */
-  public reset(): void {
-    this.tree.set(this.createDefaultLayout());
+  public setSizes(splitId: string, sizes: readonly number[]): void {
+    this.tree.set(setSizes(this.tree(), splitId, sizes));
   }
 
   /**
-   * Creates the default layout the service starts with and resets to. This is a placeholder empty
-   * document well until the seeded VS-like layout (issue #42) replaces it.
-   * @returns Returns the default layout tree.
+   * Restores the seeded default layout, discarding the current arrangement.
    */
-  private createDefaultLayout(): DockNode {
-    return mkStack('document', []);
+  public reset(): void {
+    this.tree.set(defaultLayout());
   }
 }

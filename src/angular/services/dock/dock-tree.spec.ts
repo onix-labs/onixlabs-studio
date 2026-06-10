@@ -1,6 +1,7 @@
 import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
 import {
   countStacks,
+  defaultLayout,
   dockEdge,
   dockNodeEdge,
   findNode,
@@ -10,6 +11,7 @@ import {
   removeNode,
   replaceNode,
   setActive,
+  setSizes,
   splitStack,
   tabInto,
 } from './dock-tree';
@@ -317,6 +319,47 @@ describe('dock-tree', () => {
       const tree: DockNode = mkStack('tool', ['a']);
 
       expect(removeFromLayout(tree, 'missing')).toBe(tree);
+    });
+  });
+
+  describe('setSizes', () => {
+    it('setSizes_whenWeightsMatchChildCount_replacesThem', () => {
+      const tree: DockNode = mkSplit(
+        'row',
+        [mkStack('tool', ['a']), mkStack('tool', ['b'])],
+        [1, 1],
+      );
+
+      const result: DockNode = setSizes(tree, tree.id, [3, 1]);
+
+      expect(isSplitNode(result) && result.sizes).toEqual([3, 1]);
+    });
+
+    it('setSizes_whenWeightCountMismatches_returnsTheSameReference', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]);
+
+      expect(setSizes(tree, tree.id, [1, 1, 1])).toBe(tree);
+    });
+
+    it('setSizes_whenTargetIsAStack_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(setSizes(tree, tree.id, [1])).toBe(tree);
+    });
+  });
+
+  describe('defaultLayout', () => {
+    it('defaultLayout_whenBuilt_containsADocumentWellAndToolStacks', () => {
+      const tree: DockNode = defaultLayout();
+
+      expect(isSplitNode(tree)).toBe(true);
+      expect(findStackOfPanel(tree, 'doc1')).not.toBeNull();
+      expect(findStackOfPanel(tree, 'solution')).not.toBeNull();
+      expect(countStacks(tree, 'document')).toBe(1);
+    });
+
+    it('defaultLayout_whenBuiltTwice_mintsFreshNodeIds', () => {
+      expect(defaultLayout().id).not.toBe(defaultLayout().id);
     });
   });
 });

@@ -1,0 +1,57 @@
+@if (isEmpty()) {
+  <div class="dock-tab-group__empty">
+    Drop a document here — documents dock only in document wells.
+  </div>
+} @else {
+  @if (!isDocuments()) {
+    <div class="dock-tab-group__title" (mousedown)="startDrag($event)">
+      <span class="dock-tab-group__title-text">{{ activePanel()?.title }}</span>
+      <span class="dock-tab-group__title-buttons">
+        <button type="button" title="Auto Hide" aria-label="Auto Hide" (click)="requestPin()">
+          <i class="ti ti-layout-sidebar-left-collapse" aria-hidden="true"></i>
+        </button>
+        <button type="button" title="Float" aria-label="Float" (click)="requestFloat()">
+          <i class="ti ti-picture-in-picture" aria-hidden="true"></i>
+        </button>
+        @if (activePanel(); as panel) {
+          <button type="button" title="Close" aria-label="Close" (click)="close(panel.id)">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        }
+      </span>
+    </div>
+  }
+
+  <div class="dock-tab-group__tabstrip" role="tablist">
+    @for (panel of panels(); track panel.id) {
+      <div
+        class="dock-tab"
+        role="tab"
+        tabindex="0"
+        [class.dock-tab--active]="panel.id === stack().active"
+        [attr.aria-selected]="panel.id === stack().active"
+        (click)="activate(panel.id)"
+        (keydown.enter)="activate(panel.id)"
+        (keydown.space)="activate(panel.id)"
+      >
+        <i class="dock-tab__icon" [class]="panel.icon" aria-hidden="true"></i>
+        <span class="dock-tab__label">{{ panel.title }}</span>
+        <button
+          type="button"
+          class="dock-tab__close"
+          title="Close"
+          aria-label="Close"
+          (click)="close(panel.id); $event.stopPropagation()"
+        >
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+    }
+  </div>
+
+  <div class="dock-tab-group__body">
+    @if (activePanel(); as panel) {
+      <app-dock-panel-outlet [panelId]="panel.id" />
+    }
+  </div>
+}

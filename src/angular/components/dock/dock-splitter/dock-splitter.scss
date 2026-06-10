@@ -1,0 +1,29 @@
+:host {
+  flex: 0 0 0.3125rem;
+  align-self: stretch;
+  background: var(--dock-splitter-color);
+  transition: var(--hover-transition);
+  z-index: 5;
+
+  &.dock-splitter--row {
+    cursor: col-resize;
+  }
+
+  &.dock-splitter--col {
+    cursor: row-resize;
+  }
+
+  &:hover {
+    background: var(--dock-splitter-color--hover);
+  }
+
+  &.dock-splitter--dragging {
+    background: var(--dock-splitter-color--active);
+  }
+}
+
+.dock-splitter__grip {
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+}

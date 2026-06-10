@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import { DockContainer } from '../../dock/dock-container/dock-container';
 
 /**
- * Represents the directory (IDE) view. This is a placeholder pending the dockable IDE implementation.
+ * Represents the directory (IDE) view, which hosts the dockable panel layout.
  */
 @Component({
   selector: 'app-directory-view',
-  imports: [],
+  imports: [DockContainer],
   templateUrl: './directory-view.html',
   styleUrl: './directory-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

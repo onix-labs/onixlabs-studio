@@ -1,0 +1,5 @@
+@if (component(); as component) {
+  <ng-container *ngComponentOutlet="component; inputs: inputs()" />
+} @else {
+  <div class="dock-panel-outlet__missing">Unknown panel: {{ panelId() }}</div>
+}

@@ -353,3 +353,41 @@ export function removeFromLayout(tree: DockNode, panelId: string): DockNode {
   const updated: StackNode = { ...stack, panels, active };
   return pruneStack(replaceNode(tree, stack.id, updated), updated);
 }
+
+/**
+ * Replaces the flex-grow weights of a split. The call is ignored when the node does not exist, is
+ * not a split, or the new weights do not match the child count.
+ * @param tree The root of the tree to transform.
+ * @param splitId The identifier of the split whose weights change.
+ * @param sizes The new flex-grow weight of each child.
+ * @returns Returns the transformed tree.
+ */
+export function setSizes(tree: DockNode, splitId: string, sizes: readonly number[]): DockNode {
+  const target: DockNode | null = findNode(tree, splitId);
+  if (target === null || !isSplitNode(target) || target.sizes.length !== sizes.length) {
+    return tree;
+  }
+  return replaceNode(tree, splitId, { ...target, sizes: [...sizes] });
+}
+
+/**
+ * Builds the seeded default layout: a tool stack beside a document well stacked over an output
+ * stack. This is the layout {@link DockState} starts with and resets to; issue #42 refines it to a
+ * full VS-like arrangement once the real panels exist.
+ * @returns Returns a fresh default layout tree.
+ */
+export function defaultLayout(): DockNode {
+  return mkSplit(
+    'row',
+    [
+      mkStack('tool', ['solution']),
+      mkSplit(
+        'col',
+        [mkStack('document', ['doc1', 'doc2', 'doc3']), mkStack('tool', ['output', 'errors'])],
+        [3, 1],
+      ),
+      mkStack('tool', ['props']),
+    ],
+    [1.3, 4, 1.4],
+  );
+}
