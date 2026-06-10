@@ -14,5 +14,29 @@
   --gray-800: #343a40;
   --gray-900: #212529;
 
+  // Accent palette (resources/Palette.png). Each colour is exposed both as a hex primitive and as a
+  // bare RGB triplet, so it can drive solid fills as well as translucent rgba() overlays. The active
+  // accent is projected onto `--accent-color` / `--accent-color-rgb` by the Theme service.
+  --accent-orange: #f79533;
+  --accent-orange-rgb: 247, 149, 51;
+  --accent-coral: #f37055;
+  --accent-coral-rgb: 243, 112, 85;
+  --accent-pink: #ef4e7b;
+  --accent-pink-rgb: 239, 78, 123;
+  --accent-purple: #a166ab;
+  --accent-purple-rgb: 161, 102, 171;
+  --accent-blue: #5073b8;
+  --accent-blue-rgb: 80, 115, 184;
+  --accent-cyan: #1098ad;
+  --accent-cyan-rgb: 16, 152, 173;
+  --accent-teal: #07b39b;
+  --accent-teal-rgb: 7, 179, 155;
+  --accent-green: #6fba82;
+  --accent-green-rgb: 111, 186, 130;
+
+  // The active accent, defaulting to blue until the Theme service applies the persisted choice.
+  --accent-color: var(--accent-blue);
+  --accent-color-rgb: var(--accent-blue-rgb);
+
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 }

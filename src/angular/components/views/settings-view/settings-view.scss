@@ -3,5 +3,92 @@
 :host {
   display: block;
   block-size: 100%;
+  overflow: auto;
   background: var(--ribbon-strip-background-color);
+}
+
+.settings {
+  inline-size: min(40rem, 100%);
+  padding: 2rem;
+  margin-inline: auto;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.settings__section {
+  margin-block-start: 2rem;
+}
+
+.settings__section-title {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--status-strip-foreground-color);
+}
+
+.settings__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings__field-label {
+  font-size: 0.95rem;
+}
+
+// A segmented control: mutually exclusive options joined into a single inset track.
+.segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  background: var(--title-strip-tab-background-color--active);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 0.625rem;
+  corner-shape: squircle;
+}
+
+.segmented__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--status-strip-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: 0.45rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    font-size: 1rem;
+  }
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: 0.125rem solid var(--accent-color);
+    outline-offset: 0.0625rem;
+  }
+
+  // The selected pill sits on the accent fill, so its text is a fixed light tone rather than the
+  // theme foreground (which would be dark in light mode).
+  &--selected {
+    color: var(--gray-100);
+    background: var(--accent-color);
+
+    &:hover {
+      color: var(--gray-100);
+    }
+  }
 }
