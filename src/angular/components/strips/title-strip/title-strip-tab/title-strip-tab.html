@@ -4,8 +4,9 @@
   [cdkDragConstrainPosition]="anchorDragToRail"
   [attr.tabindex]="isActive() ? 0 : -1"
   [attr.aria-selected]="isActive()"
-  (mousedown)="selectTab.emit()"
+  (mousedown)="onPress()"
   (keydown.enter)="selectTab.emit()"
+  (cdkDragStarted)="onDragStarted($event)"
 >
   <i [class]="tab().icon"></i>
   <span>{{ tab().title }}</span>
