@@ -6,8 +6,16 @@ const angular = require('angular-eslint');
 
 module.exports = tseslint.config(
   {
-    // Build output and non-source artefacts.
-    ignores: ['dist/**', 'dist-electron/**', 'release/**', '.angular/**', 'node_modules/**'],
+    // Build output, generated reports, and vendored reference material under resources/.
+    ignores: [
+      'dist/**',
+      'dist-electron/**',
+      'release/**',
+      'coverage/**',
+      '.angular/**',
+      'node_modules/**',
+      'resources/**',
+    ],
   },
   {
     files: ['**/*.ts'],
