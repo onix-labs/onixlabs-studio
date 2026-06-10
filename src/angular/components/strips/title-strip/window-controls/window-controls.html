@@ -1,0 +1,28 @@
+@if (visible) {
+  <div class="window-controls">
+    <button
+      type="button"
+      class="window-controls__button"
+      aria-label="Minimize"
+      (click)="minimize()"
+    >
+      <i class="ti ti-minus"></i>
+    </button>
+    <button
+      type="button"
+      class="window-controls__button"
+      aria-label="Maximize"
+      (click)="toggleMaximize()"
+    >
+      <i class="ti ti-square"></i>
+    </button>
+    <button
+      type="button"
+      class="window-controls__button window-controls__button--close"
+      aria-label="Close"
+      (click)="close()"
+    >
+      <i class="ti ti-x"></i>
+    </button>
+  </div>
+}

@@ -1,4 +1,5 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
+import { IpcChannel } from '../shared/ipc-channels';
 import type { StudioApi } from '../shared/studio-api';
 
 /**
@@ -9,6 +10,12 @@ const studioApi: StudioApi = {
     node: (): string => process.versions.node,
     chrome: (): string => process.versions.chrome,
     electron: (): string => process.versions.electron,
+  },
+  platform: process.platform,
+  windowControls: {
+    minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
+    toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),
+    close: (): void => ipcRenderer.send(IpcChannel.WindowClose),
   },
 };
 

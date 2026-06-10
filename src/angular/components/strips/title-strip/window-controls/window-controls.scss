@@ -1,0 +1,35 @@
+:host {
+  margin-inline-start: auto;
+  -webkit-app-region: no-drag;
+}
+
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  block-size: 100%;
+}
+
+.window-controls__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.75rem;
+  block-size: 1.6rem;
+  font-size: 1rem;
+  color: var(--title-strip-button-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--title-strip-button-background-color--hover);
+    color: var(--title-strip-button-foreground-color--hover);
+  }
+
+  // Why: a red close affordance is the universal window-control convention across desktop platforms.
+  &--close:hover {
+    background: #e81123;
+    color: #ffffff;
+  }
+}
