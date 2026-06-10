@@ -33,6 +33,9 @@
   &::after {
     content: '';
     position: absolute;
+    // Sized to the curve radius with the border outside, so it must stay content-box despite the
+    // global border-box default.
+    box-sizing: content-box;
     block-size: var(--title-strip-tab-border-radius);
     inline-size: var(--title-strip-tab-border-radius);
     margin-inline: -0.125rem;

@@ -50,6 +50,9 @@
       &::after {
         content: '';
         position: absolute;
+        // The feet are sized to the curve radius with the 1px border drawn outside, so they must
+        // stay content-box despite the global border-box default.
+        box-sizing: content-box;
         block-size: var(--title-strip-tab-border-radius);
         inline-size: var(--title-strip-tab-border-radius);
         margin-inline: -0.125rem;
