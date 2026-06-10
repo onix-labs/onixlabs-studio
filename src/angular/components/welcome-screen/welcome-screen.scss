@@ -1,0 +1,126 @@
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+// The full-bleed surface centres the panel and stands in for the title strip as the window's drag
+// handle, so the frameless window can still be moved.
+.welcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  padding: 2rem;
+  background: var(--body-background-color);
+  -webkit-app-region: drag;
+}
+
+// The centred card. Everything inside it opts out of the drag region so the controls stay clickable.
+.welcome__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  inline-size: min(24rem, 100%);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  background: var(--menu-background-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 1rem;
+  corner-shape: squircle;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
+  -webkit-app-region: no-drag;
+}
+
+.welcome__logo {
+  inline-size: 5rem;
+  block-size: 5rem;
+  margin-block-end: 1.25rem;
+  user-select: none;
+}
+
+.welcome__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.welcome__subtitle {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  color: var(--status-strip-foreground-color);
+}
+
+.welcome__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  inline-size: 100%;
+  margin-block-start: 2rem;
+}
+
+// Each action mirrors the new-tab menu items: an icon, a primary label, and a quieter hint.
+.welcome__action {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  inline-size: 100%;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 0.625rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    flex: none;
+    inline-size: 1.5rem;
+    font-size: 1.5rem;
+    text-align: center;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--menu-item-background-color--hover);
+    outline: none;
+  }
+
+  // The lead action is filled to read as the recommended starting point.
+  &--primary {
+    color: var(--body-background-color);
+    background: var(--body-foreground-color);
+    border-color: var(--body-foreground-color);
+
+    .welcome__action-hint {
+      color: var(--body-background-color);
+      opacity: 0.7;
+    }
+
+    &:hover,
+    &:focus-visible {
+      background: var(--body-foreground-color);
+      opacity: 0.9;
+    }
+  }
+}
+
+.welcome__action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+.welcome__action-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.welcome__action-hint {
+  font-size: 0.78rem;
+  color: var(--status-strip-foreground-color);
+}

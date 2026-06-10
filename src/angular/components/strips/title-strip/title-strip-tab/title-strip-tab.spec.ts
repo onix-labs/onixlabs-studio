@@ -30,14 +30,16 @@ describe('TitleStripTab', () => {
     expect(element.querySelector('span')?.textContent).toContain('Code');
   });
 
-  it('selectTab_whenTabClicked_emits', () => {
+  it('selectTab_whenTabPressed_emits', () => {
     let selected: boolean = false;
     component.selectTab.subscribe((): void => {
       selected = true;
     });
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    element.querySelector<HTMLElement>('[role="tab"]')?.click();
+    element
+      .querySelector<HTMLElement>('[role="tab"]')
+      ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 
     expect(selected).toBe(true);
   });

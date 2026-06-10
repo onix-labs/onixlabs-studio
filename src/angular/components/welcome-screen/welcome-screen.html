@@ -1,0 +1,52 @@
+<!-- The surface is draggable so the frameless window can still be moved without a title strip; the
+     panel and its controls opt back out of the drag region so they stay interactive. -->
+<section class="welcome">
+  <div
+    class="welcome__panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="welcome-title"
+  >
+    <img class="welcome__logo" src="logo.svg" alt="" draggable="false" />
+    <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
+    <p class="welcome__subtitle">Open something to get started.</p>
+
+    <div class="welcome__actions">
+      <button
+        type="button"
+        class="welcome__action welcome__action--primary"
+        (click)="openFiles()"
+      >
+        <i class="ti ti-folder" aria-hidden="true"></i>
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">Open Directory or File</span>
+          <span class="welcome__action-hint">Browse the file system</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('code')">
+        <i class="ti ti-file-code" aria-hidden="true"></i>
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Code File</span>
+          <span class="welcome__action-hint">Plain text or source code</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('markdown')">
+        <i class="ti ti-markdown" aria-hidden="true"></i>
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Markdown File</span>
+          <span class="welcome__action-hint">A formatted document</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('terminal')">
+        <i class="ti ti-terminal-2" aria-hidden="true"></i>
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Terminal</span>
+          <span class="welcome__action-hint">A command-line session</span>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>

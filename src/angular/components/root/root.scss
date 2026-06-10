@@ -31,3 +31,9 @@
 .status-strip {
   grid-area: status-strip;
 }
+
+// When no tabs are open the welcome screen replaces every strip, so it spans the whole grid.
+.welcome-screen {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}

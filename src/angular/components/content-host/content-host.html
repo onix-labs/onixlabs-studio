@@ -1,10 +1,3 @@
-@if (tabs().length === 0) {
-  <div class="empty-state">
-    <i class="ti ti-plus"></i>
-    <p>No tabs open</p>
-    <p class="empty-state__hint">Use the + button to open a directory, file, terminal, or agent.</p>
-  </div>
-}
 @for (tab of tabs(); track tab.id) {
   <div class="tab-view" [class.tab-view--hidden]="tab.id !== activeTabId()">
     @switch (tab.type) {
