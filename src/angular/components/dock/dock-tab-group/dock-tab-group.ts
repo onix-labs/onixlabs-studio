@@ -41,6 +41,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.dock-tab-group--documents]': 'isDocuments()',
+    '[class.dock-tab-group--tool]': '!isDocuments()',
   },
 })
 export class DockTabGroup {
