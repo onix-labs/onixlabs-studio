@@ -1,20 +1,23 @@
 // Angular CDK drag-and-drop styling for the title-strip tabs. These rules are global because the
 // CDK renders the drag preview and placeholder outside the originating component's DOM.
 
-// The chip shown under the cursor while a tab is dragged: a compact pill using the tab's active
-// colours, with no close button. It is a little shorter than a tab so that, anchored at the tab's
-// top, it ends above the strip's bottom border rather than sitting on it.
+// The chip shown under the cursor while a tab is dragged. It mirrors a tab's box (active colours,
+// rounded top, square bottom, no bottom border, same padding) but omits the close button, so it is
+// the same height as a tab and its bottom edge meets the rail (the strip's bottom border) — riding
+// along the rail rather than floating above or dipping below it.
 .tab-chip {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.125rem 0.6rem 0.125rem 0.5rem;
+  padding: 0.3rem;
+  padding-inline-start: 0.5rem;
   color: var(--title-strip-tab-foreground-color--active);
   background-color: var(--title-strip-tab-background-color--active);
   border: 0.0625rem solid var(--title-strip-border-color);
-  border-radius: 0.5rem;
+  border-block-end: none;
+  border-radius: 10px 10px 0 0;
   corner-shape: squircle;
-  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   cursor: grabbing;
 }
 
