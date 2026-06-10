@@ -1,0 +1,33 @@
+// The root element fills the available body space and lays its children out as a
+// single-column grid of four rows. The three chrome strips are sized to their
+// content; the `empty` row absorbs the remaining space.
+:host {
+  display: grid;
+  height: 100%;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas:
+    'title-strip'
+    'ribbon-strip'
+    'empty'
+    'status-strip';
+}
+
+.title-strip {
+  grid-area: title-strip;
+}
+
+.ribbon-strip {
+  grid-area: ribbon-strip;
+}
+
+.content {
+  grid-area: empty;
+  min-height: 0;
+  overflow: auto;
+  background: var(--root-content-background-color);
+}
+
+.status-strip {
+  grid-area: status-strip;
+}

@@ -19,4 +19,13 @@ describe('Root', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('render_whenInitialised_showsTheFourLayoutStrips', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelector('.title-strip')).not.toBeNull();
+    expect(element.querySelector('.ribbon-strip')).not.toBeNull();
+    expect(element.querySelector('.content')).not.toBeNull();
+    expect(element.querySelector('.status-strip')).not.toBeNull();
+  });
 });

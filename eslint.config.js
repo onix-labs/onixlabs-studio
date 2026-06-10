@@ -43,6 +43,10 @@ module.exports = tseslint.config(
           propertyDeclaration: true,
         },
       ],
+      // Rule 3 mandates explicit annotations even where inferable, so the
+      // stylistic preset's no-inferrable-types rule (which forbids them) is
+      // disabled — it directly contradicts the typedef rule above.
+      '@typescript-eslint/no-inferrable-types': 'off',
 
       // No floating promises (see Functions & Methods / Testing).
       '@typescript-eslint/no-floating-promises': 'error',

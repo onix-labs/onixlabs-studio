@@ -1,0 +1,16 @@
+// Tabler Icons — both webfont sets, exposed as global icon classes.
+//
+//   Outline set:  <i class="ti ti-{name}"></i>
+//   Solid set:    <i class="tis tis-{name}"></i>
+//
+// Both sets ship from @tabler/icons-webfont with the same default `ti` prefix and
+// base class, differing only in font-family. They would collide if imported as-is,
+// so the solid (filled) set is re-prefixed to `tis` via the package's $ti-prefix.
+
+// Outline — keeps the default `ti` prefix.
+@use '@tabler/icons-webfont/dist/tabler-icons.scss';
+
+// Solid (filled) — namespaced to `tis` so it can coexist with the outline set.
+@use '@tabler/icons-webfont/dist/tabler-icons-filled.scss' with (
+  $ti-prefix: 'tis'
+);

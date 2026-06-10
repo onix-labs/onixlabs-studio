@@ -1,0 +1,10 @@
+:host {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-block-start: 0.25rem;
+  padding-inline-start: 5rem;
+  background: var(--title-strip-background-color);
+  border-block-end: 0.0625rem solid var(--title-strip-border-color);
+  -webkit-app-region: drag;
+}

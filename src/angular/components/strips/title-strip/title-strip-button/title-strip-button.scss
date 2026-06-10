@@ -1,0 +1,22 @@
+:host {
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 1.5rem;
+    inline-size: 1.5rem;
+    font-size: 1.25rem;
+    background: var(--title-strip-button-background-color);
+    color: var(--title-strip-button-foreground-color);
+    border: none;
+    border-radius: 0.5rem;
+    corner-shape: squircle;
+    transition: var(--hover-transition);
+    -webkit-app-region: no-drag;
+
+    &:hover {
+      background: var(--title-strip-button-background-color--hover);
+      color: var(--title-strip-button-foreground-color--hover);
+    }
+  }
+}

@@ -1,4 +1,33 @@
 @mixin theme-light {
   --body-background-color: var(--gray-500);
   --body-foreground-color: var(--gray-900);
+
+  --root-content-background-color: var(--gray-700);
+
+  --title-strip-background-color: var(--gray-500);
+  --title-strip-border-color: var(--gray-600);
+
+  --title-strip-button-background-color: var(--gray-500);
+  --title-strip-button-background-color--hover: var(--gray-400);
+
+  --title-strip-button-foreground-color: var(--gray-700);
+  --title-strip-button-foreground-color--hover: var(--gray-900);
+
+  --title-strip-tab-background-color: var(--gray-500);
+  --title-strip-tab-background-color--hover: var(--gray-500);
+  --title-strip-tab-background-color--active: var(--gray-400);
+
+  --title-strip-tab-foreground-color: var(--gray-700);
+  --title-strip-tab-foreground-color--hover: var(--gray-900);
+  --title-strip-tab-foreground-color--active: var(--gray-900);
+
+  --title-strip-tab-close-button-background-color: transparent;
+  --title-strip-tab-close-button-background-color--hover: var(--gray-400);
+  --title-strip-tab-close-button-background-color--hover-over-tab: var(--gray-100);
+  --title-strip-tab-close-button-foreground-color: transparent;
+  --title-strip-tab-close-button-foreground-color--hover: var(--gray-900);
+  --title-strip-tab-close-button-foreground-color--hover-over-tab: var(--gray-900);
+
+  --ribbon-strip-background-color: var(--gray-400);
+  --status-strip-background-color: var(--gray-500);
 }
