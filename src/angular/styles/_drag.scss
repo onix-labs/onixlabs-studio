@@ -1,10 +1,10 @@
 // Angular CDK drag-and-drop styling for the title-strip tabs. These rules are global because the
 // CDK renders the drag preview and placeholder outside the originating component's DOM.
 
-// The chip shown under the cursor while a tab is dragged. It mirrors a tab's box (active colours,
-// rounded top, square bottom, no bottom border, same padding) but omits the close button, so it is
-// the same height as a tab and its bottom edge meets the rail (the strip's bottom border) — riding
-// along the rail rather than floating above or dipping below it.
+// The chip shown under the cursor while a tab is dragged. It mirrors an active tab's box (active
+// colours, rounded top, square bottom, no bottom border, same padding) including the close button,
+// so it is the same height as a tab and its bottom edge meets the rail (the strip's bottom border) —
+// riding along the rail rather than floating above or dipping below it.
 .tab-chip {
   display: flex;
   align-items: center;
@@ -17,8 +17,23 @@
   border-block-end: none;
   border-radius: 10px 10px 0 0;
   corner-shape: squircle;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   cursor: grabbing;
+
+  // Mirrors the active tab's close button. It is purely decorative on the chip, so it carries no
+  // interactivity — the real button stays behind on the tab in the strip.
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 1.25rem;
+    inline-size: 1.25rem;
+    font-size: 1rem;
+    background: var(--title-strip-tab-close-button-background-color);
+    color: var(--title-strip-tab-close-button-foreground-color--hover-over-tab);
+    border: none;
+    border-radius: 0.5rem;
+    corner-shape: squircle;
+  }
 }
 
 // The gap left behind in the strip while the tab is being dragged.
