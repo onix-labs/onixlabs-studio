@@ -1,0 +1,322 @@
+import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
+import {
+  countStacks,
+  dockEdge,
+  dockNodeEdge,
+  findNode,
+  findStackOfPanel,
+  pruneStack,
+  removeFromLayout,
+  removeNode,
+  replaceNode,
+  setActive,
+  splitStack,
+  tabInto,
+} from './dock-tree';
+
+/**
+ * Asserts a node is a stack and narrows it, failing the test otherwise.
+ * @param node The node to assert.
+ * @returns Returns the node typed as a stack.
+ */
+function asStack(node: DockNode | null): StackNode {
+  expect(node).not.toBeNull();
+  expect(node && isStackNode(node)).toBe(true);
+  return node as StackNode;
+}
+
+describe('dock-tree', () => {
+  describe('findNode', () => {
+    it('findNode_whenNodeExists_returnsIt', () => {
+      const leaf: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [leaf, mkStack('document', ['doc'])]);
+
+      expect(findNode(tree, leaf.id)).toBe(leaf);
+    });
+
+    it('findNode_whenNodeMissing_returnsNull', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['a'])]);
+
+      expect(findNode(tree, 'absent')).toBeNull();
+    });
+  });
+
+  describe('findStackOfPanel', () => {
+    it('findStackOfPanel_whenPanelPresent_returnsItsStack', () => {
+      const docs: StackNode = mkStack('document', ['doc1', 'doc2']);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['tool1']), docs]);
+
+      expect(findStackOfPanel(tree, 'doc2')).toBe(docs);
+    });
+
+    it('findStackOfPanel_whenPanelAbsent_returnsNull', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(findStackOfPanel(tree, 'missing')).toBeNull();
+    });
+  });
+
+  describe('countStacks', () => {
+    it('countStacks_whenMixedRoles_countsOnlyTheRequestedRole', () => {
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['t1']),
+        mkSplit('col', [mkStack('document', ['d1']), mkStack('tool', ['t2'])]),
+      ]);
+
+      expect(countStacks(tree, 'tool')).toBe(2);
+      expect(countStacks(tree, 'document')).toBe(1);
+    });
+  });
+
+  describe('replaceNode', () => {
+    it('replaceNode_whenIdMatches_substitutesTheNode', () => {
+      const target: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [target, mkStack('tool', ['b'])]);
+      const replacement: StackNode = mkStack('tool', ['a', 'c']);
+
+      const result: DockNode = replaceNode(tree, target.id, replacement);
+      const split: DockNode = result;
+
+      expect(isSplitNode(split) && split.children[0]).toBe(replacement);
+    });
+
+    it('replaceNode_whenIdAbsent_returnsTheSameReference', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['a'])]);
+
+      expect(replaceNode(tree, 'absent', mkStack('tool', ['x']))).toBe(tree);
+    });
+  });
+
+  describe('removeNode', () => {
+    it('removeNode_whenRemovingRoot_returnsNull', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(removeNode(tree, tree.id)).toBeNull();
+    });
+
+    it('removeNode_whenSplitLeftWithOneChild_promotesThatChild', () => {
+      const survivor: StackNode = mkStack('document', ['doc']);
+      const doomed: StackNode = mkStack('tool', ['tool']);
+      const tree: DockNode = mkSplit('row', [survivor, doomed]);
+
+      const result: DockNode | null = removeNode(tree, doomed.id);
+
+      expect(result).toBe(survivor);
+    });
+
+    it('removeNode_whenNestedSplitEmpties_collapsesRecursivelyTowardsTheRoot', () => {
+      const keep: StackNode = mkStack('document', ['doc']);
+      const inner: StackNode = mkStack('tool', ['t1']);
+      const tree: DockNode = mkSplit('row', [keep, mkSplit('col', [inner])]);
+
+      const result: DockNode | null = removeNode(tree, inner.id);
+
+      // The inner split empties and collapses, leaving the outer split with one child, which is
+      // itself promoted, so only the document stack survives.
+      expect(result).toBe(keep);
+    });
+
+    it('removeNode_whenSplitKeepsTwoChildren_dropsOnlyTheTargetAndItsSize', () => {
+      const a: StackNode = mkStack('tool', ['a']);
+      const b: StackNode = mkStack('tool', ['b']);
+      const c: StackNode = mkStack('tool', ['c']);
+      const tree: DockNode = mkSplit('row', [a, b, c], [1, 2, 3]);
+
+      const result: DockNode | null = removeNode(tree, b.id);
+
+      expect(result).not.toBeNull();
+      if (result !== null && isSplitNode(result)) {
+        expect(result.children).toEqual([a, c]);
+        expect(result.sizes).toEqual([1, 3]);
+      }
+    });
+
+    it('removeNode_whenIdAbsent_returnsTheSameReference', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]);
+
+      expect(removeNode(tree, 'absent')).toBe(tree);
+    });
+  });
+
+  describe('pruneStack', () => {
+    it('pruneStack_whenStackStillHasPanels_leavesItInPlace', () => {
+      const stack: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      expect(pruneStack(tree, stack)).toBe(tree);
+    });
+
+    it('pruneStack_whenEmptyToolStack_removesIt', () => {
+      const empty: StackNode = mkStack('tool', []);
+      const docs: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [empty, docs]);
+
+      expect(pruneStack(tree, empty)).toBe(docs);
+    });
+
+    it('pruneStack_whenLastEmptyDocumentWell_keepsItAsAHomeForDocuments', () => {
+      const onlyWell: StackNode = mkStack('document', []);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['t']), onlyWell]);
+
+      expect(pruneStack(tree, onlyWell)).toBe(tree);
+    });
+
+    it('pruneStack_whenNotTheLastDocumentWell_removesTheEmptyWell', () => {
+      const emptyWell: StackNode = mkStack('document', []);
+      const otherWell: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [emptyWell, otherWell]);
+
+      expect(pruneStack(tree, emptyWell)).toBe(otherWell);
+    });
+  });
+
+  describe('tabInto', () => {
+    it('tabInto_whenStackExists_appendsTheActivePanel', () => {
+      const stack: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      const result: DockNode = tabInto(tree, stack.id, 'b');
+      const updated: StackNode = asStack(findNode(result, stack.id));
+
+      expect(updated.panels).toEqual(['a', 'b']);
+      expect(updated.active).toBe('b');
+    });
+
+    it('tabInto_whenStackMissing_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(tabInto(tree, 'absent', 'b')).toBe(tree);
+    });
+  });
+
+  describe('setActive', () => {
+    it('setActive_whenPanelInStack_activatesIt', () => {
+      const stack: StackNode = mkStack('tool', ['a', 'b']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      const result: DockNode = setActive(tree, stack.id, 'b');
+
+      expect(asStack(findNode(result, stack.id)).active).toBe('b');
+    });
+
+    it('setActive_whenPanelNotInStack_returnsTheSameReference', () => {
+      const stack: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      expect(setActive(tree, stack.id, 'missing')).toBe(tree);
+    });
+  });
+
+  describe('splitStack', () => {
+    it('splitStack_whenParentRunsAlongTheSameAxis_insertsASibling', () => {
+      const left: StackNode = mkStack('tool', ['a']);
+      const right: StackNode = mkStack('tool', ['b']);
+      const tree: DockNode = mkSplit('row', [left, right], [1, 1]);
+
+      const result: DockNode = splitStack(tree, left.id, 'c', 'right', 'tool');
+
+      expect(isSplitNode(result)).toBe(true);
+      if (isSplitNode(result)) {
+        expect(result.children).toHaveLength(3);
+        expect(asStack(result.children[1]).panels).toEqual(['c']);
+      }
+    });
+
+    it('splitStack_whenParentRunsAcrossTheAxis_wrapsTheTargetInANewSplit', () => {
+      const top: StackNode = mkStack('tool', ['a']);
+      const bottom: StackNode = mkStack('tool', ['b']);
+      const tree: DockNode = mkSplit('col', [top, bottom]);
+
+      const result: DockNode = splitStack(tree, top.id, 'c', 'right', 'tool');
+
+      expect(isSplitNode(result) && result.dir).toBe('col');
+      if (isSplitNode(result)) {
+        const wrapped: DockNode = result.children[0];
+        expect(isSplitNode(wrapped) && wrapped.dir).toBe('row');
+      }
+    });
+
+    it('splitStack_whenTargetIsTheRoot_wrapsTheWholeTree', () => {
+      const root: StackNode = mkStack('document', ['doc']);
+
+      const result: DockNode = splitStack(root, root.id, 't', 'left', 'tool');
+
+      expect(isSplitNode(result) && result.dir).toBe('row');
+      if (isSplitNode(result)) {
+        expect(asStack(result.children[0]).panels).toEqual(['t']);
+        expect(result.children[1]).toBe(root);
+      }
+    });
+
+    it('splitStack_whenTargetMissing_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('document', ['doc']);
+
+      expect(splitStack(tree, 'absent', 'x', 'left', 'tool')).toBe(tree);
+    });
+  });
+
+  describe('dockNodeEdge / dockEdge', () => {
+    it('dockNodeEdge_whenRootRunsAlongTheEdgeAxis_joinsAsAnEdgeSibling', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]);
+
+      const result: DockNode = dockNodeEdge(tree, mkStack('tool', ['edge']), 'left');
+
+      expect(isSplitNode(result) && result.children).toHaveLength(3);
+      if (isSplitNode(result)) {
+        expect(asStack(result.children[0]).panels).toEqual(['edge']);
+      }
+    });
+
+    it('dockNodeEdge_whenRootRunsAcrossTheEdgeAxis_wrapsTheWholeTree', () => {
+      const tree: DockNode = mkStack('document', ['doc']);
+
+      const result: DockNode = dockNodeEdge(tree, mkStack('tool', ['edge']), 'bottom');
+
+      expect(isSplitNode(result) && result.dir).toBe('col');
+      if (isSplitNode(result)) {
+        expect(result.children[0]).toBe(tree);
+        expect(asStack(result.children[1]).panels).toEqual(['edge']);
+      }
+    });
+
+    it('dockEdge_whenCalled_docksThePanelAsANewToolStack', () => {
+      const tree: DockNode = mkStack('document', ['doc']);
+
+      const result: DockNode = dockEdge(tree, 'tool', 'right');
+
+      if (isSplitNode(result)) {
+        expect(asStack(result.children[1]).role).toBe('tool');
+        expect(asStack(result.children[1]).panels).toEqual(['tool']);
+      }
+    });
+  });
+
+  describe('removeFromLayout', () => {
+    it('removeFromLayout_whenPanelSharesAStack_keepsTheStackAndRetargetsActive', () => {
+      const stack: StackNode = mkStack('tool', ['a', 'b']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      const result: DockNode = removeFromLayout(tree, 'a');
+      const updated: StackNode = asStack(findNode(result, stack.id));
+
+      expect(updated.panels).toEqual(['b']);
+      expect(updated.active).toBe('b');
+    });
+
+    it('removeFromLayout_whenLastPanelInToolStack_prunesTheStack', () => {
+      const tool: StackNode = mkStack('tool', ['only']);
+      const docs: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [tool, docs]);
+
+      const result: DockNode = removeFromLayout(tree, 'only');
+
+      expect(result).toBe(docs);
+    });
+
+    it('removeFromLayout_whenPanelAbsent_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(removeFromLayout(tree, 'missing')).toBe(tree);
+    });
+  });
+});
