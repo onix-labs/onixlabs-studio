@@ -3,7 +3,9 @@ import { DockNode, DockSide, StackRole } from './dock-node';
 import {
   defaultLayout,
   dockEdge,
+  movePanel,
   removeFromLayout,
+  reorderTab,
   setActive,
   setSizes,
   splitStack,
@@ -70,6 +72,26 @@ export class DockState {
    */
   public setActive(stackId: string, panelId: string): void {
     this.tree.set(setActive(this.tree(), stackId, panelId));
+  }
+
+  /**
+   * Reorders a panel within its stack, used to commit a tab drag inside a group.
+   * @param stackId The identifier of the stack whose tabs reorder.
+   * @param fromIndex The current index of the panel.
+   * @param toIndex The index the panel should occupy after the move.
+   */
+  public reorderTab(stackId: string, fromIndex: number, toIndex: number): void {
+    this.tree.set(reorderTab(this.tree(), stackId, fromIndex, toIndex));
+  }
+
+  /**
+   * Moves a panel into a stack at a given index, used to commit a tab drag between groups.
+   * @param panelId The identifier of the panel to move.
+   * @param targetStackId The identifier of the stack to move the panel into.
+   * @param targetIndex The index the panel should occupy in the target stack.
+   */
+  public movePanel(panelId: string, targetStackId: string, targetIndex: number): void {
+    this.tree.set(movePanel(this.tree(), panelId, targetStackId, targetIndex));
   }
 
   /**

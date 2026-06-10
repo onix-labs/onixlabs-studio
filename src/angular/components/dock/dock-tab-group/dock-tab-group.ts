@@ -1,7 +1,11 @@
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -9,6 +13,9 @@ import {
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
+import { DockDrag } from '../../../services/dock/dock-drag';
+import { DockGeometry } from '../../../services/dock/dock-geometry';
+import { guideLegality } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { StackNode } from '../../../services/dock/dock-node';
@@ -16,29 +23,15 @@ import { DockState } from '../../../services/dock/dock-state';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
- * Identifies a request to start dragging a panel out of its stack.
- */
-export interface DockDragStart {
-  /**
-   * Gets the identifier of the panel being dragged.
-   */
-  readonly panelId: string;
-
-  /**
-   * Gets the originating mouse event.
-   */
-  readonly event: MouseEvent;
-}
-
-/**
  * Represents a tabbed group of panels (a stack) in the dock layout. Tool stacks render a title bar
  * above the tab strip; document stacks render the tab strip on top with no title bar. Activating
- * and closing tabs drive {@link DockState} directly; floating, pinning and drag-start are surfaced
- * as outputs for the floating-window, auto-hide and tab drag-drop features to wire up.
+ * and closing tabs drive {@link DockState} directly; the tab strip is a connected CDK drop list, so
+ * tabs reorder within and move between groups subject to document/tool legality; dragging a tool
+ * group's title bar starts a compass dock through {@link DockDrag}.
  */
 @Component({
   selector: 'app-dock-tab-group',
-  imports: [DockPanelOutlet],
+  imports: [DockPanelOutlet, CdkDropList, CdkDrag],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,7 +41,7 @@ export interface DockDragStart {
 })
 export class DockTabGroup {
   /**
-   * Holds the layout state activation and closing drive.
+   * Holds the layout state activation, closing and tab moves drive.
    */
   private readonly dockState: DockState = inject(DockState);
 
@@ -56,6 +49,23 @@ export class DockTabGroup {
    * Holds the registry panel ids are resolved through.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds the geometry registry this group registers its rectangle with.
+   */
+  private readonly geometry: DockGeometry = inject(DockGeometry);
+
+  /**
+   * Holds the compass drag session started from the title bar.
+   */
+  private readonly dockDrag: DockDrag = inject(DockDrag);
+
+  /**
+   * Holds this group's element, hit-tested during a compass drag.
+   */
+  private readonly hostElement: ElementRef<HTMLElement> = inject(
+    ElementRef,
+  ) as ElementRef<HTMLElement>;
 
   /**
    * Gets the stack this group renders.
@@ -71,11 +81,6 @@ export class DockTabGroup {
    * Emits the stack identifier when the user asks to auto-hide (pin) the stack.
    */
   public readonly pinRequested: OutputEmitterRef<string> = output<string>();
-
-  /**
-   * Emits when the user begins dragging the group by its title bar.
-   */
-  public readonly dragStarted: OutputEmitterRef<DockDragStart> = output<DockDragStart>();
 
   /**
    * Gets a value indicating whether the stack is a document well.
@@ -111,6 +116,43 @@ export class DockTabGroup {
   );
 
   /**
+   * Registers and unregisters this group with the geometry registry across its lifetime.
+   */
+  public constructor() {
+    afterNextRender((): void => {
+      const stack: StackNode = this.stack();
+      this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
+    });
+    inject(DestroyRef).onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+  }
+
+  /**
+   * Determines whether a dragged tab may enter this group's tab strip, enforcing that documents
+   * only drop into document wells and tools only into tool stacks.
+   * @param drag The tab being dragged, whose data is the panel identifier.
+   * @returns Returns true when the tab may drop here; otherwise, false.
+   */
+  protected readonly canEnter: (drag: CdkDrag<string>) => boolean = (
+    drag: CdkDrag<string>,
+  ): boolean => {
+    const panel: DockPanel | undefined = this.registry.get(drag.data);
+    return panel !== undefined && guideLegality(panel.role, this.stack().role).center;
+  };
+
+  /**
+   * Commits a tab drop, reordering within this group or moving the tab in from another group.
+   * @param event The CDK drop event.
+   */
+  protected onDrop(event: CdkDragDrop<StackNode>): void {
+    const panelId: string = event.item.data as string;
+    if (event.previousContainer === event.container) {
+      this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
+    } else {
+      this.dockState.movePanel(panelId, this.stack().id, event.currentIndex);
+    }
+  }
+
+  /**
    * Activates the panel with the given identifier.
    * @param panelId The identifier of the panel to activate.
    */
@@ -144,13 +186,13 @@ export class DockTabGroup {
   }
 
   /**
-   * Begins a group drag from the title bar, emitting the active panel as the drag subject.
+   * Starts a compass dock for the active panel from the title bar.
    * @param event The originating mouse event.
    */
   protected startDrag(event: MouseEvent): void {
     const active: string | null = this.stack().active;
     if (active !== null) {
-      this.dragStarted.emit({ panelId: active, event });
+      this.dockDrag.begin(active, event);
     }
   }
 }

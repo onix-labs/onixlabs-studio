@@ -6,9 +6,11 @@ import {
   dockNodeEdge,
   findNode,
   findStackOfPanel,
+  movePanel,
   pruneStack,
   removeFromLayout,
   removeNode,
+  reorderTab,
   replaceNode,
   setActive,
   setSizes,
@@ -319,6 +321,65 @@ describe('dock-tree', () => {
       const tree: DockNode = mkStack('tool', ['a']);
 
       expect(removeFromLayout(tree, 'missing')).toBe(tree);
+    });
+  });
+
+  describe('reorderTab', () => {
+    it('reorderTab_whenIndicesValid_movesThePanel', () => {
+      const stack: StackNode = mkStack('tool', ['a', 'b', 'c']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      const result: DockNode = reorderTab(tree, stack.id, 0, 2);
+
+      expect(asStack(findNode(result, stack.id)).panels).toEqual(['b', 'c', 'a']);
+    });
+
+    it('reorderTab_whenIndicesOutOfRange_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a', 'b']);
+
+      expect(reorderTab(tree, tree.id, 0, 5)).toBe(tree);
+    });
+  });
+
+  describe('movePanel', () => {
+    it('movePanel_whenMovingBetweenStacks_insertsAtIndexAndPrunesEmptySource', () => {
+      const source: StackNode = mkStack('tool', ['only']);
+      const target: StackNode = mkStack('tool', ['a', 'b']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      const result: DockNode = movePanel(tree, 'only', target.id, 1);
+
+      // Source had a single panel, so removing it prunes the source and promotes the target.
+      const moved: StackNode = asStack(findStackOfPanel(result, 'only'));
+      expect(moved.id).toBe(target.id);
+      expect(moved.panels).toEqual(['a', 'only', 'b']);
+      expect(moved.active).toBe('only');
+    });
+
+    it('movePanel_whenMovingWithinTheSameStack_reorders', () => {
+      const stack: StackNode = mkStack('tool', ['a', 'b', 'c']);
+      const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
+
+      const result: DockNode = movePanel(tree, 'a', stack.id, 2);
+
+      expect(asStack(findNode(result, stack.id)).panels).toEqual(['b', 'c', 'a']);
+    });
+
+    it('movePanel_whenMovingFromAMultiPanelStack_keepsTheSource', () => {
+      const source: StackNode = mkStack('tool', ['a', 'b']);
+      const target: StackNode = mkStack('tool', ['c']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      const result: DockNode = movePanel(tree, 'a', target.id, 0);
+
+      expect(asStack(findNode(result, source.id)).panels).toEqual(['b']);
+      expect(asStack(findNode(result, target.id)).panels).toEqual(['a', 'c']);
+    });
+
+    it('movePanel_whenPanelAbsent_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(movePanel(tree, 'missing', tree.id, 0)).toBe(tree);
     });
   });
 

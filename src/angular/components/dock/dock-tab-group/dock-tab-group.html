@@ -22,12 +22,22 @@
     </div>
   }
 
-  <div class="dock-tab-group__tabstrip" role="tablist">
+  <div
+    class="dock-tab-group__tabstrip"
+    role="tablist"
+    cdkDropList
+    cdkDropListOrientation="horizontal"
+    [cdkDropListData]="stack()"
+    [cdkDropListEnterPredicate]="canEnter"
+    (cdkDropListDropped)="onDrop($event)"
+  >
     @for (panel of panels(); track panel.id) {
       <div
         class="dock-tab"
         role="tab"
         tabindex="0"
+        cdkDrag
+        [cdkDragData]="panel.id"
         [class.dock-tab--active]="panel.id === stack().active"
         [attr.aria-selected]="panel.id === stack().active"
         (click)="activate(panel.id)"

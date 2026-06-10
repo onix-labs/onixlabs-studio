@@ -1,0 +1,256 @@
+import { DockSide, StackRole } from './dock-node';
+
+/**
+ * An axis-aligned rectangle in viewport coordinates.
+ */
+export interface Rect {
+  /**
+   * Gets the distance from the viewport's left edge to the rectangle's left edge.
+   */
+  readonly left: number;
+
+  /**
+   * Gets the distance from the viewport's top edge to the rectangle's top edge.
+   */
+  readonly top: number;
+
+  /**
+   * Gets the width of the rectangle.
+   */
+  readonly width: number;
+
+  /**
+   * Gets the height of the rectangle.
+   */
+  readonly height: number;
+}
+
+/**
+ * Describes which compass guides are legal for a given drag, keyed by guide.
+ */
+export interface GuideLegality {
+  /**
+   * Gets a value indicating whether the centre (tab-into) guide is legal.
+   */
+  readonly center: boolean;
+
+  /**
+   * Gets a value indicating whether the left (split) guide is legal.
+   */
+  readonly left: boolean;
+
+  /**
+   * Gets a value indicating whether the right (split) guide is legal.
+   */
+  readonly right: boolean;
+
+  /**
+   * Gets a value indicating whether the top (split) guide is legal.
+   */
+  readonly top: boolean;
+
+  /**
+   * Gets a value indicating whether the bottom (split) guide is legal.
+   */
+  readonly bottom: boolean;
+}
+
+/**
+ * A resolved drop target: tab into a stack, split beside a stack, or dock first-class to an edge.
+ */
+export type DockTarget =
+  | { readonly kind: 'tab'; readonly stackId: string }
+  | { readonly kind: 'split'; readonly stackId: string; readonly side: DockSide }
+  | { readonly kind: 'edge'; readonly side: DockSide };
+
+/**
+ * A resolved drop target paired with the preview rectangle that highlights where the panel lands.
+ */
+export interface DockResolution {
+  /**
+   * Gets the resolved drop target.
+   */
+  readonly target: DockTarget;
+
+  /**
+   * Gets the preview rectangle to highlight.
+   */
+  readonly preview: Rect;
+}
+
+/**
+ * The half-width of the central tab-into zone, as a fraction of a group's size. A cursor within
+ * this band of both axes' centres tabs into the group; outside it splits the nearest edge.
+ */
+export const CENTER_ZONE_FRACTION: number = 0.34;
+
+/**
+ * The distance, in pixels, within which a cursor near the workspace border docks to that edge.
+ */
+export const EDGE_THRESHOLD: number = 28;
+
+/**
+ * The maximum thickness, in pixels, of an edge-dock preview slab.
+ */
+const EDGE_SLAB_MAXIMUM: number = 280;
+
+/**
+ * The fraction of the workspace an edge-dock preview slab spans along the docking axis.
+ */
+const EDGE_SLAB_FRACTION: number = 0.32;
+
+/**
+ * Computes which compass guides are legal when dragging a panel of one role over a stack of
+ * another. Tool windows dock anywhere; documents live only in document wells (tab into or split a
+ * document well) and never edge-dock or tab into a tool window.
+ * @param panelRole The role of the panel being dragged.
+ * @param targetRole The role of the stack being hovered.
+ * @returns Returns the legality of each guide.
+ */
+export function guideLegality(panelRole: StackRole, targetRole: StackRole): GuideLegality {
+  if (panelRole === 'document') {
+    const ok: boolean = targetRole === 'document';
+    return { center: ok, left: ok, right: ok, top: ok, bottom: ok };
+  }
+  if (targetRole === 'document') {
+    return { center: false, left: true, right: true, top: true, bottom: true };
+  }
+  return { center: true, left: true, right: true, top: true, bottom: true };
+}
+
+/**
+ * Builds the preview slab for an edge dock.
+ * @param side The edge being docked against.
+ * @param workspace The workspace rectangle.
+ * @returns Returns the preview rectangle.
+ */
+function edgePreview(side: DockSide, workspace: Rect): Rect {
+  const thickness: number = Math.min(EDGE_SLAB_MAXIMUM, workspace.width * EDGE_SLAB_FRACTION);
+  const height: number = Math.min(EDGE_SLAB_MAXIMUM, workspace.height * EDGE_SLAB_FRACTION);
+  switch (side) {
+    case 'left':
+      return {
+        left: workspace.left,
+        top: workspace.top,
+        width: thickness,
+        height: workspace.height,
+      };
+    case 'right':
+      return {
+        left: workspace.left + workspace.width - thickness,
+        top: workspace.top,
+        width: thickness,
+        height: workspace.height,
+      };
+    case 'top':
+      return { left: workspace.left, top: workspace.top, width: workspace.width, height };
+    case 'bottom':
+      return {
+        left: workspace.left,
+        top: workspace.top + workspace.height - height,
+        width: workspace.width,
+        height,
+      };
+  }
+}
+
+/**
+ * Resolves an edge dock when the cursor is near a workspace border. Edge docking is first-class and
+ * available to tool windows only.
+ * @param x The cursor's viewport x coordinate.
+ * @param y The cursor's viewport y coordinate.
+ * @param workspace The workspace rectangle.
+ * @param panelRole The role of the panel being dragged.
+ * @returns Returns the edge resolution, or null when no edge is targeted.
+ */
+export function resolveEdgeTarget(
+  x: number,
+  y: number,
+  workspace: Rect,
+  panelRole: StackRole,
+): DockResolution | null {
+  if (panelRole !== 'tool') {
+    return null;
+  }
+  const left: number = x - workspace.left;
+  const right: number = workspace.left + workspace.width - x;
+  const top: number = y - workspace.top;
+  const bottom: number = workspace.top + workspace.height - y;
+  if (left < 0 || right < 0 || top < 0 || bottom < 0) {
+    return null;
+  }
+  const nearest: number = Math.min(left, right, top, bottom);
+  if (nearest > EDGE_THRESHOLD) {
+    return null;
+  }
+  const side: DockSide =
+    nearest === left ? 'left' : nearest === right ? 'right' : nearest === top ? 'top' : 'bottom';
+  return { target: { kind: 'edge', side }, preview: edgePreview(side, workspace) };
+}
+
+/**
+ * Builds the preview rectangle for a split dock against one side of a group.
+ * @param side The side being split.
+ * @param rect The group rectangle.
+ * @returns Returns the preview rectangle (half the group).
+ */
+function splitPreview(side: DockSide, rect: Rect): Rect {
+  const halfWidth: number = rect.width / 2;
+  const halfHeight: number = rect.height / 2;
+  switch (side) {
+    case 'left':
+      return { left: rect.left, top: rect.top, width: halfWidth, height: rect.height };
+    case 'right':
+      return { left: rect.left + halfWidth, top: rect.top, width: halfWidth, height: rect.height };
+    case 'top':
+      return { left: rect.left, top: rect.top, width: rect.width, height: halfHeight };
+    case 'bottom':
+      return { left: rect.left, top: rect.top + halfHeight, width: rect.width, height: halfHeight };
+  }
+}
+
+/**
+ * Resolves a dock against a hovered group: the central zone tabs into the group, the outer zones
+ * split its nearest edge. Illegal zones resolve to null so the panel cannot drop there.
+ * @param x The cursor's viewport x coordinate.
+ * @param y The cursor's viewport y coordinate.
+ * @param stackId The identifier of the hovered stack.
+ * @param targetRole The role of the hovered stack.
+ * @param rect The hovered group's rectangle.
+ * @param panelRole The role of the panel being dragged.
+ * @returns Returns the group resolution, or null when the cursor is outside the group or the zone
+ * is illegal.
+ */
+export function resolveGroupTarget(
+  x: number,
+  y: number,
+  stackId: string,
+  targetRole: StackRole,
+  rect: Rect,
+  panelRole: StackRole,
+): DockResolution | null {
+  const fx: number = (x - rect.left) / rect.width;
+  const fy: number = (y - rect.top) / rect.height;
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1) {
+    return null;
+  }
+  const legal: GuideLegality = guideLegality(panelRole, targetRole);
+  const inCenter: boolean =
+    fx >= CENTER_ZONE_FRACTION &&
+    fx <= 1 - CENTER_ZONE_FRACTION &&
+    fy >= CENTER_ZONE_FRACTION &&
+    fy <= 1 - CENTER_ZONE_FRACTION;
+
+  if (inCenter) {
+    return legal.center ? { target: { kind: 'tab', stackId }, preview: rect } : null;
+  }
+
+  const distances: Record<DockSide, number> = { left: fx, right: 1 - fx, top: fy, bottom: 1 - fy };
+  const side: DockSide = (Object.keys(distances) as DockSide[]).reduce(
+    (nearest: DockSide, candidate: DockSide): DockSide =>
+      distances[candidate] < distances[nearest] ? candidate : nearest,
+  );
+  return legal[side]
+    ? { target: { kind: 'split', stackId, side }, preview: splitPreview(side, rect) }
+    : null;
+}
