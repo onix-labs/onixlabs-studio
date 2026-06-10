@@ -1,4 +1,10 @@
+// The host is layout-transparent so the .tab-list element takes its place as the title strip's
+// flex child, preserving the original tab alignment while serving as the CDK drop list.
 :host {
+  display: contents;
+}
+
+.tab-list {
   display: flex;
   align-items: flex-end;
   gap: 0.25rem;

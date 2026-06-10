@@ -1,8 +1,15 @@
-@for (tab of tabs(); track tab.id) {
-  <app-title-strip-tab
-    [tab]="tab"
-    [isActive]="tab.id === activeTabId()"
-    (selectTab)="onSelect(tab)"
-    (closeTab)="onClose(tab)"
-  />
-}
+<div
+  class="tab-list"
+  cdkDropList
+  cdkDropListOrientation="horizontal"
+  (cdkDropListDropped)="onDrop($event)"
+>
+  @for (tab of tabs(); track tab.id) {
+    <app-title-strip-tab
+      [tab]="tab"
+      [isActive]="tab.id === activeTabId()"
+      (selectTab)="onSelect(tab)"
+      (closeTab)="onClose(tab)"
+    />
+  }
+</div>
