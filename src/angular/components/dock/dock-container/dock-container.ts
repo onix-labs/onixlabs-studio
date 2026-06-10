@@ -17,9 +17,10 @@ import { DockNode } from '../dock-node/dock-node';
 import { DockOverlay } from '../dock-overlay/dock-overlay';
 
 /**
- * The dock-area padding, in rem, on an edge with no auto-hidden stacks.
+ * The dock-area padding, in rem, on an edge with no auto-hidden stacks. Matches the splitter
+ * thickness so the gap is uniform around the panels and between them.
  */
-const BASE_INSET: string = '0.25rem';
+const BASE_INSET: string = '0.5rem';
 
 /**
  * The dock-area padding, in rem, on an edge occupied by an auto-hide strip.
