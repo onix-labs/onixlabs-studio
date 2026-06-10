@@ -9,13 +9,13 @@ import {
   inject,
   input,
   InputSignal,
-  output,
-  OutputEmitterRef,
   Signal,
 } from '@angular/core';
+import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
+import { DockFloating } from '../../../services/dock/dock-floating';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { guideLegality } from '../../../services/dock/dock-legality';
+import { guideLegality, Rect } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { StackNode } from '../../../services/dock/dock-node';
@@ -23,11 +23,17 @@ import { DockState } from '../../../services/dock/dock-state';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
+ * The rectangle a panel floats into when its group cannot be measured.
+ */
+const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240 };
+
+/**
  * Represents a tabbed group of panels (a stack) in the dock layout. Tool stacks render a title bar
  * above the tab strip; document stacks render the tab strip on top with no title bar. Activating
  * and closing tabs drive {@link DockState} directly; the tab strip is a connected CDK drop list, so
  * tabs reorder within and move between groups subject to document/tool legality; dragging a tool
- * group's title bar starts a compass dock through {@link DockDrag}.
+ * group's title bar starts a compass dock through {@link DockDrag}, and its title buttons float the
+ * active panel or auto-hide the stack.
  */
 @Component({
   selector: 'app-dock-tab-group',
@@ -61,6 +67,16 @@ export class DockTabGroup {
   private readonly dockDrag: DockDrag = inject(DockDrag);
 
   /**
+   * Holds the floating layer the float button detaches into.
+   */
+  private readonly floating: DockFloating = inject(DockFloating);
+
+  /**
+   * Holds the auto-hide store the pin button shelves into.
+   */
+  private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
    * Holds this group's element, hit-tested during a compass drag.
    */
   private readonly hostElement: ElementRef<HTMLElement> = inject(
@@ -71,16 +87,6 @@ export class DockTabGroup {
    * Gets the stack this group renders.
    */
   public readonly stack: InputSignal<StackNode> = input.required<StackNode>();
-
-  /**
-   * Emits the panel identifier when the user asks to float the active panel.
-   */
-  public readonly floatRequested: OutputEmitterRef<string> = output<string>();
-
-  /**
-   * Emits the stack identifier when the user asks to auto-hide (pin) the stack.
-   */
-  public readonly pinRequested: OutputEmitterRef<string> = output<string>();
 
   /**
    * Gets a value indicating whether the stack is a document well.
@@ -169,20 +175,21 @@ export class DockTabGroup {
   }
 
   /**
-   * Requests that the active panel be floated.
+   * Floats the active panel out of the layout into a window.
    */
   protected requestFloat(): void {
     const active: string | null = this.stack().active;
     if (active !== null) {
-      this.floatRequested.emit(active);
+      const rect: Rect = this.geometry.rectOf(this.stack().id) ?? FALLBACK_FLOAT_RECT;
+      this.floating.float(active, rect);
     }
   }
 
   /**
-   * Requests that the stack be auto-hidden.
+   * Auto-hides the stack, shelving it to its nearest edge.
    */
   protected requestPin(): void {
-    this.pinRequested.emit(this.stack().id);
+    this.autoHide.pin(this.stack().id);
   }
 
   /**

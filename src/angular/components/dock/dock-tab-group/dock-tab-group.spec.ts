@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DockFloating } from '../../../services/dock/dock-floating';
 import { mkStack, StackNode } from '../../../services/dock/dock-node';
 import { DockTabGroup } from './dock-tab-group';
 
 describe('DockTabGroup', () => {
   let component: DockTabGroup;
   let fixture: ComponentFixture<DockTabGroup>;
+  let floating: DockFloating;
 
   /**
    * Renders the group for the given stack, registering it with the state so mutations resolve.
@@ -22,6 +24,7 @@ describe('DockTabGroup', () => {
 
     fixture = TestBed.createComponent(DockTabGroup);
     component = fixture.componentInstance;
+    floating = TestBed.inject(DockFloating);
   });
 
   it('should create', () => {
@@ -50,12 +53,8 @@ describe('DockTabGroup', () => {
     expect(element.querySelector('.dock-tab-group__empty')).not.toBeNull();
   });
 
-  it('floatRequested_whenFloatButtonClicked_emitsTheActivePanel', () => {
+  it('requestFloat_whenFloatButtonClicked_floatsTheActivePanel', () => {
     render(mkStack('tool', ['output', 'errors']));
-    let floated: string | undefined;
-    component.floatRequested.subscribe((id: string): void => {
-      floated = id;
-    });
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const floatButton: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
@@ -63,7 +62,7 @@ describe('DockTabGroup', () => {
     );
     floatButton?.click();
 
-    expect(floated).toBe('output');
+    expect(floating.floats().some((window): boolean => window.panelId === 'output')).toBe(true);
   });
 
   it('render_whenStackHasAnActivePanel_marksTheActiveTab', () => {

@@ -83,6 +83,25 @@ export function findStackOfPanel(tree: DockNode, panelId: string): StackNode | n
 }
 
 /**
+ * Finds the first stack of the given role in depth-first order.
+ * @param tree The root of the tree to search.
+ * @param role The role to find.
+ * @returns Returns the first matching stack, or null when none exists.
+ */
+export function firstStackOfRole(tree: DockNode, role: StackRole): StackNode | null {
+  if (isStackNode(tree)) {
+    return tree.role === role ? tree : null;
+  }
+  for (const child of tree.children) {
+    const found: StackNode | null = firstStackOfRole(child, role);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
  * Counts the stacks of the given role in the tree.
  * @param tree The root of the tree to search.
  * @param role The role to count.
@@ -443,23 +462,26 @@ export function setSizes(tree: DockNode, splitId: string, sizes: readonly number
 }
 
 /**
- * Builds the seeded default layout: a tool stack beside a document well stacked over an output
- * stack. This is the layout {@link DockState} starts with and resets to; issue #42 refines it to a
- * full VS-like arrangement once the real panels exist.
+ * Builds the seeded default layout: the classic VS arrangement — a toolbox on the left, the
+ * document well in the centre, the solution explorer over properties on the right, and the output
+ * and error list along the bottom. This is the layout {@link DockState} starts with and resets to.
  * @returns Returns a fresh default layout tree.
  */
 export function defaultLayout(): DockNode {
   return mkSplit(
-    'row',
+    'col',
     [
-      mkStack('tool', ['solution']),
       mkSplit(
-        'col',
-        [mkStack('document', ['doc1', 'doc2', 'doc3']), mkStack('tool', ['output', 'errors'])],
-        [3, 1],
+        'row',
+        [
+          mkStack('tool', ['toolbox']),
+          mkStack('document', ['doc1', 'doc2', 'doc3']),
+          mkSplit('col', [mkStack('tool', ['solution']), mkStack('tool', ['props'])], [1, 1]),
+        ],
+        [1.1, 4, 1.6],
       ),
-      mkStack('tool', ['props']),
+      mkStack('tool', ['output', 'errors']),
     ],
-    [1.3, 4, 1.4],
+    [4, 1.5],
   );
 }

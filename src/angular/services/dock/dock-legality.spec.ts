@@ -1,6 +1,7 @@
 import {
   DockResolution,
   guideLegality,
+  nearestEdge,
   Rect,
   resolveEdgeTarget,
   resolveGroupTarget,
@@ -64,6 +65,16 @@ describe('dock-legality', () => {
 
     it('resolveEdgeTarget_whenOutsideWorkspace_returnsNull', () => {
       expect(resolveEdgeTarget(-10, 400, workspace, 'tool')).toBeNull();
+    });
+  });
+
+  describe('nearestEdge', () => {
+    it('nearestEdge_whenRectHugsAnEdge_returnsThatEdge', () => {
+      expect(nearestEdge({ left: 0, top: 300, width: 100, height: 100 }, workspace)).toBe('left');
+      expect(nearestEdge({ left: 450, top: 0, width: 100, height: 100 }, workspace)).toBe('top');
+      expect(nearestEdge({ left: 880, top: 300, width: 100, height: 100 }, workspace)).toBe(
+        'right',
+      );
     });
   });
 

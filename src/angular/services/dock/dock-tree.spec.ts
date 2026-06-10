@@ -6,6 +6,7 @@ import {
   dockNodeEdge,
   findNode,
   findStackOfPanel,
+  firstStackOfRole,
   movePanel,
   pruneStack,
   removeFromLayout,
@@ -69,6 +70,20 @@ describe('dock-tree', () => {
 
       expect(countStacks(tree, 'tool')).toBe(2);
       expect(countStacks(tree, 'document')).toBe(1);
+    });
+  });
+
+  describe('firstStackOfRole', () => {
+    it('firstStackOfRole_whenRolePresent_returnsTheFirstInDepthFirstOrder', () => {
+      const firstTool: StackNode = mkStack('tool', ['t1']);
+      const tree: DockNode = mkSplit('row', [firstTool, mkStack('document', ['d1'])]);
+
+      expect(firstStackOfRole(tree, 'tool')).toBe(firstTool);
+      expect(firstStackOfRole(tree, 'document')?.panels).toEqual(['d1']);
+    });
+
+    it('firstStackOfRole_whenRoleAbsent_returnsNull', () => {
+      expect(firstStackOfRole(mkStack('tool', ['a']), 'document')).toBeNull();
     });
   });
 

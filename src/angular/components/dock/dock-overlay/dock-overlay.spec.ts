@@ -31,6 +31,7 @@ describe('DockOverlay', () => {
 
   it('render_whenDragging_showsTheOverlayAndGhost', () => {
     drag.begin('output', new MouseEvent('mousedown', { clientX: 100, clientY: 100 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 160, clientY: 160 }));
     fixture.detectChanges();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;

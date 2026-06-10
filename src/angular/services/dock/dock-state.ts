@@ -1,10 +1,12 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import { DockNode, DockSide, StackRole } from './dock-node';
+import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
 import {
   defaultLayout,
   dockEdge,
+  dockNodeEdge,
   movePanel,
   removeFromLayout,
+  removeNode,
   reorderTab,
   setActive,
   setSizes,
@@ -63,6 +65,37 @@ export class DockState {
    */
   public removeFromLayout(panelId: string): void {
     this.tree.set(removeFromLayout(this.tree(), panelId));
+  }
+
+  /**
+   * Removes a whole stack from the layout, collapsing the tree around it. The call is ignored when
+   * removing the stack would empty the entire layout.
+   * @param stackId The identifier of the stack to remove.
+   */
+  public removeStack(stackId: string): void {
+    const next: DockNode | null = removeNode(this.tree(), stackId);
+    if (next !== null) {
+      this.tree.set(next);
+    }
+  }
+
+  /**
+   * Docks a stack of panels first-class against an application edge, used to re-dock an auto-hidden
+   * stack.
+   * @param panels The identifiers of the panels the stack holds.
+   * @param role The role of the stack.
+   * @param side The edge to dock against.
+   * @param active The identifier of the panel to activate, or null for the first panel.
+   */
+  public dockStackToEdge(
+    panels: readonly string[],
+    role: StackRole,
+    side: DockSide,
+    active: string | null,
+  ): void {
+    const stack: StackNode = mkStack(role, panels);
+    const withActive: StackNode = active !== null ? { ...stack, active } : stack;
+    this.tree.set(dockNodeEdge(this.tree(), withActive, side));
   }
 
   /**

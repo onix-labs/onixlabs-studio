@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { DockFloating } from './dock-floating';
 import { DockGeometry, DockGroupHit } from './dock-geometry';
 import {
   DockResolution,
@@ -70,6 +71,52 @@ const DEFAULT_GHOST: { readonly width: number; readonly height: number } = {
 };
 
 /**
+ * The distance, in pixels, the cursor must travel before a press becomes a drag. Below it a press
+ * is treated as a click, so dragging never starts from a stationary mousedown.
+ */
+const DRAG_THRESHOLD: number = 5;
+
+/**
+ * A press that is armed but has not yet crossed the drag threshold.
+ */
+interface ArmedDrag {
+  /**
+   * Gets the panel that would be dragged.
+   */
+  readonly panel: DockPanel;
+
+  /**
+   * Gets the cursor's x coordinate at the press.
+   */
+  readonly startX: number;
+
+  /**
+   * Gets the cursor's y coordinate at the press.
+   */
+  readonly startY: number;
+
+  /**
+   * Gets the ghost width.
+   */
+  readonly width: number;
+
+  /**
+   * Gets the ghost height.
+   */
+  readonly height: number;
+
+  /**
+   * Gets the cursor offset from the ghost's top-left.
+   */
+  readonly offset: DragOffset;
+
+  /**
+   * Gets the workspace rectangle captured at the press.
+   */
+  readonly workspace: Rect | null;
+}
+
+/**
  * Coordinates a compass dock drag: the panel follows the cursor as a ghost while the overlay shows
  * the compass, edge guides and a drop preview resolved from the {@link DockGeometry} registry, and
  * the resolved {@link DockTarget} is committed to {@link DockState} on release.
@@ -95,6 +142,11 @@ export class DockDrag {
    * Holds the geometry registry the cursor is hit-tested against.
    */
   private readonly geometry: DockGeometry = inject(DockGeometry);
+
+  /**
+   * Holds the floating layer a void drop floats the panel into.
+   */
+  private readonly floating: DockFloating = inject(DockFloating);
 
   /**
    * Holds the panel being dragged, or null when idle.
@@ -137,6 +189,11 @@ export class DockDrag {
    * Holds the cursor offset from the ghost's top-left.
    */
   private offset: DragOffset = { x: 0, y: 0 };
+
+  /**
+   * Holds the armed press, before the drag threshold is crossed, or null when none is pending.
+   */
+  private armed: ArmedDrag | null = null;
 
   /**
    * Holds the bound move handler so it can be detached on release.
@@ -197,7 +254,7 @@ export class DockDrag {
    * @param event The originating mouse event.
    */
   public begin(panelId: string, event: MouseEvent): void {
-    if (this.draggedPanel() !== null) {
+    if (this.draggedPanel() !== null || this.armed !== null) {
       return;
     }
     const panel: DockPanel | undefined = this.registry.get(panelId);
@@ -210,35 +267,67 @@ export class DockDrag {
     const sourceRect: Rect | null = source !== null ? this.geometry.rectOf(source.id) : null;
     const width: number = sourceRect?.width ?? DEFAULT_GHOST.width;
     const height: number = sourceRect?.height ?? DEFAULT_GHOST.height;
-    this.offset = {
-      x: sourceRect !== null ? clamp(event.clientX - sourceRect.left, 8, width - 12) : 16,
-      y: sourceRect !== null ? clamp(event.clientY - sourceRect.top, 6, 24) : 12,
-    };
-
-    this.workspaceRect.set(this.geometry.workspaceRect());
-    this.draggedPanel.set(panel);
-    this.ghostRect.set({
-      left: event.clientX - this.offset.x,
-      top: event.clientY - this.offset.y,
+    this.armed = {
+      panel,
+      startX: event.clientX,
+      startY: event.clientY,
       width,
       height,
-    });
+      offset: {
+        x: sourceRect !== null ? clamp(event.clientX - sourceRect.left, 8, width - 12) : 16,
+        y: sourceRect !== null ? clamp(event.clientY - sourceRect.top, 6, 24) : 12,
+      },
+      workspace: this.geometry.workspaceRect(),
+    };
 
     this.document.addEventListener('mousemove', this.moveHandler);
     this.document.addEventListener('mouseup', this.releaseHandler);
   }
 
   /**
-   * Tracks the cursor, moving the ghost and resolving the current drop target and overlay state.
+   * Promotes the armed press into an active drag, showing the ghost.
+   * @param x The cursor's x coordinate.
+   * @param y The cursor's y coordinate.
+   */
+  private activate(x: number, y: number): void {
+    const armed: ArmedDrag | null = this.armed;
+    if (armed === null) {
+      return;
+    }
+    this.offset = armed.offset;
+    this.workspaceRect.set(armed.workspace);
+    this.draggedPanel.set(armed.panel);
+    this.ghostRect.set({
+      left: x - armed.offset.x,
+      top: y - armed.offset.y,
+      width: armed.width,
+      height: armed.height,
+    });
+  }
+
+  /**
+   * Tracks the cursor, arming then activating the drag once the threshold is crossed, moving the
+   * ghost and resolving the current drop target and overlay state.
    * @param event The mouse move event.
    */
   private onMove(event: MouseEvent): void {
-    const panel: DockPanel | null = this.draggedPanel();
-    if (panel === null) {
+    const armed: ArmedDrag | null = this.armed;
+    if (armed === null) {
       return;
     }
     const x: number = event.clientX;
     const y: number = event.clientY;
+    if (this.draggedPanel() === null) {
+      if (Math.hypot(x - armed.startX, y - armed.startY) < DRAG_THRESHOLD) {
+        return;
+      }
+      this.activate(x, y);
+    }
+
+    const panel: DockPanel | null = this.draggedPanel();
+    if (panel === null) {
+      return;
+    }
     const ghost: Rect | null = this.ghostRect();
     if (ghost !== null) {
       this.ghostRect.set({ ...ghost, left: x - this.offset.x, top: y - this.offset.y });
@@ -283,7 +372,8 @@ export class DockDrag {
   }
 
   /**
-   * Ends the drag, committing the resolved target to the layout or cancelling on an empty target.
+   * Ends the drag: commits the resolved target, floats the panel when dropped on void, or does
+   * nothing when the press never became a drag.
    */
   private onRelease(): void {
     this.document.removeEventListener('mousemove', this.moveHandler);
@@ -291,9 +381,16 @@ export class DockDrag {
 
     const panel: DockPanel | null = this.draggedPanel();
     const target: DockTarget | null = this.currentTarget;
+    const ghost: Rect | null = this.ghostRect();
+    this.armed = null;
     this.reset();
-    if (panel !== null && target !== null) {
+    if (panel === null) {
+      return;
+    }
+    if (target !== null) {
       this.applyDock(panel, target);
+    } else if (ghost !== null) {
+      this.floating.float(panel.id, ghost);
     }
   }
 

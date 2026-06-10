@@ -1,0 +1,57 @@
+@for (edge of edges; track edge) {
+  <div class="dock-ah-strip dock-ah-strip--{{ edge }}">
+    @for (stack of byEdge()[edge]; track stack.key) {
+      @for (panelId of stack.panels; track panelId) {
+        <button
+          type="button"
+          class="dock-ah-strip__button"
+          (click)="showFlyout(stack.key, panelId)"
+        >
+          {{ title(panelId) }}
+        </button>
+      }
+    }
+  </div>
+}
+
+@if (flyout(); as fly) {
+  <div class="dock-ah-flyout dock-ah-flyout--{{ fly.stack.edge }}">
+    <div class="dock-ah-flyout__title">
+      <span class="dock-ah-flyout__title-text">{{ fly.active?.title }}</span>
+      <span class="dock-ah-flyout__title-buttons">
+        <button type="button" title="Dock" aria-label="Dock" (click)="unpin(fly.stack.key)">
+          <i class="ti ti-pin" aria-hidden="true"></i>
+        </button>
+        @if (fly.active; as active) {
+          <button
+            type="button"
+            title="Close"
+            aria-label="Close"
+            (click)="close(fly.stack.key, active.id)"
+          >
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        }
+      </span>
+    </div>
+    <div class="dock-ah-flyout__tabstrip" role="tablist">
+      @for (panel of fly.panels; track panel.id) {
+        <button
+          type="button"
+          class="dock-ah-flyout__tab"
+          role="tab"
+          [class.dock-ah-flyout__tab--active]="panel.id === fly.stack.active"
+          [attr.aria-selected]="panel.id === fly.stack.active"
+          (click)="activate(fly.stack.key, panel.id)"
+        >
+          {{ panel.title }}
+        </button>
+      }
+    </div>
+    <div class="dock-ah-flyout__body">
+      @if (fly.active; as active) {
+        <app-dock-panel-outlet [panelId]="active.id" />
+      }
+    </div>
+  </div>
+}

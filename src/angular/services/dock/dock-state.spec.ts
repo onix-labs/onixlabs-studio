@@ -100,14 +100,30 @@ describe('DockState', () => {
   it('setSizes_whenCalledOnASplit_commitsTheNewWeights', () => {
     const root: DockNode = state.layout();
     expect(isSplitNode(root)).toBe(true);
-    const sizes: number[] = [2, 2, 2];
 
     if (isSplitNode(root)) {
+      const sizes: number[] = root.children.map((): number => 2);
       state.setSizes(root.id, sizes);
-    }
 
-    const updated: DockNode = state.layout();
-    expect(isSplitNode(updated) && updated.sizes).toEqual(sizes);
+      const updated: DockNode = state.layout();
+      expect(isSplitNode(updated) && updated.sizes).toEqual(sizes);
+    }
+  });
+
+  it('removeStack_whenCalled_removesTheWholeStack', () => {
+    const toolboxId: string = stackOf(state.layout(), 'toolbox').id;
+
+    state.removeStack(toolboxId);
+
+    expect(findStackOfPanel(state.layout(), 'toolbox')).toBeNull();
+  });
+
+  it('dockStackToEdge_whenCalled_docksTheStackAgainstTheEdge', () => {
+    state.dockStackToEdge(['alpha', 'beta'], 'tool', 'left', 'beta');
+
+    const stack: StackNode = stackOf(state.layout(), 'alpha');
+    expect(stack.panels).toEqual(['alpha', 'beta']);
+    expect(stack.active).toBe('beta');
   });
 
   it('reset_whenCalled_restoresTheSeededLayout', () => {

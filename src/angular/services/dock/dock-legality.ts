@@ -100,6 +100,26 @@ const EDGE_SLAB_MAXIMUM: number = 280;
 const EDGE_SLAB_FRACTION: number = 0.32;
 
 /**
+ * Determines which workspace edge a rectangle sits nearest to, used to choose where an auto-hidden
+ * stack is shelved.
+ * @param rect The rectangle to measure.
+ * @param workspace The workspace rectangle.
+ * @returns Returns the nearest edge.
+ */
+export function nearestEdge(rect: Rect, workspace: Rect): DockSide {
+  const distances: Record<DockSide, number> = {
+    left: rect.left - workspace.left,
+    right: workspace.left + workspace.width - (rect.left + rect.width),
+    top: rect.top - workspace.top,
+    bottom: workspace.top + workspace.height - (rect.top + rect.height),
+  };
+  return (Object.keys(distances) as DockSide[]).reduce(
+    (nearest: DockSide, candidate: DockSide): DockSide =>
+      distances[candidate] < distances[nearest] ? candidate : nearest,
+  );
+}
+
+/**
  * Computes which compass guides are legal when dragging a panel of one role over a stack of
  * another. Tool windows dock anywhere; documents live only in document wells (tab into or split a
  * document well) and never edge-dock or tab into a tool window.
