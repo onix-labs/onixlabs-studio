@@ -1,4 +1,3 @@
-import { CdkDropListGroup } from '@angular/cdk/drag-drop';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -29,13 +28,13 @@ const STRIP_INSET: string = '1.625rem';
 
 /**
  * Represents the root host of the dock layout. It renders the layout tree from {@link DockState},
- * connects every tab strip into one CDK drop-list group so tabs move between groups, hosts the drag
- * overlay, floating layer and auto-hide strips, insets the dock area away from occupied edges,
- * registers the workspace for edge docking, and offers a reset to the seeded layout.
+ * hosts the drag overlay, floating layer and auto-hide strips, insets the dock area away from
+ * occupied edges, registers the workspace for edge docking, and offers a reset to the seeded
+ * layout.
  */
 @Component({
   selector: 'app-dock-container',
-  imports: [DockNode, DockOverlay, DockFloatingLayer, DockAutoHideStrips, CdkDropListGroup],
+  imports: [DockNode, DockOverlay, DockFloatingLayer, DockAutoHideStrips],
   templateUrl: './dock-container.html',
   styleUrl: './dock-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

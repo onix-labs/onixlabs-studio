@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DockDrag } from '../../../services/dock/dock-drag';
 import { DockFloating } from '../../../services/dock/dock-floating';
 import { mkStack, StackNode } from '../../../services/dock/dock-node';
 import { DockTabGroup } from './dock-tab-group';
@@ -7,6 +8,7 @@ describe('DockTabGroup', () => {
   let component: DockTabGroup;
   let fixture: ComponentFixture<DockTabGroup>;
   let floating: DockFloating;
+  let drag: DockDrag;
 
   /**
    * Renders the group for the given stack, registering it with the state so mutations resolve.
@@ -25,6 +27,7 @@ describe('DockTabGroup', () => {
     fixture = TestBed.createComponent(DockTabGroup);
     component = fixture.componentInstance;
     floating = TestBed.inject(DockFloating);
+    drag = TestBed.inject(DockDrag);
   });
 
   it('should create', () => {
@@ -63,6 +66,19 @@ describe('DockTabGroup', () => {
     floatButton?.click();
 
     expect(floating.floats().some((window): boolean => window.panelId === 'output')).toBe(true);
+  });
+
+  it('onTabPress_whenTabPressedAndDragged_startsACompassDragForThatPanel', () => {
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const tabs: NodeListOf<HTMLElement> = element.querySelectorAll<HTMLElement>('.dock-tab');
+    tabs[1].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+
+    expect(drag.panel()?.id).toBe('errors');
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
   it('render_whenStackHasAnActivePanel_marksTheActiveTab', () => {

@@ -1,4 +1,3 @@
-import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -15,7 +14,7 @@ import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
 import { DockFloating } from '../../../services/dock/dock-floating';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { guideLegality, Rect } from '../../../services/dock/dock-legality';
+import { Rect } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { StackNode } from '../../../services/dock/dock-node';
@@ -29,15 +28,14 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
 
 /**
  * Represents a tabbed group of panels (a stack) in the dock layout. Tool stacks render a title bar
- * above the tab strip; document stacks render the tab strip on top with no title bar. Activating
- * and closing tabs drive {@link DockState} directly; the tab strip is a connected CDK drop list, so
- * tabs reorder within and move between groups subject to document/tool legality; dragging a tool
- * group's title bar starts a compass dock through {@link DockDrag}, and its title buttons float the
- * active panel or auto-hide the stack.
+ * above the tab strip; document stacks render the tab strip on top with no title bar. Closing tabs
+ * drives {@link DockState} directly; pressing a tab activates it and starts a compass dock through
+ * {@link DockDrag} (so any tab can be tabbed-into, split, edge-docked or floated), as does dragging
+ * a tool group's title bar; the title buttons float the active panel or auto-hide the stack.
  */
 @Component({
   selector: 'app-dock-tab-group',
-  imports: [DockPanelOutlet, CdkDropList, CdkDrag],
+  imports: [DockPanelOutlet],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -133,33 +131,18 @@ export class DockTabGroup {
   }
 
   /**
-   * Determines whether a dragged tab may enter this group's tab strip, enforcing that documents
-   * only drop into document wells and tools only into tool stacks.
-   * @param drag The tab being dragged, whose data is the panel identifier.
-   * @returns Returns true when the tab may drop here; otherwise, false.
+   * Activates a tab and starts a compass dock for it. Movement past the drag threshold docks the
+   * panel elsewhere (tab-into, split, edge or float); a press without movement just activates.
+   * @param panelId The identifier of the pressed panel.
+   * @param event The originating mouse event.
    */
-  protected readonly canEnter: (drag: CdkDrag<string>) => boolean = (
-    drag: CdkDrag<string>,
-  ): boolean => {
-    const panel: DockPanel | undefined = this.registry.get(drag.data);
-    return panel !== undefined && guideLegality(panel.role, this.stack().role).center;
-  };
-
-  /**
-   * Commits a tab drop, reordering within this group or moving the tab in from another group.
-   * @param event The CDK drop event.
-   */
-  protected onDrop(event: CdkDragDrop<StackNode>): void {
-    const panelId: string = event.item.data as string;
-    if (event.previousContainer === event.container) {
-      this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
-    } else {
-      this.dockState.movePanel(panelId, this.stack().id, event.currentIndex);
-    }
+  protected onTabPress(panelId: string, event: MouseEvent): void {
+    this.dockState.setActive(this.stack().id, panelId);
+    this.dockDrag.begin(panelId, event);
   }
 
   /**
-   * Activates the panel with the given identifier.
+   * Activates the panel with the given identifier, used for keyboard selection.
    * @param panelId The identifier of the panel to activate.
    */
   protected activate(panelId: string): void {

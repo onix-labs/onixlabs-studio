@@ -7,14 +7,32 @@
     <div class="dock-tab-group__title" (mousedown)="startDrag($event)">
       <span class="dock-tab-group__title-text">{{ activePanel()?.title }}</span>
       <span class="dock-tab-group__title-buttons">
-        <button type="button" title="Auto Hide" aria-label="Auto Hide" (click)="requestPin()">
+        <button
+          type="button"
+          title="Auto Hide"
+          aria-label="Auto Hide"
+          (mousedown)="$event.stopPropagation()"
+          (click)="requestPin()"
+        >
           <i class="ti ti-layout-sidebar-left-collapse" aria-hidden="true"></i>
         </button>
-        <button type="button" title="Float" aria-label="Float" (click)="requestFloat()">
+        <button
+          type="button"
+          title="Float"
+          aria-label="Float"
+          (mousedown)="$event.stopPropagation()"
+          (click)="requestFloat()"
+        >
           <i class="ti ti-picture-in-picture" aria-hidden="true"></i>
         </button>
         @if (activePanel(); as panel) {
-          <button type="button" title="Close" aria-label="Close" (click)="close(panel.id)">
+          <button
+            type="button"
+            title="Close"
+            aria-label="Close"
+            (mousedown)="$event.stopPropagation()"
+            (click)="close(panel.id)"
+          >
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         }
@@ -22,25 +40,15 @@
     </div>
   }
 
-  <div
-    class="dock-tab-group__tabstrip"
-    role="tablist"
-    cdkDropList
-    cdkDropListOrientation="horizontal"
-    [cdkDropListData]="stack()"
-    [cdkDropListEnterPredicate]="canEnter"
-    (cdkDropListDropped)="onDrop($event)"
-  >
+  <div class="dock-tab-group__tabstrip" role="tablist">
     @for (panel of panels(); track panel.id) {
       <div
         class="dock-tab"
         role="tab"
         tabindex="0"
-        cdkDrag
-        [cdkDragData]="panel.id"
         [class.dock-tab--active]="panel.id === stack().active"
         [attr.aria-selected]="panel.id === stack().active"
-        (click)="activate(panel.id)"
+        (mousedown)="onTabPress(panel.id, $event)"
         (keydown.enter)="activate(panel.id)"
         (keydown.space)="activate(panel.id)"
       >
@@ -51,6 +59,7 @@
           class="dock-tab__close"
           title="Close"
           aria-label="Close"
+          (mousedown)="$event.stopPropagation()"
           (click)="close(panel.id); $event.stopPropagation()"
         >
           <i class="ti ti-x" aria-hidden="true"></i>
