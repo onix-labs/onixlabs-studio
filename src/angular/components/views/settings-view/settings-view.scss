@@ -1,0 +1,7 @@
+// The settings view is shown full-bleed (without the ribbon and status strips) and adopts the
+// ribbon strip's background colour.
+:host {
+  display: block;
+  block-size: 100%;
+  background: var(--ribbon-strip-background-color);
+}

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { Tabs } from '../../services/tabs/tabs';
 import { Root } from './root';
 
 describe('Root', () => {
@@ -27,5 +28,14 @@ describe('Root', () => {
     expect(element.querySelector('.ribbon-strip')).not.toBeNull();
     expect(element.querySelector('.content')).not.toBeNull();
     expect(element.querySelector('.status-strip')).not.toBeNull();
+  });
+
+  it('render_whenSettingsTabActive_hidesTheRibbonStrip', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    tabs.open('settings');
+    fixture.detectChanges();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.ribbon-strip')).toBeNull();
   });
 });

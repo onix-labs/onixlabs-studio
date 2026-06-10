@@ -1,1 +1,7 @@
-<p>ribbon-strip works!</p>
+@if (tools().length > 0) {
+  <div class="ribbon">
+    @for (tool of tools(); track tool) {
+      <button type="button" class="ribbon__tool" disabled>{{ tool }}</button>
+    }
+  </div>
+}
