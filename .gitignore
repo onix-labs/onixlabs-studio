@@ -149,3 +149,7 @@ vite.config.ts.timestamp-*
 /dist-electron
 /release
 /out
+/resources
+
+# macOS
+.DS_Store
