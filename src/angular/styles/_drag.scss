@@ -2,10 +2,18 @@
 // CDK renders the drag preview and placeholder outside the originating component's DOM.
 
 // The chip shown under the cursor while a tab is dragged. It mirrors an active tab's box (active
-// colours, rounded top, square bottom, no bottom border, same padding) including the close button,
-// so it is the same height as a tab and its bottom edge meets the rail (the strip's bottom border) —
-// riding along the rail rather than floating above or dipping below it.
+// colours, rounded top, square bottom, no bottom border, same padding) including the close button
+// and the reverse corner curves, so it is the same height as a tab and its bottom edge meets the
+// rail (the strip's bottom border) — riding along the rail rather than floating above or below it.
+// The radius is redeclared here because the chip is rendered on <body>, outside the tab component
+// whose :host defines it.
 .tab-chip {
+  --title-strip-tab-border-radius: 10px;
+
+  position: relative;
+  // CDK renders the preview as a popover, whose UA style is `overflow: auto`. That would clip the
+  // reverse corner curves below, which protrude beyond the chip's box, so allow them to overflow.
+  overflow: visible;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -15,9 +23,48 @@
   background-color: var(--title-strip-tab-background-color--active);
   border: 0.0625rem solid var(--title-strip-border-color);
   border-block-end: none;
-  border-radius: 10px 10px 0 0;
+  border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
   corner-shape: squircle;
   cursor: grabbing;
+
+  // The reverse curves that flare the chip's bottom corners out to meet the rail, mirroring the
+  // active tab's ::before/::after so the dragged chip keeps its Chrome-tab silhouette.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    block-size: var(--title-strip-tab-border-radius);
+    inline-size: var(--title-strip-tab-border-radius);
+    margin-inline: -0.125rem;
+    bottom: 0;
+    background: var(--title-strip-tab-background-color--active);
+    mask: none;
+    corner-shape: superellipse(-2.3);
+  }
+
+  &::before {
+    left: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top left,
+      transparent var(--title-strip-tab-border-radius),
+      #000 var(--title-strip-tab-border-radius)
+    );
+    border-start-start-radius: var(--title-strip-tab-border-radius);
+    border-block-start: 0.0625rem solid var(--title-strip-border-color);
+    border-inline-start: 0.0625rem solid var(--title-strip-border-color);
+  }
+
+  &::after {
+    right: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top right,
+      transparent var(--title-strip-tab-border-radius),
+      #000 var(--title-strip-tab-border-radius)
+    );
+    border-start-end-radius: var(--title-strip-tab-border-radius);
+    border-block-start: 0.0625rem solid var(--title-strip-border-color);
+    border-inline-end: 0.0625rem solid var(--title-strip-border-color);
+  }
 
   // Mirrors the active tab's close button. It is purely decorative on the chip, so it carries no
   // interactivity — the real button stays behind on the tab in the strip.
