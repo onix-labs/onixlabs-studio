@@ -1,12 +1,42 @@
-import { Component, Input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  InputSignal,
+  output,
+  OutputEmitterRef,
+} from '@angular/core';
 
+/**
+ * Represents an icon button in the title strip.
+ */
 @Component({
   selector: 'app-title-strip-button',
   imports: [],
   templateUrl: './title-strip-button.html',
   styleUrl: './title-strip-button.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TitleStripButton {
-  @Input()
-  public icon: string = '';
+  /**
+   * Gets the icon CSS class to display (a Tabler webfont class such as `ti ti-plus`).
+   */
+  public readonly icon: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets a value indicating whether the button is disabled.
+   */
+  public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Emits when the button is activated.
+   */
+  public readonly action: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Handles a click on the button, emitting the {@link action} event.
+   */
+  protected onClick(): void {
+    this.action.emit();
+  }
 }

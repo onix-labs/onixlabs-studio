@@ -1,4 +1,8 @@
-<app-title-strip-tab [isActive]="true" />
-<app-title-strip-tab />
-<app-title-strip-tab />
-<app-title-strip-tab />
+@for (tab of tabs(); track tab.id) {
+  <app-title-strip-tab
+    [tab]="tab"
+    [isActive]="tab.id === activeTabId()"
+    (selectTab)="onSelect(tab)"
+    (closeTab)="onClose(tab)"
+  />
+}

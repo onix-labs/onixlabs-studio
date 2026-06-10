@@ -18,5 +18,11 @@
       background: var(--title-strip-button-background-color--hover);
       color: var(--title-strip-button-foreground-color--hover);
     }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+      pointer-events: none;
+    }
   }
 }
