@@ -3,6 +3,7 @@
   [disabled]="isSettingsOpen()"
   (action)="openSettings()"
 />
+<app-title-strip-button icon="ti ti-folder" (action)="openFiles()" />
 <app-title-strip-button icon="ti ti-plus" [cdkMenuTriggerFor]="newTabMenu" />
 
 <ng-template #newTabMenu>
