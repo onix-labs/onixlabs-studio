@@ -1,0 +1,24 @@
+@for (tab of tabs(); track tab.id) {
+  <div class="tab-view" [class.tab-view--hidden]="tab.id !== activeTabId()">
+    @switch (tab.type) {
+      @case ('settings') {
+        <app-settings-view [isActive]="tab.id === activeTabId()" />
+      }
+      @case ('directory') {
+        <app-directory-view [isActive]="tab.id === activeTabId()" />
+      }
+      @case ('code') {
+        <app-code-view [isActive]="tab.id === activeTabId()" />
+      }
+      @case ('markdown') {
+        <app-markdown-view [isActive]="tab.id === activeTabId()" />
+      }
+      @case ('terminal') {
+        <app-terminal-view [isActive]="tab.id === activeTabId()" />
+      }
+      @case ('agent') {
+        <app-agent-view [isActive]="tab.id === activeTabId()" />
+      }
+    }
+  </div>
+}
