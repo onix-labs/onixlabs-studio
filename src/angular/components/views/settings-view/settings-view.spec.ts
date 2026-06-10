@@ -26,10 +26,10 @@ describe('SettingsView', () => {
 
   it('selectMode_whenAModeOptionClicked_setsThatModeOnTheTheme', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const darkOption: HTMLButtonElement | null = Array.from(
-      element.querySelectorAll<HTMLButtonElement>('.segmented__option'),
-    ).find((button: HTMLButtonElement): boolean => button.textContent?.includes('Dark') ?? false) ??
-      null;
+    const darkOption: HTMLButtonElement | null =
+      Array.from(element.querySelectorAll<HTMLButtonElement>('.segmented__option')).find(
+        (button: HTMLButtonElement): boolean => button.textContent?.includes('Dark') ?? false,
+      ) ?? null;
 
     darkOption?.click();
 
@@ -38,8 +38,9 @@ describe('SettingsView', () => {
 
   it('selectAccent_whenASwatchClicked_setsThatAccentOnTheTheme', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const greenSwatch: HTMLButtonElement | null =
-      element.querySelector<HTMLButtonElement>('.swatch[aria-label="green"]');
+    const greenSwatch: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
+      '.swatch[aria-label="green"]',
+    );
 
     greenSwatch?.click();
 
@@ -52,8 +53,9 @@ describe('SettingsView', () => {
     await fixture.whenStable();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const pinkSwatch: HTMLButtonElement | null =
-      element.querySelector<HTMLButtonElement>('.swatch[aria-label="pink"]');
+    const pinkSwatch: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
+      '.swatch[aria-label="pink"]',
+    );
 
     expect(pinkSwatch?.classList.contains('swatch--selected')).toBe(true);
     expect(pinkSwatch?.getAttribute('aria-checked')).toBe('true');
