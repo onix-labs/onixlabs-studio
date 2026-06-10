@@ -1,14 +1,19 @@
 <div
   role="tab"
   cdkDrag
-  tabindex="0"
+  [attr.tabindex]="isActive() ? 0 : -1"
   [attr.aria-selected]="isActive()"
   (click)="selectTab.emit()"
   (keydown.enter)="selectTab.emit()"
 >
   <i [class]="tab().icon"></i>
   <span>{{ tab().title }}</span>
-  <button type="button" aria-label="Close tab" (click)="onCloseClick($event)">
+  <button
+    type="button"
+    aria-label="Close tab"
+    [attr.tabindex]="isActive() ? 0 : -1"
+    (click)="onCloseClick($event)"
+  >
     <i class="tis tis-x"></i>
   </button>
 </div>
