@@ -17,6 +17,12 @@
   cursor: grabbing;
 }
 
+// The CDK positions the preview wrapper under the cursor; the chip is lifted within it so it floats
+// clear of the title strip's bottom border rather than sitting on it.
+.tab-drag-preview .tab-chip {
+  transform: translateY(-0.4rem);
+}
+
 // The gap left behind in the strip while the tab is being dragged.
 .cdk-drag-placeholder {
   opacity: 0;
