@@ -68,7 +68,6 @@
 .dock-tab-group__tabstrip {
   display: flex;
   align-items: flex-end;
-  gap: 0.125rem;
   block-size: 1.625rem;
   padding: 0.1875rem 0.25rem 0;
   background: var(--dock-tabstrip-background-color);
@@ -103,7 +102,10 @@
   }
 
   &__close {
-    display: none;
+    // Always laid out so the tab keeps a constant width; only its visibility toggles, so inactive
+    // tabs do not jiggle when hovered to make room for the button.
+    display: flex;
+    visibility: hidden;
     align-items: center;
     justify-content: center;
     block-size: 1rem;
@@ -124,7 +126,7 @@
 
   &:hover &__close,
   &--active &__close {
-    display: flex;
+    visibility: visible;
   }
 
   &:focus-visible {
@@ -172,7 +174,7 @@
   block-size: auto;
   overflow: visible;
   padding: 0;
-  gap: 0.5rem;
+  gap: 0.25rem;
   background: transparent;
 }
 
@@ -232,11 +234,12 @@
 :host(.dock-tab-group--documents) .dock-tab {
   border-block-end: none;
   border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
+  // Every tab carries the 1px overlap so they all share one margin-box height; otherwise the
+  // active tab's shorter box drops 1px below the others under the strip's flex-end alignment.
+  margin-block-end: -0.0625rem;
 }
 
 :host(.dock-tab-group--documents) .dock-tab--active {
-  margin-block-end: -0.0625rem;
-
   &::before,
   &::after {
     bottom: 0;
@@ -296,11 +299,12 @@
 :host(.dock-tab-group--tool) .dock-tab {
   border-block-start: none;
   border-radius: 0 0 var(--dock-panel-radius) var(--dock-panel-radius);
+  // Mirror of the document overlap, so every tab shares one margin-box height under the strip's
+  // flex-start alignment and the active tab is not shifted relative to the others.
+  margin-block-start: -0.0625rem;
 }
 
 :host(.dock-tab-group--tool) .dock-tab--active {
-  margin-block-start: -0.0625rem;
-
   &::before,
   &::after {
     top: 0;
