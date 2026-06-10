@@ -1,4 +1,4 @@
-import { CdkDrag } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragPreview } from '@angular/cdk/drag-drop';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,7 +14,7 @@ import { Tab } from '../../../../services/tabs/tab';
  */
 @Component({
   selector: 'app-title-strip-tab',
-  imports: [CdkDrag],
+  imports: [CdkDrag, CdkDragPreview],
   templateUrl: './title-strip-tab.html',
   styleUrl: './title-strip-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

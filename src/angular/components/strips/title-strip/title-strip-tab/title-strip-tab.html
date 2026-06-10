@@ -16,4 +16,9 @@
   >
     <i class="tis tis-x"></i>
   </button>
+
+  <div class="tab-chip" *cdkDragPreview>
+    <i [class]="tab().icon"></i>
+    <span>{{ tab().title }}</span>
+  </div>
 </div>
