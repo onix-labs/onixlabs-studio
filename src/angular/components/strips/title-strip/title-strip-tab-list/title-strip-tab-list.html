@@ -3,7 +3,6 @@
   role="tablist"
   cdkDropList
   cdkDropListOrientation="horizontal"
-  cdkDropListLockAxis="x"
   (cdkDropListDropped)="onDrop($event)"
 >
   @for (tab of tabs(); track tab.id) {

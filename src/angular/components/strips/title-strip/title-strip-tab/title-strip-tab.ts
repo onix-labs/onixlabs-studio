@@ -1,4 +1,4 @@
-import { CdkDrag, CdkDragPreview } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragPreview, DragConstrainPosition } from '@angular/cdk/drag-drop';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -39,6 +39,23 @@ export class TitleStripTab {
    * Emits when the user requests to close the tab.
    */
   public readonly closeTab: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Pins the drag preview to the tab rail so it slides horizontally without translating vertically.
+   *
+   * A custom `cdkDragPreview` makes the CDK anchor the preview's top-left to the cursor, which would
+   * otherwise leave the chip floating over the rail by however far down the tab was grabbed. The
+   * horizontal position tracks the pointer, while the vertical position is locked to the tab's
+   * original top edge so its bottom keeps meeting the rail.
+   * @param point The current pointer position.
+   * @param _dragRef The drag reference (unused).
+   * @param dimensions The originating tab's bounding rectangle, captured at drag start.
+   * @returns The constrained top-left position for the drag preview.
+   */
+  protected readonly anchorDragToRail: DragConstrainPosition = (point, _dragRef, dimensions) => ({
+    x: point.x,
+    y: dimensions.top,
+  });
 
   /**
    * Handles a click on the close button, suppressing the tab-selection click.
