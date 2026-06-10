@@ -22,5 +22,24 @@
         }
       </div>
     </div>
+
+    <div class="settings__field">
+      <span class="settings__field-label" id="accent-label">Accent</span>
+      <div class="swatches" role="radiogroup" aria-labelledby="accent-label">
+        @for (color of accentColors; track color) {
+          <button
+            type="button"
+            class="swatch"
+            role="radio"
+            [class.swatch--selected]="accent() === color"
+            [style.background]="'var(--accent-' + color + ')'"
+            [attr.aria-checked]="accent() === color"
+            [attr.aria-label]="color"
+            [attr.title]="color"
+            (click)="selectAccent(color)"
+          ></button>
+        }
+      </div>
+    </div>
   </section>
 </div>

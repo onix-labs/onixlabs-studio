@@ -38,5 +38,9 @@
   --accent-color: var(--accent-blue);
   --accent-color-rgb: var(--accent-blue-rgb);
 
+  // Semantic accent tokens. Keyboard focus rings draw in the active accent throughout the app.
+  --focus-ring-color: var(--accent-color);
+  --focus-ring-width: 0.125rem;
+
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 }

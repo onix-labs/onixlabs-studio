@@ -34,12 +34,19 @@
       }
     }
 
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: -0.1875rem;
+    }
+
     &[aria-selected='true'] {
       position: relative;
       margin-block-end: -0.0625rem;
       color: var(--title-strip-tab-foreground-color--active);
       background-color: var(--title-strip-tab-background-color--active);
       border-color: var(--title-strip-border-color);
+      // A thin accent bar across the top edge marks the active tab.
+      box-shadow: inset 0 var(--focus-ring-width) 0 0 var(--accent-color);
 
       &::before,
       &::after {

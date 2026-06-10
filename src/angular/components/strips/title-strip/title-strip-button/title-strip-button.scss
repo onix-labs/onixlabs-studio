@@ -19,6 +19,11 @@
       color: var(--title-strip-button-foreground-color--hover);
     }
 
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 0.0625rem;
+    }
+
     &:disabled {
       opacity: 0.4;
       cursor: default;

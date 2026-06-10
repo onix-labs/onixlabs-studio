@@ -25,6 +25,8 @@
   border-block-end: none;
   border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
   corner-shape: squircle;
+  // Match the active tab's accent bar so the dragged chip reads as the same tab.
+  box-shadow: inset 0 var(--focus-ring-width) 0 0 var(--accent-color);
   cursor: grabbing;
 
   // The reverse curves that flare the chip's bottom corners out to meet the rail, mirroring the
