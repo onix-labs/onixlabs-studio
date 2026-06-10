@@ -1,8 +1,11 @@
 :host {
+  // Fill the pane the node renderer sizes for this group. Without this the group collapses to its
+  // content size, leaving gaps in wider/taller cells.
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
-  min-inline-size: 2.625rem;
-  min-block-size: 2rem;
+  min-inline-size: 0;
+  min-block-size: 0;
   overflow: hidden;
   background: var(--dock-background-color);
   border: 0.0625rem solid var(--dock-border-color);

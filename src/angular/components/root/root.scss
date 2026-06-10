@@ -24,7 +24,8 @@
 .content {
   grid-area: empty;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  overflow: hidden;
   background: var(--root-content-background-color);
 }
 
