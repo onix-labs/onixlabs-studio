@@ -8,9 +8,11 @@ import {
   Signal,
 } from '@angular/core';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
+import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { DockNode as DockTreeNode, DockSide } from '../../../services/dock/dock-node';
+import { DockNode as DockTreeNode, DockSide, StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
+import { firstStackOfRole } from '../../../services/dock/dock-tree';
 import { DockAutoHideStrips } from '../dock-auto-hide-strips/dock-auto-hide-strips';
 import { DockFloatingLayer } from '../dock-floating-layer/dock-floating-layer';
 import { DockNode } from '../dock-node/dock-node';
@@ -57,6 +59,11 @@ export class DockContainer {
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
 
   /**
+   * Holds the focus tracker, seeded to the document well so the editor starts accented.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
+
+  /**
    * Holds the container element, whose rectangle bounds edge docking.
    */
   private readonly hostElement: ElementRef<HTMLElement> = inject(
@@ -79,9 +86,10 @@ export class DockContainer {
   });
 
   /**
-   * Registers the workspace element for edge docking once rendered.
+   * Registers the workspace element for edge docking and seeds focus to the document well.
    */
   public constructor() {
+    this.focusDocumentWell();
     afterNextRender((): void => this.geometry.setWorkspace(this.hostElement.nativeElement));
   }
 
@@ -90,5 +98,16 @@ export class DockContainer {
    */
   public reset(): void {
     this.dockState.reset();
+    this.focusDocumentWell();
+  }
+
+  /**
+   * Focuses the first document well so the editor starts (and resets) accented.
+   */
+  private focusDocumentWell(): void {
+    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    if (well !== null) {
+      this.dockFocus.focus(well.id);
+    }
   }
 }

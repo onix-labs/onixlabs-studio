@@ -13,6 +13,7 @@ import {
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
 import { DockFloating } from '../../../services/dock/dock-floating';
+import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { Rect } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
@@ -42,6 +43,8 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
   host: {
     '[class.dock-tab-group--documents]': 'isDocuments()',
     '[class.dock-tab-group--tool]': '!isDocuments()',
+    '[class.dock-tab-group--focused]': 'isFocused()',
+    '(mousedown)': 'focusPanel()',
   },
 })
 export class DockTabGroup {
@@ -76,6 +79,11 @@ export class DockTabGroup {
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
 
   /**
+   * Holds the focus tracker that decides which panel is accented.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
+
+  /**
    * Holds this group's element, hit-tested during a compass drag.
    */
   private readonly hostElement: ElementRef<HTMLElement> = inject(
@@ -99,6 +107,13 @@ export class DockTabGroup {
    */
   protected readonly isEmpty: Signal<boolean> = computed(
     (): boolean => this.stack().panels.length === 0,
+  );
+
+  /**
+   * Gets a value indicating whether this group is the focused panel.
+   */
+  protected readonly isFocused: Signal<boolean> = computed(
+    (): boolean => this.dockFocus.focusedStackId() === this.stack().id,
   );
 
   /**
@@ -129,6 +144,13 @@ export class DockTabGroup {
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
     });
     inject(DestroyRef).onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+  }
+
+  /**
+   * Focuses this panel so it becomes the accented one. Fired on any press within the group.
+   */
+  protected focusPanel(): void {
+    this.dockFocus.focus(this.stack().id);
   }
 
   /**

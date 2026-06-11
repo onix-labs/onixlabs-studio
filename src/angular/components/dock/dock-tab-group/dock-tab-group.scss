@@ -161,10 +161,16 @@
 // ---------------------------------------------------------------------------------------------
 :host(.dock-tab-group--documents),
 :host(.dock-tab-group--tool) {
-  --dock-panel-radius: 0.5rem;
+  // The seam (panel border, active-tab border and feet) is neutral by default and accented only on
+  // the focused panel.
+  --dock-seam-color: var(--dock-border-color);
 
   background: transparent;
   border: none;
+}
+
+:host(.dock-tab-group--focused) {
+  --dock-seam-color: var(--accent-color);
 }
 
 // The strip hugs its tabs (no fixed height or padding) and lets the active tab's feet flare onto
@@ -194,7 +200,7 @@
 :host(.dock-tab-group--tool) .dock-tab--active {
   color: var(--dock-tab-foreground-color--active);
   background: var(--dock-tab-background-color--active);
-  border-color: var(--accent-color);
+  border-color: var(--dock-seam-color);
 }
 
 // The two outward-flaring feet that connect the active tab to the panel's accent border. Sized to
@@ -222,7 +228,7 @@
 // --- Document wells: strip on top, feet flaring down into the panel's top border ---
 :host(.dock-tab-group--documents) .dock-tab-group__body {
   background: var(--dock-tab-background-color--active);
-  border: 0.0625rem solid var(--accent-color);
+  border: 0.0625rem solid var(--dock-seam-color);
   border-radius: var(--dock-panel-radius);
   corner-shape: squircle;
 }
@@ -253,8 +259,8 @@
       #000 var(--dock-panel-radius)
     );
     border-start-start-radius: var(--dock-panel-radius);
-    border-block-start: 0.0625rem solid var(--accent-color);
-    border-inline-start: 0.0625rem solid var(--accent-color);
+    border-block-start: 0.0625rem solid var(--dock-seam-color);
+    border-inline-start: 0.0625rem solid var(--dock-seam-color);
   }
 
   &::after {
@@ -265,23 +271,23 @@
       #000 var(--dock-panel-radius)
     );
     border-start-end-radius: var(--dock-panel-radius);
-    border-block-start: 0.0625rem solid var(--accent-color);
-    border-inline-end: 0.0625rem solid var(--accent-color);
+    border-block-start: 0.0625rem solid var(--dock-seam-color);
+    border-inline-end: 0.0625rem solid var(--dock-seam-color);
   }
 }
 
 // --- Tool panels: title on top, strip on the bottom, feet flaring up into the panel's bottom ---
 :host(.dock-tab-group--tool) .dock-tab-group__title {
-  border-block-start: 0.0625rem solid var(--accent-color);
-  border-inline: 0.0625rem solid var(--accent-color);
+  border-block-start: 0.0625rem solid var(--dock-seam-color);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
 }
 
 :host(.dock-tab-group--tool) .dock-tab-group__body {
-  border-inline: 0.0625rem solid var(--accent-color);
-  border-block-end: 0.0625rem solid var(--accent-color);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-end: 0.0625rem solid var(--dock-seam-color);
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
@@ -318,8 +324,8 @@
       #000 var(--dock-panel-radius)
     );
     border-end-start-radius: var(--dock-panel-radius);
-    border-block-end: 0.0625rem solid var(--accent-color);
-    border-inline-start: 0.0625rem solid var(--accent-color);
+    border-block-end: 0.0625rem solid var(--dock-seam-color);
+    border-inline-start: 0.0625rem solid var(--dock-seam-color);
   }
 
   &::after {
@@ -330,7 +336,7 @@
       #000 var(--dock-panel-radius)
     );
     border-end-end-radius: var(--dock-panel-radius);
-    border-block-end: 0.0625rem solid var(--accent-color);
-    border-inline-end: 0.0625rem solid var(--accent-color);
+    border-block-end: 0.0625rem solid var(--dock-seam-color);
+    border-inline-end: 0.0625rem solid var(--dock-seam-color);
   }
 }
