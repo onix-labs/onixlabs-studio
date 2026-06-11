@@ -66,6 +66,15 @@ export class TitleStripTabList {
   }
 
   /**
+   * Determines whether a dragged tab may settle at the given index, keeping the pinned settings
+   * tab at the front by forbidding any other tab from displacing index 0 during a drag.
+   * @param index The candidate index the dragged tab would occupy.
+   * @returns Returns true when the index may receive the tab; otherwise, false.
+   */
+  protected readonly sortPredicate: (index: number) => boolean = (index: number): boolean =>
+    index > 0 || this.tabs()[0]?.type !== 'settings';
+
+  /**
    * Handles roving keyboard navigation across the tablist, where the arrow keys, Home, and End
    * move the active tab and selection follows focus.
    * @param event The keyboard event.

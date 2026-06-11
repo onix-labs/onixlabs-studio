@@ -8,12 +8,14 @@ import {
   ApplicationRef,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
+  Signal,
 } from '@angular/core';
 import { Tab } from '../../../../services/tabs/tab';
 
@@ -68,6 +70,14 @@ export class TitleStripTab {
    * Gets a value indicating whether the tab is the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the tab is pinned, and therefore cannot be dragged. The
+   * settings tab is pinned to the front of the strip.
+   */
+  protected readonly isPinned: Signal<boolean> = computed(
+    (): boolean => this.tab().type === 'settings',
+  );
 
   /**
    * Emits when the user selects the tab.

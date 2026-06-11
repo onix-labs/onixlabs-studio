@@ -1,6 +1,7 @@
 <div
   role="tab"
   cdkDrag
+  [cdkDragDisabled]="isPinned()"
   [cdkDragConstrainPosition]="anchorDragToRail"
   [attr.tabindex]="isActive() ? 0 : -1"
   [attr.aria-selected]="isActive()"

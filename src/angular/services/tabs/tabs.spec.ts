@@ -120,6 +120,27 @@ describe('Tabs', () => {
     expect(types).toEqual(['code', 'markdown']);
   });
 
+  it('reorder_whenMovingThePinnedSettingsTab_leavesItAtTheFront', () => {
+    service.open('code');
+    service.open('settings');
+
+    service.reorder(0, 1);
+
+    const types: readonly TabType[] = service.tabs().map((tab: Tab): TabType => tab.type);
+    expect(types).toEqual(['settings', 'code']);
+  });
+
+  it('reorder_whenMovingAnotherTabAheadOfSettings_keepsSettingsPinnedToTheFront', () => {
+    service.open('code');
+    service.open('markdown');
+    service.open('settings');
+
+    service.reorder(2, 0);
+
+    const types: readonly TabType[] = service.tabs().map((tab: Tab): TabType => tab.type);
+    expect(types).toEqual(['settings', 'markdown', 'code']);
+  });
+
   it('isSettingsOpen_whenSettingsTabOpen_returnsTrue', () => {
     service.open('settings');
 

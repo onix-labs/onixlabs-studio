@@ -1,26 +1,92 @@
 // The settings view is shown full-bleed (without the ribbon and status strips) and adopts the
-// ribbon strip's background colour.
+// ribbon strip's background colour. It is split into a left section navigation and a right content
+// pane.
 :host {
-  display: block;
+  display: flex;
   block-size: 100%;
-  overflow: auto;
+  overflow: hidden;
   background: var(--ribbon-strip-background-color);
 }
 
-.settings {
-  inline-size: min(40rem, 100%);
-  padding: 2rem;
-  margin-inline: auto;
+// The left navigation lists the settings sections.
+.settings__nav {
+  display: flex;
+  flex: 0 0 14rem;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 1rem 0.75rem;
+  overflow: auto;
+  border-inline-end: 0.0625rem solid var(--menu-border-color);
 }
 
-.settings__title {
-  margin: 0;
-  font-size: 1.5rem;
+.settings__nav-title {
+  margin: 0 0 0.75rem;
+  padding-inline: 0.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
+.settings__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--status-strip-foreground-color);
+  text-align: start;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    font-size: 1.1rem;
+  }
+
+  &:hover {
+    color: var(--body-foreground-color);
+    background: var(--title-strip-tab-background-color--active);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+
+  // The selected item sits on the accent fill, so its text is a fixed light tone.
+  &--selected,
+  &--selected:hover {
+    color: var(--gray-100);
+    background: var(--accent-color);
+  }
+}
+
+// The right pane shows the selected section's controls.
+.settings__content {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 2rem 2.5rem;
+  overflow: auto;
+}
+
+// A stub shown for sections whose controls are not yet implemented.
+.settings__stub {
+  display: grid;
+  place-items: center;
+  gap: 0.75rem;
+  block-size: 100%;
+  color: var(--status-strip-foreground-color);
+
+  i {
+    font-size: 2rem;
+  }
+}
+
 .settings__section {
-  margin-block-start: 2rem;
+  inline-size: min(40rem, 100%);
 }
 
 .settings__section-title {

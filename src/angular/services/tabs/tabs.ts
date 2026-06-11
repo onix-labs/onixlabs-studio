@@ -121,9 +121,20 @@ export class Tabs {
       return;
     }
 
+    // The settings tab is pinned to the front: it can never be moved, and no other tab may land
+    // ahead of it, so a move targeting index 0 is clamped to index 1.
+    const settingsPinned: boolean = current[0]?.type === 'settings';
+    if (settingsPinned && fromIndex === 0) {
+      return;
+    }
+    const targetIndex: number = settingsPinned ? Math.max(toIndex, 1) : toIndex;
+    if (fromIndex === targetIndex) {
+      return;
+    }
+
     const next: Tab[] = [...current];
     const moved: Tab = next.splice(fromIndex, 1)[0];
-    next.splice(toIndex, 0, moved);
+    next.splice(targetIndex, 0, moved);
     this.tabList.set(next);
   }
 

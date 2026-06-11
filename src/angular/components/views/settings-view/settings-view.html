@@ -1,45 +1,69 @@
-<div class="settings">
-  <h1 class="settings__title">Settings</h1>
+<nav class="settings__nav" aria-label="Settings sections">
+  <h1 class="settings__nav-title">Settings</h1>
+  @for (section of sections; track section.id) {
+    <button
+      type="button"
+      class="settings__nav-item"
+      [class.settings__nav-item--selected]="selectedSection() === section.id"
+      [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
+      (click)="selectSection(section.id)"
+    >
+      <i [class]="section.icon" aria-hidden="true"></i>
+      <span>{{ section.label }}</span>
+    </button>
+  }
+</nav>
 
-  <section class="settings__section">
-    <h2 class="settings__section-title">Appearance</h2>
+<div class="settings__content">
+  @switch (selectedSection()) {
+    @case ('appearance') {
+      <section class="settings__section">
+        <h2 class="settings__section-title">Appearance</h2>
 
-    <div class="settings__field">
-      <span class="settings__field-label" id="theme-mode-label">Theme</span>
-      <div class="segmented" role="radiogroup" aria-labelledby="theme-mode-label">
-        @for (option of modeOptions; track option.value) {
-          <button
-            type="button"
-            class="segmented__option"
-            role="radio"
-            [class.segmented__option--selected]="mode() === option.value"
-            [attr.aria-checked]="mode() === option.value"
-            (click)="selectMode(option.value)"
-          >
-            <i [class]="option.icon" aria-hidden="true"></i>
-            <span>{{ option.label }}</span>
-          </button>
-        }
+        <div class="settings__field">
+          <span class="settings__field-label" id="theme-mode-label">Theme</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="theme-mode-label">
+            @for (option of modeOptions; track option.value) {
+              <button
+                type="button"
+                class="segmented__option"
+                role="radio"
+                [class.segmented__option--selected]="mode() === option.value"
+                [attr.aria-checked]="mode() === option.value"
+                (click)="selectMode(option.value)"
+              >
+                <i [class]="option.icon" aria-hidden="true"></i>
+                <span>{{ option.label }}</span>
+              </button>
+            }
+          </div>
+        </div>
+
+        <div class="settings__field">
+          <span class="settings__field-label" id="accent-label">Accent</span>
+          <div class="swatches" role="radiogroup" aria-labelledby="accent-label">
+            @for (color of accentColors; track color) {
+              <button
+                type="button"
+                class="swatch"
+                role="radio"
+                [class.swatch--selected]="accent() === color"
+                [style.background]="'var(--accent-' + color + ')'"
+                [attr.aria-checked]="accent() === color"
+                [attr.aria-label]="color"
+                [attr.title]="color"
+                (click)="selectAccent(color)"
+              ></button>
+            }
+          </div>
+        </div>
+      </section>
+    }
+    @default {
+      <div class="settings__stub">
+        <i class="ti ti-tools" aria-hidden="true"></i>
+        <p>{{ selectedSectionLabel() }} settings are coming soon.</p>
       </div>
-    </div>
-
-    <div class="settings__field">
-      <span class="settings__field-label" id="accent-label">Accent</span>
-      <div class="swatches" role="radiogroup" aria-labelledby="accent-label">
-        @for (color of accentColors; track color) {
-          <button
-            type="button"
-            class="swatch"
-            role="radio"
-            [class.swatch--selected]="accent() === color"
-            [style.background]="'var(--accent-' + color + ')'"
-            [attr.aria-checked]="accent() === color"
-            [attr.aria-label]="color"
-            [attr.title]="color"
-            (click)="selectAccent(color)"
-          ></button>
-        }
-      </div>
-    </div>
-  </section>
+    }
+  }
 </div>
