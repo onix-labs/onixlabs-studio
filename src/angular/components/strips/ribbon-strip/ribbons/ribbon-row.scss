@@ -1,0 +1,6 @@
+// Shared host layout for every per-tab-type ribbon: a horizontal row of ribbon groups.
+:host {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}

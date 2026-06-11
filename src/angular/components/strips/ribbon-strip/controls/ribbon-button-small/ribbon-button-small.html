@@ -1,0 +1,10 @@
+<button
+  type="button"
+  class="ribbon-button-small"
+  [disabled]="disabled()"
+  [attr.aria-pressed]="toggle() ? pressed() : null"
+  (click)="onClick()"
+>
+  <i [class]="icon()"></i>
+  <span>{{ label() }}</span>
+</button>

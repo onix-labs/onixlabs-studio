@@ -1,0 +1,79 @@
+:host {
+  display: block;
+}
+
+.ribbon-split {
+  display: flex;
+  flex-direction: column;
+  border: 0.0625rem solid transparent;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  overflow: hidden;
+
+  &:hover {
+    border-color: var(--ribbon-control-border-color--hover);
+  }
+}
+
+.ribbon-split__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  block-size: 3rem;
+  inline-size: 4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--ribbon-control-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+
+  .ti {
+    font-size: 1.5rem;
+  }
+}
+
+.ribbon-split__menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  block-size: 1rem;
+  font: inherit;
+  font-size: 0.65rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--ribbon-control-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+
+  .ti {
+    font-size: 0.75rem;
+  }
+}
+
+.ribbon-split:has(:disabled) {
+  opacity: 0.4;
+  pointer-events: none;
+}

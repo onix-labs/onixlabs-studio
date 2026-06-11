@@ -1,0 +1,24 @@
+<app-ribbon-group title="Solution">
+  <app-ribbon-button icon="ti ti-border-all" label="Build" />
+  <app-ribbon-button icon="ti ti-blocks" label="Rebuild" />
+  <app-ribbon-button icon="ti ti-refresh-dot" label="Clean" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Run">
+  <app-ribbon-split-button icon="ti ti-player-play" label="Start" menuLabel="Debug" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Target">
+  <app-ribbon-column>
+    <app-ribbon-field label="Configuration" [options]="['Debug', 'Release']" value="Debug" />
+    <app-ribbon-field label="Platform" [options]="['Any CPU', 'x64', 'ARM64']" value="Any CPU" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Source Control">
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-git-commit" label="Commit" />
+    <app-ribbon-button-small icon="ti ti-arrow-up" label="Push" />
+    <app-ribbon-button-small icon="ti ti-arrow-down" label="Pull" />
+  </app-ribbon-column>
+</app-ribbon-group>

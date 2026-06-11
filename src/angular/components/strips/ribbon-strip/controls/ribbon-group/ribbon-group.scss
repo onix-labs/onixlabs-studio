@@ -1,0 +1,41 @@
+:host {
+  display: block;
+  color: var(--ribbon-control-foreground-color);
+}
+
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  border: 0.0625rem solid var(--ribbon-group-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  overflow: hidden;
+}
+
+.ribbon-group__body {
+  // A fixed-height lane area: every group's controls live within exactly --ribbon-content-height,
+  // so no control (e.g. stacked select fields) can stretch the ribbon strip taller. content-box
+  // keeps the inner area equal to the token despite the global border-box default; overflow guards
+  // against any control that would otherwise exceed it.
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  block-size: var(--ribbon-content-height);
+  box-sizing: content-box;
+  overflow: hidden;
+}
+
+.ribbon-group__title {
+  display: flex;
+  justify-content: center;
+  padding: 0.2rem;
+  background: var(--ribbon-group-title-background-color);
+
+  span {
+    text-transform: uppercase;
+    font-size: 0.5rem;
+    font-weight: 600;
+    color: var(--ribbon-group-title-foreground-color);
+  }
+}

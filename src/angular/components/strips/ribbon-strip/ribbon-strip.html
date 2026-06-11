@@ -1,7 +1,17 @@
-@if (tools().length > 0) {
-  <div class="ribbon">
-    @for (tool of tools(); track tool) {
-      <button type="button" class="ribbon__tool" disabled>{{ tool }}</button>
-    }
-  </div>
+@switch (activeType()) {
+  @case ('directory') {
+    <div class="ribbon"><app-directory-ribbon /></div>
+  }
+  @case ('code') {
+    <div class="ribbon"><app-code-ribbon /></div>
+  }
+  @case ('markdown') {
+    <div class="ribbon"><app-markdown-ribbon /></div>
+  }
+  @case ('terminal') {
+    <div class="ribbon"><app-terminal-ribbon /></div>
+  }
+  @case ('agent') {
+    <div class="ribbon"><app-agent-ribbon /></div>
+  }
 }

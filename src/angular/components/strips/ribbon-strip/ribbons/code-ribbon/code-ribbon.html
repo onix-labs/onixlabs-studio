@@ -1,0 +1,28 @@
+<app-ribbon-group title="File">
+  <app-ribbon-button icon="ti ti-device-floppy" label="Save" />
+  <app-ribbon-button icon="ti ti-wand" label="Format" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Clipboard">
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-scissors" label="Cut" />
+    <app-ribbon-button-small icon="ti ti-copy" label="Copy" />
+    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Edit">
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-arrow-back-up" label="Undo" />
+    <app-ribbon-button-small icon="ti ti-arrow-forward-up" label="Redo" />
+    <app-ribbon-button-small icon="ti ti-search" label="Find" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="View">
+  <app-ribbon-column>
+    <app-ribbon-check label="Word Wrap" />
+    <app-ribbon-check label="Minimap" [checked]="true" />
+    <app-ribbon-check label="Line Numbers" [checked]="true" />
+  </app-ribbon-column>
+</app-ribbon-group>

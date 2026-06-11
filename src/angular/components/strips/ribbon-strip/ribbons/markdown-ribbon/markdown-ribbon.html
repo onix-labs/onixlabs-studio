@@ -1,0 +1,33 @@
+<app-ribbon-group title="Format">
+  <app-ribbon-button icon="ti ti-bold" label="Bold" />
+  <app-ribbon-button icon="ti ti-italic" label="Italic" />
+  <app-ribbon-button icon="ti ti-code" label="Code" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Structure">
+  <app-ribbon-column>
+    <app-ribbon-field
+      label="Style"
+      [options]="['Paragraph', 'Heading 1', 'Heading 2', 'Heading 3']"
+      value="Paragraph"
+    />
+  </app-ribbon-column>
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-list" label="Bullets" />
+    <app-ribbon-button-small icon="ti ti-list-numbers" label="Numbered" />
+    <app-ribbon-button-small icon="ti ti-quote" label="Quote" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Insert">
+  <app-ribbon-button icon="ti ti-link" label="Link" />
+  <app-ribbon-button icon="ti ti-photo" label="Image" />
+  <app-ribbon-button icon="ti ti-table" label="Table" />
+</app-ribbon-group>
+
+<app-ribbon-group title="View">
+  <app-ribbon-column>
+    <app-ribbon-check label="Preview" [checked]="true" />
+    <app-ribbon-check label="Sync Scroll" [checked]="true" />
+  </app-ribbon-column>
+</app-ribbon-group>
