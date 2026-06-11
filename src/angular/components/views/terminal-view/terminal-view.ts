@@ -20,12 +20,18 @@ import { ITheme, Terminal } from '@xterm/xterm';
 import { TerminalCreateResult } from '../../../../shared/studio-api';
 import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
 import { Tabs } from '../../../services/tabs/tabs';
+import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
 import { AccentColor, Theme } from '../../../services/theme/theme';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
  */
 const FOCUS_DELAY_MS: number = 0;
+
+/**
+ * Holds the interval, in milliseconds, between polls for the terminal's working directory.
+ */
+const CWD_POLL_INTERVAL_MS: number = 1500;
 
 /**
  * Holds the opacity applied to the accent colour when used as the terminal's selection background.
@@ -59,6 +65,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Holds the theme service used to keep the terminal colours in sync with the application theme.
    */
   private readonly themeService: Theme = inject(Theme);
+
+  /**
+   * Holds the terminal status service the working directory is published to.
+   */
+  private readonly terminalStatus: TerminalStatus = inject(TerminalStatus);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -112,6 +123,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
   private cleanupOnExit: (() => void) | null = null;
 
   /**
+   * Holds the handle for the recurring working-directory poll, or null when not polling.
+   */
+  private cwdPollHandle: ReturnType<typeof setInterval> | null = null;
+
+  /**
    * Holds a value indicating whether the PTY process has exited.
    */
   protected hasExited: boolean = false;
@@ -135,6 +151,14 @@ export class TerminalView implements AfterViewInit, OnDestroy {
         this.xterm.options.theme = theme;
       }
     });
+
+    effect((): void => {
+      if (this.isActive() && this.terminalReady()) {
+        this.startCwdPolling();
+      } else {
+        this.stopCwdPolling();
+      }
+    });
   }
 
   /**
@@ -151,6 +175,7 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
+    this.stopCwdPolling();
     if (!this.hasExited) {
       void this.bridge.dispose(this.terminalId());
     }
@@ -209,6 +234,7 @@ export class TerminalView implements AfterViewInit, OnDestroy {
         return;
       }
       this.hasExited = true;
+      this.stopCwdPolling();
       this.xterm?.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`);
     });
 
@@ -240,6 +266,43 @@ export class TerminalView implements AfterViewInit, OnDestroy {
       void this.bridge.resize(this.terminalId(), this.xterm.cols, this.xterm.rows);
     } catch {
       // Fit can throw when the host has zero size (e.g. while hidden); ignore.
+    }
+  }
+
+  /**
+   * Starts polling the PTY's working directory and publishing it to the status strip. Does nothing
+   * when a poll is already running.
+   */
+  private startCwdPolling(): void {
+    if (this.cwdPollHandle !== null) {
+      return;
+    }
+    void this.pollCwd();
+    this.cwdPollHandle = setInterval((): void => void this.pollCwd(), CWD_POLL_INTERVAL_MS);
+  }
+
+  /**
+   * Stops polling the working directory and clears the published status segment.
+   */
+  private stopCwdPolling(): void {
+    if (this.cwdPollHandle !== null) {
+      clearInterval(this.cwdPollHandle);
+      this.cwdPollHandle = null;
+    }
+    this.terminalStatus.setCwd(null);
+  }
+
+  /**
+   * Asks the main process for the PTY's working directory and publishes it to the status strip while
+   * this terminal remains active.
+   */
+  private async pollCwd(): Promise<void> {
+    if (this.hasExited) {
+      return;
+    }
+    const cwd: string | null = await this.bridge.getCwd(this.terminalId());
+    if (this.isActive()) {
+      this.terminalStatus.setCwd(cwd);
     }
   }
 
