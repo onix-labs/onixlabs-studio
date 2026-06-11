@@ -14,7 +14,7 @@
         <app-markdown-view [isActive]="tab.id === activeTabId()" />
       }
       @case ('terminal') {
-        <app-terminal-view [isActive]="tab.id === activeTabId()" />
+        <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('agent') {
         <app-agent-view [isActive]="tab.id === activeTabId()" />

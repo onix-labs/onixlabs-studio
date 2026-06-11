@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { TerminalManager } from './terminal-manager';
 
 class Program {
   /**
@@ -22,6 +23,18 @@ class Program {
     'onixlabs-studio',
     'browser',
     'index.html',
+  );
+
+  /**
+   * Holds the main application window, or null before it is created or after it is closed.
+   */
+  private window: BrowserWindow | null = null;
+
+  /**
+   * Manages pseudo-terminal sessions on behalf of the renderer.
+   */
+  private readonly terminalManager: TerminalManager = new TerminalManager(
+    (): BrowserWindow | null => this.window,
   );
 
   /**
@@ -57,6 +70,11 @@ class Program {
     });
 
     window.once('ready-to-show', (): void => window.show());
+    window.on('closed', (): void => {
+      this.window = null;
+    });
+
+    this.window = window;
 
     if (Program.START_URL !== undefined) void window.loadURL(Program.START_URL);
     else void window.loadFile(Program.INDEX_HTML);
@@ -87,6 +105,8 @@ class Program {
     ipcMain.on(IpcChannel.WindowClose, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
+
+    this.terminalManager.register();
   }
 
   /**
@@ -97,6 +117,7 @@ class Program {
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
+    app.on('before-quit', (): void => this.terminalManager.disposeAll());
   }
 
   /**

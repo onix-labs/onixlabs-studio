@@ -107,6 +107,22 @@ export class Tabs {
   }
 
   /**
+   * Renames the tab with the given identifier. Blank titles and unknown identifiers are ignored, so
+   * a tab never loses its label to an empty terminal title.
+   * @param id The identifier of the tab to rename.
+   * @param title The new title.
+   */
+  public rename(id: string, title: string): void {
+    const trimmed: string = title.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    this.tabList.update((tabs: readonly Tab[]): readonly Tab[] =>
+      tabs.map((tab: Tab): Tab => (tab.id === id ? { ...tab, title: trimmed } : tab)),
+    );
+  }
+
+  /**
    * Moves a tab from one position to another within the tab list. Out-of-range or no-op indices
    * are ignored.
    * @param fromIndex The current index of the tab to move.

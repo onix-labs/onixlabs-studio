@@ -94,7 +94,9 @@ export class TerminalBridge {
    * @param listener Receives the terminal id, exit code, and signal (or null).
    * @returns Returns a function that removes the listener.
    */
-  public onExit(listener: (id: string, exitCode: number, signal: number | null) => void): () => void {
+  public onExit(
+    listener: (id: string, exitCode: number, signal: number | null) => void,
+  ): () => void {
     return this.api?.onExit(listener) ?? ((): void => undefined);
   }
 }
