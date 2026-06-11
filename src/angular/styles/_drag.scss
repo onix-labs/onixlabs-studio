@@ -17,7 +17,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem;
+  // Matches the active tab's padding so the chip is the same height and its bottom meets the rail.
+  padding: 0.4rem;
   padding-inline-start: 0.5rem;
   color: var(--title-strip-tab-foreground-color--active);
   background-color: var(--title-strip-tab-background-color--active);
