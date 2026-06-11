@@ -49,6 +49,17 @@
     [cdkDropListEnterPredicate]="canEnter"
     (cdkDropListDropped)="onDrop($event)"
   >
+    @if (isDocuments()) {
+      <!-- Document wells have no title bar, so this grip is their compass drag handle. -->
+      <div
+        class="dock-tab-group__handle"
+        title="Drag to dock"
+        aria-label="Drag to dock"
+        (mousedown)="startDrag($event)"
+      >
+        <i class="ti ti-grip-vertical" aria-hidden="true"></i>
+      </div>
+    }
     @for (panel of panels(); track panel.id) {
       <div
         class="dock-tab"

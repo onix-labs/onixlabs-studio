@@ -65,14 +65,11 @@
   }
 }
 
+// Structural strip rules; size, padding, overflow and background come from the variant rules below
+// (every group is document or tool).
 .dock-tab-group__tabstrip {
   display: flex;
   align-items: flex-end;
-  block-size: 1.625rem;
-  padding: 0.1875rem 0.25rem 0;
-  background: var(--dock-tabstrip-background-color);
-  overflow-x: auto;
-  overflow-y: hidden;
   flex: 0 0 auto;
 }
 
@@ -150,6 +147,20 @@
   color: var(--dock-empty-foreground-color);
   font-style: italic;
   text-align: center;
+}
+
+// The document well's compass drag handle (it has no title bar).
+.dock-tab-group__handle {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding-inline: 0.125rem;
+  color: var(--dock-tab-foreground-color);
+  cursor: move;
+
+  &:hover {
+    color: var(--dock-tab-foreground-color--active);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
