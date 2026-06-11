@@ -1,0 +1,47 @@
+:host {
+  display: inline-flex;
+}
+
+.toggle {
+  appearance: none;
+  position: relative;
+  flex: none;
+  inline-size: 2.1rem;
+  block-size: 1.2rem;
+  margin: 0;
+  background: var(--form-track-color);
+  border-radius: 1rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: background-color 150ms ease-in-out;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.15rem;
+    inset-inline-start: 0.15rem;
+    inline-size: 0.9rem;
+    block-size: 0.9rem;
+    background: var(--form-knob-color);
+    border-radius: 50%;
+    transition: transform 150ms ease-in-out;
+  }
+
+  &:checked {
+    background: var(--accent-color);
+
+    &::before {
+      transform: translateX(0.9rem);
+    }
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

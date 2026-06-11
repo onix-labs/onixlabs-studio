@@ -1,0 +1,34 @@
+:host {
+  display: block;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+}
+
+.setting-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.setting-row__label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.setting-row__description {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.setting-row__control {
+  flex: none;
+  display: flex;
+  align-items: center;
+}

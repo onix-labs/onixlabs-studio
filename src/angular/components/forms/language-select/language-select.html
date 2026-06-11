@@ -1,0 +1,5 @@
+<select multiple class="language-select" [disabled]="disabled()" (change)="onChange($event)">
+  @for (language of languages(); track language) {
+    <option [value]="language" [selected]="value().includes(language)">{{ language }}</option>
+  }
+</select>

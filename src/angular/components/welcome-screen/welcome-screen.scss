@@ -23,8 +23,8 @@
   inline-size: min(24rem, 100%);
   padding: 2.5rem 2rem;
   text-align: center;
-  background: var(--menu-background-color);
-  border: 0.0625rem solid var(--menu-border-color);
+  background: var(--welcome-panel-background-color);
+  border: 0.0625rem solid var(--welcome-border-color);
   border-radius: 1rem;
   corner-shape: squircle;
   box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
@@ -48,7 +48,7 @@
 .welcome__subtitle {
   margin: 0.4rem 0 0;
   font-size: 0.9rem;
-  color: var(--status-strip-foreground-color);
+  color: var(--welcome-muted-foreground-color);
 }
 
 .welcome__actions {
@@ -70,7 +70,7 @@
   text-align: start;
   color: inherit;
   background: transparent;
-  border: 0.0625rem solid var(--menu-border-color);
+  border: 0.0625rem solid var(--welcome-border-color);
   border-radius: 0.625rem;
   corner-shape: squircle;
   cursor: pointer;
@@ -113,5 +113,5 @@
 
 .welcome__action-hint {
   font-size: 0.78rem;
-  color: var(--status-strip-foreground-color);
+  color: var(--welcome-muted-foreground-color);
 }

@@ -1,0 +1,30 @@
+:host {
+  display: inline-flex;
+}
+
+.text-field {
+  inline-size: 12rem;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: 0.4rem;
+  corner-shape: squircle;
+  transition: border-color 150ms ease-in-out;
+
+  &:hover {
+    border-color: var(--form-control-border-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

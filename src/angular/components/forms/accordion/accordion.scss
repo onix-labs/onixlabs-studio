@@ -1,0 +1,45 @@
+:host {
+  display: block;
+}
+
+.accordion {
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  overflow: hidden;
+}
+
+.accordion__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: start;
+  color: inherit;
+  background: var(--form-control-background-color);
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease-in-out;
+
+  &:hover {
+    background: var(--form-control-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+
+  .ti {
+    font-size: 1rem;
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.accordion__body {
+  padding: 0.4rem 0.7rem 0.7rem;
+}

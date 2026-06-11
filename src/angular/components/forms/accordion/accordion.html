@@ -1,0 +1,16 @@
+<div class="accordion">
+  <button
+    type="button"
+    class="accordion__header"
+    [attr.aria-expanded]="expanded()"
+    (click)="toggle()"
+  >
+    <i class="ti" [class.ti-chevron-down]="expanded()" [class.ti-chevron-right]="!expanded()"></i>
+    <span>{{ heading() }}</span>
+  </button>
+  @if (expanded()) {
+    <div class="accordion__body">
+      <ng-content />
+    </div>
+  }
+</div>
