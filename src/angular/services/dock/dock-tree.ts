@@ -374,6 +374,78 @@ export function removeFromLayout(tree: DockNode, panelId: string): DockNode {
 }
 
 /**
+ * Reorders a panel within its stack. Out-of-range or no-op indices are ignored.
+ * @param tree The root of the tree to transform.
+ * @param stackId The identifier of the stack whose tabs reorder.
+ * @param fromIndex The current index of the panel to move.
+ * @param toIndex The index the panel should occupy after the move.
+ * @returns Returns the transformed tree.
+ */
+export function reorderTab(
+  tree: DockNode,
+  stackId: string,
+  fromIndex: number,
+  toIndex: number,
+): DockNode {
+  const target: DockNode | null = findNode(tree, stackId);
+  if (target === null || !isStackNode(target)) {
+    return tree;
+  }
+  const lastIndex: number = target.panels.length - 1;
+  const outOfRange: boolean =
+    fromIndex < 0 || fromIndex > lastIndex || toIndex < 0 || toIndex > lastIndex;
+  if (outOfRange || fromIndex === toIndex) {
+    return tree;
+  }
+  const panels: string[] = [...target.panels];
+  const [moved] = panels.splice(fromIndex, 1);
+  panels.splice(toIndex, 0, moved);
+  return replaceNode(tree, stackId, { ...target, panels });
+}
+
+/**
+ * Moves a panel into a stack at a given index, removing it from its current stack and pruning that
+ * stack when it empties. Moving within the same stack reorders it. The call is ignored when the
+ * panel or target stack does not exist.
+ * @param tree The root of the tree to transform.
+ * @param panelId The identifier of the panel to move.
+ * @param targetStackId The identifier of the stack to move the panel into.
+ * @param targetIndex The index the panel should occupy in the target stack.
+ * @returns Returns the transformed tree.
+ */
+export function movePanel(
+  tree: DockNode,
+  panelId: string,
+  targetStackId: string,
+  targetIndex: number,
+): DockNode {
+  const source: StackNode | null = findStackOfPanel(tree, panelId);
+  const target: DockNode | null = findNode(tree, targetStackId);
+  if (source === null || target === null || !isStackNode(target)) {
+    return tree;
+  }
+  if (source.id === targetStackId) {
+    return reorderTab(tree, targetStackId, source.panels.indexOf(panelId), targetIndex);
+  }
+
+  const targetPanels: string[] = [...target.panels];
+  const index: number = Math.max(0, Math.min(targetIndex, targetPanels.length));
+  targetPanels.splice(index, 0, panelId);
+  const withTarget: DockNode = replaceNode(tree, targetStackId, {
+    ...target,
+    panels: targetPanels,
+    active: panelId,
+  });
+
+  const remaining: readonly string[] = source.panels.filter(
+    (id: string): boolean => id !== panelId,
+  );
+  const active: string | null = source.active === panelId ? (remaining[0] ?? null) : source.active;
+  const updatedSource: StackNode = { ...source, panels: remaining, active };
+  return pruneStack(replaceNode(withTarget, source.id, updatedSource), updatedSource);
+}
+
+/**
  * Replaces the flex-grow weights of a split. The call is ignored when the node does not exist, is
  * not a split, or the new weights do not match the child count.
  * @param tree The root of the tree to transform.

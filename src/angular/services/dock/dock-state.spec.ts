@@ -79,6 +79,24 @@ describe('DockState', () => {
     expect(findStackOfPanel(state.layout(), 'errors')).toBeNull();
   });
 
+  it('reorderTab_whenCalled_reordersThePanelsInTheStack', () => {
+    const wellId: string = stackOf(state.layout(), 'doc1').id;
+
+    state.reorderTab(wellId, 0, 2);
+
+    expect(stackOf(state.layout(), 'doc1').panels).toEqual(['doc2', 'doc3', 'doc1']);
+  });
+
+  it('movePanel_whenCalled_movesThePanelIntoTheTargetStack', () => {
+    const wellId: string = stackOf(state.layout(), 'doc1').id;
+
+    state.movePanel('solution', wellId, 0);
+
+    const well: StackNode = stackOf(state.layout(), 'doc1');
+    expect(well.panels).toContain('solution');
+    expect(well.active).toBe('solution');
+  });
+
   it('setSizes_whenCalledOnASplit_commitsTheNewWeights', () => {
     const root: DockNode = state.layout();
     expect(isSplitNode(root)).toBe(true);

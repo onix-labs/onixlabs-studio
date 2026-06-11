@@ -68,15 +68,15 @@ describe('DockTabGroup', () => {
     expect(floating.floats().some((window): boolean => window.panelId === 'output')).toBe(true);
   });
 
-  it('onTabPress_whenTabPressedAndDragged_startsACompassDragForThatPanel', () => {
+  it('startDrag_whenTitleBarPressedAndDragged_startsACompassDragForTheActivePanel', () => {
     render(mkStack('tool', ['output', 'errors']));
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const tabs: NodeListOf<HTMLElement> = element.querySelectorAll<HTMLElement>('.dock-tab');
-    tabs[1].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    const title: HTMLElement | null = element.querySelector<HTMLElement>('.dock-tab-group__title');
+    title?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
 
-    expect(drag.panel()?.id).toBe('errors');
+    expect(drag.panel()?.id).toBe('output');
 
     document.dispatchEvent(new MouseEvent('mouseup'));
   });
