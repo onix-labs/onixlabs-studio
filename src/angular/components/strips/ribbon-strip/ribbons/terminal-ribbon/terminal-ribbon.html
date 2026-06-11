@@ -1,14 +1,14 @@
 <app-ribbon-group title="Session">
   <app-ribbon-button icon="ti ti-plus" label="New" />
   <app-ribbon-button icon="ti ti-layout-columns" label="Split" />
-  <app-ribbon-button icon="ti ti-trash" label="Kill" />
+  <app-ribbon-button icon="ti ti-flame" label="Nuke" (action)="onNuke()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Clipboard">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-copy" label="Copy" />
-    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" />
-    <app-ribbon-button-small icon="ti ti-eraser" label="Clear" />
+    <app-ribbon-button-small icon="ti ti-copy" label="Copy" (action)="onCopy()" />
+    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" (action)="onPaste()" />
+    <app-ribbon-button-small icon="ti ti-eraser" label="Clear" (action)="onClear()" />
   </app-ribbon-column>
 </app-ribbon-group>
 

@@ -20,6 +20,10 @@ import { ITheme, Terminal } from '@xterm/xterm';
 import { TerminalCreateResult } from '../../../../shared/studio-api';
 import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
 import { Tabs } from '../../../services/tabs/tabs';
+import {
+  TerminalCommandHandler,
+  TerminalCommands,
+} from '../../../services/terminal-commands/terminal-commands';
 import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
 import { AccentColor, Theme } from '../../../services/theme/theme';
 
@@ -70,6 +74,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Holds the terminal status service the working directory is published to.
    */
   private readonly terminalStatus: TerminalStatus = inject(TerminalStatus);
+
+  /**
+   * Holds the terminal commands registry the ribbon drives this terminal through.
+   */
+  private readonly terminalCommands: TerminalCommands = inject(TerminalCommands);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -128,6 +137,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
   private cwdPollHandle: ReturnType<typeof setInterval> | null = null;
 
   /**
+   * Holds the command handler registered with the ribbon while this terminal is active.
+   */
+  private commandHandler: TerminalCommandHandler | null = null;
+
+  /**
    * Holds a value indicating whether the PTY process has exited.
    */
   protected hasExited: boolean = false;
@@ -159,6 +173,17 @@ export class TerminalView implements AfterViewInit, OnDestroy {
         this.stopCwdPolling();
       }
     });
+
+    effect((): void => {
+      if (this.isActive() && this.terminalReady()) {
+        if (this.commandHandler === null) {
+          this.registerCommandHandler();
+        }
+      } else if (this.commandHandler !== null) {
+        this.terminalCommands.unregister(this.commandHandler);
+        this.commandHandler = null;
+      }
+    });
   }
 
   /**
@@ -172,6 +197,10 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Tears down the xterm instance, listeners, and PTY session on destroy.
    */
   public ngOnDestroy(): void {
+    if (this.commandHandler !== null) {
+      this.terminalCommands.unregister(this.commandHandler);
+      this.commandHandler = null;
+    }
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
@@ -267,6 +296,107 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     } catch {
       // Fit can throw when the host has zero size (e.g. while hidden); ignore.
     }
+  }
+
+  /**
+   * Registers this terminal's command handler so the ribbon's copy/paste/clear/nuke actions act on
+   * it while it is active.
+   */
+  private registerCommandHandler(): void {
+    this.commandHandler = {
+      copy: (): void => this.copySelection(),
+      paste: (): void => this.pasteClipboard(),
+      clear: (): void => this.clearScreen(),
+      nuke: (): void => void this.nuke(),
+    };
+    this.terminalCommands.register(this.commandHandler);
+  }
+
+  /**
+   * Copies the current selection to the clipboard, falling back to the whole buffer when nothing is
+   * selected.
+   */
+  private copySelection(): void {
+    const xterm: Terminal | null = this.xterm;
+    if (xterm === null) {
+      return;
+    }
+    const selection: string = xterm.getSelection();
+    const text: string = selection.length > 0 ? selection : this.getBufferText();
+    if (text.length > 0) {
+      void navigator.clipboard.writeText(text);
+    }
+    xterm.focus();
+  }
+
+  /**
+   * Pastes the clipboard contents into the terminal's input stream.
+   */
+  private pasteClipboard(): void {
+    const id: string = this.terminalId();
+    void navigator.clipboard.readText().then((text: string): void => {
+      if (text.length > 0) {
+        void this.bridge.write(id, text);
+      }
+    });
+    this.xterm?.focus();
+  }
+
+  /**
+   * Clears the terminal screen.
+   */
+  private clearScreen(): void {
+    this.xterm?.clear();
+    this.xterm?.focus();
+  }
+
+  /**
+   * Destroys the current xterm and PTY session and spawns a fresh one in its place, keeping the
+   * terminal identifier. The session is disposed before the new one spawns so the main process does
+   * not reuse the dying session.
+   */
+  private async nuke(): Promise<void> {
+    if (!this.bridge.isElectron) {
+      return;
+    }
+    const id: string = this.terminalId();
+
+    this.cleanupOnData?.();
+    this.cleanupOnData = null;
+    this.cleanupOnExit?.();
+    this.cleanupOnExit = null;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.stopCwdPolling();
+    this.terminalReady.set(false);
+
+    if (!this.hasExited) {
+      await this.bridge.dispose(id);
+    }
+    this.hasExited = false;
+
+    this.xterm?.dispose();
+    this.xterm = null;
+    this.fitAddon = null;
+
+    await this.initialize();
+  }
+
+  /**
+   * Reads the full buffer of the terminal as plain text, with trailing blank lines removed.
+   * @returns Returns the terminal buffer contents.
+   */
+  private getBufferText(): string {
+    const xterm: Terminal | null = this.xterm;
+    if (xterm === null) {
+      return '';
+    }
+    const buffer: Terminal['buffer']['active'] = xterm.buffer.active;
+    const lines: string[] = [];
+    for (let index: number = 0; index < buffer.length; index++) {
+      lines.push(buffer.getLine(index)?.translateToString(true) ?? '');
+    }
+    return lines.join('\n').replace(/\n+$/, '');
   }
 
   /**
