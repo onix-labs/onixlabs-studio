@@ -1,0 +1,75 @@
+.profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-start: 1.5rem;
+}
+
+.profiles__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.profiles__title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--status-strip-foreground-color);
+}
+
+.profiles__add,
+.profiles__delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: 0.4rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    border-color: var(--form-control-border-color--hover);
+    background: var(--menu-item-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.profiles__delete {
+  margin-block-start: 0.5rem;
+}
+
+.override {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.4rem;
+}
+
+.override__check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    accent-color: var(--accent-color);
+    cursor: pointer;
+  }
+}

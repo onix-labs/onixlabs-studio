@@ -1,0 +1,78 @@
+@for (setting of booleanSettings; track setting.key) {
+  <app-setting-row [label]="setting.label" [description]="setting.description">
+    <app-toggle
+      [checked]="global()[setting.key]"
+      (checkedChange)="onGlobalToggle(setting.key, $event)"
+    />
+  </app-setting-row>
+}
+
+<app-setting-row label="Current line highlight" description="How the active line is highlighted.">
+  <app-dropdown
+    [options]="highlightOptions"
+    [value]="global().currentLineHighlight"
+    (valueChange)="onHighlightChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Font family" description="Editor font family.">
+  <app-text-field
+    [value]="global().fontFamily"
+    placeholder="JetBrains Mono"
+    (valueChange)="onFontFamilyChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Font size" description="Editor font size in pixels.">
+  <app-number-field
+    [min]="8"
+    [max]="48"
+    [value]="global().fontSize"
+    (valueChange)="onFontSizeChange($event)"
+  />
+</app-setting-row>
+
+<div class="profiles">
+  <div class="profiles__header">
+    <h3 class="profiles__title">Language profiles</h3>
+    <button type="button" class="profiles__add" (click)="addProfile()">
+      <i class="ti ti-plus" aria-hidden="true"></i>
+      <span>Add profile</span>
+    </button>
+  </div>
+
+  @for (profile of profiles(); track profile.id) {
+    <app-accordion [heading]="profile.name">
+      <app-setting-row label="Languages" description="Languages this profile applies to.">
+        <app-language-select
+          [languages]="languageOptions"
+          [value]="profile.languages"
+          (valueChange)="onLanguagesChange(profile.id, $event)"
+        />
+      </app-setting-row>
+
+      @for (setting of booleanSettings; track setting.key) {
+        <div class="override">
+          <label class="override__check">
+            <input
+              type="checkbox"
+              [checked]="isOverridden(profile, setting.key)"
+              (change)="onOverrideToggle(profile, setting.key, $event)"
+            />
+            <span>Override {{ setting.label }}</span>
+          </label>
+          <app-toggle
+            [checked]="resolvedValue(profile, setting.key)"
+            [disabled]="!isOverridden(profile, setting.key)"
+            (checkedChange)="onOverrideValue(profile, setting.key, $event)"
+          />
+        </div>
+      }
+
+      <button type="button" class="profiles__delete" (click)="deleteProfile(profile.id)">
+        <i class="ti ti-trash" aria-hidden="true"></i>
+        <span>Delete profile</span>
+      </button>
+    </app-accordion>
+  }
+</div>
