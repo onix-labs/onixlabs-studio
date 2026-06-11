@@ -1,0 +1,82 @@
+// A segmented control: mutually exclusive options joined into a single inset track.
+.segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  background: var(--title-strip-tab-background-color--active);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 0.625rem;
+  corner-shape: squircle;
+}
+
+.segmented__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--status-strip-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: 0.45rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    font-size: 1rem;
+  }
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  // The selected pill sits on the accent fill, so its text is a fixed light tone rather than the
+  // theme foreground (which would be dark in light mode).
+  &--selected {
+    color: var(--gray-100);
+    background: var(--accent-color);
+
+    &:hover {
+      color: var(--gray-100);
+    }
+  }
+}
+
+// The accent picker: a row of colour swatches, the active one ringed.
+.swatches {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.swatch {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 0.0625rem solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: transform 120ms ease-in-out;
+
+  &:hover {
+    transform: scale(1.1);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.1875rem;
+  }
+
+  // The selected swatch is ringed in the theme foreground so the mark reads on any accent.
+  &--selected {
+    box-shadow:
+      0 0 0 0.125rem var(--ribbon-strip-background-color),
+      0 0 0 0.25rem var(--body-foreground-color);
+  }
+}
