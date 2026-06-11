@@ -149,18 +149,42 @@
   text-align: center;
 }
 
-// The document well's compass drag handle (it has no title bar).
-.dock-tab-group__handle {
+// The document well's right-aligned controls (it has no title bar): a compass drag handle and a
+// document picker, pushed to the end of the tab strip.
+.dock-tab-group__strip-controls {
   display: flex;
   align-items: center;
+  // Fill the strip height so the controls' icons sit vertically centred against the tabs.
   align-self: stretch;
-  padding-inline: 0.125rem;
+  gap: 0.125rem;
+  margin-inline-start: auto;
+  padding-inline-start: 0.25rem;
+}
+
+.dock-tab-group__handle,
+.dock-tab-group__menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.25rem;
+  font-size: 1.25rem;
   color: var(--dock-tab-foreground-color);
-  cursor: move;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: var(--hover-transition);
 
   &:hover {
     color: var(--dock-tab-foreground-color--active);
   }
+}
+
+.dock-tab-group__handle {
+  cursor: move;
+}
+
+.dock-tab-group__menu-button {
+  padding-inline: 0.5rem;
 }
 
 // ---------------------------------------------------------------------------------------------

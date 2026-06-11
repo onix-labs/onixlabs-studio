@@ -1,4 +1,6 @@
 import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -37,7 +39,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
  */
 @Component({
   selector: 'app-dock-tab-group',
-  imports: [DockPanelOutlet, CdkDropList, CdkDrag],
+  imports: [DockPanelOutlet, CdkDropList, CdkDrag, CdkMenuTrigger, CdkMenu, CdkMenuItem],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -95,6 +97,13 @@ export class DockTabGroup {
    * Gets the stack this group renders.
    */
   public readonly stack: InputSignal<StackNode> = input.required<StackNode>();
+
+  /**
+   * Gets the document picker menu position, anchoring the menu's right edge below the button.
+   */
+  protected readonly documentMenuPosition: readonly ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+  ];
 
   /**
    * Gets a value indicating whether the stack is a document well.

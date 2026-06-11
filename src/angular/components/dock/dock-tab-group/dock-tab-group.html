@@ -49,17 +49,6 @@
     [cdkDropListEnterPredicate]="canEnter"
     (cdkDropListDropped)="onDrop($event)"
   >
-    @if (isDocuments()) {
-      <!-- Document wells have no title bar, so this grip is their compass drag handle. -->
-      <div
-        class="dock-tab-group__handle"
-        title="Drag to dock"
-        aria-label="Drag to dock"
-        (mousedown)="startDrag($event)"
-      >
-        <i class="ti ti-grip-vertical" aria-hidden="true"></i>
-      </div>
-    }
     @for (panel of panels(); track panel.id) {
       <div
         class="dock-tab"
@@ -89,6 +78,47 @@
           </button>
         }
       </div>
+    }
+
+    @if (isDocuments()) {
+      <!-- Document wells have no title bar; these right-aligned controls are the compass drag
+           handle and the document picker. -->
+      <div class="dock-tab-group__strip-controls">
+        <div
+          class="dock-tab-group__handle"
+          title="Drag to dock"
+          aria-label="Drag to dock"
+          (mousedown)="startDrag($event)"
+        >
+          <i class="ti ti-grip-horizontal" aria-hidden="true"></i>
+        </div>
+        <button
+          type="button"
+          class="dock-tab-group__menu-button"
+          title="Documents"
+          aria-label="Documents"
+          [cdkMenuTriggerFor]="documentMenu"
+          [cdkMenuPosition]="documentMenuPosition"
+        >
+          <i class="tis tis-caret-down" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <ng-template #documentMenu>
+        <div class="dock-panel-menu" cdkMenu>
+          @for (panel of panels(); track panel.id) {
+            <button
+              type="button"
+              class="dock-panel-menu__item"
+              cdkMenuItem
+              (cdkMenuItemTriggered)="activate(panel.id)"
+            >
+              <i [class]="panel.icon" aria-hidden="true"></i>
+              <span>{{ panel.title }}</span>
+            </button>
+          }
+        </div>
+      </ng-template>
     }
   </div>
 
