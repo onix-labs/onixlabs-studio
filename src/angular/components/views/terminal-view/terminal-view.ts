@@ -20,21 +20,17 @@ import { ITheme, Terminal } from '@xterm/xterm';
 import { TerminalCreateResult } from '../../../../shared/studio-api';
 import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
 import { Tabs } from '../../../services/tabs/tabs';
-
-/**
- * Holds the placeholder theme applied to the xterm instance. The live light/dark theme is layered
- * on top of this by the appearance integration.
- */
-const DEFAULT_THEME: ITheme = {
-  background: '#212529',
-  foreground: '#f8f9fa',
-  cursor: '#f8f9fa',
-};
+import { AccentColor, Theme } from '../../../services/theme/theme';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
  */
 const FOCUS_DELAY_MS: number = 0;
+
+/**
+ * Holds the opacity applied to the accent colour when used as the terminal's selection background.
+ */
+const SELECTION_ALPHA: number = 0.3;
 
 /**
  * Represents the terminal view: an xterm.js instance wired to a main-process node-pty session
@@ -58,6 +54,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Holds the tab registry used to rename the owning tab when the shell sets the terminal title.
    */
   private readonly tabsService: Tabs = inject(Tabs);
+
+  /**
+   * Holds the theme service used to keep the terminal colours in sync with the application theme.
+   */
+  private readonly themeService: Theme = inject(Theme);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -127,6 +128,13 @@ export class TerminalView implements AfterViewInit, OnDestroy {
         this.xterm.focus();
       }
     });
+
+    effect((): void => {
+      const theme: ITheme = this.buildTheme();
+      if (this.xterm !== null) {
+        this.xterm.options.theme = theme;
+      }
+    });
   }
 
   /**
@@ -166,7 +174,7 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     const xterm: Terminal = new Terminal({
       fontFamily: '"JetBrains Mono", "Menlo", "Consolas", monospace',
       fontSize: 13,
-      theme: DEFAULT_THEME,
+      theme: this.buildTheme(),
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
@@ -233,6 +241,28 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     } catch {
       // Fit can throw when the host has zero size (e.g. while hidden); ignore.
     }
+  }
+
+  /**
+   * Builds the xterm theme from the application's palette primitives, keyed by the current resolved
+   * mode and accent so the terminal stays in sync with the appearance settings.
+   * @returns Returns the xterm theme.
+   */
+  private buildTheme(): ITheme {
+    const styles: CSSStyleDeclaration = getComputedStyle(document.documentElement);
+    const read: (name: string) => string = (name: string): string =>
+      styles.getPropertyValue(name).trim();
+    const dark: boolean = this.themeService.resolvedMode() === 'dark';
+    const accent: AccentColor = this.themeService.accent();
+    const light: string = read('--gray-100');
+    const ink: string = read('--gray-900');
+    return {
+      background: dark ? ink : light,
+      foreground: dark ? light : ink,
+      cursor: read(`--accent-${accent}`),
+      cursorAccent: dark ? ink : light,
+      selectionBackground: `rgba(${read(`--accent-${accent}-rgb`)}, ${SELECTION_ALPHA})`,
+    };
   }
 
   /**
