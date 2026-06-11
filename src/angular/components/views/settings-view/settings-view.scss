@@ -1,7 +1,13 @@
 // The settings view is shown full-bleed (without the ribbon and status strips) and adopts the
-// ribbon strip's background colour. It is split into a left section navigation and a right content
-// pane.
+// ribbon strip's background colour. The flex layout lives on an inner wrapper rather than :host,
+// because the content host forces `display: block` on every hosted view's host element.
 :host {
+  display: block;
+  block-size: 100%;
+}
+
+// Splits the view into a left section navigation and a right content pane.
+.settings {
   display: flex;
   block-size: 100%;
   overflow: hidden;

@@ -1,36 +1,38 @@
-<nav class="settings__nav" aria-label="Settings sections">
-  <h1 class="settings__nav-title">Settings</h1>
-  @for (section of sections; track section.id) {
-    <button
-      type="button"
-      class="settings__nav-item"
-      [class.settings__nav-item--selected]="selectedSection() === section.id"
-      [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
-      (click)="selectSection(section.id)"
-    >
-      <i [class]="section.icon" aria-hidden="true"></i>
-      <span>{{ section.label }}</span>
-    </button>
-  }
-</nav>
-
-<div class="settings__content">
-  <section class="settings__section">
-    <h2 class="settings__section-title">{{ selectedSectionLabel() }}</h2>
-
-    @switch (selectedSection()) {
-      @case ('appearance') {
-        <app-appearance-settings />
-      }
-      @case ('application') {
-        <app-application-settings />
-      }
-      @case ('text-editor') {
-        <app-text-editor-settings />
-      }
-      @case ('markdown') {
-        <app-markdown-settings />
-      }
+<div class="settings">
+  <nav class="settings__nav" aria-label="Settings sections">
+    <h1 class="settings__nav-title">Settings</h1>
+    @for (section of sections; track section.id) {
+      <button
+        type="button"
+        class="settings__nav-item"
+        [class.settings__nav-item--selected]="selectedSection() === section.id"
+        [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
+        (click)="selectSection(section.id)"
+      >
+        <i [class]="section.icon" aria-hidden="true"></i>
+        <span>{{ section.label }}</span>
+      </button>
     }
-  </section>
+  </nav>
+
+  <div class="settings__content">
+    <section class="settings__section">
+      <h2 class="settings__section-title">{{ selectedSectionLabel() }}</h2>
+
+      @switch (selectedSection()) {
+        @case ('appearance') {
+          <app-appearance-settings />
+        }
+        @case ('application') {
+          <app-application-settings />
+        }
+        @case ('text-editor') {
+          <app-text-editor-settings />
+        }
+        @case ('markdown') {
+          <app-markdown-settings />
+        }
+      }
+    </section>
+  </div>
 </div>
