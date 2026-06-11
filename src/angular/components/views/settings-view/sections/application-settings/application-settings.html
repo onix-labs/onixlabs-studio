@@ -1,0 +1,19 @@
+<app-setting-row
+  label="Default document type"
+  description="The document type created when you open a new tab."
+>
+  <app-dropdown
+    [options]="documentTypeOptions"
+    [value]="defaultDocumentType()"
+    (valueChange)="onDefaultDocumentTypeChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Undo history" description="Number of undo steps kept (10-1000).">
+  <app-number-field
+    [min]="10"
+    [max]="1000"
+    [value]="undoStackSize()"
+    (valueChange)="onUndoStackSizeChange($event)"
+  />
+</app-setting-row>
