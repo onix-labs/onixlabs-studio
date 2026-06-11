@@ -111,10 +111,7 @@ describe('Settings', () => {
   });
 
   it('settings_whenPersistedValuesExist_areRestoredOnCreation', () => {
-    localStorage.setItem(
-      'settings',
-      JSON.stringify({ application: { undoStackSize: 250 } }),
-    );
+    localStorage.setItem('settings', JSON.stringify({ application: { undoStackSize: 250 } }));
 
     expect(TestBed.inject(Settings).undoStackSize()).toBe(250);
   });

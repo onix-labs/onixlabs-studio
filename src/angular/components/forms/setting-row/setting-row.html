@@ -1,0 +1,14 @@
+<!-- The label wraps a single projected form control, which associates them at runtime; the lint
+     rule cannot see through <ng-content> to verify this statically. -->
+<!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+<label class="setting-row">
+  <span class="setting-row__text">
+    <span class="setting-row__label">{{ label() }}</span>
+    @if (description()) {
+      <span class="setting-row__description">{{ description() }}</span>
+    }
+  </span>
+  <span class="setting-row__control">
+    <ng-content />
+  </span>
+</label>
