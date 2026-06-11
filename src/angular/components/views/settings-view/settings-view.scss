@@ -1,6 +1,6 @@
-// The settings view is shown full-bleed (without the ribbon and status strips) and adopts the
-// ribbon strip's background colour. The flex layout lives on an inner wrapper rather than :host,
-// because the content host forces `display: block` on every hosted view's host element.
+// The settings view is shown full-bleed (without the ribbon and status strips). The flex layout
+// lives on an inner wrapper rather than :host, because the content host forces `display: block` on
+// every hosted view's host element.
 :host {
   display: block;
   block-size: 100%;
@@ -9,9 +9,11 @@
 // Splits the view into a left section navigation and a right content pane.
 .settings {
   display: flex;
+  gap: 0.5rem;
   block-size: 100%;
+  padding: 0.5rem;
   overflow: hidden;
-  background: var(--ribbon-strip-background-color);
+  background: var(--settings-background-color);
 }
 
 // The left navigation lists the settings sections.
@@ -22,7 +24,7 @@
   gap: 0.125rem;
   padding: 1rem 0.75rem;
   overflow: auto;
-  border-inline-end: 0.0625rem solid var(--menu-border-color);
+  border-inline-end: 0.0625rem solid var(--settings-border-color);
 }
 
 .settings__nav-title {
@@ -39,7 +41,7 @@
   padding: 0.5rem 0.65rem;
   font: inherit;
   font-size: 0.9rem;
-  color: var(--status-strip-foreground-color);
+  color: var(--settings-muted-foreground-color);
   text-align: start;
   background: transparent;
   border: none;
@@ -54,7 +56,7 @@
 
   &:hover {
     color: var(--body-foreground-color);
-    background: var(--title-strip-tab-background-color--active);
+    background: var(--settings-control-background-color);
   }
 
   &:focus-visible {
@@ -88,5 +90,5 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--status-strip-foreground-color);
+  color: var(--settings-muted-foreground-color);
 }

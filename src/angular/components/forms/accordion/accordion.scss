@@ -26,7 +26,7 @@
   transition: background-color 150ms ease-in-out;
 
   &:hover {
-    background: var(--menu-item-background-color--hover);
+    background: var(--form-control-background-color--hover);
   }
 
   &:focus-visible {
@@ -36,7 +36,7 @@
 
   .ti {
     font-size: 1rem;
-    color: var(--status-strip-foreground-color);
+    color: var(--form-muted-foreground-color);
   }
 }
 

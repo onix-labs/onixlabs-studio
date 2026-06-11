@@ -18,7 +18,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--status-strip-foreground-color);
+  color: var(--settings-muted-foreground-color);
 }
 
 .profiles__add,
@@ -31,15 +31,15 @@
   font-size: 0.8rem;
   color: inherit;
   background: transparent;
-  border: 0.0625rem solid var(--form-control-border-color);
+  border: 0.0625rem solid var(--settings-button-border-color);
   border-radius: 0.4rem;
   corner-shape: squircle;
   cursor: pointer;
   transition: var(--hover-transition);
 
   &:hover {
-    border-color: var(--form-control-border-color--hover);
-    background: var(--menu-item-background-color--hover);
+    border-color: var(--settings-button-border-color--hover);
+    background: var(--settings-button-background-color--hover);
   }
 
   &:focus-visible {
