@@ -1,0 +1,19 @@
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.tab-view {
+  block-size: 100%;
+
+  &--hidden {
+    display: none;
+  }
+
+  // Every hosted view fills the available content area.
+  > * {
+    display: block;
+    block-size: 100%;
+  }
+}

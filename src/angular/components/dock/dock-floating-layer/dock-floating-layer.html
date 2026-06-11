@@ -1,0 +1,44 @@
+@for (item of windows(); track item.window.panelId) {
+  <div
+    class="dock-float"
+    [style.left.px]="item.window.left"
+    [style.top.px]="item.window.top"
+    [style.width.px]="item.window.width"
+    [style.height.px]="item.window.height"
+    [style.z-index]="item.window.z"
+    (mousedown)="bringToFront(item.window.panelId)"
+  >
+    <div class="dock-float__title" (mousedown)="startMove(item.window, $event)">
+      <i class="dock-float__icon" [class]="item.panel.icon" aria-hidden="true"></i>
+      <span class="dock-float__title-text">{{ item.panel.title }}</span>
+      <span class="dock-float__title-buttons">
+        <button
+          type="button"
+          title="Dock"
+          aria-label="Dock"
+          (click)="dockBack(item.window.panelId)"
+          (mousedown)="$event.stopPropagation()"
+        >
+          <i class="ti ti-layout-bottombar" aria-hidden="true"></i>
+        </button>
+        <button
+          type="button"
+          title="Close"
+          aria-label="Close"
+          (click)="close(item.window.panelId)"
+          (mousedown)="$event.stopPropagation()"
+        >
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </span>
+    </div>
+    <div class="dock-float__body">
+      <app-dock-panel-outlet [panelId]="item.window.panelId" />
+    </div>
+    <span
+      class="dock-float__resize"
+      aria-hidden="true"
+      (mousedown)="startResize(item.window, $event)"
+    ></span>
+  </div>
+}

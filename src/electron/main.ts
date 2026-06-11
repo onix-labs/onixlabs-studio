@@ -1,5 +1,6 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
 import * as path from 'node:path';
+import { IpcChannel } from '../shared/ipc-channels';
 
 class Program {
   /**
@@ -46,7 +47,7 @@ class Program {
       height: 800,
       show: false,
       titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 12, y: 12 },
+      trafficLightPosition: { x: 14, y: 14 },
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
@@ -62,9 +63,37 @@ class Program {
   }
 
   /**
+   * Registers the IPC handlers for renderer-initiated window control requests. Each handler
+   * resolves the window from the request sender so it always acts on the requesting window.
+   */
+  private registerIpcHandlers(): void {
+    ipcMain.on(IpcChannel.WindowMinimize, (event: IpcMainEvent): void => {
+      BrowserWindow.fromWebContents(event.sender)?.minimize();
+    });
+
+    ipcMain.on(IpcChannel.WindowToggleMaximize, (event: IpcMainEvent): void => {
+      const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (targetWindow === null) {
+        return;
+      }
+
+      if (targetWindow.isMaximized()) {
+        targetWindow.unmaximize();
+      } else {
+        targetWindow.maximize();
+      }
+    });
+
+    ipcMain.on(IpcChannel.WindowClose, (event: IpcMainEvent): void => {
+      BrowserWindow.fromWebContents(event.sender)?.close();
+    });
+  }
+
+  /**
    * Handles the app whenReady event.
    */
   private onReady(): void {
+    this.registerIpcHandlers();
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));

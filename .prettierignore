@@ -4,3 +4,6 @@ dist-electron
 release
 .angular
 package-lock.json
+.claude
+resources
+coverage

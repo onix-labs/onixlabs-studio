@@ -1,0 +1,105 @@
+// A chat shell: a scrolling message list above a pinned composer.
+:host {
+  display: block;
+  block-size: 100%;
+  overflow: hidden;
+  background: var(--body-background-color);
+}
+
+.agent {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.agent__messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  min-block-size: 0;
+  padding: 1.5rem;
+  overflow: auto;
+}
+
+.agent__message {
+  display: flex;
+  gap: 0.75rem;
+  max-inline-size: 48rem;
+
+  // The user's own messages are aligned to the trailing edge with the avatar on the right.
+  &--user {
+    flex-direction: row-reverse;
+    margin-inline-start: auto;
+  }
+}
+
+.agent__avatar {
+  display: grid;
+  flex: 0 0 2rem;
+  place-items: center;
+  block-size: 2rem;
+  inline-size: 2rem;
+  color: var(--accent-color);
+  background: var(--title-strip-tab-background-color--active);
+  border-radius: 0.6rem;
+  corner-shape: squircle;
+}
+
+.agent__bubble {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--title-strip-tab-background-color--active);
+  border-radius: 0.75rem;
+  corner-shape: squircle;
+  line-height: 1.5;
+
+  .agent__message--user & {
+    color: var(--gray-100);
+    background: var(--accent-color);
+  }
+}
+
+.agent__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-block-start: 0.0625rem solid var(--menu-border-color);
+}
+
+.agent__input {
+  flex: 1;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: var(--title-strip-tab-background-color--active);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 0.6rem;
+  corner-shape: squircle;
+  resize: none;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.agent__send {
+  display: grid;
+  place-items: center;
+  block-size: 2.4rem;
+  inline-size: 2.4rem;
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border: none;
+  border-radius: 0.6rem;
+  corner-shape: squircle;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}

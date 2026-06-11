@@ -1,4 +1,14 @@
-<app-title-strip-container class="title-strip" />
-<app-ribbon-strip class="ribbon-strip" />
-<main class="content"></main>
-<app-status-strip class="status-strip" />
+@if (hasTabs()) {
+  <app-title-strip-container class="title-strip" />
+  @if (!isSettingsActive()) {
+    <app-ribbon-strip class="ribbon-strip" />
+  }
+  <main class="content">
+    <app-content-host />
+  </main>
+  @if (!isSettingsActive()) {
+    <app-status-strip class="status-strip" />
+  }
+} @else {
+  <app-welcome-screen class="welcome-screen" />
+}

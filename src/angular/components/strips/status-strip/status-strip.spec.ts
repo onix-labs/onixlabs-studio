@@ -19,4 +19,10 @@ describe('StatusStrip', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('render_whenNoTabsOpen_showsReady', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.textContent).toContain('Ready');
+  });
 });

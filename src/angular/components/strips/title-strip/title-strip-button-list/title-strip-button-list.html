@@ -1,2 +1,23 @@
-<app-title-strip-button icon="ti ti-settings" />
-<app-title-strip-button icon="ti ti-plus" />
+<app-title-strip-button
+  icon="ti ti-settings"
+  [disabled]="isSettingsOpen()"
+  (action)="openSettings()"
+/>
+<app-title-strip-button icon="ti ti-folder" (action)="openFiles()" />
+<app-title-strip-button icon="ti ti-plus" [cdkMenuTriggerFor]="newTabMenu" />
+
+<ng-template #newTabMenu>
+  <div class="new-tab-menu" cdkMenu>
+    @for (type of creatableTypes; track type) {
+      <button
+        type="button"
+        class="new-tab-menu__item"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="open(type)"
+      >
+        <i [class]="metadata[type].icon"></i>
+        <span>{{ metadata[type].label }}</span>
+      </button>
+    }
+  </div>
+</ng-template>

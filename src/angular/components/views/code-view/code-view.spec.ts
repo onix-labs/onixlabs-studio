@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { ToolStrip } from './tool-strip';
+import { CodeView } from './code-view';
 
-describe('ToolStrip', () => {
-  let component: ToolStrip;
-  let fixture: ComponentFixture<ToolStrip>;
+describe('CodeView', () => {
+  let component: CodeView;
+  let fixture: ComponentFixture<CodeView>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [ToolStrip],
+      imports: [CodeView],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(ToolStrip);
+    fixture = TestBed.createComponent(CodeView);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

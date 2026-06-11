@@ -7,7 +7,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.3rem;
+    padding: 0.4rem;
     padding-inline-start: 0.5rem;
     user-select: none;
     color: var(--title-strip-tab-foreground-color);
@@ -16,7 +16,9 @@
     border-block-end: none;
     border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
     corner-shape: squircle;
-    transition: var(--hover-transition);
+    transition:
+      var(--hover-transition),
+      transform 200ms cubic-bezier(0, 0, 0.2, 1);
     -webkit-app-region: no-drag;
 
     &:hover {
@@ -32,6 +34,11 @@
       }
     }
 
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: -0.1875rem;
+    }
+
     &[aria-selected='true'] {
       position: relative;
       margin-block-end: -0.0625rem;
@@ -43,6 +50,9 @@
       &::after {
         content: '';
         position: absolute;
+        // The feet are sized to the curve radius with the 1px border drawn outside, so they must
+        // stay content-box despite the global border-box default.
+        box-sizing: content-box;
         block-size: var(--title-strip-tab-border-radius);
         inline-size: var(--title-strip-tab-border-radius);
         margin-inline: -0.125rem;

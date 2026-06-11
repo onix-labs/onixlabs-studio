@@ -1,4 +1,17 @@
-<app-title-strip-tab [isActive]="true" />
-<app-title-strip-tab />
-<app-title-strip-tab />
-<app-title-strip-tab />
+<div
+  class="tab-list"
+  role="tablist"
+  cdkDropList
+  cdkDropListOrientation="horizontal"
+  [cdkDropListSortPredicate]="sortPredicate"
+  (cdkDropListDropped)="onDrop($event)"
+>
+  @for (tab of tabs(); track tab.id) {
+    <app-title-strip-tab
+      [tab]="tab"
+      [isActive]="tab.id === activeTabId()"
+      (selectTab)="onSelect(tab)"
+      (closeTab)="onClose(tab)"
+    />
+  }
+</div>

@@ -28,6 +28,37 @@
   --title-strip-tab-close-button-foreground-color--hover: var(--gray-900);
   --title-strip-tab-close-button-foreground-color--hover-over-tab: var(--gray-900);
 
+  --menu-background-color: var(--gray-100);
+  --menu-foreground-color: var(--gray-900);
+  --menu-border-color: var(--gray-400);
+  --menu-item-background-color--hover: var(--gray-300);
+
+  --view-placeholder-color: var(--gray-300);
+
   --ribbon-strip-background-color: var(--gray-400);
   --status-strip-background-color: var(--gray-500);
+  --status-strip-foreground-color: var(--gray-800);
+
+  --dock-background-color: var(--gray-400);
+  --dock-border-color: var(--gray-600);
+
+  --dock-splitter-color: transparent;
+  --dock-splitter-color--hover: var(--gray-300);
+  --dock-splitter-color--active: var(--accent-color);
+
+  --dock-title-background-color: var(--gray-400);
+  --dock-title-background-color--focused: var(--gray-300);
+  --dock-title-foreground-color: var(--gray-700);
+  --dock-title-foreground-color--focused: var(--gray-900);
+
+  --dock-tabstrip-background-color: var(--gray-500);
+  --dock-tab-background-color: var(--gray-500);
+  --dock-tab-background-color--active: var(--gray-200);
+  --dock-tab-foreground-color: var(--gray-700);
+  --dock-tab-foreground-color--active: var(--gray-900);
+
+  --dock-empty-foreground-color: var(--gray-300);
+
+  // The pane cell that frames each panel: a shade between the dock-area gaps and the panel surface.
+  --dock-pane-background-color: color-mix(in srgb, var(--gray-700) 65%, var(--gray-200));
 }

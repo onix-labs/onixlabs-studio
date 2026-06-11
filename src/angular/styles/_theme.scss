@@ -1,18 +1,12 @@
 @use 'theme-light' as *;
 @use 'theme-dark' as *;
 
+// The Theme service resolves `system` to a concrete light/dark value via `matchMedia` and writes it
+// to `data-theme-mode`, so only the two concrete modes need styling here.
 [data-theme-mode='light'] {
   @include theme-light;
 }
 
 [data-theme-mode='dark'] {
   @include theme-dark;
-}
-
-[data-theme-mode='system'] {
-  @include theme-light;
-
-  @media (prefers-color-scheme: dark) {
-    @include theme-dark;
-  }
 }

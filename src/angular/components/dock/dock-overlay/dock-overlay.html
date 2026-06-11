@@ -1,0 +1,48 @@
+@if (active()) {
+  <div class="dock-overlay">
+    @if (preview(); as rect) {
+      <div
+        class="dock-overlay__preview"
+        [style.left.px]="rect.left"
+        [style.top.px]="rect.top"
+        [style.width.px]="rect.width"
+        [style.height.px]="rect.height"
+      ></div>
+    }
+
+    @if (compass(); as state) {
+      <div class="dock-overlay__compass" [style.left.px]="state.x" [style.top.px]="state.y">
+        @for (guide of guides; track guide) {
+          <span
+            class="dock-overlay__guide dock-overlay__guide--{{ guide }}"
+            [class.dock-overlay__guide--hot]="state.hot === guide"
+            [class.dock-overlay__guide--disabled]="!state.legality[guide]"
+          ></span>
+        }
+      </div>
+    }
+
+    @if (showEdges() && workspace(); as ws) {
+      @for (edge of edges; track edge) {
+        <span
+          class="dock-overlay__edge"
+          [class.dock-overlay__edge--hot]="hotEdge() === edge"
+          [style.left.px]="edgePosition(edge, ws).left"
+          [style.top.px]="edgePosition(edge, ws).top"
+        ></span>
+      }
+    }
+
+    @if (ghost(); as g) {
+      <div
+        class="dock-overlay__ghost"
+        [style.left.px]="g.left"
+        [style.top.px]="g.top"
+        [style.width.px]="g.width"
+        [style.height.px]="g.height"
+      >
+        <span class="dock-overlay__ghost-title">{{ panel()?.title }}</span>
+      </div>
+    }
+  </div>
+}

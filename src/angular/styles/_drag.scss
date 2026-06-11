@@ -1,0 +1,104 @@
+// Angular CDK drag-and-drop styling for the title-strip tabs. These rules are global because the
+// CDK renders the drag preview and placeholder outside the originating component's DOM.
+
+// The chip shown under the cursor while a tab is dragged. It mirrors an active tab's box (active
+// colours, rounded top, square bottom, no bottom border, same padding) including the close button
+// and the reverse corner curves, so it is the same height as a tab and its bottom edge meets the
+// rail (the strip's bottom border) — riding along the rail rather than floating above or below it.
+// The radius is redeclared here because the chip is rendered on <body>, outside the tab component
+// whose :host defines it.
+.tab-chip {
+  --title-strip-tab-border-radius: 10px;
+
+  position: relative;
+  // CDK renders the preview as a popover, whose UA style is `overflow: auto`. That would clip the
+  // reverse corner curves below, which protrude beyond the chip's box, so allow them to overflow.
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  // Matches the active tab's padding so the chip is the same height and its bottom meets the rail.
+  padding: 0.4rem;
+  padding-inline-start: 0.5rem;
+  color: var(--title-strip-tab-foreground-color--active);
+  background-color: var(--title-strip-tab-background-color--active);
+  border: 0.0625rem solid var(--title-strip-border-color);
+  border-block-end: none;
+  border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
+  corner-shape: squircle;
+  cursor: grabbing;
+
+  // The reverse curves that flare the chip's bottom corners out to meet the rail, mirroring the
+  // active tab's ::before/::after so the dragged chip keeps its Chrome-tab silhouette.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    // Sized to the curve radius with the border outside, so it must stay content-box despite the
+    // global border-box default.
+    box-sizing: content-box;
+    block-size: var(--title-strip-tab-border-radius);
+    inline-size: var(--title-strip-tab-border-radius);
+    margin-inline: -0.125rem;
+    bottom: 0;
+    background: var(--title-strip-tab-background-color--active);
+    mask: none;
+    corner-shape: superellipse(-2.3);
+  }
+
+  &::before {
+    left: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top left,
+      transparent var(--title-strip-tab-border-radius),
+      #000 var(--title-strip-tab-border-radius)
+    );
+    border-start-start-radius: var(--title-strip-tab-border-radius);
+    border-block-start: 0.0625rem solid var(--title-strip-border-color);
+    border-inline-start: 0.0625rem solid var(--title-strip-border-color);
+  }
+
+  &::after {
+    right: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top right,
+      transparent var(--title-strip-tab-border-radius),
+      #000 var(--title-strip-tab-border-radius)
+    );
+    border-start-end-radius: var(--title-strip-tab-border-radius);
+    border-block-start: 0.0625rem solid var(--title-strip-border-color);
+    border-inline-end: 0.0625rem solid var(--title-strip-border-color);
+  }
+
+  // Mirrors the active tab's close button. It is purely decorative on the chip, so it carries no
+  // interactivity — the real button stays behind on the tab in the strip.
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 1.25rem;
+    inline-size: 1.25rem;
+    font-size: 1rem;
+    background: var(--title-strip-tab-close-button-background-color);
+    color: var(--title-strip-tab-close-button-foreground-color--hover-over-tab);
+    border: none;
+    border-radius: 0.5rem;
+    corner-shape: squircle;
+  }
+}
+
+// The gap left behind in the strip while the tab is being dragged.
+.cdk-drag-placeholder {
+  opacity: 0;
+}
+
+// Dock tab-strip drag-drop: reordering tabs within a group and moving them between same-role
+// groups. The dragged dock tab is cloned as the CDK preview; siblings ease aside while dragging.
+.dock-tab.cdk-drag-preview {
+  opacity: 0.9;
+  box-shadow: 0 0.5rem 1.25rem rgb(0 0 0 / 40%);
+}
+
+.cdk-drop-list-dragging .dock-tab:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}

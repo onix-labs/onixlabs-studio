@@ -3,8 +3,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    block-size: 1.5rem;
-    inline-size: 1.5rem;
+    block-size: 1.75rem;
+    inline-size: 1.75rem;
     font-size: 1.25rem;
     background: var(--title-strip-button-background-color);
     color: var(--title-strip-button-foreground-color);
@@ -17,6 +17,17 @@
     &:hover {
       background: var(--title-strip-button-background-color--hover);
       color: var(--title-strip-button-foreground-color--hover);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 0.0625rem;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+      pointer-events: none;
     }
   }
 }

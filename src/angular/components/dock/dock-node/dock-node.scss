@@ -1,0 +1,38 @@
+:host {
+  display: flex;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+  inline-size: 100%;
+}
+
+.dock-node__split {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+
+  &--row {
+    flex-direction: row;
+  }
+
+  &--col {
+    flex-direction: column;
+  }
+}
+
+.dock-node__pane {
+  display: flex;
+  min-inline-size: 2.625rem;
+  min-block-size: 2rem;
+  overflow: hidden;
+}
+
+// Only leaf panes (those holding a tab group, not a nested split) are framed: a softly rounded cell
+// a shade between the dock-area gaps and the panel surface, using the same radius and corner shape
+// as the tabs.
+.dock-node__pane--leaf {
+  background: var(--dock-pane-background-color);
+  border-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
+}

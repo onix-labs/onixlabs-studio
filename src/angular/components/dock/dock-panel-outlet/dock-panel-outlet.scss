@@ -1,0 +1,13 @@
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.dock-panel-outlet__missing {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  padding: 1rem;
+  color: var(--view-placeholder-color);
+  font-size: 0.8rem;
+}

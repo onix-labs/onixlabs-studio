@@ -1,0 +1,377 @@
+:host {
+  // Fill the pane the node renderer sizes for this group. Without this the group collapses to its
+  // content size, leaving gaps in wider/taller cells.
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+  background: var(--dock-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+}
+
+// Document wells render their tab strip on top with no title bar.
+:host(.dock-tab-group--documents) .dock-tab-group__tabstrip {
+  order: -1;
+}
+
+.dock-tab-group__title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-block-size: 1.5rem;
+  padding-block: 0.25rem;
+  padding-inline: 0.5rem 0.25rem;
+  color: var(--dock-title-foreground-color);
+  background: var(--dock-title-background-color);
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+  font-weight: 600;
+  cursor: move;
+  -webkit-app-region: no-drag;
+
+  &-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+  }
+
+  &-buttons {
+    display: flex;
+    gap: 0.125rem;
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      block-size: 1.125rem;
+      inline-size: 1.125rem;
+      font-size: 0.875rem;
+      color: inherit;
+      background: transparent;
+      border: none;
+      border-radius: 0.25rem;
+      corner-shape: squircle;
+      cursor: pointer;
+      transition: var(--hover-transition);
+
+      &:hover {
+        background: var(--dock-title-background-color--focused);
+        color: var(--dock-title-foreground-color--focused);
+      }
+    }
+  }
+}
+
+// Structural strip rules; size, padding, overflow and background come from the variant rules below
+// (every group is document or tool).
+.dock-tab-group__tabstrip {
+  display: flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+
+// Structural tab rules shared by both variants; colour, border and radius come from the document
+// and tool variant rules below (every group is one or the other).
+.dock-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-inline-size: 11.25rem;
+  padding: 0.375rem 0.5rem;
+  corner-shape: squircle;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+  transition: var(--hover-transition);
+
+  &__icon {
+    font-size: 0.875rem;
+  }
+
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8rem;
+  }
+
+  &__close {
+    // Always laid out so the tab keeps a constant width; only its visibility toggles, so inactive
+    // tabs do not jiggle when hovered to make room for the button.
+    display: flex;
+    visibility: hidden;
+    align-items: center;
+    justify-content: center;
+    block-size: 1rem;
+    inline-size: 1rem;
+    font-size: 0.75rem;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-radius: 0.25rem;
+    corner-shape: squircle;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--dock-title-background-color--focused);
+      color: var(--dock-title-foreground-color--focused);
+    }
+  }
+
+  &:hover &__close,
+  &--active &__close {
+    visibility: visible;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.1875rem;
+  }
+}
+
+.dock-tab-group__body {
+  flex: 1;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+  overflow: auto;
+}
+
+.dock-tab-group__empty {
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+  padding: 1rem;
+  color: var(--dock-empty-foreground-color);
+  font-style: italic;
+  text-align: center;
+}
+
+// The document well's right-aligned controls (it has no title bar): a compass drag handle and a
+// document picker, pushed to the end of the tab strip.
+.dock-tab-group__strip-controls {
+  display: flex;
+  align-items: center;
+  // Fill the strip height so the controls' icons sit vertically centred against the tabs.
+  align-self: stretch;
+  gap: 0.125rem;
+  margin-inline-start: auto;
+  padding-inline-start: 0.25rem;
+}
+
+.dock-tab-group__handle,
+.dock-tab-group__menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.25rem;
+  font-size: 1.25rem;
+  color: var(--dock-tab-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    color: var(--dock-tab-foreground-color--active);
+  }
+}
+
+.dock-tab-group__handle {
+  cursor: move;
+}
+
+.dock-tab-group__menu-button {
+  padding-inline: 0.5rem;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Scooped, seamless tabs that merge into the panel's accent border, modelled on
+// resources/tabs.html. Inactive tabs render content only (no border or background); the active tab
+// grows an accent border with two flaring feet that blend into the panel. Document wells put the
+// strip on top with the feet flaring down; tool panels keep their title bar and put the strip on
+// the bottom with the feet flaring up (as in Visual Studio).
+// ---------------------------------------------------------------------------------------------
+:host(.dock-tab-group--documents),
+:host(.dock-tab-group--tool) {
+  // The seam (panel border, active-tab border and feet) is neutral by default and accented only on
+  // the focused panel.
+  --dock-seam-color: var(--dock-border-color);
+
+  background: transparent;
+  border: none;
+}
+
+:host(.dock-tab-group--focused) {
+  --dock-seam-color: var(--accent-color);
+}
+
+// The strip hugs its tabs (no fixed height or padding) and lets the active tab's feet flare onto
+// the panel; transparent so inactive tabs sit on the surrounding surface like plain labels.
+:host(.dock-tab-group--documents) .dock-tab-group__tabstrip,
+:host(.dock-tab-group--tool) .dock-tab-group__tabstrip {
+  block-size: auto;
+  overflow: visible;
+  padding: 0;
+  gap: 0.25rem;
+  background: transparent;
+}
+
+:host(.dock-tab-group--documents) .dock-tab,
+:host(.dock-tab-group--tool) .dock-tab {
+  position: relative;
+  color: var(--dock-tab-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+
+  &:hover {
+    color: var(--dock-tab-foreground-color--active);
+  }
+}
+
+:host(.dock-tab-group--documents) .dock-tab--active,
+:host(.dock-tab-group--tool) .dock-tab--active {
+  color: var(--dock-tab-foreground-color--active);
+  background: var(--dock-tab-background-color--active);
+  border-color: var(--dock-seam-color);
+}
+
+// The two outward-flaring feet that connect the active tab to the panel's accent border. Sized to
+// the curve radius with the border outside, so they stay content-box despite the global border-box.
+:host(.dock-tab-group--documents) .dock-tab--active::before,
+:host(.dock-tab-group--documents) .dock-tab--active::after,
+:host(.dock-tab-group--tool) .dock-tab--active::before,
+:host(.dock-tab-group--tool) .dock-tab--active::after {
+  content: '';
+  position: absolute;
+  box-sizing: content-box;
+  block-size: var(--dock-panel-radius);
+  inline-size: var(--dock-panel-radius);
+  margin-inline: -0.125rem;
+  background: var(--dock-tab-background-color--active);
+  corner-shape: superellipse(-2.3);
+}
+
+// The first tab meets the panel's straight start edge, so it has no outward start-side foot.
+:host(.dock-tab-group--documents) .dock-tab--active:first-child::before,
+:host(.dock-tab-group--tool) .dock-tab--active:first-child::before {
+  display: none;
+}
+
+// --- Document wells: strip on top, feet flaring down into the panel's top border ---
+:host(.dock-tab-group--documents) .dock-tab-group__body {
+  background: var(--dock-tab-background-color--active);
+  border: 0.0625rem solid var(--dock-seam-color);
+  border-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
+}
+
+:host(.dock-tab-group--documents):has(.dock-tab--active:first-child) .dock-tab-group__body {
+  border-start-start-radius: 0;
+}
+
+:host(.dock-tab-group--documents) .dock-tab {
+  border-block-end: none;
+  border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
+  // Every tab carries the 1px overlap so they all share one margin-box height; otherwise the
+  // active tab's shorter box drops 1px below the others under the strip's flex-end alignment.
+  margin-block-end: -0.0625rem;
+}
+
+:host(.dock-tab-group--documents) .dock-tab--active {
+  &::before,
+  &::after {
+    bottom: 0;
+  }
+
+  &::before {
+    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top left,
+      transparent var(--dock-panel-radius),
+      #000 var(--dock-panel-radius)
+    );
+    border-start-start-radius: var(--dock-panel-radius);
+    border-block-start: 0.0625rem solid var(--dock-seam-color);
+    border-inline-start: 0.0625rem solid var(--dock-seam-color);
+  }
+
+  &::after {
+    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at top right,
+      transparent var(--dock-panel-radius),
+      #000 var(--dock-panel-radius)
+    );
+    border-start-end-radius: var(--dock-panel-radius);
+    border-block-start: 0.0625rem solid var(--dock-seam-color);
+    border-inline-end: 0.0625rem solid var(--dock-seam-color);
+  }
+}
+
+// --- Tool panels: title on top, strip on the bottom, feet flaring up into the panel's bottom ---
+:host(.dock-tab-group--tool) .dock-tab-group__title {
+  border-block-start: 0.0625rem solid var(--dock-seam-color);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-start-start-radius: var(--dock-panel-radius);
+  border-start-end-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
+}
+
+:host(.dock-tab-group--tool) .dock-tab-group__body {
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-end: 0.0625rem solid var(--dock-seam-color);
+  border-end-start-radius: var(--dock-panel-radius);
+  border-end-end-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
+}
+
+:host(.dock-tab-group--tool) .dock-tab-group__tabstrip {
+  order: 1;
+  align-items: flex-start;
+}
+
+:host(.dock-tab-group--tool):has(.dock-tab--active:first-child) .dock-tab-group__body {
+  border-end-start-radius: 0;
+}
+
+:host(.dock-tab-group--tool) .dock-tab {
+  border-block-start: none;
+  border-radius: 0 0 var(--dock-panel-radius) var(--dock-panel-radius);
+  // Mirror of the document overlap, so every tab shares one margin-box height under the strip's
+  // flex-start alignment and the active tab is not shifted relative to the others.
+  margin-block-start: -0.0625rem;
+}
+
+:host(.dock-tab-group--tool) .dock-tab--active {
+  &::before,
+  &::after {
+    top: 0;
+  }
+
+  &::before {
+    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at bottom left,
+      transparent var(--dock-panel-radius),
+      #000 var(--dock-panel-radius)
+    );
+    border-end-start-radius: var(--dock-panel-radius);
+    border-block-end: 0.0625rem solid var(--dock-seam-color);
+    border-inline-start: 0.0625rem solid var(--dock-seam-color);
+  }
+
+  &::after {
+    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    mask: radial-gradient(
+      circle at bottom right,
+      transparent var(--dock-panel-radius),
+      #000 var(--dock-panel-radius)
+    );
+    border-end-end-radius: var(--dock-panel-radius);
+    border-block-end: 0.0625rem solid var(--dock-seam-color);
+    border-inline-end: 0.0625rem solid var(--dock-seam-color);
+  }
+}

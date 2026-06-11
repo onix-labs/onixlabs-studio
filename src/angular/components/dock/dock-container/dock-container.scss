@@ -1,0 +1,14 @@
+:host {
+  position: relative;
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+  background: var(--root-content-background-color);
+}
+
+.dock-container {
+  display: flex;
+  block-size: 100%;
+  inline-size: 100%;
+  gap: 0;
+}

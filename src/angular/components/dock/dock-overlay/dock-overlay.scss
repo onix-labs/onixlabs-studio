@@ -1,0 +1,130 @@
+.dock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.dock-overlay__preview {
+  position: fixed;
+  background: rgba(var(--accent-color-rgb), 0.25);
+  border: 0.125rem solid var(--accent-color);
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+}
+
+// The compass is a fixed-size box centred over the hovered group.
+.dock-overlay__compass {
+  position: fixed;
+  inline-size: 6.75rem;
+  block-size: 6.75rem;
+  transform: translate(-50%, -50%);
+}
+
+.dock-overlay__guide {
+  position: absolute;
+  inline-size: 2.125rem;
+  block-size: 2.125rem;
+  background: var(--dock-title-background-color);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.0625rem 0.1875rem rgb(0 0 0 / 35%);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0.3125rem;
+    background: var(--accent-color);
+    opacity: 0.3;
+  }
+
+  &--center {
+    inset-inline-start: 2.3125rem;
+    inset-block-start: 2.3125rem;
+  }
+
+  &--left {
+    inset-inline-start: 0;
+    inset-block-start: 2.3125rem;
+  }
+
+  &--right {
+    inset-inline-end: 0;
+    inset-block-start: 2.3125rem;
+  }
+
+  &--top {
+    inset-inline-start: 2.3125rem;
+    inset-block-start: 0;
+  }
+
+  &--bottom {
+    inset-inline-start: 2.3125rem;
+    inset-block-end: 0;
+  }
+
+  &--hot {
+    background: var(--accent-color);
+
+    &::after {
+      opacity: 0.6;
+    }
+  }
+
+  &--disabled {
+    opacity: 0.25;
+    filter: grayscale(1);
+  }
+}
+
+.dock-overlay__edge {
+  position: fixed;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  background: var(--dock-title-background-color);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.0625rem 0.25rem rgb(0 0 0 / 40%);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0.375rem;
+    background: var(--accent-color);
+    opacity: 0.3;
+  }
+
+  &--hot {
+    background: var(--accent-color);
+
+    &::after {
+      opacity: 0.6;
+    }
+  }
+}
+
+.dock-overlay__ghost {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background: var(--dock-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.625rem 1.875rem rgb(0 0 0 / 50%);
+  opacity: 0.8;
+  overflow: hidden;
+}
+
+.dock-overlay__ghost-title {
+  display: flex;
+  align-items: center;
+  block-size: 1.5rem;
+  padding-inline: 0.5rem;
+  color: var(--dock-title-foreground-color--focused);
+  background: var(--dock-title-background-color--focused);
+  font-size: 0.8rem;
+  font-weight: 600;
+}

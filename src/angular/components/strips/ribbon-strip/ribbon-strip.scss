@@ -1,3 +1,25 @@
 :host {
+  display: block;
+  color: var(--body-foreground-color);
   background: var(--ribbon-strip-background-color);
+}
+
+.ribbon {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.ribbon__tool {
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid var(--title-strip-border-color);
+  border-radius: 0.4rem;
+  corner-shape: squircle;
+  opacity: 0.7;
+  cursor: default;
 }

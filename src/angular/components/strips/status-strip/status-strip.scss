@@ -1,6 +1,24 @@
 :host {
   footer {
-    padding: 0.4rem 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.75rem;
+    color: var(--status-strip-foreground-color);
     background-color: var(--status-strip-background-color);
   }
+}
+
+.status-strip__group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-strip__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
 }
