@@ -43,4 +43,7 @@
   --focus-ring-width: 0.125rem;
 
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
+
+  // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
+  --dock-panel-radius: 0.5rem;
 }

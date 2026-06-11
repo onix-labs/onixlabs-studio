@@ -26,4 +26,9 @@
   min-inline-size: 2.625rem;
   min-block-size: 2rem;
   overflow: hidden;
+  // Each pane frames its panel in a softly rounded cell, a shade between the dock-area gaps and the
+  // panel surface, using the same radius and corner shape as the tabs.
+  background: var(--dock-pane-background-color);
+  border-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
 }

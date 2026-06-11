@@ -58,4 +58,7 @@
   --dock-tab-foreground-color--active: var(--gray-200);
 
   --dock-empty-foreground-color: var(--gray-600);
+
+  // The pane cell that frames each panel: a shade between the dock-area gaps and the panel surface.
+  --dock-pane-background-color: color-mix(in srgb, var(--gray-900) 65%, var(--gray-800));
 }
