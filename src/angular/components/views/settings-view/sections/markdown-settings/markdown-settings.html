@@ -1,0 +1,40 @@
+<app-setting-row label="Body font" description="Font family used for body text.">
+  <app-text-field
+    [value]="markdown().fontFamily"
+    placeholder="System Default"
+    (valueChange)="onFontFamilyChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Monospace font" description="Font family used for code blocks.">
+  <app-text-field
+    [value]="markdown().monospaceFontFamily"
+    placeholder="JetBrains Mono"
+    (valueChange)="onMonospaceFontFamilyChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Font size" description="Base font size in pixels.">
+  <app-number-field
+    [min]="8"
+    [max]="48"
+    [value]="markdown().fontSize"
+    (valueChange)="onFontSizeChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Margin size" description="Width of the document margins.">
+  <app-dropdown
+    [options]="marginOptions"
+    [value]="markdown().marginSize"
+    (valueChange)="onMarginSizeChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row label="Image sizing" description="How images are sized in the document.">
+  <app-dropdown
+    [options]="imageSizingOptions"
+    [value]="markdown().imageSizing"
+    (valueChange)="onImageSizingChange($event)"
+  />
+</app-setting-row>
