@@ -1,0 +1,10 @@
+<div class="ribbon-split">
+  <button type="button" class="ribbon-split__action" [disabled]="disabled()" (click)="onAction()">
+    <i [class]="icon()"></i>
+    <span>{{ label() }}</span>
+  </button>
+  <button type="button" class="ribbon-split__menu" [disabled]="disabled()" (click)="onMenu()">
+    <span>{{ menuLabel() }}</span>
+    <i class="ti ti-chevron-down"></i>
+  </button>
+</div>

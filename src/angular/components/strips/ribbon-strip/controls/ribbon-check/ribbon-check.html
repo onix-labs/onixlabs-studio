@@ -1,0 +1,9 @@
+<label class="ribbon-check">
+  <input
+    type="checkbox"
+    [checked]="checked()"
+    [disabled]="disabled()"
+    (change)="onChange($event)"
+  />
+  <span>{{ label() }}</span>
+</label>

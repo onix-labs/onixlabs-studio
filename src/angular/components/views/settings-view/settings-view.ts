@@ -103,9 +103,8 @@ export class SettingsView {
    */
   protected readonly selectedSectionLabel: Signal<string> = computed(
     (): string =>
-      this.sections.find(
-        (section: SettingsSection): boolean => section.id === this.section(),
-      )?.label ?? '',
+      this.sections.find((section: SettingsSection): boolean => section.id === this.section())
+        ?.label ?? '',
   );
 
   /**

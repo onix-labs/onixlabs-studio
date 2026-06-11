@@ -1,0 +1,26 @@
+<app-ribbon-group title="Session">
+  <app-ribbon-button icon="ti ti-plus" label="New" />
+  <app-ribbon-button icon="ti ti-layout-columns" label="Split" />
+  <app-ribbon-button icon="ti ti-trash" label="Kill" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Clipboard">
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-copy" label="Copy" />
+    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" />
+    <app-ribbon-button-small icon="ti ti-eraser" label="Clear" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Profile">
+  <app-ribbon-column>
+    <app-ribbon-field label="Shell" [options]="['zsh', 'bash', 'pwsh']" value="zsh" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="View">
+  <app-ribbon-column>
+    <app-ribbon-check label="Scroll Lock" />
+    <app-ribbon-check label="Word Wrap" [checked]="true" />
+  </app-ribbon-column>
+</app-ribbon-group>

@@ -1,0 +1,31 @@
+<app-ribbon-group title="Session">
+  <app-ribbon-button icon="ti ti-message-plus" label="New Chat" />
+  <app-ribbon-button icon="ti ti-player-stop" label="Stop" />
+  <app-ribbon-button icon="ti ti-eraser" label="Clear" />
+</app-ribbon-group>
+
+<app-ribbon-group title="Model">
+  <app-ribbon-column>
+    <app-ribbon-field
+      label="Model"
+      [options]="['Opus 4.8', 'Sonnet 4.6', 'Haiku 4.5']"
+      value="Opus 4.8"
+    />
+    <app-ribbon-field label="Mode" [options]="['Chat', 'Agent']" value="Agent" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Context">
+  <app-ribbon-column>
+    <app-ribbon-button-small icon="ti ti-paperclip" label="Attach File" />
+    <app-ribbon-button-small icon="ti ti-folder-plus" label="Add Folder" />
+    <app-ribbon-button-small icon="ti ti-x" label="Clear Context" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Options">
+  <app-ribbon-column>
+    <app-ribbon-check label="Stream" [checked]="true" />
+    <app-ribbon-check label="Auto-scroll" [checked]="true" />
+  </app-ribbon-column>
+</app-ribbon-group>

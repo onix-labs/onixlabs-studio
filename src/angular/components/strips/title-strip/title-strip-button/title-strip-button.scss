@@ -6,17 +6,20 @@
     block-size: 1.75rem;
     inline-size: 1.75rem;
     font-size: 1.25rem;
-    background: var(--title-strip-button-background-color);
+    background: transparent;
     color: var(--title-strip-button-foreground-color);
-    border: none;
+    border: 0.0625rem solid transparent;
     border-radius: 0.5rem;
     corner-shape: squircle;
-    transition: var(--hover-transition);
+    transition:
+      var(--hover-transition),
+      border-color 150ms ease-in-out;
     -webkit-app-region: no-drag;
 
     &:hover {
-      background: var(--title-strip-button-background-color--hover);
-      color: var(--title-strip-button-foreground-color--hover);
+      background: var(--accent-surface-background-color);
+      border-color: var(--accent-surface-border-color);
+      color: var(--accent-surface-foreground-color);
     }
 
     &:focus-visible {

@@ -1,0 +1,28 @@
+:host {
+  display: block;
+}
+
+.ribbon-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    margin: 0;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+  }
+
+  input:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:has(input:disabled) {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

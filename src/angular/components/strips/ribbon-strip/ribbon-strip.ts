@@ -1,25 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { TabType } from '../../../services/tabs/tab';
 import { Tabs } from '../../../services/tabs/tabs';
+import { AgentRibbon } from './ribbons/agent-ribbon/agent-ribbon';
+import { CodeRibbon } from './ribbons/code-ribbon/code-ribbon';
+import { DirectoryRibbon } from './ribbons/directory-ribbon/directory-ribbon';
+import { MarkdownRibbon } from './ribbons/markdown-ribbon/markdown-ribbon';
+import { TerminalRibbon } from './ribbons/terminal-ribbon/terminal-ribbon';
 
 /**
- * Specifies the placeholder ribbon tools shown for each tab type.
- */
-const RIBBON_TOOLS: Readonly<Record<TabType, readonly string[]>> = {
-  directory: ['Build', 'Run', 'Debug', 'Search'],
-  code: ['Save', 'Undo', 'Redo', 'Format'],
-  markdown: ['Bold', 'Italic', 'Heading', 'List'],
-  terminal: ['Copy', 'Paste', 'Clear', 'New'],
-  agent: ['New chat', 'Stop', 'Model'],
-  settings: [],
-};
-
-/**
- * Represents the contextual ribbon strip, whose tools depend on the active tab type.
+ * Represents the contextual ribbon strip, whose content depends on the active tab type. The
+ * settings tab (and the absence of any tab) deliberately shows no ribbon.
  */
 @Component({
   selector: 'app-ribbon-strip',
-  imports: [],
+  imports: [DirectoryRibbon, CodeRibbon, MarkdownRibbon, TerminalRibbon, AgentRibbon],
   templateUrl: './ribbon-strip.html',
   styleUrl: './ribbon-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,10 +25,9 @@ export class RibbonStrip {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Gets the placeholder tools for the active tab type.
+   * Gets the type of the active tab, or `undefined` when no tab is active.
    */
-  protected readonly tools: Signal<readonly string[]> = computed((): readonly string[] => {
-    const type: TabType | undefined = this.tabsService.activeTab()?.type;
-    return type === undefined ? [] : RIBBON_TOOLS[type];
-  });
+  protected readonly activeType: Signal<TabType | undefined> = computed(
+    (): TabType | undefined => this.tabsService.activeTab()?.type,
+  );
 }
