@@ -42,6 +42,13 @@
   --focus-ring-color: var(--accent-color);
   --focus-ring-width: 0.125rem;
 
+  // Accent surface: a subtle accent-tinted fill paired with a brighter accent border. Toolbar
+  // command buttons (title strip, ribbon) are transparent at rest and adopt this surface on hover.
+  // Built from the accent RGB triplet so it tracks whichever accent the Theme service applies.
+  --accent-surface-background-color: rgba(var(--accent-color-rgb), 0.15);
+  --accent-surface-border-color: rgba(var(--accent-color-rgb), 0.6);
+  --accent-surface-foreground-color: var(--accent-color);
+
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.

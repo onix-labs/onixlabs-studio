@@ -20,11 +20,14 @@
   border-radius: 0.375rem;
   corner-shape: squircle;
   cursor: pointer;
-  transition: var(--hover-transition);
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover {
-    background: var(--ribbon-control-background-color--hover);
-    border-color: var(--ribbon-control-border-color--hover);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:focus-visible {
@@ -39,8 +42,9 @@
   }
 
   &[aria-pressed='true'] {
-    background: var(--ribbon-control-background-color--active);
-    border-color: var(--ribbon-control-border-color--hover);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   .ti {

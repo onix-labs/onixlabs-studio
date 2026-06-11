@@ -5,13 +5,15 @@
 .ribbon-split {
   display: flex;
   flex-direction: column;
+  background: transparent;
   border: 0.0625rem solid transparent;
   border-radius: 0.5rem;
   corner-shape: squircle;
   overflow: hidden;
+  transition: border-color 150ms ease-in-out;
 
   &:hover {
-    border-color: var(--ribbon-control-border-color--hover);
+    border-color: var(--accent-surface-border-color);
   }
 }
 
@@ -32,7 +34,8 @@
   transition: var(--hover-transition);
 
   &:hover {
-    background: var(--ribbon-control-background-color--hover);
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:focus-visible {
@@ -60,7 +63,8 @@
   transition: var(--hover-transition);
 
   &:hover {
-    background: var(--ribbon-control-background-color--hover);
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:focus-visible {

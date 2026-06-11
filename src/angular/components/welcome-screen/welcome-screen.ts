@@ -22,10 +22,11 @@ export class WelcomeScreen {
   /**
    * Opens a directory or file from the file system.
    *
-   * TODO: Wire this to an Electron open dialog and route the selection into tabs.
+   * For now this simply opens a new directory tab; TODO: wire this to an Electron open dialog and
+   * route the selection into tabs.
    */
   protected openFiles(): void {
-    // Intentionally left as a placeholder until the file/directory open flow is implemented.
+    this.tabsService.open('directory');
   }
 
   /**
