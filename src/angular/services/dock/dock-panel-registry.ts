@@ -1,5 +1,6 @@
 import { Service } from '@angular/core';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { DockPanel } from './dock-panel';
 import { StackRole } from './dock-node';
 
@@ -63,7 +64,13 @@ export class DockPanelRegistry {
       icon: string,
     ): void => this.add(id, title, icon, 'document');
 
-    tool('solution', 'Solution Explorer', 'ti ti-sitemap');
+    this.register({
+      id: 'solution',
+      title: 'Solution Explorer',
+      icon: 'ti ti-sitemap',
+      role: 'tool',
+      component: TreePanel,
+    });
     tool('toolbox', 'Toolbox', 'ti ti-tools');
     tool('props', 'Properties', 'ti ti-adjustments');
     tool('output', 'Output', 'ti ti-terminal');
