@@ -1,13 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Tab } from '../../../../services/tabs/tab';
+import { Icon } from '../../../../icons/icon';
 import { TitleStripTab } from './title-strip-tab';
 
 describe('TitleStripTab', () => {
   let component: TitleStripTab;
   let fixture: ComponentFixture<TitleStripTab>;
 
-  const sampleTab: Tab = { id: 'tab-1', type: 'code', title: 'Code', icon: 'ti ti-file-code' };
+  const sampleTab: Tab = { id: 'tab-1', type: 'code', title: 'Code', icon: Icon.CODE };
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({

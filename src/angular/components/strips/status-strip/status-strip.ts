@@ -41,7 +41,9 @@ export class StatusStrip {
         return [{ id: 'ready', text: 'Ready' }];
       }
 
-      return [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon }];
+      // The status strip still renders segment icons as raw classes; bridge the tab's icon token to
+      // its class list until the status strip is migrated to the app-icon component.
+      return [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon.classList }];
     },
   );
 

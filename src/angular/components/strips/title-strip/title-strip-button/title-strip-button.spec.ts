@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { TitleStripButton } from './title-strip-button';
+import { Icon } from '../../../../icons/icon';
 
 describe('TitleStripButton', () => {
   let component: TitleStripButton;
@@ -12,7 +13,7 @@ describe('TitleStripButton', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TitleStripButton);
-    fixture.componentRef.setInput('icon', 'ti ti-plus');
+    fixture.componentRef.setInput('icon', Icon.GRID_DOTS);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

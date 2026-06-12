@@ -1,0 +1,12 @@
+:host {
+  display: inline-flex;
+  line-height: 1;
+}
+
+// The glyph element must be block-level, or the rotation transform would have no effect on it. A
+// short transition lets state-driven rotations (such as a caret toggling on expand) animate for
+// free; it is inert for icons whose rotation never changes.
+i {
+  display: inline-block;
+  transition: transform 120ms ease;
+}

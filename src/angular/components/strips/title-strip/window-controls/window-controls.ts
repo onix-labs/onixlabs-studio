@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Studio } from '../../../../services/studio/studio';
+import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
 
 /**
  * Represents the custom window controls (minimize, maximize, close) shown on platforms without
@@ -7,12 +9,17 @@ import { Studio } from '../../../../services/studio/studio';
  */
 @Component({
   selector: 'app-window-controls',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './window-controls.html',
   styleUrl: './window-controls.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WindowControls {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the Studio bridge wrapper used to control the window.
    */

@@ -1,3 +1,5 @@
+import { Icon } from '../../icons/icon';
+
 /**
  * Specifies the kinds of top-level tab the application supports.
  */
@@ -23,9 +25,9 @@ export interface Tab {
   readonly title: string;
 
   /**
-   * Gets the icon CSS class of the tab (a Tabler webfont class such as `ti ti-folder`).
+   * Gets the icon of the tab.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 
   /**
    * Gets a value indicating whether the tab has unsaved changes. Surfaced as a dirty indicator on
@@ -44,21 +46,21 @@ export interface TabTypeMetadata {
   readonly label: string;
 
   /**
-   * Gets the icon CSS class for the tab type (a Tabler webfont class such as `ti ti-folder`).
+   * Gets the icon for the tab type.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 }
 
 /**
  * Specifies the display metadata (label and icon) for every {@link TabType}.
  */
 export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
-  directory: { label: 'Directory', icon: 'ti ti-folder' },
-  code: { label: 'Code', icon: 'ti ti-file-code' },
-  markdown: { label: 'Markdown', icon: 'ti ti-markdown' },
-  terminal: { label: 'Terminal', icon: 'ti ti-terminal-2' },
-  agent: { label: 'Agent', icon: 'ti ti-robot' },
-  settings: { label: 'Settings', icon: 'ti ti-settings' },
+  directory: { label: 'Directory', icon: Icon.DIRECTORY },
+  code: { label: 'Code', icon: Icon.CODE },
+  markdown: { label: 'Markdown', icon: Icon.MARKDOWN },
+  terminal: { label: 'Terminal', icon: Icon.TERMINAL },
+  agent: { label: 'Agent', icon: Icon.AGENT },
+  settings: { label: 'Settings', icon: Icon.SETTINGS },
 };
 
 /**

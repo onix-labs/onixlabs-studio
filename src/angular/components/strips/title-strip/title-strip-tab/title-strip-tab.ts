@@ -18,18 +18,25 @@ import {
   Signal,
 } from '@angular/core';
 import { Tab } from '../../../../services/tabs/tab';
+import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
 
 /**
  * Represents a single tab in the title strip.
  */
 @Component({
   selector: 'app-title-strip-tab',
-  imports: [CdkDrag, CdkDragPreview],
+  imports: [CdkDrag, CdkDragPreview, AppIcon],
   templateUrl: './title-strip-tab.html',
   styleUrl: './title-strip-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TitleStripTab {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the application reference, used to flush change detection synchronously on activation.
    */

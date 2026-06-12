@@ -1,6 +1,6 @@
 <app-title-strip-button
-  icon="ti ti-settings"
+  [icon]="Icon.SETTINGS"
   [disabled]="isSettingsOpen()"
   (action)="openSettings()"
 />
-<app-title-strip-button icon="ti ti-grid-dots" (action)="openNewTab()" />
+<app-title-strip-button [icon]="Icon.GRID_DOTS" (action)="openNewTab()" />

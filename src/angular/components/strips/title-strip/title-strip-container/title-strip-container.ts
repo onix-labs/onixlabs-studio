@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { WindowLock } from '../../../../services/window-lock/window-lock';
+import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
 import { TitleStripButtonList } from '../title-strip-button-list/title-strip-button-list';
 import { TitleStripTabList } from '../title-strip-tab-list/title-strip-tab-list';
 import { WindowControls } from '../window-controls/window-controls';
@@ -10,7 +12,7 @@ import { WindowControls } from '../window-controls/window-controls';
  */
 @Component({
   selector: 'app-title-strip-container',
-  imports: [TitleStripButtonList, TitleStripTabList, WindowControls],
+  imports: [TitleStripButtonList, TitleStripTabList, WindowControls, AppIcon],
   templateUrl: './title-strip-container.html',
   styleUrl: './title-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,6 +21,11 @@ import { WindowControls } from '../window-controls/window-controls';
   },
 })
 export class TitleStripContainer {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the window-lock state controlling whether the window may be dragged.
    */

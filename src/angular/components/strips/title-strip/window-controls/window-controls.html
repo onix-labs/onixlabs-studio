@@ -6,7 +6,7 @@
       aria-label="Minimize"
       (click)="minimize()"
     >
-      <i class="ti ti-minus"></i>
+      <app-icon [icon]="Icon.WINDOW_MINIMIZE" />
     </button>
     <button
       type="button"
@@ -14,7 +14,7 @@
       aria-label="Maximize"
       (click)="toggleMaximize()"
     >
-      <i class="ti ti-square"></i>
+      <app-icon [icon]="Icon.WINDOW_MAXIMIZE" />
     </button>
     <button
       type="button"
@@ -22,7 +22,7 @@
       aria-label="Close"
       (click)="close()"
     >
-      <i class="ti ti-x"></i>
+      <app-icon [icon]="Icon.WINDOW_CLOSE" />
     </button>
   </div>
 }
