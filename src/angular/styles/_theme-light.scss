@@ -2,6 +2,9 @@
   --body-background-color: var(--gray-500);
   --body-foreground-color: var(--gray-900);
 
+  // On the light surface a slightly darker accent reads punchier as hover content than the base.
+  --accent-surface-foreground-color: color-mix(in srgb, var(--accent-color), black 15%);
+
   --root-content-background-color: var(--gray-700);
 
   --title-strip-background-color: var(--gray-500);
