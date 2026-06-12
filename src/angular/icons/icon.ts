@@ -413,7 +413,51 @@ export class Icon {
    */
   public static readonly SEND: Icon = new Icon('ph ph-paper-plane-tilt');
 
+  // --- Settings ---
+
+  /**
+   * Gets the appearance (palette) settings-section icon.
+   */
+  public static readonly PALETTE: Icon = new Icon('ph ph-palette');
+
+  /**
+   * Gets the application settings-section icon.
+   */
+  public static readonly APPLICATION: Icon = new Icon('ph ph-app-window');
+
+  /**
+   * Gets the light-theme icon.
+   */
+  public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');
+
+  /**
+   * Gets the dark-theme icon.
+   */
+  public static readonly THEME_DARK: Icon = new Icon('ph ph-moon');
+
+  /**
+   * Gets the system-theme icon.
+   */
+  public static readonly THEME_SYSTEM: Icon = new Icon('ph ph-monitor');
+
+  // --- Welcome ---
+
+  /**
+   * Gets the recent-items icon.
+   */
+  public static readonly RECENT: Icon = new Icon('ph ph-clock-counter-clockwise');
+
   // --- Shared affordances ---
+
+  /**
+   * Gets the add (plus) icon.
+   */
+  public static readonly PLUS: Icon = new Icon('ph ph-plus');
+
+  /**
+   * Gets the delete (trash) icon.
+   */
+  public static readonly TRASH: Icon = new Icon('ph ph-trash');
 
   /**
    * Gets the downward caret used on menus and split buttons.

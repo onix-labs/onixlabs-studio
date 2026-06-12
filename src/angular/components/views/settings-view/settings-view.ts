@@ -12,6 +12,8 @@ import { ApplicationSettings } from './sections/application-settings/application
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
 import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Identifies a section in the settings navigation.
@@ -35,7 +37,7 @@ interface SettingsSection {
   /**
    * Gets the icon shown for the section.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 }
 
 /**
@@ -43,7 +45,13 @@ interface SettingsSection {
  */
 @Component({
   selector: 'app-settings-view',
-  imports: [AppearanceSettings, ApplicationSettings, TextEditorSettingsSection, MarkdownSettings],
+  imports: [
+    AppearanceSettings,
+    ApplicationSettings,
+    TextEditorSettingsSection,
+    MarkdownSettings,
+    AppIcon,
+  ],
   templateUrl: './settings-view.html',
   styleUrl: './settings-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,10 +72,10 @@ export class SettingsView {
    * Gets the sections offered by the settings navigation, in display order.
    */
   protected readonly sections: readonly SettingsSection[] = [
-    { id: 'appearance', label: 'Appearance', icon: 'ti ti-palette' },
-    { id: 'application', label: 'Application', icon: 'ti ti-app-window' },
-    { id: 'text-editor', label: 'Text Editor', icon: 'ti ti-file-code' },
-    { id: 'markdown', label: 'Markdown', icon: 'ti ti-markdown' },
+    { id: 'appearance', label: 'Appearance', icon: Icon.PALETTE },
+    { id: 'application', label: 'Application', icon: Icon.APPLICATION },
+    { id: 'text-editor', label: 'Text Editor', icon: Icon.CODE },
+    { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN },
   ];
 
   /**

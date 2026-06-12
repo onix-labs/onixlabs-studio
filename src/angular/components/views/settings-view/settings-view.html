@@ -9,7 +9,7 @@
         [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
         (click)="selectSection(section.id)"
       >
-        <i [class]="section.icon" aria-hidden="true"></i>
+        <app-icon [icon]="section.icon" />
         <span>{{ section.label }}</span>
       </button>
     }

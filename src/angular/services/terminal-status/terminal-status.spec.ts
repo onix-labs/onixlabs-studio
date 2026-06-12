@@ -2,6 +2,7 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { StatusBar } from '../status-bar/status-bar';
+import { Icon } from '../../icons/icon';
 import { TerminalStatus } from './terminal-status';
 
 describe('TerminalStatus', () => {
@@ -21,7 +22,7 @@ describe('TerminalStatus', () => {
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.trailing()).toEqual([
-      { id: 'terminal-cwd', text: '/home/user/project', icon: 'ti ti-folder' },
+      { id: 'terminal-cwd', text: '/home/user/project', icon: Icon.FOLDER },
     ]);
   });
 

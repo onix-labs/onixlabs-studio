@@ -1,4 +1,5 @@
 import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Icon } from '../../icons/icon';
 
 /**
  * Describes an entry shown in the welcome screen's recent-items list.
@@ -20,9 +21,9 @@ export interface RecentItem {
   readonly detail: string;
 
   /**
-   * Gets the Tabler icon class used to represent the item.
+   * Gets the icon used to represent the item.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 }
 
 /**

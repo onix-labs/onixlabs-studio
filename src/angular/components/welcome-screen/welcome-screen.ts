@@ -4,6 +4,8 @@ import { RecentItem, RecentItems } from '../../services/recent-items/recent-item
 import { TabType } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
+import { Icon } from '../../icons/icon';
+import { AppIcon } from '../shared/icon/app-icon';
 
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.
@@ -14,7 +16,7 @@ import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,6 +25,11 @@ import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
   },
 })
 export class WelcomeScreen {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the tab registry the welcome actions open into.
    */

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
 import { Tab } from '../../../services/tabs/tab';
 import { Tabs } from '../../../services/tabs/tabs';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Represents the status strip, which shows contextual segments published by the active view and
@@ -9,7 +10,7 @@ import { Tabs } from '../../../services/tabs/tabs';
  */
 @Component({
   selector: 'app-status-strip',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './status-strip.html',
   styleUrl: './status-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -41,9 +42,7 @@ export class StatusStrip {
         return [{ id: 'ready', text: 'Ready' }];
       }
 
-      // The status strip still renders segment icons as raw classes; bridge the tab's icon token to
-      // its class list until the status strip is migrated to the app-icon component.
-      return [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon.classList }];
+      return [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon }];
     },
   );
 

@@ -13,6 +13,8 @@ import {
   Settings,
   TextEditorSettings,
 } from '../../../../../services/settings/settings';
+import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../../shared/icon/app-icon';
 
 /**
  * Identifies a boolean text editor setting that can be overridden per profile.
@@ -54,12 +56,18 @@ interface BooleanSetting {
     NumberField,
     Accordion,
     LanguageSelect,
+    AppIcon,
   ],
   templateUrl: './text-editor-settings.html',
   styleUrls: ['../section.scss', './text-editor-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TextEditorSettingsSection {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the settings service the controls are bound to.
    */

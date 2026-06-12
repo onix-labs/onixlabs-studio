@@ -5,7 +5,7 @@
     [attr.aria-expanded]="expanded()"
     (click)="toggle()"
   >
-    <i class="ti" [class.ti-chevron-down]="expanded()" [class.ti-chevron-right]="!expanded()"></i>
+    <app-icon [icon]="expanded() ? Icon.CARET_DOWN : Icon.CARET_RIGHT" />
     <span>{{ heading() }}</span>
   </button>
   @if (expanded()) {

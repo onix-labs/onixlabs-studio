@@ -1,4 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Icon } from '../../icons/icon';
 
 /**
  * Defines a single segment of contextual information shown in the status strip.
@@ -15,10 +16,9 @@ export interface StatusSegment {
   readonly text: string;
 
   /**
-   * Gets the optional icon CSS class of the segment (a Tabler webfont class such as
-   * `ti ti-git-branch`).
+   * Gets the optional icon of the segment.
    */
-  readonly icon?: string;
+  readonly icon?: Icon;
 }
 
 /**
