@@ -1,6 +1,7 @@
 import { Service } from '@angular/core';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
+import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { DockPanel } from './dock-panel';
 import { StackRole } from './dock-node';
@@ -81,7 +82,13 @@ export class DockPanelRegistry {
       role: 'tool',
       component: OutputPanel,
     });
-    tool('errors', 'Error List', 'ti ti-alert-triangle');
+    this.register({
+      id: 'errors',
+      title: 'Error List',
+      icon: 'ti ti-alert-triangle',
+      role: 'tool',
+      component: ProblemsPanel,
+    });
     document('doc1', 'Program.cs', 'ti ti-file-code');
     document('doc2', 'Startup.cs', 'ti ti-file-code');
     document('doc3', 'readme.md', 'ti ti-markdown');

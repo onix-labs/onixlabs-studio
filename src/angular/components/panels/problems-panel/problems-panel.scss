@@ -1,0 +1,121 @@
+// The Problems (Error List) dock panel body. The dock supplies the title bar; this fills and
+// scrolls. Colours come from the shipped dock tokens and the accent palette's status colours.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+
+  // Status colours borrowed from the accent palette (no dedicated tokens yet).
+  --problem-error: var(--accent-coral);
+  --problem-warning: var(--accent-orange);
+  --problem-info: var(--accent-cyan);
+  --problem-hint: var(--accent-teal);
+}
+
+.problems-summary {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.75rem;
+  padding: 0.3rem 0.625rem;
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+  font-size: 0.78rem;
+}
+
+.problems-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  &--error {
+    color: var(--problem-error);
+  }
+
+  &--warning {
+    color: var(--problem-warning);
+  }
+}
+
+.problems-list {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.problems-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.2rem 0.625rem;
+  font-size: 0.8rem;
+}
+
+.problems-icon {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.875rem;
+
+  .problems-row--error & {
+    color: var(--problem-error);
+  }
+
+  .problems-row--warning & {
+    color: var(--problem-warning);
+  }
+
+  .problems-row--info & {
+    color: var(--problem-info);
+  }
+
+  .problems-row--hint & {
+    color: var(--problem-hint);
+  }
+}
+
+.problems-message {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  color: var(--dock-tab-foreground-color--active);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems-location {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.problems-source {
+  margin-inline-start: 0.375rem;
+  padding-inline: 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--dock-title-background-color--focused);
+}
+
+.problems-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  color: var(--dock-tab-foreground-color);
+  opacity: 0.7;
+
+  i {
+    font-size: 1.5rem;
+    color: var(--accent-green);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.8rem;
+  }
+}
