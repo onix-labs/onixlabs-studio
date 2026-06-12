@@ -1,0 +1,9 @@
+@if (isMarkdown()) {
+  <app-markdown-view
+    [content]="markdownContent()"
+    [isActive]="isActive()"
+    (contentChange)="onMarkdownChange($event)"
+  />
+} @else {
+  <app-code-view [tabId]="documentId()" [isActive]="isActive()" />
+}

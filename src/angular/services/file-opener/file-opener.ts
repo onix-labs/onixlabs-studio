@@ -1,5 +1,10 @@
 import { inject, Service } from '@angular/core';
-import { DirectoryListing, OpenSelection } from '../../../shared/studio-api';
+import { DirectoryListing, FileInfo, OpenSelection } from '../../../shared/studio-api';
+import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
+import { DockPanelRegistry } from '../dock/dock-panel-registry';
+import { DockState } from '../dock/dock-state';
+import { firstStackOfRole } from '../dock/dock-tree';
+import { StackNode } from '../dock/dock-node';
 import { Documents } from '../documents/documents';
 import { Output } from '../output/output';
 import { Tab, TabType } from '../tabs/tab';
@@ -40,6 +45,16 @@ export class FileOpener {
   private readonly output: Output = inject(Output);
 
   /**
+   * Holds the dock layout the document well lives in.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the dock panel registry that document panels are registered with.
+   */
+  private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
    * Shows the combined open dialog (file or folder) and routes the selection.
    * @returns Returns true when something was opened, or false when cancelled or a binary was chosen.
    */
@@ -48,12 +63,22 @@ export class FileOpener {
   }
 
   /**
-   * Opens a known file path (for example, from the directory tree) into the right editor tab.
+   * Opens a file from a workspace's directory tree into that workspace's document well, reusing the
+   * panel when the file is already open. The editor is chosen by file type (Milkdown for markdown,
+   * Monaco otherwise).
    * @param path The absolute path of the file to open; must be inside the workspace.
    * @returns Returns true when the file was opened, or false when unreadable or binary.
    */
   public async openPath(path: string): Promise<boolean> {
-    return this.route(await this.workspace.readFile(path));
+    const selection: OpenSelection | null = await this.workspace.readFile(path);
+    if (selection === null || selection.kind === 'directory') {
+      return false;
+    }
+    if (selection.kind === 'binary') {
+      this.output.appendLine(`Skipped binary file ${selection.path}`);
+      return false;
+    }
+    return this.openInWell(selection.file);
   }
 
   /**
@@ -100,11 +125,49 @@ export class FileOpener {
   }
 
   /**
+   * Opens a file into the workspace's document well, reusing the panel when it is already open and
+   * registering a new document panel otherwise.
+   * @param fileInfo The file to open.
+   * @returns Returns true when the document well is available and the file was opened.
+   */
+  private openInWell(fileInfo: FileInfo): boolean {
+    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    if (well === null) {
+      return false;
+    }
+    const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
+    if (existing !== undefined) {
+      this.dockState.setActive(well.id, existing);
+      return true;
+    }
+    const id: string = this.documents.createWellDocument(fileInfo);
+    this.registry.register({
+      id,
+      title: fileInfo.name,
+      icon: this.dockIconFor(fileInfo.extension),
+      role: 'document',
+      component: DocumentPanel,
+    });
+    this.dockState.tabInto(well.id, id);
+    this.output.appendLine(`Opened ${fileInfo.path}`);
+    return true;
+  }
+
+  /**
    * Determines whether a file extension routes to the markdown editor.
    * @param extension The file extension, including the leading dot.
    * @returns Returns true when the extension is a markdown extension.
    */
   private isMarkdown(extension: string): boolean {
     return MARKDOWN_EXTENSIONS.has(extension.toLowerCase());
+  }
+
+  /**
+   * Resolves the dock tab icon for a document by file extension.
+   * @param extension The file extension, including the leading dot.
+   * @returns Returns the Tabler icon class.
+   */
+  private dockIconFor(extension: string): string {
+    return this.isMarkdown(extension) ? 'ti ti-markdown' : 'ti ti-file-code';
   }
 }

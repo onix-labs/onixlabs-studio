@@ -139,6 +139,16 @@
   overflow: auto;
 }
 
+// One pane per open document in a well; only the active pane is visible, the rest stay mounted but
+// hidden so editor state survives tab switches.
+.dock-tab-group__pane {
+  block-size: 100%;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
 .dock-tab-group__empty {
   display: grid;
   place-items: center;

@@ -217,6 +217,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       if (active) {
         editor.layout();
         this.registerCommandHandler();
+        this.documents.setActiveDocument(this.tabId());
         const position: MonacoApi.Position | null = editor.getPosition();
         this.codeStatus.setPosition(
           position === null ? null : { line: position.lineNumber, column: position.column },
@@ -260,6 +261,9 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.disposeEditor();
+    if (this.documents.activeDocumentId() === this.tabId()) {
+      this.documents.setActiveDocument(null);
+    }
     this.documents.remove(this.tabId());
     this.codeTerminals.remove(this.tabId());
   }

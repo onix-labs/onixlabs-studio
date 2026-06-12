@@ -1,5 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { DirectoryListing, OpenSelection, WorkspaceApi } from '../../../shared/studio-api';
+import { StackNode } from '../dock/dock-node';
+import { DockState } from '../dock/dock-state';
+import { firstStackOfRole } from '../dock/dock-tree';
 import { Tab } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 import { Workspace } from '../workspace/workspace';
@@ -40,6 +43,15 @@ describe('FileOpener', () => {
   let opener: FileOpener;
   let tabs: Tabs;
   let workspace: Workspace;
+  let dockState: DockState;
+
+  /**
+   * Returns the panels currently open in the document well.
+   */
+  function wellPanels(): readonly string[] {
+    const well: StackNode | null = firstStackOfRole(dockState.layout(), 'document');
+    return well?.panels ?? [];
+  }
 
   beforeEach(() => {
     nextSelection = null;
@@ -50,6 +62,7 @@ describe('FileOpener', () => {
     opener = TestBed.inject(FileOpener);
     tabs = TestBed.inject(Tabs);
     workspace = TestBed.inject(Workspace);
+    dockState = TestBed.inject(DockState);
   });
 
   afterEach(() => {
@@ -94,13 +107,23 @@ describe('FileOpener', () => {
     expect(tabs.tabs()).toHaveLength(0);
   });
 
-  it('openPath_whenFileAlreadyOpen_reusesTheSameTab', async () => {
+  it('openPath_whenFileOpened_addsADocumentToTheWellNotATab', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+    expect(await opener.openPath('/ws/main.ts')).toBe(true);
+    expect(wellPanels()).toHaveLength(1);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('openPath_whenFileAlreadyOpen_reusesTheSameDocument', async () => {
     nextSelection = {
       kind: 'file',
       file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
     };
     await opener.openPath('/ws/main.ts');
     await opener.openPath('/ws/main.ts');
-    expect(tabs.tabs()).toHaveLength(1);
+    expect(wellPanels()).toHaveLength(1);
   });
 });
