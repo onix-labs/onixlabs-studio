@@ -1,9 +1,10 @@
-// Monaco paints its own surface from the registered theme; this stylesheet only owns the container
-// that the editor fills. The host background matches the editor surface so any brief gap before the
-// editor lays out reads as part of the page.
+// Monaco paints its own surface from the registered theme; this stylesheet owns the layout that
+// splits the editor from its docked run terminal. The host background matches the editor surface so
+// any brief gap before the editor lays out reads as part of the page.
 
 :host {
   --code-view-background: var(--gray-100);
+  --code-view-splitter: var(--gray-300);
 
   display: block;
   inline-size: 100%;
@@ -14,9 +15,52 @@
 
 :host-context([data-theme-mode='dark']) {
   --code-view-background: var(--gray-900);
+  --code-view-splitter: var(--gray-700);
+}
+
+.code-layout {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  block-size: 100%;
+
+  &--side {
+    flex-direction: row;
+  }
+}
+
+.code-layout__editor {
+  position: relative;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
 }
 
 .editor-container {
   inline-size: 100%;
   block-size: 100%;
+}
+
+.code-layout__splitter {
+  flex: 0 0 0.375rem;
+  background: var(--code-view-splitter);
+  cursor: row-resize;
+
+  .code-layout--side & {
+    cursor: col-resize;
+  }
+
+  &--hidden {
+    display: none;
+  }
+}
+
+.code-layout__terminal {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
+
+  &--hidden {
+    display: none;
+  }
 }

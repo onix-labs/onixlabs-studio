@@ -1,0 +1,27 @@
+<div class="code-terminal">
+  <div class="code-terminal__bar">
+    <span class="code-terminal__title">Terminal</span>
+    <span class="code-terminal__spacer"></span>
+    <button type="button" aria-label="Toggle layout" title="Toggle layout" (click)="onLayout()">
+      <i class="ti ti-layout-board-split"></i>
+    </button>
+    <button type="button" aria-label="Cut" title="Cut" (click)="onCut()">
+      <i class="ti ti-scissors"></i>
+    </button>
+    <button type="button" aria-label="Copy" title="Copy" (click)="onCopy()">
+      <i class="ti ti-copy"></i>
+    </button>
+    <button type="button" aria-label="Clear" title="Clear" (click)="onClear()">
+      <i class="ti ti-eraser"></i>
+    </button>
+  </div>
+  <div class="code-terminal__body">
+    @if (tabId()) {
+      <app-terminal-view
+        [terminalId]="runTerminalId()"
+        [isActive]="isActive()"
+        (ready)="onReady()"
+      />
+    }
+  </div>
+</div>
