@@ -153,6 +153,24 @@ export class Documents {
   }
 
   /**
+   * Gets the document for a tab, if one exists.
+   * @param id The owning tab identifier.
+   * @returns Returns the tab's document, or undefined when none exists.
+   */
+  public get(id: string): CodeDocument | undefined {
+    return this.entries.get(id)?.document;
+  }
+
+  /**
+   * Sets the language of a tab's document, so the editor re-highlights with the chosen syntax.
+   * @param id The owning tab identifier.
+   * @param language The Monaco language identifier to apply.
+   */
+  public setLanguage(id: string, language: string): void {
+    this.entries.get(id)?.language.set(language);
+  }
+
+  /**
    * Shows an open-file dialog and, when a file is chosen, opens it in a new code tab.
    */
   public async openFile(): Promise<void> {

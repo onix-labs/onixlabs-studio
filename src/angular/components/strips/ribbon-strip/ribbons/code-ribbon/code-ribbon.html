@@ -4,6 +4,27 @@
   <app-ribbon-button icon="ti ti-file-export" label="Save As" (action)="onSaveAs()" />
 </app-ribbon-group>
 
+<app-ribbon-group title="Language">
+  <app-ribbon-column>
+    <app-ribbon-field
+      label="Syntax"
+      [options]="languageOptions"
+      [value]="languageName()"
+      (changed)="onLanguageChange($event)"
+    />
+  </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Run">
+  <app-ribbon-button
+    icon="ti ti-player-play"
+    label="Run"
+    [disabled]="!canRun()"
+    (action)="onRun()"
+  />
+  <app-ribbon-button icon="ti ti-terminal-2" label="Terminal" (action)="onTerminal()" />
+</app-ribbon-group>
+
 <app-ribbon-group title="Clipboard">
   <app-ribbon-column>
     <app-ribbon-button-small icon="ti ti-scissors" label="Cut" (action)="onCut()" />

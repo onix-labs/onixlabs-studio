@@ -1,21 +1,26 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
-import { Documents } from '../../../../../services/documents/documents';
+import { CodeRunner } from '../../../../../services/code-runner/code-runner';
+import { CodeTerminals } from '../../../../../services/code-terminals/code-terminals';
+import { CodeDocument, Documents } from '../../../../../services/documents/documents';
+import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '../../../../../services/settings/settings';
+import { Tabs } from '../../../../../services/tabs/tabs';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
+import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
 import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
 
 /**
  * Represents the contextual ribbon shown when a code tab is active. File actions act on the active
- * document, editor commands route through the {@link CodeCommands} registry, and the view toggles
- * drive the global editor settings live.
+ * document, editor commands route through the {@link CodeCommands} registry, the language field sets
+ * the active document's syntax, and Run/Terminal drive the docked run terminal.
  */
 @Component({
   selector: 'app-code-ribbon',
-  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonButtonSmall, RibbonCheck],
+  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonButtonSmall, RibbonCheck, RibbonField],
   templateUrl: './code-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,14 +32,85 @@ export class CodeRibbon {
   private readonly commands: CodeCommands = inject(CodeCommands);
 
   /**
-   * Holds the documents service handling open and save actions.
+   * Holds the documents service handling open, save and language.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the tabs registry, used to resolve the active code document.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the Monaco service supplying the language list.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the code runner driving the Run action.
+   */
+  private readonly runner: CodeRunner = inject(CodeRunner);
+
+  /**
+   * Holds the docked-terminal panel state backing the Terminal toggle.
+   */
+  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
 
   /**
    * Holds the settings service backing the view toggles.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the language list, in display order.
+   */
+  private readonly languages: readonly LanguageInfo[] = this.monaco.getSupportedLanguages();
+
+  /**
+   * Maps a language display name to its identifier.
+   */
+  private readonly idByName: ReadonlyMap<string, string> = new Map<string, string>(
+    this.languages.map((info: LanguageInfo): [string, string] => [info.name, info.id]),
+  );
+
+  /**
+   * Maps a language identifier to its display name.
+   */
+  private readonly nameById: ReadonlyMap<string, string> = new Map<string, string>(
+    this.languages.map((info: LanguageInfo): [string, string] => [info.id, info.name]),
+  );
+
+  /**
+   * Gets the language display names offered by the syntax field.
+   */
+  protected readonly languageOptions: readonly string[] = this.languages.map(
+    (info: LanguageInfo): string => info.name,
+  );
+
+  /**
+   * Gets the active document, or undefined when no code document is active.
+   */
+  private readonly activeDocument: Signal<CodeDocument | undefined> = computed(
+    (): CodeDocument | undefined => {
+      const id: string | undefined = this.tabs.activeTabId();
+      return id === undefined ? undefined : this.documents.get(id);
+    },
+  );
+
+  /**
+   * Gets the display name of the active document's language.
+   */
+  protected readonly languageName: Signal<string> = computed((): string => {
+    const language: string = this.activeDocument()?.language() ?? '';
+    return this.nameById.get(language) ?? '';
+  });
+
+  /**
+   * Gets a value indicating whether the active document's language can be run.
+   */
+  protected readonly canRun: Signal<boolean> = computed((): boolean =>
+    this.runner.canRun(this.activeDocument()?.language() ?? ''),
+  );
 
   /**
    * Gets a value indicating whether long lines are wrapped.
@@ -125,6 +201,39 @@ export class CodeRibbon {
    */
   protected onFind(): void {
     this.commands.find();
+  }
+
+  /**
+   * Applies the language chosen in the syntax field to the active document.
+   * @param name The selected language display name.
+   */
+  protected onLanguageChange(name: string): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    const language: string | undefined = this.idByName.get(name);
+    if (id !== undefined && language !== undefined) {
+      this.documents.setLanguage(id, language);
+    }
+  }
+
+  /**
+   * Runs the active document in its docked terminal.
+   */
+  protected onRun(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    const document: CodeDocument | undefined = this.activeDocument();
+    if (id !== undefined && document !== undefined) {
+      void this.runner.run(id, document.language(), document.content());
+    }
+  }
+
+  /**
+   * Toggles the docked terminal for the active tab.
+   */
+  protected onTerminal(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.codeTerminals.toggle(id);
+    }
   }
 
   /**
