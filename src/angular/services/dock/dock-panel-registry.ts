@@ -1,5 +1,6 @@
 import { Service } from '@angular/core';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
@@ -75,6 +76,13 @@ export class DockPanelRegistry {
     });
     tool('toolbox', 'Toolbox', 'ti ti-tools');
     tool('props', 'Properties', 'ti ti-adjustments');
+    this.register({
+      id: 'agent',
+      title: 'Agent',
+      icon: 'ti ti-robot',
+      role: 'tool',
+      component: AgentPanel,
+    });
     this.register({
       id: 'output',
       title: 'Output',

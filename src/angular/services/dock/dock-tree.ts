@@ -463,8 +463,9 @@ export function setSizes(tree: DockNode, splitId: string, sizes: readonly number
 
 /**
  * Builds the seeded default layout: the classic VS arrangement — a toolbox on the left, the
- * document well in the centre, the solution explorer over properties on the right, and the output
- * and error list along the bottom. This is the layout {@link DockState} starts with and resets to.
+ * document well in the centre, the solution explorer over the agent panel on the right, and the
+ * output and error list along the bottom. This is the layout {@link DockState} starts with and
+ * resets to.
  * @returns Returns a fresh default layout tree.
  */
 export function defaultLayout(): DockNode {
@@ -476,7 +477,7 @@ export function defaultLayout(): DockNode {
         [
           mkStack('tool', ['toolbox']),
           mkStack('document', ['doc1', 'doc2', 'doc3']),
-          mkSplit('col', [mkStack('tool', ['solution']), mkStack('tool', ['props'])], [1, 1]),
+          mkSplit('col', [mkStack('tool', ['solution']), mkStack('tool', ['agent'])], [1, 1]),
         ],
         [1.1, 4, 1.6],
       ),

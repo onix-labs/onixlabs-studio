@@ -1,0 +1,38 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DockPanel } from '../../../services/dock/dock-panel';
+
+import { AgentPanel } from './agent-panel';
+
+describe('AgentPanel', () => {
+  let component: AgentPanel;
+  let fixture: ComponentFixture<AgentPanel>;
+
+  const panel: DockPanel = {
+    id: 'agent',
+    title: 'Agent',
+    icon: 'ti ti-robot',
+    role: 'tool',
+    component: AgentPanel,
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [AgentPanel],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(AgentPanel);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('panel', panel);
+    await fixture.whenStable();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+
+  it('render_whenShown_embedsTheChatShell', () => {
+    fixture.detectChanges();
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('I am your workspace agent');
+  });
+});

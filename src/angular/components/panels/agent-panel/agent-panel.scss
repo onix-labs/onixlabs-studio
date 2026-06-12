@@ -1,0 +1,7 @@
+// The agent dock panel fills its body; the chat shell lives in app-agent-chat.
+:host {
+  display: block;
+  block-size: 100%;
+  overflow: hidden;
+  background: var(--dock-tab-background-color--active);
+}
