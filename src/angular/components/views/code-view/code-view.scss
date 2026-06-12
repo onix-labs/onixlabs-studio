@@ -1,0 +1,22 @@
+// Monaco paints its own surface from the registered theme; this stylesheet only owns the container
+// that the editor fills. The host background matches the editor surface so any brief gap before the
+// editor lays out reads as part of the page.
+
+:host {
+  --code-view-background: var(--gray-100);
+
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: hidden;
+  background: var(--code-view-background);
+}
+
+:host-context([data-theme-mode='dark']) {
+  --code-view-background: var(--gray-900);
+}
+
+.editor-container {
+  inline-size: 100%;
+  block-size: 100%;
+}
