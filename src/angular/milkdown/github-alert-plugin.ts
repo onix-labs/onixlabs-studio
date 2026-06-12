@@ -326,10 +326,9 @@ function createWrapInAlertCommand(alertType: AlertType): Command {
  */
 export const wrapInNoteAlertCommand: $Command<undefined> = $command(
   'wrapInNoteAlert',
-  (): Cmd<undefined> =>
-    (): Command => {
-      return createWrapInAlertCommand('note');
-    },
+  (): Cmd<undefined> => (): Command => {
+    return createWrapInAlertCommand('note');
+  },
 );
 
 /**
@@ -337,10 +336,9 @@ export const wrapInNoteAlertCommand: $Command<undefined> = $command(
  */
 export const wrapInTipAlertCommand: $Command<undefined> = $command(
   'wrapInTipAlert',
-  (): Cmd<undefined> =>
-    (): Command => {
-      return createWrapInAlertCommand('tip');
-    },
+  (): Cmd<undefined> => (): Command => {
+    return createWrapInAlertCommand('tip');
+  },
 );
 
 /**
@@ -348,10 +346,9 @@ export const wrapInTipAlertCommand: $Command<undefined> = $command(
  */
 export const wrapInImportantAlertCommand: $Command<undefined> = $command(
   'wrapInImportantAlert',
-  (): Cmd<undefined> =>
-    (): Command => {
-      return createWrapInAlertCommand('important');
-    },
+  (): Cmd<undefined> => (): Command => {
+    return createWrapInAlertCommand('important');
+  },
 );
 
 /**
@@ -359,10 +356,9 @@ export const wrapInImportantAlertCommand: $Command<undefined> = $command(
  */
 export const wrapInWarningAlertCommand: $Command<undefined> = $command(
   'wrapInWarningAlert',
-  (): Cmd<undefined> =>
-    (): Command => {
-      return createWrapInAlertCommand('warning');
-    },
+  (): Cmd<undefined> => (): Command => {
+    return createWrapInAlertCommand('warning');
+  },
 );
 
 /**
@@ -370,10 +366,9 @@ export const wrapInWarningAlertCommand: $Command<undefined> = $command(
  */
 export const wrapInCautionAlertCommand: $Command<undefined> = $command(
   'wrapInCautionAlert',
-  (): Cmd<undefined> =>
-    (): Command => {
-      return createWrapInAlertCommand('caution');
-    },
+  (): Cmd<undefined> => (): Command => {
+    return createWrapInAlertCommand('caution');
+  },
 );
 
 /**

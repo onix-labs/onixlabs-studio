@@ -93,7 +93,10 @@ function transformInlineHtml(
       let foundClose: boolean = false;
 
       // Check if opening tag contains content too (e.g., <sub>text</sub>)
-      const fullMatch: RegExpMatchArray | null = new RegExp(`${openTag.source}(.+?)${closeTag.source}`, 'i').exec(node.value);
+      const fullMatch: RegExpMatchArray | null = new RegExp(
+        `${openTag.source}(.+?)${closeTag.source}`,
+        'i',
+      ).exec(node.value);
       if (fullMatch) {
         const newNode: SubSupNode = {
           type: nodeType,
@@ -160,7 +163,7 @@ export const remarkSubSup: $Remark<'remarkSubSup', undefined> = $remark(
               type: 'subscript',
               children: [{ type: 'text', value: content }],
             };
-            (parent.children)[index] = newNode as unknown as RootContent;
+            parent.children[index] = newNode as unknown as RootContent;
             return;
           }
 
@@ -172,7 +175,7 @@ export const remarkSubSup: $Remark<'remarkSubSup', undefined> = $remark(
               type: 'superscript',
               children: [{ type: 'text', value: content }],
             };
-            (parent.children)[index] = newNode as unknown as RootContent;
+            parent.children[index] = newNode as unknown as RootContent;
             return;
           }
         },

@@ -83,7 +83,7 @@ export const remarkHtmlImage: $Remark<'remarkHtmlImage', undefined> = $remark(
               type: 'htmlImageBlock',
               value: htmlContent,
             };
-            (parent.children)[index] = newNode as unknown as RootContent;
+            parent.children[index] = newNode as unknown as RootContent;
           }
         },
       );
@@ -104,7 +104,7 @@ export const remarkHtmlImage: $Remark<'remarkHtmlImage', undefined> = $remark(
               type: 'htmlImageBlock',
               value: node.value,
             };
-            (parent.children)[index] = newNode as unknown as RootContent;
+            parent.children[index] = newNode as unknown as RootContent;
           }
         },
       );
