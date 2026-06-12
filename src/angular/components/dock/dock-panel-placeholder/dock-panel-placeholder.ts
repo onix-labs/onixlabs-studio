@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Represents the placeholder body rendered for a dockable panel. It stands in for the real IDE
@@ -8,7 +9,7 @@ import { DockPanel } from '../../../services/dock/dock-panel';
  */
 @Component({
   selector: 'app-dock-panel-placeholder',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './dock-panel-placeholder.html',
   styleUrl: './dock-panel-placeholder.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

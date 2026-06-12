@@ -1,4 +1,5 @@
 import { Type } from '@angular/core';
+import { Icon } from '../../icons/icon';
 import { StackRole } from './dock-node';
 
 /**
@@ -19,9 +20,9 @@ export interface DockPanel {
   readonly title: string;
 
   /**
-   * Gets the icon CSS class of the panel (a Tabler webfont class such as `ti ti-folder`).
+   * Gets the icon of the panel.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 
   /**
    * Gets the role the panel docks as: a tool window or an editor document.

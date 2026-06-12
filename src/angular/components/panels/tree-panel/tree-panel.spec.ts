@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { Icon } from '../../../icons/icon';
 
 import { TreePanel } from './tree-panel';
 
@@ -10,7 +11,7 @@ describe('TreePanel', () => {
   const panel: DockPanel = {
     id: 'solution',
     title: 'Solution Explorer',
-    icon: 'ti ti-sitemap',
+    icon: Icon.SOLUTION_EXPLORER,
     role: 'tool',
     component: TreePanel,
   };

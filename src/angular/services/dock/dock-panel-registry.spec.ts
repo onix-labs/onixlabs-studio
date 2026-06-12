@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
+import { Icon } from '../../icons/icon';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 
@@ -32,7 +33,7 @@ describe('DockPanelRegistry', () => {
     registry.register({
       id: 'doc-1',
       title: 'main.ts',
-      icon: 'ti ti-file',
+      icon: Icon.CODE,
       role: 'document',
       component: DockPanelPlaceholder,
     });
@@ -48,7 +49,7 @@ describe('DockPanelRegistry', () => {
     registry.register({
       id: 'solution',
       title: 'Renamed',
-      icon: 'ti ti-star',
+      icon: Icon.SETTINGS,
       role: 'tool',
       component: DockPanelPlaceholder,
     });

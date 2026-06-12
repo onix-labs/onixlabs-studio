@@ -3,6 +3,8 @@ import { DockAutoHide, ShelvedStack } from '../../../services/dock/dock-auto-hid
 import { DockSide } from '../../../services/dock/dock-node';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
@@ -32,12 +34,17 @@ interface ResolvedFlyout {
  */
 @Component({
   selector: 'app-dock-auto-hide-strips',
-  imports: [DockPanelOutlet],
+  imports: [DockPanelOutlet, AppIcon],
   templateUrl: './dock-auto-hide-strips.html',
   styleUrl: './dock-auto-hide-strips.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DockAutoHideStrips {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the auto-hide store.
    */

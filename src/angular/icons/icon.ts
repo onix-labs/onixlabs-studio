@@ -278,6 +278,50 @@ export class Icon {
    */
   public static readonly ROOT: Icon = new Icon('ph ph-folder-simple');
 
+  // --- Dock: panels ---
+
+  /**
+   * Gets the Solution Explorer panel icon.
+   */
+  public static readonly SOLUTION_EXPLORER: Icon = new Icon('ph ph-tree-structure');
+
+  /**
+   * Gets the Output panel icon.
+   */
+  public static readonly OUTPUT: Icon = new Icon('ph ph-terminal');
+
+  /**
+   * Gets the Error List (problems) panel icon.
+   */
+  public static readonly PROBLEMS: Icon = new Icon('ph ph-warning');
+
+  // --- Dock: chrome affordances ---
+
+  /**
+   * Gets the auto-hide (collapse to strip) icon.
+   */
+  public static readonly AUTO_HIDE: Icon = new Icon('ph ph-sidebar-simple');
+
+  /**
+   * Gets the float (picture-in-picture) icon.
+   */
+  public static readonly FLOAT: Icon = new Icon('ph ph-picture-in-picture');
+
+  /**
+   * Gets the re-dock icon shown on floating and auto-hidden panels.
+   */
+  public static readonly DOCK: Icon = new Icon('ph ph-arrow-line-down');
+
+  /**
+   * Gets the pin (re-dock from auto-hide) icon.
+   */
+  public static readonly PIN: Icon = new Icon('ph ph-push-pin');
+
+  /**
+   * Gets the drag-handle (grip) icon.
+   */
+  public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
+
   // --- Shared affordances ---
 
   /**

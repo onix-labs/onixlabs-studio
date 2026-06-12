@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { Icon } from '../../../icons/icon';
 
 import { AgentPanel } from './agent-panel';
 
@@ -10,7 +11,7 @@ describe('AgentPanel', () => {
   const panel: DockPanel = {
     id: 'agent',
     title: 'Agent',
-    icon: 'ti ti-robot',
+    icon: Icon.AGENT,
     role: 'tool',
     component: AgentPanel,
   };

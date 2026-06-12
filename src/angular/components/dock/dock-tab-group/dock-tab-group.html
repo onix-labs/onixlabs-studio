@@ -14,7 +14,7 @@
           (mousedown)="$event.stopPropagation()"
           (click)="requestPin()"
         >
-          <i class="ti ti-layout-sidebar-left-collapse" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.AUTO_HIDE" />
         </button>
         <button
           type="button"
@@ -23,7 +23,7 @@
           (mousedown)="$event.stopPropagation()"
           (click)="requestFloat()"
         >
-          <i class="ti ti-picture-in-picture" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.FLOAT" />
         </button>
         @if (activePanel(); as panel) {
           <button
@@ -33,7 +33,7 @@
             (mousedown)="$event.stopPropagation()"
             (click)="close(panel.id)"
           >
-            <i class="ti ti-x" aria-hidden="true"></i>
+            <app-icon [icon]="Icon.CLOSE" />
           </button>
         }
       </span>
@@ -62,7 +62,7 @@
         (keydown.enter)="activate(panel.id)"
         (keydown.space)="activate(panel.id)"
       >
-        <i class="dock-tab__icon" [class]="panel.icon" aria-hidden="true"></i>
+        <app-icon class="dock-tab__icon" [icon]="panel.icon" />
         <span class="dock-tab__label">{{ panel.title }}</span>
         <!-- Tool tabs are closed from the panel title bar, so only document tabs carry a close button. -->
         @if (isDocuments()) {
@@ -74,7 +74,7 @@
             (mousedown)="$event.stopPropagation()"
             (click)="close(panel.id); $event.stopPropagation()"
           >
-            <i class="ti ti-x" aria-hidden="true"></i>
+            <app-icon [icon]="Icon.CLOSE" />
           </button>
         }
       </div>
@@ -90,7 +90,7 @@
           aria-label="Drag to dock"
           (mousedown)="startDrag($event)"
         >
-          <i class="ti ti-grip-horizontal" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.GRIP" />
         </div>
         <button
           type="button"
@@ -100,7 +100,7 @@
           [cdkMenuTriggerFor]="documentMenu"
           [cdkMenuPosition]="documentMenuPosition"
         >
-          <i class="tis tis-caret-down" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.CARET_DOWN" />
         </button>
       </div>
 
@@ -113,7 +113,7 @@
               cdkMenuItem
               (cdkMenuItemTriggered)="activate(panel.id)"
             >
-              <i [class]="panel.icon" aria-hidden="true"></i>
+              <app-icon [icon]="panel.icon" />
               <span>{{ panel.title }}</span>
             </button>
           }

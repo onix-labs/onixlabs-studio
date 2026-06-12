@@ -20,7 +20,7 @@
       <span class="dock-ah-flyout__title-text">{{ fly.active?.title }}</span>
       <span class="dock-ah-flyout__title-buttons">
         <button type="button" title="Dock" aria-label="Dock" (click)="unpin(fly.stack.key)">
-          <i class="ti ti-pin" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.PIN" />
         </button>
         @if (fly.active; as active) {
           <button
@@ -29,7 +29,7 @@
             aria-label="Close"
             (click)="close(fly.stack.key, active.id)"
           >
-            <i class="ti ti-x" aria-hidden="true"></i>
+            <app-icon [icon]="Icon.CLOSE" />
           </button>
         }
       </span>
