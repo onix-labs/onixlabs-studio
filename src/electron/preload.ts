@@ -5,6 +5,7 @@ import type {
   FileInfo,
   FileOperationResult,
   FileWriteResult,
+  OpenSelection,
   SaveDialogChoice,
   StudioApi,
   TempFileResult,
@@ -96,6 +97,10 @@ const studioApi: StudioApi = {
       ) as Promise<TempFileResult>,
   },
   workspace: {
+    open: (): Promise<OpenSelection | null> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceOpen) as Promise<OpenSelection | null>,
+    openFile: (path: string): Promise<OpenSelection | null> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceOpenFile, path) as Promise<OpenSelection | null>,
     openFolder: (): Promise<DirectoryListing | null> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceOpenFolder) as Promise<DirectoryListing | null>,
     closeFolder: (): Promise<void> =>

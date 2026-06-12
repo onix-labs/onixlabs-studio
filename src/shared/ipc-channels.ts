@@ -97,6 +97,16 @@ export enum IpcChannel {
   RunWriteTempFile = 'run:write-temp-file',
 
   /**
+   * Shows a combined open dialog allowing either a file or a folder to be chosen.
+   */
+  WorkspaceOpen = 'workspace:open',
+
+  /**
+   * Reads a single file within the workspace for opening in an editor.
+   */
+  WorkspaceOpenFile = 'workspace:open-file',
+
+  /**
    * Shows an open-folder dialog and, when chosen, sets it as the workspace root.
    */
   WorkspaceOpenFolder = 'workspace:open-folder',

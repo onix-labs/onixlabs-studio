@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { FileOpener } from '../../../services/file-opener/file-opener';
 import { Workspace, WorkspaceTreeNode } from '../../../services/workspace/workspace';
 
 /**
@@ -37,13 +38,21 @@ export class TreePanel {
   public readonly workspace: Workspace = inject(Workspace);
 
   /**
-   * Handles a click on a tree row: selects the entry and toggles directories.
+   * Holds the opener used to open a file into the right editor tab.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Handles a click on a tree row: selects the entry, toggles directories, and opens files into the
+   * right editor tab (reusing an existing tab when the file is already open).
    * @param node The node whose row was clicked.
    */
   public onRowClick(node: WorkspaceTreeNode): void {
     this.workspace.select(node.path);
     if (node.type === 'directory') {
       void this.workspace.toggleDirectory(node.path);
+    } else {
+      void this.fileOpener.openPath(node.path);
     }
   }
 

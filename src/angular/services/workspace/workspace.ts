@@ -3,6 +3,7 @@ import {
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
+  OpenSelection,
   WorkspaceApi,
 } from '../../../shared/studio-api';
 
@@ -132,6 +133,33 @@ export class Workspace {
     if (listing === null) {
       return;
     }
+    this.setListing(listing);
+  }
+
+  /**
+   * Shows the combined open dialog (file or folder). Routing the result into tabs or the workspace
+   * is the caller's responsibility; this is a thin bridge to the main process.
+   * @returns Returns the selection, or null when cancelled or running outside Electron.
+   */
+  public open(): Promise<OpenSelection | null> {
+    return this.api?.open() ?? Promise.resolve(null);
+  }
+
+  /**
+   * Reads a single file within the workspace for opening in an editor.
+   * @param path The absolute path of the file to read.
+   * @returns Returns the file selection (text or binary), or null when invalid or outside Electron.
+   */
+  public readFile(path: string): Promise<OpenSelection | null> {
+    return this.api?.openFile(path) ?? Promise.resolve(null);
+  }
+
+  /**
+   * Opens an already-obtained directory listing as the workspace, seeding the tree from it without
+   * showing a dialog. Used when a folder was chosen through the combined open dialog.
+   * @param listing The root directory listing to display.
+   */
+  public openListing(listing: DirectoryListing): void {
     this.setListing(listing);
   }
 

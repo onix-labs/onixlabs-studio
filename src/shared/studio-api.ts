@@ -352,11 +352,34 @@ export interface FileOperationResult {
 }
 
 /**
+ * Describes the outcome of a combined open request: a directory to open as the workspace, a text
+ * file to open in an editor, or a binary file that is recognised but not opened as text.
+ */
+export type OpenSelection =
+  | { readonly kind: 'directory'; readonly directory: DirectoryListing }
+  | { readonly kind: 'file'; readonly file: FileInfo }
+  | { readonly kind: 'binary'; readonly path: string };
+
+/**
  * Defines the workspace (open folder) and directory operations exposed to the renderer process. All
  * path-taking operations are confined to the open workspace root in the main process before any disk
  * access, so the renderer cannot read or write arbitrary locations.
  */
 export interface WorkspaceApi {
+  /**
+   * Shows a combined open dialog allowing either a file or a folder to be chosen. Choosing a folder
+   * sets it as the workspace root; choosing a file returns its contents (or a binary marker).
+   * @returns Returns the selection, or null when the dialog was cancelled.
+   */
+  open(): Promise<OpenSelection | null>;
+
+  /**
+   * Reads a single file within the workspace for opening in an editor.
+   * @param path The absolute path of the file to read; must be inside the workspace.
+   * @returns Returns the file selection (text or binary), or null when invalid or outside the workspace.
+   */
+  openFile(path: string): Promise<OpenSelection | null>;
+
   /**
    * Shows an open-folder dialog and, when a folder is chosen, sets it as the workspace root.
    * @returns Returns the root directory listing, or null when the dialog was cancelled.

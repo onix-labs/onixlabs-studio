@@ -1,8 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 
+import { FileInfo } from '../../../shared/studio-api';
 import { Tab } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 import { CodeDocument, Documents } from './documents';
+
+/**
+ * A sample file used by the open-from-info tests.
+ */
+const SAMPLE_FILE: FileInfo = {
+  path: '/ws/main.ts',
+  name: 'main.ts',
+  extension: '.ts',
+  content: 'export const x = 1;',
+};
 
 describe('Documents', () => {
   let documents: Documents;
@@ -46,5 +57,30 @@ describe('Documents', () => {
     documents.ensure(tab.id);
     documents.setContent(tab.id, 'changed');
     expect(await documents.saveActive()).toBe(false);
+  });
+
+  it('openFileInfo_whenFileNotOpen_opensSeededTab', () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    expect(tab.type).toBe('code');
+    expect(tab.title).toBe('main.ts');
+    expect(documents.get(tab.id)?.content()).toBe(SAMPLE_FILE.content);
+    expect(documents.get(tab.id)?.filePath()).toBe(SAMPLE_FILE.path);
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+  });
+
+  it('openFileInfo_whenSamePathReopened_reusesTheSameTab', () => {
+    const first: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    const second: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    expect(second.id).toBe(first.id);
+    expect(tabs.tabs()).toHaveLength(1);
+  });
+
+  it('initialContentOf_whenFileOpened_returnsTheSeededContent', () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'markdown');
+    expect(documents.initialContentOf(tab.id)).toBe(SAMPLE_FILE.content);
+  });
+
+  it('initialContentOf_whenNoDocument_returnsEmptyString', () => {
+    expect(documents.initialContentOf('absent')).toBe('');
   });
 });

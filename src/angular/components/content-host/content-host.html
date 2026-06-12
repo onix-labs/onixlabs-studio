@@ -11,7 +11,11 @@
         <app-code-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('markdown') {
-        <app-markdown-view [isActive]="tab.id === activeTabId()" />
+        <app-markdown-view
+          [content]="markdownContent(tab.id)"
+          [isActive]="tab.id === activeTabId()"
+          (contentChange)="onMarkdownChange(tab.id, $event)"
+        />
       }
       @case ('terminal') {
         <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />

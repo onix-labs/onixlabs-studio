@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { DirectoryListing, WorkspaceApi } from '../../../shared/studio-api';
+import { DirectoryListing, OpenSelection, WorkspaceApi } from '../../../shared/studio-api';
 import { Workspace } from './workspace';
 
 /**
@@ -28,6 +28,9 @@ const SRC_LISTING: DirectoryListing = {
  */
 function fakeBridge(): WorkspaceApi {
   return {
+    open: (): Promise<OpenSelection | null> =>
+      Promise.resolve({ kind: 'directory', directory: ROOT_LISTING }),
+    openFile: (): Promise<OpenSelection | null> => Promise.resolve(null),
     openFolder: (): Promise<DirectoryListing | null> => Promise.resolve(ROOT_LISTING),
     closeFolder: (): Promise<void> => Promise.resolve(),
     readDirectory: (path: string): Promise<DirectoryListing | null> =>
@@ -86,6 +89,13 @@ describe('Workspace', () => {
   it('select_whenCalled_updatesSelectedPath', () => {
     service.select('/ws/README.md');
     expect(service.selectedPath()).toBe('/ws/README.md');
+  });
+
+  it('openListing_whenCalled_seedsTreeWithoutADialog', () => {
+    service.openListing(ROOT_LISTING);
+    expect(service.hasWorkspace()).toBe(true);
+    expect(service.rootName()).toBe('ws');
+    expect(service.rows().map((row) => row.node.name)).toEqual(['src', 'README.md']);
   });
 
   it('closeFolder_whenCalled_clearsState', async () => {

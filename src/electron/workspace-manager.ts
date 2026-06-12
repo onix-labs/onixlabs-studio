@@ -6,10 +6,16 @@ import {
   OpenDialogReturnValue,
 } from 'electron';
 import * as fs from 'node:fs/promises';
-import type { Dirent } from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
-import { DirectoryEntry, DirectoryListing, FileOperationResult } from '../shared/studio-api';
+import {
+  DirectoryEntry,
+  DirectoryListing,
+  FileInfo,
+  FileOperationResult,
+  OpenSelection,
+} from '../shared/studio-api';
 import { WorkspaceContext } from './workspace-context';
 
 /**
@@ -21,6 +27,17 @@ const DIRECTORY_ORDER: number = 0;
  * Specifies the sort order placing files after directories.
  */
 const FILE_ORDER: number = 1;
+
+/**
+ * Specifies how many leading bytes of a file are scanned for a NUL byte when sniffing for binary
+ * content.
+ */
+const BINARY_SNIFF_LENGTH: number = 8000;
+
+/**
+ * Specifies the byte value (NUL) whose presence marks a file as binary.
+ */
+const NUL_BYTE: number = 0;
 
 /**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
@@ -53,6 +70,12 @@ export class WorkspaceManager {
    * Registers the workspace IPC handlers.
    */
   public register(): void {
+    ipcMain.handle(IpcChannel.WorkspaceOpen, (): Promise<OpenSelection | null> => this.open());
+    ipcMain.handle(
+      IpcChannel.WorkspaceOpenFile,
+      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
+        this.openFile(filePath),
+    );
     ipcMain.handle(
       IpcChannel.WorkspaceOpenFolder,
       (): Promise<DirectoryListing | null> => this.openFolder(),
@@ -115,6 +138,52 @@ export class WorkspaceManager {
       return await this.readListing(root);
     } catch {
       this.workspace.setRoot(null);
+      return null;
+    }
+  }
+
+  /**
+   * Shows a combined open dialog allowing either a file or a folder to be chosen. A folder becomes
+   * the workspace root; a file is returned as text content, or as a binary marker when it is not
+   * decodable text.
+   * @returns Returns the selection, or null when the dialog was cancelled or unreadable.
+   */
+  private async open(): Promise<OpenSelection | null> {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return null;
+    }
+    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+      properties: ['openFile', 'openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    const selectedPath: string = path.resolve(result.filePaths[0]);
+    try {
+      const stats: Stats = await fs.stat(selectedPath);
+      if (stats.isDirectory()) {
+        this.workspace.setRoot(selectedPath);
+        return { kind: 'directory', directory: await this.readListing(selectedPath) };
+      }
+      return await this.readFileSelection(selectedPath);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reads a single file within the workspace for opening in an editor.
+   * @param filePath The absolute path of the file to read.
+   * @returns Returns the file selection (text or binary), or null when invalid or outside the workspace.
+   */
+  private async openFile(filePath: unknown): Promise<OpenSelection | null> {
+    if (!this.workspace.isWithin(filePath)) {
+      return null;
+    }
+    try {
+      return await this.readFileSelection(path.resolve(filePath as string));
+    } catch {
       return null;
     }
   }
@@ -211,6 +280,51 @@ export class WorkspaceManager {
     } catch (error: unknown) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Reads a file and classifies it as text or binary. Binary files are recognised but not decoded,
+   * so the renderer can decline to open them in a text editor.
+   * @param filePath The absolute path of the file to read.
+   * @returns Returns a text-file or binary selection.
+   */
+  private async readFileSelection(filePath: string): Promise<OpenSelection> {
+    const buffer: Buffer = await fs.readFile(filePath);
+    if (this.isBinary(buffer)) {
+      return { kind: 'binary', path: filePath };
+    }
+    return { kind: 'file', file: this.readFileInfo(filePath, buffer.toString('utf-8')) };
+  }
+
+  /**
+   * Builds a {@link FileInfo} from a file's path and decoded content.
+   * @param filePath The absolute path of the file.
+   * @param content The decoded textual content.
+   * @returns Returns the file info.
+   */
+  private readFileInfo(filePath: string, content: string): FileInfo {
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      extension: path.extname(filePath),
+      content,
+    };
+  }
+
+  /**
+   * Determines whether a buffer looks like binary content by scanning its leading bytes for a NUL,
+   * the same heuristic editors use to avoid opening binaries as text.
+   * @param buffer The file content to inspect.
+   * @returns Returns true when a NUL byte is found within the sniffed range.
+   */
+  private isBinary(buffer: Buffer): boolean {
+    const length: number = Math.min(buffer.length, BINARY_SNIFF_LENGTH);
+    for (let index: number = 0; index < length; index += 1) {
+      if (buffer[index] === NUL_BYTE) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

@@ -2,7 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { FileInfo } from '../../../shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
 import { Monaco } from '../monaco/monaco';
-import { Tab } from '../tabs/tab';
+import { Tab, TabType } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 
 /**
@@ -193,6 +193,42 @@ export class Documents {
    * Saves the active tab's document, prompting for a path when it has never been saved.
    * @returns Returns true when the document was saved.
    */
+  /**
+   * Opens an already-read file into a tab of the given type, reusing the tab if the file is already
+   * open. The document is seeded with the file's content, name, path, and detected language.
+   * @param fileInfo The file to open.
+   * @param type The tab type to host the file (for example, `code` or `markdown`).
+   * @returns Returns the opened, or re-activated, tab.
+   */
+  public openFileInfo(fileInfo: FileInfo, type: TabType): Tab {
+    const existing: Tab | undefined = this.findTabByPath(fileInfo.path);
+    if (existing !== undefined) {
+      this.tabs.activate(existing.id);
+      return existing;
+    }
+    const tab: Tab = this.tabs.open(type);
+    const entry: DocumentEntry = this.createEntry(tab.id);
+    this.entries.set(tab.id, entry);
+    entry.filePath.set(fileInfo.path);
+    entry.fileName.set(fileInfo.name);
+    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.content.set(fileInfo.content);
+    entry.original.set(fileInfo.content);
+    this.syncTab(tab.id);
+    // syncTab renamed the tab to the file name; return the up-to-date tab, not the pre-rename one.
+    return this.tabs.tabs().find((candidate: Tab): boolean => candidate.id === tab.id) ?? tab;
+  }
+
+  /**
+   * Gets the initial (last-saved) content of a document, used to seed an editor that manages its own
+   * content thereafter. Returns an empty string when no document is registered for the tab.
+   * @param id The identifier of the tab.
+   * @returns Returns the document's last-saved content, or an empty string.
+   */
+  public initialContentOf(id: string): string {
+    return this.entries.get(id)?.original() ?? '';
+  }
+
   public saveActive(): Promise<boolean> {
     const id: string | undefined = this.tabs.activeTabId();
     return id === undefined ? Promise.resolve(false) : this.save(id);
@@ -310,6 +346,20 @@ export class Documents {
    * @param filePath The path to extract from.
    * @returns Returns the final path segment.
    */
+  /**
+   * Finds the open tab whose document is backed by the given file path.
+   * @param filePath The absolute file path to match.
+   * @returns Returns the matching tab, or undefined when the file is not open.
+   */
+  private findTabByPath(filePath: string): Tab | undefined {
+    for (const [id, entry] of this.entries) {
+      if (entry.filePath() === filePath) {
+        return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id);
+      }
+    }
+    return undefined;
+  }
+
   private basename(filePath: string): string {
     const segments: string[] = filePath.split(/[\\/]/);
     return segments[segments.length - 1];
