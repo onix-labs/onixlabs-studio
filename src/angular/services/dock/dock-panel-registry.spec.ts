@@ -25,7 +25,7 @@ describe('DockPanelRegistry', () => {
   });
 
   it('get_whenPlaceholderPanelRequested_returnsItWithThePlaceholderComponent', () => {
-    expect(registry.get('output')?.component).toBe(DockPanelPlaceholder);
+    expect(registry.get('toolbox')?.component).toBe(DockPanelPlaceholder);
   });
 
   it('get_whenDocumentPanelRequested_reportsTheDocumentRole', () => {

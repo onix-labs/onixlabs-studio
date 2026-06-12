@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { DirectoryListing, OpenSelection } from '../../../shared/studio-api';
 import { Documents } from '../documents/documents';
+import { Output } from '../output/output';
 import { Tab, TabType } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 import { Workspace } from '../workspace/workspace';
@@ -34,6 +35,11 @@ export class FileOpener {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Holds the shared output channel that records what was opened.
+   */
+  private readonly output: Output = inject(Output);
+
+  /**
    * Shows the combined open dialog (file or folder) and routes the selection.
    * @returns Returns true when something was opened, or false when cancelled or a binary was chosen.
    */
@@ -62,13 +68,16 @@ export class FileOpener {
     switch (selection.kind) {
       case 'directory':
         this.openDirectory(selection.directory);
+        this.output.appendLine(`Opened folder ${selection.directory.path}`);
         return true;
       case 'file': {
         const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
         this.documents.openFileInfo(selection.file, type);
+        this.output.appendLine(`Opened ${selection.file.path}`);
         return true;
       }
       case 'binary':
+        this.output.appendLine(`Skipped binary file ${selection.path}`);
         return false;
     }
   }

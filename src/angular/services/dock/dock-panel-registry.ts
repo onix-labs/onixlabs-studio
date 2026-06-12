@@ -1,5 +1,6 @@
 import { Service } from '@angular/core';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { DockPanel } from './dock-panel';
 import { StackRole } from './dock-node';
@@ -73,7 +74,13 @@ export class DockPanelRegistry {
     });
     tool('toolbox', 'Toolbox', 'ti ti-tools');
     tool('props', 'Properties', 'ti ti-adjustments');
-    tool('output', 'Output', 'ti ti-terminal');
+    this.register({
+      id: 'output',
+      title: 'Output',
+      icon: 'ti ti-terminal',
+      role: 'tool',
+      component: OutputPanel,
+    });
     tool('errors', 'Error List', 'ti ti-alert-triangle');
     document('doc1', 'Program.cs', 'ti ti-file-code');
     document('doc2', 'Startup.cs', 'ti ti-file-code');

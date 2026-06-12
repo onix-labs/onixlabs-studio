@@ -22,11 +22,11 @@ describe('DockPanelOutlet', () => {
   });
 
   it('render_whenPanelRegistered_projectsItsComponent', () => {
-    fixture.componentRef.setInput('panelId', 'output');
+    fixture.componentRef.setInput('panelId', 'toolbox');
     fixture.detectChanges();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.textContent).toContain('Output');
+    expect(element.textContent).toContain('Toolbox');
   });
 
   it('render_whenPanelUnknown_showsTheMissingMessage', () => {
