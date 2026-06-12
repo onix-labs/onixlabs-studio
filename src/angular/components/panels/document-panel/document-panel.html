@@ -5,5 +5,5 @@
     (contentChange)="onMarkdownChange($event)"
   />
 } @else {
-  <app-code-view [tabId]="documentId()" [isActive]="isActive()" />
+  <app-code-view [tabId]="documentId()" [isActive]="isActive()" [removeOnDestroy]="false" />
 }

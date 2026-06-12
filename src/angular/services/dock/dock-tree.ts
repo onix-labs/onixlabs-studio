@@ -102,6 +102,18 @@ export function firstStackOfRole(tree: DockNode, role: StackRole): StackNode | n
 }
 
 /**
+ * Collects the ids of every panel present anywhere in the tree.
+ * @param tree The root of the tree to search.
+ * @returns Returns the panel ids in depth-first order.
+ */
+export function collectPanelIds(tree: DockNode): string[] {
+  if (isStackNode(tree)) {
+    return [...tree.panels];
+  }
+  return tree.children.flatMap((child: DockNode): string[] => collectPanelIds(child));
+}
+
+/**
  * Counts the stacks of the given role in the tree.
  * @param tree The root of the tree to search.
  * @param role The role to count.

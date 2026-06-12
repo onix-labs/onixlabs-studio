@@ -83,4 +83,20 @@ describe('Documents', () => {
   it('initialContentOf_whenNoDocument_returnsEmptyString', () => {
     expect(documents.initialContentOf('absent')).toBe('');
   });
+
+  it('removeMissing_whenPanelStillPresent_keepsTheDocument', () => {
+    const id: string = documents.createWellDocument(SAMPLE_FILE);
+
+    documents.removeMissing(new Set<string>([id]));
+
+    expect(documents.get(id)).not.toBeUndefined();
+  });
+
+  it('removeMissing_whenPanelGone_releasesTheDocument', () => {
+    const id: string = documents.createWellDocument(SAMPLE_FILE);
+
+    documents.removeMissing(new Set<string>(['some-other-panel']));
+
+    expect(documents.get(id)).toBeUndefined();
+  });
 });

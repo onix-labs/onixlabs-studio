@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   inject,
   input,
   InputSignal,
@@ -16,6 +17,7 @@ import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
+import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { Output } from '../../../services/output/output';
@@ -71,6 +73,30 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the global registry that hands off the initial folder for this tab.
    */
   private readonly workspaces: Workspaces = inject(Workspaces);
+
+  /**
+   * Holds this tab's scoped dock layout.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds this tab's scoped document model.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Initializes a new instance of the {@link DirectoryView} class, wiring the document cleanup that
+   * releases a well document once its dock panel has actually been closed (a panel that is merely
+   * split or moved stays in the layout, so its document is kept).
+   */
+  public constructor() {
+    effect((): void => {
+      const present: ReadonlySet<string> = new Set<string>(
+        collectPanelIds(this.dockState.layout()),
+      );
+      this.documents.removeMissing(present);
+    });
+  }
 
   /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
