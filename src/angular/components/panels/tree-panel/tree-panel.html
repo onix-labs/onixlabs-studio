@@ -13,21 +13,19 @@
         (click)="onRowClick(row.node)"
       >
         @if (row.node.type === 'directory') {
-          <i
-            class="tree-chevron ti"
-            [class.ti-caret-down]="row.node.expanded"
-            [class.ti-caret-right]="!row.node.expanded"
-            aria-hidden="true"
-          ></i>
+          <app-icon
+            class="tree-chevron"
+            [icon]="row.node.expanded ? Icon.CARET_DOWN : Icon.CARET_RIGHT"
+          />
         } @else {
           <span class="tree-spacer"></span>
         }
 
-        <i class="tree-icon ti" [class]="iconFor(row.node)" aria-hidden="true"></i>
+        <app-icon class="tree-icon" [icon]="iconFor(row.node)" />
         <span class="tree-name">{{ row.node.name }}</span>
 
         @if (row.node.loading) {
-          <i class="tree-loading ti ti-loader-2" aria-hidden="true"></i>
+          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
         }
       </button>
     }
@@ -36,7 +34,7 @@
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>
     <button type="button" class="tree-open-btn" (click)="workspace.openFolder()">
-      <i class="ti ti-folder-open" aria-hidden="true"></i>
+      <app-icon [icon]="Icon.FOLDER_OPEN" />
       Open Folder…
     </button>
   </div>

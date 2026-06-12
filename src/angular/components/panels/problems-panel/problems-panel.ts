@@ -5,15 +5,17 @@ import {
   DiagnosticSeverity,
   Diagnostics,
 } from '../../../services/diagnostics/diagnostics';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
- * Maps each severity to its Tabler icon (without the leading `ti` base class).
+ * Maps each severity to its icon.
  */
-const SEVERITY_ICONS: Readonly<Record<DiagnosticSeverity, string>> = {
-  error: 'ti-circle-x',
-  warning: 'ti-alert-triangle',
-  info: 'ti-info-circle',
-  hint: 'ti-bulb',
+const SEVERITY_ICONS: Readonly<Record<DiagnosticSeverity, Icon>> = {
+  error: Icon.ERROR,
+  warning: Icon.WARNING,
+  info: Icon.INFO,
+  hint: Icon.HINT,
 };
 
 /**
@@ -24,12 +26,17 @@ const SEVERITY_ICONS: Readonly<Record<DiagnosticSeverity, string>> = {
  */
 @Component({
   selector: 'app-problems-panel',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProblemsPanel {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet, which sets it on
    * every projected panel component; unused here because the dock chrome renders the title.
@@ -42,11 +49,11 @@ export class ProblemsPanel {
   public readonly diagnostics: Diagnostics = inject(Diagnostics);
 
   /**
-   * Resolves the Tabler icon class for a diagnostic's severity.
+   * Resolves the icon for a diagnostic's severity.
    * @param severity The diagnostic severity.
-   * @returns Returns the icon class.
+   * @returns Returns the severity icon.
    */
-  public iconFor(severity: DiagnosticSeverity): string {
+  public iconFor(severity: DiagnosticSeverity): Icon {
     return SEVERITY_ICONS[severity];
   }
 

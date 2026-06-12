@@ -3,7 +3,7 @@
     @for (message of messages(); track message.id) {
       <div class="agent__message" [class.agent__message--user]="message.role === 'user'">
         <span class="agent__avatar" aria-hidden="true">
-          <i [class]="message.role === 'user' ? 'ti ti-user' : 'ti ti-robot'"></i>
+          <app-icon [icon]="message.role === 'user' ? Icon.USER : Icon.AGENT" />
         </span>
         <p class="agent__bubble">{{ message.text }}</p>
       </div>
@@ -27,7 +27,7 @@
       aria-label="Send"
       [disabled]="draft().trim().length === 0"
     >
-      <i class="ti ti-send" aria-hidden="true"></i>
+      <app-icon [icon]="Icon.SEND" />
     </button>
   </form>
 </div>

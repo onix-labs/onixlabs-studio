@@ -37,7 +37,7 @@ describe('TreePanel', () => {
     expect(text).toContain('Open Folder');
   });
 
-  it('iconFor_whenTypeScriptFile_returnsBrandIcon', () => {
+  it('iconFor_whenTypeScriptFile_returnsTypeScriptIcon', () => {
     expect(
       component.iconFor({
         name: 'main.ts',
@@ -47,7 +47,7 @@ describe('TreePanel', () => {
         loading: false,
         children: null,
       }),
-    ).toBe('ti-brand-typescript');
+    ).toBe(Icon.FILE_TYPESCRIPT);
   });
 
   it('iconFor_whenExpandedDirectory_returnsOpenFolder', () => {
@@ -60,6 +60,6 @@ describe('TreePanel', () => {
         loading: false,
         children: null,
       }),
-    ).toBe('ti-folder-open');
+    ).toBe(Icon.FOLDER_OPEN);
   });
 });

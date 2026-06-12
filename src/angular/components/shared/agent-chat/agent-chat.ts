@@ -7,6 +7,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Agent, AgentMessage } from '../../../services/agent/agent';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../icon/app-icon';
 
 /**
  * Renders the agent conversation as a chat shell: a scrolling message list above a composer. State
@@ -16,12 +18,17 @@ import { Agent, AgentMessage } from '../../../services/agent/agent';
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentChat {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the agent conversation service.
    */

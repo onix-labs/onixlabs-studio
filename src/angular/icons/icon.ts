@@ -322,12 +322,108 @@ export class Icon {
    */
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
 
+  // --- Solution Explorer: tree ---
+
+  /**
+   * Gets the collapsed-folder icon.
+   */
+  public static readonly FOLDER: Icon = new Icon('ph ph-folder');
+
+  /**
+   * Gets the generic file icon.
+   */
+  public static readonly FILE: Icon = new Icon('ph ph-file');
+
+  /**
+   * Gets the hidden (dotfile) icon.
+   */
+  public static readonly FILE_HIDDEN: Icon = new Icon('ph ph-file-dashed');
+
+  /**
+   * Gets the TypeScript file icon.
+   */
+  public static readonly FILE_TYPESCRIPT: Icon = new Icon('ph ph-file-ts');
+
+  /**
+   * Gets the JavaScript file icon.
+   */
+  public static readonly FILE_JAVASCRIPT: Icon = new Icon('ph ph-file-js');
+
+  /**
+   * Gets the JSON file icon.
+   */
+  public static readonly FILE_JSON: Icon = new Icon('ph ph-brackets-curly');
+
+  /**
+   * Gets the Markdown file icon.
+   */
+  public static readonly FILE_MARKDOWN: Icon = new Icon('ph ph-file-md');
+
+  /**
+   * Gets the stylesheet (CSS/SCSS) file icon.
+   */
+  public static readonly FILE_STYLESHEET: Icon = new Icon('ph ph-file-css');
+
+  /**
+   * Gets the HTML file icon.
+   */
+  public static readonly FILE_HTML: Icon = new Icon('ph ph-file-html');
+
+  /**
+   * Gets the spinner icon shown while a directory loads.
+   */
+  public static readonly SPINNER: Icon = new Icon('ph ph-circle-notch');
+
+  // --- Problems: severities ---
+
+  /**
+   * Gets the error-severity icon.
+   */
+  public static readonly ERROR: Icon = new Icon('ph ph-x-circle');
+
+  /**
+   * Gets the warning-severity icon.
+   */
+  public static readonly WARNING: Icon = new Icon('ph ph-warning');
+
+  /**
+   * Gets the information-severity icon.
+   */
+  public static readonly INFO: Icon = new Icon('ph ph-info');
+
+  /**
+   * Gets the hint-severity icon.
+   */
+  public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
+
+  /**
+   * Gets the success icon shown when there are no problems.
+   */
+  public static readonly SUCCESS: Icon = new Icon('ph ph-check-circle');
+
+  // --- Agent chat ---
+
+  /**
+   * Gets the user avatar icon.
+   */
+  public static readonly USER: Icon = new Icon('ph ph-user');
+
+  /**
+   * Gets the send-message icon.
+   */
+  public static readonly SEND: Icon = new Icon('ph ph-paper-plane-tilt');
+
   // --- Shared affordances ---
 
   /**
    * Gets the downward caret used on menus and split buttons.
    */
   public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');
+
+  /**
+   * Gets the rightward caret used on collapsed tree nodes.
+   */
+  public static readonly CARET_RIGHT: Icon = new Icon('ph ph-caret-right');
 
   /**
    * Initialises a new instance of the {@link Icon} class.
