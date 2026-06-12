@@ -24,12 +24,19 @@ describe('DockPanelRegistry', () => {
     expect(panel?.component).toBe(TreePanel);
   });
 
-  it('get_whenPlaceholderPanelRequested_returnsItWithThePlaceholderComponent', () => {
-    expect(registry.get('toolbox')?.component).toBe(DockPanelPlaceholder);
+  it('get_whenPanelNotRegistered_returnsUndefined', () => {
+    expect(registry.get('toolbox')).toBeUndefined();
   });
 
-  it('get_whenDocumentPanelRequested_reportsTheDocumentRole', () => {
-    expect(registry.get('doc1')?.role).toBe('document');
+  it('register_whenDocumentPanelRegistered_reportsTheDocumentRole', () => {
+    registry.register({
+      id: 'doc-1',
+      title: 'main.ts',
+      icon: 'ti ti-file',
+      role: 'document',
+      component: DockPanelPlaceholder,
+    });
+    expect(registry.get('doc-1')?.role).toBe('document');
   });
 
   it('has_whenPanelRegistered_returnsTrue', () => {

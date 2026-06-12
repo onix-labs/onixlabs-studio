@@ -1,11 +1,9 @@
-import { Service } from '@angular/core';
-import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { Service, Type } from '@angular/core';
 import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { DockPanel } from './dock-panel';
-import { StackRole } from './dock-node';
 
 /**
  * Maps panel identifiers to the dockable panels they render, so stacks in the layout tree (which
@@ -52,64 +50,20 @@ export class DockPanelRegistry {
   }
 
   /**
-   * Seeds the placeholder panel catalogue mirrored from the dock prototype. Each entry projects the
-   * shared {@link DockPanelPlaceholder} until the real IDE panels replace it.
+   * Seeds the catalogue of built-in IDE tool panels. Documents are registered dynamically as files
+   * open into the well.
    */
   private seed(): void {
-    const tool: (id: string, title: string, icon: string) => void = (
+    const tool: (id: string, title: string, icon: string, component: Type<unknown>) => void = (
       id: string,
       title: string,
       icon: string,
-    ): void => this.add(id, title, icon, 'tool');
-    const document: (id: string, title: string, icon: string) => void = (
-      id: string,
-      title: string,
-      icon: string,
-    ): void => this.add(id, title, icon, 'document');
+      component: Type<unknown>,
+    ): void => this.register({ id, title, icon, role: 'tool', component });
 
-    this.register({
-      id: 'solution',
-      title: 'Solution Explorer',
-      icon: 'ti ti-sitemap',
-      role: 'tool',
-      component: TreePanel,
-    });
-    tool('toolbox', 'Toolbox', 'ti ti-tools');
-    tool('props', 'Properties', 'ti ti-adjustments');
-    this.register({
-      id: 'agent',
-      title: 'Agent',
-      icon: 'ti ti-robot',
-      role: 'tool',
-      component: AgentPanel,
-    });
-    this.register({
-      id: 'output',
-      title: 'Output',
-      icon: 'ti ti-terminal',
-      role: 'tool',
-      component: OutputPanel,
-    });
-    this.register({
-      id: 'errors',
-      title: 'Error List',
-      icon: 'ti ti-alert-triangle',
-      role: 'tool',
-      component: ProblemsPanel,
-    });
-    document('doc1', 'Program.cs', 'ti ti-file-code');
-    document('doc2', 'Startup.cs', 'ti ti-file-code');
-    document('doc3', 'readme.md', 'ti ti-markdown');
-  }
-
-  /**
-   * Registers a placeholder-backed panel.
-   * @param id The identifier of the panel.
-   * @param title The display title of the panel.
-   * @param icon The icon CSS class of the panel.
-   * @param role The role the panel docks as.
-   */
-  private add(id: string, title: string, icon: string, role: StackRole): void {
-    this.register({ id, title, icon, role, component: DockPanelPlaceholder });
+    tool('solution', 'Solution Explorer', 'ti ti-sitemap', TreePanel);
+    tool('agent', 'Agent', 'ti ti-robot', AgentPanel);
+    tool('output', 'Output', 'ti ti-terminal', OutputPanel);
+    tool('errors', 'Error List', 'ti ti-alert-triangle', ProblemsPanel);
   }
 }

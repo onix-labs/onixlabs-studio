@@ -424,12 +424,12 @@ describe('dock-tree', () => {
   });
 
   describe('defaultLayout', () => {
-    it('defaultLayout_whenBuilt_containsADocumentWellAndToolStacks', () => {
+    it('defaultLayout_whenBuilt_containsAnEmptyDocumentWellAndToolStacks', () => {
       const tree: DockNode = defaultLayout();
 
       expect(isSplitNode(tree)).toBe(true);
-      expect(findStackOfPanel(tree, 'doc1')).not.toBeNull();
       expect(findStackOfPanel(tree, 'solution')).not.toBeNull();
+      expect(firstStackOfRole(tree, 'document')?.panels).toEqual([]);
       expect(countStacks(tree, 'document')).toBe(1);
     });
 
