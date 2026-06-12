@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1rem;
   background: var(--welcome-backdrop-color);
   backdrop-filter: blur(var(--welcome-backdrop-blur));
   -webkit-app-region: drag;
@@ -25,7 +25,7 @@
   flex-direction: column;
   inline-size: min(52rem, 100%);
   max-block-size: 100%;
-  padding: 2.5rem;
+  padding: 2rem;
   background: var(--welcome-panel-background-color);
   border: 0.0625rem solid var(--welcome-border-color);
   border-radius: 1rem;
@@ -64,7 +64,7 @@
 .welcome__header {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 .welcome__logo {
@@ -103,7 +103,7 @@
 .welcome__body {
   display: grid;
   grid-template-columns: 2fr 3fr;
-  gap: 1.5rem;
+  gap: 1rem;
   margin-block-start: 2rem;
   min-block-size: 0;
 }
