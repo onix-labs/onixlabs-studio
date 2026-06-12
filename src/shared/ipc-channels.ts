@@ -60,4 +60,29 @@ export enum IpcChannel {
    * Requests that a file-system path be opened in the operating system's default handler.
    */
   ShellOpenPath = 'shell:open-path',
+
+  /**
+   * Reads the contents of a file from disk.
+   */
+  FileRead = 'file:read',
+
+  /**
+   * Writes contents to a file on disk.
+   */
+  FileWrite = 'file:write',
+
+  /**
+   * Shows an open-file dialog and reads the chosen file.
+   */
+  DialogOpenFile = 'dialog:open-file',
+
+  /**
+   * Shows a save-file dialog and returns the chosen path.
+   */
+  DialogSaveFile = 'dialog:save-file',
+
+  /**
+   * Shows a confirmation dialog for saving unsaved changes before closing.
+   */
+  DialogConfirmSave = 'dialog:confirm-save',
 }

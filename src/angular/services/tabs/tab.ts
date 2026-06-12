@@ -26,6 +26,12 @@ export interface Tab {
    * Gets the icon CSS class of the tab (a Tabler webfont class such as `ti ti-folder`).
    */
   readonly icon: string;
+
+  /**
+   * Gets a value indicating whether the tab has unsaved changes. Surfaced as a dirty indicator on
+   * the tab; defaults to false for tabs without a document.
+   */
+  readonly dirty?: boolean;
 }
 
 /**

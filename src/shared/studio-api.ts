@@ -155,6 +155,97 @@ export interface TerminalApi {
 }
 
 /**
+ * Describes a file read from disk.
+ */
+export interface FileInfo {
+  /**
+   * Gets the absolute path of the file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file name, including its extension.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the file extension, including the leading dot (empty when there is none).
+   */
+  readonly extension: string;
+
+  /**
+   * Gets the textual contents of the file.
+   */
+  readonly content: string;
+}
+
+/**
+ * Describes the result of a file write.
+ */
+export interface FileWriteResult {
+  /**
+   * Gets a value indicating whether the write succeeded.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the absolute path written to, when successful.
+   */
+  readonly path?: string;
+
+  /**
+   * Gets the error message, when the write failed.
+   */
+  readonly error?: string;
+}
+
+/**
+ * Identifies the user's choice in the unsaved-changes confirmation dialog.
+ */
+export type SaveDialogChoice = 'save' | 'dontSave' | 'cancel';
+
+/**
+ * Defines the file-system operations exposed to the renderer process. All paths are validated in the
+ * main process before any disk access.
+ */
+export interface FileApi {
+  /**
+   * Reads a file from disk.
+   * @param path The absolute path of the file to read.
+   * @returns Returns the file info, or null when the file cannot be read.
+   */
+  read(path: string): Promise<FileInfo | null>;
+
+  /**
+   * Writes contents to a file on disk.
+   * @param path The absolute path to write to.
+   * @param content The contents to write.
+   * @returns Returns the result describing success or failure.
+   */
+  write(path: string, content: string): Promise<FileWriteResult>;
+
+  /**
+   * Shows an open-file dialog and reads the chosen file.
+   * @returns Returns the chosen file's info, or null when the dialog was cancelled.
+   */
+  openDialog(): Promise<FileInfo | null>;
+
+  /**
+   * Shows a save-file dialog and returns the chosen path.
+   * @param defaultPath The path suggested in the dialog.
+   * @returns Returns the chosen absolute path, or null when the dialog was cancelled.
+   */
+  saveDialog(defaultPath?: string): Promise<string | null>;
+
+  /**
+   * Shows a confirmation dialog asking whether to save unsaved changes.
+   * @param fileName The name of the file with unsaved changes.
+   * @returns Returns the user's choice.
+   */
+  confirmSave(fileName: string): Promise<SaveDialogChoice>;
+}
+
+/**
  * Defines the operating-system shell operations exposed to the renderer process.
  */
 export interface ShellApi {
@@ -196,4 +287,9 @@ export interface StudioApi {
    * Gets the operating-system shell operations for the application.
    */
   readonly shell: ShellApi;
+
+  /**
+   * Gets the file-system operations for the application.
+   */
+  readonly file: FileApi;
 }

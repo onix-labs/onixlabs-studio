@@ -11,6 +11,9 @@
 >
   <i [class]="tab().icon"></i>
   <span>{{ tab().title }}</span>
+  @if (tab().dirty) {
+    <span class="tab-dirty" aria-label="Unsaved changes"></span>
+  }
   <button
     type="button"
     aria-label="Close tab"

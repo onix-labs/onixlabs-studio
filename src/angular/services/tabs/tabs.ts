@@ -123,6 +123,18 @@ export class Tabs {
   }
 
   /**
+   * Sets the unsaved-changes (dirty) state of the tab with the given identifier. Unknown identifiers
+   * are ignored.
+   * @param id The identifier of the tab to update.
+   * @param dirty Whether the tab has unsaved changes.
+   */
+  public setDirty(id: string, dirty: boolean): void {
+    this.tabList.update((tabs: readonly Tab[]): readonly Tab[] =>
+      tabs.map((tab: Tab): Tab => (tab.id === id ? { ...tab, dirty } : tab)),
+    );
+  }
+
+  /**
    * Moves a tab from one position to another within the tab list. Out-of-range or no-op indices
    * are ignored.
    * @param fromIndex The current index of the tab to move.
