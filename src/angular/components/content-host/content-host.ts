@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { Documents } from '../../services/documents/documents';
 import { Tab } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
 import { AgentView } from '../views/agent-view/agent-view';
@@ -28,6 +29,11 @@ export class ContentHost {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
+   * Holds the document model that backs code and markdown tabs.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Gets the ordered list of open tabs.
    */
   protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabs;
@@ -36,4 +42,23 @@ export class ContentHost {
    * Gets the identifier of the active tab, or undefined when no tab is open.
    */
   protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
+
+  /**
+   * Gets the initial markdown content a markdown tab opens with, seeded from its document when the
+   * tab was opened from a file. The markdown editor manages its own content thereafter.
+   * @param id The identifier of the tab.
+   * @returns Returns the document's initial content, or an empty string for a blank tab.
+   */
+  protected markdownContent(id: string): string {
+    return this.documents.initialContentOf(id);
+  }
+
+  /**
+   * Records an edit to a markdown tab's content so its dirty state and saves track the changes.
+   * @param id The identifier of the tab.
+   * @param content The new markdown content.
+   */
+  protected onMarkdownChange(id: string, content: string): void {
+    this.documents.setContent(id, content);
+  }
 }

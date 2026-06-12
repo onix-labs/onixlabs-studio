@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 
@@ -15,16 +16,27 @@ describe('DockPanelRegistry', () => {
     expect(registry).toBeTruthy();
   });
 
-  it('get_whenSeededPanelRequested_returnsItWithThePlaceholderComponent', () => {
+  it('get_whenExplorerPanelRequested_returnsItWithTheTreePanelComponent', () => {
     const panel: DockPanel | undefined = registry.get('solution');
 
     expect(panel?.title).toBe('Solution Explorer');
     expect(panel?.role).toBe('tool');
-    expect(panel?.component).toBe(DockPanelPlaceholder);
+    expect(panel?.component).toBe(TreePanel);
   });
 
-  it('get_whenDocumentPanelRequested_reportsTheDocumentRole', () => {
-    expect(registry.get('doc1')?.role).toBe('document');
+  it('get_whenPanelNotRegistered_returnsUndefined', () => {
+    expect(registry.get('toolbox')).toBeUndefined();
+  });
+
+  it('register_whenDocumentPanelRegistered_reportsTheDocumentRole', () => {
+    registry.register({
+      id: 'doc-1',
+      title: 'main.ts',
+      icon: 'ti ti-file',
+      role: 'document',
+      component: DockPanelPlaceholder,
+    });
+    expect(registry.get('doc-1')?.role).toBe('document');
   });
 
   it('has_whenPanelRegistered_returnsTrue', () => {

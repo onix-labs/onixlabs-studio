@@ -95,4 +95,49 @@ export enum IpcChannel {
    * Writes editor content to a per-key temporary file so a language runner can execute it.
    */
   RunWriteTempFile = 'run:write-temp-file',
+
+  /**
+   * Shows a combined open dialog allowing either a file or a folder to be chosen.
+   */
+  WorkspaceOpen = 'workspace:open',
+
+  /**
+   * Reads a single file within the workspace for opening in an editor.
+   */
+  WorkspaceOpenFile = 'workspace:open-file',
+
+  /**
+   * Shows an open-folder dialog and, when chosen, sets it as the workspace root.
+   */
+  WorkspaceOpenFolder = 'workspace:open-folder',
+
+  /**
+   * Clears the current workspace root, closing the open folder.
+   */
+  WorkspaceCloseFolder = 'workspace:close-folder',
+
+  /**
+   * Reads the immediate children of a directory within the workspace.
+   */
+  WorkspaceReadDirectory = 'workspace:read-directory',
+
+  /**
+   * Creates an empty file inside a workspace directory.
+   */
+  WorkspaceCreateFile = 'workspace:create-file',
+
+  /**
+   * Creates a folder inside a workspace directory.
+   */
+  WorkspaceCreateFolder = 'workspace:create-folder',
+
+  /**
+   * Renames a file or folder within the workspace.
+   */
+  WorkspaceRename = 'workspace:rename',
+
+  /**
+   * Deletes a file or folder within the workspace.
+   */
+  WorkspaceDelete = 'workspace:delete',
 }

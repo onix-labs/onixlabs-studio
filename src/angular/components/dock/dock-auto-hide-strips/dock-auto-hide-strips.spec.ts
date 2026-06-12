@@ -37,13 +37,13 @@ describe('DockAutoHideStrips', () => {
   });
 
   it('render_whenAStackIsShelved_showsAStripButton', () => {
-    pin('toolbox');
+    pin('solution');
     fixture.detectChanges();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const button: HTMLButtonElement | null =
       element.querySelector<HTMLButtonElement>('.dock-ah-strip__button');
-    expect(button?.textContent).toContain('Toolbox');
+    expect(button?.textContent).toContain('Solution Explorer');
   });
 
   it('render_whenStripButtonClicked_fliesTheStackOut', () => {

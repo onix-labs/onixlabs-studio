@@ -1,5 +1,6 @@
 import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
 import {
+  collectPanelIds,
   countStacks,
   defaultLayout,
   dockEdge,
@@ -84,6 +85,17 @@ describe('dock-tree', () => {
 
     it('firstStackOfRole_whenRoleAbsent_returnsNull', () => {
       expect(firstStackOfRole(mkStack('tool', ['a']), 'document')).toBeNull();
+    });
+  });
+
+  describe('collectPanelIds', () => {
+    it('collectPanelIds_whenNested_returnsEveryPanelId', () => {
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['a']),
+        mkSplit('col', [mkStack('document', ['b', 'c']), mkStack('tool', ['d'])]),
+      ]);
+
+      expect(collectPanelIds(tree).sort()).toEqual(['a', 'b', 'c', 'd']);
     });
   });
 
@@ -424,12 +436,12 @@ describe('dock-tree', () => {
   });
 
   describe('defaultLayout', () => {
-    it('defaultLayout_whenBuilt_containsADocumentWellAndToolStacks', () => {
+    it('defaultLayout_whenBuilt_containsAnEmptyDocumentWellAndToolStacks', () => {
       const tree: DockNode = defaultLayout();
 
       expect(isSplitNode(tree)).toBe(true);
-      expect(findStackOfPanel(tree, 'doc1')).not.toBeNull();
       expect(findStackOfPanel(tree, 'solution')).not.toBeNull();
+      expect(firstStackOfRole(tree, 'document')?.panels).toEqual([]);
       expect(countStacks(tree, 'document')).toBe(1);
     });
 

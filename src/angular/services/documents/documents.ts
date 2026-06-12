@@ -2,7 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { FileInfo } from '../../../shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
 import { Monaco } from '../monaco/monaco';
-import { Tab } from '../tabs/tab';
+import { Tab, TabType } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 
 /**
@@ -110,9 +110,25 @@ export class Documents {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
-   * Holds the document entries, keyed by tab identifier.
+   * Holds the document entries, keyed by document identifier (a tab id, or a well document id).
    */
   private readonly entries: Map<string, DocumentEntry> = new Map<string, DocumentEntry>();
+
+  /**
+   * Holds the id of the document currently focused for editing, kept current by the active editor.
+   * Used so save commands target the right document whether it is a tab or a document-well editor.
+   */
+  private readonly activeDocument: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Tracks the running counter used to generate unique document-well identifiers.
+   */
+  private wellSequence: number = 0;
+
+  /**
+   * Gets the id of the document currently focused for editing, or null when none is.
+   */
+  public readonly activeDocumentId: Signal<string | null> = this.activeDocument.asReadonly();
 
   /**
    * Returns the document for a tab, creating an empty untitled document when none exists yet.
@@ -193,9 +209,101 @@ export class Documents {
    * Saves the active tab's document, prompting for a path when it has never been saved.
    * @returns Returns true when the document was saved.
    */
+  /**
+   * Opens an already-read file into a tab of the given type, reusing the tab if the file is already
+   * open. The document is seeded with the file's content, name, path, and detected language.
+   * @param fileInfo The file to open.
+   * @param type The tab type to host the file (for example, `code` or `markdown`).
+   * @returns Returns the opened, or re-activated, tab.
+   */
+  public openFileInfo(fileInfo: FileInfo, type: TabType): Tab {
+    const existing: Tab | undefined = this.findTabByPath(fileInfo.path);
+    if (existing !== undefined) {
+      this.tabs.activate(existing.id);
+      return existing;
+    }
+    const tab: Tab = this.tabs.open(type);
+    const entry: DocumentEntry = this.createEntry(tab.id);
+    this.entries.set(tab.id, entry);
+    entry.filePath.set(fileInfo.path);
+    entry.fileName.set(fileInfo.name);
+    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.content.set(fileInfo.content);
+    entry.original.set(fileInfo.content);
+    this.syncTab(tab.id);
+    // syncTab renamed the tab to the file name; return the up-to-date tab, not the pre-rename one.
+    return this.tabs.tabs().find((candidate: Tab): boolean => candidate.id === tab.id) ?? tab;
+  }
+
+  /**
+   * Gets the initial (last-saved) content of a document, used to seed an editor that manages its own
+   * content thereafter. Returns an empty string when no document is registered for the tab.
+   * @param id The identifier of the tab.
+   * @returns Returns the document's last-saved content, or an empty string.
+   */
+  public initialContentOf(id: string): string {
+    return this.entries.get(id)?.original() ?? '';
+  }
+
+  /**
+   * Creates a document for a file opened into a workspace's document well, seeded with the file's
+   * content, name, path, and detected language. Unlike {@link openFileInfo}, this is not backed by a
+   * top-level tab; the caller hosts it as a dock document panel.
+   * @param fileInfo The file to open.
+   * @returns Returns the new document's identifier.
+   */
+  public createWellDocument(fileInfo: FileInfo): string {
+    this.wellSequence += 1;
+    const id: string = `well-doc-${this.wellSequence}`;
+    const entry: DocumentEntry = this.createEntry(id);
+    this.entries.set(id, entry);
+    entry.filePath.set(fileInfo.path);
+    entry.fileName.set(fileInfo.name);
+    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.content.set(fileInfo.content);
+    entry.original.set(fileInfo.content);
+    return id;
+  }
+
+  /**
+   * Finds the id of the open document backed by the given file path.
+   * @param filePath The absolute file path to match.
+   * @returns Returns the document id, or undefined when the file is not open.
+   */
+  public findIdByPath(filePath: string): string | undefined {
+    for (const [id, entry] of this.entries) {
+      if (entry.filePath() === filePath) {
+        return id;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Records which document is currently focused for editing, so save commands target it. Passing
+   * null clears the focus.
+   * @param id The focused document id, or null.
+   */
+  public setActiveDocument(id: string | null): void {
+    this.activeDocument.set(id);
+  }
+
+  /**
+   * Releases every document whose id is not in the given set, used to drop well documents once their
+   * dock panel has been closed (as opposed to merely re-parented by a split or move).
+   * @param present The ids of the documents still present.
+   */
+  public removeMissing(present: ReadonlySet<string>): void {
+    for (const id of [...this.entries.keys()]) {
+      if (!present.has(id)) {
+        this.remove(id);
+      }
+    }
+  }
+
   public saveActive(): Promise<boolean> {
-    const id: string | undefined = this.tabs.activeTabId();
-    return id === undefined ? Promise.resolve(false) : this.save(id);
+    const id: string | null = this.resolveActiveId();
+    return id === null ? Promise.resolve(false) : this.save(id);
   }
 
   /**
@@ -203,8 +311,17 @@ export class Documents {
    * @returns Returns true when the document was saved.
    */
   public saveActiveAs(): Promise<boolean> {
-    const id: string | undefined = this.tabs.activeTabId();
-    return id === undefined ? Promise.resolve(false) : this.saveAs(id);
+    const id: string | null = this.resolveActiveId();
+    return id === null ? Promise.resolve(false) : this.saveAs(id);
+  }
+
+  /**
+   * Resolves the document to act on for save commands: the focused editor's document, falling back
+   * to the active top-level tab for standalone editor tabs.
+   * @returns Returns the document id, or null when there is none.
+   */
+  private resolveActiveId(): string | null {
+    return this.activeDocument() ?? this.tabs.activeTabId() ?? null;
   }
 
   /**
@@ -310,6 +427,20 @@ export class Documents {
    * @param filePath The path to extract from.
    * @returns Returns the final path segment.
    */
+  /**
+   * Finds the open tab whose document is backed by the given file path.
+   * @param filePath The absolute file path to match.
+   * @returns Returns the matching tab, or undefined when the file is not open.
+   */
+  private findTabByPath(filePath: string): Tab | undefined {
+    for (const [id, entry] of this.entries) {
+      if (entry.filePath() === filePath) {
+        return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id);
+      }
+    }
+    return undefined;
+  }
+
   private basename(filePath: string): string {
     const segments: string[] = filePath.split(/[\\/]/);
     return segments[segments.length - 1];

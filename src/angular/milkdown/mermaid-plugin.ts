@@ -58,7 +58,7 @@ export const remarkMermaid: $Remark<'remarkMermaid', undefined> = $remark(
           };
 
           // Replace the code block with our mermaid node
-          (parent.children)[index] = mermaidNode as unknown as RootContent;
+          parent.children[index] = mermaidNode as unknown as RootContent;
         },
       );
 

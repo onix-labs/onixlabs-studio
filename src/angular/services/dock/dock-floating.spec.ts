@@ -3,7 +3,7 @@ import { DockFloating, FloatWindow } from './dock-floating';
 import { Rect } from './dock-legality';
 import { StackNode } from './dock-node';
 import { DockState } from './dock-state';
-import { findStackOfPanel } from './dock-tree';
+import { findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 describe('DockFloating', () => {
   let floating: DockFloating;
@@ -79,11 +79,14 @@ describe('DockFloating', () => {
   });
 
   it('dockBack_whenDocument_returnsToADocumentWell', () => {
-    floating.float('doc1', rect);
+    const wellStack: StackNode | null = firstStackOfRole(state.layout(), 'document');
+    expect(wellStack).not.toBeNull();
+    state.tabInto(wellStack!.id, 'doc-a');
+    floating.float('doc-a', rect);
 
-    floating.dockBack('doc1');
+    floating.dockBack('doc-a');
 
-    const well: StackNode | null = findStackOfPanel(state.layout(), 'doc1');
+    const well: StackNode | null = findStackOfPanel(state.layout(), 'doc-a');
     expect(well?.role).toBe('document');
   });
 });

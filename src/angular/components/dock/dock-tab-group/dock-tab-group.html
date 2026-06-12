@@ -123,7 +123,15 @@
   </div>
 
   <div class="dock-tab-group__body">
-    @if (activePanel(); as panel) {
+    <!-- Document wells keep every open editor mounted (hiding the inactive ones) so switching tabs
+         preserves editor state; tool stacks render only their active panel. -->
+    @if (isDocuments()) {
+      @for (panel of panels(); track panel.id) {
+        <div class="dock-tab-group__pane" [hidden]="panel.id !== stack().active">
+          <app-dock-panel-outlet [panelId]="panel.id" />
+        </div>
+      }
+    } @else if (activePanel(); as panel) {
       <app-dock-panel-outlet [panelId]="panel.id" />
     }
   </div>

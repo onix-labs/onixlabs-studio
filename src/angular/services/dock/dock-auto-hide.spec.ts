@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { DockAutoHide, ShelvedStack } from './dock-auto-hide';
 import { StackNode } from './dock-node';
 import { DockState } from './dock-state';
-import { findStackOfPanel } from './dock-tree';
+import { findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 describe('DockAutoHide', () => {
   let autoHide: DockAutoHide;
@@ -19,6 +19,17 @@ describe('DockAutoHide', () => {
     return stack!.id;
   }
 
+  /**
+   * Opens a document into the well and returns its id.
+   * @returns Returns the seeded document panel id.
+   */
+  function seedDocument(): string {
+    const well: StackNode | null = firstStackOfRole(state.layout(), 'document');
+    expect(well).not.toBeNull();
+    state.tabInto(well!.id, 'doc-a');
+    return 'doc-a';
+  }
+
   beforeEach(() => {
     TestBed.configureTestingModule({});
     autoHide = TestBed.inject(DockAutoHide);
@@ -26,19 +37,21 @@ describe('DockAutoHide', () => {
   });
 
   it('pin_whenToolStack_shelvesItAndRemovesItFromTheLayout', () => {
-    autoHide.pin(stackId('toolbox'));
+    autoHide.pin(stackId('solution'));
 
     expect(
-      autoHide.shelved().some((stack: ShelvedStack): boolean => stack.panels.includes('toolbox')),
+      autoHide.shelved().some((stack: ShelvedStack): boolean => stack.panels.includes('solution')),
     ).toBe(true);
-    expect(findStackOfPanel(state.layout(), 'toolbox')).toBeNull();
+    expect(findStackOfPanel(state.layout(), 'solution')).toBeNull();
   });
 
   it('pin_whenDocumentWell_isIgnored', () => {
-    autoHide.pin(stackId('doc1'));
+    const doc: string = seedDocument();
+
+    autoHide.pin(stackId(doc));
 
     expect(autoHide.shelved()).toHaveLength(0);
-    expect(findStackOfPanel(state.layout(), 'doc1')).not.toBeNull();
+    expect(findStackOfPanel(state.layout(), doc)).not.toBeNull();
   });
 
   it('unpin_whenCalled_redocksTheStackAndClearsTheShelf', () => {
@@ -53,7 +66,7 @@ describe('DockAutoHide', () => {
   });
 
   it('occupiedEdges_whenStackShelved_marksItsEdge', () => {
-    autoHide.pin(stackId('toolbox'));
+    autoHide.pin(stackId('solution'));
 
     const edge: string = autoHide.shelved()[0].edge;
     expect(autoHide.occupiedEdges()[edge as 'left']).toBe(true);
@@ -70,10 +83,10 @@ describe('DockAutoHide', () => {
   });
 
   it('closePanel_whenLastPanelClosed_removesTheShelfEntry', () => {
-    autoHide.pin(stackId('toolbox'));
+    autoHide.pin(stackId('solution'));
     const key: string = autoHide.shelved()[0].key;
 
-    autoHide.closePanel(key, 'toolbox');
+    autoHide.closePanel(key, 'solution');
 
     expect(autoHide.shelved()).toHaveLength(0);
   });

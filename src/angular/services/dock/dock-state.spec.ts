@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DockNode, isSplitNode, isStackNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
-import { findStackOfPanel } from './dock-tree';
+import { findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 /**
  * Asserts a stack holds the given panel and returns it, failing the test otherwise.
@@ -18,6 +18,15 @@ function stackOf(tree: DockNode, panelId: string): StackNode {
 describe('DockState', () => {
   let state: DockState;
 
+  /**
+   * Resolves the id of the (initially empty) document well.
+   */
+  function wellId(): string {
+    const well: StackNode | null = firstStackOfRole(state.layout(), 'document');
+    expect(well).not.toBeNull();
+    return well!.id;
+  }
+
   beforeEach(() => {
     TestBed.configureTestingModule({});
     state = TestBed.inject(DockState);
@@ -31,44 +40,46 @@ describe('DockState', () => {
     const root: DockNode = state.layout();
 
     expect(isSplitNode(root)).toBe(true);
-    expect(stackOf(root, 'doc1').role).toBe('document');
+    expect(firstStackOfRole(root, 'document')?.role).toBe('document');
     expect(stackOf(root, 'solution').role).toBe('tool');
   });
 
   it('tabInto_whenCalled_replacesTheLayoutSignalAndAddsTheTab', () => {
     const before: DockNode = state.layout();
-    const wellId: string = stackOf(before, 'doc1').id;
+    state.tabInto(wellId(), 'doc-a');
 
-    state.tabInto(wellId, 'doc4');
+    state.tabInto(wellId(), 'doc-b');
 
     expect(state.layout()).not.toBe(before);
-    const well: StackNode = stackOf(state.layout(), 'doc4');
-    expect(well.panels).toContain('doc1');
-    expect(well.active).toBe('doc4');
+    const well: StackNode = stackOf(state.layout(), 'doc-b');
+    expect(well.panels).toContain('doc-a');
+    expect(well.active).toBe('doc-b');
   });
 
   it('setActive_whenCalled_updatesTheActivePanel', () => {
-    const wellId: string = stackOf(state.layout(), 'doc1').id;
+    const id: string = wellId();
+    state.tabInto(id, 'doc-a');
+    state.tabInto(id, 'doc-b');
 
-    state.setActive(wellId, 'doc2');
+    state.setActive(id, 'doc-a');
 
-    expect(stackOf(state.layout(), 'doc2').active).toBe('doc2');
+    expect(stackOf(state.layout(), 'doc-a').active).toBe('doc-a');
   });
 
   it('splitStack_whenCalled_docksANewStackBesideTheTarget', () => {
     const solutionId: string = stackOf(state.layout(), 'solution').id;
 
-    state.splitStack(solutionId, 'toolbox', 'bottom', 'tool');
+    state.splitStack(solutionId, 'extra', 'bottom', 'tool');
 
-    expect(stackOf(state.layout(), 'toolbox').panels).toEqual(['toolbox']);
+    expect(stackOf(state.layout(), 'extra').panels).toEqual(['extra']);
   });
 
   it('dockEdge_whenAxisDiffersFromRoot_wrapsTheWholeTree', () => {
-    state.dockEdge('toolbox', 'bottom');
+    state.dockEdge('extra', 'bottom');
 
     const root: DockNode = state.layout();
     expect(isSplitNode(root) && root.dir).toBe('col');
-    expect(stackOf(root, 'toolbox').role).toBe('tool');
+    expect(stackOf(root, 'extra').role).toBe('tool');
   });
 
   it('removeFromLayout_whenLastPanelInToolStack_prunesTheStack', () => {
@@ -80,19 +91,23 @@ describe('DockState', () => {
   });
 
   it('reorderTab_whenCalled_reordersThePanelsInTheStack', () => {
-    const wellId: string = stackOf(state.layout(), 'doc1').id;
+    const id: string = wellId();
+    state.tabInto(id, 'doc-a');
+    state.tabInto(id, 'doc-b');
+    state.tabInto(id, 'doc-c');
 
-    state.reorderTab(wellId, 0, 2);
+    state.reorderTab(id, 0, 2);
 
-    expect(stackOf(state.layout(), 'doc1').panels).toEqual(['doc2', 'doc3', 'doc1']);
+    expect(stackOf(state.layout(), 'doc-a').panels).toEqual(['doc-b', 'doc-c', 'doc-a']);
   });
 
   it('movePanel_whenCalled_movesThePanelIntoTheTargetStack', () => {
-    const wellId: string = stackOf(state.layout(), 'doc1').id;
+    const id: string = wellId();
+    state.tabInto(id, 'doc-a');
 
-    state.movePanel('solution', wellId, 0);
+    state.movePanel('solution', id, 0);
 
-    const well: StackNode = stackOf(state.layout(), 'doc1');
+    const well: StackNode = stackOf(state.layout(), 'doc-a');
     expect(well.panels).toContain('solution');
     expect(well.active).toBe('solution');
   });
@@ -111,11 +126,11 @@ describe('DockState', () => {
   });
 
   it('removeStack_whenCalled_removesTheWholeStack', () => {
-    const toolboxId: string = stackOf(state.layout(), 'toolbox').id;
+    const agentId: string = stackOf(state.layout(), 'agent').id;
 
-    state.removeStack(toolboxId);
+    state.removeStack(agentId);
 
-    expect(findStackOfPanel(state.layout(), 'toolbox')).toBeNull();
+    expect(findStackOfPanel(state.layout(), 'agent')).toBeNull();
   });
 
   it('dockStackToEdge_whenCalled_docksTheStackAgainstTheEdge', () => {
@@ -127,12 +142,11 @@ describe('DockState', () => {
   });
 
   it('reset_whenCalled_restoresTheSeededLayout', () => {
-    const wellId: string = stackOf(state.layout(), 'doc1').id;
-    state.tabInto(wellId, 'doc4');
+    state.tabInto(wellId(), 'doc-a');
 
     state.reset();
 
     expect(isStackNode(state.layout())).toBe(false);
-    expect(stackOf(state.layout(), 'doc1').panels).toEqual(['doc1', 'doc2', 'doc3']);
+    expect(firstStackOfRole(state.layout(), 'document')?.panels).toEqual([]);
   });
 });

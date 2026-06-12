@@ -124,6 +124,14 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets whether the backing document is released when this view is destroyed. True for standalone
+   * editor tabs, whose destruction means the tab was closed. False inside the dock document well,
+   * where a view is destroyed and recreated when its panel is re-parented (split or moved); there the
+   * workspace owns document lifecycle and releases the document only when its panel actually closes.
+   */
+  public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Holds the backing document, or null before initialisation.
    */
   private readonly document: WritableSignal<CodeDocument | null> = signal<CodeDocument | null>(
@@ -217,6 +225,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       if (active) {
         editor.layout();
         this.registerCommandHandler();
+        this.documents.setActiveDocument(this.tabId());
         const position: MonacoApi.Position | null = editor.getPosition();
         this.codeStatus.setPosition(
           position === null ? null : { line: position.lineNumber, column: position.column },
@@ -260,8 +269,15 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.disposeEditor();
-    this.documents.remove(this.tabId());
-    this.codeTerminals.remove(this.tabId());
+    if (this.documents.activeDocumentId() === this.tabId()) {
+      this.documents.setActiveDocument(null);
+    }
+    // Only release the document and run terminal when this view owns their lifecycle (standalone
+    // tabs). In the dock well a destroy is a re-parent, not a close, so the workspace handles it.
+    if (this.removeOnDestroy()) {
+      this.documents.remove(this.tabId());
+      this.codeTerminals.remove(this.tabId());
+    }
   }
 
   /**

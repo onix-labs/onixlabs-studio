@@ -4,7 +4,7 @@ import { Tabs } from '../../../../services/tabs/tabs';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
 
 /**
- * Represents the action buttons in the title strip (settings, open, and new-tab).
+ * Represents the action buttons in the title strip (settings and new-tab).
  */
 @Component({
   selector: 'app-title-strip-button-list',
@@ -34,15 +34,6 @@ export class TitleStripButtonList {
    */
   protected openSettings(): void {
     this.tabsService.open('settings');
-  }
-
-  /**
-   * Opens files and directories.
-   *
-   * TODO: Wire this to an Electron open dialog and route the selection into tabs.
-   */
-  protected openFiles(): void {
-    // Intentionally left as a placeholder until the file/directory open flow is implemented.
   }
 
   /**

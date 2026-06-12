@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { FileOpener } from '../../services/file-opener/file-opener';
 import { RecentItem, RecentItems } from '../../services/recent-items/recent-items';
 import { TabType } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
@@ -33,6 +34,11 @@ export class WelcomeScreen {
   private readonly welcomeModal: WelcomeModal = inject(WelcomeModal);
 
   /**
+   * Holds the opener that routes a chosen file or folder to the right surface.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
    * Holds the recent-items registry surfaced in the right-hand panel.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -51,14 +57,14 @@ export class WelcomeScreen {
   );
 
   /**
-   * Opens a directory or file from the file system, then dismisses the welcome screen.
-   *
-   * For now this simply opens a new directory tab; TODO: wire this to an Electron open dialog and
-   * route the selection into tabs.
+   * Shows the system open dialog and routes the chosen file or folder: a directory opens in the
+   * workspace, a markdown file in a markdown tab, and any other text file in a code tab. The welcome
+   * screen is dismissed only when something was opened, so cancelling returns to it.
    */
-  protected openFiles(): void {
-    this.tabsService.open('directory');
-    this.welcomeModal.close();
+  protected async openFiles(): Promise<void> {
+    if (await this.fileOpener.openInteractive()) {
+      this.welcomeModal.close();
+    }
   }
 
   /**

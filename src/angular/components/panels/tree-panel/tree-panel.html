@@ -1,0 +1,43 @@
+@if (workspace.hasWorkspace()) {
+  <div class="tree-list" role="tree">
+    @for (row of workspace.rows(); track row.node.path) {
+      <button
+        type="button"
+        class="tree-row"
+        role="treeitem"
+        [class.active]="row.node.path === workspace.selectedPath()"
+        [class.bold]="row.node.type === 'directory' && row.node.expanded"
+        [style.padding-left.px]="indentFor(row.depth)"
+        [attr.aria-expanded]="row.node.type === 'directory' ? row.node.expanded : null"
+        [attr.aria-selected]="row.node.path === workspace.selectedPath()"
+        (click)="onRowClick(row.node)"
+      >
+        @if (row.node.type === 'directory') {
+          <i
+            class="tree-chevron ti"
+            [class.ti-caret-down]="row.node.expanded"
+            [class.ti-caret-right]="!row.node.expanded"
+            aria-hidden="true"
+          ></i>
+        } @else {
+          <span class="tree-spacer"></span>
+        }
+
+        <i class="tree-icon ti" [class]="iconFor(row.node)" aria-hidden="true"></i>
+        <span class="tree-name">{{ row.node.name }}</span>
+
+        @if (row.node.loading) {
+          <i class="tree-loading ti ti-loader-2" aria-hidden="true"></i>
+        }
+      </button>
+    }
+  </div>
+} @else {
+  <div class="tree-empty">
+    <p>You haven't opened a folder yet.</p>
+    <button type="button" class="tree-open-btn" (click)="workspace.openFolder()">
+      <i class="ti ti-folder-open" aria-hidden="true"></i>
+      Open Folder…
+    </button>
+  </div>
+}

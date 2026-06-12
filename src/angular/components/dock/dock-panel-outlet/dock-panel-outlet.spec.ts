@@ -22,11 +22,11 @@ describe('DockPanelOutlet', () => {
   });
 
   it('render_whenPanelRegistered_projectsItsComponent', () => {
-    fixture.componentRef.setInput('panelId', 'solution');
+    fixture.componentRef.setInput('panelId', 'agent');
     fixture.detectChanges();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.textContent).toContain('Solution Explorer');
+    expect(element.textContent).toContain('workspace agent');
   });
 
   it('render_whenPanelUnknown_showsTheMissingMessage', () => {
