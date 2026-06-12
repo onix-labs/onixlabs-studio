@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
 import { TerminalManager } from './terminal-manager';
@@ -105,6 +105,11 @@ class Program {
     ipcMain.on(IpcChannel.WindowClose, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
+
+    ipcMain.handle(
+      IpcChannel.ShellOpenPath,
+      (_event: IpcMainInvokeEvent, target: string): Promise<string> => shell.openPath(target),
+    );
 
     this.terminalManager.register();
   }

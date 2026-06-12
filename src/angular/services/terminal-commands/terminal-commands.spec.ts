@@ -9,10 +9,16 @@ import { TerminalCommandHandler, TerminalCommands } from './terminal-commands';
  */
 function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
   return {
+    clear: (): void => void (calls['clear'] = true),
+    restart: (): void => void (calls['restart'] = true),
+    cut: (): void => void (calls['cut'] = true),
     copy: (): void => void (calls['copy'] = true),
     paste: (): void => void (calls['paste'] = true),
-    clear: (): void => void (calls['clear'] = true),
-    nuke: (): void => void (calls['nuke'] = true),
+    list: (): void => void (calls['list'] = true),
+    listAll: (): void => void (calls['listAll'] = true),
+    open: (): void => void (calls['open'] = true),
+    home: (): void => void (calls['home'] = true),
+    root: (): void => void (calls['root'] = true),
   };
 }
 
@@ -29,27 +35,37 @@ describe('TerminalCommands', () => {
     expect(TestBed.inject(TerminalCommands).hasActiveTerminal()).toBe(false);
   });
 
-  it('copy_whenHandlerRegistered_forwardsToTheHandler', () => {
+  it('restart_whenHandlerRegistered_forwardsToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
     const calls: Record<string, boolean> = {};
     commands.register(createHandler(calls));
 
-    commands.copy();
+    commands.restart();
 
-    expect(calls['copy']).toBe(true);
+    expect(calls['restart']).toBe(true);
     expect(commands.hasActiveTerminal()).toBe(true);
   });
 
-  it('nuke_whenHandlerUnregistered_doesNothing', () => {
+  it('listAll_whenHandlerRegistered_forwardsToTheHandler', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    const calls: Record<string, boolean> = {};
+    commands.register(createHandler(calls));
+
+    commands.listAll();
+
+    expect(calls['listAll']).toBe(true);
+  });
+
+  it('open_whenHandlerUnregistered_doesNothing', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
     const calls: Record<string, boolean> = {};
     const handler: TerminalCommandHandler = createHandler(calls);
     commands.register(handler);
     commands.unregister(handler);
 
-    commands.nuke();
+    commands.open();
 
-    expect(calls['nuke']).toBeUndefined();
+    expect(calls['open']).toBeUndefined();
     expect(commands.hasActiveTerminal()).toBe(false);
   });
 });

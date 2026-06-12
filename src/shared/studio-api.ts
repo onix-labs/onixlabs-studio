@@ -155,6 +155,17 @@ export interface TerminalApi {
 }
 
 /**
+ * Defines the operating-system shell operations exposed to the renderer process.
+ */
+export interface ShellApi {
+  /**
+   * Opens a file-system path in the operating system's default handler (e.g. the file manager).
+   * @param path The absolute path to open.
+   */
+  openPath(path: string): Promise<void>;
+}
+
+/**
  * Defines the minimal, sandboxed API surface exposed to the renderer process via
  * the context bridge. This is the only channel through which the renderer reaches
  * privileged capability.
@@ -180,4 +191,9 @@ export interface StudioApi {
    * Gets the pseudo-terminal operations for the application.
    */
   readonly terminal: TerminalApi;
+
+  /**
+   * Gets the operating-system shell operations for the application.
+   */
+  readonly shell: ShellApi;
 }

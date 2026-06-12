@@ -19,6 +19,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
 import { TerminalCreateResult } from '../../../../shared/studio-api';
 import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
+import { Studio } from '../../../services/studio/studio';
 import { Tabs } from '../../../services/tabs/tabs';
 import {
   TerminalCommandHandler,
@@ -79,6 +80,11 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Holds the terminal commands registry the ribbon drives this terminal through.
    */
   private readonly terminalCommands: TerminalCommands = inject(TerminalCommands);
+
+  /**
+   * Holds the Studio bridge used to open the working directory in the OS file manager.
+   */
+  private readonly studio: Studio = inject(Studio);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -304,12 +310,54 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    */
   private registerCommandHandler(): void {
     this.commandHandler = {
+      clear: (): void => this.clearScreen(),
+      restart: (): void => void this.restart(),
+      cut: (): void => this.cutBuffer(),
       copy: (): void => this.copySelection(),
       paste: (): void => this.pasteClipboard(),
-      clear: (): void => this.clearScreen(),
-      nuke: (): void => void this.nuke(),
+      list: (): void => this.runCommand('ls'),
+      listAll: (): void => this.runCommand('ls -la'),
+      open: (): void => void this.openDirectory(),
+      home: (): void => this.runCommand('cd ~'),
+      root: (): void => this.runCommand('cd /'),
     };
     this.terminalCommands.register(this.commandHandler);
+  }
+
+  /**
+   * Writes a shell command (followed by a carriage return) to the terminal and returns focus to it.
+   * @param command The command to run.
+   */
+  private runCommand(command: string): void {
+    void this.bridge.write(this.terminalId(), `${command}\r`);
+    this.xterm?.focus();
+  }
+
+  /**
+   * Copies the whole buffer to the clipboard, then clears the screen.
+   */
+  private cutBuffer(): void {
+    const xterm: Terminal | null = this.xterm;
+    if (xterm === null) {
+      return;
+    }
+    const text: string = this.getBufferText();
+    if (text.length > 0) {
+      void navigator.clipboard.writeText(text);
+    }
+    xterm.clear();
+    xterm.focus();
+  }
+
+  /**
+   * Opens the terminal's working directory in the operating system's file manager.
+   */
+  private async openDirectory(): Promise<void> {
+    const cwd: string | null = await this.bridge.getCwd(this.terminalId());
+    if (cwd !== null) {
+      await this.studio.openPath(cwd);
+    }
+    this.xterm?.focus();
   }
 
   /**
@@ -355,7 +403,7 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * terminal identifier. The session is disposed before the new one spawns so the main process does
    * not reuse the dying session.
    */
-  private async nuke(): Promise<void> {
+  private async restart(): Promise<void> {
     if (!this.bridge.isElectron) {
       return;
     }

@@ -5,6 +5,21 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
  */
 export interface TerminalCommandHandler {
   /**
+   * Clears the terminal screen.
+   */
+  clear(): void;
+
+  /**
+   * Destroys the terminal session and respawns a fresh one, keeping the same identifier.
+   */
+  restart(): void;
+
+  /**
+   * Copies the whole buffer to the clipboard, then clears the screen.
+   */
+  cut(): void;
+
+  /**
    * Copies the current selection (or the whole buffer when nothing is selected) to the clipboard.
    */
   copy(): void;
@@ -15,14 +30,29 @@ export interface TerminalCommandHandler {
   paste(): void;
 
   /**
-   * Clears the terminal screen.
+   * Runs a directory listing (`ls`) in the terminal.
    */
-  clear(): void;
+  list(): void;
 
   /**
-   * Destroys the terminal session and respawns a fresh one, keeping the same identifier.
+   * Runs a detailed directory listing (`ls -la`) in the terminal.
    */
-  nuke(): void;
+  listAll(): void;
+
+  /**
+   * Opens the terminal's working directory in the operating system's file manager.
+   */
+  open(): void;
+
+  /**
+   * Changes the terminal's working directory to the user's home directory.
+   */
+  home(): void;
+
+  /**
+   * Changes the terminal's working directory to the file-system root.
+   */
+  root(): void;
 }
 
 /**
@@ -65,6 +95,27 @@ export class TerminalCommands {
   }
 
   /**
+   * Invokes the clear command on the active terminal.
+   */
+  public clear(): void {
+    this.handler()?.clear();
+  }
+
+  /**
+   * Invokes the restart command on the active terminal.
+   */
+  public restart(): void {
+    this.handler()?.restart();
+  }
+
+  /**
+   * Invokes the cut command on the active terminal.
+   */
+  public cut(): void {
+    this.handler()?.cut();
+  }
+
+  /**
    * Invokes the copy command on the active terminal.
    */
   public copy(): void {
@@ -79,16 +130,37 @@ export class TerminalCommands {
   }
 
   /**
-   * Invokes the clear command on the active terminal.
+   * Invokes the list command on the active terminal.
    */
-  public clear(): void {
-    this.handler()?.clear();
+  public list(): void {
+    this.handler()?.list();
   }
 
   /**
-   * Invokes the nuke command on the active terminal.
+   * Invokes the detailed list command on the active terminal.
    */
-  public nuke(): void {
-    this.handler()?.nuke();
+  public listAll(): void {
+    this.handler()?.listAll();
+  }
+
+  /**
+   * Invokes the open command on the active terminal.
+   */
+  public open(): void {
+    this.handler()?.open();
+  }
+
+  /**
+   * Invokes the home command on the active terminal.
+   */
+  public home(): void {
+    this.handler()?.home();
+  }
+
+  /**
+   * Invokes the root command on the active terminal.
+   */
+  public root(): void {
+    this.handler()?.root();
   }
 }

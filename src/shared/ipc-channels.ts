@@ -55,4 +55,9 @@ export enum IpcChannel {
    * Notifies the renderer that a pseudo-terminal session has exited.
    */
   TerminalExit = 'terminal:exit',
+
+  /**
+   * Requests that a file-system path be opened in the operating system's default handler.
+   */
+  ShellOpenPath = 'shell:open-path',
 }

@@ -59,6 +59,10 @@ const studioApi: StudioApi = {
       };
     },
   },
+  shell: {
+    openPath: (path: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
+  },
 };
 
 contextBridge.exposeInMainWorld('studio', studioApi);
