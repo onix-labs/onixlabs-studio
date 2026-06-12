@@ -1,0 +1,52 @@
+// The Milkdown editor itself is themed in the global `_milkdown.scss` stylesheet, because its
+// rendered DOM (the `.milkdown` element) lives outside this component's view encapsulation. This
+// stylesheet only owns the scroll container and the document-width wrapper.
+
+:host {
+  // The host background tracks the editor's own surface so the padding around the document reads as
+  // part of the page. Built from the shared gray primitives and switched on the resolved theme.
+  --markdown-view-background: var(--gray-100);
+
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: auto;
+  background: var(--markdown-view-background);
+}
+
+:host-context([data-theme-mode='dark']) {
+  --markdown-view-background: var(--gray-900);
+}
+
+.editor-wrapper {
+  position: relative;
+  max-inline-size: 100%;
+  margin: 0 auto;
+  min-block-size: 100%;
+  padding: 2rem 1rem;
+  box-sizing: border-box;
+  // Show the text caret across the whole editor area, including the empty space below the last
+  // block, so it reads as editable. Interactive elements inside the document override this.
+  cursor: text;
+
+  &.narrow {
+    max-inline-size: 720px;
+  }
+
+  &.medium {
+    max-inline-size: 1080px;
+  }
+
+  &.wide {
+    max-inline-size: 1440px;
+  }
+
+  &.full-width {
+    max-inline-size: 100%;
+    padding-inline: 2rem;
+  }
+}
+
+.editor-container {
+  min-block-size: 100%;
+}
