@@ -4,6 +4,8 @@ import { IpcChannel } from '../shared/ipc-channels';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { TerminalManager } from './terminal-manager';
+import { WorkspaceContext } from './workspace-context';
+import { WorkspaceManager } from './workspace-manager';
 
 class Program {
   /**
@@ -50,6 +52,19 @@ class Program {
    * Writes editor content to temporary files so the renderer can execute it.
    */
   private readonly codeRunner: CodeRunner = new CodeRunner();
+
+  /**
+   * Tracks the open workspace root and confines filesystem operations to it.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
+   * Handles workspace (open folder) and directory operations on behalf of the renderer.
+   */
+  private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
+    (): BrowserWindow | null => this.window,
+    this.workspaceContext,
+  );
 
   /**
    * Initializes a new instance of the Program class.
@@ -136,6 +151,7 @@ class Program {
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();
+    this.workspaceManager.register();
   }
 
   /**

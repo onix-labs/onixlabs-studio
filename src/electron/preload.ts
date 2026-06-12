@@ -1,7 +1,9 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
 import { IpcChannel } from '../shared/ipc-channels';
 import type {
+  DirectoryListing,
   FileInfo,
+  FileOperationResult,
   FileWriteResult,
   SaveDialogChoice,
   StudioApi,
@@ -92,6 +94,37 @@ const studioApi: StudioApi = {
         extension,
         content,
       ) as Promise<TempFileResult>,
+  },
+  workspace: {
+    openFolder: (): Promise<DirectoryListing | null> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceOpenFolder) as Promise<DirectoryListing | null>,
+    closeFolder: (): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceCloseFolder) as Promise<void>,
+    readDirectory: (path: string): Promise<DirectoryListing | null> =>
+      ipcRenderer.invoke(
+        IpcChannel.WorkspaceReadDirectory,
+        path,
+      ) as Promise<DirectoryListing | null>,
+    createFile: (directoryPath: string, name: string): Promise<FileOperationResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.WorkspaceCreateFile,
+        directoryPath,
+        name,
+      ) as Promise<FileOperationResult>,
+    createFolder: (directoryPath: string, name: string): Promise<FileOperationResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.WorkspaceCreateFolder,
+        directoryPath,
+        name,
+      ) as Promise<FileOperationResult>,
+    rename: (targetPath: string, newName: string): Promise<FileOperationResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.WorkspaceRename,
+        targetPath,
+        newName,
+      ) as Promise<FileOperationResult>,
+    delete: (targetPath: string): Promise<FileOperationResult> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceDelete, targetPath) as Promise<FileOperationResult>,
   },
 };
 

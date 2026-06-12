@@ -287,6 +287,127 @@ export interface RunApi {
 }
 
 /**
+ * Identifies whether a directory entry is a file or a directory.
+ */
+export type DirectoryEntryType = 'file' | 'directory';
+
+/**
+ * Describes a single immediate child of a directory.
+ */
+export interface DirectoryEntry {
+  /**
+   * Gets the entry's base name (for example, `main.ts`).
+   */
+  readonly name: string;
+
+  /**
+   * Gets the entry's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets whether the entry is a file or a directory.
+   */
+  readonly type: DirectoryEntryType;
+}
+
+/**
+ * Describes a shallow listing of a directory's immediate children.
+ */
+export interface DirectoryListing {
+  /**
+   * Gets the directory's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the directory's base name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the directory's immediate children, ordered directories-first then by name.
+   */
+  readonly entries: readonly DirectoryEntry[];
+}
+
+/**
+ * Describes the result of a workspace mutation (create, rename, or delete).
+ */
+export interface FileOperationResult {
+  /**
+   * Gets a value indicating whether the operation succeeded.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the absolute path the operation produced, when successful.
+   */
+  readonly path?: string;
+
+  /**
+   * Gets the error message, when the operation failed.
+   */
+  readonly error?: string;
+}
+
+/**
+ * Defines the workspace (open folder) and directory operations exposed to the renderer process. All
+ * path-taking operations are confined to the open workspace root in the main process before any disk
+ * access, so the renderer cannot read or write arbitrary locations.
+ */
+export interface WorkspaceApi {
+  /**
+   * Shows an open-folder dialog and, when a folder is chosen, sets it as the workspace root.
+   * @returns Returns the root directory listing, or null when the dialog was cancelled.
+   */
+  openFolder(): Promise<DirectoryListing | null>;
+
+  /**
+   * Clears the current workspace root, closing the open folder.
+   */
+  closeFolder(): Promise<void>;
+
+  /**
+   * Reads the immediate children of a directory within the workspace.
+   * @param path The absolute directory path to read.
+   * @returns Returns the listing, or null when the path is invalid or outside the workspace.
+   */
+  readDirectory(path: string): Promise<DirectoryListing | null>;
+
+  /**
+   * Creates an empty file inside a workspace directory.
+   * @param directoryPath The parent directory.
+   * @param name The new file's name (a single path segment).
+   * @returns Returns the result describing success or failure.
+   */
+  createFile(directoryPath: string, name: string): Promise<FileOperationResult>;
+
+  /**
+   * Creates a folder inside a workspace directory.
+   * @param directoryPath The parent directory.
+   * @param name The new folder's name (a single path segment).
+   * @returns Returns the result describing success or failure.
+   */
+  createFolder(directoryPath: string, name: string): Promise<FileOperationResult>;
+
+  /**
+   * Renames a file or folder within the workspace, keeping it in the same directory.
+   * @param targetPath The absolute path of the entry to rename.
+   * @param newName The new name (a single path segment).
+   * @returns Returns the result describing success and the new path.
+   */
+  rename(targetPath: string, newName: string): Promise<FileOperationResult>;
+
+  /**
+   * Deletes a file or folder within the workspace.
+   * @param targetPath The absolute path of the entry to delete.
+   * @returns Returns the result describing success or failure.
+   */
+  delete(targetPath: string): Promise<FileOperationResult>;
+}
+
+/**
  * Defines the operating-system shell operations exposed to the renderer process.
  */
 export interface ShellApi {
@@ -338,4 +459,9 @@ export interface StudioApi {
    * Gets the code-execution operations for the application.
    */
   readonly run: RunApi;
+
+  /**
+   * Gets the workspace (open folder) and directory operations for the application.
+   */
+  readonly workspace: WorkspaceApi;
 }
