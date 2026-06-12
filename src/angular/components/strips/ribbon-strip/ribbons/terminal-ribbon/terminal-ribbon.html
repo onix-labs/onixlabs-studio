@@ -4,26 +4,20 @@
 </app-ribbon-group>
 
 <app-ribbon-group title="Clipboard">
-  <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-scissors" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small icon="ti ti-copy" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" (action)="onPaste()" />
-  </app-ribbon-column>
+  <app-ribbon-button icon="ti ti-scissors" label="Cut" (action)="onCut()" />
+  <app-ribbon-button icon="ti ti-copy" label="Copy" (action)="onCopy()" />
+  <app-ribbon-button icon="ti ti-clipboard" label="Paste" (action)="onPaste()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Actions">
-  <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-list" label="List" (action)="onList()" />
-    <app-ribbon-button-small icon="ti ti-list-details" label="List All" (action)="onListAll()" />
-    <app-ribbon-button-small icon="ti ti-folder-open" label="Open" (action)="onOpen()" />
-  </app-ribbon-column>
+  <app-ribbon-button icon="ti ti-list" label="List" (action)="onList()" />
+  <app-ribbon-button icon="ti ti-list-details" label="List All" (action)="onListAll()" />
+  <app-ribbon-button icon="ti ti-folder-open" label="Open" (action)="onOpen()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Locations">
-  <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-home" label="Home" (action)="onHome()" />
-    <app-ribbon-button-small icon="ti ti-folder-root" label="Root" (action)="onRoot()" />
-  </app-ribbon-column>
+  <app-ribbon-button icon="ti ti-home" label="Home" (action)="onHome()" />
+  <app-ribbon-button icon="ti ti-folder-root" label="Root" (action)="onRoot()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="View">
@@ -31,4 +25,8 @@
     <app-ribbon-check label="Scroll Lock" />
     <app-ribbon-check label="Word Wrap" [checked]="true" />
   </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="AI">
+  <app-ribbon-button icon="ti ti-robot" label="Agent" />
 </app-ribbon-group>

@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
-import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
 import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
@@ -9,11 +8,11 @@ import { TerminalCommands } from '../../../../../services/terminal-commands/term
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
  * actions and locations commands drive the active terminal through the {@link TerminalCommands}
- * registry; the view toggles are static scaffolding.
+ * registry; the view toggles and the AI group are static scaffolding.
  */
 @Component({
   selector: 'app-terminal-ribbon',
-  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonButtonSmall, RibbonCheck],
+  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonCheck],
   templateUrl: './terminal-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
