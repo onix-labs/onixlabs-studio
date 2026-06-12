@@ -1,6 +1,13 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
 import { IpcChannel } from '../shared/ipc-channels';
-import type { StudioApi, TerminalCreateOptions, TerminalCreateResult } from '../shared/studio-api';
+import type {
+  FileInfo,
+  FileWriteResult,
+  SaveDialogChoice,
+  StudioApi,
+  TerminalCreateOptions,
+  TerminalCreateResult,
+} from '../shared/studio-api';
 
 /**
  * Specifies the concrete API exposed to the renderer under `window.studio`.
@@ -62,6 +69,18 @@ const studioApi: StudioApi = {
   shell: {
     openPath: (path: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
+  },
+  file: {
+    read: (path: string): Promise<FileInfo | null> =>
+      ipcRenderer.invoke(IpcChannel.FileRead, path) as Promise<FileInfo | null>,
+    write: (path: string, content: string): Promise<FileWriteResult> =>
+      ipcRenderer.invoke(IpcChannel.FileWrite, path, content) as Promise<FileWriteResult>,
+    openDialog: (): Promise<FileInfo | null> =>
+      ipcRenderer.invoke(IpcChannel.DialogOpenFile) as Promise<FileInfo | null>,
+    saveDialog: (defaultPath?: string): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannel.DialogSaveFile, defaultPath) as Promise<string | null>,
+    confirmSave: (fileName: string): Promise<SaveDialogChoice> =>
+      ipcRenderer.invoke(IpcChannel.DialogConfirmSave, fileName) as Promise<SaveDialogChoice>,
   },
 };
 

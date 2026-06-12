@@ -1,7 +1,34 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  InputSignal,
+  OnDestroy,
+  OnInit,
+  signal,
+  Signal,
+  viewChild,
+  WritableSignal,
+} from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
+import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
+import { CodeStatus } from '../../../services/code-status/code-status';
+import { CodeDocument, Documents } from '../../../services/documents/documents';
+import { Monaco } from '../../../services/monaco/monaco';
+import { Settings, TextEditorSettings } from '../../../services/settings/settings';
+import { Theme } from '../../../services/theme/theme';
 
 /**
- * Represents the plaintext/code view. This is a placeholder pending the Monaco editor implementation.
+ * Identifies the source label passed to Monaco when triggering editor actions from the ribbon.
+ */
+const COMMAND_SOURCE: string = 'ribbon';
+
+/**
+ * Represents the code editor view, hosting a Monaco editor bound to the owning tab's document.
  */
 @Component({
   selector: 'app-code-view',
@@ -10,9 +37,295 @@ import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView {
+export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   /**
-   * Gets a value indicating whether the view belongs to the active tab.
+   * Holds the Monaco service used to load the editor and resolve options and themes.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the settings service supplying editor preferences.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the theme service supplying the resolved light/dark mode.
+   */
+  private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds the documents service owning the tab's content and file association.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the cursor-position status publisher.
+   */
+  private readonly codeStatus: CodeStatus = inject(CodeStatus);
+
+  /**
+   * Holds the code command registry the ribbon routes editor commands through.
+   */
+  private readonly codeCommands: CodeCommands = inject(CodeCommands);
+
+  /**
+   * Holds a reference to the element Monaco mounts into.
+   */
+  private readonly editorContainer: Signal<ElementRef<HTMLDivElement>> =
+    viewChild.required<ElementRef<HTMLDivElement>>('editorContainer');
+
+  /**
+   * Gets the identifier of the owning tab, used to resolve the backing document.
+   */
+  public readonly tabId: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets a value indicating whether the view belongs to the active tab. Inactive views stay mounted
+   * so their editor state is preserved, but they do not own the ribbon command handler or status.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the backing document, or null before initialisation.
+   */
+  private readonly document: WritableSignal<CodeDocument | null> = signal<CodeDocument | null>(
+    null,
+  );
+
+  /**
+   * Holds the Monaco editor instance, or null before creation and after disposal.
+   */
+  private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
+
+  /**
+   * Holds a value indicating whether the editor is ready for interaction.
+   */
+  private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds a value indicating whether the next model-content change should be ignored because it
+   * originated from an external content update applied to the editor.
+   */
+  private ignoreNextChange: boolean = false;
+
+  /**
+   * Holds the command handler registered with the {@link CodeCommands} registry while active.
+   */
+  private commandHandler: CodeCommandHandler | null = null;
+
+  /**
+   * Initialises the view, wiring effects for live settings/theme, external content updates, language
+   * changes, and activation.
+   */
+  public constructor() {
+    effect((): void => {
+      this.settings.textEditor();
+      this.theme.resolvedMode();
+      const document: CodeDocument | null = this.document();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null || document === null) {
+        return;
+      }
+      const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(
+        document.language(),
+      );
+      editor.updateOptions({
+        lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
+        minimap: { enabled: resolved.showMinimap },
+        renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
+        wordWrap: resolved.wordWrap ? 'on' : 'off',
+        stickyScroll: { enabled: resolved.stickyScroll },
+        fontFamily: `"${resolved.fontFamily}", monospace`,
+        fontSize: resolved.fontSize,
+      });
+      this.monaco
+        .getMonaco()
+        ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
+    });
+
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      const content: string = document?.content() ?? '';
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null) {
+        return;
+      }
+      if (editor.getValue() !== content) {
+        this.ignoreNextChange = true;
+        editor.setValue(content);
+      }
+    });
+
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      const language: string = document?.language() ?? 'plaintext';
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+      if (!this.editorReady() || editor === null || monaco === undefined) {
+        return;
+      }
+      const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+      if (model !== null && model.getLanguageId() !== language) {
+        monaco.editor.setModelLanguage(model, language);
+      }
+    });
+
+    effect((): void => {
+      const active: boolean = this.isActive();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null) {
+        return;
+      }
+      if (active) {
+        editor.layout();
+        this.registerCommandHandler();
+        const position: MonacoApi.Position | null = editor.getPosition();
+        this.codeStatus.setPosition(
+          position === null ? null : { line: position.lineNumber, column: position.column },
+        );
+        editor.focus();
+      } else {
+        if (this.commandHandler !== null) {
+          this.codeCommands.unregister(this.commandHandler);
+          this.commandHandler = null;
+        }
+        this.codeStatus.setPosition(null);
+      }
+    });
+  }
+
+  /**
+   * Resolves the backing document for the owning tab.
+   */
+  public ngOnInit(): void {
+    this.document.set(this.documents.ensure(this.tabId()));
+  }
+
+  /**
+   * Loads Monaco if needed and creates the editor once the view's element is available.
+   */
+  public ngAfterViewInit(): void {
+    void this.initEditor();
+  }
+
+  /**
+   * Awaits the Monaco load, then creates the editor.
+   * @returns Returns a promise that resolves once the editor has been created.
+   */
+  private async initEditor(): Promise<void> {
+    await this.monaco.ensureLoaded();
+    this.createEditor();
+  }
+
+  /**
+   * Disposes the editor and releases the document when the view is torn down.
+   */
+  public ngOnDestroy(): void {
+    this.disposeEditor();
+    this.documents.remove(this.tabId());
+  }
+
+  /**
+   * Creates the Monaco editor for the backing document.
+   */
+  private createEditor(): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const document: CodeDocument | null = this.document();
+    if (monaco === undefined || document === null) {
+      return;
+    }
+
+    const language: string = document.language();
+    this.editor = monaco.editor.create(this.editorContainer().nativeElement, {
+      ...this.monaco.getEditorOptions(language),
+      value: document.content(),
+      language,
+    });
+
+    this.editor.onDidChangeModelContent((): void => {
+      if (this.ignoreNextChange) {
+        this.ignoreNextChange = false;
+        return;
+      }
+      this.documents.setContent(this.tabId(), this.editor?.getValue() ?? '');
+    });
+
+    this.editor.onDidChangeCursorPosition(
+      (event: MonacoApi.editor.ICursorPositionChangedEvent): void => {
+        if (!this.isActive()) {
+          return;
+        }
+        this.codeStatus.setPosition({
+          line: event.position.lineNumber,
+          column: event.position.column,
+        });
+      },
+    );
+
+    this.editorReady.set(true);
+  }
+
+  /**
+   * Disposes the Monaco editor and releases the command handler.
+   */
+  private disposeEditor(): void {
+    if (this.commandHandler !== null) {
+      this.codeCommands.unregister(this.commandHandler);
+      this.commandHandler = null;
+    }
+    if (this.editor !== null) {
+      this.editor.dispose();
+      this.editor = null;
+    }
+    this.editorReady.set(false);
+  }
+
+  /**
+   * Registers the ribbon command handler, mapping each command to a Monaco editor action.
+   */
+  private registerCommandHandler(): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+
+    this.commandHandler = {
+      cut: (): void => this.trigger(editor, 'editor.action.clipboardCutAction'),
+      copy: (): void => this.trigger(editor, 'editor.action.clipboardCopyAction'),
+      paste: (): void => this.paste(editor),
+      undo: (): void => this.trigger(editor, 'undo'),
+      redo: (): void => this.trigger(editor, 'redo'),
+      find: (): void => this.trigger(editor, 'actions.find'),
+      formatDocument: (): void => this.trigger(editor, 'editor.action.formatDocument'),
+    };
+
+    this.codeCommands.register(this.commandHandler);
+  }
+
+  /**
+   * Focuses the editor and triggers a built-in Monaco action.
+   * @param editor The editor instance.
+   * @param action The Monaco action identifier.
+   */
+  private trigger(editor: MonacoApi.editor.IStandaloneCodeEditor, action: string): void {
+    editor.focus();
+    editor.trigger(COMMAND_SOURCE, action, null);
+  }
+
+  /**
+   * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
+   * @param editor The editor instance.
+   */
+  private paste(editor: MonacoApi.editor.IStandaloneCodeEditor): void {
+    editor.focus();
+    void navigator.clipboard
+      .readText()
+      .then((text: string): void => {
+        const selection: MonacoApi.Selection | null = editor.getSelection();
+        if (selection !== null) {
+          editor.executeEdits(COMMAND_SOURCE, [{ range: selection, text, forceMoveMarkers: true }]);
+        }
+      })
+      .catch((): void => undefined);
+  }
 }

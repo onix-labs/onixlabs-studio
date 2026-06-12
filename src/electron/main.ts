@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { FileManager } from './file-manager';
 import { TerminalManager } from './terminal-manager';
 
 class Program {
@@ -34,6 +35,13 @@ class Program {
    * Manages pseudo-terminal sessions on behalf of the renderer.
    */
   private readonly terminalManager: TerminalManager = new TerminalManager(
+    (): BrowserWindow | null => this.window,
+  );
+
+  /**
+   * Handles file-system operations and dialogs on behalf of the renderer.
+   */
+  private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.window,
   );
 
@@ -112,6 +120,7 @@ class Program {
     );
 
     this.terminalManager.register();
+    this.fileManager.register();
   }
 
   /**

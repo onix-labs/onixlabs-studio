@@ -53,6 +53,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "mermaid": "^11.15.0",
+    "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
     "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
