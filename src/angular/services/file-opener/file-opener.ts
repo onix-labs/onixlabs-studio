@@ -10,6 +10,7 @@ import { Output } from '../output/output';
 import { Tab, TabType } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 import { Workspace } from '../workspace/workspace';
+import { Workspaces } from '../workspaces/workspaces';
 
 /**
  * Holds the lowercased file extensions (including the leading dot) routed to the markdown editor.
@@ -53,6 +54,11 @@ export class FileOpener {
    * Holds the dock panel registry that document panels are registered with.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds the registry that hands a newly-opened folder to its workspace tab.
+   */
+  private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
    * Shows the combined open dialog (file or folder) and routes the selection.
@@ -108,20 +114,13 @@ export class FileOpener {
   }
 
   /**
-   * Shows a chosen directory in the workspace: activates the directory tab (opening one if needed)
-   * and seeds the tree from the listing.
+   * Opens a chosen directory as a new workspace tab, stashing its listing for the tab's view to seed
+   * its scoped workspace from. Each opened directory gets its own tab, so several can be open at once.
    * @param listing The root directory listing to display.
    */
   private openDirectory(listing: DirectoryListing): void {
-    const existing: Tab | undefined = this.tabs
-      .tabs()
-      .find((tab: Tab): boolean => tab.type === 'directory');
-    if (existing !== undefined) {
-      this.tabs.activate(existing.id);
-    } else {
-      this.tabs.open('directory');
-    }
-    this.workspace.openListing(listing);
+    const tab: Tab = this.tabs.open('directory');
+    this.workspaces.setInitial(tab.id, listing);
   }
 
   /**

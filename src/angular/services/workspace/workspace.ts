@@ -168,7 +168,10 @@ export class Workspace {
    * @returns Returns a promise that resolves once the folder has been closed.
    */
   public async closeFolder(): Promise<void> {
-    await (this.api?.closeFolder() ?? Promise.resolve());
+    const root: string | undefined = this.rootListing()?.path;
+    if (root !== undefined) {
+      await (this.api?.closeFolder(root) ?? Promise.resolve());
+    }
     this.rootListing.set(null);
     this.treeNodes.set([]);
     this.selection.set(null);

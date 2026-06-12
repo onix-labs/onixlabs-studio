@@ -387,9 +387,11 @@ export interface WorkspaceApi {
   openFolder(): Promise<DirectoryListing | null>;
 
   /**
-   * Clears the current workspace root, closing the open folder.
+   * Closes an open workspace folder, removing it from the set of roots filesystem operations are
+   * confined to.
+   * @param root The absolute root path to close.
    */
-  closeFolder(): Promise<void>;
+  closeFolder(root: string): Promise<void>;
 
   /**
    * Reads the immediate children of a directory within the workspace.

@@ -5,7 +5,7 @@ import { DockState } from '../dock/dock-state';
 import { firstStackOfRole } from '../dock/dock-tree';
 import { Tab } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
-import { Workspace } from '../workspace/workspace';
+import { Workspaces } from '../workspaces/workspaces';
 import { FileOpener } from './file-opener';
 
 /**
@@ -42,7 +42,7 @@ function fakeBridge(): WorkspaceApi {
 describe('FileOpener', () => {
   let opener: FileOpener;
   let tabs: Tabs;
-  let workspace: Workspace;
+  let workspaces: Workspaces;
   let dockState: DockState;
 
   /**
@@ -61,7 +61,7 @@ describe('FileOpener', () => {
     TestBed.configureTestingModule({});
     opener = TestBed.inject(FileOpener);
     tabs = TestBed.inject(Tabs);
-    workspace = TestBed.inject(Workspace);
+    workspaces = TestBed.inject(Workspaces);
     dockState = TestBed.inject(DockState);
   });
 
@@ -75,11 +75,18 @@ describe('FileOpener', () => {
     expect(tabs.tabs()).toHaveLength(0);
   });
 
-  it('openInteractive_whenDirectoryChosen_opensDirectoryTabAndSeedsWorkspace', async () => {
+  it('openInteractive_whenDirectoryChosen_opensANewWorkspaceTabAndStashesItsFolder', async () => {
     nextSelection = { kind: 'directory', directory: ROOT_LISTING };
     expect(await opener.openInteractive()).toBe(true);
     expect(tabs.tabs().map((tab: Tab): string => tab.type)).toEqual(['directory']);
-    expect(workspace.hasWorkspace()).toBe(true);
+    expect(workspaces.takeInitial(tabs.tabs()[0].id)).toBe(ROOT_LISTING);
+  });
+
+  it('openInteractive_whenSecondDirectoryChosen_opensAnotherWorkspaceTab', async () => {
+    nextSelection = { kind: 'directory', directory: ROOT_LISTING };
+    await opener.openInteractive();
+    await opener.openInteractive();
+    expect(tabs.tabs()).toHaveLength(2);
   });
 
   it('openInteractive_whenMarkdownChosen_opensMarkdownTab', async () => {

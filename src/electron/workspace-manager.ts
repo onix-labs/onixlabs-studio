@@ -80,7 +80,14 @@ export class WorkspaceManager {
       IpcChannel.WorkspaceOpenFolder,
       (): Promise<DirectoryListing | null> => this.openFolder(),
     );
-    ipcMain.handle(IpcChannel.WorkspaceCloseFolder, (): void => this.workspace.setRoot(null));
+    ipcMain.handle(
+      IpcChannel.WorkspaceCloseFolder,
+      (_event: IpcMainInvokeEvent, root: unknown): void => {
+        if (typeof root === 'string' && root.length > 0) {
+          this.workspace.removeRoot(root);
+        }
+      },
+    );
     ipcMain.handle(
       IpcChannel.WorkspaceReadDirectory,
       (_event: IpcMainInvokeEvent, directoryPath: unknown): Promise<DirectoryListing | null> =>
@@ -133,11 +140,11 @@ export class WorkspaceManager {
       return null;
     }
     const root: string = path.resolve(result.filePaths[0]);
-    this.workspace.setRoot(root);
+    this.workspace.addRoot(root);
     try {
       return await this.readListing(root);
     } catch {
-      this.workspace.setRoot(null);
+      this.workspace.removeRoot(root);
       return null;
     }
   }
@@ -163,7 +170,7 @@ export class WorkspaceManager {
     try {
       const stats: Stats = await fs.stat(selectedPath);
       if (stats.isDirectory()) {
-        this.workspace.setRoot(selectedPath);
+        this.workspace.addRoot(selectedPath);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
       return await this.readFileSelection(selectedPath);
@@ -249,7 +256,7 @@ export class WorkspaceManager {
       return { success: false, error: 'Invalid name' };
     }
     const resolved: string = path.resolve(targetPath as string);
-    if (resolved === this.workspace.getRoot()) {
+    if (this.workspace.isRoot(resolved)) {
       return { success: false, error: 'Cannot rename the workspace root' };
     }
     const destination: string = path.join(path.dirname(resolved), newName as string);
@@ -271,7 +278,7 @@ export class WorkspaceManager {
       return { success: false, error: 'Target is outside the workspace' };
     }
     const resolved: string = path.resolve(targetPath as string);
-    if (resolved === this.workspace.getRoot()) {
+    if (this.workspace.isRoot(resolved)) {
       return { success: false, error: 'Cannot delete the workspace root' };
     }
     try {

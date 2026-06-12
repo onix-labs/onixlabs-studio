@@ -103,8 +103,8 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.WorkspaceOpenFile, path) as Promise<OpenSelection | null>,
     openFolder: (): Promise<DirectoryListing | null> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceOpenFolder) as Promise<DirectoryListing | null>,
-    closeFolder: (): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceCloseFolder) as Promise<void>,
+    closeFolder: (root: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.WorkspaceCloseFolder, root) as Promise<void>,
     readDirectory: (path: string): Promise<DirectoryListing | null> =>
       ipcRenderer.invoke(
         IpcChannel.WorkspaceReadDirectory,

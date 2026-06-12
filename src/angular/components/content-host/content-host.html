@@ -5,7 +5,7 @@
         <app-settings-view [isActive]="tab.id === activeTabId()" />
       }
       @case ('directory') {
-        <app-directory-view [isActive]="tab.id === activeTabId()" />
+        <app-directory-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('code') {
         <app-code-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
