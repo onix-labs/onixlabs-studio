@@ -56,6 +56,7 @@
   --form-control-border-color--hover: var(--gray-600);
   --form-track-color: var(--gray-400);
   --form-knob-color: var(--gray-100);
+  --form-on-accent-color: var(--gray-100);
   --form-muted-foreground-color: var(--gray-800);
 
   --settings-background-color: var(--gray-400);
@@ -66,6 +67,8 @@
   --settings-button-border-color: var(--gray-500);
   --settings-button-border-color--hover: var(--gray-600);
 
+  --welcome-backdrop-color: rgba(0, 0, 0, 0.35);
+  --welcome-backdrop-blur: 0.75rem;
   --welcome-panel-background-color: var(--gray-100);
   --welcome-border-color: var(--gray-400);
   --welcome-muted-foreground-color: var(--gray-800);

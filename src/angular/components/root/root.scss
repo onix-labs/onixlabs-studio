@@ -33,8 +33,7 @@
   grid-area: status-strip;
 }
 
-// When no tabs are open the welcome screen replaces every strip, so it spans the whole grid.
+// The welcome screen renders itself as a fixed full-bleed overlay, so it sits outside the grid flow.
 .welcome-screen {
-  grid-column: 1;
-  grid-row: 1 / -1;
+  display: contents;
 }

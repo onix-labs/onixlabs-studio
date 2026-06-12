@@ -9,6 +9,8 @@
   @if (!isSettingsActive()) {
     <app-status-strip class="status-strip" />
   }
-} @else {
+}
+
+@if (showWelcome()) {
   <app-welcome-screen class="welcome-screen" />
 }

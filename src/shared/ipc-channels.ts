@@ -22,6 +22,11 @@ export enum IpcChannel {
   WindowClose = 'window:close',
 
   /**
+   * Sets whether the application window may be moved by dragging its draggable regions.
+   */
+  WindowSetMovable = 'window:set-movable',
+
+  /**
    * Requests that a new pseudo-terminal session be spawned.
    */
   TerminalCreate = 'terminal:create',

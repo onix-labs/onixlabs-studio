@@ -1,28 +1,31 @@
 :host {
-  display: block;
-  block-size: 100%;
+  display: contents;
 }
 
-// The full-bleed surface centres the panel and stands in for the title strip as the window's drag
-// handle, so the frameless window can still be moved.
+// The full-bleed overlay centres the panel. It doubles as the window's drag handle (so the
+// frameless window can move when no title strip is present) and, when summoned over content, blurs
+// what sits behind it.
 .welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  block-size: 100%;
   padding: 2rem;
-  background: var(--body-background-color);
+  background: var(--welcome-backdrop-color);
+  backdrop-filter: blur(var(--welcome-backdrop-blur));
   -webkit-app-region: drag;
 }
 
 // The centred card. Everything inside it opts out of the drag region so the controls stay clickable.
 .welcome__panel {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  inline-size: min(24rem, 100%);
-  padding: 2.5rem 2rem;
-  text-align: center;
+  inline-size: min(52rem, 100%);
+  max-block-size: 100%;
+  padding: 2.5rem;
   background: var(--welcome-panel-background-color);
   border: 0.0625rem solid var(--welcome-border-color);
   border-radius: 1rem;
@@ -31,32 +34,84 @@
   -webkit-app-region: no-drag;
 }
 
+.welcome__close {
+  position: absolute;
+  inset-block-start: 1rem;
+  inset-inline-end: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.9rem;
+  block-size: 1.9rem;
+  font-size: 1.1rem;
+  color: var(--welcome-muted-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// Logo on the left, identity text on the right.
+.welcome__header {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
 .welcome__logo {
-  inline-size: 5rem;
-  block-size: 5rem;
-  margin-block-end: 1.25rem;
+  flex: none;
+  inline-size: 6.5rem;
+  block-size: 6.5rem;
   user-select: none;
+}
+
+.welcome__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
 }
 
 .welcome__title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
-.welcome__subtitle {
-  margin: 0.4rem 0 0;
+.welcome__standfirst {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.welcome__instruction {
+  margin: 0;
   font-size: 0.9rem;
   color: var(--welcome-muted-foreground-color);
+}
+
+// The 40/60 split: actions on the left, recent items on the right.
+.welcome__body {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 1.5rem;
+  margin-block-start: 2rem;
+  min-block-size: 0;
 }
 
 .welcome__actions {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  inline-size: 100%;
-  margin-block-start: 2rem;
 }
 
 // Each action mirrors the new-tab menu items: an icon, a primary label, and a quieter hint.
@@ -114,4 +169,121 @@
 .welcome__action-hint {
   font-size: 0.78rem;
   color: var(--welcome-muted-foreground-color);
+}
+
+// The recent-items panel framing the right-hand column.
+.welcome__recent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-block-size: 14rem;
+  padding: 1rem;
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--welcome-border-color);
+  border-radius: 0.75rem;
+  corner-shape: squircle;
+}
+
+.welcome__recent-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--welcome-muted-foreground-color);
+}
+
+.welcome__recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.welcome__recent-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    flex: none;
+    font-size: 1.2rem;
+    color: var(--welcome-muted-foreground-color);
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+
+    i {
+      color: var(--accent-surface-foreground-color);
+    }
+  }
+}
+
+.welcome__recent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+.welcome__recent-name {
+  overflow: hidden;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.welcome__recent-detail {
+  overflow: hidden;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--welcome-muted-foreground-color);
+}
+
+// The empty state fills the panel and sits centred.
+.welcome__recent-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  color: var(--welcome-muted-foreground-color);
+
+  i {
+    font-size: 1.8rem;
+    opacity: 0.6;
+  }
+}
+
+.welcome__recent-empty-title {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.welcome__recent-empty-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.8;
 }

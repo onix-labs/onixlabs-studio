@@ -1,10 +1,87 @@
 :host {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
   padding-block-start: 0.4rem;
-  padding-inline-start: 5rem;
+  padding-inline-start: 5.5rem;
   background: var(--title-strip-background-color);
   border-block-end: 0.0625rem solid var(--title-strip-border-color);
   -webkit-app-region: drag;
+}
+
+// Locking pins the window: drop the drag region so the strip can no longer move the window. This
+// also covers platforms where the native setMovable call is a no-op.
+:host(.title-strip-container--locked) {
+  -webkit-app-region: no-drag;
+}
+
+// The window-lock toggle sits between the traffic lights and the action buttons. It opts out of the
+// drag region so it stays clickable. The matching margin-block-end aligns it with the action buttons
+// that follow, which carry the same nudge.
+.window-lock {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 0.5rem;
+  margin-block-end: 0.25rem;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+// The native checkbox is styled into the switch track.
+.window-lock__input {
+  appearance: none;
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 1.4rem;
+  margin: 0;
+  background: var(--form-track-color);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 150ms ease-in-out;
+
+  &:checked {
+    background: var(--accent-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+  }
+}
+
+// The lock glyph sits in the track space opposite the knob: on the right over the grey track when
+// unlocked, and on the left over the accent track when locked.
+.window-lock__icon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0.32rem;
+  display: flex;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+  transition: color 150ms ease-in-out;
+}
+
+.window-lock--active .window-lock__icon {
+  inset-inline-end: auto;
+  inset-inline-start: 0.32rem;
+  color: var(--form-on-accent-color);
+}
+
+// The sliding knob tracks the checked state of the input beneath it.
+.window-lock__knob {
+  position: absolute;
+  inset-block-start: 0.15rem;
+  inset-inline-start: 0.15rem;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  background: var(--form-knob-color);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: transform 150ms ease-in-out;
+}
+
+.window-lock__input:checked ~ .window-lock__knob {
+  transform: translateX(1.1rem);
 }

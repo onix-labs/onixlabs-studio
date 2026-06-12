@@ -1,0 +1,57 @@
+:host {
+  display: inline-flex;
+}
+
+.checkbox {
+  appearance: none;
+  position: relative;
+  flex: none;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  margin: 0;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: 0.3rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
+
+  // The tick, drawn as two borders of a rotated box, revealed only when checked.
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.16rem;
+    inset-inline-start: 0.34rem;
+    inline-size: 0.28rem;
+    block-size: 0.55rem;
+    border-inline-end: 0.13rem solid var(--form-on-accent-color);
+    border-block-end: 0.13rem solid var(--form-on-accent-color);
+    transform: rotate(45deg) scale(0);
+    transition: transform 150ms ease-in-out;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--form-control-border-color--hover);
+  }
+
+  &:checked {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+
+    &::before {
+      transform: rotate(45deg) scale(1);
+    }
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

@@ -44,6 +44,12 @@ export interface WindowControlsApi {
    * Closes the application window.
    */
   close(): void;
+
+  /**
+   * Sets whether the application window may be moved by dragging its draggable regions.
+   * @param movable True to allow the window to be moved; false to lock it in place.
+   */
+  setMovable(movable: boolean): void;
 }
 
 /**

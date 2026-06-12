@@ -120,6 +120,14 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
 
+    ipcMain.on(IpcChannel.WindowSetMovable, (event: IpcMainEvent, movable: unknown): void => {
+      if (typeof movable !== 'boolean') {
+        return;
+      }
+
+      BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
+    });
+
     ipcMain.handle(
       IpcChannel.ShellOpenPath,
       (_event: IpcMainInvokeEvent, target: string): Promise<string> => shell.openPath(target),

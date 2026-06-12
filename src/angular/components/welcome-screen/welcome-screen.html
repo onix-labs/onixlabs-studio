@@ -1,43 +1,93 @@
-<!-- The surface is draggable so the frameless window can still be moved without a title strip; the
-     panel and its controls opt back out of the drag region so they stay interactive. -->
-<section class="welcome">
+<!-- The backdrop is draggable so the frameless window can still be moved when no title strip is
+     present; the panel and its controls opt back out of the drag region so they stay interactive.
+     When shown as a modal it blurs the content behind and a backdrop click dismisses it. -->
+<!-- The backdrop is a convenience click-to-dismiss surface; keyboard parity is provided by the
+     Escape handler on the host, and the panel within holds the real focusable controls. -->
+<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+<section class="welcome" (click)="onBackdrop($event)">
   <div class="welcome__panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-    <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
-    <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
-    <p class="welcome__subtitle">Open something to get started.</p>
-
-    <div class="welcome__actions">
-      <button type="button" class="welcome__action" (click)="openFiles()">
-        <i class="ti ti-folder" aria-hidden="true"></i>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">Open Directory or File</span>
-          <span class="welcome__action-hint">Browse the file system</span>
-        </span>
+    @if (dismissable()) {
+      <button type="button" class="welcome__close" aria-label="Close" (click)="close()">
+        <i class="ti ti-x" aria-hidden="true"></i>
       </button>
+    }
 
-      <button type="button" class="welcome__action" (click)="create('code')">
-        <i class="ti ti-file-code" aria-hidden="true"></i>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Code File</span>
-          <span class="welcome__action-hint">Plain text or source code</span>
-        </span>
-      </button>
+    <header class="welcome__header">
+      <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
+      <div class="welcome__intro">
+        <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
+        <p class="welcome__standfirst">Your whole workflow in one window.</p>
+        <p class="welcome__instruction">Create or open something to get started.</p>
+      </div>
+    </header>
 
-      <button type="button" class="welcome__action" (click)="create('markdown')">
-        <i class="ti ti-markdown" aria-hidden="true"></i>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Markdown File</span>
-          <span class="welcome__action-hint">A formatted document</span>
-        </span>
-      </button>
+    <div class="welcome__body">
+      <div class="welcome__actions">
+        <button type="button" class="welcome__action" (click)="openFiles()">
+          <i class="ti ti-folder" aria-hidden="true"></i>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">Open Directory or File</span>
+            <span class="welcome__action-hint">Browse the file system</span>
+          </span>
+        </button>
 
-      <button type="button" class="welcome__action" (click)="create('terminal')">
-        <i class="ti ti-terminal-2" aria-hidden="true"></i>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Terminal</span>
-          <span class="welcome__action-hint">A command-line session</span>
-        </span>
-      </button>
+        <button type="button" class="welcome__action" (click)="create('code')">
+          <i class="ti ti-file-code" aria-hidden="true"></i>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Code File</span>
+            <span class="welcome__action-hint">Plain text or source code</span>
+          </span>
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('markdown')">
+          <i class="ti ti-markdown" aria-hidden="true"></i>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Markdown File</span>
+            <span class="welcome__action-hint">A formatted document</span>
+          </span>
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('terminal')">
+          <i class="ti ti-terminal-2" aria-hidden="true"></i>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Terminal</span>
+            <span class="welcome__action-hint">A command-line session</span>
+          </span>
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('agent')">
+          <i class="ti ti-robot" aria-hidden="true"></i>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Agent</span>
+            <span class="welcome__action-hint">An AI assistant session</span>
+          </span>
+        </button>
+      </div>
+
+      <section class="welcome__recent" aria-label="Recent items">
+        <h2 class="welcome__recent-title">Recent Items</h2>
+        @if (recent().length > 0) {
+          <ul class="welcome__recent-list">
+            @for (item of recent(); track item.id) {
+              <li>
+                <button type="button" class="welcome__recent-item">
+                  <i [class]="item.icon" aria-hidden="true"></i>
+                  <span class="welcome__recent-text">
+                    <span class="welcome__recent-name">{{ item.name }}</span>
+                    <span class="welcome__recent-detail">{{ item.detail }}</span>
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="welcome__recent-empty">
+            <i class="ti ti-clock-hour-3" aria-hidden="true"></i>
+            <p class="welcome__recent-empty-title">No recent items yet</p>
+            <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
+          </div>
+        }
+      </section>
     </div>
   </div>
 </section>

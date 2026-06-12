@@ -48,6 +48,14 @@ export class Studio {
   }
 
   /**
+   * Sets whether the application window may be moved by dragging its draggable regions.
+   * @param movable True to allow the window to be moved; false to lock it in place.
+   */
+  public setWindowMovable(movable: boolean): void {
+    this.api?.windowControls.setMovable(movable);
+  }
+
+  /**
    * Opens a file-system path in the operating system's default handler.
    * @param path The absolute path to open.
    * @returns Returns a promise that resolves when the request has been dispatched.

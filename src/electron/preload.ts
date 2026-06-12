@@ -24,6 +24,7 @@ const studioApi: StudioApi = {
     minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
     toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),
     close: (): void => ipcRenderer.send(IpcChannel.WindowClose),
+    setMovable: (movable: boolean): void => ipcRenderer.send(IpcChannel.WindowSetMovable, movable),
   },
   terminal: {
     create: (options: TerminalCreateOptions): Promise<TerminalCreateResult> =>

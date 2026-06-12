@@ -6,13 +6,14 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { Checkbox } from '../../../../forms/checkbox/checkbox';
 
 /**
  * Represents a labelled checkbox option in the ribbon.
  */
 @Component({
   selector: 'app-ribbon-check',
-  imports: [],
+  imports: [Checkbox],
   templateUrl: './ribbon-check.html',
   styleUrl: './ribbon-check.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,12 +38,4 @@ export class RibbonCheck {
    * Emits the new checked state when the checkbox is toggled.
    */
   public readonly toggled: OutputEmitterRef<boolean> = output<boolean>();
-
-  /**
-   * Handles a change on the checkbox, emitting the {@link toggled} event.
-   * @param event The DOM change event raised by the underlying checkbox.
-   */
-  protected onChange(event: Event): void {
-    this.toggled.emit((event.target as HTMLInputElement).checked);
-  }
 }

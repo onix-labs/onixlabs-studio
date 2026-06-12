@@ -10,19 +10,12 @@
   cursor: pointer;
   user-select: none;
 
-  input {
-    margin: 0;
-    accent-color: var(--accent-color);
-    cursor: pointer;
-  }
-
-  input:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-
+  // The box dims itself when disabled; dim the label text to match without compounding opacity.
   &:has(input:disabled) {
-    opacity: 0.4;
     cursor: default;
+
+    span {
+      opacity: 0.4;
+    }
   }
 }

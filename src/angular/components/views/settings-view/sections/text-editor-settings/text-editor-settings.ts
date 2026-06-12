@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Accordion } from '../../../../forms/accordion/accordion';
+import { Checkbox } from '../../../../forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { LanguageSelect } from '../../../../forms/language-select/language-select';
 import { NumberField } from '../../../../forms/number-field/number-field';
@@ -44,7 +45,16 @@ interface BooleanSetting {
  */
 @Component({
   selector: 'app-text-editor-settings',
-  imports: [SettingRow, Toggle, Dropdown, TextField, NumberField, Accordion, LanguageSelect],
+  imports: [
+    SettingRow,
+    Toggle,
+    Checkbox,
+    Dropdown,
+    TextField,
+    NumberField,
+    Accordion,
+    LanguageSelect,
+  ],
   templateUrl: './text-editor-settings.html',
   styleUrls: ['../section.scss', './text-editor-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -193,10 +203,13 @@ export class TextEditorSettingsSection {
    * current global value; when disabled the setting falls back to global.
    * @param profile The profile to update.
    * @param key The setting to toggle.
-   * @param event The DOM change event raised by the override checkbox.
+   * @param enabled Whether the override is enabled.
    */
-  protected onOverrideToggle(profile: EditorProfile, key: BooleanSettingKey, event: Event): void {
-    const enabled: boolean = (event.target as HTMLInputElement).checked;
+  protected onOverrideToggle(
+    profile: EditorProfile,
+    key: BooleanSettingKey,
+    enabled: boolean,
+  ): void {
     const next: Record<string, unknown> = { ...profile.settings };
     if (enabled) {
       next[key] = this.global()[key];

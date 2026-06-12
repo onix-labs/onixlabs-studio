@@ -53,11 +53,13 @@
 
       @for (setting of booleanSettings; track setting.key) {
         <div class="override">
+          <!-- The label wraps the checkbox's projected native input, associating them at runtime;
+               the lint rule cannot see through the component boundary to verify this statically. -->
+          <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
           <label class="override__check">
-            <input
-              type="checkbox"
+            <app-checkbox
               [checked]="isOverridden(profile, setting.key)"
-              (change)="onOverrideToggle(profile, setting.key, $event)"
+              (checkedChange)="onOverrideToggle(profile, setting.key, $event)"
             />
             <span>Override {{ setting.label }}</span>
           </label>
