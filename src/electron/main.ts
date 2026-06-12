@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { TerminalManager } from './terminal-manager';
 
@@ -44,6 +45,11 @@ class Program {
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.window,
   );
+
+  /**
+   * Writes editor content to temporary files so the renderer can execute it.
+   */
+  private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
    * Initializes a new instance of the Program class.
@@ -121,6 +127,7 @@ class Program {
 
     this.terminalManager.register();
     this.fileManager.register();
+    this.codeRunner.register();
   }
 
   /**
@@ -131,7 +138,10 @@ class Program {
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
-    app.on('before-quit', (): void => this.terminalManager.disposeAll());
+    app.on('before-quit', (): void => {
+      this.terminalManager.disposeAll();
+      this.codeRunner.dispose();
+    });
   }
 
   /**
