@@ -25,21 +25,42 @@
             "baseHref": "./",
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
+            "define": {
+              "__VUE_OPTIONS_API__": "false",
+              "__VUE_PROD_DEVTOOLS__": "false",
+              "__VUE_PROD_HYDRATION_MISMATCH_DETAILS__": "false"
+            },
             "assets": [
               {
                 "glob": "**/*",
                 "input": "public"
               }
             ],
-            "styles": ["node_modules/@xterm/xterm/css/xterm.css", "src/angular/styles/styles.scss"]
+            "styles": [
+              "node_modules/@xterm/xterm/css/xterm.css",
+              "node_modules/@milkdown/crepe/lib/theme/common/style.css",
+              "node_modules/@milkdown/crepe/lib/theme/frame/style.css",
+              "src/angular/styles/styles.scss"
+            ],
+            "allowedCommonJsDependencies": [
+              "@xterm/xterm",
+              "@xterm/addon-fit",
+              "dayjs",
+              "dayjs/plugin/advancedFormat.js",
+              "dayjs/plugin/duration.js",
+              "cytoscape-fcose",
+              "cytoscape-cose-bilkent",
+              "extend",
+              "@braintree/sanitize-url"
+            ]
           },
           "configurations": {
             "production": {
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1MB",
-                  "maximumError": "2MB"
+                  "maximumWarning": "4MB",
+                  "maximumError": "6MB"
                 },
                 {
                   "type": "anyComponentStyle",

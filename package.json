@@ -48,10 +48,13 @@
     "@angular/forms": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
+    "@milkdown/crepe": "^7.21.2",
     "@tabler/icons-webfont": "^3.44.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "mermaid": "^11.15.0",
     "node-pty": "^1.1.0",
+    "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
