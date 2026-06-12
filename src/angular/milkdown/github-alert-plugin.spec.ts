@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { Icon } from '../icons/icon';
 
 // Test the alert pattern regex
 const ALERT_PATTERN: RegExp = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i;
@@ -58,20 +59,20 @@ describe('GitHub Alert Plugin', () => {
   });
 
   describe('Icon mapping', () => {
-    const ALERT_ICONS: Record<string, string> = {
-      note: 'ti-info-circle',
-      tip: 'ti-bulb',
-      important: 'ti-alert-circle',
-      warning: 'ti-alert-triangle',
-      caution: 'ti-alert-octagon',
+    const ALERT_ICONS: Record<string, Icon> = {
+      note: Icon.INFO,
+      tip: Icon.HINT,
+      important: Icon.IMPORTANT,
+      warning: Icon.WARNING,
+      caution: Icon.CAUTION,
     };
 
     it('should have an icon for each alert type', () => {
-      expect(ALERT_ICONS['note']).toBe('ti-info-circle');
-      expect(ALERT_ICONS['tip']).toBe('ti-bulb');
-      expect(ALERT_ICONS['important']).toBe('ti-alert-circle');
-      expect(ALERT_ICONS['warning']).toBe('ti-alert-triangle');
-      expect(ALERT_ICONS['caution']).toBe('ti-alert-octagon');
+      expect(ALERT_ICONS['note']).toBe(Icon.INFO);
+      expect(ALERT_ICONS['tip']).toBe(Icon.HINT);
+      expect(ALERT_ICONS['important']).toBe(Icon.IMPORTANT);
+      expect(ALERT_ICONS['warning']).toBe(Icon.WARNING);
+      expect(ALERT_ICONS['caution']).toBe(Icon.CAUTION);
     });
 
     it('should have exactly 5 alert types defined', () => {

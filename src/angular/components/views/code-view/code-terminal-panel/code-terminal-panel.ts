@@ -13,6 +13,8 @@ import {
 import { CodeTerminals } from '../../../../services/code-terminals/code-terminals';
 import { TerminalBridge } from '../../../../services/terminal-bridge/terminal-bridge';
 import { TerminalCommands } from '../../../../services/terminal-commands/terminal-commands';
+import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
 import { TerminalView } from '../../terminal-view/terminal-view';
 
 /**
@@ -26,12 +28,17 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [TerminalView],
+  imports: [TerminalView, AppIcon],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CodeTerminalPanel {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the docked-terminal panel state.
    */

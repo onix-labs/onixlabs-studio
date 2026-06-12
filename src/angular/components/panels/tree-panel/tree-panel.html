@@ -21,7 +21,11 @@
           <span class="tree-spacer"></span>
         }
 
-        <app-icon class="tree-icon" [icon]="iconFor(row.node)" />
+        <app-icon
+          class="tree-icon"
+          [class.tree-icon--folder]="row.node.type === 'directory'"
+          [icon]="iconFor(row.node)"
+        />
         <span class="tree-name">{{ row.node.name }}</span>
 
         @if (row.node.loading) {

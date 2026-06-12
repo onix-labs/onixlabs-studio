@@ -1,29 +1,12 @@
 // Application icons.
 //
-// Icons are being migrated from Tabler to Phosphor behind the `app-icon` component and the `Icon`
-// token (src/angular/icons/icon.ts). Both webfonts are loaded while the migration is in progress.
+// Icons are drawn from Phosphor Icons behind the `app-icon` component and the `Icon` token
+// (src/angular/icons/icon.ts); templates never reference icon classes directly. Swapping the icon
+// library — or an icon's weight/variant — is a change to the `Icon` token alone.
 //
-// Phosphor (`ph ph-{name}`, regular weight) is registered in angular.json `styles` rather than
-// imported here, because the package ships plain CSS with font `url()`s relative to the stylesheet;
-// the build resolves and copies those fonts only for entries in the styles array. Additional weights
-// (`ph-thin`, `ph-light`, `ph-bold`, `ph-fill`, `ph-duotone`) are separate stylesheets — add the
-// matching `node_modules/@phosphor-icons/web/src/{weight}/style.css` to that array when the first
-// `Icon` of that weight is introduced, so unused weights are never shipped.
-//
-// Tabler Icons — both webfont sets, exposed as global icon classes. Still used by call sites not yet
-// migrated to `app-icon`.
-//
-//   Outline set:  <i class="ti ti-{name}"></i>
-//   Solid set:    <i class="tis tis-{name}"></i>
-//
-// Both sets ship from @tabler/icons-webfont with the same default `ti` prefix and
-// base class, differing only in font-family. They would collide if imported as-is,
-// so the solid (filled) set is re-prefixed to `tis` via the package's $ti-prefix.
-
-// Outline — keeps the default `ti` prefix.
-@use '@tabler/icons-webfont/dist/tabler-icons.scss';
-
-// Solid (filled) — namespaced to `tis` so it can coexist with the outline set.
-@use '@tabler/icons-webfont/dist/tabler-icons-filled.scss' with (
-  $ti-prefix: 'tis'
-);
+// The Phosphor webfont (`ph ph-{name}`, regular weight) is registered in angular.json `styles`
+// rather than imported here, because the package ships plain CSS with font `url()`s relative to the
+// stylesheet; the build resolves and copies those fonts only for entries in the styles array.
+// Additional weights (`ph-thin`, `ph-light`, `ph-bold`, `ph-fill`, `ph-duotone`) are separate
+// stylesheets — add the matching `node_modules/@phosphor-icons/web/src/{weight}/style.css` to that
+// array when the first `Icon` of that weight is introduced, so unused weights are never shipped.

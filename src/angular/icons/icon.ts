@@ -401,6 +401,16 @@ export class Icon {
    */
   public static readonly SUCCESS: Icon = new Icon('ph ph-check-circle');
 
+  /**
+   * Gets the important-callout icon (used by markdown alerts).
+   */
+  public static readonly IMPORTANT: Icon = new Icon('ph ph-warning-circle');
+
+  /**
+   * Gets the caution-callout icon (used by markdown alerts).
+   */
+  public static readonly CAUTION: Icon = new Icon('ph ph-warning-octagon');
+
   // --- Agent chat ---
 
   /**
@@ -448,6 +458,11 @@ export class Icon {
   public static readonly RECENT: Icon = new Icon('ph ph-clock-counter-clockwise');
 
   // --- Shared affordances ---
+
+  /**
+   * Gets the split-layout (toggle layout) icon.
+   */
+  public static readonly LAYOUT_SPLIT: Icon = new Icon('ph ph-columns');
 
   /**
    * Gets the add (plus) icon.

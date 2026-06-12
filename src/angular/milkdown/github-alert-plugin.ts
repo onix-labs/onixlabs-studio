@@ -25,6 +25,7 @@ import type { MarkdownNode, ParserState, SerializerState, NodeSchema } from '@mi
 import type { Root, RootContent, Blockquote, Paragraph, Text } from 'mdast';
 import type { Parent } from 'unist';
 import { visit } from 'unist-util-visit';
+import { Icon } from '../icons/icon';
 import {
   type Command,
   type EditorState,
@@ -75,14 +76,14 @@ type AlertType = 'note' | 'tip' | 'important' | 'warning' | 'caution';
 const ALERT_PATTERN: RegExp = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i;
 
 /**
- * Icon class for each alert type (Tabler Icons).
+ * Icon for each alert type.
  */
-const ALERT_ICONS: Record<AlertType, string> = {
-  note: 'ti-info-circle',
-  tip: 'ti-bulb',
-  important: 'ti-alert-circle',
-  warning: 'ti-alert-triangle',
-  caution: 'ti-alert-octagon',
+const ALERT_ICONS: Record<AlertType, Icon> = {
+  note: Icon.INFO,
+  tip: Icon.HINT,
+  important: Icon.IMPORTANT,
+  warning: Icon.WARNING,
+  caution: Icon.CAUTION,
 };
 
 /**
@@ -223,7 +224,7 @@ export const alertBlockNode: $Node = $node(
     ],
     toDOM: (node: ProseMirrorNode): DOMOutputSpec => {
       const alertType: AlertType = (node.attrs['alertType'] as AlertType) || 'note';
-      const iconClass: string = ALERT_ICONS[alertType] || ALERT_ICONS.note;
+      const iconClass: string = (ALERT_ICONS[alertType] || ALERT_ICONS.note).classList;
 
       // Create the alert container
       const wrapper: HTMLDivElement = document.createElement('div');
@@ -232,7 +233,7 @@ export const alertBlockNode: $Node = $node(
 
       // Create the icon
       const icon: HTMLSpanElement = document.createElement('span');
-      icon.className = `alert-icon ti ${iconClass}`;
+      icon.className = `alert-icon ${iconClass}`;
       icon.setAttribute('aria-hidden', 'true');
       wrapper.appendChild(icon);
 

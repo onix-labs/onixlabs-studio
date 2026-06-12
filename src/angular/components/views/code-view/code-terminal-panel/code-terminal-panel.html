@@ -3,16 +3,16 @@
     <span class="code-terminal__title">Terminal</span>
     <span class="code-terminal__spacer"></span>
     <button type="button" aria-label="Toggle layout" title="Toggle layout" (click)="onLayout()">
-      <i class="ti ti-layout-board-split"></i>
+      <app-icon [icon]="Icon.LAYOUT_SPLIT" />
     </button>
     <button type="button" aria-label="Cut" title="Cut" (click)="onCut()">
-      <i class="ti ti-scissors"></i>
+      <app-icon [icon]="Icon.CUT" />
     </button>
     <button type="button" aria-label="Copy" title="Copy" (click)="onCopy()">
-      <i class="ti ti-copy"></i>
+      <app-icon [icon]="Icon.COPY" />
     </button>
     <button type="button" aria-label="Clear" title="Clear" (click)="onClear()">
-      <i class="ti ti-eraser"></i>
+      <app-icon [icon]="Icon.ERASER" />
     </button>
   </div>
   <div class="code-terminal__body">
