@@ -46,4 +46,13 @@ export class Studio {
   public closeWindow(): void {
     this.api?.windowControls.close();
   }
+
+  /**
+   * Opens a file-system path in the operating system's default handler.
+   * @param path The absolute path to open.
+   * @returns Returns a promise that resolves when the request has been dispatched.
+   */
+  public openPath(path: string): Promise<void> {
+    return this.api?.shell.openPath(path) ?? Promise.resolve();
+  }
 }

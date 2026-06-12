@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
 import { IpcChannel } from '../shared/ipc-channels';
-import type { StudioApi } from '../shared/studio-api';
+import type { StudioApi, TerminalCreateOptions, TerminalCreateResult } from '../shared/studio-api';
 
 /**
  * Specifies the concrete API exposed to the renderer under `window.studio`.
@@ -16,6 +16,52 @@ const studioApi: StudioApi = {
     minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
     toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),
     close: (): void => ipcRenderer.send(IpcChannel.WindowClose),
+  },
+  terminal: {
+    create: (options: TerminalCreateOptions): Promise<TerminalCreateResult> =>
+      ipcRenderer.invoke(IpcChannel.TerminalCreate, options) as Promise<TerminalCreateResult>,
+    write: (id: string, data: string): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannel.TerminalWrite, id, data) as Promise<boolean>,
+    resize: (id: string, cols: number, rows: number): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannel.TerminalResize, id, cols, rows) as Promise<boolean>,
+    dispose: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannel.TerminalDispose, id) as Promise<boolean>,
+    getCwd: (id: string): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannel.TerminalGetCwd, id) as Promise<string | null>,
+    onData: (listener: (id: string, data: string) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, id: string, data: string) => void = (
+        _event: IpcRendererEvent,
+        id: string,
+        data: string,
+      ): void => listener(id, data);
+      ipcRenderer.on(IpcChannel.TerminalData, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.TerminalData, handler);
+      };
+    },
+    onExit: (
+      listener: (id: string, exitCode: number, signal: number | null) => void,
+    ): (() => void) => {
+      const handler: (
+        event: IpcRendererEvent,
+        id: string,
+        exitCode: number,
+        signal: number | null,
+      ) => void = (
+        _event: IpcRendererEvent,
+        id: string,
+        exitCode: number,
+        signal: number | null,
+      ): void => listener(id, exitCode, signal);
+      ipcRenderer.on(IpcChannel.TerminalExit, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.TerminalExit, handler);
+      };
+    },
+  },
+  shell: {
+    openPath: (path: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
   },
 };
 

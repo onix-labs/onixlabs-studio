@@ -2,6 +2,9 @@
   --body-background-color: var(--gray-900);
   --body-foreground-color: var(--gray-100);
 
+  // On the dark surface the base accent reads dull as hover content, so brighten it toward white.
+  --accent-surface-foreground-color: color-mix(in srgb, var(--accent-color), white 15%);
+
   --root-content-background-color: var(--gray-900);
 
   --title-strip-background-color: var(--gray-900);

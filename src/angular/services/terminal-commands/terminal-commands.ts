@@ -1,0 +1,166 @@
+import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+
+/**
+ * Defines the commands the terminal ribbon can invoke on the active terminal.
+ */
+export interface TerminalCommandHandler {
+  /**
+   * Clears the terminal screen.
+   */
+  clear(): void;
+
+  /**
+   * Destroys the terminal session and respawns a fresh one, keeping the same identifier.
+   */
+  restart(): void;
+
+  /**
+   * Copies the whole buffer to the clipboard, then clears the screen.
+   */
+  cut(): void;
+
+  /**
+   * Copies the current selection (or the whole buffer when nothing is selected) to the clipboard.
+   */
+  copy(): void;
+
+  /**
+   * Pastes the clipboard contents into the terminal.
+   */
+  paste(): void;
+
+  /**
+   * Runs a directory listing (`ls`) in the terminal.
+   */
+  list(): void;
+
+  /**
+   * Runs a detailed directory listing (`ls -la`) in the terminal.
+   */
+  listAll(): void;
+
+  /**
+   * Opens the terminal's working directory in the operating system's file manager.
+   */
+  open(): void;
+
+  /**
+   * Changes the terminal's working directory to the user's home directory.
+   */
+  home(): void;
+
+  /**
+   * Changes the terminal's working directory to the file-system root.
+   */
+  root(): void;
+}
+
+/**
+ * Routes terminal ribbon commands to the active terminal.
+ *
+ * The active terminal registers its handler here; the ribbon buttons call the matching method, which
+ * forwards to the registered handler (or does nothing when no terminal is active).
+ */
+@Service()
+export class TerminalCommands {
+  /**
+   * Holds the active terminal's command handler, or null when no terminal is active.
+   */
+  private readonly handler: WritableSignal<TerminalCommandHandler | null> =
+    signal<TerminalCommandHandler | null>(null);
+
+  /**
+   * Gets a value indicating whether a terminal is currently active.
+   */
+  public readonly hasActiveTerminal: Signal<boolean> = computed(
+    (): boolean => this.handler() !== null,
+  );
+
+  /**
+   * Registers the active terminal's command handler.
+   * @param handler The handler to register.
+   */
+  public register(handler: TerminalCommandHandler): void {
+    this.handler.set(handler);
+  }
+
+  /**
+   * Unregisters the given command handler, if it is the currently registered one.
+   * @param handler The handler to unregister.
+   */
+  public unregister(handler: TerminalCommandHandler): void {
+    if (this.handler() === handler) {
+      this.handler.set(null);
+    }
+  }
+
+  /**
+   * Invokes the clear command on the active terminal.
+   */
+  public clear(): void {
+    this.handler()?.clear();
+  }
+
+  /**
+   * Invokes the restart command on the active terminal.
+   */
+  public restart(): void {
+    this.handler()?.restart();
+  }
+
+  /**
+   * Invokes the cut command on the active terminal.
+   */
+  public cut(): void {
+    this.handler()?.cut();
+  }
+
+  /**
+   * Invokes the copy command on the active terminal.
+   */
+  public copy(): void {
+    this.handler()?.copy();
+  }
+
+  /**
+   * Invokes the paste command on the active terminal.
+   */
+  public paste(): void {
+    this.handler()?.paste();
+  }
+
+  /**
+   * Invokes the list command on the active terminal.
+   */
+  public list(): void {
+    this.handler()?.list();
+  }
+
+  /**
+   * Invokes the detailed list command on the active terminal.
+   */
+  public listAll(): void {
+    this.handler()?.listAll();
+  }
+
+  /**
+   * Invokes the open command on the active terminal.
+   */
+  public open(): void {
+    this.handler()?.open();
+  }
+
+  /**
+   * Invokes the home command on the active terminal.
+   */
+  public home(): void {
+    this.handler()?.home();
+  }
+
+  /**
+   * Invokes the root command on the active terminal.
+   */
+  public root(): void {
+    this.handler()?.root();
+  }
+}
