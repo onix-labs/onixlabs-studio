@@ -85,4 +85,9 @@ export enum IpcChannel {
    * Shows a confirmation dialog for saving unsaved changes before closing.
    */
   DialogConfirmSave = 'dialog:confirm-save',
+
+  /**
+   * Writes editor content to a per-key temporary file so a language runner can execute it.
+   */
+  RunWriteTempFile = 'run:write-temp-file',
 }

@@ -17,10 +17,12 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
 import { CodeStatus } from '../../../services/code-status/code-status';
+import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
 import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
+import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions from the ribbon.
@@ -28,11 +30,26 @@ import { Theme } from '../../../services/theme/theme';
 const COMMAND_SOURCE: string = 'ribbon';
 
 /**
+ * Holds the minimum size, in pixels, of the docked terminal pane.
+ */
+const MIN_TERMINAL_SIZE: number = 80;
+
+/**
+ * Holds the maximum size, in pixels, of the docked terminal pane.
+ */
+const MAX_TERMINAL_SIZE: number = 1600;
+
+/**
+ * Holds the initial size, in pixels, of the docked terminal pane.
+ */
+const DEFAULT_TERMINAL_SIZE: number = 260;
+
+/**
  * Represents the code editor view, hosting a Monaco editor bound to the owning tab's document.
  */
 @Component({
   selector: 'app-code-view',
-  imports: [],
+  imports: [CodeTerminalPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -67,6 +84,27 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the code command registry the ribbon routes editor commands through.
    */
   private readonly codeCommands: CodeCommands = inject(CodeCommands);
+
+  /**
+   * Holds the docked run-terminal panel state.
+   */
+  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+
+  /**
+   * Holds the size, in pixels, of the docked terminal pane.
+   */
+  private readonly terminalSizeSignal: WritableSignal<number> =
+    signal<number>(DEFAULT_TERMINAL_SIZE);
+
+  /**
+   * Holds the splitter drag origin (pointer coordinate at drag start).
+   */
+  private dragOrigin: number = 0;
+
+  /**
+   * Holds the terminal pane size at the start of a splitter drag.
+   */
+  private dragOriginSize: number = 0;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -223,6 +261,66 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   public ngOnDestroy(): void {
     this.disposeEditor();
     this.documents.remove(this.tabId());
+    this.codeTerminals.remove(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked terminal panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected terminalMounted(): boolean {
+    return this.codeTerminals.isMounted(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked terminal panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected terminalVisible(): boolean {
+    return this.codeTerminals.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets the editor/terminal layout for the tab.
+   * @returns Returns the layout.
+   */
+  protected terminalLayout(): TerminalLayout {
+    return this.codeTerminals.layout(this.tabId());
+  }
+
+  /**
+   * Gets the size, in pixels, of the docked terminal pane.
+   * @returns Returns the terminal pane size.
+   */
+  protected terminalSize(): number {
+    return this.terminalSizeSignal();
+  }
+
+  /**
+   * Begins a splitter drag that resizes the docked terminal pane.
+   * @param event The originating pointer event.
+   */
+  protected onSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    const horizontal: boolean = this.terminalLayout() === 'side-by-side';
+    this.dragOrigin = horizontal ? event.clientX : event.clientY;
+    this.dragOriginSize = this.terminalSizeSignal();
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const position: number = horizontal ? move.clientX : move.clientY;
+      const delta: number = this.dragOrigin - position;
+      const next: number = Math.min(
+        MAX_TERMINAL_SIZE,
+        Math.max(MIN_TERMINAL_SIZE, this.dragOriginSize + delta),
+      );
+      this.terminalSizeSignal.set(next);
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   /**

@@ -5,6 +5,7 @@ import type {
   FileWriteResult,
   SaveDialogChoice,
   StudioApi,
+  TempFileResult,
   TerminalCreateOptions,
   TerminalCreateResult,
 } from '../shared/studio-api';
@@ -81,6 +82,15 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.DialogSaveFile, defaultPath) as Promise<string | null>,
     confirmSave: (fileName: string): Promise<SaveDialogChoice> =>
       ipcRenderer.invoke(IpcChannel.DialogConfirmSave, fileName) as Promise<SaveDialogChoice>,
+  },
+  run: {
+    writeTempFile: (key: string, extension: string, content: string): Promise<TempFileResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.RunWriteTempFile,
+        key,
+        extension,
+        content,
+      ) as Promise<TempFileResult>,
   },
 };
 

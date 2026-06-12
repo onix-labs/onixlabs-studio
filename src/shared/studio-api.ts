@@ -246,6 +246,41 @@ export interface FileApi {
 }
 
 /**
+ * Describes the result of writing a temporary file for code execution.
+ */
+export interface TempFileResult {
+  /**
+   * Gets a value indicating whether the temporary file was written.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the absolute path of the temporary file, when successful.
+   */
+  readonly path?: string;
+
+  /**
+   * Gets the error message, when the write failed.
+   */
+  readonly error?: string;
+}
+
+/**
+ * Defines the code-execution operations exposed to the renderer process.
+ */
+export interface RunApi {
+  /**
+   * Writes editor content to a stable per-key temporary file and returns its path, so a language
+   * runner can execute it.
+   * @param key A stable key (the owning tab's id) that selects the temporary file.
+   * @param extension The file extension to give the temporary file.
+   * @param content The content to write.
+   * @returns Returns the result describing success and the file path.
+   */
+  writeTempFile(key: string, extension: string, content: string): Promise<TempFileResult>;
+}
+
+/**
  * Defines the operating-system shell operations exposed to the renderer process.
  */
 export interface ShellApi {
@@ -292,4 +327,9 @@ export interface StudioApi {
    * Gets the file-system operations for the application.
    */
   readonly file: FileApi;
+
+  /**
+   * Gets the code-execution operations for the application.
+   */
+  readonly run: RunApi;
 }
