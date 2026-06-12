@@ -1,23 +1,23 @@
 <app-ribbon-group title="Session">
-  <app-ribbon-button icon="ti ti-eraser" label="Clear" (action)="onClear()" />
-  <app-ribbon-button icon="ti ti-refresh" label="Restart" (action)="onRestart()" />
+  <app-ribbon-button [icon]="Icon.ERASER" label="Clear" (action)="onClear()" />
+  <app-ribbon-button [icon]="Icon.REFRESH" label="Restart" (action)="onRestart()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Clipboard">
-  <app-ribbon-button icon="ti ti-scissors" label="Cut" (action)="onCut()" />
-  <app-ribbon-button icon="ti ti-copy" label="Copy" (action)="onCopy()" />
-  <app-ribbon-button icon="ti ti-clipboard" label="Paste" (action)="onPaste()" />
+  <app-ribbon-button [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+  <app-ribbon-button [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+  <app-ribbon-button [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Actions">
-  <app-ribbon-button icon="ti ti-list" label="List" (action)="onList()" />
-  <app-ribbon-button icon="ti ti-list-details" label="List All" (action)="onListAll()" />
-  <app-ribbon-button icon="ti ti-folder-open" label="Open" (action)="onOpen()" />
+  <app-ribbon-button [icon]="Icon.LIST" label="List" (action)="onList()" />
+  <app-ribbon-button [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
+  <app-ribbon-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Locations">
-  <app-ribbon-button icon="ti ti-home" label="Home" (action)="onHome()" />
-  <app-ribbon-button icon="ti ti-folder-root" label="Root" (action)="onRoot()" />
+  <app-ribbon-button [icon]="Icon.HOME" label="Home" (action)="onHome()" />
+  <app-ribbon-button [icon]="Icon.ROOT" label="Root" (action)="onRoot()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="View">
@@ -28,5 +28,5 @@
 </app-ribbon-group>
 
 <app-ribbon-group title="AI">
-  <app-ribbon-button icon="ti ti-robot" label="Agent" />
+  <app-ribbon-button [icon]="Icon.AGENT" label="Agent" />
 </app-ribbon-group>

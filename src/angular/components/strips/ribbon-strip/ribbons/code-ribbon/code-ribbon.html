@@ -1,7 +1,7 @@
 <app-ribbon-group title="File">
-  <app-ribbon-button icon="ti ti-folder-open" label="Open" (action)="onOpen()" />
-  <app-ribbon-button icon="ti ti-device-floppy" label="Save" (action)="onSave()" />
-  <app-ribbon-button icon="ti ti-file-export" label="Save As" (action)="onSaveAs()" />
+  <app-ribbon-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
+  <app-ribbon-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
+  <app-ribbon-button [icon]="Icon.SAVE_AS" label="Save As" (action)="onSaveAs()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Language">
@@ -16,33 +16,28 @@
 </app-ribbon-group>
 
 <app-ribbon-group title="Run">
-  <app-ribbon-button
-    icon="ti ti-player-play"
-    label="Run"
-    [disabled]="!canRun()"
-    (action)="onRun()"
-  />
-  <app-ribbon-button icon="ti ti-terminal-2" label="Terminal" (action)="onTerminal()" />
+  <app-ribbon-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
+  <app-ribbon-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Clipboard">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-scissors" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small icon="ti ti-copy" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small icon="ti ti-clipboard" label="Paste" (action)="onPaste()" />
+    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
   </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Edit">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-arrow-back-up" label="Undo" (action)="onUndo()" />
-    <app-ribbon-button-small icon="ti ti-arrow-forward-up" label="Redo" (action)="onRedo()" />
-    <app-ribbon-button-small icon="ti ti-search" label="Find" (action)="onFind()" />
+    <app-ribbon-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+    <app-ribbon-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+    <app-ribbon-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
   </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Format">
-  <app-ribbon-button icon="ti ti-wand" label="Format" (action)="onFormat()" />
+  <app-ribbon-button [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="View">

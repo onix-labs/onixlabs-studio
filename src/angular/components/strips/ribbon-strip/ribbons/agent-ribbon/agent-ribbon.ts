@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
@@ -17,4 +18,9 @@ import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AgentRibbon {}
+export class AgentRibbon {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+}

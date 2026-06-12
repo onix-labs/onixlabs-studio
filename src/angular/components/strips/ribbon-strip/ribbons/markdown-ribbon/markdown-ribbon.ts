@@ -3,6 +3,7 @@ import {
   MarkdownBlockType,
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
+import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
@@ -58,6 +59,11 @@ const DEFAULT_BLOCK_LABEL: string = 'Paragraph';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownRibbon {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the markdown command registry the ribbon controls route through.
    */

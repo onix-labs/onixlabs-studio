@@ -6,6 +6,7 @@ import { CodeDocument, Documents } from '../../../../../services/documents/docum
 import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '../../../../../services/settings/settings';
 import { Tabs } from '../../../../../services/tabs/tabs';
+import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
@@ -26,6 +27,11 @@ import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CodeRibbon {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the code command registry editor commands route through.
    */

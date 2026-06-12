@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { RibbonButtonSmall } from './ribbon-button-small';
+import { Icon } from '../../../../../icons/icon';
 
 describe('RibbonButtonSmall', () => {
   let component: RibbonButtonSmall;
@@ -12,7 +13,7 @@ describe('RibbonButtonSmall', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(RibbonButtonSmall);
-    fixture.componentRef.setInput('icon', 'ti ti-copy');
+    fixture.componentRef.setInput('icon', Icon.COPY);
     fixture.componentRef.setInput('label', 'Copy');
     component = fixture.componentInstance;
     await fixture.whenStable();

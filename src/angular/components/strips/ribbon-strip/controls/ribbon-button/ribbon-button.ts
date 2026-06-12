@@ -6,22 +6,24 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '../../../../../icons/icon';
 
 /**
  * Represents a large command button in the ribbon, rendering an icon above a label.
  */
 @Component({
   selector: 'app-ribbon-button',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './ribbon-button.html',
   styleUrl: './ribbon-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RibbonButton {
   /**
-   * Gets the icon CSS class to display (a Tabler webfont class such as `ti ti-border-all`).
+   * Gets the icon to display.
    */
-  public readonly icon: InputSignal<string> = input.required<string>();
+  public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
    * Gets the label displayed beneath the icon.

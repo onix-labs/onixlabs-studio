@@ -42,10 +42,6 @@
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
   }
-
-  .ti {
-    font-size: 1.5rem;
-  }
 }
 
 .ribbon-split__menu {
@@ -70,10 +66,6 @@
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
-  }
-
-  .ti {
-    font-size: 0.75rem;
   }
 }
 

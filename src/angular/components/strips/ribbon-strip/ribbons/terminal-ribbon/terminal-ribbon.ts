@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
@@ -18,6 +19,11 @@ import { TerminalCommands } from '../../../../../services/terminal-commands/term
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TerminalRibbon {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the terminal commands registry the ribbon actions are routed through.
    */

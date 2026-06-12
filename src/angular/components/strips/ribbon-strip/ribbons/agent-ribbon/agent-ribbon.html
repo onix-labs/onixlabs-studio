@@ -1,7 +1,7 @@
 <app-ribbon-group title="Session">
-  <app-ribbon-button icon="ti ti-message-plus" label="New Chat" />
-  <app-ribbon-button icon="ti ti-player-stop" label="Stop" />
-  <app-ribbon-button icon="ti ti-eraser" label="Clear" />
+  <app-ribbon-button [icon]="Icon.NEW_CHAT" label="New Chat" />
+  <app-ribbon-button [icon]="Icon.STOP" label="Stop" />
+  <app-ribbon-button [icon]="Icon.ERASER" label="Clear" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Model">
@@ -17,9 +17,9 @@
 
 <app-ribbon-group title="Context">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-paperclip" label="Attach File" />
-    <app-ribbon-button-small icon="ti ti-folder-plus" label="Add Folder" />
-    <app-ribbon-button-small icon="ti ti-x" label="Clear Context" />
+    <app-ribbon-button-small [icon]="Icon.PAPERCLIP" label="Attach File" />
+    <app-ribbon-button-small [icon]="Icon.FOLDER_PLUS" label="Add Folder" />
+    <app-ribbon-button-small [icon]="Icon.CLOSE" label="Clear Context" />
   </app-ribbon-column>
 </app-ribbon-group>
 

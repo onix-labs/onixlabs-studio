@@ -89,6 +89,202 @@ export class Icon {
    */
   public static readonly AGENT: Icon = new Icon('ph ph-robot');
 
+  // --- Ribbon: file commands ---
+
+  /**
+   * Gets the open-file/folder icon.
+   */
+  public static readonly FOLDER_OPEN: Icon = new Icon('ph ph-folder-open');
+
+  /**
+   * Gets the save icon.
+   */
+  public static readonly SAVE: Icon = new Icon('ph ph-floppy-disk');
+
+  /**
+   * Gets the save-as icon.
+   */
+  public static readonly SAVE_AS: Icon = new Icon('ph ph-floppy-disk-back');
+
+  // --- Ribbon: edit commands ---
+
+  /**
+   * Gets the cut icon.
+   */
+  public static readonly CUT: Icon = new Icon('ph ph-scissors');
+
+  /**
+   * Gets the copy icon.
+   */
+  public static readonly COPY: Icon = new Icon('ph ph-copy');
+
+  /**
+   * Gets the paste icon.
+   */
+  public static readonly PASTE: Icon = new Icon('ph ph-clipboard');
+
+  /**
+   * Gets the undo icon.
+   */
+  public static readonly UNDO: Icon = new Icon('ph ph-arrow-u-up-left');
+
+  /**
+   * Gets the redo icon.
+   */
+  public static readonly REDO: Icon = new Icon('ph ph-arrow-u-up-right');
+
+  /**
+   * Gets the find/search icon.
+   */
+  public static readonly SEARCH: Icon = new Icon('ph ph-magnifying-glass');
+
+  // --- Ribbon: run and format ---
+
+  /**
+   * Gets the run/play/start icon.
+   */
+  public static readonly PLAY: Icon = new Icon('ph ph-play');
+
+  /**
+   * Gets the stop icon.
+   */
+  public static readonly STOP: Icon = new Icon('ph ph-stop');
+
+  /**
+   * Gets the format-document (magic wand) icon.
+   */
+  public static readonly FORMAT: Icon = new Icon('ph ph-magic-wand');
+
+  /**
+   * Gets the refresh/restart icon.
+   */
+  public static readonly REFRESH: Icon = new Icon('ph ph-arrows-clockwise');
+
+  /**
+   * Gets the erase/clear icon.
+   */
+  public static readonly ERASER: Icon = new Icon('ph ph-eraser');
+
+  // --- Ribbon: markdown text formatting ---
+
+  /**
+   * Gets the bold icon.
+   */
+  public static readonly BOLD: Icon = new Icon('ph ph-text-b');
+
+  /**
+   * Gets the italic icon.
+   */
+  public static readonly ITALIC: Icon = new Icon('ph ph-text-italic');
+
+  /**
+   * Gets the strikethrough icon.
+   */
+  public static readonly STRIKETHROUGH: Icon = new Icon('ph ph-text-strikethrough');
+
+  /**
+   * Gets the inline-code icon.
+   */
+  public static readonly CODE_INLINE: Icon = new Icon('ph ph-code');
+
+  /**
+   * Gets the bullet-list icon.
+   */
+  public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');
+
+  /**
+   * Gets the numbered-list icon.
+   */
+  public static readonly NUMBERED_LIST: Icon = new Icon('ph ph-list-numbers');
+
+  /**
+   * Gets the table icon.
+   */
+  public static readonly TABLE: Icon = new Icon('ph ph-table');
+
+  /**
+   * Gets the horizontal-divider icon.
+   */
+  public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+
+  // --- Ribbon: build and source control ---
+
+  /**
+   * Gets the build icon.
+   */
+  public static readonly BUILD: Icon = new Icon('ph ph-squares-four');
+
+  /**
+   * Gets the rebuild icon.
+   */
+  public static readonly REBUILD: Icon = new Icon('ph ph-stack');
+
+  /**
+   * Gets the clean icon.
+   */
+  public static readonly CLEAN: Icon = new Icon('ph ph-broom');
+
+  /**
+   * Gets the git-commit icon.
+   */
+  public static readonly GIT_COMMIT: Icon = new Icon('ph ph-git-commit');
+
+  /**
+   * Gets the upward-arrow (push) icon.
+   */
+  public static readonly ARROW_UP: Icon = new Icon('ph ph-arrow-up');
+
+  /**
+   * Gets the downward-arrow (pull) icon.
+   */
+  public static readonly ARROW_DOWN: Icon = new Icon('ph ph-arrow-down');
+
+  // --- Ribbon: agent commands ---
+
+  /**
+   * Gets the new-chat icon.
+   */
+  public static readonly NEW_CHAT: Icon = new Icon('ph ph-chat-circle-dots');
+
+  /**
+   * Gets the attach-file (paperclip) icon.
+   */
+  public static readonly PAPERCLIP: Icon = new Icon('ph ph-paperclip');
+
+  /**
+   * Gets the add-folder icon.
+   */
+  public static readonly FOLDER_PLUS: Icon = new Icon('ph ph-folder-plus');
+
+  // --- Ribbon: terminal navigation ---
+
+  /**
+   * Gets the list icon.
+   */
+  public static readonly LIST: Icon = new Icon('ph ph-list');
+
+  /**
+   * Gets the detailed-list icon.
+   */
+  public static readonly LIST_ALL: Icon = new Icon('ph ph-list-dashes');
+
+  /**
+   * Gets the home-directory icon.
+   */
+  public static readonly HOME: Icon = new Icon('ph ph-house');
+
+  /**
+   * Gets the root-directory icon.
+   */
+  public static readonly ROOT: Icon = new Icon('ph ph-folder-simple');
+
+  // --- Shared affordances ---
+
+  /**
+   * Gets the downward caret used on menus and split buttons.
+   */
+  public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');
+
   /**
    * Initialises a new instance of the {@link Icon} class.
    * @param classList The CSS class list that renders the icon.
