@@ -5,6 +5,8 @@ import {
   DiagnosticSeverity,
   Diagnostics,
 } from '../../../services/diagnostics/diagnostics';
+import { Editors } from '../../../services/editors/editors';
+import { FileOpener } from '../../../services/file-opener/file-opener';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -49,12 +51,37 @@ export class ProblemsPanel {
   public readonly diagnostics: Diagnostics = inject(Diagnostics);
 
   /**
+   * Holds the file opener used to activate the document a diagnostic belongs to.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the editor registry used to reveal the diagnostic's line in its editor.
+   */
+  private readonly editors: Editors = inject(Editors);
+
+  /**
    * Resolves the icon for a diagnostic's severity.
    * @param severity The diagnostic severity.
    * @returns Returns the severity icon.
    */
   public iconFor(severity: DiagnosticSeverity): Icon {
     return SEVERITY_ICONS[severity];
+  }
+
+  /**
+   * Reveals a diagnostic in the editor: activates its document in the well, then jumps the editor to
+   * the reported line and column. Diagnostics not tied to an open document are not revealable.
+   * @param diagnostic The diagnostic to reveal.
+   */
+  public reveal(diagnostic: Diagnostic): void {
+    if (diagnostic.documentId === null) {
+      return;
+    }
+    if (diagnostic.path !== null) {
+      void this.fileOpener.openPath(diagnostic.path);
+    }
+    this.editors.requestReveal(diagnostic.documentId, diagnostic.line, diagnostic.column);
   }
 
   /**

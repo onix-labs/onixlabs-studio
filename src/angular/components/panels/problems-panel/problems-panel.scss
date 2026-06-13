@@ -46,12 +46,34 @@
   list-style: none;
 }
 
+// Each row is a button so it is keyboard-focusable and clickable to reveal the diagnostic.
 .problems-row {
   display: flex;
   align-items: baseline;
   gap: 0.375rem;
+  inline-size: 100%;
   padding: 0.2rem 0.625rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  text-align: start;
+  font: inherit;
   font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover:not(:disabled) {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
 }
 
 .problems-icon {

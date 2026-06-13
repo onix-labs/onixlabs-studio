@@ -1,4 +1,5 @@
 import type * as MonacoApi from 'monaco-editor';
+import { EditorLocation, Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { Diagnostic, DiagnosticSeverity, DiagnosticsProvider } from './diagnostics';
 
@@ -28,11 +29,18 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
   private readonly monaco: Monaco;
 
   /**
+   * Holds the editor registry that resolves a marker's model URI back to its document.
+   */
+  private readonly editors: Editors;
+
+  /**
    * Initializes a new instance of the {@link MonacoDiagnosticsProvider} class.
    * @param monaco The Monaco service.
+   * @param editors The editor registry that resolves marker resources to documents.
    */
-  public constructor(monaco: Monaco) {
+  public constructor(monaco: Monaco, editors: Editors) {
     this.monaco = monaco;
+    this.editors = editors;
   }
 
   /**
@@ -64,16 +72,19 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
    * @returns Returns the current diagnostics.
    */
   private collect(monaco: typeof MonacoApi): readonly Diagnostic[] {
-    return monaco.editor.getModelMarkers({}).map(
-      (marker: MonacoApi.editor.IMarker): Diagnostic => ({
-        file: this.basename(marker.resource.path),
+    return monaco.editor.getModelMarkers({}).map((marker: MonacoApi.editor.IMarker): Diagnostic => {
+      const location: EditorLocation | undefined = this.editors.locate(marker.resource.toString());
+      return {
+        file: location?.name ?? this.basename(marker.resource.path),
         message: marker.message,
         severity: this.severityOf(monaco, marker.severity),
         line: marker.startLineNumber,
         column: marker.startColumn,
         source: marker.source ?? '',
-      }),
-    );
+        documentId: location?.documentId ?? null,
+        path: location?.path ?? null,
+      };
+    });
   }
 
   /**

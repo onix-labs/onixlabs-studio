@@ -19,6 +19,7 @@ import { CodeCommandHandler, CodeCommands } from '../../../services/code-command
 import { CodeStatus } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
+import { Editors, RevealRequest } from '../../../services/editors/editors';
 import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
@@ -74,6 +75,12 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the documents service owning the tab's content and file association.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the root editor registry this view registers its model with, so diagnostics resolve to a
+   * document and a reveal request can target this editor.
+   */
+  private readonly editors: Editors = inject(Editors);
 
   /**
    * Holds the cursor-position status publisher.
@@ -142,6 +149,11 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the Monaco editor instance, or null before creation and after disposal.
    */
   private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
+
+  /**
+   * Holds the string form of the editor's model URI while registered, or null when not registered.
+   */
+  private modelUri: string | null = null;
 
   /**
    * Holds a value indicating whether the editor is ready for interaction.
@@ -238,6 +250,35 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         }
         this.codeStatus.setPosition(null);
       }
+    });
+
+    // Keep this editor registered against its document, so global Monaco diagnostics resolve to a
+    // file and a reveal can target it; re-runs when the file path or name changes (save/rename).
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      if (!this.editorReady() || this.modelUri === null || document === null) {
+        return;
+      }
+      this.editors.register(this.modelUri, {
+        documentId: this.tabId(),
+        path: document.filePath(),
+        name: document.fileName(),
+      });
+    });
+
+    // Honour reveal requests aimed at this view's document, jumping the editor to the line.
+    effect((): void => {
+      const request: RevealRequest | null = this.editors.revealRequest();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (request === null || !this.editorReady() || editor === null) {
+        return;
+      }
+      if (request.documentId !== this.tabId()) {
+        return;
+      }
+      editor.revealLineInCenter(request.line);
+      editor.setPosition({ lineNumber: request.line, column: request.column });
+      editor.focus();
     });
   }
 
@@ -356,6 +397,9 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       language,
     });
 
+    const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
+    this.modelUri = model !== null ? model.uri.toString() : null;
+
     this.editor.onDidChangeModelContent((): void => {
       if (this.ignoreNextChange) {
         this.ignoreNextChange = false;
@@ -386,6 +430,10 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     if (this.commandHandler !== null) {
       this.codeCommands.unregister(this.commandHandler);
       this.commandHandler = null;
+    }
+    if (this.modelUri !== null) {
+      this.editors.unregister(this.modelUri);
+      this.modelUri = null;
     }
     if (this.editor !== null) {
       this.editor.dispose();

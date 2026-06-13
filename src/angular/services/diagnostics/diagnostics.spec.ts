@@ -33,6 +33,8 @@ function diagnostic(partial: Partial<Diagnostic>): Diagnostic {
     line: 1,
     column: 1,
     source: 'typescript',
+    documentId: null,
+    path: null,
     ...partial,
   };
 }

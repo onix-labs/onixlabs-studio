@@ -67,6 +67,8 @@ describe('ProblemsPanel', () => {
           line: 3,
           column: 5,
           source: 'typescript',
+          documentId: null,
+          path: null,
         },
       ]),
     );

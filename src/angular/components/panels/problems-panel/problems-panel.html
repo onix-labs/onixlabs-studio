@@ -12,15 +12,23 @@
 
   <ul class="problems-list" role="list">
     @for (diagnostic of diagnostics.all(); track trackBy($index, diagnostic)) {
-      <li class="problems-row" [class]="'problems-row--' + diagnostic.severity">
-        <app-icon class="problems-icon" [icon]="iconFor(diagnostic.severity)" />
-        <span class="problems-message">{{ diagnostic.message }}</span>
-        <span class="problems-location">
-          {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
-          @if (diagnostic.source) {
-            <span class="problems-source">{{ diagnostic.source }}</span>
-          }
-        </span>
+      <li>
+        <button
+          type="button"
+          class="problems-row"
+          [class]="'problems-row problems-row--' + diagnostic.severity"
+          [disabled]="diagnostic.documentId === null"
+          (click)="reveal(diagnostic)"
+        >
+          <app-icon class="problems-icon" [icon]="iconFor(diagnostic.severity)" />
+          <span class="problems-message">{{ diagnostic.message }}</span>
+          <span class="problems-location">
+            {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
+            @if (diagnostic.source) {
+              <span class="problems-source">{{ diagnostic.source }}</span>
+            }
+          </span>
+        </button>
       </li>
     }
   </ul>
