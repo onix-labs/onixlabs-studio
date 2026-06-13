@@ -73,7 +73,7 @@ export class Icon {
   /**
    * Gets the code content icon.
    */
-  public static readonly CODE: Icon = new Icon('ph-duotone ph-file-code');
+  public static readonly CODE: Icon = new Icon('ph-duotone ph-brackets-curly');
 
   /**
    * Gets the markdown content icon.
@@ -117,7 +117,7 @@ export class Icon {
   /**
    * Gets the copy icon.
    */
-  public static readonly COPY: Icon = new Icon('ph-duotone ph-copy');
+  public static readonly COPY: Icon = new Icon('ph-duotone ph-copy-simple');
 
   /**
    * Gets the paste icon.
@@ -465,6 +465,31 @@ export class Icon {
    * Gets the recent-items icon.
    */
   public static readonly RECENT: Icon = new Icon('ph ph-clock-counter-clockwise');
+
+  /**
+   * Gets the light-weight directory icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_DIRECTORY: Icon = new Icon('ph-light ph-folder-simple');
+
+  /**
+   * Gets the light-weight code icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_CODE: Icon = new Icon('ph-light ph-brackets-curly');
+
+  /**
+   * Gets the light-weight markdown icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_MARKDOWN: Icon = new Icon('ph-light ph-markdown-logo');
+
+  /**
+   * Gets the light-weight terminal icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_TERMINAL: Icon = new Icon('ph-light ph-terminal-window');
+
+  /**
+   * Gets the light-weight agent icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_AGENT: Icon = new Icon('ph-light ph-brain');
 
   // --- Status bar ---
 
