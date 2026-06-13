@@ -9,6 +9,7 @@ import {
   OnInit,
 } from '@angular/core';
 import { DirectoryListing } from '../../../../shared/studio-api';
+import { CodeTerminals } from '../../../services/code-terminals/code-terminals';
 import { Diagnostics } from '../../../services/diagnostics/diagnostics';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
@@ -85,16 +86,24 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the (root) docked run-terminal store, swept alongside the documents it shadows.
+   */
+  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+
+  /**
    * Initializes a new instance of the {@link DirectoryView} class, wiring the document cleanup that
    * releases a well document once its dock panel has actually been closed (a panel that is merely
-   * split or moved stays in the layout, so its document is kept).
+   * split or moved stays in the layout, so its document is kept). A removed document's docked
+   * run-terminal state is swept too, so it does not linger in the root store.
    */
   public constructor() {
     effect((): void => {
       const present: ReadonlySet<string> = new Set<string>(
         collectPanelIds(this.dockState.layout()),
       );
-      this.documents.removeMissing(present);
+      for (const id of this.documents.removeMissing(present)) {
+        this.codeTerminals.remove(id);
+      }
     });
   }
 

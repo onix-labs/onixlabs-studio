@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Documents } from '../documents/documents';
 
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from './diagnostics';
 
@@ -33,7 +34,7 @@ function diagnostic(partial: Partial<Diagnostic>): Diagnostic {
     line: 1,
     column: 1,
     source: 'typescript',
-    documentId: null,
+    documentId: 'doc-1',
     path: null,
     ...partial,
   };
@@ -41,11 +42,15 @@ function diagnostic(partial: Partial<Diagnostic>): Diagnostic {
 
 describe('Diagnostics', () => {
   let diagnostics: Diagnostics;
+  let documents: Documents;
   let provider: FakeProvider;
 
   beforeEach(() => {
     TestBed.configureTestingModule({});
     diagnostics = TestBed.inject(Diagnostics);
+    documents = TestBed.inject(Documents);
+    // The aggregate only keeps diagnostics for documents this workspace owns.
+    documents.ensure('doc-1');
     provider = new FakeProvider();
   });
 
@@ -80,5 +85,16 @@ describe('Diagnostics', () => {
     expect(diagnostics.all()).toHaveLength(1);
     unregister();
     expect(diagnostics.all()).toHaveLength(0);
+  });
+
+  it('register_whenDiagnosticForAForeignDocument_isFilteredOut', () => {
+    diagnostics.register(provider);
+    provider.push([
+      diagnostic({ documentId: 'doc-1' }),
+      diagnostic({ documentId: 'other-workspace-doc' }),
+      diagnostic({ documentId: null }),
+    ]);
+    expect(diagnostics.all()).toHaveLength(1);
+    expect(diagnostics.all()[0].documentId).toBe('doc-1');
   });
 });

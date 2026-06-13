@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Documents } from '../documents/documents';
 import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
@@ -103,6 +104,12 @@ export class Diagnostics {
   private readonly editors: Editors = inject(Editors);
 
   /**
+   * Holds this workspace's documents, used to keep only diagnostics for documents this workspace
+   * owns (Monaco markers are global, so every aggregate would otherwise show every workspace's).
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Holds each provider's current diagnostics, keyed by provider id.
    */
   private readonly bySource: Map<string, readonly Diagnostic[]> = new Map<
@@ -171,7 +178,16 @@ export class Diagnostics {
   private recompute(): void {
     const merged: Diagnostic[] = [];
     for (const diagnostics of this.bySource.values()) {
-      merged.push(...diagnostics);
+      for (const diagnostic of diagnostics) {
+        // Keep only diagnostics for documents this workspace owns; markers for other workspaces'
+        // documents (or unbacked models) are filtered out of this aggregate.
+        if (
+          diagnostic.documentId !== null &&
+          this.documents.get(diagnostic.documentId) !== undefined
+        ) {
+          merged.push(diagnostic);
+        }
+      }
     }
     merged.sort(
       (a: Diagnostic, b: Diagnostic): number =>
