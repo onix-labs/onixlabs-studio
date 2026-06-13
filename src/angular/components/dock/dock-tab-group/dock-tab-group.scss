@@ -139,6 +139,19 @@
   overflow: auto;
 }
 
+// The chrome strips that bracket the panel body; their frame borders come from the variant rules
+// further down. Tool strips share the body's surface so an active tab can merge into them, while the
+// status strip uses the darker tab-strip surface so it reads as distinct chrome.
+.dock-tab-group__tool-strip {
+  flex: 0 0 auto;
+  background: var(--dock-tab-background-color--active);
+}
+
+.dock-tab-group__status-strip {
+  flex: 0 0 auto;
+  background: var(--dock-tabstrip-background-color);
+}
+
 // One pane per open document in a well; only the active pane is visible, the rest stay mounted but
 // hidden so editor state survives tab switches.
 .dock-tab-group__pane {
@@ -285,14 +298,31 @@
 }
 
 // --- Document wells: strip on top, feet flaring down into the panel's top border ---
-:host(.dock-tab-group--documents) .dock-tab-group__body {
-  background: var(--dock-tab-background-color--active);
+// The tool strip, body and status strip together form the bordered editor box: the tool strip caps
+// the top (the tabs merge into its top border), the body fills the middle and the status strip caps
+// the bottom. Internal separators are neutral; the outer frame follows the accent seam.
+:host(.dock-tab-group--documents) .dock-tab-group__tool-strip {
   border: 0.0625rem solid var(--dock-seam-color);
-  border-radius: var(--dock-panel-radius);
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+  border-start-start-radius: var(--dock-panel-radius);
+  border-start-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
 }
 
-:host(.dock-tab-group--documents):has(.dock-tab--active:first-child) .dock-tab-group__body {
+:host(.dock-tab-group--documents) .dock-tab-group__body {
+  background: var(--dock-tab-background-color--active);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+}
+
+:host(.dock-tab-group--documents) .dock-tab-group__status-strip {
+  border: 0.0625rem solid var(--dock-seam-color);
+  border-block-start: 0.0625rem solid var(--dock-border-color);
+  border-end-start-radius: var(--dock-panel-radius);
+  border-end-end-radius: var(--dock-panel-radius);
+  corner-shape: squircle;
+}
+
+:host(.dock-tab-group--documents):has(.dock-tab--active:first-child) .dock-tab-group__tool-strip {
   border-start-start-radius: 0;
 }
 
@@ -342,6 +372,13 @@
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
+}
+
+// The tool strip sits between the title and the body, continuing the side seam with a neutral
+// separator beneath it.
+:host(.dock-tab-group--tool) .dock-tab-group__tool-strip {
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-end: 0.0625rem solid var(--dock-border-color);
 }
 
 :host(.dock-tab-group--tool) .dock-tab-group__body {

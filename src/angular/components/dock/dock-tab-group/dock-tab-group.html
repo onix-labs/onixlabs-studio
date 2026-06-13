@@ -40,6 +40,14 @@
     </div>
   }
 
+  <!-- Every panel carries a tool strip beneath its title (or tab strip, in document wells). The
+       well gets an editor-flavoured stub set; tool panels fall back to the strip's defaults. -->
+  @if (isDocuments()) {
+    <app-dock-tool-strip class="dock-tab-group__tool-strip" [tools]="documentTools" />
+  } @else {
+    <app-dock-tool-strip class="dock-tab-group__tool-strip" />
+  }
+
   <div
     class="dock-tab-group__tabstrip"
     role="tablist"
@@ -135,4 +143,9 @@
       <app-dock-panel-outlet [panelId]="panel.id" />
     }
   </div>
+
+  <!-- Document wells close with a status strip summarising the active document. -->
+  @if (isDocuments()) {
+    <app-dock-status-strip class="dock-tab-group__status-strip" />
+  }
 }
