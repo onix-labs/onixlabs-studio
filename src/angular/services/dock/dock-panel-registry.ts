@@ -3,6 +3,7 @@ import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
+import { Icon } from '../../icons/icon';
 import { DockPanel } from './dock-panel';
 
 /**
@@ -54,16 +55,16 @@ export class DockPanelRegistry {
    * open into the well.
    */
   private seed(): void {
-    const tool: (id: string, title: string, icon: string, component: Type<unknown>) => void = (
+    const tool: (id: string, title: string, icon: Icon, component: Type<unknown>) => void = (
       id: string,
       title: string,
-      icon: string,
+      icon: Icon,
       component: Type<unknown>,
     ): void => this.register({ id, title, icon, role: 'tool', component });
 
-    tool('solution', 'Solution Explorer', 'ti ti-sitemap', TreePanel);
-    tool('agent', 'Agent', 'ti ti-robot', AgentPanel);
-    tool('output', 'Output', 'ti ti-terminal', OutputPanel);
-    tool('errors', 'Error List', 'ti ti-alert-triangle', ProblemsPanel);
+    tool('solution', 'Solution Explorer', Icon.SOLUTION_EXPLORER, TreePanel);
+    tool('agent', 'Agent', Icon.AGENT, AgentPanel);
+    tool('output', 'Output', Icon.OUTPUT, OutputPanel);
+    tool('errors', 'Error List', Icon.PROBLEMS, ProblemsPanel);
   }
 }

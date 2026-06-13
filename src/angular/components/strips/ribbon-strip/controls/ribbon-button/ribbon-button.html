@@ -1,4 +1,4 @@
 <button type="button" class="ribbon-button" [disabled]="disabled()" (click)="onClick()">
-  <i [class]="icon()"></i>
+  <app-icon [icon]="icon()" [size]="1.5" />
   <span>{{ label() }}</span>
 </button>

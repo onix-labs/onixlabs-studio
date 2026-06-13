@@ -3,6 +3,8 @@ import {
   MarkdownBlockType,
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
+import { Documents } from '../../../../../services/documents/documents';
+import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
@@ -59,9 +61,43 @@ const DEFAULT_BLOCK_LABEL: string = 'Paragraph';
 })
 export class MarkdownRibbon {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Holds the markdown command registry the ribbon controls route through.
    */
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
+   * Holds the documents service backing the file actions.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Saves the active document.
+   */
+  protected onSave(): void {
+    void this.documents.saveActive();
+  }
+
+  /**
+   * Prints the active document via the browser print dialog.
+   */
+  protected onPrint(): void {
+    window.print();
+  }
+
+  /**
+   * Toggles a task list on the current block(s).
+   *
+   * TODO: the Milkdown task-list command is not yet wired into the editor command handler; this is a
+   * placeholder until that lands.
+   */
+  protected onTaskList(): void {
+    // Intentionally empty until the editor exposes a task-list command.
+  }
 
   /**
    * Gets the labels offered by the block style field, in display order.

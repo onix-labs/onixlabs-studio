@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { Icon } from '../../../icons/icon';
 
 import { TreePanel } from './tree-panel';
 
@@ -10,7 +11,7 @@ describe('TreePanel', () => {
   const panel: DockPanel = {
     id: 'solution',
     title: 'Solution Explorer',
-    icon: 'ti ti-sitemap',
+    icon: Icon.SOLUTION_EXPLORER,
     role: 'tool',
     component: TreePanel,
   };
@@ -36,7 +37,7 @@ describe('TreePanel', () => {
     expect(text).toContain('Open Folder');
   });
 
-  it('iconFor_whenTypeScriptFile_returnsBrandIcon', () => {
+  it('iconFor_whenTypeScriptFile_returnsTypeScriptIcon', () => {
     expect(
       component.iconFor({
         name: 'main.ts',
@@ -46,7 +47,7 @@ describe('TreePanel', () => {
         loading: false,
         children: null,
       }),
-    ).toBe('ti-brand-typescript');
+    ).toBe(Icon.FILE_TYPESCRIPT);
   });
 
   it('iconFor_whenExpandedDirectory_returnsOpenFolder', () => {
@@ -59,6 +60,6 @@ describe('TreePanel', () => {
         loading: false,
         children: null,
       }),
-    ).toBe('ti-folder-open');
+    ).toBe(Icon.FOLDER_OPEN);
   });
 });

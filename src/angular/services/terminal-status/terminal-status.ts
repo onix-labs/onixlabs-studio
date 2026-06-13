@@ -1,5 +1,6 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { StatusBar, StatusSegment } from '../status-bar/status-bar';
+import { Icon } from '../../icons/icon';
 
 /**
  * Holds the identifier of the working-directory status segment.
@@ -36,7 +37,7 @@ export class TerminalStatus {
     effect((): void => {
       const cwd: string | null = this.cwdSignal();
       const segments: readonly StatusSegment[] =
-        cwd === null ? [] : [{ id: CWD_SEGMENT_ID, text: cwd, icon: 'ti ti-folder' }];
+        cwd === null ? [] : [{ id: CWD_SEGMENT_ID, text: cwd, icon: Icon.FOLDER }];
       this.statusBar.setTrailing(segments);
     });
   }

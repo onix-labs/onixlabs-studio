@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
 import { Tabs } from '../../../../services/tabs/tabs';
+import { Icon } from '../../../../icons/icon';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
 
 /**
@@ -14,6 +15,11 @@ import { TitleStripButton } from '../title-strip-button/title-strip-button';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TitleStripButtonList {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the tab registry the buttons operate on.
    */

@@ -23,6 +23,8 @@ import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
@@ -39,7 +41,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
  */
 @Component({
   selector: 'app-dock-tab-group',
-  imports: [DockPanelOutlet, CdkDropList, CdkDrag, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [DockPanelOutlet, CdkDropList, CdkDrag, CdkMenuTrigger, CdkMenu, CdkMenuItem, AppIcon],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +53,11 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
   },
 })
 export class DockTabGroup {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the layout state activation, closing and tab moves drive.
    */

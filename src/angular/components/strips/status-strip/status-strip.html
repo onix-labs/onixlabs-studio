@@ -2,8 +2,8 @@
   <div class="status-strip__group">
     @for (segment of leading(); track segment.id) {
       <span class="status-strip__segment">
-        @if (segment.icon) {
-          <i [class]="segment.icon"></i>
+        @if (segment.icon; as icon) {
+          <app-icon [icon]="icon" />
         }
         {{ segment.text }}
       </span>
@@ -12,11 +12,12 @@
   <div class="status-strip__group">
     @for (segment of trailing(); track segment.id) {
       <span class="status-strip__segment">
-        @if (segment.icon) {
-          <i [class]="segment.icon"></i>
+        @if (segment.icon; as icon) {
+          <app-icon [icon]="icon" />
         }
         {{ segment.text }}
       </span>
     }
+    <app-icon [icon]="Icon.NOTCHES" />
   </div>
 </footer>

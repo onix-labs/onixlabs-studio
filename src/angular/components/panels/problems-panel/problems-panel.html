@@ -1,11 +1,11 @@
 @if (diagnostics.all().length > 0) {
   <div class="problems-summary">
     <span class="problems-count problems-count--error">
-      <i class="ti ti-circle-x" aria-hidden="true"></i>
+      <app-icon [icon]="Icon.ERROR" />
       {{ diagnostics.errorCount() }}
     </span>
     <span class="problems-count problems-count--warning">
-      <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+      <app-icon [icon]="Icon.WARNING" />
       {{ diagnostics.warningCount() }}
     </span>
   </div>
@@ -13,7 +13,7 @@
   <ul class="problems-list" role="list">
     @for (diagnostic of diagnostics.all(); track trackBy($index, diagnostic)) {
       <li class="problems-row" [class]="'problems-row--' + diagnostic.severity">
-        <i class="problems-icon ti" [class]="iconFor(diagnostic.severity)" aria-hidden="true"></i>
+        <app-icon class="problems-icon" [icon]="iconFor(diagnostic.severity)" />
         <span class="problems-message">{{ diagnostic.message }}</span>
         <span class="problems-location">
           {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
@@ -26,7 +26,7 @@
   </ul>
 } @else {
   <div class="problems-empty">
-    <i class="ti ti-circle-check" aria-hidden="true"></i>
+    <app-icon [icon]="Icon.SUCCESS" />
     <p>No problems detected.</p>
   </div>
 }

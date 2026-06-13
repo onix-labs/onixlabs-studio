@@ -6,22 +6,29 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '../../../../icons/icon';
 
 /**
  * Represents an icon button in the title strip.
  */
 @Component({
   selector: 'app-title-strip-button',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './title-strip-button.html',
   styleUrl: './title-strip-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TitleStripButton {
   /**
-   * Gets the icon CSS class to display (a Tabler webfont class such as `ti ti-plus`).
+   * Gets the icon to display.
    */
-  public readonly icon: InputSignal<string> = input.required<string>();
+  public readonly icon: InputSignal<Icon> = input.required<Icon>();
+
+  /**
+   * Gets the clockwise rotation of the icon in degrees.
+   */
+  public readonly rotation: InputSignal<number> = input<number>(0);
 
   /**
    * Gets a value indicating whether the button is disabled.

@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { AccentColor, ACCENT_COLORS, Theme, ThemeMode } from '../../../../../services/theme/theme';
+import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../../shared/icon/app-icon';
 
 /**
  * Describes a selectable theme-mode option in the appearance settings.
@@ -19,7 +21,7 @@ interface ThemeModeOption {
   /**
    * Gets the icon shown for the option.
    */
-  readonly icon: string;
+  readonly icon: Icon;
 }
 
 /**
@@ -28,7 +30,7 @@ interface ThemeModeOption {
  */
 @Component({
   selector: 'app-appearance-settings',
-  imports: [SettingRow],
+  imports: [SettingRow, AppIcon],
   templateUrl: './appearance-settings.html',
   styleUrls: ['../section.scss', './appearance-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,9 +55,9 @@ export class AppearanceSettings {
    * Gets the theme-mode options offered by the selector.
    */
   protected readonly modeOptions: readonly ThemeModeOption[] = [
-    { value: 'light', label: 'Light', icon: 'ti ti-sun' },
-    { value: 'dark', label: 'Dark', icon: 'ti ti-moon' },
-    { value: 'system', label: 'System', icon: 'ti ti-device-desktop' },
+    { value: 'light', label: 'Light', icon: Icon.THEME_LIGHT },
+    { value: 'dark', label: 'Dark', icon: Icon.THEME_DARK },
+    { value: 'system', label: 'System', icon: Icon.THEME_SYSTEM },
   ];
 
   /**

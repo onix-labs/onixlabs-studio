@@ -9,7 +9,7 @@
     (mousedown)="bringToFront(item.window.panelId)"
   >
     <div class="dock-float__title" (mousedown)="startMove(item.window, $event)">
-      <i class="dock-float__icon" [class]="item.panel.icon" aria-hidden="true"></i>
+      <app-icon class="dock-float__icon" [icon]="item.panel.icon" />
       <span class="dock-float__title-text">{{ item.panel.title }}</span>
       <span class="dock-float__title-buttons">
         <button
@@ -19,7 +19,7 @@
           (click)="dockBack(item.window.panelId)"
           (mousedown)="$event.stopPropagation()"
         >
-          <i class="ti ti-layout-bottombar" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.DOCK" />
         </button>
         <button
           type="button"
@@ -28,7 +28,7 @@
           (click)="close(item.window.panelId)"
           (mousedown)="$event.stopPropagation()"
         >
-          <i class="ti ti-x" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.CLOSE" />
         </button>
       </span>
     </div>

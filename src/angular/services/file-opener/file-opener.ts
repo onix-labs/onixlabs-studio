@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { DirectoryListing, FileInfo, OpenSelection } from '../../../shared/studio-api';
+import { Icon } from '../../icons/icon';
 import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
 import { DockPanelRegistry } from '../dock/dock-panel-registry';
 import { DockState } from '../dock/dock-state';
@@ -164,9 +165,9 @@ export class FileOpener {
   /**
    * Resolves the dock tab icon for a document by file extension.
    * @param extension The file extension, including the leading dot.
-   * @returns Returns the Tabler icon class.
+   * @returns Returns the icon for the document.
    */
-  private dockIconFor(extension: string): string {
-    return this.isMarkdown(extension) ? 'ti ti-markdown' : 'ti ti-file-code';
+  private dockIconFor(extension: string): Icon {
+    return this.isMarkdown(extension) ? Icon.MARKDOWN : Icon.CODE;
   }
 }

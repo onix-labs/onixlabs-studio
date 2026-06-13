@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { RibbonSplitButton } from './ribbon-split-button';
+import { Icon } from '../../../../../icons/icon';
 
 describe('RibbonSplitButton', () => {
   let component: RibbonSplitButton;
@@ -12,7 +13,7 @@ describe('RibbonSplitButton', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(RibbonSplitButton);
-    fixture.componentRef.setInput('icon', 'ti ti-player-play');
+    fixture.componentRef.setInput('icon', Icon.PLAY);
     fixture.componentRef.setInput('label', 'Start');
     fixture.componentRef.setInput('menuLabel', 'Debug');
     component = fixture.componentInstance;

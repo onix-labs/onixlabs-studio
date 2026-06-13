@@ -6,6 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '../../../../../icons/icon';
 
 /**
  * Represents a small command button in the ribbon, rendering an icon beside a label. Three small
@@ -14,16 +16,16 @@ import {
  */
 @Component({
   selector: 'app-ribbon-button-small',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './ribbon-button-small.html',
   styleUrl: './ribbon-button-small.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RibbonButtonSmall {
   /**
-   * Gets the icon CSS class to display (a Tabler webfont class such as `ti ti-copy`).
+   * Gets the icon to display.
    */
-  public readonly icon: InputSignal<string> = input.required<string>();
+  public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
    * Gets the label displayed beside the icon.

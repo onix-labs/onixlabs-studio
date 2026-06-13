@@ -36,7 +36,7 @@
   <div class="profiles__header">
     <h3 class="profiles__title">Language profiles</h3>
     <button type="button" class="profiles__add" (click)="addProfile()">
-      <i class="ti ti-plus" aria-hidden="true"></i>
+      <app-icon [icon]="Icon.PLUS" />
       <span>Add profile</span>
     </button>
   </div>
@@ -72,7 +72,7 @@
       }
 
       <button type="button" class="profiles__delete" (click)="deleteProfile(profile.id)">
-        <i class="ti ti-trash" aria-hidden="true"></i>
+        <app-icon [icon]="Icon.TRASH" />
         <span>Delete profile</span>
       </button>
     </app-accordion>

@@ -6,6 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '../../../../../icons/icon';
 
 /**
  * Represents a split button in the ribbon: a large primary action with an attached chevron that
@@ -13,16 +15,21 @@ import {
  */
 @Component({
   selector: 'app-ribbon-split-button',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './ribbon-split-button.html',
   styleUrl: './ribbon-split-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RibbonSplitButton {
   /**
-   * Gets the icon CSS class for the primary action (a Tabler webfont class such as `ti ti-player-play`).
+   * Gets the icon set, exposed for the template.
    */
-  public readonly icon: InputSignal<string> = input.required<string>();
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the icon for the primary action.
+   */
+  public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
    * Gets the label displayed beneath the primary action's icon.

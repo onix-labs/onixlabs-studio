@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { Workspace, WorkspaceTreeNode } from '../../../services/workspace/workspace';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.
@@ -20,12 +22,17 @@ const INDENT_STEP: number = 14;
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TreePanel {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet, which sets it on
    * every projected panel component; unused here because the dock chrome renders the title.
@@ -66,33 +73,33 @@ export class TreePanel {
   }
 
   /**
-   * Resolves the Tabler icon class for a node, by directory state or file extension.
+   * Resolves the icon for a node, by directory state or file extension.
    * @param node The node to resolve an icon for.
-   * @returns Returns the icon class (without the leading `ti` base class).
+   * @returns Returns the node's icon.
    */
-  public iconFor(node: WorkspaceTreeNode): string {
+  public iconFor(node: WorkspaceTreeNode): Icon {
     if (node.type === 'directory') {
-      return node.expanded ? 'ti-folder-open' : 'ti-folder';
+      return node.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
     }
     const extension: string = this.extensionOf(node.name);
     switch (extension) {
       case 'ts':
-        return 'ti-brand-typescript';
+        return Icon.FILE_TYPESCRIPT;
       case 'js':
       case 'mjs':
       case 'cjs':
-        return 'ti-brand-javascript';
+        return Icon.FILE_JAVASCRIPT;
       case 'json':
-        return 'ti-json';
+        return Icon.FILE_JSON;
       case 'md':
-        return 'ti-markdown';
+        return Icon.FILE_MARKDOWN;
       case 'scss':
       case 'css':
-        return 'ti-brand-css3';
+        return Icon.FILE_STYLESHEET;
       case 'html':
-        return 'ti-brand-html5';
+        return Icon.FILE_HTML;
       default:
-        return node.name.startsWith('.') ? 'ti-file-dots' : 'ti-file';
+        return node.name.startsWith('.') ? Icon.FILE_HIDDEN : Icon.FILE;
     }
   }
 

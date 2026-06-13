@@ -9,7 +9,7 @@
         [attr.aria-checked]="mode() === option.value"
         (click)="selectMode(option.value)"
       >
-        <i [class]="option.icon" aria-hidden="true"></i>
+        <app-icon [icon]="option.icon" />
         <span>{{ option.label }}</span>
       </button>
     }

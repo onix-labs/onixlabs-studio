@@ -5,6 +5,7 @@ import { DockState } from '../../../services/dock/dock-state';
 import { firstStackOfRole } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileInfo } from '../../../../shared/studio-api';
+import { Icon } from '../../../icons/icon';
 
 import { DocumentPanel } from './document-panel';
 
@@ -12,7 +13,7 @@ import { DocumentPanel } from './document-panel';
  * Builds a dock panel descriptor for a document id.
  */
 function panelFor(id: string): DockPanel {
-  return { id, title: id, icon: 'ti ti-file-code', role: 'document', component: DocumentPanel };
+  return { id, title: id, icon: Icon.CODE, role: 'document', component: DocumentPanel };
 }
 
 /**

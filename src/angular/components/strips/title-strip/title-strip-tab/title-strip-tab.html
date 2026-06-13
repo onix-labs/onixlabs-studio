@@ -9,7 +9,7 @@
   (keydown.enter)="selectTab.emit()"
   (cdkDragStarted)="onDragStarted($event)"
 >
-  <i [class]="tab().icon"></i>
+  <app-icon [icon]="tab().icon" [size]="1.5" />
   <span>{{ tab().title }}</span>
   @if (tab().dirty) {
     <span class="tab-dirty" aria-label="Unsaved changes"></span>
@@ -21,14 +21,14 @@
     (mousedown)="$event.stopPropagation()"
     (click)="onCloseClick($event)"
   >
-    <i class="tis tis-x"></i>
+    <app-icon [icon]="Icon.CLOSE" />
   </button>
 
   <div class="tab-chip" *cdkDragPreview>
-    <i [class]="tab().icon"></i>
+    <app-icon [icon]="tab().icon" [size]="1.5" />
     <span>{{ tab().title }}</span>
     <button type="button" aria-hidden="true" tabindex="-1">
-      <i class="tis tis-x"></i>
+      <app-icon [icon]="Icon.CLOSE" />
     </button>
   </div>
 </div>

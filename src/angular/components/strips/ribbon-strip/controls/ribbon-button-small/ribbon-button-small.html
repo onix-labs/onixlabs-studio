@@ -5,6 +5,6 @@
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >
-  <i [class]="icon()"></i>
+  <app-icon [icon]="icon()" [size]="1" />
   <span>{{ label() }}</span>
 </button>

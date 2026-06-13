@@ -8,7 +8,7 @@
   <div class="welcome__panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     @if (dismissable()) {
       <button type="button" class="welcome__close" aria-label="Close" (click)="close()">
-        <i class="ti ti-x" aria-hidden="true"></i>
+        <app-icon [icon]="Icon.CLOSE" />
       </button>
     }
 
@@ -24,7 +24,7 @@
     <div class="welcome__body">
       <div class="welcome__actions">
         <button type="button" class="welcome__action" (click)="openFiles()">
-          <i class="ti ti-folder" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.WELCOME_DIRECTORY" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">Open Directory or File</span>
             <span class="welcome__action-hint">Browse the file system</span>
@@ -32,7 +32,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('code')">
-          <i class="ti ti-file-code" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.WELCOME_CODE" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Code File</span>
             <span class="welcome__action-hint">Plain text or source code</span>
@@ -40,7 +40,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('markdown')">
-          <i class="ti ti-markdown" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.WELCOME_MARKDOWN" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Markdown File</span>
             <span class="welcome__action-hint">A formatted document</span>
@@ -48,7 +48,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('terminal')">
-          <i class="ti ti-terminal-2" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.WELCOME_TERMINAL" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Terminal</span>
             <span class="welcome__action-hint">A command-line session</span>
@@ -56,7 +56,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('agent')">
-          <i class="ti ti-robot" aria-hidden="true"></i>
+          <app-icon [icon]="Icon.WELCOME_AGENT" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Agent</span>
             <span class="welcome__action-hint">An AI assistant session</span>
@@ -71,7 +71,7 @@
             @for (item of recent(); track item.id) {
               <li>
                 <button type="button" class="welcome__recent-item">
-                  <i [class]="item.icon" aria-hidden="true"></i>
+                  <app-icon [icon]="item.icon" />
                   <span class="welcome__recent-text">
                     <span class="welcome__recent-name">{{ item.name }}</span>
                     <span class="welcome__recent-detail">{{ item.detail }}</span>
@@ -82,7 +82,7 @@
           </ul>
         } @else {
           <div class="welcome__recent-empty">
-            <i class="ti ti-clock-hour-3" aria-hidden="true"></i>
+            <app-icon [icon]="Icon.RECENT" [size]="2" />
             <p class="welcome__recent-empty-title">No recent items yet</p>
             <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
           </div>

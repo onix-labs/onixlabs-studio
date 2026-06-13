@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { RibbonButton } from './ribbon-button';
+import { Icon } from '../../../../../icons/icon';
 
 describe('RibbonButton', () => {
   let component: RibbonButton;
@@ -12,7 +13,7 @@ describe('RibbonButton', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(RibbonButton);
-    fixture.componentRef.setInput('icon', 'ti ti-border-all');
+    fixture.componentRef.setInput('icon', Icon.BUILD);
     fixture.componentRef.setInput('label', 'Build');
     component = fixture.componentInstance;
     await fixture.whenStable();

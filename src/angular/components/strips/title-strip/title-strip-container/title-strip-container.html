@@ -1,7 +1,5 @@
 <!-- The window-lock is a switch whose sliding knob carries the lock glyph. The native checkbox
-     provides the semantics; the track and knob are drawn around it. The lint rule cannot see the
-     association through the absolutely-positioned knob. -->
-<!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+     provides the semantics; the track and knob are drawn around it. -->
 <label
   class="window-lock"
   [class.window-lock--active]="windowLock.locked()"
@@ -15,12 +13,7 @@
     (change)="onLockChange($event)"
     aria-label="Lock window in place"
   />
-  <i
-    class="window-lock__icon ti"
-    [class.ti-lock]="windowLock.locked()"
-    [class.ti-lock-open]="!windowLock.locked()"
-    aria-hidden="true"
-  ></i>
+  <app-icon class="window-lock__icon" [icon]="windowLock.locked() ? Icon.LOCK : Icon.LOCK_OPEN" />
   <span class="window-lock__knob"></span>
 </label>
 

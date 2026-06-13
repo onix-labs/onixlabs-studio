@@ -6,18 +6,25 @@ import {
   model,
   ModelSignal,
 } from '@angular/core';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Represents an expandable panel with a heading button and a collapsible body.
  */
 @Component({
   selector: 'app-accordion',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './accordion.html',
   styleUrl: './accordion.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Accordion {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Gets the heading shown on the panel's toggle button.
    */

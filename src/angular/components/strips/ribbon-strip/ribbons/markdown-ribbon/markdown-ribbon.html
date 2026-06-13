@@ -1,8 +1,13 @@
+<app-ribbon-group title="File">
+  <app-ribbon-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
+  <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
+</app-ribbon-group>
+
 <app-ribbon-group title="Format">
-  <app-ribbon-button icon="ti ti-bold" label="Bold" (action)="onBold()" />
-  <app-ribbon-button icon="ti ti-italic" label="Italic" (action)="onItalic()" />
-  <app-ribbon-button icon="ti ti-strikethrough" label="Strike" (action)="onStrikethrough()" />
-  <app-ribbon-button icon="ti ti-code" label="Code" (action)="onInlineCode()" />
+  <app-ribbon-button [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
+  <app-ribbon-button [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />
+  <app-ribbon-button [icon]="Icon.STRIKETHROUGH" label="Strike" (action)="onStrikethrough()" />
+  <app-ribbon-button [icon]="Icon.CODE_INLINE" label="Code" (action)="onInlineCode()" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Structure">
@@ -14,17 +19,21 @@
       (changed)="onBlockChange($event)"
     />
   </app-ribbon-column>
+</app-ribbon-group>
+
+<app-ribbon-group title="Lists">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-list" label="Bullets" (action)="onBulletList()" />
+    <app-ribbon-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
     <app-ribbon-button-small
-      icon="ti ti-list-numbers"
+      [icon]="Icon.NUMBERED_LIST"
       label="Numbered"
       (action)="onOrderedList()"
     />
+    <app-ribbon-button-small [icon]="Icon.TASK_LIST" label="Task" (action)="onTaskList()" />
   </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Insert">
-  <app-ribbon-button icon="ti ti-table" label="Table" (action)="onTable()" />
-  <app-ribbon-button icon="ti ti-separator-horizontal" label="Divider" (action)="onDivider()" />
+  <app-ribbon-button [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
+  <app-ribbon-button [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
 </app-ribbon-group>

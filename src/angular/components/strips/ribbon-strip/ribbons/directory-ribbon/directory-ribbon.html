@@ -1,11 +1,11 @@
 <app-ribbon-group title="Solution">
-  <app-ribbon-button icon="ti ti-border-all" label="Build" />
-  <app-ribbon-button icon="ti ti-blocks" label="Rebuild" />
-  <app-ribbon-button icon="ti ti-refresh-dot" label="Clean" />
+  <app-ribbon-button [icon]="Icon.BUILD" label="Build" />
+  <app-ribbon-button [icon]="Icon.REBUILD" label="Rebuild" />
+  <app-ribbon-button [icon]="Icon.CLEAN" label="Clean" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Run">
-  <app-ribbon-split-button icon="ti ti-player-play" label="Start" menuLabel="Debug" />
+  <app-ribbon-split-button [icon]="Icon.PLAY" label="Start" menuLabel="Debug" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Target">
@@ -17,8 +17,8 @@
 
 <app-ribbon-group title="Source Control">
   <app-ribbon-column>
-    <app-ribbon-button-small icon="ti ti-git-commit" label="Commit" />
-    <app-ribbon-button-small icon="ti ti-arrow-up" label="Push" />
-    <app-ribbon-button-small icon="ti ti-arrow-down" label="Pull" />
+    <app-ribbon-button-small [icon]="Icon.GIT_COMMIT" label="Commit" />
+    <app-ribbon-button-small [icon]="Icon.ARROW_UP" label="Push" />
+    <app-ribbon-button-small [icon]="Icon.ARROW_DOWN" label="Pull" />
   </app-ribbon-column>
 </app-ribbon-group>

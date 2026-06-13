@@ -5,6 +5,7 @@ import {
   Diagnostics,
   DiagnosticsProvider,
 } from '../../../services/diagnostics/diagnostics';
+import { Icon } from '../../../icons/icon';
 
 import { ProblemsPanel } from './problems-panel';
 
@@ -29,7 +30,7 @@ describe('ProblemsPanel', () => {
   const panel: DockPanel = {
     id: 'errors',
     title: 'Error List',
-    icon: 'ti ti-alert-triangle',
+    icon: Icon.PROBLEMS,
     role: 'tool',
     component: ProblemsPanel,
   };

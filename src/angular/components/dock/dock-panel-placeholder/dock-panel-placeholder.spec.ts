@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockPanel } from '../../../services/dock/dock-panel';
+import { Icon } from '../../../icons/icon';
 import { DockPanelPlaceholder } from './dock-panel-placeholder';
 
 describe('DockPanelPlaceholder', () => {
@@ -9,7 +10,7 @@ describe('DockPanelPlaceholder', () => {
   const panel: DockPanel = {
     id: 'output',
     title: 'Output',
-    icon: 'ti ti-terminal',
+    icon: Icon.OUTPUT,
     role: 'tool',
     component: DockPanelPlaceholder,
   };

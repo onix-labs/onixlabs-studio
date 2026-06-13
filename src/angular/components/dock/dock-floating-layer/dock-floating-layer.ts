@@ -3,6 +3,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { DockFloating, FloatWindow } from '../../../services/dock/dock-floating';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
@@ -27,12 +29,17 @@ interface ResolvedFloat {
  */
 @Component({
   selector: 'app-dock-floating-layer',
-  imports: [DockPanelOutlet],
+  imports: [DockPanelOutlet, AppIcon],
   templateUrl: './dock-floating-layer.html',
   styleUrl: './dock-floating-layer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DockFloatingLayer {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the document the move and resize drags attach to.
    */
