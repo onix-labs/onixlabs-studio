@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
 
@@ -40,6 +41,17 @@ export interface Diagnostic {
    * Gets the producing source (for example, `typescript`), or an empty string when unknown.
    */
   readonly source: string;
+
+  /**
+   * Gets the identifier of the open document the diagnostic is reported against, or null when it is
+   * not raised against a known editor (so it cannot be revealed).
+   */
+  readonly documentId: string | null;
+
+  /**
+   * Gets the absolute file path of the document, or null when unknown or never saved.
+   */
+  readonly path: string | null;
 }
 
 /**
@@ -86,6 +98,11 @@ export class Diagnostics {
   private readonly monaco: Monaco = inject(Monaco);
 
   /**
+   * Holds the root editor registry the markers provider resolves marker resources through.
+   */
+  private readonly editors: Editors = inject(Editors);
+
+  /**
    * Holds each provider's current diagnostics, keyed by provider id.
    */
   private readonly bySource: Map<string, readonly Diagnostic[]> = new Map<
@@ -128,7 +145,7 @@ export class Diagnostics {
    * Monaco-markers provider.
    */
   public constructor() {
-    this.register(new MonacoDiagnosticsProvider(this.monaco));
+    this.register(new MonacoDiagnosticsProvider(this.monaco, this.editors));
   }
 
   /**
