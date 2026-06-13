@@ -292,13 +292,17 @@ export class Documents {
    * Releases every document whose id is not in the given set, used to drop well documents once their
    * dock panel has been closed (as opposed to merely re-parented by a split or move).
    * @param present The ids of the documents still present.
+   * @returns Returns the ids of the documents that were removed, so callers can sweep related state.
    */
-  public removeMissing(present: ReadonlySet<string>): void {
+  public removeMissing(present: ReadonlySet<string>): readonly string[] {
+    const removed: string[] = [];
     for (const id of [...this.entries.keys()]) {
       if (!present.has(id)) {
         this.remove(id);
+        removed.push(id);
       }
     }
+    return removed;
   }
 
   public saveActive(): Promise<boolean> {

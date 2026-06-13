@@ -5,6 +5,7 @@ import {
   Diagnostics,
   DiagnosticsProvider,
 } from '../../../services/diagnostics/diagnostics';
+import { Documents } from '../../../services/documents/documents';
 import { Icon } from '../../../icons/icon';
 
 import { ProblemsPanel } from './problems-panel';
@@ -57,6 +58,7 @@ describe('ProblemsPanel', () => {
   });
 
   it('render_whenDiagnosticsReported_listsTheMessage', () => {
+    TestBed.inject(Documents).ensure('doc-1');
     const diagnostics: Diagnostics = TestBed.inject(Diagnostics);
     diagnostics.register(
       new StaticProvider([
@@ -67,8 +69,8 @@ describe('ProblemsPanel', () => {
           line: 3,
           column: 5,
           source: 'typescript',
-          documentId: null,
-          path: null,
+          documentId: 'doc-1',
+          path: '/ws/main.ts',
         },
       ]),
     );
