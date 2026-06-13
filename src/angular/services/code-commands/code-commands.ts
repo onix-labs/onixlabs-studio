@@ -38,6 +38,16 @@ export interface CodeCommandHandler {
    * Formats the whole document.
    */
   formatDocument(): void;
+
+  /**
+   * Saves the document, prompting for a path when it has never been saved.
+   */
+  save(): void;
+
+  /**
+   * Saves the document to a newly chosen path.
+   */
+  saveAs(): void;
 }
 
 /**
@@ -128,5 +138,20 @@ export class CodeCommands {
    */
   public formatDocument(): void {
     this.handler()?.formatDocument();
+  }
+
+  /**
+   * Saves the active editor's document through its own (workspace-scoped) documents service, so the
+   * focused well document is saved regardless of which ribbon is showing.
+   */
+  public save(): void {
+    this.handler()?.save();
+  }
+
+  /**
+   * Saves the active editor's document to a newly chosen path.
+   */
+  public saveAs(): void {
+    this.handler()?.saveAs();
   }
 }

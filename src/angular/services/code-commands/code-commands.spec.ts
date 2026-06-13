@@ -16,6 +16,8 @@ function recordingHandler(calls: Set<string>): CodeCommandHandler {
     redo: (): void => void calls.add('redo'),
     find: (): void => void calls.add('find'),
     formatDocument: (): void => void calls.add('formatDocument'),
+    save: (): void => void calls.add('save'),
+    saveAs: (): void => void calls.add('saveAs'),
   };
 }
 

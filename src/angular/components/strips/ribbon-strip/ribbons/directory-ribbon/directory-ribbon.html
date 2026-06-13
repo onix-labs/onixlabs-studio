@@ -1,3 +1,31 @@
+<app-ribbon-group title="File">
+  <app-ribbon-button
+    [icon]="Icon.SAVE"
+    label="Save"
+    [disabled]="!hasActiveEditor()"
+    (action)="onSave()"
+  />
+  <app-ribbon-button
+    [icon]="Icon.SAVE"
+    label="Save As"
+    [disabled]="!hasActiveEditor()"
+    (action)="onSaveAs()"
+  />
+</app-ribbon-group>
+
+<app-ribbon-group title="Editor">
+  <app-ribbon-column>
+    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+  </app-ribbon-column>
+  <app-ribbon-column>
+    <app-ribbon-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+    <app-ribbon-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+    <app-ribbon-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
 <app-ribbon-group title="Solution">
   <app-ribbon-button [icon]="Icon.BUILD" label="Build" />
   <app-ribbon-button [icon]="Icon.REBUILD" label="Rebuild" />

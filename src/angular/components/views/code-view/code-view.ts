@@ -459,6 +459,8 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       redo: (): void => this.trigger(editor, 'redo'),
       find: (): void => this.trigger(editor, 'actions.find'),
       formatDocument: (): void => this.trigger(editor, 'editor.action.formatDocument'),
+      save: (): void => void this.documents.saveActive(),
+      saveAs: (): void => void this.documents.saveActiveAs(),
     };
 
     this.codeCommands.register(this.commandHandler);
