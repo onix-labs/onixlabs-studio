@@ -25,7 +25,9 @@
   padding-inline: 0.5rem 0.25rem;
   color: var(--dock-title-foreground-color);
   background: var(--dock-title-background-color);
-  border-block-end: 0.0625rem solid var(--dock-border-color);
+  // The separator is an inset shadow rather than a bottom border so it sits inside the accent side
+  // borders and never miters into (and notches) the panel's accent outline.
+  box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);
   font-weight: 600;
   cursor: move;
   -webkit-app-region: no-drag;
@@ -149,7 +151,7 @@
 
 .dock-tab-group__status-strip {
   flex: 0 0 auto;
-  background: var(--dock-tabstrip-background-color);
+  background: var(--dock-tab-background-color--active);
 }
 
 // One pane per open document in a well; only the active pane is visible, the rest stay mounted but
@@ -261,20 +263,6 @@
   border-color: var(--dock-seam-color);
 }
 
-// On the focused (active) panel the accent reaches beyond the seam to the title and active tab: the
-// text and icons take the accent colour, and the title bar takes a subtle accent tint (matching the
-// ribbon buttons' hover wash) with its separator promoted to the accent colour. The active tab keeps
-// its plain body fill so it still merges seamlessly into the panel.
-:host(.dock-tab-group--focused) .dock-tab-group__title {
-  color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 15%, var(--dock-title-background-color));
-  border-block-end-color: var(--accent-color);
-}
-
-:host(.dock-tab-group--focused) .dock-tab--active {
-  color: var(--accent-color);
-}
-
 // The two outward-flaring feet that connect the active tab to the panel's accent border. Sized to
 // the curve radius with the border outside, so they stay content-box despite the global border-box.
 :host(.dock-tab-group--documents) .dock-tab--active::before,
@@ -302,8 +290,9 @@
 // the top (the tabs merge into its top border), the body fills the middle and the status strip caps
 // the bottom. Internal separators are neutral; the outer frame follows the accent seam.
 :host(.dock-tab-group--documents) .dock-tab-group__tool-strip {
-  border: 0.0625rem solid var(--dock-seam-color);
-  border-block-end: 0.0625rem solid var(--dock-border-color);
+  border-block-start: 0.0625rem solid var(--dock-seam-color);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
@@ -315,8 +304,9 @@
 }
 
 :host(.dock-tab-group--documents) .dock-tab-group__status-strip {
-  border: 0.0625rem solid var(--dock-seam-color);
-  border-block-start: 0.0625rem solid var(--dock-border-color);
+  border-block-end: 0.0625rem solid var(--dock-seam-color);
+  border-inline: 0.0625rem solid var(--dock-seam-color);
+  box-shadow: inset 0 0.0625rem 0 var(--dock-border-color);
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
   corner-shape: squircle;
@@ -375,10 +365,10 @@
 }
 
 // The tool strip sits between the title and the body, continuing the side seam with a neutral
-// separator beneath it.
+// separator beneath it (an inset shadow, so it stays inside the accent side borders).
 :host(.dock-tab-group--tool) .dock-tab-group__tool-strip {
   border-inline: 0.0625rem solid var(--dock-seam-color);
-  border-block-end: 0.0625rem solid var(--dock-border-color);
+  box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);
 }
 
 :host(.dock-tab-group--tool) .dock-tab-group__body {
