@@ -312,6 +312,11 @@ export class Icon {
   public static readonly COLLAPSE_VERTICAL: Icon = new Icon('ph-duotone ph-square-half-bottom');
 
   /**
+   * Gets the full-square icon shown in the compass centre (tab-into) target.
+   */
+  public static readonly SQUARE: Icon = new Icon('ph-duotone ph-square');
+
+  /**
    * Gets the float icon shown on a docked panel to detach it into a floating window.
    */
   public static readonly FLOAT: Icon = new Icon('ph-duotone ph-push-pin-slash');

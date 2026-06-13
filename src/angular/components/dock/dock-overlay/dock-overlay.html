@@ -17,7 +17,9 @@
             class="dock-overlay__guide dock-overlay__guide--{{ guide }}"
             [class.dock-overlay__guide--hot]="state.hot === guide"
             [class.dock-overlay__guide--disabled]="!state.legality[guide]"
-          ></span>
+          >
+            <app-icon [icon]="guideIcon(guide)" [rotation]="guideRotation(guide)" />
+          </span>
         }
       </div>
     }
@@ -29,7 +31,9 @@
           [class.dock-overlay__edge--hot]="hotEdge() === edge"
           [style.left.px]="edgePosition(edge, ws).left"
           [style.top.px]="edgePosition(edge, ws).top"
-        ></span>
+        >
+          <app-icon [icon]="guideIcon(edge)" [rotation]="guideRotation(edge)" />
+        </span>
       }
     }
 
