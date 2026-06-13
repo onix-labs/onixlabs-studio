@@ -3,6 +3,7 @@ import { DirectoryListing, FileInfo, OpenSelection } from '../../../shared/studi
 import { Icon } from '../../icons/icon';
 import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
 import { DockPanelRegistry } from '../dock/dock-panel-registry';
+import { DockFocus } from '../dock/dock-focus';
 import { DockState } from '../dock/dock-state';
 import { firstStackOfRole } from '../dock/dock-tree';
 import { StackNode } from '../dock/dock-node';
@@ -50,6 +51,11 @@ export class FileOpener {
    * Holds the dock layout the document well lives in.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the dock focus tracker, so opening a file accents its document well.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
    * Holds the dock panel registry that document panels are registered with.
@@ -138,6 +144,7 @@ export class FileOpener {
     const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
     if (existing !== undefined) {
       this.dockState.setActive(well.id, existing);
+      this.dockFocus.focus(well.id);
       return true;
     }
     const id: string = this.documents.createWellDocument(fileInfo);
@@ -149,6 +156,7 @@ export class FileOpener {
       component: DocumentPanel,
     });
     this.dockState.tabInto(well.id, id);
+    this.dockFocus.focus(well.id);
     this.output.appendLine(`Opened ${fileInfo.path}`);
     return true;
   }

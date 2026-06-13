@@ -287,7 +287,7 @@ export class Icon {
   /**
    * Gets the Output panel icon.
    */
-  public static readonly OUTPUT: Icon = new Icon('ph ph-terminal');
+  public static readonly OUTPUT: Icon = new Icon('ph ph-terminal-window');
 
   /**
    * Gets the Error List (problems) panel icon.

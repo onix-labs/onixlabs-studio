@@ -248,6 +248,20 @@
   border-color: var(--dock-seam-color);
 }
 
+// On the focused (active) panel the accent reaches beyond the seam to the title and active tab: the
+// text and icons take the accent colour, and the title bar takes a subtle accent tint (matching the
+// ribbon buttons' hover wash) with its separator promoted to the accent colour. The active tab keeps
+// its plain body fill so it still merges seamlessly into the panel.
+:host(.dock-tab-group--focused) .dock-tab-group__title {
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 15%, var(--dock-title-background-color));
+  border-block-end-color: var(--accent-color);
+}
+
+:host(.dock-tab-group--focused) .dock-tab--active {
+  color: var(--accent-color);
+}
+
 // The two outward-flaring feet that connect the active tab to the panel's accent border. Sized to
 // the curve radius with the border outside, so they stay content-box despite the global border-box.
 :host(.dock-tab-group--documents) .dock-tab--active::before,
