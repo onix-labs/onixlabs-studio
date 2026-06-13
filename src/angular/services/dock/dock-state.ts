@@ -9,6 +9,7 @@ import {
   removeNode,
   reorderTab,
   setActive,
+  setCollapsed,
   setSizes,
   splitStack,
   tabInto,
@@ -105,6 +106,15 @@ export class DockState {
    */
   public setActive(stackId: string, panelId: string): void {
     this.tree.set(setActive(this.tree(), stackId, panelId));
+  }
+
+  /**
+   * Collapses or expands a tool stack in place, keeping its slot and weight so it restores exactly.
+   * @param stackId The identifier of the stack to collapse or expand.
+   * @param collapsed Whether the stack should be collapsed.
+   */
+  public setCollapsed(stackId: string, collapsed: boolean): void {
+    this.tree.set(setCollapsed(this.tree(), stackId, collapsed));
   }
 
   /**

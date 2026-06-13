@@ -83,6 +83,13 @@ export interface StackNode {
    * Gets the identifier of the active (visible) panel, or `null` when the stack is empty.
    */
   readonly active: string | null;
+
+  /**
+   * Gets whether the stack is collapsed to a thin strip in its slot. A collapsed tool stack keeps
+   * its place and weight in the tree (so it restores exactly), rendering only its tabs until it is
+   * expanded again. Document wells are never collapsed.
+   */
+  readonly collapsed?: boolean;
 }
 
 /**

@@ -1,0 +1,53 @@
+<div class="dock-collapsed-strip__tabs" role="tablist">
+  @for (panel of panels(); track panel.id) {
+    <button
+      type="button"
+      class="dock-collapsed-strip__tab"
+      role="tab"
+      [class.dock-collapsed-strip__tab--active]="panel.id === activeId() && isPeeking()"
+      [attr.aria-selected]="panel.id === activeId() && isPeeking()"
+      [title]="panel.title"
+      (click)="peek(panel.id)"
+    >
+      <app-icon class="dock-collapsed-strip__icon" [icon]="panel.icon" />
+      <span class="dock-collapsed-strip__label">{{ panel.title }}</span>
+    </button>
+  }
+</div>
+
+<!-- The peek reuses the docked tool panel's title bar; its tabs live on the side strip, so the
+     flyout shows no tab strip of its own. -->
+@if (isPeeking()) {
+  <div
+    class="dock-collapsed-strip__flyout"
+    [style.inline-size.px]="isVertical() ? flyoutSize() : null"
+    [style.block-size.px]="isVertical() ? null : flyoutSize()"
+  >
+    <div class="dock-collapsed-strip__flyout-title">
+      <span class="dock-collapsed-strip__flyout-title-text">{{ activePanel()?.title }}</span>
+      <span class="dock-collapsed-strip__flyout-title-buttons">
+        <button type="button" title="Dock" aria-label="Dock" (click)="dock()">
+          <app-icon [icon]="Icon.AUTO_HIDE" />
+        </button>
+        @if (activePanel(); as active) {
+          <button type="button" title="Float" aria-label="Float" (click)="float(active.id)">
+            <app-icon [icon]="Icon.FLOAT" />
+          </button>
+          <button type="button" title="Close" aria-label="Close" (click)="close(active.id)">
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        }
+      </span>
+    </div>
+    <div class="dock-collapsed-strip__flyout-body">
+      @if (activePanel(); as active) {
+        <app-dock-panel-outlet [panelId]="active.id" />
+      }
+    </div>
+    <div
+      class="dock-collapsed-strip__flyout-resize"
+      title="Resize"
+      (mousedown)="startResize($event)"
+    ></div>
+  </div>
+}

@@ -36,3 +36,13 @@
   border-radius: var(--dock-panel-radius);
   corner-shape: squircle;
 }
+
+// A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to
+// overlay the neighbouring panes, sitting above them and the splitters while it is open.
+.dock-node__pane--collapsed {
+  position: relative;
+  z-index: 10;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: visible;
+}

@@ -30,6 +30,7 @@ const MINIMUM_PANE_SIZE: number = 36;
   host: {
     '[class.dock-splitter--row]': "dir() === 'row'",
     '[class.dock-splitter--col]': "dir() === 'col'",
+    '[class.dock-splitter--disabled]': 'disabled()',
     '(mousedown)': 'onPress($event)',
   },
 })
@@ -72,10 +73,19 @@ export class DockSplitter {
   public readonly sizes: InputSignal<readonly number[]> = input.required<readonly number[]>();
 
   /**
+   * Gets whether the handle is inert, used when an adjacent pane is collapsed to a fixed-size strip
+   * that must not be resized. A disabled handle keeps the gap but ignores drags.
+   */
+  public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Begins a splitter drag, redistributing flex-grow between the two adjacent panes until release.
    * @param event The originating mouse event.
    */
   protected onPress(event: MouseEvent): void {
+    if (this.disabled()) {
+      return;
+    }
     event.preventDefault();
     const handle: HTMLElement = this.hostElement.nativeElement;
     const container: HTMLElement | null = handle.parentElement;

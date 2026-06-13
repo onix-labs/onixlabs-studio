@@ -25,6 +25,13 @@
   &.dock-splitter--dragging {
     background: var(--dock-splitter-color--active);
   }
+
+  // Inert handle beside a collapsed strip: keeps the gap but cannot be hovered or dragged.
+  &.dock-splitter--disabled {
+    pointer-events: none;
+    background: var(--dock-splitter-color);
+    cursor: default;
+  }
 }
 
 .dock-splitter__grip {

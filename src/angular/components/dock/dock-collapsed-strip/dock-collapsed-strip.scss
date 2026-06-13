@@ -1,0 +1,214 @@
+// The strip fills the thin leaf pane its collapsed stack was shrunk to, and is the positioning
+// context the peek flyout opens out of. Overflow is visible so the flyout can escape the strip and
+// overlay the neighbouring panes (the collapsed pane carries the z-index that lifts it above them).
+:host {
+  position: relative;
+  display: flex;
+  block-size: 100%;
+  inline-size: 100%;
+  overflow: visible;
+  color: var(--dock-tab-foreground-color);
+}
+
+.dock-collapsed-strip__tabs {
+  display: flex;
+  flex: 1;
+  gap: 0.25rem;
+  padding: 0.25rem;
+}
+
+:host(.dock-collapsed-strip--vertical) .dock-collapsed-strip__tabs {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+:host(.dock-collapsed-strip--horizontal) .dock-collapsed-strip__tabs {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.dock-collapsed-strip__tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  padding: 0.25rem;
+  color: var(--dock-tab-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transition: var(--hover-transition);
+
+  // Resting tabs are plain; hover and the active (peeking) tab only recolour the foreground to the
+  // accent, never darkening the strip.
+  &:hover,
+  &--active {
+    color: var(--accent-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+// Vertical strips stack the icon over a rotated label so the title reads up the strip.
+:host(.dock-collapsed-strip--vertical) .dock-collapsed-strip__tab {
+  flex-direction: column;
+}
+
+:host(.dock-collapsed-strip--vertical) .dock-collapsed-strip__label {
+  writing-mode: vertical-rl;
+}
+
+.dock-collapsed-strip__icon {
+  font-size: 0.875rem;
+}
+
+.dock-collapsed-strip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// --- Peek flyout: opens inward, away from the strip's edge, overlaying the neighbouring panes ---
+.dock-collapsed-strip__flyout {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--dock-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.5rem 1.625rem rgb(0 0 0 / 45%);
+  z-index: 2;
+}
+
+// The cross axis spans the strip; the resizable axis (inline for vertical, block for horizontal) is
+// set inline from the captured docked size, falling back to these defaults.
+:host(.dock-collapsed-strip--vertical) .dock-collapsed-strip__flyout {
+  inset-block: 0;
+  inline-size: 18.75rem;
+}
+
+:host(.dock-collapsed-strip--horizontal) .dock-collapsed-strip__flyout {
+  inset-inline: 0;
+  block-size: 14.375rem;
+}
+
+// A 0.375rem gap (the base dock gap plus 2px) sits between the strip and the panel it flies out.
+:host(.dock-collapsed-strip--left) .dock-collapsed-strip__flyout {
+  inset-inline-start: calc(100% + 0.375rem);
+}
+
+:host(.dock-collapsed-strip--right) .dock-collapsed-strip__flyout {
+  inset-inline-end: calc(100% + 0.375rem);
+}
+
+:host(.dock-collapsed-strip--top) .dock-collapsed-strip__flyout {
+  inset-block-start: calc(100% + 0.375rem);
+}
+
+:host(.dock-collapsed-strip--bottom) .dock-collapsed-strip__flyout {
+  inset-block-end: calc(100% + 0.375rem);
+}
+
+// Resize handle straddling the flyout's inner edge (the one facing the layout), draggable along the
+// pinned axis.
+.dock-collapsed-strip__flyout-resize {
+  position: absolute;
+  z-index: 1;
+}
+
+:host(.dock-collapsed-strip--vertical) .dock-collapsed-strip__flyout-resize {
+  inset-block: 0;
+  inline-size: 0.5rem;
+  cursor: col-resize;
+}
+
+:host(.dock-collapsed-strip--horizontal) .dock-collapsed-strip__flyout-resize {
+  inset-inline: 0;
+  block-size: 0.5rem;
+  cursor: row-resize;
+}
+
+:host(.dock-collapsed-strip--left) .dock-collapsed-strip__flyout-resize {
+  inset-inline-end: -0.25rem;
+}
+
+:host(.dock-collapsed-strip--right) .dock-collapsed-strip__flyout-resize {
+  inset-inline-start: -0.25rem;
+}
+
+:host(.dock-collapsed-strip--top) .dock-collapsed-strip__flyout-resize {
+  inset-block-end: -0.25rem;
+}
+
+:host(.dock-collapsed-strip--bottom) .dock-collapsed-strip__flyout-resize {
+  inset-block-start: -0.25rem;
+}
+
+// The peek's title bar mirrors the docked tool panel's title (same height, padding, colours and
+// button cluster) so a peeked panel reads identically to its docked self.
+.dock-collapsed-strip__flyout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-block-size: 1.5rem;
+  padding-block: 0.25rem;
+  padding-inline: 0.5rem 0.25rem;
+  color: var(--dock-title-foreground-color);
+  background: var(--dock-title-background-color);
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+  border-start-start-radius: 0.375rem;
+  border-start-end-radius: 0.375rem;
+  font-weight: 600;
+
+  &-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+  }
+
+  &-buttons {
+    display: flex;
+    gap: 0.125rem;
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      block-size: 1.125rem;
+      inline-size: 1.125rem;
+      font-size: 0.875rem;
+      color: inherit;
+      background: transparent;
+      border: none;
+      border-radius: 0.25rem;
+      corner-shape: squircle;
+      cursor: pointer;
+      transition: var(--hover-transition);
+
+      &:hover {
+        background: var(--dock-title-background-color--focused);
+        color: var(--dock-title-foreground-color--focused);
+      }
+    }
+  }
+}
+
+.dock-collapsed-strip__flyout-body {
+  flex: 1;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+  border-end-start-radius: 0.375rem;
+  border-end-end-radius: 0.375rem;
+  overflow: auto;
+}
