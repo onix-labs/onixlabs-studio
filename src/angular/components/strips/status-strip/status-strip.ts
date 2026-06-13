@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
 import { Tab } from '../../../services/tabs/tab';
 import { Tabs } from '../../../services/tabs/tabs';
+import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
@@ -16,6 +17,11 @@ import { AppIcon } from '../../shared/icon/app-icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatusStrip {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the status bar content registry.
    */

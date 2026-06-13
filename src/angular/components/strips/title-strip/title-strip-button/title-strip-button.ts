@@ -26,6 +26,11 @@ export class TitleStripButton {
   public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
+   * Gets the clockwise rotation of the icon in degrees.
+   */
+  public readonly rotation: InputSignal<number> = input<number>(0);
+
+  /**
    * Gets a value indicating whether the button is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);

@@ -79,7 +79,7 @@ export class TreePanel {
    */
   public iconFor(node: WorkspaceTreeNode): Icon {
     if (node.type === 'directory') {
-      return node.expanded ? Icon.FOLDER_OPEN : Icon.FOLDER;
+      return node.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
     }
     const extension: string = this.extensionOf(node.name);
     switch (extension) {

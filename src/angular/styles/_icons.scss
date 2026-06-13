@@ -4,9 +4,10 @@
 // (src/angular/icons/icon.ts); templates never reference icon classes directly. Swapping the icon
 // library — or an icon's weight/variant — is a change to the `Icon` token alone.
 //
-// The Phosphor webfont (`ph ph-{name}`, regular weight) is registered in angular.json `styles`
-// rather than imported here, because the package ships plain CSS with font `url()`s relative to the
-// stylesheet; the build resolves and copies those fonts only for entries in the styles array.
-// Additional weights (`ph-thin`, `ph-light`, `ph-bold`, `ph-fill`, `ph-duotone`) are separate
-// stylesheets — add the matching `node_modules/@phosphor-icons/web/src/{weight}/style.css` to that
-// array when the first `Icon` of that weight is introduced, so unused weights are never shipped.
+// The Phosphor webfonts are registered in angular.json `styles` rather than imported here, because
+// the package ships plain CSS with font `url()`s relative to the stylesheet; the build resolves and
+// copies those fonts only for entries in the styles array. The regular (`ph ph-{name}`), bold
+// (`ph-bold ph-{name}`), fill (`ph-fill ph-{name}`) and duotone (`ph-duotone ph-{name}`) weights are
+// loaded. The remaining weights (`ph-thin`, `ph-light`) are separate stylesheets — add the matching
+// `node_modules/@phosphor-icons/web/src/{weight}/style.css` to that array when the first `Icon` of
+// that weight is introduced, so unused weights are never shipped.

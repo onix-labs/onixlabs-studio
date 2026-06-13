@@ -74,8 +74,8 @@ export class SettingsView {
   protected readonly sections: readonly SettingsSection[] = [
     { id: 'appearance', label: 'Appearance', icon: Icon.PALETTE },
     { id: 'application', label: 'Application', icon: Icon.APPLICATION },
-    { id: 'text-editor', label: 'Text Editor', icon: Icon.CODE },
-    { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN },
+    { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
+    { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
   ];
 
   /**

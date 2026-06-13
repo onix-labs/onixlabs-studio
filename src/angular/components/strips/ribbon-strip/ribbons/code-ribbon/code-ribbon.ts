@@ -140,13 +140,6 @@ export class CodeRibbon {
   );
 
   /**
-   * Opens a file in a new code tab.
-   */
-  protected onOpen(): void {
-    void this.documents.openFile();
-  }
-
-  /**
    * Saves the active document.
    */
   protected onSave(): void {
@@ -154,10 +147,10 @@ export class CodeRibbon {
   }
 
   /**
-   * Saves the active document to a newly chosen path.
+   * Prints the active document via the browser print dialog.
    */
-  protected onSaveAs(): void {
-    void this.documents.saveActiveAs();
+  protected onPrint(): void {
+    window.print();
   }
 
   /**

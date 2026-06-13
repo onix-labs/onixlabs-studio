@@ -9,11 +9,12 @@
  *
  * The weight/variant is deliberately baked into each class list rather than chosen at the call site,
  * because a replacement library is not guaranteed to offer the same variants; keeping the variant
- * here means a future swap never has to revisit every `app-icon` instance.
+ * here means a future swap never has to revisit every `app-icon` instance. Size, colour and rotation
+ * remain presentational and are chosen per instance.
  *
- * Icons are currently drawn from Phosphor Icons (`ph ph-{name}` for the regular weight). Other
- * weights — `ph-thin`, `ph-light`, `ph-bold`, `ph-fill`, `ph-duotone` — require their stylesheet to
- * be registered in `angular.json`; see `src/angular/styles/_icons.scss`.
+ * Icons are drawn from Phosphor Icons. The regular (`ph ph-{name}`), bold (`ph-bold ph-{name}`),
+ * fill (`ph-fill ph-{name}`) and duotone (`ph-duotone ph-{name}`) weights are loaded; see
+ * `src/angular/styles/_icons.scss`.
  */
 export class Icon {
   // --- Title strip: action buttons ---
@@ -26,7 +27,7 @@ export class Icon {
   /**
    * Gets the new-tab (grid-dots) icon shown on the new-tab button.
    */
-  public static readonly GRID_DOTS: Icon = new Icon('ph ph-dots-nine');
+  public static readonly GRID_DOTS: Icon = new Icon('ph-bold ph-dots-nine');
 
   /**
    * Gets the close icon shown on tab close buttons.
@@ -38,12 +39,12 @@ export class Icon {
   /**
    * Gets the closed-padlock icon shown when the window is locked in place.
    */
-  public static readonly LOCK: Icon = new Icon('ph ph-lock');
+  public static readonly LOCK: Icon = new Icon('ph-fill ph-lock-simple');
 
   /**
    * Gets the open-padlock icon shown when the window is free to move.
    */
-  public static readonly LOCK_OPEN: Icon = new Icon('ph ph-lock-open');
+  public static readonly LOCK_OPEN: Icon = new Icon('ph-bold ph-lock-simple-open');
 
   // --- Title strip: window controls ---
 
@@ -62,66 +63,66 @@ export class Icon {
    */
   public static readonly WINDOW_CLOSE: Icon = new Icon('ph ph-x');
 
-  // --- Tab types ---
+  // --- Content types (tabs, welcome, document wells) ---
 
   /**
-   * Gets the directory (workspace) tab icon.
+   * Gets the directory (workspace) content icon.
    */
-  public static readonly DIRECTORY: Icon = new Icon('ph ph-folder');
+  public static readonly DIRECTORY: Icon = new Icon('ph-duotone ph-folder-simple');
 
   /**
-   * Gets the code tab icon.
+   * Gets the code content icon.
    */
-  public static readonly CODE: Icon = new Icon('ph ph-file-code');
+  public static readonly CODE: Icon = new Icon('ph-duotone ph-file-code');
 
   /**
-   * Gets the markdown tab icon.
+   * Gets the markdown content icon.
    */
-  public static readonly MARKDOWN: Icon = new Icon('ph ph-markdown-logo');
+  public static readonly MARKDOWN: Icon = new Icon('ph-duotone ph-markdown-logo');
 
   /**
-   * Gets the terminal tab icon.
+   * Gets the terminal content icon.
    */
-  public static readonly TERMINAL: Icon = new Icon('ph ph-terminal-window');
+  public static readonly TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');
 
   /**
-   * Gets the agent tab icon.
+   * Gets the agent content icon.
    */
-  public static readonly AGENT: Icon = new Icon('ph ph-robot');
+  public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
 
   // --- Ribbon: file commands ---
 
   /**
    * Gets the open-file/folder icon.
    */
-  public static readonly FOLDER_OPEN: Icon = new Icon('ph ph-folder-open');
+  public static readonly FOLDER_OPEN: Icon = new Icon('ph-duotone ph-folder-open');
 
   /**
    * Gets the save icon.
    */
-  public static readonly SAVE: Icon = new Icon('ph ph-floppy-disk');
+  public static readonly SAVE: Icon = new Icon('ph-duotone ph-floppy-disk');
 
   /**
-   * Gets the save-as icon.
+   * Gets the print icon.
    */
-  public static readonly SAVE_AS: Icon = new Icon('ph ph-floppy-disk-back');
+  public static readonly PRINT: Icon = new Icon('ph-duotone ph-printer');
 
   // --- Ribbon: edit commands ---
 
   /**
    * Gets the cut icon.
    */
-  public static readonly CUT: Icon = new Icon('ph ph-scissors');
+  public static readonly CUT: Icon = new Icon('ph-duotone ph-scissors');
 
   /**
    * Gets the copy icon.
    */
-  public static readonly COPY: Icon = new Icon('ph ph-copy');
+  public static readonly COPY: Icon = new Icon('ph-duotone ph-copy');
 
   /**
    * Gets the paste icon.
    */
-  public static readonly PASTE: Icon = new Icon('ph ph-clipboard');
+  public static readonly PASTE: Icon = new Icon('ph-duotone ph-clipboard');
 
   /**
    * Gets the undo icon.
@@ -131,39 +132,39 @@ export class Icon {
   /**
    * Gets the redo icon.
    */
-  public static readonly REDO: Icon = new Icon('ph ph-arrow-u-up-right');
+  public static readonly REDO: Icon = new Icon('ph ph-arrow-u-down-right');
 
   /**
    * Gets the find/search icon.
    */
-  public static readonly SEARCH: Icon = new Icon('ph ph-magnifying-glass');
+  public static readonly SEARCH: Icon = new Icon('ph-duotone ph-magnifying-glass');
 
-  // --- Ribbon: run and format ---
+  // --- Ribbon: run, format and session ---
 
   /**
    * Gets the run/play/start icon.
    */
-  public static readonly PLAY: Icon = new Icon('ph ph-play');
+  public static readonly PLAY: Icon = new Icon('ph-duotone ph-play');
 
   /**
    * Gets the stop icon.
    */
-  public static readonly STOP: Icon = new Icon('ph ph-stop');
+  public static readonly STOP: Icon = new Icon('ph-duotone ph-stop');
 
   /**
    * Gets the format-document (magic wand) icon.
    */
-  public static readonly FORMAT: Icon = new Icon('ph ph-magic-wand');
+  public static readonly FORMAT: Icon = new Icon('ph-duotone ph-magic-wand');
 
   /**
-   * Gets the refresh/restart icon.
+   * Gets the clear icon (terminal screen, agent conversation).
    */
-  public static readonly REFRESH: Icon = new Icon('ph ph-arrows-clockwise');
+  public static readonly CLEAR: Icon = new Icon('ph-duotone ph-trash-simple');
 
   /**
-   * Gets the erase/clear icon.
+   * Gets the compact-conversation icon.
    */
-  public static readonly ERASER: Icon = new Icon('ph ph-eraser');
+  public static readonly COMPACT: Icon = new Icon('ph-duotone ph-trash');
 
   // --- Ribbon: markdown text formatting ---
 
@@ -188,6 +189,16 @@ export class Icon {
   public static readonly CODE_INLINE: Icon = new Icon('ph ph-code');
 
   /**
+   * Gets the table icon.
+   */
+  public static readonly TABLE: Icon = new Icon('ph-duotone ph-grid-nine');
+
+  /**
+   * Gets the horizontal-divider icon.
+   */
+  public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+
+  /**
    * Gets the bullet-list icon.
    */
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');
@@ -198,36 +209,31 @@ export class Icon {
   public static readonly NUMBERED_LIST: Icon = new Icon('ph ph-list-numbers');
 
   /**
-   * Gets the table icon.
+   * Gets the task-list icon.
    */
-  public static readonly TABLE: Icon = new Icon('ph ph-table');
-
-  /**
-   * Gets the horizontal-divider icon.
-   */
-  public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+  public static readonly TASK_LIST: Icon = new Icon('ph ph-list-checks');
 
   // --- Ribbon: build and source control ---
 
   /**
    * Gets the build icon.
    */
-  public static readonly BUILD: Icon = new Icon('ph ph-squares-four');
+  public static readonly BUILD: Icon = new Icon('ph-duotone ph-stack');
 
   /**
    * Gets the rebuild icon.
    */
-  public static readonly REBUILD: Icon = new Icon('ph ph-stack');
+  public static readonly REBUILD: Icon = new Icon('ph-duotone ph-stack-plus');
 
   /**
    * Gets the clean icon.
    */
-  public static readonly CLEAN: Icon = new Icon('ph ph-broom');
+  public static readonly CLEAN: Icon = new Icon('ph-duotone ph-broom');
 
   /**
    * Gets the git-commit icon.
    */
-  public static readonly GIT_COMMIT: Icon = new Icon('ph ph-git-commit');
+  public static readonly GIT_COMMIT: Icon = new Icon('ph-duotone ph-git-commit');
 
   /**
    * Gets the upward-arrow (push) icon.
@@ -239,24 +245,17 @@ export class Icon {
    */
   public static readonly ARROW_DOWN: Icon = new Icon('ph ph-arrow-down');
 
-  // --- Ribbon: agent commands ---
+  // --- Ribbon: agent and terminal ---
 
   /**
-   * Gets the new-chat icon.
+   * Gets the attach-file icon.
    */
-  public static readonly NEW_CHAT: Icon = new Icon('ph ph-chat-circle-dots');
-
-  /**
-   * Gets the attach-file (paperclip) icon.
-   */
-  public static readonly PAPERCLIP: Icon = new Icon('ph ph-paperclip');
+  public static readonly ATTACH: Icon = new Icon('ph-duotone ph-file-plus');
 
   /**
    * Gets the add-folder icon.
    */
-  public static readonly FOLDER_PLUS: Icon = new Icon('ph ph-folder-plus');
-
-  // --- Ribbon: terminal navigation ---
+  public static readonly FOLDER_PLUS: Icon = new Icon('ph-duotone ph-folder-simple-plus');
 
   /**
    * Gets the list icon.
@@ -271,12 +270,12 @@ export class Icon {
   /**
    * Gets the home-directory icon.
    */
-  public static readonly HOME: Icon = new Icon('ph ph-house');
+  public static readonly HOME: Icon = new Icon('ph-duotone ph-house-line');
 
   /**
    * Gets the root-directory icon.
    */
-  public static readonly ROOT: Icon = new Icon('ph ph-folder-simple');
+  public static readonly ROOT: Icon = new Icon('ph-duotone ph-hard-drive');
 
   // --- Dock: panels ---
 
@@ -322,10 +321,10 @@ export class Icon {
    */
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
 
-  // --- Solution Explorer: tree ---
+  // --- Solution Explorer: tree files ---
 
   /**
-   * Gets the collapsed-folder icon.
+   * Gets the collapsed-folder icon used outside the tree (such as the terminal cwd segment).
    */
   public static readonly FOLDER: Icon = new Icon('ph ph-folder');
 
@@ -374,7 +373,7 @@ export class Icon {
    */
   public static readonly SPINNER: Icon = new Icon('ph ph-circle-notch');
 
-  // --- Problems: severities ---
+  // --- Problems: severities and markdown alerts ---
 
   /**
    * Gets the error-severity icon.
@@ -436,6 +435,16 @@ export class Icon {
   public static readonly APPLICATION: Icon = new Icon('ph ph-app-window');
 
   /**
+   * Gets the text-editor settings-section icon (regular weight keeps the settings nav uniform).
+   */
+  public static readonly SETTINGS_TEXT_EDITOR: Icon = new Icon('ph ph-file-code');
+
+  /**
+   * Gets the markdown settings-section icon (regular weight keeps the settings nav uniform).
+   */
+  public static readonly SETTINGS_MARKDOWN: Icon = new Icon('ph ph-markdown-logo');
+
+  /**
    * Gets the light-theme icon.
    */
   public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');
@@ -456,6 +465,13 @@ export class Icon {
    * Gets the recent-items icon.
    */
   public static readonly RECENT: Icon = new Icon('ph ph-clock-counter-clockwise');
+
+  // --- Status bar ---
+
+  /**
+   * Gets the notches icon pinned to the trailing edge of the status bar.
+   */
+  public static readonly NOTCHES: Icon = new Icon('ph-bold ph-notches');
 
   // --- Shared affordances ---
 
@@ -480,9 +496,19 @@ export class Icon {
   public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');
 
   /**
-   * Gets the rightward caret used on collapsed tree nodes.
+   * Gets the rightward caret used on collapsed nodes.
    */
   public static readonly CARET_RIGHT: Icon = new Icon('ph ph-caret-right');
+
+  /**
+   * Gets the filled downward caret used on expanded tree nodes.
+   */
+  public static readonly CARET_DOWN_FILL: Icon = new Icon('ph-fill ph-caret-down');
+
+  /**
+   * Gets the filled rightward caret used on collapsed tree nodes.
+   */
+  public static readonly CARET_RIGHT_FILL: Icon = new Icon('ph-fill ph-caret-right');
 
   /**
    * Initialises a new instance of the {@link Icon} class.

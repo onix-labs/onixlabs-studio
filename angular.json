@@ -46,6 +46,9 @@
               "node_modules/@milkdown/crepe/lib/theme/common/style.css",
               "node_modules/@milkdown/crepe/lib/theme/frame/style.css",
               "node_modules/@phosphor-icons/web/src/regular/style.css",
+              "node_modules/@phosphor-icons/web/src/bold/style.css",
+              "node_modules/@phosphor-icons/web/src/fill/style.css",
+              "node_modules/@phosphor-icons/web/src/duotone/style.css",
               "src/angular/styles/styles.scss"
             ],
             "allowedCommonJsDependencies": [

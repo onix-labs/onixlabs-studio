@@ -24,7 +24,7 @@
     <div class="welcome__body">
       <div class="welcome__actions">
         <button type="button" class="welcome__action" (click)="openFiles()">
-          <app-icon [icon]="Icon.DIRECTORY" />
+          <app-icon [icon]="Icon.DIRECTORY" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">Open Directory or File</span>
             <span class="welcome__action-hint">Browse the file system</span>
@@ -32,7 +32,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('code')">
-          <app-icon [icon]="Icon.CODE" />
+          <app-icon [icon]="Icon.CODE" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Code File</span>
             <span class="welcome__action-hint">Plain text or source code</span>
@@ -40,7 +40,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('markdown')">
-          <app-icon [icon]="Icon.MARKDOWN" />
+          <app-icon [icon]="Icon.MARKDOWN" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Markdown File</span>
             <span class="welcome__action-hint">A formatted document</span>
@@ -48,7 +48,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('terminal')">
-          <app-icon [icon]="Icon.TERMINAL" />
+          <app-icon [icon]="Icon.TERMINAL" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Terminal</span>
             <span class="welcome__action-hint">A command-line session</span>
@@ -56,7 +56,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('agent')">
-          <app-icon [icon]="Icon.AGENT" />
+          <app-icon [icon]="Icon.AGENT" [size]="3" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Agent</span>
             <span class="welcome__action-hint">An AI assistant session</span>
@@ -82,7 +82,7 @@
           </ul>
         } @else {
           <div class="welcome__recent-empty">
-            <app-icon [icon]="Icon.RECENT" />
+            <app-icon [icon]="Icon.RECENT" [size]="2" />
             <p class="welcome__recent-empty-title">No recent items yet</p>
             <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
           </div>
