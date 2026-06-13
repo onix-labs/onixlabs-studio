@@ -4,6 +4,7 @@ import {
   nearestEdge,
   Rect,
   resolveCompassTarget,
+  resolveEdgeGuideTarget,
   resolveEdgeTarget,
   resolveGroupTarget,
 } from './dock-legality';
@@ -66,6 +67,30 @@ describe('dock-legality', () => {
 
     it('resolveEdgeTarget_whenOutsideWorkspace_returnsNull', () => {
       expect(resolveEdgeTarget(-10, 400, workspace, 'tool')).toBeNull();
+    });
+  });
+
+  describe('resolveEdgeGuideTarget', () => {
+    it('resolveEdgeGuideTarget_whenOverTheLowerTopGuide_targetsTopWhereProximityDoesNot', () => {
+      // The top guide square spans 14..54px from the top border, centred horizontally; a point 40px
+      // down is past the 28px border threshold yet still on the guide.
+      const x: number = workspace.left + workspace.width / 2;
+      const y: number = 40;
+
+      expect(resolveEdgeTarget(x, y, workspace, 'tool')).toBeNull();
+      expect(resolveEdgeGuideTarget(x, y, workspace, 'tool')?.target).toEqual({
+        kind: 'edge',
+        side: 'top',
+      });
+    });
+
+    it('resolveEdgeGuideTarget_whenDocument_returnsNull', () => {
+      const x: number = workspace.left + workspace.width / 2;
+      expect(resolveEdgeGuideTarget(x, 40, workspace, 'document')).toBeNull();
+    });
+
+    it('resolveEdgeGuideTarget_whenOverNoGuide_returnsNull', () => {
+      expect(resolveEdgeGuideTarget(500, 400, workspace, 'tool')).toBeNull();
     });
   });
 

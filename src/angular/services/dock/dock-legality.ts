@@ -102,6 +102,17 @@ export const COMPASS_GUIDE_OFFSET: number = 37;
 export const EDGE_THRESHOLD: number = 28;
 
 /**
+ * The pixel size of an edge guide square; the single source of truth shared by the overlay that
+ * draws the guide and the hit-test that targets it.
+ */
+export const EDGE_GUIDE_SIZE: number = 40;
+
+/**
+ * The pixel inset of an edge guide from its workspace border.
+ */
+export const EDGE_GUIDE_INSET: number = 14;
+
+/**
  * The maximum thickness, in pixels, of an edge-dock preview slab.
  */
 const EDGE_SLAB_MAXIMUM: number = 280;
@@ -187,6 +198,39 @@ function edgePreview(side: DockSide, workspace: Rect): Rect {
 }
 
 /**
+ * Computes the rectangle of an edge guide square within the workspace. Shared by the overlay (to
+ * draw the guide) and the hit-test (to target it), so the two never drift apart.
+ * @param side The edge the guide marks.
+ * @param workspace The workspace rectangle.
+ * @returns Returns the guide's rectangle.
+ */
+export function edgeGuideRect(side: DockSide, workspace: Rect): Rect {
+  const centreX: number = workspace.left + workspace.width / 2 - EDGE_GUIDE_SIZE / 2;
+  const centreY: number = workspace.top + workspace.height / 2 - EDGE_GUIDE_SIZE / 2;
+  const size: number = EDGE_GUIDE_SIZE;
+  switch (side) {
+    case 'left':
+      return { left: workspace.left + EDGE_GUIDE_INSET, top: centreY, width: size, height: size };
+    case 'right':
+      return {
+        left: workspace.left + workspace.width - EDGE_GUIDE_INSET - size,
+        top: centreY,
+        width: size,
+        height: size,
+      };
+    case 'top':
+      return { left: centreX, top: workspace.top + EDGE_GUIDE_INSET, width: size, height: size };
+    case 'bottom':
+      return {
+        left: centreX,
+        top: workspace.top + workspace.height - EDGE_GUIDE_INSET - size,
+        width: size,
+        height: size,
+      };
+  }
+}
+
+/**
  * Resolves an edge dock when the cursor is near a workspace border. Edge docking is first-class and
  * available to tool windows only.
  * @param x The cursor's viewport x coordinate.
@@ -218,6 +262,39 @@ export function resolveEdgeTarget(
   const side: DockSide =
     nearest === left ? 'left' : nearest === right ? 'right' : nearest === top ? 'top' : 'bottom';
   return { target: { kind: 'edge', side }, preview: edgePreview(side, workspace) };
+}
+
+/**
+ * Resolves an edge dock from the edge guide the cursor is directly over, so the whole guide square
+ * is a target (not just the band of it within the border threshold). Available to tool windows only.
+ * @param x The cursor's viewport x coordinate.
+ * @param y The cursor's viewport y coordinate.
+ * @param workspace The workspace rectangle.
+ * @param panelRole The role of the panel being dragged.
+ * @returns Returns the edge resolution, or null when the cursor is over no edge guide.
+ */
+export function resolveEdgeGuideTarget(
+  x: number,
+  y: number,
+  workspace: Rect,
+  panelRole: StackRole,
+): DockResolution | null {
+  if (panelRole !== 'tool') {
+    return null;
+  }
+  const sides: readonly DockSide[] = ['left', 'right', 'top', 'bottom'];
+  for (const side of sides) {
+    const rect: Rect = edgeGuideRect(side, workspace);
+    if (
+      x >= rect.left &&
+      x <= rect.left + rect.width &&
+      y >= rect.top &&
+      y <= rect.top + rect.height
+    ) {
+      return { target: { kind: 'edge', side }, preview: edgePreview(side, workspace) };
+    }
+  }
+  return null;
 }
 
 /**

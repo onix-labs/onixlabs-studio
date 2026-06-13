@@ -9,6 +9,7 @@ import {
   guideLegality,
   Rect,
   resolveCompassTarget,
+  resolveEdgeGuideTarget,
   resolveEdgeTarget,
   resolveGroupTarget,
 } from './dock-legality';
@@ -334,9 +335,14 @@ export class DockDrag {
       this.ghostRect.set({ ...ghost, left: x - this.offset.x, top: y - this.offset.y });
     }
 
+    // Either the border-proximity band or the edge guide square itself targets an edge, so the whole
+    // visible guide is droppable, not just the part within the border threshold.
     const workspace: Rect | null = this.workspaceRect();
     const edge: DockResolution | null =
-      workspace !== null ? resolveEdgeTarget(x, y, workspace, panel.role) : null;
+      workspace !== null
+        ? (resolveEdgeTarget(x, y, workspace, panel.role) ??
+          resolveEdgeGuideTarget(x, y, workspace, panel.role))
+        : null;
     if (edge !== null && edge.target.kind === 'edge') {
       this.currentTarget = edge.target;
       this.previewRect.set(edge.preview);
