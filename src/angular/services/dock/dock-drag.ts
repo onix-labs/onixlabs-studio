@@ -8,6 +8,8 @@ import {
   GuideLegality,
   guideLegality,
   Rect,
+  resolveCompassTarget,
+  resolveEdgeGuideTarget,
   resolveEdgeTarget,
   resolveGroupTarget,
 } from './dock-legality';
@@ -333,9 +335,14 @@ export class DockDrag {
       this.ghostRect.set({ ...ghost, left: x - this.offset.x, top: y - this.offset.y });
     }
 
+    // Either the border-proximity band or the edge guide square itself targets an edge, so the whole
+    // visible guide is droppable, not just the part within the border threshold.
     const workspace: Rect | null = this.workspaceRect();
     const edge: DockResolution | null =
-      workspace !== null ? resolveEdgeTarget(x, y, workspace, panel.role) : null;
+      workspace !== null
+        ? (resolveEdgeTarget(x, y, workspace, panel.role) ??
+          resolveEdgeGuideTarget(x, y, workspace, panel.role))
+        : null;
     if (edge !== null && edge.target.kind === 'edge') {
       this.currentTarget = edge.target;
       this.previewRect.set(edge.preview);
@@ -353,19 +360,18 @@ export class DockDrag {
       return;
     }
 
-    const resolution: DockResolution | null = resolveGroupTarget(
-      x,
-      y,
-      hit.stackId,
-      hit.role,
-      hit.rect,
-      panel.role,
-    );
+    // The compass centres on the hovered group; a guide the cursor is directly over wins, so the
+    // arrows are explicit targets, and the position-based zones serve as a fallback elsewhere.
+    const centerX: number = hit.rect.left + hit.rect.width / 2;
+    const centerY: number = hit.rect.top + hit.rect.height / 2;
+    const resolution: DockResolution | null =
+      resolveCompassTarget(x, y, centerX, centerY, hit.stackId, hit.role, hit.rect, panel.role) ??
+      resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, panel.role);
     this.currentTarget = resolution?.target ?? null;
     this.previewRect.set(resolution?.preview ?? null);
     this.compassState.set({
-      x: hit.rect.left + hit.rect.width / 2,
-      y: hit.rect.top + hit.rect.height / 2,
+      x: centerX,
+      y: centerY,
       legality: guideLegality(panel.role, hit.role),
       hot: resolution !== null ? guideKeyOf(resolution.target) : null,
     });

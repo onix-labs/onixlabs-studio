@@ -1,106 +1,64 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { DockGeometry } from './dock-geometry';
-import { nearestEdge, Rect } from './dock-legality';
-import { DockNode, DockSide, isStackNode, StackRole } from './dock-node';
+import { Rect } from './dock-legality';
+import { DockNode, isStackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findNode } from './dock-tree';
 
 /**
- * An auto-hidden (shelved) tool stack, pinned to an edge as a button strip.
+ * The pixel size a stack occupied while docked, captured when it collapses so its peek can open at
+ * the same size.
  */
-export interface ShelvedStack {
+export interface PeekSize {
   /**
-   * Gets the stable key identifying the shelved stack.
+   * Gets the docked width, in pixels.
    */
-  readonly key: string;
+  readonly width: number;
 
   /**
-   * Gets the edge the stack is shelved against.
+   * Gets the docked height, in pixels.
    */
-  readonly edge: DockSide;
-
-  /**
-   * Gets the role of the shelved stack.
-   */
-  readonly role: StackRole;
-
-  /**
-   * Gets the panels the shelved stack holds.
-   */
-  readonly panels: readonly string[];
-
-  /**
-   * Gets the active panel of the shelved stack, or null when empty.
-   */
-  readonly active: string | null;
+  readonly height: number;
 }
 
 /**
- * Manages auto-hidden tool stacks: pinning a tool stack shelves it to its nearest edge as a button
- * strip; hovering a button flies the stack out; unpinning re-docks it. The editor (document) well
- * is never auto-hidden.
+ * Manages auto-hidden (collapsed) tool stacks. Collapsing a tool stack keeps it in the layout tree
+ * but shrinks it to a thin strip in its own slot, so it restores to the exact position and size it
+ * had. Clicking the strip flies the stack out as a temporary peek over the layout; an explicit dock
+ * expands it again. The editor (document) well is never collapsed.
  */
 @Service()
 export class DockAutoHide {
   /**
-   * Holds the layout state pinning and unpinning drive.
+   * Holds the layout state collapsing, expanding and activation drive.
    */
   private readonly dockState: DockState = inject(DockState);
 
   /**
-   * Holds the geometry registry the nearest edge is measured against.
+   * Holds the geometry registry the docked size is measured from at collapse time.
    */
   private readonly geometry: DockGeometry = inject(DockGeometry);
 
   /**
-   * Holds the shelved stacks.
+   * Holds the docked size of each collapsed stack, keyed by stack id, so its peek opens at the size
+   * it had while docked.
    */
-  private readonly shelf: WritableSignal<readonly ShelvedStack[]> = signal<readonly ShelvedStack[]>(
-    [],
-  );
+  private readonly sizes: Map<string, PeekSize> = new Map<string, PeekSize>();
 
   /**
-   * Holds the key of the shelved stack currently flown out, or null when none is.
+   * Holds the identifier of the stack currently flown out as a peek, or null when none is.
    */
   private readonly flyout: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the running counter that assigns shelf keys.
+   * Gets the identifier of the stack currently flown out as a peek.
    */
-  private keyCounter: number = 0;
+  public readonly flyoutStackId: Signal<string | null> = this.flyout.asReadonly();
 
   /**
-   * Gets the shelved stacks.
-   */
-  public readonly shelved: Signal<readonly ShelvedStack[]> = this.shelf.asReadonly();
-
-  /**
-   * Gets the key of the shelved stack currently flown out.
-   */
-  public readonly flyoutKey: Signal<string | null> = this.flyout.asReadonly();
-
-  /**
-   * Gets which edges have at least one shelved stack, so the dock area can inset away from them.
-   */
-  public readonly occupiedEdges: Signal<Record<DockSide, boolean>> = computed(
-    (): Record<DockSide, boolean> => {
-      const edges: Record<DockSide, boolean> = {
-        left: false,
-        right: false,
-        top: false,
-        bottom: false,
-      };
-      for (const stack of this.shelf()) {
-        edges[stack.edge] = true;
-      }
-      return edges;
-    },
-  );
-
-  /**
-   * Auto-hides a tool stack, shelving it to its nearest edge and removing it from the layout. The
-   * call is ignored for document wells and unknown stacks.
-   * @param stackId The identifier of the stack to pin.
+   * Collapses a tool stack to a strip in its slot. The call is ignored for document wells and
+   * unknown stacks.
+   * @param stackId The identifier of the stack to collapse.
    */
   public pin(stackId: string): void {
     const node: DockNode | null = findNode(this.dockState.layout(), stackId);
@@ -108,111 +66,75 @@ export class DockAutoHide {
       return;
     }
     const rect: Rect | null = this.geometry.rectOf(stackId);
-    const workspace: Rect | null = this.geometry.workspaceRect();
-    const edge: DockSide =
-      rect !== null && workspace !== null ? nearestEdge(rect, workspace) : 'left';
-    this.keyCounter += 1;
-    this.shelf.set([
-      ...this.shelf(),
-      {
-        key: `shelf-${this.keyCounter}`,
-        edge,
-        role: node.role,
-        panels: [...node.panels],
-        active: node.active,
-      },
-    ]);
-    this.dockState.removeStack(stackId);
-  }
-
-  /**
-   * Re-docks a shelved stack to its edge, removing it from the shelf.
-   * @param key The key of the shelved stack to unpin.
-   */
-  public unpin(key: string): void {
-    const entry: ShelvedStack | undefined = this.find(key);
-    if (entry === undefined) {
-      return;
+    if (rect !== null) {
+      this.sizes.set(stackId, { width: rect.width, height: rect.height });
     }
-    this.remove(key);
     this.flyout.set(null);
-    this.dockState.dockStackToEdge(entry.panels, entry.role, entry.edge, entry.active);
+    this.dockState.setCollapsed(stackId, true);
   }
 
   /**
-   * Flies a shelved stack out, optionally activating one of its panels.
-   * @param key The key of the shelved stack to fly out.
+   * Expands a collapsed stack back to its slot, ending any peek and forgetting its captured size.
+   * @param stackId The identifier of the stack to expand.
+   */
+  public unpin(stackId: string): void {
+    this.sizes.delete(stackId);
+    this.flyout.set(null);
+    this.dockState.setCollapsed(stackId, false);
+  }
+
+  /**
+   * Gets the docked size captured for a collapsed stack, or null when none was measured.
+   * @param stackId The identifier of the collapsed stack.
+   * @returns Returns the docked size, or null.
+   */
+  public peekSize(stackId: string): PeekSize | null {
+    return this.sizes.get(stackId) ?? null;
+  }
+
+  /**
+   * Flies a collapsed stack out as a peek, optionally activating one of its panels. Clicking the
+   * already-peeking active panel toggles the peek closed.
+   * @param stackId The identifier of the stack to peek.
    * @param panelId The identifier of the panel to activate, or undefined to keep the current one.
    */
-  public showFlyout(key: string, panelId?: string): void {
+  public showFlyout(stackId: string, panelId?: string): void {
     if (panelId !== undefined) {
-      this.setActive(key, panelId);
+      if (this.flyout() === stackId && this.activeOf(stackId) === panelId) {
+        this.flyout.set(null);
+        return;
+      }
+      this.dockState.setActive(stackId, panelId);
     }
-    this.flyout.set(key);
+    this.flyout.set(stackId);
   }
 
   /**
-   * Hides the current flyout.
+   * Hides the current peek.
    */
   public hideFlyout(): void {
     this.flyout.set(null);
   }
 
   /**
-   * Activates a panel within a shelved stack.
-   * @param key The key of the shelved stack.
-   * @param panelId The identifier of the panel to activate.
-   */
-  public setActive(key: string, panelId: string): void {
-    this.shelf.set(
-      this.shelf().map(
-        (stack: ShelvedStack): ShelvedStack =>
-          stack.key === key && stack.panels.includes(panelId)
-            ? { ...stack, active: panelId }
-            : stack,
-      ),
-    );
-  }
-
-  /**
-   * Closes a panel within a shelved stack, removing the whole shelf entry when it empties.
-   * @param key The key of the shelved stack.
+   * Closes a panel within a collapsed stack, ending the peek when the stack empties away.
+   * @param stackId The identifier of the collapsed stack.
    * @param panelId The identifier of the panel to close.
    */
-  public closePanel(key: string, panelId: string): void {
-    const entry: ShelvedStack | undefined = this.find(key);
-    if (entry === undefined) {
-      return;
-    }
-    const panels: readonly string[] = entry.panels.filter((id: string): boolean => id !== panelId);
-    if (panels.length === 0) {
-      this.remove(key);
+  public closePanel(stackId: string, panelId: string): void {
+    this.dockState.removeFromLayout(panelId);
+    if (findNode(this.dockState.layout(), stackId) === null) {
       this.flyout.set(null);
-      return;
     }
-    const active: string | null = entry.active === panelId ? panels[0] : entry.active;
-    this.shelf.set(
-      this.shelf().map(
-        (stack: ShelvedStack): ShelvedStack =>
-          stack.key === key ? { ...stack, panels, active } : stack,
-      ),
-    );
   }
 
   /**
-   * Finds a shelved stack by key.
-   * @param key The key to find.
-   * @returns Returns the shelved stack, or undefined when none matches.
+   * Resolves the active panel of a stack in the current layout.
+   * @param stackId The identifier of the stack.
+   * @returns Returns the active panel identifier, or null when unknown or empty.
    */
-  private find(key: string): ShelvedStack | undefined {
-    return this.shelf().find((stack: ShelvedStack): boolean => stack.key === key);
-  }
-
-  /**
-   * Removes a shelved stack by key.
-   * @param key The key to remove.
-   */
-  private remove(key: string): void {
-    this.shelf.set(this.shelf().filter((stack: ShelvedStack): boolean => stack.key !== key));
+  private activeOf(stackId: string): string | null {
+    const node: DockNode | null = findNode(this.dockState.layout(), stackId);
+    return node !== null && isStackNode(node) ? node.active : null;
   }
 }

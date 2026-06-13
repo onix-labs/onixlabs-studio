@@ -246,6 +246,26 @@ export function setActive(tree: DockNode, stackId: string, panelId: string): Doc
 }
 
 /**
+ * Collapses or expands a stack in place. A collapsed tool stack keeps its slot and weight in the
+ * tree, so expanding it restores its exact position and size. The call is ignored when the stack
+ * does not exist, is not a stack, or is a document well (wells never collapse).
+ * @param tree The root of the tree to transform.
+ * @param stackId The identifier of the stack to collapse or expand.
+ * @param collapsed Whether the stack should be collapsed.
+ * @returns Returns the transformed tree.
+ */
+export function setCollapsed(tree: DockNode, stackId: string, collapsed: boolean): DockNode {
+  const target: DockNode | null = findNode(tree, stackId);
+  if (target === null || !isStackNode(target) || target.role === 'document') {
+    return tree;
+  }
+  if ((target.collapsed ?? false) === collapsed) {
+    return tree;
+  }
+  return replaceNode(tree, stackId, { ...target, collapsed });
+}
+
+/**
  * Wraps a node in a new split so that a new sibling docks beside it along the given axis.
  * @param target The existing node to dock beside.
  * @param sibling The new node to place alongside it.

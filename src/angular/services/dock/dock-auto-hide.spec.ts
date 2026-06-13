@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { DockAutoHide, ShelvedStack } from './dock-auto-hide';
-import { StackNode } from './dock-node';
+import { DockAutoHide } from './dock-auto-hide';
+import { isStackNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
-import { findStackOfPanel, firstStackOfRole } from './dock-tree';
+import { findNode, findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 describe('DockAutoHide', () => {
   let autoHide: DockAutoHide;
@@ -17,6 +17,16 @@ describe('DockAutoHide', () => {
     const stack: StackNode | null = findStackOfPanel(state.layout(), panelId);
     expect(stack).not.toBeNull();
     return stack!.id;
+  }
+
+  /**
+   * Reads whether the stack holding a panel is collapsed.
+   * @param panelId The panel whose stack to read.
+   * @returns Returns true when the stack is collapsed.
+   */
+  function isCollapsed(panelId: string): boolean {
+    const stack: StackNode | null = findStackOfPanel(state.layout(), panelId);
+    return stack?.collapsed === true;
   }
 
   /**
@@ -36,13 +46,14 @@ describe('DockAutoHide', () => {
     state = TestBed.inject(DockState);
   });
 
-  it('pin_whenToolStack_shelvesItAndRemovesItFromTheLayout', () => {
-    autoHide.pin(stackId('solution'));
+  it('pin_whenToolStack_collapsesItInPlace', () => {
+    const id: string = stackId('solution');
 
-    expect(
-      autoHide.shelved().some((stack: ShelvedStack): boolean => stack.panels.includes('solution')),
-    ).toBe(true);
-    expect(findStackOfPanel(state.layout(), 'solution')).toBeNull();
+    autoHide.pin(id);
+
+    expect(isCollapsed('solution')).toBe(true);
+    // The stack keeps its slot in the tree rather than being removed.
+    expect(findNode(state.layout(), id)).not.toBeNull();
   });
 
   it('pin_whenDocumentWell_isIgnored', () => {
@@ -50,44 +61,51 @@ describe('DockAutoHide', () => {
 
     autoHide.pin(stackId(doc));
 
-    expect(autoHide.shelved()).toHaveLength(0);
-    expect(findStackOfPanel(state.layout(), doc)).not.toBeNull();
+    expect(isCollapsed(doc)).toBe(false);
   });
 
-  it('unpin_whenCalled_redocksTheStackAndClearsTheShelf', () => {
-    autoHide.pin(stackId('output'));
-    const key: string = autoHide.shelved()[0].key;
+  it('unpin_whenCalled_expandsTheStackAndEndsThePeek', () => {
+    const id: string = stackId('output');
+    autoHide.pin(id);
+    autoHide.showFlyout(id, 'output');
 
-    autoHide.unpin(key);
+    autoHide.unpin(id);
 
-    expect(autoHide.shelved()).toHaveLength(0);
+    expect(isCollapsed('output')).toBe(false);
+    expect(autoHide.flyoutStackId()).toBeNull();
     expect(findStackOfPanel(state.layout(), 'output')).not.toBeNull();
     expect(findStackOfPanel(state.layout(), 'errors')).not.toBeNull();
   });
 
-  it('occupiedEdges_whenStackShelved_marksItsEdge', () => {
-    autoHide.pin(stackId('solution'));
+  it('showFlyout_whenCalled_setsThePeekAndActivePanel', () => {
+    const id: string = stackId('output');
+    autoHide.pin(id);
 
-    const edge: string = autoHide.shelved()[0].edge;
-    expect(autoHide.occupiedEdges()[edge as 'left']).toBe(true);
+    autoHide.showFlyout(id, 'errors');
+
+    expect(autoHide.flyoutStackId()).toBe(id);
+    const stack: StackNode | null = findStackOfPanel(state.layout(), 'errors');
+    expect(stack !== null && isStackNode(stack) ? stack.active : null).toBe('errors');
   });
 
-  it('showFlyout_whenCalled_setsTheFlyoutKeyAndActivePanel', () => {
-    autoHide.pin(stackId('output'));
-    const key: string = autoHide.shelved()[0].key;
+  it('showFlyout_whenActivePanelClickedAgain_togglesThePeekClosed', () => {
+    const id: string = stackId('output');
+    autoHide.pin(id);
+    autoHide.showFlyout(id, 'errors');
 
-    autoHide.showFlyout(key, 'errors');
+    autoHide.showFlyout(id, 'errors');
 
-    expect(autoHide.flyoutKey()).toBe(key);
-    expect(autoHide.shelved()[0].active).toBe('errors');
+    expect(autoHide.flyoutStackId()).toBeNull();
   });
 
-  it('closePanel_whenLastPanelClosed_removesTheShelfEntry', () => {
-    autoHide.pin(stackId('solution'));
-    const key: string = autoHide.shelved()[0].key;
+  it('closePanel_whenLastPanelClosed_removesTheStackAndEndsThePeek', () => {
+    const id: string = stackId('solution');
+    autoHide.pin(id);
+    autoHide.showFlyout(id, 'solution');
 
-    autoHide.closePanel(key, 'solution');
+    autoHide.closePanel(id, 'solution');
 
-    expect(autoHide.shelved()).toHaveLength(0);
+    expect(findStackOfPanel(state.layout(), 'solution')).toBeNull();
+    expect(autoHide.flyoutStackId()).toBeNull();
   });
 });

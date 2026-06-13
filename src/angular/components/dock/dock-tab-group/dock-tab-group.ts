@@ -21,11 +21,13 @@ import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { guideLegality, Rect } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
-import { StackNode } from '../../../services/dock/dock-node';
+import { DockSide, StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
+import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
+import { DockTool, DockToolStrip } from '../dock-tool-strip/dock-tool-strip';
 
 /**
  * The rectangle a panel floats into when its group cannot be measured.
@@ -41,7 +43,17 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
  */
 @Component({
   selector: 'app-dock-tab-group',
-  imports: [DockPanelOutlet, CdkDropList, CdkDrag, CdkMenuTrigger, CdkMenu, CdkMenuItem, AppIcon],
+  imports: [
+    DockPanelOutlet,
+    DockToolStrip,
+    DockStatusStrip,
+    CdkDropList,
+    CdkDrag,
+    CdkMenuTrigger,
+    CdkMenu,
+    CdkMenuItem,
+    AppIcon,
+  ],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -106,10 +118,43 @@ export class DockTabGroup {
   public readonly stack: InputSignal<StackNode> = input.required<StackNode>();
 
   /**
+   * Gets the edge of its slot the panel hugs, which sets the collapse button's icon and rotation.
+   */
+  public readonly side: InputSignal<DockSide> = input<DockSide>('left');
+
+  /**
+   * Gets the collapse button's icon, chosen by the docked edge's axis.
+   */
+  protected readonly collapseIcon: Signal<Icon> = computed(
+    (): Icon =>
+      this.side() === 'top' || this.side() === 'bottom'
+        ? Icon.COLLAPSE_VERTICAL
+        : Icon.COLLAPSE_HORIZONTAL,
+  );
+
+  /**
+   * Gets the collapse button's rotation in degrees: the left and top edges flip the icon 180°.
+   */
+  protected readonly collapseRotation: Signal<number> = computed((): number =>
+    this.side() === 'left' || this.side() === 'top' ? 180 : 0,
+  );
+
+  /**
    * Gets the document picker menu position, anchoring the menu's right edge below the button.
    */
   protected readonly documentMenuPosition: readonly ConnectedPosition[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+  ];
+
+  /**
+   * Gets the stubbed tools shown in a document well's tool strip, distinct from the default panel
+   * tools so the well reads as an editor surface.
+   */
+  protected readonly documentTools: readonly DockTool[] = [
+    { id: 'split', icon: Icon.LAYOUT_SPLIT, label: 'Split Editor' },
+    { id: 'find', icon: Icon.SEARCH, label: 'Find in File' },
+    { id: 'settings', icon: Icon.SETTINGS, label: 'Editor Settings' },
+    { id: 'more', icon: Icon.GRID_DOTS, label: 'More Actions' },
   ];
 
   /**

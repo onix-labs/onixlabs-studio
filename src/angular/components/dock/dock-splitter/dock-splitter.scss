@@ -1,16 +1,21 @@
 :host {
-  flex: 0 0 0.5rem;
+  // The splitter control is 4px with pill ends, but a 2px transparent margin on each side along the
+  // resize axis keeps the inter-panel gap at its original 8px footprint.
+  flex: 0 0 0.25rem;
   align-self: stretch;
   background: var(--dock-splitter-color);
+  border-radius: 0.125rem;
   transition: var(--hover-transition);
   z-index: 5;
 
   &.dock-splitter--row {
     cursor: col-resize;
+    margin-inline: 0.125rem;
   }
 
   &.dock-splitter--col {
     cursor: row-resize;
+    margin-block: 0.125rem;
   }
 
   &:hover {
@@ -19,6 +24,13 @@
 
   &.dock-splitter--dragging {
     background: var(--dock-splitter-color--active);
+  }
+
+  // Inert handle beside a collapsed strip: keeps the gap but cannot be hovered or dragged.
+  &.dock-splitter--disabled {
+    pointer-events: none;
+    background: var(--dock-splitter-color);
+    cursor: default;
   }
 }
 

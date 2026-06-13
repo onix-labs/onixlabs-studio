@@ -1,0 +1,44 @@
+// Layout only; the surrounding dock tab group supplies the strip's background and frame borders so
+// it reads as part of the document well chrome.
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-block-size: 1.625rem;
+  padding-block: 0.125rem;
+  padding-inline: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--dock-tab-foreground-color);
+}
+
+.dock-status-strip__group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dock-status-strip__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.0625rem 0.375rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.25rem;
+  corner-shape: squircle;
+  font: inherit;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    color: var(--dock-tab-foreground-color--active);
+    background: var(--dock-title-background-color--focused);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}

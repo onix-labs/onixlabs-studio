@@ -1,6 +1,8 @@
-<ng-template #render let-node>
-  @if (isStack(node)) {
-    <app-dock-tab-group [stack]="node" />
+<ng-template #render let-node let-side="side">
+  @if (isCollapsed(node)) {
+    <app-dock-collapsed-strip [stack]="asStack(node)" [side]="side" />
+  } @else if (isStack(node)) {
+    <app-dock-tab-group [stack]="node" [side]="side" />
   } @else {
     <div
       class="dock-node__split"
@@ -11,11 +13,12 @@
         <div
           class="dock-node__pane"
           [class.dock-node__pane--leaf]="isStack(child)"
-          [style.flex]="paneFlex(node.sizes[i])"
+          [class.dock-node__pane--collapsed]="isCollapsed(child)"
+          [style.flex]="isCollapsed(child) ? collapsedFlex : paneFlex(node.sizes[i])"
         >
           <ng-container
             [ngTemplateOutlet]="render"
-            [ngTemplateOutletContext]="{ $implicit: child }"
+            [ngTemplateOutletContext]="{ $implicit: child, side: collapsedSide(node.dir, i) }"
           />
         </div>
         @if (!last) {
@@ -24,6 +27,7 @@
             [index]="i"
             [dir]="node.dir"
             [sizes]="node.sizes"
+            [disabled]="isCollapsed(child) || isCollapsed(childAt(node, i + 1))"
           />
         }
       }
@@ -31,4 +35,7 @@
   }
 </ng-template>
 
-<ng-container [ngTemplateOutlet]="render" [ngTemplateOutletContext]="{ $implicit: node() }" />
+<ng-container
+  [ngTemplateOutlet]="render"
+  [ngTemplateOutletContext]="{ $implicit: node(), side: 'left' }"
+/>

@@ -1,0 +1,11 @@
+<!-- Stubbed tools; handlers are intentionally absent until the panels wire real actions. -->
+@for (tool of tools(); track tool.id) {
+  <button
+    type="button"
+    class="dock-tool-strip__tool"
+    [title]="tool.label"
+    [attr.aria-label]="tool.label"
+  >
+    <app-icon [icon]="tool.icon" />
+  </button>
+}

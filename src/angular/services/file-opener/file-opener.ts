@@ -127,6 +127,7 @@ export class FileOpener {
    */
   private openDirectory(listing: DirectoryListing): void {
     const tab: Tab = this.tabs.open('directory');
+    this.tabs.rename(tab.id, listing.name);
     this.workspaces.setInitial(tab.id, listing);
   }
 

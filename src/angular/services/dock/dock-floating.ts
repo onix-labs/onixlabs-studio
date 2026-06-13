@@ -44,12 +44,12 @@ export interface FloatWindow {
 /**
  * The minimum width, in pixels, a floating window may be resized to.
  */
-const MINIMUM_WIDTH: number = 180;
+export const MINIMUM_WIDTH: number = 180;
 
 /**
  * The minimum height, in pixels, a floating window may be resized to.
  */
-const MINIMUM_HEIGHT: number = 120;
+export const MINIMUM_HEIGHT: number = 120;
 
 /**
  * Manages the floating window layer: panels dropped on void or floated from a tool group detach
@@ -131,6 +131,30 @@ export class DockFloating {
    */
   public resize(panelId: string, width: number, height: number): void {
     this.patch(panelId, {
+      width: Math.max(MINIMUM_WIDTH, width),
+      height: Math.max(MINIMUM_HEIGHT, height),
+    });
+  }
+
+  /**
+   * Sets a floating window's full rectangle, clamping its size to the minimum. Used to resize from
+   * any edge or corner, where moving an edge changes the position as well as the size.
+   * @param panelId The identifier of the floating panel.
+   * @param left The new left coordinate.
+   * @param top The new top coordinate.
+   * @param width The new width.
+   * @param height The new height.
+   */
+  public setBounds(
+    panelId: string,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): void {
+    this.patch(panelId, {
+      left,
+      top,
       width: Math.max(MINIMUM_WIDTH, width),
       height: Math.max(MINIMUM_HEIGHT, height),
     });

@@ -2,17 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { CompassState, DockDrag, GuideKey } from '../../../services/dock/dock-drag';
 import { DockSide } from '../../../services/dock/dock-node';
 import { DockPanel } from '../../../services/dock/dock-panel';
-import { Rect } from '../../../services/dock/dock-legality';
-
-/**
- * The size, in pixels, of an edge guide square.
- */
-const EDGE_GUIDE_SIZE: number = 40;
-
-/**
- * The inset, in pixels, of an edge guide from the workspace border.
- */
-const EDGE_GUIDE_INSET: number = 14;
+import { edgeGuideRect, Rect } from '../../../services/dock/dock-legality';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 
 /**
  * Renders the dock drag overlay: the directional compass over the hovered group, the four
@@ -21,7 +13,7 @@ const EDGE_GUIDE_INSET: number = 14;
  */
 @Component({
   selector: 'app-dock-overlay',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './dock-overlay.html',
   styleUrl: './dock-overlay.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -83,7 +75,37 @@ export class DockOverlay {
   protected readonly edges: readonly DockSide[] = ['left', 'right', 'top', 'bottom'];
 
   /**
-   * Computes the top-left position of an edge guide within the workspace.
+   * Resolves the icon shown in a compass or edge guide: the centre tabs into the group (a full
+   * square), left and right split horizontally and top and bottom split vertically.
+   * @param guide The compass guide or application edge.
+   * @returns Returns the guide's icon.
+   */
+  protected guideIcon(guide: GuideKey): Icon {
+    switch (guide) {
+      case 'left':
+      case 'right':
+        return Icon.COLLAPSE_HORIZONTAL;
+      case 'top':
+      case 'bottom':
+        return Icon.COLLAPSE_VERTICAL;
+      case 'center':
+        return Icon.SQUARE;
+    }
+  }
+
+  /**
+   * Resolves the rotation, in degrees, of a guide's icon: the left and top guides flip their glyph
+   * 180°.
+   * @param guide The compass guide or application edge.
+   * @returns Returns the rotation in degrees.
+   */
+  protected guideRotation(guide: GuideKey): number {
+    return guide === 'left' || guide === 'top' ? 180 : 0;
+  }
+
+  /**
+   * Computes the top-left position of an edge guide within the workspace, from the shared guide
+   * geometry so the drawn guide and its hit-test always coincide.
    * @param edge The edge the guide marks.
    * @param workspace The workspace rectangle.
    * @returns Returns the guide's top-left position.
@@ -92,23 +114,7 @@ export class DockOverlay {
     edge: DockSide,
     workspace: Rect,
   ): { readonly left: number; readonly top: number } {
-    const centreX: number = workspace.left + workspace.width / 2 - EDGE_GUIDE_SIZE / 2;
-    const centreY: number = workspace.top + workspace.height / 2 - EDGE_GUIDE_SIZE / 2;
-    switch (edge) {
-      case 'left':
-        return { left: workspace.left + EDGE_GUIDE_INSET, top: centreY };
-      case 'right':
-        return {
-          left: workspace.left + workspace.width - EDGE_GUIDE_INSET - EDGE_GUIDE_SIZE,
-          top: centreY,
-        };
-      case 'top':
-        return { left: centreX, top: workspace.top + EDGE_GUIDE_INSET };
-      case 'bottom':
-        return {
-          left: centreX,
-          top: workspace.top + workspace.height - EDGE_GUIDE_INSET - EDGE_GUIDE_SIZE,
-        };
-    }
+    const rect: Rect = edgeGuideRect(edge, workspace);
+    return { left: rect.left, top: rect.top };
   }
 }

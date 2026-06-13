@@ -85,9 +85,32 @@ export interface DockResolution {
 export const CENTER_ZONE_FRACTION: number = 0.34;
 
 /**
+ * The pixel size of a compass guide square, mirroring the 2.125rem `.dock-overlay__guide` at the
+ * 16px root, so the guides can be hit-tested as explicit drop targets.
+ */
+export const COMPASS_GUIDE_SIZE: number = 34;
+
+/**
+ * The pixel distance from the compass centre to a directional guide's centre, mirroring the
+ * 2.3125rem guide inset in `dock-overlay.scss` at the 16px root.
+ */
+export const COMPASS_GUIDE_OFFSET: number = 37;
+
+/**
  * The distance, in pixels, within which a cursor near the workspace border docks to that edge.
  */
 export const EDGE_THRESHOLD: number = 28;
+
+/**
+ * The pixel size of an edge guide square; the single source of truth shared by the overlay that
+ * draws the guide and the hit-test that targets it.
+ */
+export const EDGE_GUIDE_SIZE: number = 40;
+
+/**
+ * The pixel inset of an edge guide from its workspace border.
+ */
+export const EDGE_GUIDE_INSET: number = 14;
 
 /**
  * The maximum thickness, in pixels, of an edge-dock preview slab.
@@ -175,6 +198,39 @@ function edgePreview(side: DockSide, workspace: Rect): Rect {
 }
 
 /**
+ * Computes the rectangle of an edge guide square within the workspace. Shared by the overlay (to
+ * draw the guide) and the hit-test (to target it), so the two never drift apart.
+ * @param side The edge the guide marks.
+ * @param workspace The workspace rectangle.
+ * @returns Returns the guide's rectangle.
+ */
+export function edgeGuideRect(side: DockSide, workspace: Rect): Rect {
+  const centreX: number = workspace.left + workspace.width / 2 - EDGE_GUIDE_SIZE / 2;
+  const centreY: number = workspace.top + workspace.height / 2 - EDGE_GUIDE_SIZE / 2;
+  const size: number = EDGE_GUIDE_SIZE;
+  switch (side) {
+    case 'left':
+      return { left: workspace.left + EDGE_GUIDE_INSET, top: centreY, width: size, height: size };
+    case 'right':
+      return {
+        left: workspace.left + workspace.width - EDGE_GUIDE_INSET - size,
+        top: centreY,
+        width: size,
+        height: size,
+      };
+    case 'top':
+      return { left: centreX, top: workspace.top + EDGE_GUIDE_INSET, width: size, height: size };
+    case 'bottom':
+      return {
+        left: centreX,
+        top: workspace.top + workspace.height - EDGE_GUIDE_INSET - size,
+        width: size,
+        height: size,
+      };
+  }
+}
+
+/**
  * Resolves an edge dock when the cursor is near a workspace border. Edge docking is first-class and
  * available to tool windows only.
  * @param x The cursor's viewport x coordinate.
@@ -206,6 +262,39 @@ export function resolveEdgeTarget(
   const side: DockSide =
     nearest === left ? 'left' : nearest === right ? 'right' : nearest === top ? 'top' : 'bottom';
   return { target: { kind: 'edge', side }, preview: edgePreview(side, workspace) };
+}
+
+/**
+ * Resolves an edge dock from the edge guide the cursor is directly over, so the whole guide square
+ * is a target (not just the band of it within the border threshold). Available to tool windows only.
+ * @param x The cursor's viewport x coordinate.
+ * @param y The cursor's viewport y coordinate.
+ * @param workspace The workspace rectangle.
+ * @param panelRole The role of the panel being dragged.
+ * @returns Returns the edge resolution, or null when the cursor is over no edge guide.
+ */
+export function resolveEdgeGuideTarget(
+  x: number,
+  y: number,
+  workspace: Rect,
+  panelRole: StackRole,
+): DockResolution | null {
+  if (panelRole !== 'tool') {
+    return null;
+  }
+  const sides: readonly DockSide[] = ['left', 'right', 'top', 'bottom'];
+  for (const side of sides) {
+    const rect: Rect = edgeGuideRect(side, workspace);
+    if (
+      x >= rect.left &&
+      x <= rect.left + rect.width &&
+      y >= rect.top &&
+      y <= rect.top + rect.height
+    ) {
+      return { target: { kind: 'edge', side }, preview: edgePreview(side, workspace) };
+    }
+  }
+  return null;
 }
 
 /**
@@ -273,4 +362,60 @@ export function resolveGroupTarget(
   return legal[side]
     ? { target: { kind: 'split', stackId, side }, preview: splitPreview(side, rect) }
     : null;
+}
+
+/**
+ * Resolves a dock from the compass guide the cursor is directly over, so the arrows act as explicit
+ * drop targets regardless of where they sit within the group. The guide rectangles are derived from
+ * the compass centre (the hovered group's centre) and the fixed offsets that mirror the overlay's
+ * layout.
+ * @param x The cursor's viewport x coordinate.
+ * @param y The cursor's viewport y coordinate.
+ * @param centerX The compass centre x coordinate (the hovered group's centre).
+ * @param centerY The compass centre y coordinate.
+ * @param stackId The identifier of the hovered stack.
+ * @param targetRole The role of the hovered stack.
+ * @param rect The hovered group's rectangle.
+ * @param panelRole The role of the panel being dragged.
+ * @returns Returns the guide resolution, or null when the cursor is over no guide (so callers fall
+ * back to the position-based zones) or over an illegal guide.
+ */
+export function resolveCompassTarget(
+  x: number,
+  y: number,
+  centerX: number,
+  centerY: number,
+  stackId: string,
+  targetRole: StackRole,
+  rect: Rect,
+  panelRole: StackRole,
+): DockResolution | null {
+  const guides: readonly {
+    readonly key: 'center' | DockSide;
+    readonly dx: number;
+    readonly dy: number;
+  }[] = [
+    { key: 'center', dx: 0, dy: 0 },
+    { key: 'left', dx: -COMPASS_GUIDE_OFFSET, dy: 0 },
+    { key: 'right', dx: COMPASS_GUIDE_OFFSET, dy: 0 },
+    { key: 'top', dx: 0, dy: -COMPASS_GUIDE_OFFSET },
+    { key: 'bottom', dx: 0, dy: COMPASS_GUIDE_OFFSET },
+  ];
+  const half: number = COMPASS_GUIDE_SIZE / 2;
+  const legal: GuideLegality = guideLegality(panelRole, targetRole);
+  for (const guide of guides) {
+    if (Math.abs(x - (centerX + guide.dx)) > half || Math.abs(y - (centerY + guide.dy)) > half) {
+      continue;
+    }
+    if (!legal[guide.key]) {
+      return null;
+    }
+    return guide.key === 'center'
+      ? { target: { kind: 'tab', stackId }, preview: rect }
+      : {
+          target: { kind: 'split', stackId, side: guide.key },
+          preview: splitPreview(guide.key, rect),
+        };
+  }
+  return null;
 }
