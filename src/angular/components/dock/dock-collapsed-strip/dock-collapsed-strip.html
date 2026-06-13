@@ -27,7 +27,7 @@
       <span class="dock-collapsed-strip__flyout-title-text">{{ activePanel()?.title }}</span>
       <span class="dock-collapsed-strip__flyout-title-buttons">
         <button type="button" title="Dock" aria-label="Dock" (click)="dock()">
-          <app-icon [icon]="Icon.AUTO_HIDE" />
+          <app-icon [icon]="collapseIcon()" [rotation]="collapseRotation()" />
         </button>
         @if (activePanel(); as active) {
           <button type="button" title="Float" aria-label="Float" (click)="float(active.id)">

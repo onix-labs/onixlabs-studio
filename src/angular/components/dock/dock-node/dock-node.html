@@ -2,7 +2,7 @@
   @if (isCollapsed(node)) {
     <app-dock-collapsed-strip [stack]="asStack(node)" [side]="side" />
   } @else if (isStack(node)) {
-    <app-dock-tab-group [stack]="node" />
+    <app-dock-tab-group [stack]="node" [side]="side" />
   } @else {
     <div
       class="dock-node__split"

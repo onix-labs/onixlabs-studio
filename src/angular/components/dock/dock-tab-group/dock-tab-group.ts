@@ -21,7 +21,7 @@ import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { guideLegality, Rect } from '../../../services/dock/dock-legality';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
-import { StackNode } from '../../../services/dock/dock-node';
+import { DockSide, StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
@@ -116,6 +116,28 @@ export class DockTabGroup {
    * Gets the stack this group renders.
    */
   public readonly stack: InputSignal<StackNode> = input.required<StackNode>();
+
+  /**
+   * Gets the edge of its slot the panel hugs, which sets the collapse button's icon and rotation.
+   */
+  public readonly side: InputSignal<DockSide> = input<DockSide>('left');
+
+  /**
+   * Gets the collapse button's icon, chosen by the docked edge's axis.
+   */
+  protected readonly collapseIcon: Signal<Icon> = computed(
+    (): Icon =>
+      this.side() === 'top' || this.side() === 'bottom'
+        ? Icon.COLLAPSE_VERTICAL
+        : Icon.COLLAPSE_HORIZONTAL,
+  );
+
+  /**
+   * Gets the collapse button's rotation in degrees: the left and top edges flip the icon 180°.
+   */
+  protected readonly collapseRotation: Signal<number> = computed((): number =>
+    this.side() === 'left' || this.side() === 'top' ? 180 : 0,
+  );
 
   /**
    * Gets the document picker menu position, anchoring the menu's right edge below the button.

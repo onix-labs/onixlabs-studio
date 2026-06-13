@@ -35,10 +35,16 @@
     <div class="dock-float__body">
       <app-dock-panel-outlet [panelId]="item.window.panelId" />
     </div>
-    <span
-      class="dock-float__resize"
-      aria-hidden="true"
-      (mousedown)="startResize(item.window, $event)"
-    ></span>
+    @for (handle of resizeHandles; track handle.id) {
+      <span
+        class="dock-float__resize dock-float__resize--{{ handle.id }}"
+        aria-hidden="true"
+        (mousedown)="startResize(item.window, handle, $event)"
+      >
+        @if (handle.id === 'se') {
+          <app-icon [icon]="Icon.NOTCHES" />
+        }
+      </span>
+    }
   </div>
 }

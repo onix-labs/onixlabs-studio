@@ -119,6 +119,23 @@ export class DockCollapsedStrip {
   );
 
   /**
+   * Gets the dock (re-dock) button's icon, matching the docked panel's collapse button for its edge.
+   */
+  protected readonly collapseIcon: Signal<Icon> = computed(
+    (): Icon =>
+      this.side() === 'top' || this.side() === 'bottom'
+        ? Icon.COLLAPSE_VERTICAL
+        : Icon.COLLAPSE_HORIZONTAL,
+  );
+
+  /**
+   * Gets the dock button's rotation in degrees: the left and top edges flip the icon 180°.
+   */
+  protected readonly collapseRotation: Signal<number> = computed((): number =>
+    this.side() === 'left' || this.side() === 'top' ? 180 : 0,
+  );
+
+  /**
    * Gets the resolved panels held by the stack, in tab order.
    */
   protected readonly panels: Signal<readonly DockPanel[]> = computed((): readonly DockPanel[] =>

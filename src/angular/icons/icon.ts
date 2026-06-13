@@ -302,14 +302,24 @@ export class Icon {
   public static readonly AUTO_HIDE: Icon = new Icon('ph ph-sidebar-simple');
 
   /**
-   * Gets the float (picture-in-picture) icon.
+   * Gets the collapse icon for a panel docked on a left or right edge (rotated 180° for the left).
    */
-  public static readonly FLOAT: Icon = new Icon('ph ph-picture-in-picture');
+  public static readonly COLLAPSE_HORIZONTAL: Icon = new Icon('ph-duotone ph-square-half');
 
   /**
-   * Gets the re-dock icon shown on floating and auto-hidden panels.
+   * Gets the collapse icon for a panel docked on a top or bottom edge (rotated 180° for the top).
    */
-  public static readonly DOCK: Icon = new Icon('ph ph-arrow-line-down');
+  public static readonly COLLAPSE_VERTICAL: Icon = new Icon('ph-duotone ph-square-half-bottom');
+
+  /**
+   * Gets the float icon shown on a docked panel to detach it into a floating window.
+   */
+  public static readonly FLOAT: Icon = new Icon('ph-duotone ph-push-pin-slash');
+
+  /**
+   * Gets the re-dock icon shown on a floating panel to dock it back into the layout.
+   */
+  public static readonly DOCK: Icon = new Icon('ph-duotone ph-push-pin');
 
   /**
    * Gets the pin (re-dock from auto-hide) icon.

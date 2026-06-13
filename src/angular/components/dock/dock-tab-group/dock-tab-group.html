@@ -14,7 +14,7 @@
           (mousedown)="$event.stopPropagation()"
           (click)="requestPin()"
         >
-          <app-icon [icon]="Icon.AUTO_HIDE" />
+          <app-icon [icon]="collapseIcon()" [rotation]="collapseRotation()" />
         </button>
         <button
           type="button"

@@ -16,7 +16,7 @@
   pointer-events: auto;
   background: var(--dock-background-color);
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.25rem;
+  border-radius: var(--dock-panel-radius);
   corner-shape: squircle;
   box-shadow: 0 0.625rem 1.625rem rgb(0 0 0 / 45%);
   overflow: hidden;
@@ -44,6 +44,9 @@
   &-buttons {
     display: flex;
     gap: 0.125rem;
+    // Sit above the edge resize handles so the title buttons stay clickable at the top corners.
+    position: relative;
+    z-index: 2;
 
     button {
       display: flex;
@@ -78,22 +81,78 @@
   overflow: auto;
 }
 
+// Eight resize handles: thin edge strips and small corner squares. Corners are rendered after the
+// edges so they win at the overlaps, and all handles sit above the body but below the title buttons.
 .dock-float__resize {
   position: absolute;
-  inset-inline-end: 0;
+  z-index: 1;
+}
+
+.dock-float__resize--n,
+.dock-float__resize--s {
+  inset-inline: 0;
+  block-size: 0.25rem;
+  cursor: ns-resize;
+}
+
+.dock-float__resize--n {
+  inset-block-start: 0;
+}
+
+.dock-float__resize--s {
   inset-block-end: 0;
-  inline-size: 0.875rem;
-  block-size: 0.875rem;
+}
+
+.dock-float__resize--e,
+.dock-float__resize--w {
+  inset-block: 0;
+  inline-size: 0.25rem;
+  cursor: ew-resize;
+}
+
+.dock-float__resize--e {
+  inset-inline-end: 0;
+}
+
+.dock-float__resize--w {
+  inset-inline-start: 0;
+}
+
+.dock-float__resize--ne,
+.dock-float__resize--nw,
+.dock-float__resize--se,
+.dock-float__resize--sw {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+}
+
+.dock-float__resize--ne {
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  cursor: nesw-resize;
+}
+
+.dock-float__resize--nw {
+  inset-block-start: 0;
+  inset-inline-start: 0;
   cursor: nwse-resize;
-  background: linear-gradient(
-    135deg,
-    transparent 50%,
-    var(--dock-border-color) 50%,
-    var(--dock-border-color) 60%,
-    transparent 60%,
-    transparent 70%,
-    var(--dock-border-color) 70%,
-    var(--dock-border-color) 80%,
-    transparent 80%
-  );
+}
+
+.dock-float__resize--sw {
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  cursor: nesw-resize;
+}
+
+// The south-east corner shows the notches grip (as the status strip does) so the window still reads
+// as resizable; the icon inherits this colour.
+.dock-float__resize--se {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  cursor: nwse-resize;
+  font-size: 0.875rem;
+  color: var(--dock-border-color);
 }
