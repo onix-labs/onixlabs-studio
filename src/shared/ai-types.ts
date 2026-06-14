@@ -3,6 +3,16 @@
 // compilation targets can import it.
 
 /**
+ * The in-app capability that returns the active editor document's text.
+ */
+export const READ_ACTIVE_DOCUMENT: string = 'read_active_document';
+
+/**
+ * The in-app capability that replaces the active editor document's text.
+ */
+export const REPLACE_ACTIVE_DOCUMENT: string = 'replace_active_document';
+
+/**
  * Identifies where the agent's Anthropic credentials come from.
  *
  * - `local-login`: the user's local Claude login (`~/.claude`), the same credential Claude Code uses.

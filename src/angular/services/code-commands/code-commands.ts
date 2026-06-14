@@ -48,6 +48,18 @@ export interface CodeCommandHandler {
    * Saves the document to a newly chosen path.
    */
   saveAs(): void;
+
+  /**
+   * Gets the editor's full text.
+   * @returns Returns the document text.
+   */
+  getText(): string;
+
+  /**
+   * Replaces the editor's full text (as a single undoable edit).
+   * @param text The new text.
+   */
+  replaceText(text: string): void;
 }
 
 /**
@@ -67,6 +79,13 @@ export class CodeCommands {
     signal<CodeCommandHandler | null>(null);
 
   /**
+   * Holds the most recently registered handler, retained across deactivation so the agent can act on
+   * the last code editor the user worked in even when focus has moved to the agent. Cleared only when
+   * that editor is disposed (via {@link forget}).
+   */
+  private lastHandler: CodeCommandHandler | null = null;
+
+  /**
    * Gets a value indicating whether a code editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -79,16 +98,62 @@ export class CodeCommands {
    */
   public register(handler: CodeCommandHandler): void {
     this.handler.set(handler);
+    this.lastHandler = handler;
   }
 
   /**
-   * Unregisters the given command handler, if it is the currently registered one.
+   * Unregisters the given command handler, if it is the currently registered one. The handler is
+   * retained as the agent target ({@link lastHandler}) until the editor is disposed.
    * @param handler The handler to unregister.
    */
   public unregister(handler: CodeCommandHandler): void {
     if (this.handler() === handler) {
       this.handler.set(null);
     }
+  }
+
+  /**
+   * Forgets a handler entirely (its editor was disposed), clearing it as both the active and the
+   * agent target.
+   * @param handler The handler to forget.
+   */
+  public forget(handler: CodeCommandHandler): void {
+    this.unregister(handler);
+    if (this.lastHandler === handler) {
+      this.lastHandler = null;
+    }
+  }
+
+  /**
+   * Reads the full text of the editor the agent should act on (the active editor, or the last one the
+   * user worked in).
+   * @returns Returns the text, or null when no code editor is available.
+   */
+  public readActiveText(): string | null {
+    return this.aiTarget()?.getText() ?? null;
+  }
+
+  /**
+   * Replaces the full text of the editor the agent should act on.
+   * @param text The new text.
+   * @returns Returns true when an editor was available and updated.
+   */
+  public replaceActiveText(text: string): boolean {
+    const target: CodeCommandHandler | null = this.aiTarget();
+    if (target === null) {
+      return false;
+    }
+    target.replaceText(text);
+    return true;
+  }
+
+  /**
+   * Resolves the handler the agent should act on: the active editor, falling back to the last editor
+   * the user worked in.
+   * @returns Returns the target handler, or null when none is available.
+   */
+  private aiTarget(): CodeCommandHandler | null {
+    return this.handler() ?? this.lastHandler;
   }
 
   /**
