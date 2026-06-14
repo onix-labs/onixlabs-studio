@@ -14,6 +14,9 @@
   @if (tab().dirty) {
     <span class="tab-dirty" aria-label="Unsaved changes"></span>
   }
+  @if (tab().attention) {
+    <span class="tab-attention" aria-label="Needs your attention"></span>
+  }
   <button
     type="button"
     aria-label="Close tab"

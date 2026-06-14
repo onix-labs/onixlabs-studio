@@ -34,6 +34,12 @@ export interface Tab {
    * the tab; defaults to false for tabs without a document.
    */
   readonly dirty?: boolean;
+
+  /**
+   * Gets a value indicating whether the tab needs the user's attention (for example, a document
+   * changed on disk and needs a keep/reload decision). Surfaced as an accent dot on the tab.
+   */
+  readonly attention?: boolean;
 }
 
 /**

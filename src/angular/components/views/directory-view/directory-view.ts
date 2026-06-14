@@ -112,6 +112,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * screen.
    */
   public ngOnInit(): void {
+    this.documents.setOwningTab(this.tabId());
     const initial: DirectoryListing | undefined = this.workspaces.takeInitial(this.tabId());
     if (initial !== undefined) {
       this.workspace.openListing(initial);

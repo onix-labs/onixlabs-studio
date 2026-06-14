@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { Documents } from '../../services/documents/documents';
 import { Tab } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
+import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';
 import { AgentView } from '../views/agent-view/agent-view';
 import { CodeView } from '../views/code-view/code-view';
 import { DirectoryView } from '../views/directory-view/directory-view';
@@ -17,7 +18,15 @@ import { TerminalView } from '../views/terminal-view/terminal-view';
  */
 @Component({
   selector: 'app-content-host',
-  imports: [SettingsView, DirectoryView, CodeView, MarkdownView, TerminalView, AgentView],
+  imports: [
+    SettingsView,
+    DirectoryView,
+    CodeView,
+    MarkdownView,
+    TerminalView,
+    AgentView,
+    DocumentConflictModal,
+  ],
   templateUrl: './content-host.html',
   styleUrl: './content-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
