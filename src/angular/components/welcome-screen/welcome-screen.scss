@@ -279,7 +279,7 @@
 // The panel zooms and fades in each time the welcome becomes visible (the animation property is only
 // present in the visible state, so it replays on every show).
 .welcome--visible .welcome__panel {
-  animation: modalzoom 750ms cubic-bezier(0.785, 0.135, 0.15, 0.86);
+  animation: modalzoom 1s cubic-bezier(0.785, 0.135, 0.15, 0.86);
 }
 
 @keyframes modalzoom {
@@ -296,6 +296,9 @@
   position: absolute;
   inset-block-start: 1rem;
   inset-inline-end: 1rem;
+  // Absolutely-positioned children don't reliably inherit the panel's no-drag, so without this the
+  // button sits in the window-drag region and its clicks are swallowed.
+  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;
