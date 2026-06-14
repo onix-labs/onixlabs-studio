@@ -11,6 +11,5 @@
   }
 }
 
-@if (showWelcome()) {
-  <app-welcome-screen class="welcome-screen" />
-}
+<!-- The welcome screen stays mounted so it can animate in and out; it manages its own visible state. -->
+<app-welcome-screen class="welcome-screen" />

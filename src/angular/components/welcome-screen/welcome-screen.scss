@@ -4,23 +4,185 @@
 
 // The full-bleed overlay centres the panel. It doubles as the window's drag handle (so the
 // frameless window can move when no title strip is present) and, when summoned over content, blurs
-// what sits behind it.
+// what sits behind it. It stays mounted and toggles its visible state so the backdrop blur, the
+// panel, and the ambient orbs can all animate in and out (modern CSS: @starting-style + discrete
+// display transition — Electron's Chromium supports both).
 .welcome {
+  --welcome-fade-duration: 280ms;
+  --welcome-zoom-duration: 360ms;
+  --welcome-zoom-ease: cubic-bezier(0.65, 0, 0.35, 1);
+  --welcome-ambient-backdrop-color: rgba(8, 10, 22, 0.82);
+
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  isolation: isolate;
+  background: transparent;
+  backdrop-filter: blur(0);
+  -webkit-app-region: drag;
+  transition:
+    background var(--welcome-fade-duration) ease,
+    backdrop-filter var(--welcome-fade-duration) ease,
+    display var(--welcome-zoom-duration) allow-discrete;
+}
+
+// Shown state: the backdrop tint and blur fade in (and, on dismissal, back out).
+.welcome--visible {
+  display: flex;
   background: var(--welcome-backdrop-color);
   backdrop-filter: blur(var(--welcome-backdrop-blur));
-  -webkit-app-region: drag;
+
+  @starting-style {
+    background: transparent;
+    backdrop-filter: blur(0);
+  }
+}
+
+// Cold-start scene: a darker canvas so the glowing orbs read against it.
+.welcome--visible.welcome--ambient {
+  background: var(--welcome-ambient-backdrop-color);
+
+  @starting-style {
+    background: transparent;
+  }
+}
+
+// The drifting orb layer, behind the panel. Visible (and animating) only in the ambient cold-start
+// scene; isolated so the orbs' screen blend stays within the overlay.
+.welcome__orbs {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--welcome-fade-duration) ease;
+}
+
+.welcome--ambient .welcome__orbs {
+  opacity: 1;
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.welcome__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2.5rem);
+  mix-blend-mode: screen;
+  will-change: transform;
+  animation-play-state: paused;
+}
+
+.welcome--ambient .welcome__orb {
+  animation-play-state: running;
+}
+
+// Two blues and two purples, sized and seeded so they drift across the scene like a gravity-free
+// lava lamp.
+.welcome__orb--a {
+  inline-size: 34rem;
+  block-size: 34rem;
+  inset-block-start: -6rem;
+  inset-inline-start: -4rem;
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.6), rgba(59, 130, 246, 0) 68%);
+  animation: welcome-orb-a 26s ease-in-out infinite;
+}
+
+.welcome__orb--b {
+  inline-size: 30rem;
+  block-size: 30rem;
+  inset-block-end: -8rem;
+  inset-inline-end: -6rem;
+  background: radial-gradient(circle at center, rgba(139, 92, 246, 0.55), rgba(139, 92, 246, 0) 68%);
+  animation: welcome-orb-b 32s ease-in-out infinite;
+}
+
+.welcome__orb--c {
+  inline-size: 26rem;
+  block-size: 26rem;
+  inset-block-start: 22%;
+  inset-inline-start: 32%;
+  background: radial-gradient(circle at center, rgba(96, 165, 250, 0.5), rgba(96, 165, 250, 0) 70%);
+  animation: welcome-orb-c 22s ease-in-out infinite;
+}
+
+.welcome__orb--d {
+  inline-size: 28rem;
+  block-size: 28rem;
+  inset-block-end: 12%;
+  inset-inline-start: 14%;
+  background: radial-gradient(circle at center, rgba(168, 85, 247, 0.5), rgba(168, 85, 247, 0) 70%);
+  animation: welcome-orb-d 29s ease-in-out infinite;
+}
+
+@keyframes welcome-orb-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  30% {
+    transform: translate(8vw, 10vh) scale(1.12);
+  }
+  60% {
+    transform: translate(-6vw, 6vh) scale(0.92);
+  }
+}
+
+@keyframes welcome-orb-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  35% {
+    transform: translate(-10vw, -8vh) scale(1.1);
+  }
+  70% {
+    transform: translate(-4vw, 5vh) scale(0.9);
+  }
+}
+
+@keyframes welcome-orb-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(12vw, -6vh) scale(1.15);
+  }
+  55% {
+    transform: translate(6vw, 12vh) scale(0.95);
+  }
+  80% {
+    transform: translate(-8vw, 4vh) scale(1.05);
+  }
+}
+
+@keyframes welcome-orb-d {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  40% {
+    transform: translate(10vw, -10vh) scale(1.08);
+  }
+  75% {
+    transform: translate(-12vw, -4vh) scale(0.94);
+  }
 }
 
 // The centred card. Everything inside it opts out of the drag region so the controls stay clickable.
+// It zooms and fades in (and back out) on a slow-fast-slow cubic-bezier; its resting hidden state is
+// the zoomed-down, transparent one so the transition runs both ways.
 .welcome__panel {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   inline-size: min(52rem, 100%);
@@ -32,6 +194,21 @@
   corner-shape: squircle;
   box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
   -webkit-app-region: no-drag;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    transform var(--welcome-zoom-duration) var(--welcome-zoom-ease),
+    opacity var(--welcome-zoom-duration) var(--welcome-zoom-ease);
+}
+
+.welcome--visible .welcome__panel {
+  opacity: 1;
+  transform: scale(1);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.9);
+  }
 }
 
 .welcome__close {
@@ -286,4 +463,21 @@
   margin: 0;
   font-size: 0.78rem;
   opacity: 0.8;
+}
+
+// Honour reduced-motion: no zoom, no drift — just show/hide.
+@media (prefers-reduced-motion: reduce) {
+  .welcome,
+  .welcome__orbs,
+  .welcome__panel {
+    transition: none;
+  }
+
+  .welcome__panel {
+    transform: none;
+  }
+
+  .welcome__orb {
+    animation: none;
+  }
 }

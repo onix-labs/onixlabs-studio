@@ -64,6 +64,24 @@ export class WelcomeScreen {
   );
 
   /**
+   * Gets a value indicating whether the welcome screen is currently shown. The overlay stays mounted
+   * so it can animate in and out; this drives its visible state. It is shown at a cold start (no tabs)
+   * and whenever it is explicitly summoned as a modal over the content.
+   */
+  protected readonly visible: Signal<boolean> = computed(
+    (): boolean => this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen(),
+  );
+
+  /**
+   * Gets a value indicating whether the ambient backdrop (the drifting orbs) is shown. It appears only
+   * at a cold start or when no tabs are open — never when the welcome screen is summoned as a modal
+   * over existing content.
+   */
+  protected readonly ambient: Signal<boolean> = computed(
+    (): boolean => this.tabsService.tabs().length === 0,
+  );
+
+  /**
    * Shows the system open dialog and routes the chosen file or folder: a directory opens in the
    * workspace, a markdown file in a markdown tab, and any other text file in a code tab. The welcome
    * screen is dismissed only when something was opened, so cancelling returns to it.
@@ -103,9 +121,12 @@ export class WelcomeScreen {
   }
 
   /**
-   * Handles the Escape key, dismissing the modal when it can be dismissed.
+   * Handles the Escape key, dismissing the modal when it is visible and can be dismissed.
    */
   protected onEscape(): void {
+    if (!this.visible()) {
+      return;
+    }
     this.close();
   }
 }

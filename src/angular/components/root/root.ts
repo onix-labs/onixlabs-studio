@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Tabs } from '../../services/tabs/tabs';
-import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
 import { ContentHost } from '../content-host/content-host';
 import { RibbonStrip } from '../strips/ribbon-strip/ribbon-strip';
 import { StatusStrip } from '../strips/status-strip/status-strip';
@@ -25,24 +24,11 @@ export class Root {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Holds the welcome modal state used to summon the welcome screen over the existing content.
-   */
-  private readonly welcomeModal: WelcomeModal = inject(WelcomeModal);
-
-  /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content
    * host are replaced by the welcome screen.
    */
   protected readonly hasTabs: Signal<boolean> = computed(
     (): boolean => this.tabsService.tabs().length > 0,
-  );
-
-  /**
-   * Gets a value indicating whether the welcome screen should be shown. It shows at a cold start
-   * (no tabs) and whenever it is explicitly summoned as a modal over the content.
-   */
-  protected readonly showWelcome: Signal<boolean> = computed(
-    (): boolean => !this.hasTabs() || this.welcomeModal.isOpen(),
   );
 
   /**
