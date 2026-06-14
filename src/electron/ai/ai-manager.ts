@@ -3,6 +3,7 @@ import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electr
 import type {
   AiEvent,
   AiModelInfo,
+  AiPermissionPosture,
   AiPermissionReply,
   AiProviderId,
   AiProviderInfo,
@@ -10,6 +11,11 @@ import type {
   AiRunState,
   AiVerifyResult,
 } from '../../shared/ai-types';
+
+/**
+ * The permission postures accepted from the renderer, used to validate the untrusted run request.
+ */
+const PERMISSION_POSTURES: readonly AiPermissionPosture[] = ['prompt', 'auto-edits', 'auto-all'];
 import { IpcChannel } from '../../shared/ipc-channels';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
@@ -163,6 +169,16 @@ export class AiManager {
     )
       ? request.model
       : provider.defaultModelId;
+    // Validate the posture and clamp the token cap; the request comes from the renderer.
+    const permissionPosture: AiPermissionPosture = PERMISSION_POSTURES.includes(
+      request.permissionPosture,
+    )
+      ? request.permissionPosture
+      : 'prompt';
+    const tokenCap: number =
+      typeof request.tokenCap === 'number' && request.tokenCap > 0
+        ? Math.floor(request.tokenCap)
+        : 0;
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const context: AgentRunContext = {
@@ -170,6 +186,8 @@ export class AiManager {
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
       model,
+      permissionPosture,
+      tokenCap,
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {

@@ -1,4 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
 import { SettingsStore } from '../settings-store/settings-store';
 
 /**
@@ -152,6 +153,34 @@ export interface MarkdownEditorSettings {
 }
 
 /**
+ * Defines the AI agent settings. Provider and per-provider model selection are persisted here so the
+ * agent restores the user's choice across sessions; the agent reads and writes them through this
+ * service rather than holding its own in-memory selection.
+ */
+export interface AiSettings {
+  /**
+   * Gets the selected provider.
+   */
+  readonly provider: AiProviderId;
+
+  /**
+   * Gets the selected model per provider, keyed by provider id. A missing entry means "use the
+   * provider's default model".
+   */
+  readonly models: Readonly<Partial<Record<AiProviderId, string>>>;
+
+  /**
+   * Gets how much the agent may do without asking the user first.
+   */
+  readonly permissionPosture: AiPermissionPosture;
+
+  /**
+   * Gets the per-request token budget, or 0 for the provider default (no cap).
+   */
+  readonly tokenCap: number;
+}
+
+/**
  * Defines the complete set of application settings owned by this service. Theme mode and accent are
  * intentionally excluded; they are owned by the Theme service.
  */
@@ -170,6 +199,11 @@ export interface AppSettings {
    * Gets the markdown editor settings.
    */
   readonly markdownEditor: MarkdownEditorSettings;
+
+  /**
+   * Gets the AI agent settings.
+   */
+  readonly ai: AiSettings;
 }
 
 /**
@@ -196,6 +230,11 @@ interface LegacyAppSettings {
    * Gets the persisted markdown editor settings, if any.
    */
   readonly markdownEditor?: Partial<MarkdownEditorSettings>;
+
+  /**
+   * Gets the persisted AI agent settings, if any.
+   */
+  readonly ai?: Partial<AiSettings>;
 }
 
 /**
@@ -231,6 +270,16 @@ const DEFAULT_MARKDOWN_EDITOR_SETTINGS: MarkdownEditorSettings = {
 };
 
 /**
+ * Holds the default AI agent settings.
+ */
+const DEFAULT_AI_SETTINGS: AiSettings = {
+  provider: 'claude',
+  models: {},
+  permissionPosture: 'prompt',
+  tokenCap: 0,
+};
+
+/**
  * Holds the settings-store key under which the settings are persisted.
  */
 const SETTINGS_KEY: string = 'settings';
@@ -244,6 +293,11 @@ const MIN_UNDO_STACK_SIZE: number = 10;
  * Holds the maximum allowed undo stack size.
  */
 const MAX_UNDO_STACK_SIZE: number = 1000;
+
+/**
+ * Holds the maximum allowed per-request token cap.
+ */
+const MAX_TOKEN_CAP: number = 1_000_000;
 
 /**
  * Represents the source of truth for application, text editor and markdown editor settings.
@@ -316,6 +370,32 @@ export class Settings {
    */
   public readonly markdownEditor: Signal<MarkdownEditorSettings> = computed(
     (): MarkdownEditorSettings => this.settingsSignal().markdownEditor,
+  );
+
+  /**
+   * Gets the AI agent settings.
+   */
+  public readonly ai: Signal<AiSettings> = computed((): AiSettings => this.settingsSignal().ai);
+
+  /**
+   * Gets the selected AI provider.
+   */
+  public readonly aiProvider: Signal<AiProviderId> = computed(
+    (): AiProviderId => this.settingsSignal().ai.provider,
+  );
+
+  /**
+   * Gets the agent permission posture.
+   */
+  public readonly aiPermissionPosture: Signal<AiPermissionPosture> = computed(
+    (): AiPermissionPosture => this.settingsSignal().ai.permissionPosture,
+  );
+
+  /**
+   * Gets the per-request token cap (0 for no cap).
+   */
+  public readonly aiTokenCap: Signal<number> = computed(
+    (): number => this.settingsSignal().ai.tokenCap,
   );
 
   /**
@@ -488,6 +568,68 @@ export class Settings {
   }
 
   /**
+   * Gets the model selected for a provider, or an empty string when none is selected (use the
+   * provider's default).
+   * @param provider The provider id.
+   * @returns Returns the selected model id, or an empty string.
+   */
+  public aiModelFor(provider: AiProviderId): string {
+    return this.settingsSignal().ai.models[provider] ?? '';
+  }
+
+  /**
+   * Updates the AI agent settings.
+   * @param updates The partial AI settings to apply.
+   */
+  public updateAiSettings(updates: Partial<AiSettings>): void {
+    this.settingsSignal.update(
+      (current: AppSettings): AppSettings => ({
+        ...current,
+        ai: { ...current.ai, ...updates },
+      }),
+    );
+  }
+
+  /**
+   * Sets the selected AI provider.
+   * @param provider The provider id.
+   */
+  public setAiProvider(provider: AiProviderId): void {
+    this.updateAiSettings({ provider });
+  }
+
+  /**
+   * Sets the selected model for a provider.
+   * @param provider The provider id.
+   * @param model The model id.
+   */
+  public setAiModel(provider: AiProviderId, model: string): void {
+    this.settingsSignal.update(
+      (current: AppSettings): AppSettings => ({
+        ...current,
+        ai: { ...current.ai, models: { ...current.ai.models, [provider]: model } },
+      }),
+    );
+  }
+
+  /**
+   * Sets the agent permission posture.
+   * @param posture The permission posture.
+   */
+  public setAiPermissionPosture(posture: AiPermissionPosture): void {
+    this.updateAiSettings({ permissionPosture: posture });
+  }
+
+  /**
+   * Sets the per-request token cap, clamping it to a non-negative integer (0 means no cap).
+   * @param cap The requested token cap.
+   */
+  public setAiTokenCap(cap: number): void {
+    const clamped: number = Math.max(0, Math.min(MAX_TOKEN_CAP, Math.round(cap)));
+    this.updateAiSettings({ tokenCap: clamped });
+  }
+
+  /**
    * Loads the settings from the store, merging persisted values with defaults.
    * @returns Returns the restored, fully populated settings.
    */
@@ -530,6 +672,11 @@ export class Settings {
       application: { ...DEFAULT_APPLICATION_SETTINGS, ...partial.application },
       textEditor,
       markdownEditor: { ...DEFAULT_MARKDOWN_EDITOR_SETTINGS, ...partial.markdownEditor },
+      ai: {
+        ...DEFAULT_AI_SETTINGS,
+        ...partial.ai,
+        models: { ...(partial.ai?.models ?? {}) },
+      },
     };
   }
 }

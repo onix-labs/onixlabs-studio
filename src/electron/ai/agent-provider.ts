@@ -1,4 +1,4 @@
-import type { AiEvent, AiModelInfo, AiProviderId } from '../../shared/ai-types';
+import type { AiEvent, AiModelInfo, AiPermissionPosture, AiProviderId } from '../../shared/ai-types';
 
 /**
  * Reports whether a provider can currently run, with a reason suitable for display.
@@ -71,6 +71,16 @@ export interface AgentRunContext {
    * offers).
    */
   readonly model: string;
+
+  /**
+   * Gets how much the agent may do without asking the user first.
+   */
+  readonly permissionPosture: AiPermissionPosture;
+
+  /**
+   * Gets the per-request token budget the turn is capped to, or 0 for no cap.
+   */
+  readonly tokenCap: number;
 
   /**
    * Gets the credential the run authenticates with.

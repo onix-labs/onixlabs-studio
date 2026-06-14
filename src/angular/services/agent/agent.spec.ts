@@ -1,7 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiEvent, AiModelInfo, AiProviderId, AiProviderInfo } from '../../../shared/ai-types';
-import { AiRuntime } from '../ai-runtime/ai-runtime';
+import type {
+  AiEvent,
+  AiModelInfo,
+  AiPermissionPosture,
+  AiProviderId,
+  AiProviderInfo,
+} from '../../../shared/ai-types';
+import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
+import { Settings } from '../settings/settings';
 import { Agent, AgentItem } from './agent';
 
 /**
@@ -23,7 +30,14 @@ const PROVIDERS: readonly AiProviderInfo[] = [
 
 describe('Agent', () => {
   let agent: Agent;
-  let runCalls: { providerId: AiProviderId; prompt: string; workspaceRoot: string | null; model: string }[];
+  let runCalls: {
+    providerId: AiProviderId;
+    prompt: string;
+    workspaceRoot: string | null;
+    model: string;
+    permissionPosture: AiPermissionPosture;
+    tokenCap: number;
+  }[];
   let abortCalls: string[];
   let permissionReplies: { permissionId: string; granted: boolean }[];
   let fireEvent: (event: AiEvent) => void;
@@ -38,6 +52,7 @@ describe('Agent', () => {
   }
 
   beforeEach(() => {
+    localStorage.clear();
     runCalls = [];
     abortCalls = [];
     permissionReplies = [];
@@ -49,13 +64,15 @@ describe('Agent', () => {
         fireEvent = listener;
         return (): void => undefined;
       },
-      run: (
-        providerId: AiProviderId,
-        prompt: string,
-        workspaceRoot: string | null = null,
-        model: string = '',
-      ): string => {
-        runCalls.push({ providerId, prompt, workspaceRoot, model });
+      run: (providerId: AiProviderId, prompt: string, options: AiRunOptions = {}): string => {
+        runCalls.push({
+          providerId,
+          prompt,
+          workspaceRoot: options.workspaceRoot ?? null,
+          model: options.model ?? '',
+          permissionPosture: options.permissionPosture ?? 'prompt',
+          tokenCap: options.tokenCap ?? 0,
+        });
         return 'run-1';
       },
       abort: (requestId: string): void => {
@@ -103,6 +120,17 @@ describe('Agent', () => {
     agent.send('hi');
 
     expect(runCalls[0].model).toBe('claude-sonnet-4-6');
+  });
+
+  it('send_whenPostureAndCapConfigured_forwardsThemFromSettings', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.setAiPermissionPosture('auto-edits');
+    settings.setAiTokenCap(8000);
+
+    agent.send('hi');
+
+    expect(runCalls[0].permissionPosture).toBe('auto-edits');
+    expect(runCalls[0].tokenCap).toBe(8000);
   });
 
   it('send_whenBlank_isIgnored', () => {

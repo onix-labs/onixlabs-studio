@@ -89,6 +89,8 @@ export class VercelAiProvider implements AgentProvider {
       prompt: context.prompt,
       abortSignal: context.signal,
       stopWhen: stepCountIs(16),
+      // Cap the output tokens when the user set a per-request budget; 0 leaves the provider default.
+      ...(context.tokenCap > 0 ? { maxOutputTokens: context.tokenCap } : {}),
       tools: {
         [READ_ACTIVE_DOCUMENT]: tool({
           description: "Read the active editor document's full text.",

@@ -7,6 +7,7 @@ import type {
   AiRunState,
 } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
+import { Settings } from '../settings/settings';
 import { Tabs } from '../tabs/tabs';
 import { Workspace } from '../workspace/workspace';
 
@@ -111,6 +112,12 @@ export class Agent {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the settings service, the persisted source of truth for provider/model selection and the
+   * run's permission posture and token cap.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the ordered transcript.
    */
   private readonly log: WritableSignal<readonly AgentItem[]> = signal<readonly AgentItem[]>([]);
@@ -126,17 +133,6 @@ export class Agent {
   private readonly providerList: WritableSignal<readonly AiProviderInfo[]> = signal<
     readonly AiProviderInfo[]
   >([]);
-
-  /**
-   * Holds the selected provider.
-   */
-  private readonly providerId: WritableSignal<AiProviderId> = signal<AiProviderId>('claude');
-
-  /**
-   * Holds the user's explicit model choice, or an empty string to follow the provider's default. The
-   * effective model is exposed by {@link model}, which always resolves to one the provider offers.
-   */
-  private readonly selectedModelId: WritableSignal<string> = signal<string>('');
 
   /**
    * Holds the identifier of the in-flight run, or null when none.
@@ -164,16 +160,16 @@ export class Agent {
   public readonly providers: Signal<readonly AiProviderInfo[]> = this.providerList.asReadonly();
 
   /**
-   * Gets the selected provider.
+   * Gets the selected provider (persisted via {@link Settings}).
    */
-  public readonly provider: Signal<AiProviderId> = this.providerId.asReadonly();
+  public readonly provider: Signal<AiProviderId> = this.settings.aiProvider;
 
   /**
    * Gets the descriptor of the selected provider, or undefined before the providers load.
    */
   private readonly providerInfo: Signal<AiProviderInfo | undefined> = computed(
     (): AiProviderInfo | undefined =>
-      this.providerList().find((info: AiProviderInfo): boolean => info.id === this.providerId()),
+      this.providerList().find((info: AiProviderInfo): boolean => info.id === this.provider()),
   );
 
   /**
@@ -189,7 +185,7 @@ export class Agent {
    */
   public readonly model: Signal<string> = computed((): string => {
     const models: readonly AiModelInfo[] = this.models();
-    const chosen: string = this.selectedModelId();
+    const chosen: string = this.settings.aiModelFor(this.provider());
     if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
       return chosen;
     }
@@ -232,7 +228,7 @@ export class Agent {
   public async loadProviders(): Promise<void> {
     const providers: readonly AiProviderInfo[] = await this.runtime.listProviders();
     this.providerList.set(providers);
-    const current: AiProviderId = this.providerId();
+    const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(
       (provider: AiProviderInfo): boolean => provider.id === current && provider.available,
     );
@@ -241,7 +237,7 @@ export class Agent {
         (provider: AiProviderInfo): boolean => provider.available,
       );
       if (fallback !== undefined) {
-        this.providerId.set(fallback.id);
+        this.settings.setAiProvider(fallback.id);
       }
     }
   }
@@ -251,16 +247,17 @@ export class Agent {
    * @param id The provider id.
    */
   public setProvider(id: AiProviderId): void {
-    this.providerId.set(id);
+    this.settings.setAiProvider(id);
   }
 
   /**
-   * Selects the model runs go through. The choice is honoured while the active provider offers it and
-   * is otherwise ignored in favour of the provider's default (see {@link model}).
+   * Selects the model runs go through, persisted per provider. The choice is honoured while the active
+   * provider offers it and is otherwise ignored in favour of the provider's default (see
+   * {@link model}).
    * @param id The model id.
    */
   public setModel(id: string): void {
-    this.selectedModelId.set(id);
+    this.settings.setAiModel(this.provider(), id);
   }
 
   /**
@@ -274,8 +271,12 @@ export class Agent {
     }
     this.push({ kind: 'user', text: trimmed });
     this.busy.set(true);
-    const workspaceRoot: string | null = this.workspace.root()?.path ?? null;
-    this.activeRequestId = this.runtime.run(this.providerId(), trimmed, workspaceRoot, this.model());
+    this.activeRequestId = this.runtime.run(this.provider(), trimmed, {
+      workspaceRoot: this.workspace.root()?.path ?? null,
+      model: this.model(),
+      permissionPosture: this.settings.aiPermissionPosture(),
+      tokenCap: this.settings.aiTokenCap(),
+    });
   }
 
   /**

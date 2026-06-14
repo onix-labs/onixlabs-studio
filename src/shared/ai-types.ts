@@ -123,6 +123,15 @@ export interface AiProviderInfo {
 }
 
 /**
+ * Identifies how much the agent may do without asking the user first.
+ *
+ * - `prompt`: ask before every mutating or executing tool (read-only exploration is always allowed).
+ * - `auto-edits`: also auto-allow file edits, but still ask before shell/exec tools.
+ * - `auto-all`: auto-allow every tool, including shell/exec.
+ */
+export type AiPermissionPosture = 'prompt' | 'auto-edits' | 'auto-all';
+
+/**
  * Describes a request to run a single agent turn.
  */
 export interface AiRunRequest {
@@ -152,6 +161,16 @@ export interface AiRunRequest {
    * against the user's home directory).
    */
   readonly workspaceRoot: string | null;
+
+  /**
+   * Gets how much the agent may do without asking the user first.
+   */
+  readonly permissionPosture: AiPermissionPosture;
+
+  /**
+   * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).
+   */
+  readonly tokenCap: number;
 }
 
 /**
