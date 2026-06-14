@@ -1,6 +1,8 @@
-import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import type {
   AiEvent,
+  AiPermissionReply,
   AiProviderId,
   AiProviderInfo,
   AiRunRequest,
@@ -11,6 +13,7 @@ import { IpcChannel } from '../../shared/ipc-channels';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { RendererBridge } from './renderer-bridge';
 import { VercelAiProvider } from './vercel-ai-provider';
 
 /**
@@ -46,11 +49,25 @@ export class AiManager {
   private readonly runs: Map<string, AbortController> = new Map<string, AbortController>();
 
   /**
+   * Holds the bridge to the renderer's in-app capabilities.
+   */
+  private readonly bridge: RendererBridge;
+
+  /**
+   * Holds the resolvers of pending permission prompts, keyed by permission id.
+   */
+  private readonly permissions: Map<string, (granted: boolean) => void> = new Map<
+    string,
+    (granted: boolean) => void
+  >();
+
+  /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    */
   public constructor(windowGetter: () => BrowserWindow | null) {
     this.windowGetter = windowGetter;
+    this.bridge = new RendererBridge(windowGetter);
     const vercel: VercelAiProvider = new VercelAiProvider();
     this.providers = new Map<AiProviderId, AgentProvider>([
       [this.claude.id, this.claude],
@@ -63,6 +80,12 @@ export class AiManager {
    */
   public register(): void {
     this.auth.register();
+    this.bridge.register();
+    ipcMain.on(IpcChannel.AiPermissionReply, (_event: IpcMainEvent, reply: unknown): void => {
+      if (this.isPermissionReply(reply)) {
+        this.resolvePermission(reply);
+      }
+    });
     ipcMain.handle(
       IpcChannel.AiVerify,
       (): Promise<AiVerifyResult> => this.claude.verify(this.auth.resolveCredential()),
@@ -138,6 +161,12 @@ export class AiManager {
       workspaceRoot: request.workspaceRoot,
       auth: this.currentAuth(),
       signal: controller.signal,
+      bridge: {
+        request: (capability: string, input: unknown): Promise<unknown> =>
+          this.bridge.request(capability, input),
+      },
+      requestPermission: (name: string, detail: string): Promise<boolean> =>
+        this.requestPermission(request.requestId, controller.signal, name, detail),
       emit: (event: AiEvent): void => this.emit(event),
     };
     this.emit({
@@ -181,6 +210,59 @@ export class AiManager {
    */
   private emit(event: AiEvent): void {
     this.windowGetter()?.webContents.send(IpcChannel.AiEvent, event);
+  }
+
+  /**
+   * Asks the user to permit a gated action by emitting a permission event and awaiting the renderer's
+   * answer. Resolves to false if the run aborts before the user answers.
+   * @param requestId The run the prompt belongs to.
+   * @param signal The run's abort signal.
+   * @param name The display name of the action.
+   * @param detail A one-line summary of the action.
+   * @returns Returns true when the user grants permission.
+   */
+  private requestPermission(
+    requestId: string,
+    signal: AbortSignal,
+    name: string,
+    detail: string,
+  ): Promise<boolean> {
+    const permissionId: string = randomUUID();
+    return new Promise<boolean>((resolve: (granted: boolean) => void): void => {
+      const settle: (granted: boolean) => void = (granted: boolean): void => {
+        if (this.permissions.delete(permissionId)) {
+          resolve(granted);
+        }
+      };
+      this.permissions.set(permissionId, settle);
+      if (signal.aborted) {
+        settle(false);
+        return;
+      }
+      signal.addEventListener('abort', (): void => settle(false), { once: true });
+      this.emit({ requestId, kind: 'permission', permissionId, name, detail });
+    });
+  }
+
+  /**
+   * Resolves the pending permission prompt matching a reply.
+   * @param reply The renderer's reply.
+   */
+  private resolvePermission(reply: AiPermissionReply): void {
+    this.permissions.get(reply.permissionId)?.(reply.granted);
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiPermissionReply}.
+   * @param value The payload.
+   * @returns Returns true when the payload has the required shape.
+   */
+  private isPermissionReply(value: unknown): value is AiPermissionReply {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return typeof record['permissionId'] === 'string' && typeof record['granted'] === 'boolean';
   }
 
   /**

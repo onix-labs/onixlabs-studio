@@ -180,4 +180,19 @@ export enum IpcChannel {
    * Carries a streamed event from a running agent turn to the renderer.
    */
   AiEvent = 'ai:event',
+
+  /**
+   * Carries an in-app capability request from the main process to the renderer.
+   */
+  AiBridgeRequest = 'ai:bridge-request',
+
+  /**
+   * Carries the renderer's reply to an in-app capability request.
+   */
+  AiBridgeReply = 'ai:bridge-reply',
+
+  /**
+   * Carries the renderer's answer to an agent permission request.
+   */
+  AiPermissionReply = 'ai:permission-reply',
 }

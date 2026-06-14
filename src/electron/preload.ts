@@ -1,7 +1,10 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
 import type {
   AiAuthStatus,
+  AiBridgeReply,
+  AiBridgeRequest,
   AiEvent,
+  AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
   AiVerifyResult,
@@ -162,6 +165,22 @@ const studioApi: StudioApi = {
       return (): void => {
         ipcRenderer.removeListener(IpcChannel.AiEvent, handler);
       };
+    },
+    onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) => {
+      const wrapped: (event: IpcRendererEvent, payload: AiBridgeRequest) => void = (
+        _event: IpcRendererEvent,
+        payload: AiBridgeRequest,
+      ): void => handler(payload);
+      ipcRenderer.on(IpcChannel.AiBridgeRequest, wrapped);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.AiBridgeRequest, wrapped);
+      };
+    },
+    respondBridge: (reply: AiBridgeReply): void => {
+      ipcRenderer.send(IpcChannel.AiBridgeReply, reply);
+    },
+    respondPermission: (reply: AiPermissionReply): void => {
+      ipcRenderer.send(IpcChannel.AiPermissionReply, reply);
     },
   },
 };
