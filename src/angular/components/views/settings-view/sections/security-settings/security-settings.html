@@ -1,0 +1,13 @@
+<app-setting-row
+  label="Remote images"
+  description="Which image sources content (such as markdown) may load. Restricting this reduces exposure to remote tracking and untrusted content."
+>
+  <app-dropdown
+    [options]="imageOptions"
+    [value]="imagePolicy()"
+    [disabled]="!isAvailable"
+    (valueChange)="onImagePolicyChange($event)"
+  />
+</app-setting-row>
+
+<p class="security-hint">Changes to the content-security policy take effect the next time Studio starts.</p>

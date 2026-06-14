@@ -10,6 +10,7 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
+import type { ImageSourcePolicy } from '../shared/security-types';
 import type {
   DirectoryListing,
   FileInfo,
@@ -198,6 +199,12 @@ const studioApi: StudioApi = {
     respondPermission: (reply: AiPermissionReply): void => {
       ipcRenderer.send(IpcChannel.AiPermissionReply, reply);
     },
+  },
+  security: {
+    getImagePolicy: (): Promise<ImageSourcePolicy> =>
+      ipcRenderer.invoke(IpcChannel.SecurityGetImagePolicy) as Promise<ImageSourcePolicy>,
+    setImagePolicy: (policy: ImageSourcePolicy): Promise<ImageSourcePolicy> =>
+      ipcRenderer.invoke(IpcChannel.SecuritySetImagePolicy, policy) as Promise<ImageSourcePolicy>,
   },
 };
 

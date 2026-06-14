@@ -2,10 +2,9 @@
 <html lang="en" data-theme-mode="light">
   <head>
     <meta charset="utf-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ws: http: https:;"
-    />
+    <!-- The Content-Security-Policy is set as a response header by the main process (SecurityManager)
+         so it can be strict in production, relaxed for the dev server, and follow the user's
+         image-source policy. -->
     <title>ONIXLabs Studio</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

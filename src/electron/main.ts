@@ -16,6 +16,7 @@ import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { FileWatcher } from './file-watcher';
+import { SecurityManager } from './security-manager';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -85,6 +86,11 @@ class Program {
   private readonly aiManager: AiManager = new AiManager(
     (): BrowserWindow | null => this.window,
   );
+
+  /**
+   * Owns the runtime security policy: the Content-Security-Policy header and the image-source policy.
+   */
+  private readonly securityManager: SecurityManager = new SecurityManager();
 
   /**
    * Tracks the open workspace root and confines filesystem operations to it.
@@ -188,6 +194,7 @@ class Program {
       (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
     );
 
+    this.securityManager.register();
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();

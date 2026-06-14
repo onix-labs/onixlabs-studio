@@ -72,6 +72,16 @@ export enum IpcChannel {
   ShellOpenExternal = 'shell:open-external',
 
   /**
+   * Gets the current image-source Content-Security-Policy.
+   */
+  SecurityGetImagePolicy = 'security:get-image-policy',
+
+  /**
+   * Sets the image-source Content-Security-Policy.
+   */
+  SecuritySetImagePolicy = 'security:set-image-policy',
+
+  /**
    * Reads the contents of a file from disk.
    */
   FileRead = 'file:read',
