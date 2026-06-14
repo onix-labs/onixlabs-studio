@@ -8,6 +8,7 @@ import { CodeView } from '../views/code-view/code-view';
 import { DirectoryView } from '../views/directory-view/directory-view';
 import { MarkdownView } from '../views/markdown-view/markdown-view';
 import { SettingsView } from '../views/settings-view/settings-view';
+import { SourceControlView } from '../views/source-control-view/source-control-view';
 import { TerminalView } from '../views/terminal-view/terminal-view';
 
 /**
@@ -25,6 +26,7 @@ import { TerminalView } from '../views/terminal-view/terminal-view';
     MarkdownView,
     TerminalView,
     AgentView,
+    SourceControlView,
     DocumentConflictModal,
   ],
   templateUrl: './content-host.html',

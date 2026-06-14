@@ -1,0 +1,27 @@
+// Placeholder layout: the identity centred in the content area until the real Git surface lands.
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  block-size: 100%;
+  background: var(--body-background-color);
+  color: var(--welcome-muted-foreground-color);
+}
+
+.source-control__icon {
+  color: var(--accent-color);
+}
+
+.source-control__title {
+  margin: 0.3rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.source-control__hint {
+  margin: 0;
+  font-size: 0.9rem;
+}

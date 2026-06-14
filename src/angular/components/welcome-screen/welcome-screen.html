@@ -4,7 +4,23 @@
 <!-- The backdrop is a convenience click-to-dismiss surface; keyboard parity is provided by the
      Escape handler on the host, and the panel within holds the real focusable controls. -->
 <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
-<section class="welcome" (click)="onBackdrop($event)">
+<section
+  class="welcome"
+  [class.welcome--visible]="visible()"
+  [class.welcome--ambient]="ambient()"
+  (click)="onBackdrop($event)"
+>
+  <!-- Drifting, blurred blue/purple orbs — an ambient backdrop shown only at a cold start, never when
+       the welcome screen is summoned as a modal over content. Purely decorative. -->
+  <div class="welcome__orbs" aria-hidden="true">
+    <span class="welcome__orb welcome__orb--a"></span>
+    <span class="welcome__orb welcome__orb--b"></span>
+    <span class="welcome__orb welcome__orb--c"></span>
+    <span class="welcome__orb welcome__orb--d"></span>
+    <span class="welcome__orb welcome__orb--e"></span>
+    <span class="welcome__orb welcome__orb--f"></span>
+  </div>
+
   <div class="welcome__panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     @if (dismissable()) {
       <button type="button" class="welcome__close" aria-label="Close" (click)="close()">
@@ -24,15 +40,23 @@
     <div class="welcome__body">
       <div class="welcome__actions">
         <button type="button" class="welcome__action" (click)="openFiles()">
-          <app-icon [icon]="Icon.WELCOME_DIRECTORY" [size]="3" />
+          <app-icon [icon]="Icon.WELCOME_DIRECTORY" [size]="2" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">Open Directory or File</span>
             <span class="welcome__action-hint">Browse the file system</span>
           </span>
         </button>
 
+        <button type="button" class="welcome__action" (click)="create('source-control')">
+          <app-icon [icon]="Icon.WELCOME_SOURCE_CONTROL" [size]="2" />
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">Open Repository</span>
+            <span class="welcome__action-hint">A visual source-control workspace</span>
+          </span>
+        </button>
+
         <button type="button" class="welcome__action" (click)="create('code')">
-          <app-icon [icon]="Icon.WELCOME_CODE" [size]="3" />
+          <app-icon [icon]="Icon.WELCOME_CODE" [size]="2" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Code File</span>
             <span class="welcome__action-hint">Plain text or source code</span>
@@ -40,7 +64,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('markdown')">
-          <app-icon [icon]="Icon.WELCOME_MARKDOWN" [size]="3" />
+          <app-icon [icon]="Icon.WELCOME_MARKDOWN" [size]="2" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Markdown File</span>
             <span class="welcome__action-hint">A formatted document</span>
@@ -48,7 +72,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('terminal')">
-          <app-icon [icon]="Icon.WELCOME_TERMINAL" [size]="3" />
+          <app-icon [icon]="Icon.WELCOME_TERMINAL" [size]="2" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Terminal</span>
             <span class="welcome__action-hint">A command-line session</span>
@@ -56,7 +80,7 @@
         </button>
 
         <button type="button" class="welcome__action" (click)="create('agent')">
-          <app-icon [icon]="Icon.WELCOME_AGENT" [size]="3" />
+          <app-icon [icon]="Icon.WELCOME_AGENT" [size]="2" />
           <span class="welcome__action-text">
             <span class="welcome__action-label">New Agent</span>
             <span class="welcome__action-hint">An AI assistant session</span>

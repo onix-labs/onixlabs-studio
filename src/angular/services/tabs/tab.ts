@@ -3,7 +3,14 @@ import { Icon } from '../../icons/icon';
 /**
  * Specifies the kinds of top-level tab the application supports.
  */
-export type TabType = 'directory' | 'code' | 'markdown' | 'terminal' | 'agent' | 'settings';
+export type TabType =
+  | 'directory'
+  | 'code'
+  | 'markdown'
+  | 'terminal'
+  | 'agent'
+  | 'source-control'
+  | 'settings';
 
 /**
  * Defines a single top-level application tab.
@@ -66,6 +73,7 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   markdown: { label: 'Markdown', icon: Icon.MARKDOWN },
   terminal: { label: 'Terminal', icon: Icon.TERMINAL },
   agent: { label: 'Agent', icon: Icon.AGENT },
+  'source-control': { label: 'Source Control', icon: Icon.SOURCE_CONTROL },
   settings: { label: 'Settings', icon: Icon.SETTINGS },
 };
 
