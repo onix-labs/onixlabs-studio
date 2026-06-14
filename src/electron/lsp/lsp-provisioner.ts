@@ -1,0 +1,227 @@
+import { app } from 'electron';
+import { execFile } from 'node:child_process';
+import { createWriteStream, existsSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { promisify } from 'node:util';
+
+/**
+ * Runs a child process and resolves with its standard output and error, used for the lightweight
+ * version probes the provisioner performs.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+
+/**
+ * Holds the URL of the Eclipse JDT Language Server distribution downloaded on demand.
+ */
+const JDTLS_URL: string =
+  'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz';
+
+/**
+ * Holds the lowest Java major version the downloaded language server can run on.
+ */
+const MINIMUM_JAVA_VERSION: number = 21;
+
+/**
+ * Matches the version reported by `java -version`, capturing the major component (and, for legacy
+ * `1.x` strings, the second component that carries the real major).
+ */
+const JAVA_VERSION_PATTERN: RegExp = /version "(\d+)(?:\.(\d+))?/;
+
+/**
+ * Describes an installed Eclipse JDT Language Server: the launcher JAR and the platform configuration
+ * directory needed to start it.
+ */
+export interface JdtlsInstall {
+  /**
+   * Gets the absolute path of the Equinox launcher JAR.
+   */
+  readonly launcherJar: string;
+
+  /**
+   * Gets the absolute path of the platform-specific configuration directory.
+   */
+  readonly configDir: string;
+}
+
+/**
+ * Provisions external (non-npm) language servers and detects the runtimes they need. It downloads and
+ * caches the Eclipse JDT Language Server under the user-data directory and locates a suitable Java
+ * runtime, degrading to null when a runtime is missing or a download fails so the caller can leave the
+ * language unsupported rather than failing hard.
+ */
+export class LspProvisioner {
+  /**
+   * Caches the detected Java executable lookup, so detection runs once per session.
+   */
+  private jdkProbe: Promise<string | null> | null = null;
+
+  /**
+   * Caches the in-flight or completed JDT.LS installation, so it is downloaded at most once.
+   */
+  private jdtlsProvision: Promise<JdtlsInstall | null> | null = null;
+
+  /**
+   * Detects a usable Java executable: the one under `JAVA_HOME` when set, otherwise `java` on the
+   * PATH, provided it reports a high enough version. The result is cached for the session.
+   * @returns Returns the Java executable to launch, or null when none is suitable.
+   */
+  public detectJava(): Promise<string | null> {
+    this.jdkProbe ??= this.probeJava();
+    return this.jdkProbe;
+  }
+
+  /**
+   * Ensures the Eclipse JDT Language Server is installed under the user-data directory, downloading
+   * and extracting it on first use and reusing the cached copy thereafter. The work is shared across
+   * concurrent callers.
+   * @returns Returns the installation, or null when it could not be provisioned.
+   */
+  public ensureJdtls(): Promise<JdtlsInstall | null> {
+    this.jdtlsProvision ??= this.provisionJdtls();
+    return this.jdtlsProvision;
+  }
+
+  /**
+   * Returns a writable, per-workspace data directory for a server, creating it when necessary. Each
+   * workspace root gets its own directory so servers that keep project metadata do not collide.
+   * @param serverId The server the data directory belongs to.
+   * @param rootPath The workspace root the directory is scoped to.
+   * @returns Returns the absolute data directory path.
+   */
+  public async dataDirectory(serverId: string, rootPath: string): Promise<string> {
+    const key: string = Buffer.from(rootPath).toString('hex').slice(0, 32);
+    const directory: string = path.join(this.serversRoot(), `${serverId}-data`, key);
+    await fs.mkdir(directory, { recursive: true });
+    return directory;
+  }
+
+  /**
+   * Probes for a usable Java executable without consulting the cache.
+   * @returns Returns the Java executable, or null when none is suitable.
+   */
+  private async probeJava(): Promise<string | null> {
+    const home: string | undefined = process.env['JAVA_HOME'];
+    const candidates: string[] = [];
+    if (home !== undefined && home.length > 0) {
+      candidates.push(path.join(home, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'));
+    }
+    candidates.push('java');
+
+    for (const candidate of candidates) {
+      const version: number | null = await this.javaVersion(candidate);
+      if (version !== null && version >= MINIMUM_JAVA_VERSION) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Reads a Java executable's major version by running it with `-version`.
+   * @param executable The Java executable to probe.
+   * @returns Returns the major version, or null when the executable cannot be run or parsed.
+   */
+  private async javaVersion(executable: string): Promise<number | null> {
+    try {
+      // `java -version` writes to stderr; the first line looks like `openjdk version "21.0.8"`.
+      const { stderr }: { stderr: string } = await execFileAsync(executable, ['-version']);
+      const match: RegExpExecArray | null = JAVA_VERSION_PATTERN.exec(stderr);
+      if (match === null) {
+        return null;
+      }
+      const major: number = Number(match[1]);
+      // Legacy `1.x` version strings encode the real major in the second component (for example 1.8).
+      return major === 1 && match[2] !== undefined ? Number(match[2]) : major;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Downloads and extracts the language server, or reuses a cached copy.
+   * @returns Returns the installation, or null on failure.
+   */
+  private async provisionJdtls(): Promise<JdtlsInstall | null> {
+    const installDir: string = path.join(this.serversRoot(), 'jdtls');
+    try {
+      const existing: JdtlsInstall | null = await this.readInstall(installDir);
+      if (existing !== null) {
+        return existing;
+      }
+      await fs.mkdir(installDir, { recursive: true });
+      const archive: string = path.join(installDir, 'jdtls.tar.gz');
+      await this.download(JDTLS_URL, archive);
+      await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
+      await fs.rm(archive, { force: true });
+      return await this.readInstall(installDir);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolves an installation from an extracted directory, when it contains a launcher and a
+   * configuration directory for the current platform.
+   * @param installDir The directory the server was extracted into.
+   * @returns Returns the installation, or null when it is absent or incomplete.
+   */
+  private async readInstall(installDir: string): Promise<JdtlsInstall | null> {
+    const pluginsDir: string = path.join(installDir, 'plugins');
+    if (!existsSync(pluginsDir)) {
+      return null;
+    }
+    const entries: string[] = await fs.readdir(pluginsDir);
+    const launcher: string | undefined = entries.find(
+      (entry: string): boolean =>
+        entry.startsWith('org.eclipse.equinox.launcher_') && entry.endsWith('.jar'),
+    );
+    const configDir: string = path.join(installDir, this.configDirName());
+    if (launcher === undefined || !existsSync(configDir)) {
+      return null;
+    }
+    return { launcherJar: path.join(pluginsDir, launcher), configDir };
+  }
+
+  /**
+   * Downloads a URL to a file, streaming the response to disk.
+   * @param url The URL to download.
+   * @param destination The file to write.
+   * @returns Returns a promise that resolves once the download completes.
+   */
+  private async download(url: string, destination: string): Promise<void> {
+    const response: Response = await fetch(url);
+    if (!response.ok || response.body === null) {
+      throw new Error(`Download failed: ${response.status}`);
+    }
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(destination));
+  }
+
+  /**
+   * Resolves the name of the JDT.LS configuration directory for the current platform and architecture.
+   * @returns Returns the configuration directory name (for example `config_mac_arm`).
+   */
+  private configDirName(): string {
+    const arm: string = process.arch === 'arm64' ? '_arm' : '';
+    if (process.platform === 'darwin') {
+      return `config_mac${arm}`;
+    }
+    if (process.platform === 'win32') {
+      return 'config_win';
+    }
+    return `config_linux${arm}`;
+  }
+
+  /**
+   * Gets the root directory under which provisioned servers and their data are stored.
+   * @returns Returns the absolute servers-root path.
+   */
+  private serversRoot(): string {
+    return path.join(app.getPath('userData'), 'lsp-servers');
+  }
+}

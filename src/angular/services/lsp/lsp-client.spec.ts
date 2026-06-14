@@ -249,6 +249,20 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
   });
 
+  it('syncDocument_javaFile_startsTheJavaServer', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/A.java',
+      languageId: 'java',
+      content: 'class A {}',
+    });
+    await flush();
+
+    expect(lsp.starts).toEqual([{ sessionId: '/root::java', serverId: 'java', rootPath: '/root' }]);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
   it('syncDocument_unsupportedLanguage_doesNothing', async () => {
     const client: LspClient = build();
     client.syncDocument({ documentId: 'd', path: '/root/a.rb', languageId: 'ruby', content: '' });
