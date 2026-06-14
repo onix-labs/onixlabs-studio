@@ -1,31 +1,51 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
+import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
 import { AgentChat } from './agent-chat';
+
+/**
+ * The models the stub agent offers.
+ */
+const MODELS: readonly AiModelInfo[] = [
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+];
 
 describe('AgentChat', () => {
   let component: AgentChat;
   let fixture: ComponentFixture<AgentChat>;
   let sent: string[];
   let stopped: number;
+  let models: string[];
 
   beforeEach(async () => {
     sent = [];
     stopped = 0;
+    models = [];
     const agentStub: Partial<Agent> = {
       items: signal<readonly AgentItem[]>([]),
       isRunning: signal<boolean>(false),
       providers: signal<readonly AiProviderInfo[]>([
-        { id: 'claude', label: 'Claude (Agent SDK)', available: true, detail: 'ok' },
+        {
+          id: 'claude',
+          label: 'Claude (Agent SDK)',
+          available: true,
+          detail: 'ok',
+          models: MODELS,
+          defaultModelId: 'claude-opus-4-8',
+        },
       ]),
       provider: signal<AiProviderId>('claude'),
+      models: signal<readonly AiModelInfo[]>(MODELS),
+      model: signal<string>('claude-opus-4-8'),
       awaitingDecision: signal<boolean>(false),
       send: (text: string): void => void sent.push(text),
       stop: (): void => void (stopped += 1),
       clear: (): void => undefined,
       setProvider: (): void => undefined,
+      setModel: (id: string): void => void models.push(id),
       respondPermission: (): void => undefined,
     };
 
@@ -62,6 +82,12 @@ describe('AgentChat', () => {
     component.stop();
 
     expect(stopped).toBe(1);
+  });
+
+  it('onModelChange_whenCalled_selectsTheModel', () => {
+    component.onModelChange('claude-haiku-4-5');
+
+    expect(models).toEqual(['claude-haiku-4-5']);
   });
 
   it('onKeydown_whenEnterWithoutShift_sends', () => {

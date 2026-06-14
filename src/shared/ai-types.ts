@@ -73,6 +73,21 @@ export interface AiVerifyResult {
 export type AiProviderId = 'claude' | 'vercel';
 
 /**
+ * Describes a model a provider can run a turn with.
+ */
+export interface AiModelInfo {
+  /**
+   * Gets the model's stable identifier (the value passed to the provider SDK, e.g. `claude-opus-4-8`).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the model's human-readable label (e.g. `Opus 4.8`).
+   */
+  readonly label: string;
+}
+
+/**
  * Describes a registered provider and whether it can currently run.
  */
 export interface AiProviderInfo {
@@ -95,6 +110,16 @@ export interface AiProviderInfo {
    * Gets a short human-readable description of the provider's availability.
    */
   readonly detail: string;
+
+  /**
+   * Gets the models the provider can run a turn with, in display order.
+   */
+  readonly models: readonly AiModelInfo[];
+
+  /**
+   * Gets the identifier of the provider's default model (always present in {@link models}).
+   */
+  readonly defaultModelId: string;
 }
 
 /**
@@ -110,6 +135,12 @@ export interface AiRunRequest {
    * Gets the provider to run the turn through.
    */
   readonly providerId: AiProviderId;
+
+  /**
+   * Gets the identifier of the model to run the turn with. The main process falls back to the
+   * provider's default model when the value is empty or not one the provider offers.
+   */
+  readonly model: string;
 
   /**
    * Gets the user's prompt.

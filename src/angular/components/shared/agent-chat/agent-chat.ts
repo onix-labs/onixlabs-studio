@@ -7,7 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
+import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../icon/app-icon';
@@ -64,6 +64,16 @@ export class AgentChat {
   public readonly provider: Signal<AiProviderId> = this.agent.provider;
 
   /**
+   * Gets the models offered by the selected provider.
+   */
+  public readonly models: Signal<readonly AiModelInfo[]> = this.agent.models;
+
+  /**
+   * Gets the selected model identifier.
+   */
+  public readonly model: Signal<string> = this.agent.model;
+
+  /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
    */
   public readonly awaitingDecision: Signal<boolean> = this.agent.awaitingDecision;
@@ -87,6 +97,14 @@ export class AgentChat {
    */
   public onProviderChange(id: string): void {
     this.agent.setProvider(id as AiProviderId);
+  }
+
+  /**
+   * Selects the model runs go through.
+   * @param id The model id.
+   */
+  public onModelChange(id: string): void {
+    this.agent.setModel(id);
   }
 
   /**

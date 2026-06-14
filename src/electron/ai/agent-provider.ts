@@ -1,4 +1,4 @@
-import type { AiEvent, AiProviderId } from '../../shared/ai-types';
+import type { AiEvent, AiModelInfo, AiProviderId } from '../../shared/ai-types';
 
 /**
  * Reports whether a provider can currently run, with a reason suitable for display.
@@ -67,6 +67,12 @@ export interface AgentRunContext {
   readonly workspaceRoot: string | null;
 
   /**
+   * Gets the identifier of the model to run the turn with (already resolved to one the provider
+   * offers).
+   */
+  readonly model: string;
+
+  /**
    * Gets the credential the run authenticates with.
    */
   readonly auth: AgentAuth;
@@ -110,6 +116,16 @@ export interface AgentProvider {
    * Gets the provider's human-readable label.
    */
   readonly label: string;
+
+  /**
+   * Gets the models the provider can run a turn with, in display order.
+   */
+  readonly models: readonly AiModelInfo[];
+
+  /**
+   * Gets the identifier of the provider's default model (always present in {@link models}).
+   */
+  readonly defaultModelId: string;
 
   /**
    * Reports whether the provider can run with the given credential.

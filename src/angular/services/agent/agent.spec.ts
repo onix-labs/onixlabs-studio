@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiEvent, AiProviderId, AiProviderInfo } from '../../../shared/ai-types';
+import type { AiEvent, AiModelInfo, AiProviderId, AiProviderInfo } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Agent, AgentItem } from './agent';
 
@@ -8,12 +8,22 @@ import { Agent, AgentItem } from './agent';
  * The providers the stub runtime reports.
  */
 const PROVIDERS: readonly AiProviderInfo[] = [
-  { id: 'claude', label: 'Claude (Agent SDK)', available: true, detail: 'ok' },
+  {
+    id: 'claude',
+    label: 'Claude (Agent SDK)',
+    available: true,
+    detail: 'ok',
+    models: [
+      { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+    ],
+    defaultModelId: 'claude-opus-4-8',
+  },
 ];
 
 describe('Agent', () => {
   let agent: Agent;
-  let runCalls: { providerId: AiProviderId; prompt: string }[];
+  let runCalls: { providerId: AiProviderId; prompt: string; workspaceRoot: string | null; model: string }[];
   let abortCalls: string[];
   let permissionReplies: { permissionId: string; granted: boolean }[];
   let fireEvent: (event: AiEvent) => void;
@@ -39,8 +49,13 @@ describe('Agent', () => {
         fireEvent = listener;
         return (): void => undefined;
       },
-      run: (providerId: AiProviderId, prompt: string): string => {
-        runCalls.push({ providerId, prompt });
+      run: (
+        providerId: AiProviderId,
+        prompt: string,
+        workspaceRoot: string | null = null,
+        model: string = '',
+      ): string => {
+        runCalls.push({ providerId, prompt, workspaceRoot, model });
         return 'run-1';
       },
       abort: (requestId: string): void => {
@@ -60,10 +75,34 @@ describe('Agent', () => {
   it('send_whenCalled_pushesAUserItemAndStartsARun', () => {
     agent.send('hello');
 
-    expect(runCalls).toEqual([{ providerId: 'claude', prompt: 'hello' }]);
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0].providerId).toBe('claude');
+    expect(runCalls[0].prompt).toBe('hello');
+    expect(runCalls[0].workspaceRoot).toBeNull();
     expect(lastItem()?.kind).toBe('user');
     expect(lastItem()?.text).toBe('hello');
     expect(agent.isRunning()).toBe(true);
+  });
+
+  it('model_whenProvidersLoaded_defaultsToTheProviderDefault', async () => {
+    await agent.loadProviders();
+
+    expect(agent.models().map((model: AiModelInfo): string => model.id)).toEqual([
+      'claude-opus-4-8',
+      'claude-sonnet-4-6',
+    ]);
+    expect(agent.model()).toBe('claude-opus-4-8');
+  });
+
+  it('setModel_whenProviderOffersIt_isHonouredAndSent', async () => {
+    await agent.loadProviders();
+    agent.setModel('claude-sonnet-4-6');
+
+    expect(agent.model()).toBe('claude-sonnet-4-6');
+
+    agent.send('hi');
+
+    expect(runCalls[0].model).toBe('claude-sonnet-4-6');
   });
 
   it('send_whenBlank_isIgnored', () => {

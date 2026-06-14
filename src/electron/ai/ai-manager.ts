@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import type {
   AiEvent,
+  AiModelInfo,
   AiPermissionReply,
   AiProviderId,
   AiProviderInfo,
@@ -134,6 +135,8 @@ export class AiManager {
         label: provider.label,
         available: availability.available,
         detail: availability.detail,
+        models: provider.models,
+        defaultModelId: provider.defaultModelId,
       };
     });
   }
@@ -153,12 +156,20 @@ export class AiManager {
       });
       return;
     }
+    // Resolve the requested model against what the provider offers, falling back to its default; this
+    // guards against a stale or unknown id arriving from the renderer.
+    const model: string = provider.models.some(
+      (candidate: AiModelInfo): boolean => candidate.id === request.model,
+    )
+      ? request.model
+      : provider.defaultModelId;
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const context: AgentRunContext = {
       requestId: request.requestId,
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
+      model,
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {

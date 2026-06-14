@@ -17,7 +17,14 @@ import { AiRuntime } from './ai-runtime';
  * The providers the stub bridge reports.
  */
 const PROVIDERS: readonly AiProviderInfo[] = [
-  { id: 'claude', label: 'Claude (Agent SDK)', available: true, detail: 'ok' },
+  {
+    id: 'claude',
+    label: 'Claude (Agent SDK)',
+    available: true,
+    detail: 'ok',
+    models: [{ id: 'claude-opus-4-8', label: 'Opus 4.8' }],
+    defaultModelId: 'claude-opus-4-8',
+  },
 ];
 
 describe('AiRuntime', () => {
@@ -107,6 +114,15 @@ describe('AiRuntime', () => {
     expect(runCalls[0].requestId).toBe(requestId);
     expect(runCalls[0].providerId).toBe('claude');
     expect(runCalls[0].prompt).toBe('hello');
+  });
+
+  it('run_whenGivenAModel_forwardsIt', () => {
+    stubBridge();
+    const runtime: AiRuntime = TestBed.inject(AiRuntime);
+
+    runtime.run('claude', 'hello', null, 'claude-haiku-4-5');
+
+    expect(runCalls[0].model).toBe('claude-haiku-4-5');
   });
 
   it('run_whenCalledTwice_generatesDistinctIds', () => {

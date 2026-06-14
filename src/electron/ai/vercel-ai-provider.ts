@@ -1,15 +1,12 @@
 import {
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  type AiModelInfo,
   type AiProviderId,
 } from '../../shared/ai-types';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import { readActiveDocument, replaceActiveDocument, STUDIO_PROMPT_APPENDIX } from './studio-tools';
-
-/**
- * Holds the model agent turns run with.
- */
-const MODEL: string = 'claude-opus-4-8';
 
 /**
  * A loosely-typed part from the Vercel AI SDK's `fullStream`, covering the fields read here. The SDK's
@@ -46,6 +43,16 @@ export class VercelAiProvider implements AgentProvider {
   public readonly label: string = 'Vercel AI SDK';
 
   /**
+   * Gets the models the provider can run a turn with (Anthropic models via `@ai-sdk/anthropic`).
+   */
+  public readonly models: readonly AiModelInfo[] = ANTHROPIC_MODELS;
+
+  /**
+   * Gets the identifier of the provider's default model.
+   */
+  public readonly defaultModelId: string = DEFAULT_ANTHROPIC_MODEL;
+
+  /**
    * Reports whether the provider can run: an API key is required (it cannot use the local login).
    * @param auth The resolved credential material.
    * @returns Returns the availability descriptor.
@@ -77,7 +84,7 @@ export class VercelAiProvider implements AgentProvider {
     });
 
     const stream: AsyncIterable<StreamPart> = streamText({
-      model: anthropic(MODEL),
+      model: anthropic(context.model),
       system: STUDIO_PROMPT_APPENDIX,
       prompt: context.prompt,
       abortSignal: context.signal,

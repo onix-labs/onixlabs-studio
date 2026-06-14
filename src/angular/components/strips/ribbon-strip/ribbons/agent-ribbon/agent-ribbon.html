@@ -1,30 +1,36 @@
 <app-ribbon-group title="Session">
-  <app-ribbon-button [icon]="Icon.STOP" label="Stop" />
-  <app-ribbon-button [icon]="Icon.COMPACT" label="Compact" />
-  <app-ribbon-button [icon]="Icon.CLEAR" label="Clear" />
+  <app-ribbon-button [icon]="Icon.PLUS" label="New Chat" (action)="newChat()" />
+  <app-ribbon-button [icon]="Icon.STOP" label="Stop" [disabled]="!isRunning()" (action)="stop()" />
+  <app-ribbon-button [icon]="Icon.COMPACT" label="Compact" [disabled]="true" />
 </app-ribbon-group>
 
-<app-ribbon-group title="Model">
+<app-ribbon-group title="Engine">
   <app-ribbon-column>
     <app-ribbon-field
-      label="Model"
-      [options]="['Opus 4.8', 'Sonnet 4.6', 'Haiku 4.5']"
-      value="Opus 4.8"
+      label="Provider"
+      [options]="providerLabels()"
+      [value]="providerLabel()"
+      (changed)="onProviderLabel($event)"
     />
-    <app-ribbon-field label="Mode" [options]="['Chat', 'Agent']" value="Agent" />
+    <app-ribbon-field
+      label="Model"
+      [options]="modelLabels()"
+      [value]="modelLabel()"
+      (changed)="onModelLabel($event)"
+    />
   </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Context">
   <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.ATTACH" label="Attach File" />
-    <app-ribbon-button-small [icon]="Icon.FOLDER_PLUS" label="Add Folder" />
+    <app-ribbon-button-small [icon]="Icon.ATTACH" label="Attach File" [disabled]="true" />
+    <app-ribbon-button-small [icon]="Icon.FOLDER_PLUS" label="Add Folder" [disabled]="true" />
   </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Options">
   <app-ribbon-column>
-    <app-ribbon-check label="Stream" [checked]="true" />
-    <app-ribbon-check label="Auto-scroll" [checked]="true" />
+    <app-ribbon-field label="Mode" [options]="['Chat', 'Agent']" value="Agent" [disabled]="true" />
+    <app-ribbon-check label="Auto-scroll" [checked]="true" [disabled]="true" />
   </app-ribbon-column>
 </app-ribbon-group>
