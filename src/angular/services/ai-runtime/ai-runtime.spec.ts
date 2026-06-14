@@ -108,7 +108,7 @@ describe('AiRuntime', () => {
     stubBridge();
     const runtime: AiRuntime = TestBed.inject(AiRuntime);
 
-    const requestId: string = runtime.run('claude', 'hello', null);
+    const requestId: string = runtime.run('claude', 'hello');
 
     expect(runCalls).toHaveLength(1);
     expect(runCalls[0].requestId).toBe(requestId);
@@ -116,13 +116,33 @@ describe('AiRuntime', () => {
     expect(runCalls[0].prompt).toBe('hello');
   });
 
-  it('run_whenGivenAModel_forwardsIt', () => {
+  it('run_whenOptionsOmitted_appliesSafeDefaults', () => {
     stubBridge();
     const runtime: AiRuntime = TestBed.inject(AiRuntime);
 
-    runtime.run('claude', 'hello', null, 'claude-haiku-4-5');
+    runtime.run('claude', 'hello');
 
+    expect(runCalls[0].workspaceRoot).toBeNull();
+    expect(runCalls[0].model).toBe('');
+    expect(runCalls[0].permissionPosture).toBe('prompt');
+    expect(runCalls[0].tokenCap).toBe(0);
+  });
+
+  it('run_whenGivenOptions_forwardsThem', () => {
+    stubBridge();
+    const runtime: AiRuntime = TestBed.inject(AiRuntime);
+
+    runtime.run('claude', 'hello', {
+      workspaceRoot: '/work',
+      model: 'claude-haiku-4-5',
+      permissionPosture: 'auto-all',
+      tokenCap: 5000,
+    });
+
+    expect(runCalls[0].workspaceRoot).toBe('/work');
     expect(runCalls[0].model).toBe('claude-haiku-4-5');
+    expect(runCalls[0].permissionPosture).toBe('auto-all');
+    expect(runCalls[0].tokenCap).toBe(5000);
   });
 
   it('run_whenCalledTwice_generatesDistinctIds', () => {

@@ -11,6 +11,7 @@ import {
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
   type AiModelInfo,
+  type AiPermissionPosture,
   type AiProviderId,
   type AiVerifyResult,
 } from '../../shared/ai-types';
@@ -40,9 +41,14 @@ const VERIFY_TIMEOUT_MS: number = 45_000;
 
 /**
  * Holds the built-in tools auto-allowed when a workspace is open: read-only project exploration.
- * Mutating/exec tools are denied until the permission broker lands (#113).
+ * These are always allowed regardless of the permission posture.
  */
 const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+
+/**
+ * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
+ */
+const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 
 /**
  * A loosely-typed content block from an SDK message, covering the fields read here.
@@ -140,14 +146,21 @@ export class ClaudeAgentProvider implements AgentProvider {
       ],
     });
 
-    // Auto-allow read-only exploration; ask the user before any mutating/exec tool (Edit, Write,
-    // Bash, …). On allow, `updatedInput` MUST echo the original input — it is the input the SDK runs
-    // the tool with; omitting it runs the tool with no arguments and fails as a malformed response.
+    // Apply the permission posture: read-only exploration is always allowed; `auto-all` allows every
+    // tool; `auto-edits` also allows file edits but still asks before shell/exec; `prompt` asks before
+    // anything mutating or executing. On allow, `updatedInput` MUST echo the original input — it is the
+    // input the SDK runs the tool with; omitting it runs the tool with no arguments and fails as a
+    // malformed response.
+    const posture: AiPermissionPosture = context.permissionPosture;
     const canUseTool: CanUseTool = async (
       toolName: string,
       input: Record<string, unknown>,
     ): Promise<PermissionResult> => {
-      if (READ_ONLY_TOOLS.includes(toolName)) {
+      const autoAllowed: boolean =
+        READ_ONLY_TOOLS.includes(toolName) ||
+        posture === 'auto-all' ||
+        (posture === 'auto-edits' && EDIT_TOOLS.includes(toolName));
+      if (autoAllowed) {
         return { behavior: 'allow', updatedInput: input };
       }
       const granted: boolean = await context.requestPermission(
@@ -170,6 +183,9 @@ export class ClaudeAgentProvider implements AgentProvider {
       allowedTools: [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
       canUseTool,
       abortController: controller,
+      // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task
+      // budget so the model paces its tool use and wraps up before the limit.
+      ...(context.tokenCap > 0 ? { taskBudget: { total: context.tokenCap } } : {}),
       ...this.executableOption(),
       ...(this.runEnv(context.auth) ?? {}),
     };

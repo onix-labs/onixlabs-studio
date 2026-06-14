@@ -1,0 +1,95 @@
+<app-setting-row label="Provider" description="The agent back-end runs go through.">
+  <app-dropdown
+    [options]="providerOptions()"
+    [value]="provider()"
+    (valueChange)="onProviderChange($event)"
+  />
+</app-setting-row>
+
+<div class="ai-auth">
+  <div class="ai-auth__status">
+    <app-icon
+      class="ai-auth__icon"
+      [class.ai-auth__icon--ok]="authStatus().available"
+      [icon]="authStatus().available ? Icon.SUCCESS : Icon.WARNING"
+    />
+    <span class="ai-auth__detail">{{ authStatus().detail }}</span>
+    <button
+      type="button"
+      class="ai-auth__button"
+      [disabled]="!isAvailable || isVerifying()"
+      (click)="verify()"
+    >
+      {{ isVerifying() ? 'Verifying…' : 'Verify' }}
+    </button>
+  </div>
+
+  @if (verifyResult(); as result) {
+    <p class="ai-auth__result" [class.ai-auth__result--error]="!result.ok">{{ result.detail }}</p>
+  }
+
+  <div class="ai-auth__key">
+    <app-password-field
+      [value]="apiKey()"
+      [disabled]="!isAvailable || keyPending()"
+      placeholder="Anthropic API key (sk-ant-…)"
+      (valueChange)="onApiKeyInput($event)"
+    />
+    <button
+      type="button"
+      class="ai-auth__button"
+      [disabled]="!isAvailable || keyPending() || apiKey().trim().length === 0"
+      (click)="saveApiKey()"
+    >
+      Save key
+    </button>
+    <button
+      type="button"
+      class="ai-auth__button ai-auth__button--ghost"
+      [disabled]="!isAvailable || keyPending() || !authStatus().hasStoredKey"
+      (click)="clearApiKey()"
+    >
+      Clear
+    </button>
+  </div>
+
+  <p class="ai-auth__hint">
+    @if (authStatus().hasStoredKey) {
+      A key is stored. It is encrypted at rest and never leaves the main process.
+    } @else {
+      No key stored. The agent uses your local Claude login when available.
+    }
+  </p>
+</div>
+
+<app-setting-row label="Model" description="The model the selected provider runs with.">
+  <app-dropdown
+    [options]="modelOptions()"
+    [value]="model()"
+    [disabled]="modelOptions().length === 0"
+    (valueChange)="onModelChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row
+  label="Permission posture"
+  description="How much the agent may do before asking you."
+>
+  <app-dropdown
+    [options]="postureOptions"
+    [value]="posture()"
+    (valueChange)="onPostureChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row
+  label="Per-request token cap"
+  description="Token budget per turn. 0 means no cap (the provider default)."
+>
+  <app-number-field
+    [min]="0"
+    [step]="1000"
+    [value]="tokenCap()"
+    (valueChange)="onTokenCapChange($event)"
+  />
+</app-setting-row>

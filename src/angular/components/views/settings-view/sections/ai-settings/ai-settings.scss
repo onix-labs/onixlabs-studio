@@ -1,0 +1,84 @@
+// The authentication block sits between setting rows but is not a single labelled control, so it is
+// laid out by hand rather than through app-setting-row.
+.ai-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-block: 0.85rem;
+  border-block-start: 0.0625rem solid var(--settings-border-color);
+}
+
+.ai-auth__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-auth__icon {
+  color: var(--settings-muted-foreground-color);
+
+  &--ok {
+    color: var(--accent-color);
+  }
+}
+
+.ai-auth__detail {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.ai-auth__key {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-auth__button {
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid var(--settings-button-border-color);
+  border-radius: 0.4rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-in-out,
+    background-color 150ms ease-in-out;
+
+  &:hover:not(:disabled) {
+    border-color: var(--settings-button-border-color--hover);
+    background: var(--settings-button-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &--ghost {
+    color: var(--settings-muted-foreground-color);
+  }
+}
+
+.ai-auth__result {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--accent-color);
+
+  &--error {
+    color: var(--settings-muted-foreground-color);
+  }
+}
+
+.ai-auth__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}

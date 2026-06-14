@@ -8,6 +8,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { ApplicationSettings } from './sections/application-settings/application-settings';
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
 import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
@@ -18,7 +19,7 @@ import { AppIcon } from '../../shared/icon/app-icon';
 /**
  * Identifies a section in the settings navigation.
  */
-type SettingsSectionId = 'appearance' | 'application' | 'text-editor' | 'markdown';
+type SettingsSectionId = 'appearance' | 'application' | 'text-editor' | 'markdown' | 'ai';
 
 /**
  * Describes a selectable section in the settings navigation.
@@ -50,6 +51,7 @@ interface SettingsSection {
     ApplicationSettings,
     TextEditorSettingsSection,
     MarkdownSettings,
+    AiSettingsSection,
     AppIcon,
   ],
   templateUrl: './settings-view.html',
@@ -76,6 +78,7 @@ export class SettingsView {
     { id: 'application', label: 'Application', icon: Icon.APPLICATION },
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
+    { id: 'ai', label: 'AI', icon: Icon.AGENT },
   ];
 
   /**

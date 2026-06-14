@@ -3,6 +3,7 @@ import type {
   AiApi,
   AiBridgeRequest,
   AiEvent,
+  AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
 } from '../../../shared/ai-types';
@@ -12,6 +13,33 @@ import type {
  * input and returns the result directly or as a promise (the runtime awaits it either way).
  */
 export type AiCapability = (input: unknown) => unknown;
+
+/**
+ * The optional per-run settings for an agent turn. Omitted values fall back to safe defaults (no
+ * workspace, provider-default model, ask-every-time posture, no token cap).
+ */
+export interface AiRunOptions {
+  /**
+   * Gets the workspace the agent should act within, or null for none.
+   */
+  readonly workspaceRoot?: string | null;
+
+  /**
+   * Gets the identifier of the model to run with; the main process falls back to the provider's
+   * default when empty or unknown.
+   */
+  readonly model?: string;
+
+  /**
+   * Gets how much the agent may do without asking the user first.
+   */
+  readonly permissionPosture?: AiPermissionPosture;
+
+  /**
+   * Gets the per-request token budget, or 0 for the provider default (no cap).
+   */
+  readonly tokenCap?: number;
+}
 
 /**
  * Renderer-side runtime for the agent: the single place the streamed event subscription lives, the
@@ -69,20 +97,21 @@ export class AiRuntime {
    * Starts an agent turn. Events stream back through {@link onEvent}.
    * @param providerId The provider to run through.
    * @param prompt The user's prompt.
-   * @param workspaceRoot The workspace the agent should act within, or null for none.
-   * @param model The identifier of the model to run with; the main process falls back to the
-   * provider's default when empty or unknown.
+   * @param options The per-run settings (workspace, model, permission posture, token cap).
    * @returns Returns the run's identifier (used to correlate events and to abort).
    */
-  public run(
-    providerId: AiProviderId,
-    prompt: string,
-    workspaceRoot: string | null = null,
-    model: string = '',
-  ): string {
+  public run(providerId: AiProviderId, prompt: string, options: AiRunOptions = {}): string {
     this.requestCounter += 1;
     const requestId: string = `run-${this.requestCounter}`;
-    void this.api?.run({ requestId, providerId, model, prompt, workspaceRoot });
+    void this.api?.run({
+      requestId,
+      providerId,
+      model: options.model ?? '',
+      prompt,
+      workspaceRoot: options.workspaceRoot ?? null,
+      permissionPosture: options.permissionPosture ?? 'prompt',
+      tokenCap: options.tokenCap ?? 0,
+    });
     return requestId;
   }
 

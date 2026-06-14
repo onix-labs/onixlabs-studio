@@ -125,4 +125,59 @@ describe('Settings', () => {
     expect(service.globalTextEditor().showLineNumbers).toBe(true);
     expect(service.profiles()).toHaveLength(0);
   });
+
+  it('ai_whenDefaulted_usesClaudePromptAndNoCap', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    expect(service.aiProvider()).toBe('claude');
+    expect(service.aiPermissionPosture()).toBe('prompt');
+    expect(service.aiTokenCap()).toBe(0);
+  });
+
+  it('setAiModel_whenCalled_persistsPerProvider', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.setAiModel('claude', 'claude-haiku-4-5');
+    service.setAiModel('vercel', 'claude-opus-4-8');
+
+    expect(service.aiModelFor('claude')).toBe('claude-haiku-4-5');
+    expect(service.aiModelFor('vercel')).toBe('claude-opus-4-8');
+  });
+
+  it('setAiTokenCap_whenNegative_clampsToZero', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.setAiTokenCap(-500);
+
+    expect(service.aiTokenCap()).toBe(0);
+  });
+
+  it('setAiTokenCap_whenFractional_roundsToInteger', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.setAiTokenCap(4096.6);
+
+    expect(service.aiTokenCap()).toBe(4097);
+  });
+
+  it('setAiPermissionPosture_whenCalled_updatesTheSignal', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.setAiPermissionPosture('auto-all');
+
+    expect(service.aiPermissionPosture()).toBe('auto-all');
+  });
+
+  it('ai_whenPersistedValuesExist_areRestoredOnCreation', () => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ ai: { provider: 'vercel', models: { vercel: 'claude-sonnet-4-6' } } }),
+    );
+
+    const service: Settings = TestBed.inject(Settings);
+
+    expect(service.aiProvider()).toBe('vercel');
+    expect(service.aiModelFor('vercel')).toBe('claude-sonnet-4-6');
+    expect(service.aiPermissionPosture()).toBe('prompt');
+  });
 });
