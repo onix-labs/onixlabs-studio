@@ -10,11 +10,14 @@ import type {
 import {
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  type AiModelInfo,
   type AiProviderId,
   type AiVerifyResult,
 } from '../../shared/ai-types';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
+import { resolveBundledClaudeExecutable } from './claude-executable';
+import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
   READ_TOOL_FQN,
   REPLACE_TOOL_FQN,
@@ -25,9 +28,10 @@ import {
 import { prettyToolName, summarizeToolInput } from './tool-format';
 
 /**
- * Holds the model agent turns run with.
+ * Holds the model the verification turn runs with (the default; verification does not depend on the
+ * user's per-run model choice).
  */
-const MODEL: string = 'claude-opus-4-8';
+const VERIFY_MODEL: string = DEFAULT_ANTHROPIC_MODEL;
 
 /**
  * Holds how long (ms) to wait for the verification turn before aborting.
@@ -74,6 +78,16 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets the provider's human-readable label.
    */
   public readonly label: string = 'Claude (Agent SDK)';
+
+  /**
+   * Gets the models Claude can run a turn with, in display order.
+   */
+  public readonly models: readonly AiModelInfo[] = ANTHROPIC_MODELS;
+
+  /**
+   * Gets the identifier of Claude's default model.
+   */
+  public readonly defaultModelId: string = DEFAULT_ANTHROPIC_MODEL;
 
   /**
    * Reports whether Claude can run: a local login or an API key is enough.
@@ -147,7 +161,7 @@ export class ClaudeAgentProvider implements AgentProvider {
 
     const controller: AbortController = this.linkAbort(context.signal);
     const options: Options = {
-      model: MODEL,
+      model: context.model,
       cwd: context.workspaceRoot ?? homedir(),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: STUDIO_PROMPT_APPENDIX },
       mcpServers: { studio: studioServer },
@@ -156,6 +170,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       allowedTools: [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
       canUseTool,
       abortController: controller,
+      ...this.executableOption(),
       ...(this.runEnv(context.auth) ?? {}),
     };
 
@@ -186,10 +201,11 @@ export class ClaudeAgentProvider implements AgentProvider {
         apiKey: credential.apiKey,
       };
       const options: Options = {
-        model: MODEL,
+        model: VERIFY_MODEL,
         cwd: homedir(),
         maxTurns: 1,
         abortController: controller,
+        ...this.executableOption(),
         ...(this.runEnv(auth) ?? {}),
       };
       const response: Query = query({ prompt: 'Reply with the single word: OK', options });
@@ -211,6 +227,17 @@ export class ClaudeAgentProvider implements AgentProvider {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  /**
+   * Builds the `pathToClaudeCodeExecutable` option in a packaged build, where the Agent SDK's own
+   * resolution points inside `app.asar` and cannot spawn the bundled CLI. In development it returns an
+   * empty object so the SDK resolves the binary itself.
+   * @returns Returns `{ pathToClaudeCodeExecutable }` when packaged and the binary is present, else `{}`.
+   */
+  private executableOption(): { pathToClaudeCodeExecutable: string } | Record<string, never> {
+    const executable: string | undefined = resolveBundledClaudeExecutable();
+    return executable === undefined ? {} : { pathToClaudeCodeExecutable: executable };
   }
 
   /**

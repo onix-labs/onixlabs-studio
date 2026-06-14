@@ -70,12 +70,19 @@ export class AiRuntime {
    * @param providerId The provider to run through.
    * @param prompt The user's prompt.
    * @param workspaceRoot The workspace the agent should act within, or null for none.
+   * @param model The identifier of the model to run with; the main process falls back to the
+   * provider's default when empty or unknown.
    * @returns Returns the run's identifier (used to correlate events and to abort).
    */
-  public run(providerId: AiProviderId, prompt: string, workspaceRoot: string | null = null): string {
+  public run(
+    providerId: AiProviderId,
+    prompt: string,
+    workspaceRoot: string | null = null,
+    model: string = '',
+  ): string {
     this.requestCounter += 1;
     const requestId: string = `run-${this.requestCounter}`;
-    void this.api?.run({ requestId, providerId, prompt, workspaceRoot });
+    void this.api?.run({ requestId, providerId, model, prompt, workspaceRoot });
     return requestId;
   }
 

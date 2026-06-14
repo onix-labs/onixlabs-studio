@@ -1,12 +1,14 @@
 import { computed, effect, inject, Service, signal, Signal, untracked, WritableSignal } from '@angular/core';
 import type {
   AiEvent,
+  AiModelInfo,
   AiProviderId,
   AiProviderInfo,
   AiRunState,
 } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Tabs } from '../tabs/tabs';
+import { Workspace } from '../workspace/workspace';
 
 /**
  * Identifies the kind of transcript item.
@@ -104,6 +106,11 @@ export class Agent {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Holds the workspace, used to scope runs to the open folder.
+   */
+  private readonly workspace: Workspace = inject(Workspace);
+
+  /**
    * Holds the ordered transcript.
    */
   private readonly log: WritableSignal<readonly AgentItem[]> = signal<readonly AgentItem[]>([]);
@@ -124,6 +131,12 @@ export class Agent {
    * Holds the selected provider.
    */
   private readonly providerId: WritableSignal<AiProviderId> = signal<AiProviderId>('claude');
+
+  /**
+   * Holds the user's explicit model choice, or an empty string to follow the provider's default. The
+   * effective model is exposed by {@link model}, which always resolves to one the provider offers.
+   */
+  private readonly selectedModelId: WritableSignal<string> = signal<string>('');
 
   /**
    * Holds the identifier of the in-flight run, or null when none.
@@ -154,6 +167,34 @@ export class Agent {
    * Gets the selected provider.
    */
   public readonly provider: Signal<AiProviderId> = this.providerId.asReadonly();
+
+  /**
+   * Gets the descriptor of the selected provider, or undefined before the providers load.
+   */
+  private readonly providerInfo: Signal<AiProviderInfo | undefined> = computed(
+    (): AiProviderInfo | undefined =>
+      this.providerList().find((info: AiProviderInfo): boolean => info.id === this.providerId()),
+  );
+
+  /**
+   * Gets the models offered by the selected provider, in display order.
+   */
+  public readonly models: Signal<readonly AiModelInfo[]> = computed(
+    (): readonly AiModelInfo[] => this.providerInfo()?.models ?? [],
+  );
+
+  /**
+   * Gets the effective model identifier: the user's choice when the provider offers it, otherwise the
+   * provider's default (empty only before the providers load).
+   */
+  public readonly model: Signal<string> = computed((): string => {
+    const models: readonly AiModelInfo[] = this.models();
+    const chosen: string = this.selectedModelId();
+    if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
+      return chosen;
+    }
+    return this.providerInfo()?.defaultModelId ?? '';
+  });
 
   /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
@@ -214,6 +255,15 @@ export class Agent {
   }
 
   /**
+   * Selects the model runs go through. The choice is honoured while the active provider offers it and
+   * is otherwise ignored in favour of the provider's default (see {@link model}).
+   * @param id The model id.
+   */
+  public setModel(id: string): void {
+    this.selectedModelId.set(id);
+  }
+
+  /**
    * Sends a user message, starting a run. Blank messages and concurrent sends are ignored.
    * @param text The user's message.
    */
@@ -224,7 +274,8 @@ export class Agent {
     }
     this.push({ kind: 'user', text: trimmed });
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.providerId(), trimmed, null);
+    const workspaceRoot: string | null = this.workspace.root()?.path ?? null;
+    this.activeRequestId = this.runtime.run(this.providerId(), trimmed, workspaceRoot, this.model());
   }
 
   /**

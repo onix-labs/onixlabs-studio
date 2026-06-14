@@ -95,6 +95,19 @@
         }
       </select>
 
+      @if (models().length > 0) {
+        <select
+          class="agent__provider"
+          aria-label="Model"
+          [value]="model()"
+          (change)="onModelChange($any($event.target).value)"
+        >
+          @for (option of models(); track option.id) {
+            <option [value]="option.id">{{ option.label }}</option>
+          }
+        </select>
+      }
+
       @if (isRunning()) {
         <button
           type="button"
