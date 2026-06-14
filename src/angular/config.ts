@@ -5,6 +5,7 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
+import { AgentEditorCapabilities } from './services/agent-editor-capabilities/agent-editor-capabilities';
 import { Theme } from './services/theme/theme';
 
 /**
@@ -18,6 +19,11 @@ export const config: ApplicationConfig = {
     // document before the first view renders.
     provideAppInitializer((): void => {
       inject(Theme);
+    }),
+    // Instantiate the agent's in-app editor capabilities at start-up so they are registered with the
+    // runtime whenever an agent runs.
+    provideAppInitializer((): void => {
+      inject(AgentEditorCapabilities);
     }),
   ],
 };

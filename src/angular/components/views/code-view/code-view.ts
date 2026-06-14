@@ -428,7 +428,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    */
   private disposeEditor(): void {
     if (this.commandHandler !== null) {
-      this.codeCommands.unregister(this.commandHandler);
+      this.codeCommands.forget(this.commandHandler);
       this.commandHandler = null;
     }
     if (this.modelUri !== null) {
@@ -461,9 +461,25 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       formatDocument: (): void => this.trigger(editor, 'editor.action.formatDocument'),
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),
+      getText: (): string => editor.getValue(),
+      replaceText: (text: string): void => this.replaceAll(editor, text),
     };
 
     this.codeCommands.register(this.commandHandler);
+  }
+
+  /**
+   * Replaces the editor's full contents as a single undoable edit (used by the agent's in-app edit
+   * capability).
+   * @param editor The editor instance.
+   * @param text The new text.
+   */
+  private replaceAll(editor: MonacoApi.editor.IStandaloneCodeEditor, text: string): void {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    if (model === null) {
+      return;
+    }
+    editor.executeEdits('agent', [{ range: model.getFullModelRange(), text }]);
   }
 
   /**

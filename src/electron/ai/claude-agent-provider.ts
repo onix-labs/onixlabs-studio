@@ -1,14 +1,27 @@
 import { homedir } from 'node:os';
 import type {
   CanUseTool,
+  McpSdkServerConfigWithInstance,
   Options,
   PermissionResult,
   Query,
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { AiProviderId, AiVerifyResult } from '../../shared/ai-types';
+import {
+  READ_ACTIVE_DOCUMENT,
+  REPLACE_ACTIVE_DOCUMENT,
+  type AiProviderId,
+  type AiVerifyResult,
+} from '../../shared/ai-types';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
+import {
+  READ_TOOL_FQN,
+  REPLACE_TOOL_FQN,
+  STUDIO_PROMPT_APPENDIX,
+  readActiveDocument,
+  replaceActiveDocument,
+} from './studio-tools';
 import { prettyToolName, summarizeToolInput } from './tool-format';
 
 /**
@@ -82,8 +95,36 @@ export class ClaudeAgentProvider implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
-    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    const { query, tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+    const { z } = await import('zod');
     const hasWorkspace: boolean = context.workspaceRoot !== null;
+
+    // Expose Studio's in-app editor capabilities as an in-process MCP server; the tool handlers call
+    // back into the renderer over the run context's bridge.
+    const studioServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
+      name: 'studio',
+      version: '0.0.0',
+      tools: [
+        tool(
+          READ_ACTIVE_DOCUMENT,
+          "Read the active editor document's full text.",
+          {},
+          async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+            content: [{ type: 'text', text: await readActiveDocument(context.bridge) }],
+          }),
+        ),
+        tool(
+          REPLACE_ACTIVE_DOCUMENT,
+          "Replace the active editor document's entire text.",
+          { text: z.string().describe('The new full text of the document.') },
+          async (args: {
+            text: string;
+          }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+            content: [{ type: 'text', text: await replaceActiveDocument(context.bridge, args.text) }],
+          }),
+        ),
+      ],
+    });
 
     // Auto-allow read-only exploration; ask the user before any mutating/exec tool (Edit, Write,
     // Bash, …). On allow, `updatedInput` MUST echo the original input — it is the input the SDK runs
@@ -108,8 +149,11 @@ export class ClaudeAgentProvider implements AgentProvider {
     const options: Options = {
       model: MODEL,
       cwd: context.workspaceRoot ?? homedir(),
-      systemPrompt: { type: 'preset', preset: 'claude_code' },
-      allowedTools: hasWorkspace ? [...READ_ONLY_TOOLS] : [],
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: STUDIO_PROMPT_APPENDIX },
+      mcpServers: { studio: studioServer },
+      // Auto-allow the in-app editor tools (the user sees and can undo the change) and read-only
+      // project exploration; canUseTool gates everything else.
+      allowedTools: [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
       canUseTool,
       abortController: controller,
       ...(this.runEnv(context.auth) ?? {}),

@@ -1,5 +1,10 @@
-import type { AiProviderId } from '../../shared/ai-types';
+import {
+  READ_ACTIVE_DOCUMENT,
+  REPLACE_ACTIVE_DOCUMENT,
+  type AiProviderId,
+} from '../../shared/ai-types';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import { readActiveDocument, replaceActiveDocument, STUDIO_PROMPT_APPENDIX } from './studio-tools';
 
 /**
  * Holds the model agent turns run with.
@@ -64,16 +69,32 @@ export class VercelAiProvider implements AgentProvider {
       });
       return;
     }
-    const { streamText } = await import('ai');
+    const { streamText, stepCountIs, tool } = await import('ai');
     const { createAnthropic } = await import('@ai-sdk/anthropic');
+    const { z } = await import('zod');
     const anthropic: ReturnType<typeof createAnthropic> = createAnthropic({
       apiKey: context.auth.apiKey,
     });
 
     const stream: AsyncIterable<StreamPart> = streamText({
       model: anthropic(MODEL),
+      system: STUDIO_PROMPT_APPENDIX,
       prompt: context.prompt,
       abortSignal: context.signal,
+      stopWhen: stepCountIs(16),
+      tools: {
+        [READ_ACTIVE_DOCUMENT]: tool({
+          description: "Read the active editor document's full text.",
+          inputSchema: z.object({}),
+          execute: (): Promise<string> => readActiveDocument(context.bridge),
+        }),
+        [REPLACE_ACTIVE_DOCUMENT]: tool({
+          description: "Replace the active editor document's entire text.",
+          inputSchema: z.object({ text: z.string().describe('The new full text of the document.') }),
+          execute: (args: { text: string }): Promise<string> =>
+            replaceActiveDocument(context.bridge, args.text),
+        }),
+      },
     }).fullStream as AsyncIterable<StreamPart>;
 
     for await (const part of stream) {
