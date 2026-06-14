@@ -307,7 +307,8 @@ export class AiManager {
     return (
       typeof record['requestId'] === 'string' &&
       typeof record['providerId'] === 'string' &&
-      typeof record['prompt'] === 'string'
+      typeof record['prompt'] === 'string' &&
+      (typeof record['workspaceRoot'] === 'string' || record['workspaceRoot'] === null)
     );
   }
 }

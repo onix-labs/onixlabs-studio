@@ -6,7 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { IpcChannel } from '../shared/ipc-channels';
-import { TerminalCreateOptions, TerminalCreateResult } from '../shared/studio-api';
+import { TerminalCreateResult } from '../shared/studio-api';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -57,24 +57,27 @@ export class TerminalManager {
   public register(): void {
     ipcMain.handle(
       IpcChannel.TerminalCreate,
-      (_event: IpcMainInvokeEvent, options: TerminalCreateOptions): TerminalCreateResult =>
-        this.create(options),
+      (_event: IpcMainInvokeEvent, options: unknown): TerminalCreateResult => this.create(options),
     );
     ipcMain.handle(
       IpcChannel.TerminalWrite,
-      (_event: IpcMainInvokeEvent, id: string, data: string): boolean => this.write(id, data),
+      (_event: IpcMainInvokeEvent, id: unknown, data: unknown): boolean =>
+        typeof id === 'string' && typeof data === 'string' ? this.write(id, data) : false,
     );
     ipcMain.handle(
       IpcChannel.TerminalResize,
-      (_event: IpcMainInvokeEvent, id: string, cols: number, rows: number): boolean =>
-        this.resize(id, cols, rows),
+      (_event: IpcMainInvokeEvent, id: unknown, cols: unknown, rows: unknown): boolean =>
+        typeof id === 'string' && this.isDimension(cols) && this.isDimension(rows)
+          ? this.resize(id, cols, rows)
+          : false,
     );
-    ipcMain.handle(IpcChannel.TerminalDispose, (_event: IpcMainInvokeEvent, id: string): boolean =>
-      this.dispose(id),
+    ipcMain.handle(IpcChannel.TerminalDispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
+      typeof id === 'string' ? this.dispose(id) : false,
     );
     ipcMain.handle(
       IpcChannel.TerminalGetCwd,
-      (_event: IpcMainInvokeEvent, id: string): Promise<string | null> => this.getCwd(id),
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
+        typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
   }
 
@@ -94,26 +97,32 @@ export class TerminalManager {
 
   /**
    * Spawns a new session for the given options, wiring its data and exit events to the renderer, or
-   * reuses an existing session with the same id.
+   * reuses an existing session with the same id. The options come from the renderer and are validated
+   * here: a string id is required, and the dimensions and working directory fall back to safe defaults
+   * when absent or malformed. The shell is resolved by the main process, never supplied by the caller.
    * @param options The terminal creation options from the renderer.
    * @returns Returns the result describing success and the spawned shell, or an error.
    */
-  private create(options: TerminalCreateOptions): TerminalCreateResult {
-    if (typeof options?.id !== 'string') {
+  private create(options: unknown): TerminalCreateResult {
+    if (typeof options !== 'object' || options === null) {
       return { success: false, error: 'Invalid terminal options' };
     }
+    const candidate: { id?: unknown; cols?: unknown; rows?: unknown; cwd?: unknown } = options;
+    if (typeof candidate.id !== 'string' || candidate.id.length === 0) {
+      return { success: false, error: 'Invalid terminal options' };
+    }
+    const id: string = candidate.id;
 
-    const existing: pty.IPty | undefined = this.terminals.get(options.id);
+    const existing: pty.IPty | undefined = this.terminals.get(id);
     if (existing !== undefined) {
       return { success: true, pid: existing.pid, shell: existing.process };
     }
 
     const shell: string = this.resolveShell();
-    const cols: number =
-      options.cols !== undefined && options.cols > MIN_DIMENSION ? options.cols : DEFAULT_COLS;
-    const rows: number =
-      options.rows !== undefined && options.rows > MIN_DIMENSION ? options.rows : DEFAULT_ROWS;
-    const cwd: string = options.cwd ?? os.homedir();
+    const cols: number = this.isDimension(candidate.cols) ? candidate.cols : DEFAULT_COLS;
+    const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
+    const cwd: string =
+      typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
 
     try {
       const terminal: pty.IPty = pty.spawn(shell, [], {
@@ -125,20 +134,30 @@ export class TerminalManager {
       });
 
       terminal.onData((data: string): void => {
-        this.send(IpcChannel.TerminalData, options.id, data);
+        this.send(IpcChannel.TerminalData, id, data);
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
-        this.send(IpcChannel.TerminalExit, options.id, event.exitCode, event.signal ?? null);
-        this.terminals.delete(options.id);
+        this.send(IpcChannel.TerminalExit, id, event.exitCode, event.signal ?? null);
+        this.terminals.delete(id);
       });
 
-      this.terminals.set(options.id, terminal);
+      this.terminals.set(id, terminal);
       return { success: true, pid: terminal.pid, shell };
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, error: message };
     }
+  }
+
+  /**
+   * Determines whether a value is a usable terminal dimension: a finite number greater than the
+   * minimum.
+   * @param value The candidate dimension from the renderer.
+   * @returns Returns true when the value is a valid dimension.
+   */
+  private isDimension(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && value > MIN_DIMENSION;
   }
 
   /**
