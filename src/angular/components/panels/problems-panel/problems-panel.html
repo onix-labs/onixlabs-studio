@@ -23,10 +23,10 @@
           <app-icon class="problems-icon" [icon]="iconFor(diagnostic.severity)" />
           <span class="problems-message">{{ diagnostic.message }}</span>
           <span class="problems-location">
-            {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
             @if (diagnostic.source) {
               <span class="problems-source">{{ diagnostic.source }}</span>
             }
+            {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
           </span>
         </button>
       </li>

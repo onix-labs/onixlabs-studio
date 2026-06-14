@@ -1,8 +1,12 @@
 import { inject, OnDestroy, Service } from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
 import { LspApi, LspExit, LspMessage, LspStartResult } from '../../../shared/lsp-types';
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
+import { Editors } from '../editors/editors';
+import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
+import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 
 /**
  * Describes the state of an open document the client keeps a server in sync with.
@@ -177,6 +181,16 @@ export class LspClient implements OnDestroy {
   private readonly diagnostics: Diagnostics = inject(Diagnostics);
 
   /**
+   * Holds the Monaco service used to set diagnostics as editor markers.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the editor registry used to resolve a document's path to its Monaco model.
+   */
+  private readonly editors: Editors = inject(Editors);
+
+  /**
    * Holds the language-server bridge, or undefined when running outside Electron.
    */
   private readonly api: LspApi | undefined = window.studio?.lsp;
@@ -285,6 +299,7 @@ export class LspClient implements OnDestroy {
       }
       this.tracked.delete(key);
       this.diagnosticsByDocument.delete(documentId);
+      this.setMarkers(tracked, []);
       this.publish();
       this.enqueue(tracked, (): Promise<void> => this.close(tracked));
       return;
@@ -423,7 +438,65 @@ export class LspClient implements OnDestroy {
         (diagnostic: LspDiagnostic): Diagnostic => this.toDiagnostic(diagnostic, tracked),
       ),
     );
+    this.setMarkers(tracked, params.diagnostics);
     this.publish();
+  }
+
+  /**
+   * Sets the language-server diagnostics as Monaco markers on the document's model, so they render in
+   * the editor. Does nothing when Monaco is unavailable or the document has no live editor model.
+   * @param tracked The document the diagnostics belong to.
+   * @param diagnostics The server diagnostics to set (an empty array clears them).
+   */
+  private setMarkers(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    if (modelUri === undefined) {
+      return;
+    }
+    const model: MonacoApi.editor.ITextModel | null = monaco.editor.getModel(
+      monaco.Uri.parse(modelUri),
+    );
+    if (model === null) {
+      return;
+    }
+    const markers: MonacoApi.editor.IMarkerData[] = diagnostics.map(
+      (diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => ({
+        severity: this.markerSeverityOf(monaco, diagnostic.severity),
+        message: diagnostic.message,
+        source: diagnostic.source,
+        startLineNumber: diagnostic.range.start.line + 1,
+        startColumn: diagnostic.range.start.character + 1,
+        endLineNumber: diagnostic.range.end.line + 1,
+        endColumn: diagnostic.range.end.character + 1,
+      }),
+    );
+    monaco.editor.setModelMarkers(model, LSP_MARKER_OWNER, markers);
+  }
+
+  /**
+   * Maps a Language Server Protocol severity to a Monaco marker severity.
+   * @param monaco The loaded Monaco namespace (for the severity enum).
+   * @param severity The protocol severity, or undefined.
+   * @returns Returns the Monaco marker severity.
+   */
+  private markerSeverityOf(
+    monaco: typeof MonacoApi,
+    severity: number | undefined,
+  ): MonacoApi.MarkerSeverity {
+    switch (severity) {
+      case 1:
+        return monaco.MarkerSeverity.Error;
+      case 2:
+        return monaco.MarkerSeverity.Warning;
+      case 3:
+        return monaco.MarkerSeverity.Info;
+      default:
+        return monaco.MarkerSeverity.Hint;
+    }
   }
 
   /**

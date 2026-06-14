@@ -105,6 +105,21 @@ export class Editors {
   }
 
   /**
+   * Resolves the Monaco model URI of the editor backing the given file path, so a consumer such as
+   * the language-server client can set markers on the file's model.
+   * @param path The absolute file path to resolve.
+   * @returns Returns the model URI, or undefined when no registered editor backs the path.
+   */
+  public modelUriForPath(path: string): string | undefined {
+    for (const [modelUri, location] of this.locations) {
+      if (location.path === path) {
+        return modelUri;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Requests that the editor backing the given document reveal a position.
    * @param documentId The identifier of the document to reveal in.
    * @param line The 1-based line to reveal.
