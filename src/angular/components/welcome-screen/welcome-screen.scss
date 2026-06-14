@@ -9,7 +9,6 @@
 // display transition — Electron's Chromium supports both).
 .welcome {
   --welcome-fade-duration: 280ms;
-  --welcome-zoom-duration: 360ms;
   --welcome-ambient-backdrop-color: rgba(8, 10, 22, 0.82);
 
   position: fixed;
@@ -22,17 +21,17 @@
   isolation: isolate;
   background: transparent;
   backdrop-filter: blur(0);
-  transition:
-    background var(--welcome-fade-duration) ease,
-    backdrop-filter var(--welcome-fade-duration) ease,
-    display var(--welcome-zoom-duration) allow-discrete;
 }
 
-// Shown state: the backdrop tint and blur fade in (and, on dismissal, back out).
+// Shown state: the backdrop tint and blur fade in. The transition lives here, not on the base, so it
+// runs only on entry — dismissing reverts to the (untransitioned) base state instantly, no exit fade.
 .welcome--visible {
   display: flex;
   background: var(--welcome-backdrop-color);
   backdrop-filter: blur(var(--welcome-backdrop-blur));
+  transition:
+    background var(--welcome-fade-duration) ease,
+    backdrop-filter var(--welcome-fade-duration) ease;
 
   @starting-style {
     background: transparent;
@@ -62,11 +61,12 @@
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--welcome-fade-duration) ease;
 }
 
 .welcome--ambient .welcome__orbs {
   opacity: 1;
+  // Fade in only; the base state has no transition, so the orbs vanish instantly on exit.
+  transition: opacity var(--welcome-fade-duration) ease;
 
   @starting-style {
     opacity: 0;
