@@ -18,6 +18,12 @@ const RUN_FILE_BASENAME: string = 'run';
 const UNSAFE_KEY_CHARS: RegExp = /[^a-zA-Z0-9-]/g;
 
 /**
+ * Holds the pattern of characters disallowed in a file extension; stripped so the extension cannot
+ * introduce path separators or traversal.
+ */
+const UNSAFE_EXTENSION_CHARS: RegExp = /[^a-zA-Z0-9]/g;
+
+/**
  * Writes editor content to temporary files so the renderer's language runners can execute it.
  *
  * Each run key (the owning tab's id) gets a stable file inside a per-session directory, so repeated
@@ -77,7 +83,10 @@ export class CodeRunner {
     }
     try {
       const safeKey: string = key.replace(UNSAFE_KEY_CHARS, '_') || 'default';
-      const safeExtension: string = extension.startsWith('.') ? extension : `.${extension}`;
+      const cleanedExtension: string = extension
+        .replace(/^\.+/, '')
+        .replace(UNSAFE_EXTENSION_CHARS, '');
+      const safeExtension: string = cleanedExtension.length > 0 ? `.${cleanedExtension}` : '';
       const directory: string = path.join(this.sessionDirectory, safeKey);
       await fs.mkdir(directory, { recursive: true });
       const filePath: string = path.join(directory, `${RUN_FILE_BASENAME}${safeExtension}`);

@@ -58,9 +58,24 @@ export class RendererBridge {
    * Registers the IPC listener that settles requests when the renderer replies.
    */
   public register(): void {
-    ipcMain.on(IpcChannel.AiBridgeReply, (_event: IpcMainEvent, reply: AiBridgeReply): void =>
-      this.settle(reply),
-    );
+    ipcMain.on(IpcChannel.AiBridgeReply, (_event: IpcMainEvent, reply: unknown): void => {
+      if (this.isReply(reply)) {
+        this.settle(reply);
+      }
+    });
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiBridgeReply}.
+   * @param value The payload from the renderer.
+   * @returns Returns true when the payload has the required shape.
+   */
+  private isReply(value: unknown): value is AiBridgeReply {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return typeof record['requestId'] === 'string' && typeof record['ok'] === 'boolean';
   }
 
   /**

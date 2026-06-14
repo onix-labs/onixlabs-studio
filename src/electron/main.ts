@@ -186,7 +186,10 @@ class Program {
 
     ipcMain.handle(
       IpcChannel.ShellOpenPath,
-      (_event: IpcMainInvokeEvent, target: string): Promise<string> => shell.openPath(target),
+      (_event: IpcMainInvokeEvent, target: unknown): Promise<string> =>
+        typeof target === 'string' && target.length > 0
+          ? shell.openPath(target)
+          : Promise.resolve('Invalid path'),
     );
 
     ipcMain.handle(
