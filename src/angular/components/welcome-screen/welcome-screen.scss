@@ -22,7 +22,6 @@
   isolation: isolate;
   background: transparent;
   backdrop-filter: blur(0);
-  -webkit-app-region: drag;
   transition:
     background var(--welcome-fade-duration) ease,
     backdrop-filter var(--welcome-fade-duration) ease,
@@ -41,9 +40,13 @@
   }
 }
 
-// Cold-start scene: a darker canvas so the glowing orbs read against it.
+// Cold-start scene: a darker canvas so the glowing orbs read against it. Only here is the backdrop a
+// window-drag handle — at a cold start there is no title strip to move the frameless window by. As a
+// modal over content the title strip handles dragging, so the overlay stays fully interactive (its
+// controls, including the close button, would otherwise sit in the drag region and swallow clicks).
 .welcome--visible.welcome--ambient {
   background: var(--welcome-ambient-backdrop-color);
+  -webkit-app-region: drag;
 
   @starting-style {
     background: transparent;
