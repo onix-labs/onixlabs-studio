@@ -53,6 +53,21 @@ export interface CodeDocument {
 }
 
 /**
+ * Identifies a document with unsaved changes.
+ */
+export interface UnsavedDocument {
+  /**
+   * Gets the identifier of the document (its owning tab id, or a well document id).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the document's display file name.
+   */
+  readonly name: string;
+}
+
+/**
  * Holds the mutable backing state for a {@link CodeDocument}.
  */
 interface DocumentEntry {
@@ -206,6 +221,20 @@ export class Documents {
    */
   public get(id: string): CodeDocument | undefined {
     return this.entries.get(id)?.document;
+  }
+
+  /**
+   * Lists the documents with unsaved changes, in insertion order.
+   * @returns Returns each dirty document's id and display name.
+   */
+  public dirtyDocuments(): readonly UnsavedDocument[] {
+    const dirty: UnsavedDocument[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.document.dirty()) {
+        dirty.push({ id: entry.document.id, name: entry.document.fileName() });
+      }
+    }
+    return dirty;
   }
 
   /**

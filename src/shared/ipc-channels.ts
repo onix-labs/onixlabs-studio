@@ -27,6 +27,16 @@ export enum IpcChannel {
   WindowSetMovable = 'window:set-movable',
 
   /**
+   * Asks the renderer to confirm/save unsaved work before the window closes (main to renderer).
+   */
+  AppRequestClose = 'app:request-close',
+
+  /**
+   * Carries the renderer's decision on whether the window may close (renderer to main).
+   */
+  AppConfirmClose = 'app:confirm-close',
+
+  /**
    * Requests that a new pseudo-terminal session be spawned.
    */
   TerminalCreate = 'terminal:create',

@@ -99,4 +99,17 @@ describe('Documents', () => {
 
     expect(documents.get(id)).toBeUndefined();
   });
+
+  it('dirtyDocuments_whenSomeDirty_listsOnlyThoseWithUnsavedChanges', () => {
+    const clean: Tab = tabs.open('code');
+    documents.ensure(clean.id);
+    const modified: Tab = tabs.open('code');
+    const modifiedDocument: CodeDocument = documents.ensure(modified.id);
+    documents.setContent(modified.id, 'changed');
+
+    const dirty: readonly { id: string; name: string }[] = documents.dirtyDocuments();
+
+    expect(dirty.map((entry: { id: string }): string => entry.id)).toEqual([modified.id]);
+    expect(dirty[0].name).toBe(modifiedDocument.fileName());
+  });
 });
