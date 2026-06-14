@@ -21,6 +21,7 @@ import { DockState } from '../../../services/dock/dock-state';
 import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
+import { LspClient } from '../../../services/lsp/lsp-client';
 import { Output } from '../../../services/output/output';
 import { Workspace } from '../../../services/workspace/workspace';
 import { Workspaces } from '../../../services/workspaces/workspaces';
@@ -44,6 +45,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     Documents,
     Output,
     Diagnostics,
+    LspClient,
     FileOpener,
     DockState,
     DockGeometry,
