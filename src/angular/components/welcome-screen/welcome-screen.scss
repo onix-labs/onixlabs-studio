@@ -84,7 +84,7 @@
   animation-play-state: running;
 }
 
-// Two blues and two purples, sized and seeded so they drift across the scene like a gravity-free
+// Two blues, two purples and two pinks, sized and seeded so they drift across the scene like a gravity-free
 // lava lamp.
 .welcome__orb--a {
   inline-size: 34rem;
@@ -127,7 +127,7 @@
   block-size: 24rem;
   inset-block-start: 8%;
   inset-inline-end: 10%;
-  background: radial-gradient(circle at center, rgba(56, 189, 248, 0.5), rgba(56, 189, 248, 0) 70%);
+  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.5), rgba(236, 72, 153, 0) 70%);
   animation: welcome-orb-e 36s ease-in-out -14s infinite;
 }
 
@@ -136,7 +136,7 @@
   block-size: 32rem;
   inset-block-end: -4rem;
   inset-inline-start: 38%;
-  background: radial-gradient(circle at center, rgba(129, 140, 248, 0.5), rgba(129, 140, 248, 0) 70%);
+  background: radial-gradient(circle at center, rgba(244, 114, 182, 0.5), rgba(244, 114, 182, 0) 70%);
   animation: welcome-orb-f 48s ease-in-out -8s infinite;
 }
 
