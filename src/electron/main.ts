@@ -164,6 +164,25 @@ class Program {
       (_event: IpcMainInvokeEvent, target: string): Promise<string> => shell.openPath(target),
     );
 
+    ipcMain.handle(
+      IpcChannel.ShellOpenExternal,
+      async (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => {
+        // Only open web and mail URLs (e.g. links in agent output); reject file:// and other schemes.
+        if (typeof url !== 'string') {
+          return;
+        }
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          return;
+        }
+        if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+          await shell.openExternal(url);
+        }
+      },
+    );
+
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();

@@ -33,7 +33,9 @@ describe('AgentPanel', () => {
 
   it('render_whenShown_embedsTheChatShell', () => {
     fixture.detectChanges();
-    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('I am your workspace agent');
+    const composer: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__composer',
+    );
+    expect(composer).not.toBeNull();
   });
 });

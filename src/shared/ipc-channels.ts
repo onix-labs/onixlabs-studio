@@ -67,6 +67,11 @@ export enum IpcChannel {
   ShellOpenPath = 'shell:open-path',
 
   /**
+   * Requests that an external URL be opened in the operating system's default browser.
+   */
+  ShellOpenExternal = 'shell:open-external',
+
+  /**
    * Reads the contents of a file from disk.
    */
   FileRead = 'file:read',

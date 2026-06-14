@@ -1,12 +1,73 @@
 <div class="agent">
   <div class="agent__messages" role="log" aria-label="Conversation">
-    @for (message of messages(); track message.id) {
-      <div class="agent__message" [class.agent__message--user]="message.role === 'user'">
-        <span class="agent__avatar" aria-hidden="true">
-          <app-icon [icon]="message.role === 'user' ? Icon.USER : Icon.AGENT" />
-        </span>
-        <p class="agent__bubble">{{ message.text }}</p>
-      </div>
+    @for (item of items(); track item.id) {
+      @switch (item.kind) {
+        @case ('user') {
+          <div class="agent__message agent__message--user">
+            <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
+            <p class="agent__bubble">{{ item.text }}</p>
+          </div>
+        }
+        @case ('assistant') {
+          <div class="agent__message">
+            <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.AGENT" /></span>
+            <div class="agent__bubble agent__markdown" [innerHTML]="item.text | markdown"></div>
+          </div>
+        }
+        @case ('thinking') {
+          <p class="agent__thinking">{{ item.text }}</p>
+        }
+        @case ('tool') {
+          <div class="agent__tool" [class.agent__tool--error]="item.toolState === 'error'">
+            <span class="agent__tool-icon" aria-hidden="true">
+              @if (item.toolState === 'running') {
+                <app-icon class="agent__spin" [icon]="Icon.SPINNER" />
+              } @else if (item.toolState === 'ok') {
+                <app-icon [icon]="Icon.SUCCESS" />
+              } @else {
+                <app-icon [icon]="Icon.WARNING" />
+              }
+            </span>
+            <span class="agent__tool-name">{{ item.toolName }}</span>
+            @if (item.toolDetail) {
+              <span class="agent__tool-detail">{{ item.toolDetail }}</span>
+            }
+          </div>
+        }
+        @case ('permission') {
+          <div class="agent__permission">
+            <p class="agent__permission-text">
+              Allow <strong>{{ item.permissionName }}</strong>?
+              @if (item.permissionDetail) {
+                <span class="agent__permission-detail">{{ item.permissionDetail }}</span>
+              }
+            </p>
+            @if (item.permissionState === 'pending') {
+              <div class="agent__permission-actions">
+                <button type="button" class="agent__btn" (click)="respond(item, true)">Allow</button>
+                <button
+                  type="button"
+                  class="agent__btn agent__btn--ghost"
+                  (click)="respond(item, false)"
+                >
+                  Deny
+                </button>
+              </div>
+            } @else {
+              <span class="agent__permission-state">
+                {{ item.permissionState === 'allowed' ? 'Allowed' : 'Denied' }}
+              </span>
+            }
+          </div>
+        }
+      }
+    }
+
+    @if (isRunning() && !awaitingDecision()) {
+      <p class="agent__working" aria-live="polite">
+        <app-icon class="agent__spin" [icon]="Icon.SPINNER" />
+        Working…
+      </p>
     }
   </div>
 
@@ -21,13 +82,38 @@
       (input)="onInput(input.value)"
       (keydown)="onKeydown($event)"
     ></textarea>
-    <button
-      type="submit"
-      class="agent__send"
-      aria-label="Send"
-      [disabled]="draft().trim().length === 0"
-    >
-      <app-icon [icon]="Icon.SEND" />
-    </button>
+
+    <div class="agent__controls">
+      <select
+        class="agent__provider"
+        aria-label="Provider"
+        [value]="provider()"
+        (change)="onProviderChange($any($event.target).value)"
+      >
+        @for (option of providers(); track option.id) {
+          <option [value]="option.id" [disabled]="!option.available">{{ option.label }}</option>
+        }
+      </select>
+
+      @if (isRunning()) {
+        <button
+          type="button"
+          class="agent__send agent__send--stop"
+          aria-label="Stop"
+          (click)="stop()"
+        >
+          <app-icon [icon]="Icon.STOP" />
+        </button>
+      } @else {
+        <button
+          type="submit"
+          class="agent__send"
+          aria-label="Send"
+          [disabled]="draft().trim().length === 0"
+        >
+          <app-icon [icon]="Icon.SEND" />
+        </button>
+      }
+    </div>
   </form>
 </div>

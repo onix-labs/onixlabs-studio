@@ -55,10 +55,130 @@
   border-radius: 0.75rem;
   corner-shape: squircle;
   line-height: 1.5;
+  // Agent output is reference material; let the user select it despite the global selection lock.
+  user-select: text;
 
   .agent__message--user & {
     color: var(--gray-100);
     background: var(--accent-color);
+  }
+}
+
+.agent__thinking {
+  max-inline-size: 48rem;
+  margin: 0;
+  padding: 0.1rem 0.5rem;
+  color: var(--body-foreground-color);
+  font-size: 0.9rem;
+  font-style: italic;
+  white-space: pre-wrap;
+  opacity: 0.6;
+  user-select: text;
+}
+
+.agent__tool {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-inline-size: 48rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  background: var(--agent-view-surface-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+
+  &--error {
+    color: var(--warning-color, #e0a030);
+  }
+}
+
+.agent__tool-icon {
+  display: grid;
+  place-items: center;
+  color: var(--accent-color);
+}
+
+.agent__tool-name {
+  font-weight: 600;
+}
+
+.agent__tool-detail {
+  overflow: hidden;
+  color: var(--body-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.agent__permission {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-inline-size: 48rem;
+  padding: 0.8rem 1rem;
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: 0.6rem;
+  corner-shape: squircle;
+}
+
+.agent__permission-text {
+  margin: 0;
+}
+
+.agent__permission-detail {
+  display: block;
+  margin-block-start: 0.25rem;
+  font-size: 0.85rem;
+  word-break: break-word;
+  opacity: 0.7;
+}
+
+.agent__permission-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.agent__permission-state {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.agent__btn {
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border: none;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+
+  &--ghost {
+    color: var(--body-foreground-color);
+    background: transparent;
+    border: 0.0625rem solid var(--agent-view-border-color);
+  }
+}
+
+.agent__working {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--body-foreground-color);
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.agent__spin {
+  display: inline-grid;
+  animation: agent-spin 1s linear infinite;
+}
+
+@keyframes agent-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
@@ -87,6 +207,22 @@
   }
 }
 
+.agent__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.agent__provider {
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: 0.6rem;
+  corner-shape: squircle;
+}
+
 .agent__send {
   display: grid;
   place-items: center;
@@ -102,5 +238,39 @@
   &:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+}
+
+// Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation
+// attribute, so style them through ::ng-deep.
+:host ::ng-deep .agent__markdown {
+  p {
+    margin: 0 0 0.6rem;
+  }
+
+  p:last-child {
+    margin-block-end: 0;
+  }
+
+  pre {
+    padding: 0.6rem 0.8rem;
+    overflow: auto;
+    background: var(--body-background-color);
+    border-radius: 0.5rem;
+  }
+
+  code {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+  }
+
+  a {
+    color: var(--accent-color);
+  }
+
+  ul,
+  ol {
+    margin: 0 0 0.6rem;
+    padding-inline-start: 1.2rem;
   }
 }
