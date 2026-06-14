@@ -16,6 +16,8 @@ import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { FileWatcher } from './file-watcher';
+import { LspManager } from './lsp/lsp-manager';
+import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { SecurityManager } from './security-manager';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
@@ -129,6 +131,21 @@ class Program {
   );
 
   /**
+   * Resolves language-server identifiers into spawn specifications for the {@link LspManager}.
+   */
+  private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(process.execPath);
+
+  /**
+   * Owns language-server sessions: spawns servers, runs the LSP handshake, and bridges diagnostics
+   * and language features to the renderer.
+   */
+  private readonly lspManager: LspManager = new LspManager(
+    (): BrowserWindow | null => this.window,
+    this.workspaceContext,
+    this.lspServerRegistry,
+  );
+
+  /**
    * Initializes a new instance of the Program class.
    */
   private constructor() {
@@ -232,6 +249,7 @@ class Program {
     this.workspaceManager.register();
     this.fileWatcher.register();
     this.aiManager.register();
+    this.lspManager.register();
   }
 
   /**
@@ -327,6 +345,7 @@ class Program {
     this.codeRunner.dispose();
     this.fileWatcher.disposeAll();
     this.aiManager.disposeAll();
+    this.lspManager.disposeAll();
   }
 
   /**

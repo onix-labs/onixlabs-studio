@@ -4,6 +4,7 @@
 // DOM dependencies) so both compilation targets can import it.
 
 import type { AiApi } from './ai-types';
+import type { LspApi } from './lsp-types';
 import type { SecurityApi } from './security-types';
 
 /**
@@ -553,4 +554,9 @@ export interface StudioApi {
    * Gets the security operations for the application.
    */
   readonly security: SecurityApi;
+
+  /**
+   * Gets the language-server (LSP) operations for the application.
+   */
+  readonly lsp: LspApi;
 }
