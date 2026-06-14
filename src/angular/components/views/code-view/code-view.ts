@@ -20,6 +20,7 @@ import { CodeStatus } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
 import { Editors, RevealRequest } from '../../../services/editors/editors';
+import { LspClient } from '../../../services/lsp/lsp-client';
 import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
@@ -81,6 +82,12 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * document and a reveal request can target this editor.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the language-server client this view keeps its document synchronised with, so the workspace
+   * receives language-server diagnostics for the file.
+   */
+  private readonly lsp: LspClient = inject(LspClient);
 
   /**
    * Holds the cursor-position status publisher.
@@ -266,6 +273,22 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       });
     });
 
+    // Keep the language server in sync with this document's path, language, and text, so the
+    // workspace receives live language-server diagnostics; re-runs on edits, save-as, and language
+    // changes. Documents outside a workspace, untitled, or without a server are ignored by the client.
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      if (document === null) {
+        return;
+      }
+      this.lsp.syncDocument({
+        documentId: this.tabId(),
+        path: document.filePath(),
+        languageId: document.language(),
+        content: document.content(),
+      });
+    });
+
     // Honour reveal requests aimed at this view's document, jumping the editor to the line.
     effect((): void => {
       const request: RevealRequest | null = this.editors.revealRequest();
@@ -316,6 +339,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     // Only release the document and run terminal when this view owns their lifecycle (standalone
     // tabs). In the dock well a destroy is a re-parent, not a close, so the workspace handles it.
     if (this.removeOnDestroy()) {
+      this.lsp.closeDocument(this.tabId());
       this.documents.remove(this.tabId());
       this.codeTerminals.remove(this.tabId());
     }

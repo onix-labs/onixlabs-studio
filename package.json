@@ -79,6 +79,9 @@
     "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "typescript-language-server": "^4.4.1",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.18.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

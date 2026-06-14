@@ -235,4 +235,34 @@ export enum IpcChannel {
    * Carries the renderer's answer to an agent permission request.
    */
   AiPermissionReply = 'ai:permission-reply',
+
+  /**
+   * Starts a language-server session and runs its initialize handshake.
+   */
+  LspStart = 'lsp:start',
+
+  /**
+   * Stops a language-server session and terminates its process.
+   */
+  LspStop = 'lsp:stop',
+
+  /**
+   * Sends an LSP notification from the renderer to a session's server.
+   */
+  LspNotify = 'lsp:notify',
+
+  /**
+   * Sends an LSP request from the renderer to a session's server and awaits its response.
+   */
+  LspRequest = 'lsp:request',
+
+  /**
+   * Carries an LSP notification from a session's server to the renderer.
+   */
+  LspNotification = 'lsp:notification',
+
+  /**
+   * Notifies the renderer that a session's server process has exited.
+   */
+  LspServerExit = 'lsp:server-exit',
 }

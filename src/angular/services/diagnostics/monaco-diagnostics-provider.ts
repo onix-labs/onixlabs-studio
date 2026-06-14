@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { EditorLocation, Editors } from '../editors/editors';
+import { LSP_MARKER_OWNER } from '../lsp/lsp-marker-owner';
 import { Monaco } from '../monaco/monaco';
 import { Diagnostic, DiagnosticSeverity, DiagnosticsProvider } from './diagnostics';
 
@@ -72,19 +73,28 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
    * @returns Returns the current diagnostics.
    */
   private collect(monaco: typeof MonacoApi): readonly Diagnostic[] {
-    return monaco.editor.getModelMarkers({}).map((marker: MonacoApi.editor.IMarker): Diagnostic => {
-      const location: EditorLocation | undefined = this.editors.locate(marker.resource.toString());
-      return {
-        file: location?.name ?? this.basename(marker.resource.path),
-        message: marker.message,
-        severity: this.severityOf(monaco, marker.severity),
-        line: marker.startLineNumber,
-        column: marker.startColumn,
-        source: marker.source ?? '',
-        documentId: location?.documentId ?? null,
-        path: location?.path ?? null,
-      };
-    });
+    return (
+      monaco.editor
+        .getModelMarkers({})
+        // Language-server markers are surfaced by the LSP provider already; skip them here so they do
+        // not appear in the Problems panel twice.
+        .filter((marker: MonacoApi.editor.IMarker): boolean => marker.owner !== LSP_MARKER_OWNER)
+        .map((marker: MonacoApi.editor.IMarker): Diagnostic => {
+          const location: EditorLocation | undefined = this.editors.locate(
+            marker.resource.toString(),
+          );
+          return {
+            file: location?.name ?? this.basename(marker.resource.path),
+            message: marker.message,
+            severity: this.severityOf(monaco, marker.severity),
+            line: marker.startLineNumber,
+            column: marker.startColumn,
+            source: marker.source ?? '',
+            documentId: location?.documentId ?? null,
+            path: location?.path ?? null,
+          };
+        })
+    );
   }
 
   /**

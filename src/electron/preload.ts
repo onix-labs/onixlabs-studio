@@ -10,6 +10,7 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
+import type { LspExit, LspMessage, LspStartRequest, LspStartResult } from '../shared/lsp-types';
 import type { ImageSourcePolicy } from '../shared/security-types';
 import type {
   DirectoryListing,
@@ -215,6 +216,36 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.SecurityGetImagePolicy) as Promise<ImageSourcePolicy>,
     setImagePolicy: (policy: ImageSourcePolicy): Promise<ImageSourcePolicy> =>
       ipcRenderer.invoke(IpcChannel.SecuritySetImagePolicy, policy) as Promise<ImageSourcePolicy>,
+  },
+  lsp: {
+    start: (request: LspStartRequest): Promise<LspStartResult> =>
+      ipcRenderer.invoke(IpcChannel.LspStart, request) as Promise<LspStartResult>,
+    stop: (sessionId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.LspStop, sessionId) as Promise<void>,
+    notify: (sessionId: string, method: string, params?: unknown): void =>
+      ipcRenderer.send(IpcChannel.LspNotify, sessionId, method, params),
+    request: (sessionId: string, method: string, params?: unknown): Promise<unknown> =>
+      ipcRenderer.invoke(IpcChannel.LspRequest, sessionId, method, params),
+    onNotification: (listener: (message: LspMessage) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, message: LspMessage) => void = (
+        _event: IpcRendererEvent,
+        message: LspMessage,
+      ): void => listener(message);
+      ipcRenderer.on(IpcChannel.LspNotification, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.LspNotification, handler);
+      };
+    },
+    onExit: (listener: (exit: LspExit) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, exit: LspExit) => void = (
+        _event: IpcRendererEvent,
+        exit: LspExit,
+      ): void => listener(exit);
+      ipcRenderer.on(IpcChannel.LspServerExit, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.LspServerExit, handler);
+      };
+    },
   },
 };
 
