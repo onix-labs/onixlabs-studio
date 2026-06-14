@@ -279,7 +279,7 @@
 // The panel zooms and fades in each time the welcome becomes visible (the animation property is only
 // present in the visible state, so it replays on every show).
 .welcome--visible .welcome__panel {
-  animation: modalzoom 1.5s cubic-bezier(0.785, 0.135, 0.15, 0.86);
+  animation: modalzoom 750ms cubic-bezier(0.785, 0.135, 0.15, 0.86);
 }
 
 @keyframes modalzoom {
