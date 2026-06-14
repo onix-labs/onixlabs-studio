@@ -7,6 +7,7 @@ import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
+import { LspStatus } from './lsp-status';
 
 /**
  * Describes the state of an open document the client keeps a server in sync with.
@@ -151,6 +152,7 @@ interface TrackedDocument {
 const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   typescript: 'typescript',
   javascript: 'typescript',
+  java: 'java',
 };
 
 /**
@@ -189,6 +191,11 @@ export class LspClient implements OnDestroy {
    * Holds the editor registry used to resolve a document's path to its Monaco model.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the status registry that surfaces server lifecycle state in the status strip.
+   */
+  private readonly status: LspStatus = inject(LspStatus);
 
   /**
    * Holds the language-server bridge, or undefined when running outside Electron.
@@ -321,6 +328,7 @@ export class LspClient implements OnDestroy {
     this.exitDisposer?.();
     for (const sessionId of this.sessions.keys()) {
       void this.api?.stop(sessionId);
+      this.status.remove(sessionId);
     }
     this.sessions.clear();
     this.tracked.clear();
@@ -415,9 +423,13 @@ export class LspClient implements OnDestroy {
     const sessionId: string = `${root}::${serverId}`;
     let pending: Promise<boolean> | undefined = this.sessions.get(sessionId);
     if (pending === undefined) {
+      this.status.report(sessionId, serverId, 'starting');
       pending = this.api
         .start({ sessionId, serverId, rootPath: root })
-        .then((result: LspStartResult): boolean => result.success);
+        .then((result: LspStartResult): boolean => {
+          this.status.report(sessionId, serverId, result.success ? 'ready' : 'unavailable');
+          return result.success;
+        });
       this.sessions.set(sessionId, pending);
     }
     const started: boolean = await pending;
@@ -531,6 +543,7 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    this.status.remove(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${this.rootPath() ?? ''}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;

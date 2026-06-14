@@ -144,7 +144,10 @@ export class LspManager {
     if (!this.workspaceContext.isRoot(parsed.rootPath)) {
       return { success: false, error: 'Workspace root is not open' };
     }
-    const spec: LspServerSpec | null = this.registry.resolve(parsed.serverId);
+    const spec: LspServerSpec | null = await this.registry.resolve(
+      parsed.serverId,
+      parsed.rootPath,
+    );
     if (spec === null) {
       return { success: false, error: `Unknown or unavailable server: ${parsed.serverId}` };
     }
