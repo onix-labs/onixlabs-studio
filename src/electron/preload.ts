@@ -84,6 +84,8 @@ const studioApi: StudioApi = {
   shell: {
     openPath: (path: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url) as Promise<void>,
   },
   file: {
     read: (path: string): Promise<FileInfo | null> =>

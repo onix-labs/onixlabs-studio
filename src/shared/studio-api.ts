@@ -463,6 +463,13 @@ export interface ShellApi {
    * @param path The absolute path to open.
    */
   openPath(path: string): Promise<void>;
+
+  /**
+   * Opens an external URL in the operating system's default browser. Only http, https, and mailto
+   * URLs are honoured; anything else is ignored.
+   * @param url The URL to open.
+   */
+  openExternal(url: string): Promise<void>;
 }
 
 /**
