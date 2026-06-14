@@ -18,6 +18,23 @@
   "license": "MIT",
   "author": "ONIXlabs",
   "main": "dist-electron/electron/main.js",
+  "build": {
+    "appId": "com.onixlabs.studio",
+    "productName": "ONIXLabs Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "dist/onixlabs-studio/browser/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+    ]
+  },
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
