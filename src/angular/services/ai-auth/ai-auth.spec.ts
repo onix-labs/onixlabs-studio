@@ -35,6 +35,9 @@ describe('AiAuth', () => {
       run: (): Promise<void> => Promise.resolve(),
       abort: (): Promise<void> => Promise.resolve(),
       onEvent: (): (() => void) => (): void => undefined,
+      onBridgeRequest: (): (() => void) => (): void => undefined,
+      respondBridge: (): void => undefined,
+      respondPermission: (): void => undefined,
       ...overrides,
     };
     (globalThis as unknown as { studio: { ai: AiApi } }).studio = { ai: api };

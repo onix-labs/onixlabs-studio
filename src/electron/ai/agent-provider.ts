@@ -32,8 +32,23 @@ export interface AgentAuth {
 }
 
 /**
+ * Lets a provider invoke an in-app capability that lives in the renderer (read/write the live editor,
+ * etc.) during a run.
+ */
+export interface AgentBridge {
+  /**
+   * Invokes an in-app capability and resolves with its result.
+   * @param capability The capability name.
+   * @param input The capability input.
+   * @returns Returns the capability's result.
+   */
+  request(capability: string, input: unknown): Promise<unknown>;
+}
+
+/**
  * The context for a single agent run: the prompt and scope, the resolved credential, an abort signal,
- * and the sink that streams provider-agnostic events back to the renderer.
+ * the in-app capability bridge, the permission prompt, and the sink that streams provider-agnostic
+ * events back to the renderer.
  */
 export interface AgentRunContext {
   /**
@@ -60,6 +75,19 @@ export interface AgentRunContext {
    * Gets the signal that aborts the run when the user stops it.
    */
   readonly signal: AbortSignal;
+
+  /**
+   * Gets the bridge to the renderer's in-app capabilities.
+   */
+  readonly bridge: AgentBridge;
+
+  /**
+   * Asks the user to permit a gated action, resolving once they answer (or false if the run aborts).
+   * @param name The display name of the action requesting permission.
+   * @param detail A one-line summary of what the action will do.
+   * @returns Returns true when the user grants permission.
+   */
+  requestPermission(name: string, detail: string): Promise<boolean>;
 
   /**
    * Emits a streamed event for this run.

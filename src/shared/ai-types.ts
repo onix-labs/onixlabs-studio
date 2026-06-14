@@ -267,6 +267,67 @@ export type AiEvent =
   | AiStatusEvent;
 
 /**
+ * A request from the main process for the renderer to fulfil an in-app capability (read/write a
+ * document, etc.). Correlated with its reply by {@link requestId}.
+ */
+export interface AiBridgeRequest {
+  /**
+   * Gets the correlation identifier the reply must echo.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the name of the capability to invoke.
+   */
+  readonly capability: string;
+
+  /**
+   * Gets the capability's input.
+   */
+  readonly input: unknown;
+}
+
+/**
+ * The renderer's reply to an {@link AiBridgeRequest}.
+ */
+export interface AiBridgeReply {
+  /**
+   * Gets the correlation identifier of the request being answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets a value indicating whether the capability succeeded.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the capability's result, when successful.
+   */
+  readonly result?: unknown;
+
+  /**
+   * Gets the error message, when it failed.
+   */
+  readonly error?: string;
+}
+
+/**
+ * The renderer's answer to a permission request carried by a {@link AiPermissionEvent}.
+ */
+export interface AiPermissionReply {
+  /**
+   * Gets the identifier of the permission request being answered.
+   */
+  readonly permissionId: string;
+
+  /**
+   * Gets a value indicating whether the user granted permission.
+   */
+  readonly granted: boolean;
+}
+
+/**
  * Defines the AI-agent operations exposed to the renderer process. The API key is never exposed
  * through this surface — only narrow status, configuration, run-control, and verification calls cross
  * the bridge.
@@ -322,4 +383,23 @@ export interface AiApi {
    * @returns Returns a function that removes the listener.
    */
   onEvent(listener: (event: AiEvent) => void): () => void;
+
+  /**
+   * Subscribes to in-app capability requests from the main process.
+   * @param handler Receives each {@link AiBridgeRequest}; answer with {@link respondBridge}.
+   * @returns Returns a function that removes the handler.
+   */
+  onBridgeRequest(handler: (request: AiBridgeRequest) => void): () => void;
+
+  /**
+   * Sends the reply to an in-app capability request back to the main process.
+   * @param reply The reply.
+   */
+  respondBridge(reply: AiBridgeReply): void;
+
+  /**
+   * Sends the user's answer to a permission request back to the main process.
+   * @param reply The reply.
+   */
+  respondPermission(reply: AiPermissionReply): void;
 }
