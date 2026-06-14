@@ -1,5 +1,11 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
-import type { AiAuthStatus, AiVerifyResult } from '../shared/ai-types';
+import type {
+  AiAuthStatus,
+  AiEvent,
+  AiProviderInfo,
+  AiRunRequest,
+  AiVerifyResult,
+} from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
 import type {
   DirectoryListing,
@@ -141,6 +147,22 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.AiClearApiKey) as Promise<AiAuthStatus>,
     verifyAuthentication: (): Promise<AiVerifyResult> =>
       ipcRenderer.invoke(IpcChannel.AiVerify) as Promise<AiVerifyResult>,
+    listProviders: (): Promise<readonly AiProviderInfo[]> =>
+      ipcRenderer.invoke(IpcChannel.AiListProviders) as Promise<readonly AiProviderInfo[]>,
+    run: (request: AiRunRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.AiRun, request) as Promise<void>,
+    abort: (requestId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.AiAbort, requestId) as Promise<void>,
+    onEvent: (listener: (event: AiEvent) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, payload: AiEvent) => void = (
+        _event: IpcRendererEvent,
+        payload: AiEvent,
+      ): void => listener(payload);
+      ipcRenderer.on(IpcChannel.AiEvent, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.AiEvent, handler);
+      };
+    },
   },
 };
 

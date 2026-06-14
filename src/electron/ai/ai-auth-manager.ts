@@ -39,8 +39,17 @@ export class AiAuthManager {
    * Reports whether the user has a local Claude login.
    * @returns Returns true when `~/.claude` exists.
    */
-  private hasLocalLogin(): boolean {
+  public hasLocalLogin(): boolean {
     return existsSync(join(homedir(), '.claude'));
+  }
+
+  /**
+   * Resolves the API key available to providers (a stored key, then the development environment key),
+   * independent of the local-login precedence used for {@link getStatus}.
+   * @returns Returns the API key, or null when none is available.
+   */
+  public apiKey(): string | null {
+    return this.readStoredKey() ?? this.envKey();
   }
 
   /**

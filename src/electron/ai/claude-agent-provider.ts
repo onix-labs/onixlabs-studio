@@ -1,10 +1,18 @@
 import { homedir } from 'node:os';
-import type { Options, Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AiVerifyResult } from '../../shared/ai-types';
+import type {
+  CanUseTool,
+  Options,
+  PermissionResult,
+  Query,
+  SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk';
+import type { AiProviderId, AiVerifyResult } from '../../shared/ai-types';
+import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
+import { prettyToolName, summarizeToolInput } from './tool-format';
 
 /**
- * Holds the model the verification turn runs with.
+ * Holds the model agent turns run with.
  */
 const MODEL: string = 'claude-opus-4-8';
 
@@ -14,14 +22,102 @@ const MODEL: string = 'claude-opus-4-8';
 const VERIFY_TIMEOUT_MS: number = 45_000;
 
 /**
- * A minimal Claude Agent SDK provider. This first slice exists to prove the resolved credential
- * authenticates end-to-end; the full streaming/tool/permission provider arrives with the agent
- * runtime (#107). The SDK is ESM-only and the Electron main process compiles to CommonJS, so it is
- * loaded with a dynamic `import()`.
+ * Holds the built-in tools auto-allowed when a workspace is open: read-only project exploration.
+ * Mutating/exec tools are denied until the permission broker lands (#113).
  */
-export class ClaudeAgentProvider {
+const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+
+/**
+ * A loosely-typed content block from an SDK message, covering the fields read here.
+ */
+interface ContentBlock {
   /**
-   * Runs a single trivial turn to confirm the credential authenticates and the agent responds.
+   * Gets the block type (`text`, `thinking`, `tool_use`, `tool_result`, …).
+   */
+  readonly type: string;
+  readonly text?: string;
+  readonly thinking?: string;
+  readonly id?: string;
+  readonly name?: string;
+  readonly input?: Record<string, unknown>;
+  readonly tool_use_id?: string;
+  readonly is_error?: boolean;
+}
+
+/**
+ * The Claude Agent SDK implementation of {@link AgentProvider}. Wraps the SDK's `query()` agent loop,
+ * parses its message stream into the shared event protocol, and authenticates from the local Claude
+ * login or an API key. The SDK is ESM-only and the main process compiles to CommonJS, so it is loaded
+ * with a dynamic `import()`. The streaming run auto-allows read-only project tools and denies the rest
+ * until the permission broker (#113) lands.
+ */
+export class ClaudeAgentProvider implements AgentProvider {
+  /**
+   * Gets the provider's stable identifier.
+   */
+  public readonly id: AiProviderId = 'claude';
+
+  /**
+   * Gets the provider's human-readable label.
+   */
+  public readonly label: string = 'Claude (Agent SDK)';
+
+  /**
+   * Reports whether Claude can run: a local login or an API key is enough.
+   * @param auth The resolved credential material.
+   * @returns Returns the availability descriptor.
+   */
+  public describeAvailability(auth: AgentAuth): ProviderAvailability {
+    if (auth.hasLocalLogin) {
+      return { available: true, detail: 'Using your local Claude login.' };
+    }
+    if (auth.apiKey !== null) {
+      return { available: true, detail: 'Using your Anthropic API key.' };
+    }
+    return { available: false, detail: 'Run `claude` to log in, or add an Anthropic API key.' };
+  }
+
+  /**
+   * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity.
+   * @param context The run context.
+   */
+  public async run(context: AgentRunContext): Promise<void> {
+    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    const hasWorkspace: boolean = context.workspaceRoot !== null;
+
+    // Auto-allow read-only exploration; deny everything else until the permission broker (#113).
+    const canUseTool: CanUseTool = (
+      toolName: string,
+      input: Record<string, unknown>,
+    ): Promise<PermissionResult> =>
+      Promise.resolve(
+        READ_ONLY_TOOLS.includes(toolName)
+          ? { behavior: 'allow', updatedInput: input }
+          : { behavior: 'deny', message: 'Tool permissions are not yet available.' },
+      );
+
+    const controller: AbortController = this.linkAbort(context.signal);
+    const options: Options = {
+      model: MODEL,
+      cwd: context.workspaceRoot ?? homedir(),
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      allowedTools: hasWorkspace ? [...READ_ONLY_TOOLS] : [],
+      canUseTool,
+      abortController: controller,
+      ...(this.runEnv(context.auth) ?? {}),
+    };
+
+    const response: Query = query({ prompt: context.prompt, options });
+    for await (const message of response) {
+      if (context.signal.aborted) {
+        break;
+      }
+      this.handleMessage(message, context);
+    }
+  }
+
+  /**
+   * Runs a single trivial turn to confirm the credential authenticates end-to-end.
    * @param credential The credential to authenticate with.
    * @returns Returns the {@link AiVerifyResult}; never throws.
    */
@@ -33,18 +129,27 @@ export class ClaudeAgentProvider {
     const timeout: NodeJS.Timeout = setTimeout((): void => controller.abort(), VERIFY_TIMEOUT_MS);
     try {
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
+      const auth: AgentAuth = {
+        hasLocalLogin: credential.source === 'local-login',
+        apiKey: credential.apiKey,
+      };
       const options: Options = {
         model: MODEL,
         cwd: homedir(),
         maxTurns: 1,
         abortController: controller,
-        ...(credential.apiKey === null ? {} : { env: this.envWithApiKey(credential.apiKey) }),
+        ...(this.runEnv(auth) ?? {}),
       };
       const response: Query = query({ prompt: 'Reply with the single word: OK', options });
       for await (const message of response) {
-        const typed: SDKMessage = message;
-        if (typed.type === 'assistant') {
-          return { ok: true, detail: this.describeSource(credential) };
+        if (message.type === 'assistant') {
+          return {
+            ok: true,
+            detail:
+              credential.source === 'local-login'
+                ? 'Authenticated with your local Claude login.'
+                : 'Authenticated with your Anthropic API key.',
+          };
         }
       }
       return { ok: false, detail: 'The agent did not produce a response.' };
@@ -57,30 +162,96 @@ export class ClaudeAgentProvider {
   }
 
   /**
-   * Builds an environment for the agent process that injects the API key while preserving the rest of
-   * the current environment (PATH, HOME, …) the CLI needs.
-   * @param apiKey The API key to inject.
-   * @returns Returns a string-valued environment map.
+   * Builds the `env` option that injects an API key, or null when the local login should be used
+   * (the SDK then authenticates from `~/.claude`).
+   * @param auth The resolved credential material.
+   * @returns Returns `{ env }`, or null to leave the environment untouched.
    */
-  private envWithApiKey(apiKey: string): Record<string, string> {
+  private runEnv(auth: AgentAuth): { env: Record<string, string> } | null {
+    if (auth.hasLocalLogin || auth.apiKey === null) {
+      return null;
+    }
     const env: Record<string, string> = {};
     for (const [name, value] of Object.entries(process.env)) {
       if (typeof value === 'string') {
         env[name] = value;
       }
     }
-    env['ANTHROPIC_API_KEY'] = apiKey;
-    return env;
+    env['ANTHROPIC_API_KEY'] = auth.apiKey;
+    return { env };
   }
 
   /**
-   * Describes a successful verification for display.
-   * @param credential The credential that authenticated.
-   * @returns Returns a short human-readable description.
+   * Creates an abort controller that fires when the run's signal aborts.
+   * @param signal The run's abort signal.
+   * @returns Returns the linked controller.
    */
-  private describeSource(credential: AiCredential): string {
-    return credential.source === 'local-login'
-      ? 'Authenticated with your local Claude login.'
-      : 'Authenticated with your Anthropic API key.';
+  private linkAbort(signal: AbortSignal): AbortController {
+    const controller: AbortController = new AbortController();
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener('abort', (): void => controller.abort(), { once: true });
+    }
+    return controller;
+  }
+
+  /**
+   * Translates an SDK message into transcript events: reasoning, assistant text, and tool lifecycle.
+   * @param message The SDK message.
+   * @param context The run context to emit through.
+   */
+  private handleMessage(message: SDKMessage, context: AgentRunContext): void {
+    if (message.type === 'assistant') {
+      this.handleAssistantBlocks(message.message.content as readonly ContentBlock[], context);
+    } else if (message.type === 'user') {
+      this.handleToolResults(message, context);
+    }
+  }
+
+  /**
+   * Emits reasoning, text, and tool-start events for an assistant message's content blocks.
+   * @param blocks The assistant content blocks.
+   * @param context The run context to emit through.
+   */
+  private handleAssistantBlocks(blocks: readonly ContentBlock[], context: AgentRunContext): void {
+    for (const block of blocks) {
+      if (block.type === 'text' && typeof block.text === 'string') {
+        context.emit({ requestId: context.requestId, kind: 'text', delta: block.text });
+      } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+        context.emit({ requestId: context.requestId, kind: 'thinking', delta: block.thinking });
+      } else if (block.type === 'tool_use' && typeof block.id === 'string') {
+        context.emit({
+          requestId: context.requestId,
+          kind: 'tool-start',
+          toolId: block.id,
+          name: prettyToolName(block.name ?? 'tool'),
+          detail: summarizeToolInput(block.input),
+        });
+      }
+    }
+  }
+
+  /**
+   * Emits tool-end events for the tool-result blocks carried by a user message.
+   * @param message The user SDK message.
+   * @param context The run context to emit through.
+   */
+  private handleToolResults(message: SDKMessage, context: AgentRunContext): void {
+    const content: unknown = (message as { message?: { content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) {
+      return;
+    }
+    for (const block of content as readonly ContentBlock[]) {
+      if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+        context.emit({
+          requestId: context.requestId,
+          kind: 'tool-end',
+          toolId: block.tool_use_id,
+          ok: block.is_error !== true,
+          detail: block.is_error === true ? 'failed' : 'done',
+        });
+      }
+    }
   }
 }

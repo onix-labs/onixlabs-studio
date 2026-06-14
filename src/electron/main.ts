@@ -55,9 +55,11 @@ class Program {
   private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
-   * Owns the AI agent subsystem: authentication and end-to-end verification.
+   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
    */
-  private readonly aiManager: AiManager = new AiManager();
+  private readonly aiManager: AiManager = new AiManager(
+    (): BrowserWindow | null => this.window,
+  );
 
   /**
    * Tracks the open workspace root and confines filesystem operations to it.
@@ -172,6 +174,7 @@ class Program {
     app.on('before-quit', (): void => {
       this.terminalManager.disposeAll();
       this.codeRunner.dispose();
+      this.aiManager.disposeAll();
     });
   }
 
