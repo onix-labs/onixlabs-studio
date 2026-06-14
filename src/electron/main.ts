@@ -1,4 +1,15 @@
-import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  Event as ElectronEvent,
+  HandlerDetails,
+  ipcMain,
+  IpcMainEvent,
+  IpcMainInvokeEvent,
+  shell,
+  WebContents,
+  WindowOpenHandlerResponse,
+} from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
 import { AiManager } from './ai/ai-manager';
@@ -30,6 +41,12 @@ class Program {
     'browser',
     'index.html',
   );
+
+  /**
+   * Holds the URL schemes permitted to open in the operating system's default handler. Everything
+   * else (file:, javascript:, etc.) is rejected.
+   */
+  private static readonly EXTERNAL_PROTOCOLS: readonly string[] = ['http:', 'https:', 'mailto:'];
 
   /**
    * Holds the main application window, or null before it is created or after it is closed.
@@ -119,6 +136,8 @@ class Program {
       this.window = null;
     });
 
+    this.applyWebContentsSecurity(window.webContents);
+
     this.window = window;
 
     if (Program.START_URL !== undefined) void window.loadURL(Program.START_URL);
@@ -166,21 +185,7 @@ class Program {
 
     ipcMain.handle(
       IpcChannel.ShellOpenExternal,
-      async (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => {
-        // Only open web and mail URLs (e.g. links in agent output); reject file:// and other schemes.
-        if (typeof url !== 'string') {
-          return;
-        }
-        let parsed: URL;
-        try {
-          parsed = new URL(url);
-        } catch {
-          return;
-        }
-        if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
-          await shell.openExternal(url);
-        }
-      },
+      (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
     );
 
     this.terminalManager.register();
@@ -189,6 +194,77 @@ class Program {
     this.workspaceManager.register();
     this.fileWatcher.register();
     this.aiManager.register();
+  }
+
+  /**
+   * Hardens a window's web contents: navigation away from the app shell is blocked (external URLs are
+   * routed to the system browser instead), and the renderer is never allowed to open new windows.
+   * @param contents The web contents to guard.
+   */
+  private applyWebContentsSecurity(contents: WebContents): void {
+    contents.on('will-navigate', (event: ElectronEvent, url: string): void => {
+      if (this.isInternalNavigation(url)) {
+        return;
+      }
+      event.preventDefault();
+      void this.openExternalUrl(url);
+    });
+
+    contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
+      void this.openExternalUrl(details.url);
+      return { action: 'deny' };
+    });
+  }
+
+  /**
+   * Determines whether a navigation target is the app shell itself (its dev server origin, or the
+   * packaged file). Any other target is treated as off-shell navigation and blocked.
+   * @param target The navigation target URL.
+   * @returns Returns true when the target is the app shell.
+   */
+  private isInternalNavigation(target: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(target);
+    } catch {
+      return false;
+    }
+    if (Program.START_URL !== undefined) {
+      return parsed.origin === new URL(Program.START_URL).origin;
+    }
+    return parsed.protocol === 'file:';
+  }
+
+  /**
+   * Returns the URL when it is a safe external URL to hand to the operating system, or null when it is
+   * not a string, not a valid URL, or uses a disallowed scheme.
+   * @param url The candidate URL.
+   * @returns Returns the URL when safe to open externally; otherwise, null.
+   */
+  private safeExternalUrl(url: unknown): string | null {
+    if (typeof url !== 'string') {
+      return null;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    return Program.EXTERNAL_PROTOCOLS.includes(parsed.protocol) ? url : null;
+  }
+
+  /**
+   * Opens a URL in the operating system's default browser when it is a safe external URL; otherwise
+   * does nothing.
+   * @param url The candidate URL.
+   * @returns Returns a promise that resolves once the URL has been opened (or rejected).
+   */
+  private async openExternalUrl(url: unknown): Promise<void> {
+    const safe: string | null = this.safeExternalUrl(url);
+    if (safe !== null) {
+      await shell.openExternal(safe);
+    }
   }
 
   /**
