@@ -12,6 +12,7 @@ import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { ApplicationSettings } from './sections/application-settings/application-settings';
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
 import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
+import { SecuritySettingsSection } from './sections/security-settings/security-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
@@ -19,7 +20,13 @@ import { AppIcon } from '../../shared/icon/app-icon';
 /**
  * Identifies a section in the settings navigation.
  */
-type SettingsSectionId = 'appearance' | 'application' | 'text-editor' | 'markdown' | 'ai';
+type SettingsSectionId =
+  | 'appearance'
+  | 'application'
+  | 'text-editor'
+  | 'markdown'
+  | 'ai'
+  | 'security';
 
 /**
  * Describes a selectable section in the settings navigation.
@@ -52,6 +59,7 @@ interface SettingsSection {
     TextEditorSettingsSection,
     MarkdownSettings,
     AiSettingsSection,
+    SecuritySettingsSection,
     AppIcon,
   ],
   templateUrl: './settings-view.html',
@@ -79,6 +87,7 @@ export class SettingsView {
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
     { id: 'ai', label: 'AI', icon: Icon.AGENT },
+    { id: 'security', label: 'Security', icon: Icon.LOCK },
   ];
 
   /**
