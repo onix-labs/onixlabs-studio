@@ -1,4 +1,5 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
+import type { AiAuthStatus, AiVerifyResult } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
 import type {
   DirectoryListing,
@@ -130,6 +131,16 @@ const studioApi: StudioApi = {
       ) as Promise<FileOperationResult>,
     delete: (targetPath: string): Promise<FileOperationResult> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceDelete, targetPath) as Promise<FileOperationResult>,
+  },
+  ai: {
+    getAuthStatus: (): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiAuthStatus) as Promise<AiAuthStatus>,
+    setApiKey: (key: string): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiSetApiKey, key) as Promise<AiAuthStatus>,
+    clearApiKey: (): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiClearApiKey) as Promise<AiAuthStatus>,
+    verifyAuthentication: (): Promise<AiVerifyResult> =>
+      ipcRenderer.invoke(IpcChannel.AiVerify) as Promise<AiVerifyResult>,
   },
 };
 

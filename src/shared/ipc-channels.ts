@@ -140,4 +140,24 @@ export enum IpcChannel {
    * Deletes a file or folder within the workspace.
    */
   WorkspaceDelete = 'workspace:delete',
+
+  /**
+   * Gets the agent's current authentication status.
+   */
+  AiAuthStatus = 'ai:auth-status',
+
+  /**
+   * Stores a user-supplied API key for the agent.
+   */
+  AiSetApiKey = 'ai:set-api-key',
+
+  /**
+   * Clears any stored agent API key.
+   */
+  AiClearApiKey = 'ai:clear-api-key',
+
+  /**
+   * Runs a minimal agent turn to verify authentication end-to-end.
+   */
+  AiVerify = 'ai:verify',
 }
