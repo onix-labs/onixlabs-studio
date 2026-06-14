@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { TerminalManager } from './terminal-manager';
@@ -52,6 +53,11 @@ class Program {
    * Writes editor content to temporary files so the renderer can execute it.
    */
   private readonly codeRunner: CodeRunner = new CodeRunner();
+
+  /**
+   * Owns the AI agent subsystem: authentication and end-to-end verification.
+   */
+  private readonly aiManager: AiManager = new AiManager();
 
   /**
    * Tracks the open workspace root and confines filesystem operations to it.
@@ -152,6 +158,7 @@ class Program {
     this.fileManager.register();
     this.codeRunner.register();
     this.workspaceManager.register();
+    this.aiManager.register();
   }
 
   /**

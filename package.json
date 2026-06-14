@@ -48,6 +48,7 @@
     "@angular/forms": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.177",
     "@milkdown/crepe": "^7.21.2",
     "@phosphor-icons/web": "^2.1.2",
     "@xterm/addon-fit": "^0.10.0",
