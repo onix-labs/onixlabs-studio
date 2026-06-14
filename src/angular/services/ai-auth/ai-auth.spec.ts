@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiApi, AiAuthStatus, AiVerifyResult } from '../../../shared/ai-types';
+import type { AiApi, AiAuthStatus, AiProviderInfo, AiVerifyResult } from '../../../shared/ai-types';
 import { AiAuth } from './ai-auth';
 
 /**
@@ -31,6 +31,10 @@ describe('AiAuth', () => {
         Promise.resolve({ ...LOCAL_LOGIN, source: 'none', available: false, hasStoredKey: false }),
       verifyAuthentication: (): Promise<AiVerifyResult> =>
         Promise.resolve({ ok: true, detail: 'ok' }),
+      listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve([]),
+      run: (): Promise<void> => Promise.resolve(),
+      abort: (): Promise<void> => Promise.resolve(),
+      onEvent: (): (() => void) => (): void => undefined,
       ...overrides,
     };
     (globalThis as unknown as { studio: { ai: AiApi } }).studio = { ai: api };

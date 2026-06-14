@@ -160,4 +160,24 @@ export enum IpcChannel {
    * Runs a minimal agent turn to verify authentication end-to-end.
    */
   AiVerify = 'ai:verify',
+
+  /**
+   * Lists the registered agent providers and their availability.
+   */
+  AiListProviders = 'ai:list-providers',
+
+  /**
+   * Starts an agent turn.
+   */
+  AiRun = 'ai:run',
+
+  /**
+   * Aborts a running agent turn.
+   */
+  AiAbort = 'ai:abort',
+
+  /**
+   * Carries a streamed event from a running agent turn to the renderer.
+   */
+  AiEvent = 'ai:event',
 }
