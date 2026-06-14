@@ -99,6 +99,16 @@
       background: currentColor;
     }
 
+    // An accent dot drawing the user to a tab that needs them (for example, a document changed on
+    // disk and needs a keep/reload decision).
+    .tab-attention {
+      flex-shrink: 0;
+      inline-size: 0.5rem;
+      block-size: 0.5rem;
+      border-radius: 50%;
+      background: var(--accent-color);
+    }
+
     button {
       display: flex;
       align-items: center;

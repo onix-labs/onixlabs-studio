@@ -77,6 +77,21 @@ export enum IpcChannel {
   FileWrite = 'file:write',
 
   /**
+   * Begins watching a file on disk for changes.
+   */
+  FileWatch = 'file:watch',
+
+  /**
+   * Stops watching a file on disk for changes.
+   */
+  FileUnwatch = 'file:unwatch',
+
+  /**
+   * Notifies the renderer that a watched file changed on disk.
+   */
+  FileChanged = 'file:changed',
+
+  /**
    * Shows an open-file dialog and reads the chosen file.
    */
   DialogOpenFile = 'dialog:open-file',

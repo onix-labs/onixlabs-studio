@@ -4,6 +4,7 @@ import { IpcChannel } from '../shared/ipc-channels';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
+import { FileWatcher } from './file-watcher';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -53,6 +54,13 @@ class Program {
    * Writes editor content to temporary files so the renderer can execute it.
    */
   private readonly codeRunner: CodeRunner = new CodeRunner();
+
+  /**
+   * Watches open documents on disk and notifies the renderer when they change.
+   */
+  private readonly fileWatcher: FileWatcher = new FileWatcher(
+    (): BrowserWindow | null => this.window,
+  );
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
@@ -160,6 +168,7 @@ class Program {
     this.fileManager.register();
     this.codeRunner.register();
     this.workspaceManager.register();
+    this.fileWatcher.register();
     this.aiManager.register();
   }
 
@@ -174,6 +183,7 @@ class Program {
     app.on('before-quit', (): void => {
       this.terminalManager.disposeAll();
       this.codeRunner.dispose();
+      this.fileWatcher.disposeAll();
       this.aiManager.disposeAll();
     });
   }

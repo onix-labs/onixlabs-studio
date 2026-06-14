@@ -146,4 +146,40 @@ describe('Tabs', () => {
 
     expect(service.isSettingsOpen()).toBe(true);
   });
+
+  it('setAttention_whenTabExists_flagsTheTab', () => {
+    const tab: Tab = service.open('code');
+
+    service.setAttention(tab.id, true);
+
+    expect(service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention).toBe(
+      true,
+    );
+  });
+
+  it('setAttention_whenClearedAgain_unflagsTheTab', () => {
+    const tab: Tab = service.open('code');
+    service.setAttention(tab.id, true);
+
+    service.setAttention(tab.id, false);
+
+    expect(
+      service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention,
+    ).toBe(false);
+  });
+
+  it('setAttention_whenStateUnchanged_keepsTheSameTabReference', () => {
+    const tab: Tab = service.open('code');
+    const before: Tab | undefined = service.tabs().find((c: Tab): boolean => c.id === tab.id);
+
+    service.setAttention(tab.id, false);
+
+    expect(service.tabs().find((c: Tab): boolean => c.id === tab.id)).toBe(before);
+  });
+
+  it('setAttention_whenIdentifierUnknown_isIgnored', () => {
+    service.open('code');
+
+    expect((): void => service.setAttention('does-not-exist', true)).not.toThrow();
+  });
 });

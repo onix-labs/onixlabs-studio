@@ -135,6 +135,23 @@ export class Tabs {
   }
 
   /**
+   * Sets the attention state of the tab with the given identifier (an accent dot drawing the user to
+   * a tab that needs them). Idempotent — a no-op when the state is unchanged — so it is safe to call
+   * from an effect. Unknown identifiers are ignored.
+   * @param id The identifier of the tab to update.
+   * @param attention Whether the tab needs the user's attention.
+   */
+  public setAttention(id: string, attention: boolean): void {
+    const current: Tab | undefined = this.tabList().find((tab: Tab): boolean => tab.id === id);
+    if (current === undefined || (current.attention ?? false) === attention) {
+      return;
+    }
+    this.tabList.update((tabs: readonly Tab[]): readonly Tab[] =>
+      tabs.map((tab: Tab): Tab => (tab.id === id ? { ...tab, attention } : tab)),
+    );
+  }
+
+  /**
    * Moves a tab from one position to another within the tab list. Out-of-range or no-op indices
    * are ignored.
    * @param fromIndex The current index of the tab to move.

@@ -96,6 +96,20 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.DialogSaveFile, defaultPath) as Promise<string | null>,
     confirmSave: (fileName: string): Promise<SaveDialogChoice> =>
       ipcRenderer.invoke(IpcChannel.DialogConfirmSave, fileName) as Promise<SaveDialogChoice>,
+    watch: (path: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.FileWatch, path) as Promise<void>,
+    unwatch: (path: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.FileUnwatch, path) as Promise<void>,
+    onChanged: (listener: (path: string) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, path: string) => void = (
+        _event: IpcRendererEvent,
+        path: string,
+      ): void => listener(path);
+      ipcRenderer.on(IpcChannel.FileChanged, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.FileChanged, handler);
+      };
+    },
   },
   run: {
     writeTempFile: (key: string, extension: string, content: string): Promise<TempFileResult> =>

@@ -251,6 +251,26 @@ export interface FileApi {
    * @returns Returns the user's choice.
    */
   confirmSave(fileName: string): Promise<SaveDialogChoice>;
+
+  /**
+   * Begins watching a file on disk; subsequent changes are delivered through {@link onChanged}.
+   * Watching is reference-counted, so balanced {@link watch}/{@link unwatch} calls are required.
+   * @param path The absolute path of the file to watch.
+   */
+  watch(path: string): Promise<void>;
+
+  /**
+   * Stops watching a file on disk.
+   * @param path The absolute path of the file to stop watching.
+   */
+  unwatch(path: string): Promise<void>;
+
+  /**
+   * Subscribes to change notifications for watched files.
+   * @param listener Receives the absolute path of the file that changed.
+   * @returns Returns a function that removes the listener.
+   */
+  onChanged(listener: (path: string) => void): () => void;
 }
 
 /**

@@ -1,5 +1,7 @@
 :host {
   display: block;
+  // Positioning context so the document-conflict modal overlay scopes to the tab content area.
+  position: relative;
   block-size: 100%;
   min-block-size: 0;
 }

@@ -1,6 +1,8 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { FileInfo } from '../../../shared/studio-api';
+import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
+import { FileWatch } from '../file-watch/file-watch';
 import { Monaco } from '../monaco/monaco';
 import { Tab, TabType } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
@@ -83,6 +85,11 @@ interface DocumentEntry {
    * Gets the writable last-saved content.
    */
   readonly original: WritableSignal<string>;
+
+  /**
+   * Holds the disposer that stops watching this document's file on disk, or null when not watched.
+   */
+  watchDisposer: (() => void) | null;
 }
 
 /**
@@ -108,6 +115,19 @@ export class Documents {
    * Holds the file-system bridge used for reads, writes and dialogs.
    */
   private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
+   * Holds the file-watch service used to reload documents when their file changes on disk.   */
+  private readonly fileWatch: FileWatch = inject(FileWatch);
+
+  /**
+   * Holds the conflict registry used to prompt when a watched file changes under unsaved edits.   */
+  private readonly fileConflicts: FileConflicts = inject(FileConflicts);
+
+  /**
+   * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
+   * documents), or null when each document is its own top-level tab (standalone editor tabs).   */
+  private owningTabId: string | null = null;
 
   /**
    * Holds the document entries, keyed by document identifier (a tab id, or a well document id).
@@ -165,7 +185,18 @@ export class Documents {
    * @param id The owning tab identifier.
    */
   public remove(id: string): void {
+    this.entries.get(id)?.watchDisposer?.();
+    this.fileConflicts.clear(id);
     this.entries.delete(id);
+  }
+
+  /**
+   * Records the top-level tab that hosts this (per-workspace) document model's well documents, so a
+   * file conflict surfaces on the workspace tab. The root model leaves this unset; each document is
+   * then its own tab.   * @param tabId The hosting tab's id.
+   */
+  public setOwningTab(tabId: string): void {
+    this.owningTabId = tabId;
   }
 
   /**
@@ -203,6 +234,7 @@ export class Documents {
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     this.syncTab(id);
+    this.watchEntry(id);
   }
 
   /**
@@ -231,6 +263,7 @@ export class Documents {
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     this.syncTab(tab.id);
+    this.watchEntry(tab.id);
     // syncTab renamed the tab to the file name; return the up-to-date tab, not the pre-rename one.
     return this.tabs.tabs().find((candidate: Tab): boolean => candidate.id === tab.id) ?? tab;
   }
@@ -262,6 +295,7 @@ export class Documents {
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
+    this.watchEntry(id);
     return id;
   }
 
@@ -374,6 +408,7 @@ export class Documents {
       entry.language.set(this.monaco.getLanguageForExtension(this.extname(targetPath)));
       entry.original.set(content);
       this.syncTab(id);
+      this.watchEntry(id);
     }
     return success;
   }
@@ -398,7 +433,65 @@ export class Documents {
       content: content.asReadonly(),
       dirty,
     };
-    return { document, filePath, fileName, language, content, original };
+    return { document, filePath, fileName, language, content, original, watchDisposer: null };
+  }
+
+  /**
+   * Watches the document's file on disk, reloading it on change (or, when there are unsaved edits,
+   * leaving them untouched). Re-registers against the current path; disposes any prior watch.
+   * @param id The document identifier.
+   */
+  private watchEntry(id: string): void {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined) {
+      return;
+    }
+    entry.watchDisposer?.();
+    entry.watchDisposer = null;
+    const filePath: string | null = entry.filePath();
+    if (filePath !== null) {
+      entry.watchDisposer = this.fileWatch.watch(filePath, (info: FileInfo): void =>
+        this.onDiskChange(id, info),
+      );
+    }
+  }
+
+  /**
+   * Handles a watched document's file changing on disk. Reloads the document when it has no unsaved
+   * edits; when it is dirty, raises a keep/reload conflict for the user to resolve.
+   * @param id The document identifier.
+   * @param info The freshly-read file.
+   */
+  private onDiskChange(id: string, info: FileInfo): void {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined || entry.content() === info.content) {
+      return;
+    }
+    if (!entry.document.dirty()) {
+      this.reloadFromDisk(id, info.content);
+      return;
+    }
+    // Unsaved edits diverge from a new on-disk version: prompt the user to keep or reload.
+    this.fileConflicts.raise(
+      { documentId: id, tabId: this.owningTabId ?? id, name: entry.fileName() },
+      { keep: (): void => undefined, reload: (): void => this.reloadFromDisk(id, info.content) },
+    );
+  }
+
+  /**
+   * Reloads a document from disk content, replacing its content and last-saved baseline so the
+   * document is clean and the live editor refreshes.
+   * @param id The document identifier.
+   * @param content The new on-disk content.
+   */
+  private reloadFromDisk(id: string, content: string): void {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined) {
+      return;
+    }
+    entry.content.set(content);
+    entry.original.set(content);
+    this.syncTab(id);
   }
 
   /**
