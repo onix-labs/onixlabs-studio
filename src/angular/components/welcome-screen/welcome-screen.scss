@@ -92,7 +92,7 @@
   inset-block-start: -6rem;
   inset-inline-start: -4rem;
   background: radial-gradient(circle at center, rgba(59, 130, 246, 0.6), rgba(59, 130, 246, 0) 68%);
-  animation: welcome-orb-a 26s ease-in-out infinite;
+  animation: welcome-orb-a 38s ease-in-out -5s infinite;
 }
 
 .welcome__orb--b {
@@ -101,7 +101,7 @@
   inset-block-end: -8rem;
   inset-inline-end: -6rem;
   background: radial-gradient(circle at center, rgba(139, 92, 246, 0.55), rgba(139, 92, 246, 0) 68%);
-  animation: welcome-orb-b 32s ease-in-out infinite;
+  animation: welcome-orb-b 44s ease-in-out -19s infinite;
 }
 
 .welcome__orb--c {
@@ -110,7 +110,7 @@
   inset-block-start: 22%;
   inset-inline-start: 32%;
   background: radial-gradient(circle at center, rgba(96, 165, 250, 0.5), rgba(96, 165, 250, 0) 70%);
-  animation: welcome-orb-c 22s ease-in-out infinite;
+  animation: welcome-orb-c 33s ease-in-out -11s infinite;
 }
 
 .welcome__orb--d {
@@ -119,19 +119,45 @@
   inset-block-end: 12%;
   inset-inline-start: 14%;
   background: radial-gradient(circle at center, rgba(168, 85, 247, 0.5), rgba(168, 85, 247, 0) 70%);
-  animation: welcome-orb-d 29s ease-in-out infinite;
+  animation: welcome-orb-d 41s ease-in-out -27s infinite;
 }
 
+.welcome__orb--e {
+  inline-size: 24rem;
+  block-size: 24rem;
+  inset-block-start: 8%;
+  inset-inline-end: 10%;
+  background: radial-gradient(circle at center, rgba(56, 189, 248, 0.5), rgba(56, 189, 248, 0) 70%);
+  animation: welcome-orb-e 36s ease-in-out -14s infinite;
+}
+
+.welcome__orb--f {
+  inline-size: 32rem;
+  block-size: 32rem;
+  inset-block-end: -4rem;
+  inset-inline-start: 38%;
+  background: radial-gradient(circle at center, rgba(129, 140, 248, 0.5), rgba(129, 140, 248, 0) 70%);
+  animation: welcome-orb-f 48s ease-in-out -8s infinite;
+}
+
+// Each orb wanders a multi-point circuit (rather than bouncing straight out and back), with gentle
+// scale drift, so the motion reads as fluid rather than mechanical.
 @keyframes welcome-orb-a {
   0%,
   100% {
     transform: translate(0, 0) scale(1);
   }
-  30% {
-    transform: translate(8vw, 10vh) scale(1.12);
+  20% {
+    transform: translate(9vw, 6vh) scale(1.08);
+  }
+  40% {
+    transform: translate(15vw, -5vh) scale(1.14);
   }
   60% {
-    transform: translate(-6vw, 6vh) scale(0.92);
+    transform: translate(6vw, -12vh) scale(0.96);
+  }
+  80% {
+    transform: translate(-5vw, -4vh) scale(1.04);
   }
 }
 
@@ -140,11 +166,17 @@
   100% {
     transform: translate(0, 0) scale(1);
   }
-  35% {
-    transform: translate(-10vw, -8vh) scale(1.1);
+  22% {
+    transform: translate(-8vw, -7vh) scale(1.1);
   }
-  70% {
-    transform: translate(-4vw, 5vh) scale(0.9);
+  44% {
+    transform: translate(-15vw, 3vh) scale(0.94);
+  }
+  66% {
+    transform: translate(-7vw, 11vh) scale(1.12);
+  }
+  85% {
+    transform: translate(3vw, 6vh) scale(1.02);
   }
 }
 
@@ -153,14 +185,17 @@
   100% {
     transform: translate(0, 0) scale(1);
   }
-  25% {
-    transform: translate(12vw, -6vh) scale(1.15);
+  18% {
+    transform: translate(11vw, -5vh) scale(1.12);
   }
-  55% {
-    transform: translate(6vw, 12vh) scale(0.95);
+  40% {
+    transform: translate(5vw, 13vh) scale(0.92);
   }
-  80% {
-    transform: translate(-8vw, 4vh) scale(1.05);
+  62% {
+    transform: translate(-9vw, 7vh) scale(1.16);
+  }
+  82% {
+    transform: translate(-6vw, -6vh) scale(0.98);
   }
 }
 
@@ -169,11 +204,55 @@
   100% {
     transform: translate(0, 0) scale(1);
   }
-  40% {
-    transform: translate(10vw, -10vh) scale(1.08);
+  25% {
+    transform: translate(10vw, -9vh) scale(1.06);
   }
-  75% {
-    transform: translate(-12vw, -4vh) scale(0.94);
+  50% {
+    transform: translate(2vw, -16vh) scale(1.12);
+  }
+  72% {
+    transform: translate(-11vw, -6vh) scale(0.92);
+  }
+  88% {
+    transform: translate(-5vw, 4vh) scale(1.04);
+  }
+}
+
+@keyframes welcome-orb-e {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  24% {
+    transform: translate(-10vw, 6vh) scale(1.1);
+  }
+  48% {
+    transform: translate(-4vw, 14vh) scale(0.95);
+  }
+  70% {
+    transform: translate(8vw, 9vh) scale(1.14);
+  }
+  86% {
+    transform: translate(6vw, -3vh) scale(1.02);
+  }
+}
+
+@keyframes welcome-orb-f {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  20% {
+    transform: translate(7vw, -8vh) scale(1.07);
+  }
+  42% {
+    transform: translate(-6vw, -13vh) scale(1.13);
+  }
+  64% {
+    transform: translate(-13vw, -2vh) scale(0.94);
+  }
+  84% {
+    transform: translate(-4vw, 7vh) scale(1.05);
   }
 }
 
@@ -188,9 +267,11 @@
   inline-size: min(52rem, 100%);
   max-block-size: 100%;
   padding: 2rem;
-  background: var(--welcome-panel-background-color);
+  // 90% translucent, frosted so the content stays legible over the drifting orbs behind it.
+  background: color-mix(in srgb, var(--welcome-panel-background-color) 10%, transparent);
+  backdrop-filter: blur(1.25rem);
   border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: 1rem;
+  border-radius: 2rem;
   corner-shape: squircle;
   box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
   -webkit-app-region: no-drag;

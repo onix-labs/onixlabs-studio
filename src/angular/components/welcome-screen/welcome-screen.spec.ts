@@ -29,7 +29,7 @@ describe('WelcomeScreen', () => {
   it('coldStart_whenNoTabs_isVisibleWithAmbientOrbs', () => {
     expect(host.querySelector('.welcome--visible')).not.toBeNull();
     expect(host.querySelector('.welcome--ambient')).not.toBeNull();
-    expect(host.querySelectorAll('.welcome__orb').length).toBe(4);
+    expect(host.querySelectorAll('.welcome__orb').length).toBe(6);
   });
 
   it('withTabs_whenModalClosed_isNotVisible', () => {
