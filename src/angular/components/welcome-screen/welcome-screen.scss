@@ -267,8 +267,8 @@
   inline-size: min(52rem, 100%);
   max-block-size: 100%;
   padding: 2rem;
-  // 80% translucent, frosted so the content stays legible over the drifting orbs behind it.
-  background: color-mix(in srgb, var(--welcome-panel-background-color) 20%, transparent);
+  // Mostly opaque (20% see-through), frosted so the orbs read as a soft glow through the edges.
+  background: color-mix(in srgb, var(--welcome-panel-background-color) 80%, transparent);
   backdrop-filter: blur(1.25rem);
   border: 0.0625rem solid var(--welcome-border-color);
   border-radius: 2rem;
