@@ -3,6 +3,8 @@
 // renderer consumes it. Keep this module platform-neutral (types only — no Node or
 // DOM dependencies) so both compilation targets can import it.
 
+import type { AiApi } from './ai-types';
+
 /**
  * Defines the runtime version information exposed to the renderer process.
  */
@@ -509,4 +511,9 @@ export interface StudioApi {
    * Gets the workspace (open folder) and directory operations for the application.
    */
   readonly workspace: WorkspaceApi;
+
+  /**
+   * Gets the AI-agent authentication and verification operations for the application.
+   */
+  readonly ai: AiApi;
 }

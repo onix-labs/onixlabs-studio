@@ -18,6 +18,23 @@
   "license": "MIT",
   "author": "ONIXlabs",
   "main": "dist-electron/electron/main.js",
+  "build": {
+    "appId": "com.onixlabs.studio",
+    "productName": "ONIXLabs Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "dist/onixlabs-studio/browser/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+    ]
+  },
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -41,6 +58,7 @@
     "dist:linux": "ng build && npm run build:electron && electron-builder --linux"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.84",
     "@angular/cdk": "^22.0.0",
     "@angular/common": "^22.0.0",
     "@angular/compiler": "^22.0.0",
@@ -48,10 +66,12 @@
     "@angular/forms": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.177",
     "@milkdown/crepe": "^7.21.2",
     "@phosphor-icons/web": "^2.1.2",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "ai": "^6.0.205",
     "mermaid": "^11.15.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",

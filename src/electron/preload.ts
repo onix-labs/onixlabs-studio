@@ -1,4 +1,14 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
+import type {
+  AiAuthStatus,
+  AiBridgeReply,
+  AiBridgeRequest,
+  AiEvent,
+  AiPermissionReply,
+  AiProviderInfo,
+  AiRunRequest,
+  AiVerifyResult,
+} from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
 import type {
   DirectoryListing,
@@ -144,6 +154,48 @@ const studioApi: StudioApi = {
       ) as Promise<FileOperationResult>,
     delete: (targetPath: string): Promise<FileOperationResult> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceDelete, targetPath) as Promise<FileOperationResult>,
+  },
+  ai: {
+    getAuthStatus: (): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiAuthStatus) as Promise<AiAuthStatus>,
+    setApiKey: (key: string): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiSetApiKey, key) as Promise<AiAuthStatus>,
+    clearApiKey: (): Promise<AiAuthStatus> =>
+      ipcRenderer.invoke(IpcChannel.AiClearApiKey) as Promise<AiAuthStatus>,
+    verifyAuthentication: (): Promise<AiVerifyResult> =>
+      ipcRenderer.invoke(IpcChannel.AiVerify) as Promise<AiVerifyResult>,
+    listProviders: (): Promise<readonly AiProviderInfo[]> =>
+      ipcRenderer.invoke(IpcChannel.AiListProviders) as Promise<readonly AiProviderInfo[]>,
+    run: (request: AiRunRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.AiRun, request) as Promise<void>,
+    abort: (requestId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.AiAbort, requestId) as Promise<void>,
+    onEvent: (listener: (event: AiEvent) => void): (() => void) => {
+      const handler: (event: IpcRendererEvent, payload: AiEvent) => void = (
+        _event: IpcRendererEvent,
+        payload: AiEvent,
+      ): void => listener(payload);
+      ipcRenderer.on(IpcChannel.AiEvent, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.AiEvent, handler);
+      };
+    },
+    onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) => {
+      const wrapped: (event: IpcRendererEvent, payload: AiBridgeRequest) => void = (
+        _event: IpcRendererEvent,
+        payload: AiBridgeRequest,
+      ): void => handler(payload);
+      ipcRenderer.on(IpcChannel.AiBridgeRequest, wrapped);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.AiBridgeRequest, wrapped);
+      };
+    },
+    respondBridge: (reply: AiBridgeReply): void => {
+      ipcRenderer.send(IpcChannel.AiBridgeReply, reply);
+    },
+    respondPermission: (reply: AiPermissionReply): void => {
+      ipcRenderer.send(IpcChannel.AiPermissionReply, reply);
+    },
   },
 };
 

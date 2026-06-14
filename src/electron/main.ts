@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';
 import { FileWatcher } from './file-watcher';
@@ -58,6 +59,13 @@ class Program {
    * Watches open documents on disk and notifies the renderer when they change.
    */
   private readonly fileWatcher: FileWatcher = new FileWatcher(
+    (): BrowserWindow | null => this.window,
+  );
+
+  /**
+   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
+   */
+  private readonly aiManager: AiManager = new AiManager(
     (): BrowserWindow | null => this.window,
   );
 
@@ -161,6 +169,7 @@ class Program {
     this.codeRunner.register();
     this.workspaceManager.register();
     this.fileWatcher.register();
+    this.aiManager.register();
   }
 
   /**
@@ -175,6 +184,7 @@ class Program {
       this.terminalManager.disposeAll();
       this.codeRunner.dispose();
       this.fileWatcher.disposeAll();
+      this.aiManager.disposeAll();
     });
   }
 
