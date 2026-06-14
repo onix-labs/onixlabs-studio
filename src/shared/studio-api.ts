@@ -56,6 +56,25 @@ export interface WindowControlsApi {
 }
 
 /**
+ * Defines the application-lifecycle operations exposed to the renderer process.
+ */
+export interface AppApi {
+  /**
+   * Subscribes to the main process's request to close the window, giving the renderer a chance to
+   * confirm or save unsaved work. The handler must eventually answer with {@link respondClose}.
+   * @param listener Invoked when the main process wants to close the window.
+   * @returns Returns a function that removes the listener.
+   */
+  onRequestClose(listener: () => void): () => void;
+
+  /**
+   * Tells the main process whether the window may close.
+   * @param proceed True to allow the window to close; false to keep it open.
+   */
+  respondClose(proceed: boolean): void;
+}
+
+/**
  * Defines the options sent from the renderer when spawning a pseudo-terminal session.
  */
 export interface TerminalCreateOptions {
@@ -494,6 +513,11 @@ export interface StudioApi {
    * Gets the window control operations for the application window.
    */
   readonly windowControls: WindowControlsApi;
+
+  /**
+   * Gets the application-lifecycle operations for the application.
+   */
+  readonly app: AppApi;
 
   /**
    * Gets the pseudo-terminal operations for the application.

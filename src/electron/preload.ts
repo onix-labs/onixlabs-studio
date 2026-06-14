@@ -40,6 +40,16 @@ const studioApi: StudioApi = {
     close: (): void => ipcRenderer.send(IpcChannel.WindowClose),
     setMovable: (movable: boolean): void => ipcRenderer.send(IpcChannel.WindowSetMovable, movable),
   },
+  app: {
+    onRequestClose: (listener: () => void): (() => void) => {
+      const handler: (event: IpcRendererEvent) => void = (): void => listener();
+      ipcRenderer.on(IpcChannel.AppRequestClose, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.AppRequestClose, handler);
+      };
+    },
+    respondClose: (proceed: boolean): void => ipcRenderer.send(IpcChannel.AppConfirmClose, proceed),
+  },
   terminal: {
     create: (options: TerminalCreateOptions): Promise<TerminalCreateResult> =>
       ipcRenderer.invoke(IpcChannel.TerminalCreate, options) as Promise<TerminalCreateResult>,

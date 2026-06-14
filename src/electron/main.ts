@@ -50,9 +50,32 @@ class Program {
   private static readonly EXTERNAL_PROTOCOLS: readonly string[] = ['http:', 'https:', 'mailto:'];
 
   /**
+   * Holds how long (ms) to wait for the renderer to answer a close request before closing anyway, so
+   * an unresponsive renderer can never wedge the window permanently open.
+   */
+  private static readonly CLOSE_CONFIRM_TIMEOUT_MS: number = 30_000;
+
+  /**
    * Holds the main application window, or null before it is created or after it is closed.
    */
   private window: BrowserWindow | null = null;
+
+  /**
+   * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the
+   * confirmation timed out). Once set, the window-close and before-quit handlers pass straight through.
+   */
+  private quitConfirmed: boolean = false;
+
+  /**
+   * Holds a value indicating whether a close confirmation round-trip is currently in flight, so the
+   * window-close and before-quit paths share a single prompt rather than each starting their own.
+   */
+  private confirming: boolean = false;
+
+  /**
+   * Holds the resolver for the in-flight close request, or null when none is pending.
+   */
+  private pendingClose: ((proceed: boolean) => void) | null = null;
 
   /**
    * Manages pseudo-terminal sessions on behalf of the renderer.
@@ -138,6 +161,7 @@ class Program {
     });
 
     window.once('ready-to-show', (): void => window.show());
+    window.on('close', this.onWindowClose.bind(this));
     window.on('closed', (): void => {
       this.window = null;
     });
@@ -182,6 +206,10 @@ class Program {
       }
 
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
+    });
+
+    ipcMain.on(IpcChannel.AppConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
+      this.resolveClose(proceed === true);
     });
 
     ipcMain.handle(
@@ -285,12 +313,98 @@ class Program {
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
-    app.on('before-quit', (): void => {
-      this.terminalManager.disposeAll();
-      this.codeRunner.dispose();
-      this.fileWatcher.disposeAll();
-      this.aiManager.disposeAll();
+    app.on('before-quit', this.onBeforeQuit.bind(this));
+    // Tear down on will-quit (the final stage) rather than before-quit, so the renderer's save/confirm
+    // round-trip runs against a fully-alive subsystem before anything is disposed.
+    app.on('will-quit', (): void => this.disposeAll());
+  }
+
+  /**
+   * Disposes every subsystem that owns OS resources. Called once at shutdown.
+   */
+  private disposeAll(): void {
+    this.terminalManager.disposeAll();
+    this.codeRunner.dispose();
+    this.fileWatcher.disposeAll();
+    this.aiManager.disposeAll();
+  }
+
+  /**
+   * Intercepts a window close (the OS close button or the in-app close command), holding it until the
+   * renderer confirms it is safe to quit. Once confirmed, the close passes straight through.
+   * @param event The close event, prevented while confirmation is sought.
+   */
+  private onWindowClose(event: ElectronEvent): void {
+    if (this.quitConfirmed) {
+      return;
+    }
+    event.preventDefault();
+    void this.beginQuit();
+  }
+
+  /**
+   * Intercepts an application quit (Cmd+Q, the menu, or a programmatic quit), holding it until the
+   * renderer confirms it is safe to quit. Once confirmed, the quit passes straight through.
+   * @param event The before-quit event, prevented while confirmation is sought.
+   */
+  private onBeforeQuit(event: ElectronEvent): void {
+    if (this.quitConfirmed) {
+      return;
+    }
+    event.preventDefault();
+    void this.beginQuit();
+  }
+
+  /**
+   * Runs the close-confirmation round-trip once (shared by the window-close and before-quit paths) and,
+   * on approval, quits the application — which then tears down on will-quit. A cancellation leaves the
+   * window open.
+   * @returns Returns a promise that resolves once the decision has been handled.
+   */
+  private async beginQuit(): Promise<void> {
+    if (this.confirming) {
+      return;
+    }
+    this.confirming = true;
+    const proceed: boolean = await this.requestRendererClose();
+    this.confirming = false;
+    if (proceed) {
+      this.quitConfirmed = true;
+      app.quit();
+    }
+  }
+
+  /**
+   * Sends a close request to the renderer and resolves with its decision, defaulting to quitting when
+   * no window is available or the renderer does not answer in time.
+   * @returns Returns true when the application may quit.
+   */
+  private requestRendererClose(): Promise<boolean> {
+    const window: BrowserWindow | null = this.window;
+    if (window === null) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve: (proceed: boolean) => void): void => {
+      const timer: NodeJS.Timeout = setTimeout((): void => {
+        this.pendingClose = null;
+        resolve(true);
+      }, Program.CLOSE_CONFIRM_TIMEOUT_MS);
+      this.pendingClose = (proceed: boolean): void => {
+        clearTimeout(timer);
+        resolve(proceed);
+      };
+      window.webContents.send(IpcChannel.AppRequestClose);
     });
+  }
+
+  /**
+   * Resolves the in-flight close request with the renderer's decision.
+   * @param proceed True when the window may close.
+   */
+  private resolveClose(proceed: boolean): void {
+    const resolver: ((proceed: boolean) => void) | null = this.pendingClose;
+    this.pendingClose = null;
+    resolver?.(proceed);
   }
 
   /**
