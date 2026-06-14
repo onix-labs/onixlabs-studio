@@ -85,16 +85,24 @@ export class ClaudeAgentProvider implements AgentProvider {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const hasWorkspace: boolean = context.workspaceRoot !== null;
 
-    // Auto-allow read-only exploration; deny everything else until the permission broker (#113).
-    const canUseTool: CanUseTool = (
+    // Auto-allow read-only exploration; ask the user before any mutating/exec tool (Edit, Write,
+    // Bash, …). On allow, `updatedInput` MUST echo the original input — it is the input the SDK runs
+    // the tool with; omitting it runs the tool with no arguments and fails as a malformed response.
+    const canUseTool: CanUseTool = async (
       toolName: string,
       input: Record<string, unknown>,
-    ): Promise<PermissionResult> =>
-      Promise.resolve(
-        READ_ONLY_TOOLS.includes(toolName)
-          ? { behavior: 'allow', updatedInput: input }
-          : { behavior: 'deny', message: 'Tool permissions are not yet available.' },
+    ): Promise<PermissionResult> => {
+      if (READ_ONLY_TOOLS.includes(toolName)) {
+        return { behavior: 'allow', updatedInput: input };
+      }
+      const granted: boolean = await context.requestPermission(
+        prettyToolName(toolName),
+        summarizeToolInput(input),
       );
+      return granted
+        ? { behavior: 'allow', updatedInput: input }
+        : { behavior: 'deny', message: 'The user declined to run this tool.' };
+    };
 
     const controller: AbortController = this.linkAbort(context.signal);
     const options: Options = {
