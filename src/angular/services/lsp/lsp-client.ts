@@ -6,6 +6,7 @@ import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diag
 import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
+import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { LspStatus } from './lsp-status';
 
@@ -198,6 +199,16 @@ export class LspClient implements OnDestroy {
   private readonly status: LspStatus = inject(LspStatus);
 
   /**
+   * Holds the editor-features registry this client resolves its documents for.
+   */
+  private readonly features: LspFeatures = inject(LspFeatures);
+
+  /**
+   * Holds the disposer that withdraws this client's document resolver, or null when not registered.
+   */
+  private featuresDisposer: (() => void) | null = null;
+
+  /**
    * Holds the language-server bridge, or undefined when running outside Electron.
    */
   private readonly api: LspApi | undefined = window.studio?.lsp;
@@ -264,6 +275,27 @@ export class LspClient implements OnDestroy {
       this.onNotification(message),
     );
     this.exitDisposer = this.api.onExit((exit: LspExit): void => this.onExit(exit));
+    this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
+      this.resolveDocument(path),
+    );
+  }
+
+  /**
+   * Resolves a file path to the open document a feature request targets, for this workspace's editor
+   * features. Returns null for paths this client does not own or has not opened against a server.
+   * @param path The absolute file path to resolve.
+   * @returns Returns the document reference, or null.
+   */
+  private resolveDocument(path: string): LspDocumentRef | null {
+    const root: string | null = this.rootPath();
+    if (root === null) {
+      return null;
+    }
+    const tracked: TrackedDocument | undefined = this.tracked.get(this.normalise(path));
+    if (!tracked?.opened) {
+      return null;
+    }
+    return { sessionId: `${root}::${tracked.serverId}`, uri: tracked.uri };
   }
 
   /**
@@ -326,6 +358,7 @@ export class LspClient implements OnDestroy {
   public ngOnDestroy(): void {
     this.notificationDisposer?.();
     this.exitDisposer?.();
+    this.featuresDisposer?.();
     for (const sessionId of this.sessions.keys()) {
       void this.api?.stop(sessionId);
       this.status.remove(sessionId);
