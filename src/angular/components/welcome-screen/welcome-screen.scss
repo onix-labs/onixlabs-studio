@@ -10,7 +10,6 @@
 .welcome {
   --welcome-fade-duration: 280ms;
   --welcome-zoom-duration: 360ms;
-  --welcome-zoom-ease: cubic-bezier(0.65, 0, 0.35, 1);
   --welcome-ambient-backdrop-color: rgba(8, 10, 22, 0.82);
 
   position: fixed;
@@ -275,20 +274,21 @@
   corner-shape: squircle;
   box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
   -webkit-app-region: no-drag;
-  opacity: 0;
-  transform: scale(0.9);
-  transition:
-    transform var(--welcome-zoom-duration) var(--welcome-zoom-ease),
-    opacity var(--welcome-zoom-duration) var(--welcome-zoom-ease);
 }
 
+// The panel zooms and fades in each time the welcome becomes visible (the animation property is only
+// present in the visible state, so it replays on every show).
 .welcome--visible .welcome__panel {
-  opacity: 1;
-  transform: scale(1);
+  animation: modalzoom 1.5s cubic-bezier(0.785, 0.135, 0.15, 0.86);
+}
 
-  @starting-style {
+@keyframes modalzoom {
+  0% {
     opacity: 0;
-    transform: scale(0.9);
+    transform: scale3d(0.75, 0.75, 0);
+  }
+  75% {
+    opacity: 1;
   }
 }
 
@@ -378,7 +378,7 @@
   align-items: center;
   gap: 0.85rem;
   inline-size: 100%;
-  padding: 0.7rem 0.9rem;
+  padding: 0.55rem 0.8rem;
   font: inherit;
   text-align: start;
   color: inherit;
@@ -554,10 +554,7 @@
     transition: none;
   }
 
-  .welcome__panel {
-    transform: none;
-  }
-
+  .welcome--visible .welcome__panel,
   .welcome__orb {
     animation: none;
   }
