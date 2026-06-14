@@ -215,6 +215,12 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds the languages whose built-in Monaco diagnostics have been suppressed, so each is suppressed
+   * only once.
+   */
+  private readonly suppressed: Set<string> = new Set<string>();
+
+  /**
    * Holds the callback that pushes the merged diagnostics into the aggregate, or null before the
    * provider connects.
    */
@@ -340,6 +346,10 @@ export class LspClient implements OnDestroy {
     if (sessionId === null || this.api === undefined) {
       return;
     }
+    // The server is now the authority for this language: turn off Monaco's built-in worker
+    // diagnostics so its (project-blind) errors no longer compete with the server's. Done only on a
+    // successful start, so a server that fails to launch leaves Monaco's diagnostics as a fallback.
+    this.suppressBuiltInDiagnostics(tracked.languageId);
     tracked.opened = true;
     this.api.notify(sessionId, 'textDocument/didOpen', {
       textDocument: {
@@ -440,6 +450,19 @@ export class LspClient implements OnDestroy {
     );
     this.setMarkers(tracked, params.diagnostics);
     this.publish();
+  }
+
+  /**
+   * Disables Monaco's built-in diagnostics for a language the first time a server for it starts, so
+   * the server is the sole source of that language's diagnostics.
+   * @param languageId The Monaco language identifier to suppress built-in diagnostics for.
+   */
+  private suppressBuiltInDiagnostics(languageId: string): void {
+    if (this.suppressed.has(languageId)) {
+      return;
+    }
+    this.suppressed.add(languageId);
+    this.monaco.suppressBuiltInDiagnostics(languageId);
   }
 
   /**

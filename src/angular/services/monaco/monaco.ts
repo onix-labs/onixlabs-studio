@@ -41,6 +41,39 @@ export interface LanguageInfo {
 }
 
 /**
+ * A minimal view of a Monaco language's service defaults, exposing only the diagnostics toggle. The
+ * `monaco-editor` ESM type for `languages.typescript` is `any`, so this typed shape lets the
+ * application turn diagnostics off without resorting to unsafe member access.
+ */
+interface MonacoDiagnosticsDefaults {
+  /**
+   * Sets the diagnostics options for the language.
+   * @param options The diagnostics toggles to apply.
+   */
+  setDiagnosticsOptions(options: {
+    readonly noSemanticValidation: boolean;
+    readonly noSyntaxValidation: boolean;
+    readonly noSuggestionDiagnostics: boolean;
+  }): void;
+}
+
+/**
+ * The shape of Monaco's TypeScript/JavaScript language contribution used to disable their built-in
+ * diagnostics.
+ */
+interface MonacoTypescriptContribution {
+  /**
+   * Gets the TypeScript language service defaults.
+   */
+  readonly typescriptDefaults: MonacoDiagnosticsDefaults;
+
+  /**
+   * Gets the JavaScript language service defaults.
+   */
+  readonly javascriptDefaults: MonacoDiagnosticsDefaults;
+}
+
+/**
  * Maps file extensions (lower-case, leading dot) to Monaco language identifiers.
  */
 const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
@@ -204,6 +237,38 @@ export class Monaco {
     const lower: string = extension.toLowerCase();
     const normalised: string = lower.startsWith('.') ? lower : `.${lower}`;
     return EXTENSION_TO_LANGUAGE[normalised] ?? DEFAULT_LANGUAGE;
+  }
+
+  /**
+   * Disables Monaco's built-in diagnostics for a language, so a language server can be the sole
+   * source of that language's diagnostics. Only TypeScript and JavaScript have a built-in Monaco
+   * diagnostics worker; other languages have none, so this is a no-op for them. The change is global
+   * (Monaco's language defaults are process-wide) and idempotent, and only takes effect once Monaco
+   * has loaded.
+   * @param languageId The Monaco language identifier whose built-in diagnostics are disabled.
+   */
+  public suppressBuiltInDiagnostics(languageId: string): void {
+    const monaco: typeof MonacoApi | undefined = window.monaco;
+    if (monaco === undefined) {
+      return;
+    }
+    const typescript: MonacoTypescriptContribution | undefined = (
+      monaco.languages as unknown as { typescript?: MonacoTypescriptContribution }
+    ).typescript;
+    if (typescript === undefined) {
+      return;
+    }
+    const defaults: MonacoDiagnosticsDefaults | null =
+      languageId === 'typescript'
+        ? typescript.typescriptDefaults
+        : languageId === 'javascript'
+          ? typescript.javascriptDefaults
+          : null;
+    defaults?.setDiagnosticsOptions({
+      noSemanticValidation: true,
+      noSyntaxValidation: true,
+      noSuggestionDiagnostics: true,
+    });
   }
 
   /**

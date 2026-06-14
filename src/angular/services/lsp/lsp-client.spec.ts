@@ -9,6 +9,7 @@ import {
 } from '../../../shared/lsp-types';
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
+import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
 import { LspClient } from './lsp-client';
 
@@ -87,6 +88,22 @@ class FakeDiagnostics {
 }
 
 /**
+ * A fake Monaco service that records which languages had their built-in diagnostics suppressed and
+ * reports no loaded editor (so marker-setting is skipped under jsdom).
+ */
+class FakeMonaco {
+  public readonly suppressed: string[] = [];
+
+  public suppressBuiltInDiagnostics(languageId: string): void {
+    this.suppressed.push(languageId);
+  }
+
+  public getMonaco(): undefined {
+    return undefined;
+  }
+}
+
+/**
  * Resolves pending promise-queue microtasks and timers so the client's deferred sends run.
  * @returns Returns a promise that resolves on the next macrotask.
  */
@@ -99,6 +116,7 @@ function flush(): Promise<void> {
 describe('LspClient', () => {
   let lsp: FakeLsp;
   let diagnostics: FakeDiagnostics;
+  let monaco: FakeMonaco;
   let root: WritableSignal<DirectoryListing | null>;
 
   /**
@@ -110,6 +128,7 @@ describe('LspClient', () => {
       providers: [
         LspClient,
         { provide: Diagnostics, useValue: diagnostics },
+        { provide: Monaco, useValue: monaco },
         { provide: Workspace, useValue: { root } },
       ],
     });
@@ -119,6 +138,7 @@ describe('LspClient', () => {
   beforeEach(() => {
     lsp = new FakeLsp();
     diagnostics = new FakeDiagnostics();
+    monaco = new FakeMonaco();
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { studio: { lsp: LspApi } }).studio = { lsp };
   });
@@ -153,6 +173,40 @@ describe('LspClient', () => {
         text: 'const a = 1;',
       },
     });
+  });
+
+  it('syncDocument_afterServerStarts_suppressesBuiltInDiagnosticsForTheLanguage', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    client.syncDocument({
+      documentId: 'doc-2',
+      path: '/root/b.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    expect(monaco.suppressed).toEqual(['typescript']);
+  });
+
+  it('syncDocument_whenServerFailsToStart_doesNotSuppressBuiltInDiagnostics', async () => {
+    lsp.startResult = { success: false, error: 'no server' };
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    expect(monaco.suppressed).toEqual([]);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(0);
   });
 
   it('syncDocument_calledAgain_sendsDidChangeWithIncrementedVersion', async () => {
