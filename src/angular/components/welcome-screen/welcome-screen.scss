@@ -74,7 +74,7 @@
 .welcome__orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(2.5rem);
+  filter: blur(3.25rem);
   mix-blend-mode: screen;
   will-change: transform;
   animation-play-state: paused;
@@ -87,8 +87,8 @@
 // Two blues, two purples and two pinks, sized and seeded so they drift across the scene like a gravity-free
 // lava lamp.
 .welcome__orb--a {
-  inline-size: 34rem;
-  block-size: 34rem;
+  inline-size: 46rem;
+  block-size: 46rem;
   inset-block-start: -6rem;
   inset-inline-start: -4rem;
   background: radial-gradient(circle at center, rgba(59, 130, 246, 0.6), rgba(59, 130, 246, 0) 68%);
@@ -96,8 +96,8 @@
 }
 
 .welcome__orb--b {
-  inline-size: 30rem;
-  block-size: 30rem;
+  inline-size: 42rem;
+  block-size: 42rem;
   inset-block-end: -8rem;
   inset-inline-end: -6rem;
   background: radial-gradient(circle at center, rgba(139, 92, 246, 0.55), rgba(139, 92, 246, 0) 68%);
@@ -105,8 +105,8 @@
 }
 
 .welcome__orb--c {
-  inline-size: 26rem;
-  block-size: 26rem;
+  inline-size: 38rem;
+  block-size: 38rem;
   inset-block-start: 22%;
   inset-inline-start: 32%;
   background: radial-gradient(circle at center, rgba(96, 165, 250, 0.5), rgba(96, 165, 250, 0) 70%);
@@ -114,8 +114,8 @@
 }
 
 .welcome__orb--d {
-  inline-size: 28rem;
-  block-size: 28rem;
+  inline-size: 40rem;
+  block-size: 40rem;
   inset-block-end: 12%;
   inset-inline-start: 14%;
   background: radial-gradient(circle at center, rgba(168, 85, 247, 0.5), rgba(168, 85, 247, 0) 70%);
@@ -123,8 +123,8 @@
 }
 
 .welcome__orb--e {
-  inline-size: 24rem;
-  block-size: 24rem;
+  inline-size: 36rem;
+  block-size: 36rem;
   inset-block-start: 8%;
   inset-inline-end: 10%;
   background: radial-gradient(circle at center, rgba(236, 72, 153, 0.5), rgba(236, 72, 153, 0) 70%);
@@ -132,8 +132,8 @@
 }
 
 .welcome__orb--f {
-  inline-size: 32rem;
-  block-size: 32rem;
+  inline-size: 44rem;
+  block-size: 44rem;
   inset-block-end: -4rem;
   inset-inline-start: 38%;
   background: radial-gradient(circle at center, rgba(244, 114, 182, 0.5), rgba(244, 114, 182, 0) 70%);
