@@ -56,6 +56,46 @@ export interface LspServerSpec {
 }
 
 /**
+ * The outcome of resolving a server: the spawn specification when it is available, otherwise a
+ * human-readable reason it is not (so the renderer can explain why a server did not start), or no
+ * reason when the server is simply unknown or disabled.
+ */
+export interface LspResolution {
+  /**
+   * Gets the spawn specification, or null when the server could not be resolved.
+   */
+  readonly spec: LspServerSpec | null;
+
+  /**
+   * Gets a human-readable reason the server is unavailable, or null when there is none to surface.
+   */
+  readonly error: string | null;
+}
+
+/**
+ * Holds a resolution that produced no server and no reason to surface (unknown or disabled server).
+ */
+const NO_SERVER: LspResolution = { spec: null, error: null };
+
+/**
+ * Builds a successful resolution from a spawn specification.
+ * @param spec The spawn specification.
+ * @returns Returns the resolution.
+ */
+function resolved(spec: LspServerSpec): LspResolution {
+  return { spec, error: null };
+}
+
+/**
+ * Builds a failed resolution carrying a reason to surface to the user.
+ * @param error The human-readable reason the server is unavailable.
+ * @returns Returns the resolution.
+ */
+function unavailable(error: string): LspResolution {
+  return { spec: null, error };
+}
+
+/**
  * Resolves a Node-based language server distributed as an npm package into a spawn specification that
  * runs it through the Electron binary in Node mode (`ELECTRON_RUN_AS_NODE`). This avoids depending on
  * a `node` executable being present on the user's PATH and works the same in development and in a
@@ -84,13 +124,10 @@ export class LspServerRegistry {
   private readonly executablePath: string;
 
   /**
-   * Caches resolved npm-package specifications by server identifier, so package resolution happens
-   * once. Workspace-scoped servers (such as Java) are not cached here.
+   * Caches resolved npm-package resolutions by server identifier, so package resolution happens once.
+   * Workspace-scoped servers (such as Java) are not cached here.
    */
-  private readonly cache: Map<LspServerId, LspServerSpec | null> = new Map<
-    LspServerId,
-    LspServerSpec | null
-  >();
+  private readonly cache: Map<LspServerId, LspResolution> = new Map<LspServerId, LspResolution>();
 
   /**
    * Provisions and locates external (non-npm) servers and their runtimes.
@@ -114,71 +151,70 @@ export class LspServerRegistry {
 
   /**
    * Resolves a server identifier into a spawn specification, provisioning the server and detecting
-   * its runtime when necessary. A server the user has disabled resolves to null.
+   * its runtime when necessary. A disabled or unknown server resolves with no specification and no
+   * reason; a server that is configured but unavailable resolves with a reason to surface.
    * @param serverId The identifier of the server to resolve.
    * @param rootPath The workspace root the server is rooted at (used for per-workspace data).
-   * @returns Returns the spawn specification, or null when the server is unknown, disabled,
-   * unavailable, or could not be provisioned.
+   * @returns Returns the resolution.
    */
-  public async resolve(serverId: LspServerId, rootPath: string): Promise<LspServerSpec | null> {
+  public async resolve(serverId: LspServerId, rootPath: string): Promise<LspResolution> {
     if (this.settings.get().disabledServers.includes(serverId)) {
-      return null;
+      return NO_SERVER;
     }
     if (serverId === 'typescript') {
-      return this.resolveCached(serverId, (): LspServerSpec | null => this.buildTypescript());
+      return this.resolveCached(serverId, (): LspResolution => this.buildTypescript());
     }
     if (serverId === 'java') {
       return this.buildJava(rootPath);
     }
-    return null;
+    return NO_SERVER;
   }
 
   /**
    * Resolves a server's specification through the cache, building it on first request.
-   * @param serverId The server identifier the specification is cached under.
-   * @param build Builds the specification when it is not cached.
-   * @returns Returns the cached or freshly built specification.
+   * @param serverId The server identifier the resolution is cached under.
+   * @param build Builds the resolution when it is not cached.
+   * @returns Returns the cached or freshly built resolution.
    */
-  private resolveCached(
-    serverId: LspServerId,
-    build: () => LspServerSpec | null,
-  ): LspServerSpec | null {
-    const cached: LspServerSpec | null | undefined = this.cache.get(serverId);
+  private resolveCached(serverId: LspServerId, build: () => LspResolution): LspResolution {
+    const cached: LspResolution | undefined = this.cache.get(serverId);
     if (cached !== undefined) {
       return cached;
     }
-    const resolved: LspServerSpec | null = build();
-    this.cache.set(serverId, resolved);
-    return resolved;
+    const resolution: LspResolution = build();
+    this.cache.set(serverId, resolution);
+    return resolution;
   }
 
   /**
-   * Builds the spawn specification for the bundled TypeScript server.
-   * @returns Returns the specification, or null when the package cannot be resolved.
+   * Builds the resolution for the bundled TypeScript server.
+   * @returns Returns the resolution.
    */
-  private buildTypescript(): LspServerSpec | null {
+  private buildTypescript(): LspResolution {
     const binPath: string | null = this.resolveBin('typescript-language-server');
-    return binPath === null ? null : nodePackageServer(this.executablePath, binPath);
+    return binPath === null
+      ? unavailable('The TypeScript language server is not available.')
+      : resolved(nodePackageServer(this.executablePath, binPath));
   }
 
   /**
-   * Builds the spawn specification for the Eclipse JDT Language Server, detecting a Java runtime and
+   * Builds the resolution for the Eclipse JDT Language Server, detecting a Java runtime and
    * downloading the server on first use.
    * @param rootPath The workspace root the server is rooted at.
-   * @returns Returns the specification, or null when Java is unavailable or the server could not be
-   * provisioned.
+   * @returns Returns the resolution, with a reason when Java is unavailable or the server could not
+   * be provisioned.
    */
-  private async buildJava(rootPath: string): Promise<LspServerSpec | null> {
+  private async buildJava(rootPath: string): Promise<LspResolution> {
     const java: string | null = await this.provisioner.detectJava(this.settings.get().javaPath);
     if (java === null) {
-      return null;
+      return unavailable('Java 21+ runtime not found — set its path in Settings or install a JDK.');
     }
     const install: JdtlsInstall | null = await this.provisioner.ensureJdtls();
     if (install === null) {
-      return null;
+      return unavailable('The Java language server could not be downloaded.');
     }
     const dataDir: string = await this.provisioner.dataDirectory('jdtls', rootPath);
-    return {
+    return resolved({
       command: java,
       args: [
         ...JDTLS_JVM_ARGS,
@@ -189,7 +225,7 @@ export class LspServerRegistry {
         '-data',
         dataDir,
       ],
-    };
+    });
   }
 
   /**

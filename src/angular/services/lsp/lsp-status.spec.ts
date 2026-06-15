@@ -50,6 +50,12 @@ describe('LspStatus', () => {
     expect(status.indicator()?.state).toBe('unavailable');
   });
 
+  it('indicator_whenUnavailableWithReason_showsTheReason', () => {
+    status.report('/root::java', 'java', 'unavailable', 'Java 21+ runtime not found');
+
+    expect(status.indicator()?.label).toBe('Java 21+ runtime not found');
+  });
+
   it('remove_clearsTheContribution', () => {
     status.report('/root::java', 'java', 'ready');
     status.remove('/root::java');

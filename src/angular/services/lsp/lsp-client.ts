@@ -470,7 +470,12 @@ export class LspClient implements OnDestroy {
       pending = this.api
         .start({ sessionId, serverId, rootPath: root })
         .then((result: LspStartResult): boolean => {
-          this.status.report(sessionId, serverId, result.success ? 'ready' : 'unavailable');
+          this.status.report(
+            sessionId,
+            serverId,
+            result.success ? 'ready' : 'unavailable',
+            result.error,
+          );
           return result.success;
         });
       this.sessions.set(sessionId, pending);
