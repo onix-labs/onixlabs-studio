@@ -109,4 +109,30 @@ export class LanguageServersSettings {
   protected onJavaPathChange(javaPath: string): void {
     void this.lspSettings.setJavaPath(javaPath);
   }
+
+  /**
+   * Sets the custom TypeScript server path.
+   * @param serverPath The TypeScript server entry point, or an empty string to use the bundled one.
+   */
+  protected onTypescriptServerPathChange(serverPath: string): void {
+    void this.lspSettings.setTypescriptServerPath(serverPath);
+  }
+
+  /**
+   * Gets a server's extra arguments as a space-separated string.
+   * @param serverId The server identifier.
+   * @returns Returns the arguments joined by spaces.
+   */
+  protected serverArgs(serverId: string): string {
+    return this.lspSettings.serverArgsText(serverId);
+  }
+
+  /**
+   * Sets a server's extra command-line arguments.
+   * @param serverId The server identifier.
+   * @param argsText The arguments as a whitespace-separated string.
+   */
+  protected onServerArgsChange(serverId: string, argsText: string): void {
+    void this.lspSettings.setServerArgs(serverId, argsText);
+  }
 }

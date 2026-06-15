@@ -4,7 +4,12 @@ import { LspApi, LspSettings as LspSettingsData } from '../../../shared/lsp-type
 /**
  * Holds the settings used before any have been loaded from the main process.
  */
-const DEFAULT_SETTINGS: LspSettingsData = { disabledServers: [], javaPath: null };
+const DEFAULT_SETTINGS: LspSettingsData = {
+  disabledServers: [],
+  javaPath: null,
+  typescriptServerPath: null,
+  serverArgs: {},
+};
 
 /**
  * Renderer-side wrapper around the language-server settings owned by the main process. It exposes the
@@ -86,6 +91,47 @@ export class LspSettings {
   public async setJavaPath(javaPath: string): Promise<void> {
     const trimmed: string = javaPath.trim();
     await this.store({ ...this.current(), javaPath: trimmed === '' ? null : trimmed });
+  }
+
+  /**
+   * Sets the custom TypeScript server path, persisting the change through the main process. An empty
+   * value clears the override (use the bundled server).
+   * @param serverPath The TypeScript server entry point, or an empty string to use the bundled one.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setTypescriptServerPath(serverPath: string): Promise<void> {
+    const trimmed: string = serverPath.trim();
+    await this.store({ ...this.current(), typescriptServerPath: trimmed === '' ? null : trimmed });
+  }
+
+  /**
+   * Gets a server's extra command-line arguments as the user typed them (space-separated).
+   * @param serverId The server identifier whose arguments are read.
+   * @returns Returns the arguments joined by spaces, or an empty string when there are none.
+   */
+  public serverArgsText(serverId: string): string {
+    return (this.current().serverArgs[serverId] ?? []).join(' ');
+  }
+
+  /**
+   * Sets a server's extra command-line arguments, persisting the change through the main process. The
+   * text is split on whitespace; an empty value clears the override.
+   * @param serverId The server identifier whose arguments are set.
+   * @param argsText The arguments as a whitespace-separated string.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setServerArgs(serverId: string, argsText: string): Promise<void> {
+    const args: string[] = argsText
+      .trim()
+      .split(/\s+/)
+      .filter((arg: string): boolean => arg.length > 0);
+    const serverArgs: Record<string, readonly string[]> = { ...this.current().serverArgs };
+    if (args.length === 0) {
+      delete serverArgs[serverId];
+    } else {
+      serverArgs[serverId] = args;
+    }
+    await this.store({ ...this.current(), serverArgs });
   }
 
   /**
