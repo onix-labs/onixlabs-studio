@@ -275,4 +275,24 @@ export enum IpcChannel {
    * Stores the user's language-server settings.
    */
   LspSetSettings = 'lsp:set-settings',
+
+  /**
+   * Runs a task as a child process whose output streams back to the renderer.
+   */
+  TaskRun = 'tasks:run',
+
+  /**
+   * Cancels a running task, terminating its process.
+   */
+  TaskCancel = 'tasks:cancel',
+
+  /**
+   * Carries a chunk of output from a running task to the renderer.
+   */
+  TaskOutput = 'tasks:output',
+
+  /**
+   * Notifies the renderer that a task's process has exited.
+   */
+  TaskExit = 'tasks:exit',
 }

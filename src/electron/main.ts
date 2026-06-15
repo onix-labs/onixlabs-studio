@@ -20,6 +20,7 @@ import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { SecurityManager } from './security-manager';
+import { TaskRunner } from './task-runner';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -98,6 +99,11 @@ class Program {
    * Writes editor content to temporary files so the renderer can execute it.
    */
   private readonly codeRunner: CodeRunner = new CodeRunner();
+
+  /**
+   * Runs tasks as child processes and streams their output to the renderer.
+   */
+  private readonly taskRunner: TaskRunner = new TaskRunner((): BrowserWindow | null => this.window);
 
   /**
    * Watches open documents on disk and notifies the renderer when they change.
@@ -255,6 +261,7 @@ class Program {
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();
+    this.taskRunner.register();
     this.workspaceManager.register();
     this.fileWatcher.register();
     this.aiManager.register();
@@ -353,6 +360,7 @@ class Program {
   private disposeAll(): void {
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
+    this.taskRunner.disposeAll();
     this.fileWatcher.disposeAll();
     this.aiManager.disposeAll();
     this.lspManager.disposeAll();

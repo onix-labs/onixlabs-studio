@@ -18,6 +18,7 @@ import type {
   LspStartResult,
 } from '../shared/lsp-types';
 import type { ImageSourcePolicy } from '../shared/security-types';
+import type { TaskOutputStream, TaskRunRequest, TaskRunResult } from '../shared/task-types';
 import type {
   DirectoryListing,
   FileInfo,
@@ -139,6 +140,50 @@ const studioApi: StudioApi = {
         extension,
         content,
       ) as Promise<TempFileResult>,
+  },
+  tasks: {
+    run: (request: TaskRunRequest): Promise<TaskRunResult> =>
+      ipcRenderer.invoke(IpcChannel.TaskRun, request) as Promise<TaskRunResult>,
+    cancel: (runId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannel.TaskCancel, runId) as Promise<boolean>,
+    onOutput: (
+      listener: (runId: string, chunk: string, stream: TaskOutputStream) => void,
+    ): (() => void) => {
+      const handler: (
+        event: IpcRendererEvent,
+        runId: string,
+        chunk: string,
+        stream: TaskOutputStream,
+      ) => void = (
+        _event: IpcRendererEvent,
+        runId: string,
+        chunk: string,
+        stream: TaskOutputStream,
+      ): void => listener(runId, chunk, stream);
+      ipcRenderer.on(IpcChannel.TaskOutput, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.TaskOutput, handler);
+      };
+    },
+    onExit: (
+      listener: (runId: string, code: number | null, signal: string | null) => void,
+    ): (() => void) => {
+      const handler: (
+        event: IpcRendererEvent,
+        runId: string,
+        code: number | null,
+        signal: string | null,
+      ) => void = (
+        _event: IpcRendererEvent,
+        runId: string,
+        code: number | null,
+        signal: string | null,
+      ): void => listener(runId, code, signal);
+      ipcRenderer.on(IpcChannel.TaskExit, handler);
+      return (): void => {
+        ipcRenderer.removeListener(IpcChannel.TaskExit, handler);
+      };
+    },
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>
