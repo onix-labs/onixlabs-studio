@@ -156,6 +156,7 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   javascript: 'typescript',
   java: 'java',
   python: 'python',
+  csharp: 'csharp',
 };
 
 /**

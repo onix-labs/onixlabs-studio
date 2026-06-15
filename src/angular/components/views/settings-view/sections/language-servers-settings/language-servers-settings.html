@@ -44,6 +44,18 @@
   />
 </app-setting-row>
 
+<app-setting-row
+  label=".NET SDK"
+  description="Path to the dotnet executable used to install and run the C# language server. Leave empty to detect it from DOTNET_ROOT or the PATH."
+>
+  <app-text-field
+    [value]="settings().dotnetPath ?? ''"
+    placeholder="Auto-detect"
+    [disabled]="!isAvailable"
+    (valueChange)="onDotnetPathChange($event)"
+  />
+</app-setting-row>
+
 <p class="language-servers-hint">
   Changes apply to language servers started afterwards. Reopen a file or restart Studio to apply
   them.

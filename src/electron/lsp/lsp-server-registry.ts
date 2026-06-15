@@ -156,6 +156,9 @@ export class LspServerRegistry {
     if (serverId === 'java') {
       return this.buildJava(rootPath);
     }
+    if (serverId === 'csharp') {
+      return this.buildCsharp();
+    }
     return NO_SERVER;
   }
 
@@ -219,6 +222,32 @@ export class LspServerRegistry {
         ],
       }),
     );
+  }
+
+  /**
+   * Builds the resolution for the C# language server (`csharp-ls`), detecting a .NET SDK and
+   * installing the server as a .NET tool on first use. The server discovers the project from the
+   * workspace root the manager spawns it in.
+   * @returns Returns the resolution, with a reason when .NET is unavailable or the server could not be
+   * installed.
+   */
+  private async buildCsharp(): Promise<LspResolution> {
+    const dotnet: string | null = await this.provisioner.detectDotnet(
+      this.settings.get().dotnetPath,
+    );
+    if (dotnet === null) {
+      return unavailable('.NET SDK not found — set its path in Settings or install the .NET SDK.');
+    }
+    const server: string | null = await this.provisioner.ensureCsharpLs(dotnet);
+    if (server === null) {
+      return unavailable('The C# language server (csharp-ls) could not be installed.');
+    }
+    const spec: LspServerSpec = { command: server, args: [] };
+    if (path.isAbsolute(dotnet)) {
+      // Help the server's apphost find the runtime when .NET is not on the spawned PATH.
+      return resolved({ ...spec, env: { DOTNET_ROOT: path.dirname(dotnet) } });
+    }
+    return resolved(spec);
   }
 
   /**

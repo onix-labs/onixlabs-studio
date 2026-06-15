@@ -7,6 +7,7 @@ import { LspApi, LspSettings as LspSettingsData } from '../../../shared/lsp-type
 const DEFAULT_SETTINGS: LspSettingsData = {
   disabledServers: [],
   javaPath: null,
+  dotnetPath: null,
   typescriptServerPath: null,
   serverArgs: {},
 };
@@ -91,6 +92,17 @@ export class LspSettings {
   public async setJavaPath(javaPath: string): Promise<void> {
     const trimmed: string = javaPath.trim();
     await this.store({ ...this.current(), javaPath: trimmed === '' ? null : trimmed });
+  }
+
+  /**
+   * Sets the .NET runtime override, persisting the change through the main process. An empty value
+   * clears the override (auto-detect).
+   * @param dotnetPath The .NET executable path, or an empty string to auto-detect.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setDotnetPath(dotnetPath: string): Promise<void> {
+    const trimmed: string = dotnetPath.trim();
+    await this.store({ ...this.current(), dotnetPath: trimmed === '' ? null : trimmed });
   }
 
   /**
