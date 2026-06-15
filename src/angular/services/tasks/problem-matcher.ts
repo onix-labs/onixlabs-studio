@@ -130,9 +130,41 @@ export const GCC_MATCHER: ProblemMatcher = {
 };
 
 /**
- * The matchers applied to task output by default.
+ * Matches the `file:line: severity: message` format emitted by `javac` (and so by Gradle/Maven Java
+ * builds), which reports a line but no column.
  */
-export const BUILT_IN_MATCHERS: readonly ProblemMatcher[] = [COMPILER_MATCHER, GCC_MATCHER];
+const JAVAC_PATTERN: RegExp = /^(.+?):(\d+):\s+(error|warning):\s+(.+)$/;
+
+/**
+ * A matcher for `javac`-style diagnostics.
+ */
+export const JAVAC_MATCHER: ProblemMatcher = {
+  id: 'javac',
+  match(line: string): MatchedProblem | null {
+    const result: RegExpExecArray | null = JAVAC_PATTERN.exec(line);
+    if (result === null) {
+      return null;
+    }
+    return {
+      file: result[1],
+      line: Number(result[2]),
+      column: 1,
+      severity: result[3] === 'warning' ? 'warning' : 'error',
+      message: result[4],
+      source: 'java',
+    };
+  },
+};
+
+/**
+ * The matchers applied to task output by default. Order matters: more specific patterns (those
+ * requiring a column) are tried before less specific ones so a line is attributed to the right tool.
+ */
+export const BUILT_IN_MATCHERS: readonly ProblemMatcher[] = [
+  COMPILER_MATCHER,
+  GCC_MATCHER,
+  JAVAC_MATCHER,
+];
 
 /**
  * Removes ANSI escape sequences from a line of output (built without a literal control character so it

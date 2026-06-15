@@ -1,4 +1,10 @@
-import { COMPILER_MATCHER, GCC_MATCHER, MatchedProblem, parseProblems } from './problem-matcher';
+import {
+  COMPILER_MATCHER,
+  GCC_MATCHER,
+  JAVAC_MATCHER,
+  MatchedProblem,
+  parseProblems,
+} from './problem-matcher';
 
 describe('problem-matcher', () => {
   it('compiler_parsesTypeScriptDiagnostics', () => {
@@ -45,6 +51,29 @@ describe('problem-matcher', () => {
 
   it('gcc_mapsNotesToInfo', () => {
     expect(GCC_MATCHER.match('main.c:3:7: note: expanded from macro')?.severity).toBe('info');
+  });
+
+  it('javac_parsesColumnlessDiagnostics', () => {
+    const problem: MatchedProblem | null = JAVAC_MATCHER.match(
+      'src/main/java/App.java:12: error: cannot find symbol',
+    );
+
+    expect(problem).toEqual({
+      file: 'src/main/java/App.java',
+      line: 12,
+      column: 1,
+      severity: 'error',
+      message: 'cannot find symbol',
+      source: 'java',
+    });
+  });
+
+  it('parseProblems_attributesColumnedLinesToGccNotJavac', () => {
+    const problems: MatchedProblem[] = parseProblems('main.c:3:7: error: bad');
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0].source).toBe('gcc');
+    expect(problems[0].column).toBe(7);
   });
 
   it('parseProblems_stripsAnsiDeduplicatesAndIgnoresNonMatchingLines', () => {

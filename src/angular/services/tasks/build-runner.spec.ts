@@ -139,6 +139,28 @@ describe('BuildRunner', () => {
     expect(ids).toContain('npm:test');
   });
 
+  it('discover_findsGradleWrapperAndMakeTasks', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/g',
+      name: 'g',
+      entries: [
+        { name: 'build.gradle.kts', path: '/g/build.gradle.kts', type: 'file' },
+        { name: 'gradlew', path: '/g/gradlew', type: 'file' },
+        { name: 'Makefile', path: '/g/Makefile', type: 'file' },
+      ],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    const tasks: readonly BuildTask[] = runner.tasks();
+    const gradle: BuildTask | undefined = tasks.find(
+      (t: BuildTask): boolean => t.id === 'gradle:build',
+    );
+    expect(gradle?.command).toBe('./gradlew build');
+    expect(tasks.some((t: BuildTask): boolean => t.id === 'make:build')).toBe(true);
+  });
+
   it('run_streamsOutputAndPublishesMatchedProblems', async () => {
     const runner: BuildRunner = await discover();
     const output: Output = TestBed.inject(Output);

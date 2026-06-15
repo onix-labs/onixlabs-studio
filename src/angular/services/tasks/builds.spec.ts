@@ -63,7 +63,7 @@ describe('Builds', () => {
     expect(handler.runCalls).toEqual(['build']);
   });
 
-  it('start_runsTheFirstRunGroupTask', () => {
+  it('start_withoutSelection_runsTheFirstRunGroupTask', () => {
     const builds: Builds = TestBed.inject(Builds);
     const handler: FakeHandler = new FakeHandler();
     handler.tasksSignal.set([task({ id: 'serve', group: 'run' })]);
@@ -71,6 +71,35 @@ describe('Builds', () => {
     builds.start();
 
     expect(handler.runCalls).toEqual(['serve']);
+    expect(builds.startLabel()).toBe('l');
+  });
+
+  it('start_afterSelect_runsTheSelectedTask', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    const handler: FakeHandler = new FakeHandler();
+    handler.tasksSignal.set([
+      task({ id: 'serve', label: 'serve', group: 'run' }),
+      task({ id: 'test', label: 'test', group: 'test' }),
+    ]);
+    builds.register(handler);
+    builds.select('test');
+
+    expect(builds.startLabel()).toBe('test');
+    builds.start();
+
+    expect(handler.runCalls).toEqual(['test']);
+  });
+
+  it('startTask_fallsBackToBuildWhenNoRunTask', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    const handler: FakeHandler = new FakeHandler();
+    handler.tasksSignal.set([task({ id: 'b', group: 'build' })]);
+    builds.register(handler);
+
+    expect(builds.canStart()).toBe(true);
+    builds.start();
+
+    expect(handler.runCalls).toEqual(['b']);
   });
 
   it('unregister_clearsTheHandlerWhenItIsCurrent', () => {
