@@ -126,6 +126,18 @@ interface TrackedDocument {
   readonly serverId: string;
 
   /**
+   * Holds the root the document's server session is rooted at: the workspace root for a document
+   * inside the open folder, or the document's own parent directory for a standalone file.
+   */
+  readonly rootPath: string;
+
+  /**
+   * Holds whether the document is a standalone file (rooted at its own directory, with no open
+   * workspace), so its session start can vouch for that directory to the main process.
+   */
+  readonly standalone: boolean;
+
+  /**
    * Holds the document's Monaco language identifier.
    */
   languageId: string;
@@ -167,14 +179,16 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
 const PROVIDER_ID: string = 'lsp';
 
 /**
- * Drives language-server document synchronisation and diagnostics for one workspace. It lazily starts
- * a server (rooted at the workspace) the first time a document of a supported language opens, mirrors
- * each open document's text to that server, and feeds the server's `publishDiagnostics` into the
- * workspace {@link Diagnostics} aggregate as an additional provider alongside Monaco's markers.
+ * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
+ * first time a document of a supported language opens, mirrors each open document's text to that
+ * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
+ * additional provider alongside Monaco's markers.
  *
- * The client is provided per workspace (each directory tab), so its sessions and diagnostics are
- * isolated. The root instance has no open folder and degrades to a no-op, as does any instance running
- * outside Electron where the language-server bridge is absent.
+ * The client is provided per workspace (each directory tab), where its documents are rooted at the
+ * open folder. The root instance (a standalone code tab opened without a folder) instead roots each
+ * document's server at the file's own parent directory, so a single opened file still gets diagnostics
+ * and editor features (surfaced as editor markers, since a standalone tab has no Problems panel).
+ * Outside Electron the language-server bridge is absent and the client is a no-op.
  */
 @Service()
 export class LspClient implements OnDestroy {
@@ -297,15 +311,11 @@ export class LspClient implements OnDestroy {
    * @returns Returns the document reference, or null.
    */
   private resolveDocument(path: string): LspDocumentRef | null {
-    const root: string | null = this.rootPath();
-    if (root === null) {
-      return null;
-    }
     const tracked: TrackedDocument | undefined = this.tracked.get(this.normalise(path));
     if (!tracked?.opened) {
       return null;
     }
-    return { sessionId: `${root}::${tracked.serverId}`, uri: tracked.uri };
+    return { sessionId: `${tracked.rootPath}::${tracked.serverId}`, uri: tracked.uri };
   }
 
   /**
@@ -315,16 +325,15 @@ export class LspClient implements OnDestroy {
    * @param state The document's current state.
    */
   public syncDocument(state: LspDocumentState): void {
-    const root: string | null = this.rootPath();
-    if (this.api === undefined || root === null || state.path === null) {
+    if (this.api === undefined || state.path === null) {
       return;
     }
     const serverId: string | undefined = LANGUAGE_SERVERS[state.languageId];
-    if (
-      serverId === undefined ||
-      this.lspSettings.isDisabled(serverId) ||
-      !this.isWithin(state.path, root)
-    ) {
+    if (serverId === undefined || this.lspSettings.isDisabled(serverId)) {
+      return;
+    }
+    const resolved: { root: string; standalone: boolean } | null = this.documentRoot(state.path);
+    if (resolved === null) {
       return;
     }
     const key: string = this.normalise(state.path);
@@ -334,6 +343,8 @@ export class LspClient implements OnDestroy {
         documentId: state.documentId,
         uri: this.pathToUri(state.path),
         serverId,
+        rootPath: resolved.root,
+        standalone: resolved.standalone,
         languageId: state.languageId,
         version: 1,
         opened: false,
@@ -397,7 +408,7 @@ export class LspClient implements OnDestroy {
    * @returns Returns a promise that resolves once the open notification has been sent.
    */
   private async open(tracked: TrackedDocument, content: string): Promise<void> {
-    const sessionId: string | null = await this.ensureSession(tracked.serverId);
+    const sessionId: string | null = await this.ensureSession(tracked);
     if (sessionId === null || this.api === undefined) {
       return;
     }
@@ -427,7 +438,7 @@ export class LspClient implements OnDestroy {
       await this.open(tracked, content);
       return;
     }
-    const sessionId: string | null = await this.ensureSession(tracked.serverId);
+    const sessionId: string | null = await this.ensureSession(tracked);
     if (sessionId === null || this.api === undefined) {
       return;
     }
@@ -447,7 +458,7 @@ export class LspClient implements OnDestroy {
     if (!tracked.opened || this.api === undefined) {
       return;
     }
-    const sessionId: string | null = await this.ensureSession(tracked.serverId);
+    const sessionId: string | null = await this.ensureSession(tracked);
     if (sessionId === null) {
       return;
     }
@@ -457,22 +468,28 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Ensures the server for a given id is started for this workspace, starting it at most once.
-   * @param serverId The identifier of the server to start.
-   * @returns Returns the session id when the server is running, or null when it failed to start or the
-   * workspace has since closed.
+   * Ensures the server for a tracked document is started, at most once per (root, server). The session
+   * is rooted at the document's {@link TrackedDocument.rootPath}; for a standalone file the request
+   * also names the file so the main process can vouch for its directory.
+   * @param tracked The document whose server is started.
+   * @returns Returns the session id when the server is running, or null when it failed to start.
    */
-  private async ensureSession(serverId: string): Promise<string | null> {
-    const root: string | null = this.rootPath();
-    if (this.api === undefined || root === null) {
+  private async ensureSession(tracked: TrackedDocument): Promise<string | null> {
+    if (this.api === undefined) {
       return null;
     }
-    const sessionId: string = `${root}::${serverId}`;
+    const serverId: string = tracked.serverId;
+    const sessionId: string = `${tracked.rootPath}::${serverId}`;
     let pending: Promise<boolean> | undefined = this.sessions.get(sessionId);
     if (pending === undefined) {
       this.status.report(sessionId, serverId, 'starting');
       pending = this.api
-        .start({ sessionId, serverId, rootPath: root })
+        .start({
+          sessionId,
+          serverId,
+          rootPath: tracked.rootPath,
+          standaloneFile: tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
+        })
         .then((result: LspStartResult): boolean => {
           this.status.report(
             sessionId,
@@ -597,7 +614,7 @@ export class LspClient implements OnDestroy {
     }
     this.status.remove(exit.sessionId);
     for (const tracked of this.tracked.values()) {
-      if (`${this.rootPath() ?? ''}::${tracked.serverId}` === exit.sessionId) {
+      if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;
       }
     }
@@ -665,12 +682,33 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Gets the workspace's open root path, or null when no folder is open.
-   * @returns Returns the absolute root path, or null.
+   * Resolves the root a document's server session is rooted at. A document inside the open workspace
+   * folder is rooted at that folder; when no folder is open, the document is treated as standalone and
+   * rooted at its own parent directory. A document outside the open folder is not handled here (it
+   * belongs to no workspace this client owns).
+   * @param filePath The document's absolute path.
+   * @returns Returns the root and whether it is standalone, or null when the document is not handled.
    */
-  private rootPath(): string | null {
+  private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
     const listing: DirectoryListing | null = this.workspace.root();
-    return listing?.path ?? null;
+    if (listing !== null) {
+      return this.isWithin(filePath, listing.path)
+        ? { root: listing.path, standalone: false }
+        : null;
+    }
+    return { root: this.parentDir(filePath), standalone: true };
+  }
+
+  /**
+   * Gets the parent directory of a path, normalised to forward slashes (the main process resolves it
+   * back to a platform path, so the slash form is portable).
+   * @param filePath The path whose parent directory is taken.
+   * @returns Returns the parent directory.
+   */
+  private parentDir(filePath: string): string {
+    const slashed: string = filePath.replace(/\\/g, '/');
+    const index: number = slashed.lastIndexOf('/');
+    return index <= 0 ? slashed : slashed.slice(0, index);
   }
 
   /**

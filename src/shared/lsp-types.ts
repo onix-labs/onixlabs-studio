@@ -25,10 +25,19 @@ export interface LspStartRequest {
   readonly serverId: LspServerId;
 
   /**
-   * Gets the absolute workspace root the server is rooted at. It must be an open workspace root; the
-   * main process rejects any other path.
+   * Gets the absolute workspace root the server is rooted at. It must be an open workspace root, or —
+   * for a standalone file (see {@link standaloneFile}) — the directory containing that file; the main
+   * process rejects any other path.
    */
   readonly rootPath: string;
+
+  /**
+   * Gets the absolute path of the standalone file this session is started for, when the session is not
+   * rooted at an open workspace. The main process accepts {@link rootPath} only when it is the
+   * directory of this real, existing file, so a server can be rooted at a single opened file's folder
+   * without opening a workspace. Undefined for workspace-rooted sessions.
+   */
+  readonly standaloneFile?: string;
 }
 
 /**
