@@ -70,18 +70,18 @@ export class ProblemsPanel {
   }
 
   /**
-   * Reveals a diagnostic in the editor: activates its document in the well, then jumps the editor to
-   * the reported line and column. Diagnostics not tied to an open document are not revealable.
+   * Reveals a diagnostic in the editor: opens its file (so a build problem against a file that is not
+   * yet open still opens it), then jumps the editor to the reported line and column when the document
+   * is known. A diagnostic with neither a path nor an open document cannot be revealed.
    * @param diagnostic The diagnostic to reveal.
    */
   public reveal(diagnostic: Diagnostic): void {
-    if (diagnostic.documentId === null) {
-      return;
-    }
     if (diagnostic.path !== null) {
       void this.fileOpener.openPath(diagnostic.path);
     }
-    this.editors.requestReveal(diagnostic.documentId, diagnostic.line, diagnostic.column);
+    if (diagnostic.documentId !== null) {
+      this.editors.requestReveal(diagnostic.documentId, diagnostic.line, diagnostic.column);
+    }
   }
 
   /**

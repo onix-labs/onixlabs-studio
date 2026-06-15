@@ -27,13 +27,24 @@
 </app-ribbon-group>
 
 <app-ribbon-group title="Solution">
-  <app-ribbon-button [icon]="Icon.BUILD" label="Build" />
+  <app-ribbon-button
+    [icon]="Icon.BUILD"
+    label="Build"
+    [disabled]="!canBuild() || running()"
+    (action)="onBuild()"
+  />
   <app-ribbon-button [icon]="Icon.REBUILD" label="Rebuild" />
   <app-ribbon-button [icon]="Icon.CLEAN" label="Clean" />
 </app-ribbon-group>
 
 <app-ribbon-group title="Run">
-  <app-ribbon-split-button [icon]="Icon.PLAY" label="Start" menuLabel="Debug" />
+  <app-ribbon-split-button
+    [icon]="Icon.PLAY"
+    label="Start"
+    menuLabel="Debug"
+    [disabled]="!canRun() || running()"
+    (action)="onStart()"
+  />
 </app-ribbon-group>
 
 <app-ribbon-group title="Target">

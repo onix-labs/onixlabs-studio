@@ -23,6 +23,8 @@ import { Documents } from '../../../services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '../../../services/lsp/lsp-client';
 import { Output } from '../../../services/output/output';
+import { BuildRunner } from '../../../services/tasks/build-runner';
+import { Builds } from '../../../services/tasks/builds';
 import { Workspace } from '../../../services/workspace/workspace';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { DockContainer } from '../../dock/dock-container/dock-container';
@@ -45,6 +47,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     Documents,
     Output,
     Diagnostics,
+    BuildRunner,
     LspClient,
     FileOpener,
     DockState,
@@ -93,6 +96,17 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
 
   /**
+   * Holds this tab's scoped build runner, registered as the active build handler while the tab is
+   * active so the root ribbon's build actions reach this workspace.
+   */
+  private readonly buildRunner: BuildRunner = inject(BuildRunner);
+
+  /**
+   * Holds the root build seam this tab registers its runner with while active.
+   */
+  private readonly builds: Builds = inject(Builds);
+
+  /**
    * Initializes a new instance of the {@link DirectoryView} class, wiring the document cleanup that
    * releases a well document once its dock panel has actually been closed (a panel that is merely
    * split or moved stays in the layout, so its document is kept). A removed document's docked
@@ -105,6 +119,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       );
       for (const id of this.documents.removeMissing(present)) {
         this.codeTerminals.remove(id);
+      }
+    });
+
+    effect((): void => {
+      if (this.isActive()) {
+        this.builds.register(this.buildRunner);
+      } else {
+        this.builds.unregister(this.buildRunner);
       }
     });
   }
@@ -125,6 +147,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Closes the workspace folder when the tab is torn down, releasing its root in the main process.
    */
   public ngOnDestroy(): void {
+    this.builds.unregister(this.buildRunner);
     void this.workspace.closeFolder();
   }
 }
