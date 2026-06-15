@@ -1,6 +1,11 @@
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { LspApi } from '../../../shared/lsp-types';
+import {
+  LspApi,
+  LspSemanticTokensLegend,
+  SEMANTIC_TOKEN_MODIFIERS,
+  SEMANTIC_TOKEN_TYPES,
+} from '../../../shared/lsp-types';
 import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 
@@ -18,6 +23,11 @@ export interface LspDocumentRef {
    * Gets the document's `file:` URI.
    */
   readonly uri: string;
+
+  /**
+   * Gets the server's semantic token legend, or null when the server does not provide semantic tokens.
+   */
+  readonly semanticLegend?: LspSemanticTokensLegend | null;
 }
 
 /**
@@ -115,6 +125,27 @@ const FEATURE_LANGUAGES: readonly string[] = [
 const TRIGGER_CHARACTERS: readonly string[] = ['.'];
 
 /**
+ * The fixed semantic token legend the Monaco providers declare. Every server's own legend is mapped
+ * onto this one by name, so the editor theme colours each language consistently.
+ */
+const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
+  tokenTypes: [...SEMANTIC_TOKEN_TYPES],
+  tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
+};
+
+/**
+ * Maps a server's token-type name (including common spellings that differ from the standard set) to
+ * the standard type it is coloured as. A type with no entry and no standard name is dropped (so its
+ * range simply keeps its grammar colour).
+ */
+const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
+  field: 'property',
+  constant: 'variable',
+  regex: 'regexp',
+  label: 'variable',
+};
+
+/**
  * Registers Monaco language features (completion, hover, go-to-definition, references) backed by the
  * application's language servers. Monaco's providers are global per language, so this root service
  * owns them and routes each request to the workspace whose client owns the model — clients register a
@@ -150,6 +181,13 @@ export class LspFeatures {
   private registered: boolean = false;
 
   /**
+   * Fires to ask Monaco to re-request semantic tokens. Monaco requests them when a document first
+   * opens — before its language server has started — and caches the empty result; firing this once the
+   * server is ready makes it ask again so the tokens actually paint.
+   */
+  private semanticTokensChanged: MonacoApi.Emitter<void> | null = null;
+
+  /**
    * Initializes the service, registering the Monaco providers once Monaco has loaded.
    */
   public constructor() {
@@ -180,6 +218,7 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
+    this.semanticTokensChanged = new monaco.Emitter<void>();
     for (const language of FEATURE_LANGUAGES) {
       monaco.languages.registerCompletionItemProvider(language, {
         triggerCharacters: [...TRIGGER_CHARACTERS],
@@ -212,7 +251,124 @@ export class LspFeatures {
             context: { includeDeclaration: true },
           }),
       });
+      monaco.languages.registerDocumentSemanticTokensProvider(language, {
+        onDidChange: this.semanticTokensChanged.event,
+        getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
+        provideDocumentSemanticTokens: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.SemanticTokens | undefined> =>
+          this.provideSemanticTokens(model),
+        releaseDocumentSemanticTokens: (): void => undefined,
+      });
     }
+  }
+
+  /**
+   * Asks Monaco to re-request semantic tokens for every open model. Called when a language server
+   * becomes ready, so a document opened before its server started gets coloured without an edit.
+   */
+  public refreshSemanticTokens(): void {
+    this.semanticTokensChanged?.fire();
+  }
+
+  /**
+   * Handles a document semantic-tokens request, fetching the server's tokens and mapping its legend
+   * onto the fixed Monaco legend so types, members, and parameters are coloured.
+   * @param model The model the tokens are requested for.
+   * @returns Returns the semantic tokens, or undefined when no server owns the model or it provides
+   * none.
+   */
+  private async provideSemanticTokens(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.api === undefined) {
+      return undefined;
+    }
+    const legend: LspSemanticTokensLegend | null | undefined = ref.semanticLegend;
+    if (legend === undefined || legend === null) {
+      return undefined;
+    }
+    let result: unknown;
+    try {
+      result = await this.api.request(ref.sessionId, 'textDocument/semanticTokens/full', {
+        textDocument: { uri: ref.uri },
+      });
+    } catch {
+      return undefined;
+    }
+    const data: unknown = (result as { data?: unknown } | null)?.data;
+    if (!Array.isArray(data)) {
+      return undefined;
+    }
+    return { data: this.remapSemanticTokens(data as number[], legend) };
+  }
+
+  /**
+   * Re-bases a server's packed semantic tokens onto the fixed legend: it decodes each token to an
+   * absolute position, drops tokens whose type has no standard colour, remaps the remaining token
+   * types and modifiers by name, and re-encodes the result as Monaco's delta-packed array.
+   * @param data The server's packed token data (groups of five integers).
+   * @param legend The server's legend the data indexes into.
+   * @returns Returns the remapped, delta-packed token data.
+   */
+  private remapSemanticTokens(data: number[], legend: LspSemanticTokensLegend): Uint32Array {
+    const out: number[] = [];
+    let line: number = 0;
+    let char: number = 0;
+    let prevLine: number = 0;
+    let prevChar: number = 0;
+    for (let i: number = 0; i + 4 < data.length; i += 5) {
+      const deltaLine: number = data[i];
+      line += deltaLine;
+      char = deltaLine === 0 ? char + data[i + 1] : data[i + 1];
+      const type: number | undefined = this.fixedTypeIndex(legend.tokenTypes[data[i + 3]] ?? '');
+      if (type === undefined) {
+        continue;
+      }
+      const modifiers: number = this.remapModifiers(data[i + 4], legend);
+      const emitLine: number = line - prevLine;
+      const emitChar: number = emitLine === 0 ? char - prevChar : char;
+      out.push(emitLine, emitChar, data[i + 2], type, modifiers);
+      prevLine = line;
+      prevChar = char;
+    }
+    return new Uint32Array(out);
+  }
+
+  /**
+   * Resolves a server token-type name to its index in the fixed legend, applying known aliases.
+   * @param name The server's token-type name.
+   * @returns Returns the fixed-legend index, or undefined when the type has no standard colour.
+   */
+  private fixedTypeIndex(name: string): number | undefined {
+    const canonical: string = TOKEN_TYPE_ALIASES[name] ?? name;
+    const index: number = SEMANTIC_TOKEN_TYPES.indexOf(canonical);
+    return index >= 0 ? index : undefined;
+  }
+
+  /**
+   * Maps a server's token-modifier bitmask onto the fixed legend's modifier bits, dropping modifiers
+   * the fixed legend does not define.
+   * @param mask The server's modifier bitmask.
+   * @param legend The server's legend.
+   * @returns Returns the remapped bitmask.
+   */
+  private remapModifiers(mask: number, legend: LspSemanticTokensLegend): number {
+    if (mask === 0) {
+      return 0;
+    }
+    let result: number = 0;
+    for (let bit: number = 0; bit < legend.tokenModifiers.length; bit += 1) {
+      if ((mask & (1 << bit)) === 0) {
+        continue;
+      }
+      const fixed: number = SEMANTIC_TOKEN_MODIFIERS.indexOf(legend.tokenModifiers[bit]);
+      if (fixed >= 0) {
+        result |= 1 << fixed;
+      }
+    }
+    return result;
   }
 
   /**

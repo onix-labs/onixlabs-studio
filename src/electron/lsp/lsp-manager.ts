@@ -15,7 +15,14 @@ import type {
   InitializeResult,
 } from 'vscode-languageserver-protocol';
 import { IpcChannel } from '../../shared/ipc-channels';
-import { LspExit, LspMessage, LspStartRequest, LspStartResult } from '../../shared/lsp-types';
+import {
+  LspExit,
+  LspMessage,
+  LspStartRequest,
+  LspStartResult,
+  SEMANTIC_TOKEN_MODIFIERS,
+  SEMANTIC_TOKEN_TYPES,
+} from '../../shared/lsp-types';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
@@ -428,6 +435,16 @@ export class LspManager {
         hover: { contentFormat: ['markdown', 'plaintext'] },
         definition: { linkSupport: false },
         references: {},
+        // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
+        // the standard one and feeds Monaco, colouring types, members, and parameters.
+        semanticTokens: {
+          requests: { full: true, range: false },
+          tokenTypes: [...SEMANTIC_TOKEN_TYPES],
+          tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
+          formats: ['relative'],
+          overlappingTokenSupport: false,
+          multilineTokenSupport: false,
+        },
       },
       workspace: { workspaceFolders: true, configuration: true },
       window: { workDoneProgress: true },

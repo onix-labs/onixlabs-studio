@@ -320,6 +320,9 @@ export class Monaco {
       cursorSmoothCaretAnimation: 'on',
       smoothScrolling: true,
       padding: { top: 16 },
+      // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
+      // the languages with a built-in Monaco worker.
+      'semanticHighlighting.enabled': true,
     };
   }
 
@@ -404,14 +407,42 @@ export class Monaco {
     const gray800: string = gray('gray800');
     const gray900: string = gray('gray900');
 
-    const darkRules: MonacoApi.editor.ITokenThemeRule[] = [
-      { token: 'type', foreground: '4EC9B0' },
-      { token: 'function', foreground: 'DCDCAA' },
-    ];
-    const lightRules: MonacoApi.editor.ITokenThemeRule[] = [
-      { token: 'type', foreground: '267F99' },
-      { token: 'function', foreground: '795E26' },
-    ];
+    // Colour the standard semantic token types (and matching grammar tokens) so types, members, and
+    // parameters are distinguished, not just keywords. Mirrors the VS Code Dark+/Light+ palettes.
+    const semanticRules: (light: boolean) => MonacoApi.editor.ITokenThemeRule[] = (
+      light: boolean,
+    ): MonacoApi.editor.ITokenThemeRule[] => {
+      const teal: string = light ? '267F99' : '4EC9B0';
+      const yellow: string = light ? '795E26' : 'DCDCAA';
+      const blue: string = light ? '001080' : '9CDCFE';
+      const constant: string = light ? '0070C1' : '4FC1FF';
+      const types: readonly string[] = [
+        'type',
+        'class',
+        'interface',
+        'enum',
+        'struct',
+        'typeParameter',
+        'namespace',
+        'macro',
+      ];
+      const functions: readonly string[] = ['function', 'method', 'decorator'];
+      const variables: readonly string[] = ['variable', 'parameter', 'property'];
+      return [
+        ...types.map(
+          (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: teal }),
+        ),
+        ...functions.map(
+          (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: yellow }),
+        ),
+        ...variables.map(
+          (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: blue }),
+        ),
+        { token: 'enumMember', foreground: constant },
+      ];
+    };
+    const darkRules: MonacoApi.editor.ITokenThemeRule[] = semanticRules(false);
+    const lightRules: MonacoApi.editor.ITokenThemeRule[] = semanticRules(true);
 
     monaco.editor.defineTheme('onix-dark-outline', {
       base: 'vs-dark',

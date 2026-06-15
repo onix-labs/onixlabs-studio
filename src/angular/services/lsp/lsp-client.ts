@@ -1,6 +1,12 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { LspApi, LspExit, LspMessage, LspStartResult } from '../../../shared/lsp-types';
+import {
+  LspApi,
+  LspExit,
+  LspMessage,
+  LspSemanticTokensLegend,
+  LspStartResult,
+} from '../../../shared/lsp-types';
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
 import { Editors } from '../editors/editors';
@@ -249,6 +255,15 @@ export class LspClient implements OnDestroy {
   private readonly sessions: Map<string, Promise<boolean>> = new Map<string, Promise<boolean>>();
 
   /**
+   * Holds each started session's semantic token legend (the server's own ordered token-type and
+   * modifier names), or null when the server does not provide semantic tokens.
+   */
+  private readonly legends: Map<string, LspSemanticTokensLegend | null> = new Map<
+    string,
+    LspSemanticTokensLegend | null
+  >();
+
+  /**
    * Holds the current diagnostics for each document, keyed by document id.
    */
   private readonly diagnosticsByDocument: Map<string, readonly Diagnostic[]> = new Map<
@@ -315,7 +330,34 @@ export class LspClient implements OnDestroy {
     if (!tracked?.opened) {
       return null;
     }
-    return { sessionId: `${tracked.rootPath}::${tracked.serverId}`, uri: tracked.uri };
+    const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    return { sessionId, uri: tracked.uri, semanticLegend: this.legends.get(sessionId) ?? null };
+  }
+
+  /**
+   * Extracts the semantic token legend from a server's initialize capabilities, or null when the
+   * server does not advertise a semantic tokens provider with a legend.
+   * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+   * @returns Returns the legend, or null.
+   */
+  private semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend | null {
+    const provider: unknown = (capabilities as { semanticTokensProvider?: unknown } | undefined)
+      ?.semanticTokensProvider;
+    const legend: unknown = (provider as { legend?: unknown } | undefined)?.legend;
+    const candidate: { tokenTypes?: unknown; tokenModifiers?: unknown } | undefined = legend as
+      | { tokenTypes?: unknown; tokenModifiers?: unknown }
+      | undefined;
+    if (
+      candidate === undefined ||
+      !Array.isArray(candidate.tokenTypes) ||
+      !Array.isArray(candidate.tokenModifiers)
+    ) {
+      return null;
+    }
+    return {
+      tokenTypes: candidate.tokenTypes as readonly string[],
+      tokenModifiers: candidate.tokenModifiers as readonly string[],
+    };
   }
 
   /**
@@ -389,6 +431,7 @@ export class LspClient implements OnDestroy {
       this.status.remove(sessionId);
     }
     this.sessions.clear();
+    this.legends.clear();
     this.tracked.clear();
   }
 
@@ -425,6 +468,9 @@ export class LspClient implements OnDestroy {
         text: content,
       },
     });
+    // Monaco asked for semantic tokens before the server was ready and cached the empty result; now
+    // that the document is open against a running server, ask it to request them again so they paint.
+    this.features.refreshSemanticTokens();
   }
 
   /**
@@ -491,12 +537,16 @@ export class LspClient implements OnDestroy {
           standaloneFile: tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
         })
         .then((result: LspStartResult): boolean => {
-          this.status.report(
-            sessionId,
-            serverId,
-            result.success ? 'ready' : 'unavailable',
-            result.error,
-          );
+          // `initialize` returning does not mean the server can answer yet: heavy servers (Roslyn,
+          // jdtls) load the whole project for several seconds afterwards, reporting no progress. Keep
+          // the indicator in its starting (spinner) state until the first diagnostics arrive, which is
+          // the signal the server has actually analysed the workspace.
+          if (!result.success) {
+            this.status.report(sessionId, serverId, 'unavailable', result.error);
+          }
+          if (result.success) {
+            this.legends.set(sessionId, this.semanticLegendOf(result.capabilities));
+          }
           return result.success;
         });
       this.sessions.set(sessionId, pending);
@@ -531,6 +581,11 @@ export class LspClient implements OnDestroy {
     );
     this.setMarkers(tracked, params.diagnostics);
     this.publish();
+    // Diagnostics arriving mean the server has finished loading the workspace and analysed the
+    // document: flip the indicator from starting to ready, and ask Monaco to re-request semantic
+    // tokens (it cached an empty result earlier, before the server was ready) so highlighting paints.
+    this.status.report(message.sessionId, tracked.serverId, 'ready');
+    this.features.refreshSemanticTokens();
   }
 
   /**
@@ -612,6 +667,7 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    this.legends.delete(exit.sessionId);
     this.status.remove(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
