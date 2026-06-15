@@ -19,6 +19,11 @@ interface ServerEntry {
    * Gets the server's current lifecycle state.
    */
   readonly state: LspServerState;
+
+  /**
+   * Gets a reason for the state (for example why the server is unavailable), or undefined.
+   */
+  readonly detail?: string;
 }
 
 /**
@@ -93,9 +98,10 @@ export class LspStatus {
         icon: Icon.SUCCESS,
       };
     }
+    const failed: ServerEntry = entries[0];
     return {
       state: 'unavailable',
-      label: `${this.name(entries[0].serverId)} Language Server: unavailable`,
+      label: failed.detail ?? `${this.name(failed.serverId)} Language Server: unavailable`,
       icon: Icon.WARNING,
     };
   });
@@ -105,10 +111,11 @@ export class LspStatus {
    * @param sessionId The session the state belongs to.
    * @param serverId The identifier of the server.
    * @param state The server's lifecycle state.
+   * @param detail A reason for the state (for example why the server is unavailable), or undefined.
    */
-  public report(sessionId: string, serverId: string, state: LspServerState): void {
+  public report(sessionId: string, serverId: string, state: LspServerState, detail?: string): void {
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.servers());
-    next.set(sessionId, { serverId, state });
+    next.set(sessionId, { serverId, state, detail });
     this.servers.set(next);
   }
 

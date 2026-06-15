@@ -15,7 +15,7 @@ import type {
 import { IpcChannel } from '../../shared/ipc-channels';
 import { LspExit, LspMessage, LspStartRequest, LspStartResult } from '../../shared/lsp-types';
 import { WorkspaceContext } from '../workspace-context';
-import { LspServerRegistry, LspServerSpec } from './lsp-server-registry';
+import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -144,12 +144,13 @@ export class LspManager {
     if (!this.workspaceContext.isRoot(parsed.rootPath)) {
       return { success: false, error: 'Workspace root is not open' };
     }
-    const spec: LspServerSpec | null = await this.registry.resolve(
-      parsed.serverId,
-      parsed.rootPath,
-    );
+    const resolution: LspResolution = await this.registry.resolve(parsed.serverId, parsed.rootPath);
+    const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
-      return { success: false, error: `Unknown or unavailable server: ${parsed.serverId}` };
+      return {
+        success: false,
+        error: resolution.error ?? `Unknown or unavailable server: ${parsed.serverId}`,
+      };
     }
 
     let child: ChildProcessWithoutNullStreams;
