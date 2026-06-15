@@ -6,6 +6,7 @@
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
 import type { SecurityApi } from './security-types';
+import type { TaskApi } from './task-types';
 
 /**
  * Defines the runtime version information exposed to the renderer process.
@@ -559,4 +560,9 @@ export interface StudioApi {
    * Gets the language-server (LSP) operations for the application.
    */
   readonly lsp: LspApi;
+
+  /**
+   * Gets the task-runner operations for the application.
+   */
+  readonly tasks: TaskApi;
 }
