@@ -10,7 +10,13 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
-import type { LspExit, LspMessage, LspStartRequest, LspStartResult } from '../shared/lsp-types';
+import type {
+  LspExit,
+  LspMessage,
+  LspSettings,
+  LspStartRequest,
+  LspStartResult,
+} from '../shared/lsp-types';
 import type { ImageSourcePolicy } from '../shared/security-types';
 import type {
   DirectoryListing,
@@ -246,6 +252,10 @@ const studioApi: StudioApi = {
         ipcRenderer.removeListener(IpcChannel.LspServerExit, handler);
       };
     },
+    getSettings: (): Promise<LspSettings> =>
+      ipcRenderer.invoke(IpcChannel.LspGetSettings) as Promise<LspSettings>,
+    setSettings: (settings: LspSettings): Promise<LspSettings> =>
+      ipcRenderer.invoke(IpcChannel.LspSetSettings, settings) as Promise<LspSettings>,
   },
 };
 

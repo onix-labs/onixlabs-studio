@@ -18,6 +18,7 @@ import { FileManager } from './file-manager';
 import { FileWatcher } from './file-watcher';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
+import { LspSettingsManager } from './lsp/lsp-settings';
 import { SecurityManager } from './security-manager';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
@@ -131,9 +132,17 @@ class Program {
   );
 
   /**
+   * Owns the user's language-server settings (disabled servers, runtime overrides).
+   */
+  private readonly lspSettingsManager: LspSettingsManager = new LspSettingsManager();
+
+  /**
    * Resolves language-server identifiers into spawn specifications for the {@link LspManager}.
    */
-  private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(process.execPath);
+  private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(
+    process.execPath,
+    this.lspSettingsManager,
+  );
 
   /**
    * Owns language-server sessions: spawns servers, runs the LSP handshake, and bridges diagnostics
@@ -249,6 +258,7 @@ class Program {
     this.workspaceManager.register();
     this.fileWatcher.register();
     this.aiManager.register();
+    this.lspSettingsManager.register();
     this.lspManager.register();
   }
 

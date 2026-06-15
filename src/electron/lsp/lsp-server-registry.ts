@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { LspServerId } from '../../shared/lsp-types';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
+import { LspSettingsManager } from './lsp-settings';
 
 /**
  * Provides a `require` rooted at this module, used to resolve bundled language-server packages from
@@ -97,22 +98,32 @@ export class LspServerRegistry {
   private readonly provisioner: LspProvisioner = new LspProvisioner();
 
   /**
+   * Owns the user's language-server settings (disabled servers, runtime overrides).
+   */
+  private readonly settings: LspSettingsManager;
+
+  /**
    * Initializes a new instance of the {@link LspServerRegistry} class.
    * @param executablePath The absolute path of the Electron binary (`process.execPath`).
+   * @param settings The user's language-server settings.
    */
-  public constructor(executablePath: string) {
+  public constructor(executablePath: string, settings: LspSettingsManager) {
     this.executablePath = executablePath;
+    this.settings = settings;
   }
 
   /**
    * Resolves a server identifier into a spawn specification, provisioning the server and detecting
-   * its runtime when necessary.
+   * its runtime when necessary. A server the user has disabled resolves to null.
    * @param serverId The identifier of the server to resolve.
    * @param rootPath The workspace root the server is rooted at (used for per-workspace data).
-   * @returns Returns the spawn specification, or null when the server is unknown, unavailable, or
-   * could not be provisioned.
+   * @returns Returns the spawn specification, or null when the server is unknown, disabled,
+   * unavailable, or could not be provisioned.
    */
   public async resolve(serverId: LspServerId, rootPath: string): Promise<LspServerSpec | null> {
+    if (this.settings.get().disabledServers.includes(serverId)) {
+      return null;
+    }
     if (serverId === 'typescript') {
       return this.resolveCached(serverId, (): LspServerSpec | null => this.buildTypescript());
     }
@@ -158,7 +169,7 @@ export class LspServerRegistry {
    * provisioned.
    */
   private async buildJava(rootPath: string): Promise<LspServerSpec | null> {
-    const java: string | null = await this.provisioner.detectJava();
+    const java: string | null = await this.provisioner.detectJava(this.settings.get().javaPath);
     if (java === null) {
       return null;
     }

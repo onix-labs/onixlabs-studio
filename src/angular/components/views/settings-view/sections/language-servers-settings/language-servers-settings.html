@@ -1,0 +1,26 @@
+@for (server of servers; track server.id) {
+  <app-setting-row [label]="server.label" [description]="server.description">
+    <app-toggle
+      [checked]="isEnabled(server.id)"
+      [disabled]="!isAvailable"
+      (checkedChange)="onToggle(server.id, $event)"
+    />
+  </app-setting-row>
+}
+
+<app-setting-row
+  label="Java runtime"
+  description="Path to the Java 21+ executable used to run the Java language server. Leave empty to detect it from JAVA_HOME or the PATH."
+>
+  <app-text-field
+    [value]="settings().javaPath ?? ''"
+    placeholder="Auto-detect"
+    [disabled]="!isAvailable"
+    (valueChange)="onJavaPathChange($event)"
+  />
+</app-setting-row>
+
+<p class="language-servers-hint">
+  Changes apply to language servers started afterwards. Reopen a file or restart Studio to apply
+  them.
+</p>
