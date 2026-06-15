@@ -537,12 +537,13 @@ export class LspClient implements OnDestroy {
           standaloneFile: tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
         })
         .then((result: LspStartResult): boolean => {
-          this.status.report(
-            sessionId,
-            serverId,
-            result.success ? 'ready' : 'unavailable',
-            result.error,
-          );
+          // `initialize` returning does not mean the server can answer yet: heavy servers (Roslyn,
+          // jdtls) load the whole project for several seconds afterwards, reporting no progress. Keep
+          // the indicator in its starting (spinner) state until the first diagnostics arrive, which is
+          // the signal the server has actually analysed the workspace.
+          if (!result.success) {
+            this.status.report(sessionId, serverId, 'unavailable', result.error);
+          }
           if (result.success) {
             const legend: LspSemanticTokensLegend | null = this.semanticLegendOf(result.capabilities);
             this.legends.set(sessionId, legend);
@@ -585,9 +586,10 @@ export class LspClient implements OnDestroy {
     );
     this.setMarkers(tracked, params.diagnostics);
     this.publish();
-    // Diagnostics arriving mean the server has analysed the document, so its semantic tokens are now
-    // available. Monaco requested them earlier (before the server was ready) and cached the empty
-    // result, so ask it to request them again — this is what paints highlighting without an edit.
+    // Diagnostics arriving mean the server has finished loading the workspace and analysed the
+    // document: flip the indicator from starting to ready, and ask Monaco to re-request semantic
+    // tokens (it cached an empty result earlier, before the server was ready) so highlighting paints.
+    this.status.report(message.sessionId, tracked.serverId, 'ready');
     this.features.refreshSemanticTokens();
   }
 
