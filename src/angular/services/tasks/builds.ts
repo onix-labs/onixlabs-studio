@@ -79,6 +79,11 @@ export class Builds {
   private readonly handler: WritableSignal<BuildHandler | null> = signal<BuildHandler | null>(null);
 
   /**
+   * Holds the task chosen in the ribbon's task picker, or null to use the default.
+   */
+  private readonly selected: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the tasks discovered for the active workspace.
    */
   public readonly tasks: Signal<readonly BuildTask[]> = computed(
@@ -111,6 +116,32 @@ export class Builds {
    */
   public readonly canTest: Signal<boolean> = computed(
     (): boolean => this.firstOf('test') !== undefined,
+  );
+
+  /**
+   * Gets the task the Start action runs: the picked task when it is still available, otherwise the
+   * default run task, then the default build task, then the first discovered task.
+   */
+  public readonly startTask: Signal<BuildTask | undefined> = computed((): BuildTask | undefined => {
+    const tasks: readonly BuildTask[] = this.tasks();
+    const picked: BuildTask | undefined = tasks.find(
+      (task: BuildTask): boolean => task.id === this.selected(),
+    );
+    return picked ?? this.firstOf('run') ?? this.firstOf('build') ?? tasks[0];
+  });
+
+  /**
+   * Gets the label of the task the Start action runs, or an empty string when there is none.
+   */
+  public readonly startLabel: Signal<string> = computed(
+    (): string => this.startTask()?.label ?? '',
+  );
+
+  /**
+   * Gets whether there is a task the Start action can run.
+   */
+  public readonly canStart: Signal<boolean> = computed(
+    (): boolean => this.startTask() !== undefined,
   );
 
   /**
@@ -147,10 +178,21 @@ export class Builds {
   }
 
   /**
-   * Runs the active workspace's default run task.
+   * Selects the task the Start action runs.
+   * @param taskId The task to select.
+   */
+  public select(taskId: string): void {
+    this.selected.set(taskId);
+  }
+
+  /**
+   * Runs the selected task (or the default when none is picked).
    */
   public start(): void {
-    this.runFirst('run');
+    const task: BuildTask | undefined = this.startTask();
+    if (task !== undefined) {
+      this.handler()?.run(task.id);
+    }
   }
 
   /**

@@ -334,8 +334,63 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       this.discovered.set([]);
       return;
     }
-    const tasks: BuildTask[] = [...this.discoverDotnet(root), ...(await this.discoverNpm(root))];
+    const tasks: BuildTask[] = [
+      ...this.discoverDotnet(root),
+      ...this.discoverGradle(root),
+      ...this.discoverMake(root),
+      ...(await this.discoverNpm(root)),
+    ];
     this.discovered.set(tasks);
+  }
+
+  /**
+   * Discovers Gradle tasks when a Gradle build file is present, preferring the wrapper when it exists.
+   * @param root The workspace root listing.
+   * @returns Returns the Gradle tasks, or an empty list.
+   */
+  private discoverGradle(root: DirectoryListing): BuildTask[] {
+    const names: ReadonlySet<string> = new Set<string>(
+      root.entries.map((entry: DirectoryEntry): string => entry.name),
+    );
+    const hasGradle: boolean = [...names].some((name: string): boolean =>
+      /^(build|settings)\.gradle(\.kts)?$/.test(name),
+    );
+    if (!hasGradle) {
+      return [];
+    }
+    const gradle: string = names.has('gradlew') ? './gradlew' : 'gradle';
+    return [
+      {
+        id: 'gradle:build',
+        label: `${gradle} build`,
+        group: 'build',
+        command: `${gradle} build`,
+        cwd: root.path,
+      },
+      {
+        id: 'gradle:test',
+        label: `${gradle} test`,
+        group: 'test',
+        command: `${gradle} test`,
+        cwd: root.path,
+      },
+    ];
+  }
+
+  /**
+   * Discovers a Make task when a makefile is present in the root.
+   * @param root The workspace root listing.
+   * @returns Returns the Make task, or an empty list.
+   */
+  private discoverMake(root: DirectoryListing): BuildTask[] {
+    const hasMakefile: boolean = root.entries.some(
+      (entry: DirectoryEntry): boolean =>
+        entry.type === 'file' && /^(GNUmakefile|[Mm]akefile)$/.test(entry.name),
+    );
+    if (!hasMakefile) {
+      return [];
+    }
+    return [{ id: 'make:build', label: 'make', group: 'build', command: 'make', cwd: root.path }];
   }
 
   /**

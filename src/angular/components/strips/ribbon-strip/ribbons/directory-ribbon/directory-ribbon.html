@@ -42,9 +42,24 @@
     [icon]="Icon.PLAY"
     label="Start"
     menuLabel="Debug"
-    [disabled]="!canRun() || running()"
+    [disabled]="!canStart() || running()"
     (action)="onStart()"
   />
+  <app-ribbon-button-small
+    [icon]="Icon.STOP"
+    label="Stop"
+    [disabled]="!running()"
+    (action)="onStop()"
+  />
+  <app-ribbon-column>
+    <app-ribbon-field
+      label="Task"
+      [options]="taskLabels()"
+      [value]="startLabel()"
+      [disabled]="taskLabels().length === 0"
+      (changed)="onSelectTask($event)"
+    />
+  </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Target">
