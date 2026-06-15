@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { LspServerId } from '../../shared/lsp-types';
@@ -96,26 +97,10 @@ function unavailable(error: string): LspResolution {
 }
 
 /**
- * Resolves a Node-based language server distributed as an npm package into a spawn specification that
- * runs it through the Electron binary in Node mode (`ELECTRON_RUN_AS_NODE`). This avoids depending on
- * a `node` executable being present on the user's PATH and works the same in development and in a
- * packaged application.
- * @param executablePath The absolute path of the Electron binary.
- * @param packageBinPath The absolute path of the server's CLI entry point.
- * @returns Returns the spawn specification.
- */
-function nodePackageServer(executablePath: string, packageBinPath: string): LspServerSpec {
-  return {
-    command: executablePath,
-    args: [packageBinPath, '--stdio'],
-    env: { ELECTRON_RUN_AS_NODE: '1' },
-  };
-}
-
-/**
  * Owns the catalogue of known language servers and turns a {@link LspServerId} into a spawn
- * specification. This is the seam that later provisioning work (download/cache, runtime detection,
- * user overrides) grows behind; for now it resolves the bundled TypeScript server only.
+ * specification. It is the single seam that provisioning (npm-bundled servers, downloaded servers
+ * such as Java), runtime detection, and the user's overrides (disabled servers, a custom Java or
+ * TypeScript server path, extra arguments) all sit behind, so the renderer only ever names a server.
  */
 export class LspServerRegistry {
   /**
@@ -124,10 +109,11 @@ export class LspServerRegistry {
   private readonly executablePath: string;
 
   /**
-   * Caches resolved npm-package resolutions by server identifier, so package resolution happens once.
-   * Workspace-scoped servers (such as Java) are not cached here.
+   * Caches resolved npm-package entry points by cache key, so package resolution (a `require.resolve`
+   * and manifest read) happens once. Specifications are rebuilt from the cached path on every resolve
+   * so they always reflect the current settings (argument overrides and so on).
    */
-  private readonly cache: Map<LspServerId, LspResolution> = new Map<LspServerId, LspResolution>();
+  private readonly binCache: Map<string, string | null> = new Map<string, string | null>();
 
   /**
    * Provisions and locates external (non-npm) servers and their runtimes.
@@ -162,10 +148,10 @@ export class LspServerRegistry {
       return NO_SERVER;
     }
     if (serverId === 'typescript') {
-      return this.resolveCached(serverId, (): LspResolution => this.buildTypescript());
+      return this.buildTypescript();
     }
     if (serverId === 'python') {
-      return this.resolveCached(serverId, (): LspResolution => this.buildPython());
+      return this.buildPython();
     }
     if (serverId === 'java') {
       return this.buildJava(rootPath);
@@ -174,30 +160,21 @@ export class LspServerRegistry {
   }
 
   /**
-   * Resolves a server's specification through the cache, building it on first request.
-   * @param serverId The server identifier the resolution is cached under.
-   * @param build Builds the resolution when it is not cached.
-   * @returns Returns the cached or freshly built resolution.
-   */
-  private resolveCached(serverId: LspServerId, build: () => LspResolution): LspResolution {
-    const cached: LspResolution | undefined = this.cache.get(serverId);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const resolution: LspResolution = build();
-    this.cache.set(serverId, resolution);
-    return resolution;
-  }
-
-  /**
-   * Builds the resolution for the bundled TypeScript server.
+   * Builds the resolution for the TypeScript server, honouring a custom server path when set.
    * @returns Returns the resolution.
    */
   private buildTypescript(): LspResolution {
-    const binPath: string | null = this.resolveBin('typescript-language-server');
+    const override: string | null = this.settings.get().typescriptServerPath;
+    if (override !== null) {
+      if (!existsSync(override)) {
+        return unavailable(`The TypeScript language server was not found at ${override}.`);
+      }
+      return resolved(this.withExtraArgs('typescript', this.nodePackageServer(override)));
+    }
+    const binPath: string | null = this.cachedBin('typescript-language-server');
     return binPath === null
       ? unavailable('The TypeScript language server is not available.')
-      : resolved(nodePackageServer(this.executablePath, binPath));
+      : resolved(this.withExtraArgs('typescript', this.nodePackageServer(binPath)));
   }
 
   /**
@@ -205,10 +182,10 @@ export class LspServerRegistry {
    * @returns Returns the resolution.
    */
   private buildPython(): LspResolution {
-    const binPath: string | null = this.resolveBin('pyright', 'pyright-langserver');
+    const binPath: string | null = this.cachedBin('pyright', 'pyright-langserver');
     return binPath === null
       ? unavailable('The Python language server is not available.')
-      : resolved(nodePackageServer(this.executablePath, binPath));
+      : resolved(this.withExtraArgs('python', this.nodePackageServer(binPath)));
   }
 
   /**
@@ -228,18 +205,66 @@ export class LspServerRegistry {
       return unavailable('The Java language server could not be downloaded.');
     }
     const dataDir: string = await this.provisioner.dataDirectory('jdtls', rootPath);
-    return resolved({
-      command: java,
-      args: [
-        ...JDTLS_JVM_ARGS,
-        '-jar',
-        install.launcherJar,
-        '-configuration',
-        install.configDir,
-        '-data',
-        dataDir,
-      ],
-    });
+    return resolved(
+      this.withExtraArgs('java', {
+        command: java,
+        args: [
+          ...JDTLS_JVM_ARGS,
+          '-jar',
+          install.launcherJar,
+          '-configuration',
+          install.configDir,
+          '-data',
+          dataDir,
+        ],
+      }),
+    );
+  }
+
+  /**
+   * Builds a spawn specification for a Node-based language server distributed as an npm package,
+   * running it through the Electron binary in Node mode (`ELECTRON_RUN_AS_NODE`). This avoids
+   * depending on a `node` executable being present on the user's PATH and works the same in
+   * development and in a packaged application.
+   * @param packageBinPath The absolute path of the server's CLI entry point.
+   * @returns Returns the spawn specification.
+   */
+  private nodePackageServer(packageBinPath: string): LspServerSpec {
+    return {
+      command: this.executablePath,
+      args: [packageBinPath, '--stdio'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    };
+  }
+
+  /**
+   * Appends the user's argument overrides for a server to a spawn specification.
+   * @param serverId The server identifier whose overrides are applied.
+   * @param spec The base spawn specification.
+   * @returns Returns the specification with any extra arguments appended.
+   */
+  private withExtraArgs(serverId: LspServerId, spec: LspServerSpec): LspServerSpec {
+    const extra: readonly string[] | undefined = this.settings.get().serverArgs[serverId];
+    if (extra === undefined || extra.length === 0) {
+      return spec;
+    }
+    return { ...spec, args: [...spec.args, ...extra] };
+  }
+
+  /**
+   * Resolves an npm package's CLI entry point, caching the result so resolution happens once.
+   * @param packageName The package whose CLI entry point is resolved.
+   * @param binName The named `bin` entry to resolve, defaulting to the package name.
+   * @returns Returns the absolute path of the entry point, or null when it cannot be resolved.
+   */
+  private cachedBin(packageName: string, binName: string = packageName): string | null {
+    const key: string = `${packageName}::${binName}`;
+    if (this.binCache.has(key)) {
+      return this.binCache.get(key) ?? null;
+    }
+    const resolvedBin: string | null = this.resolveBin(packageName, binName);
+    this.binCache.set(key, resolvedBin);
+    return resolvedBin;
   }
 
   /**

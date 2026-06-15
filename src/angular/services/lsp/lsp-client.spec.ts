@@ -60,7 +60,12 @@ class FakeLsp implements LspApi {
   }
 
   public getSettings(): Promise<LspSettingsData> {
-    return Promise.resolve({ disabledServers: [], javaPath: null });
+    return Promise.resolve({
+      disabledServers: [],
+      javaPath: null,
+      typescriptServerPath: null,
+      serverArgs: {},
+    });
   }
 
   public setSettings(settings: LspSettingsData): Promise<LspSettingsData> {

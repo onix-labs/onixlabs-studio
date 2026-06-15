@@ -7,7 +7,12 @@ import { LspSettings } from '../../shared/lsp-types';
 /**
  * Holds the default settings used before any have been stored.
  */
-const DEFAULT_SETTINGS: LspSettings = { disabledServers: [], javaPath: null };
+const DEFAULT_SETTINGS: LspSettings = {
+  disabledServers: [],
+  javaPath: null,
+  typescriptServerPath: null,
+  serverArgs: {},
+};
 
 /**
  * Owns the user's language-server settings in the main process: which servers are disabled and the
@@ -97,7 +102,12 @@ export class LspSettingsManager {
     if (typeof value !== 'object' || value === null) {
       return null;
     }
-    const candidate: { disabledServers?: unknown; javaPath?: unknown } = value;
+    const candidate: {
+      disabledServers?: unknown;
+      javaPath?: unknown;
+      typescriptServerPath?: unknown;
+      serverArgs?: unknown;
+    } = value;
     const disabledServers: unknown = candidate.disabledServers;
     if (
       !Array.isArray(disabledServers) ||
@@ -105,14 +115,67 @@ export class LspSettingsManager {
     ) {
       return null;
     }
-    const javaPath: unknown = candidate.javaPath;
-    if (javaPath !== null && typeof javaPath !== 'string') {
+    const javaPath: string | null | undefined = this.parsePath(candidate.javaPath);
+    if (javaPath === undefined) {
+      return null;
+    }
+    const typescriptServerPath: string | null | undefined = this.parsePath(
+      candidate.typescriptServerPath,
+    );
+    if (typescriptServerPath === undefined) {
+      return null;
+    }
+    const serverArgs: Record<string, readonly string[]> | null = this.parseServerArgs(
+      candidate.serverArgs,
+    );
+    if (serverArgs === null) {
       return null;
     }
     return {
       disabledServers: disabledServers as readonly string[],
-      javaPath: javaPath === null || javaPath === '' ? null : javaPath,
+      javaPath,
+      typescriptServerPath,
+      serverArgs,
     };
+  }
+
+  /**
+   * Validates and normalises an optional path override, treating absent and empty values as cleared.
+   * @param value The candidate path.
+   * @returns Returns the path, null when cleared, or undefined when the value is malformed.
+   */
+  private parsePath(value: unknown): string | null | undefined {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    return value;
+  }
+
+  /**
+   * Validates and normalises the per-server argument overrides, dropping empty entries.
+   * @param value The candidate map of server identifier to arguments.
+   * @returns Returns the normalised map, or null when the value is malformed.
+   */
+  private parseServerArgs(value: unknown): Record<string, readonly string[]> | null {
+    if (value === undefined) {
+      return {};
+    }
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+    const result: Record<string, readonly string[]> = {};
+    for (const [serverId, args] of Object.entries(value)) {
+      if (!Array.isArray(args) || !args.every((arg: unknown): boolean => typeof arg === 'string')) {
+        return null;
+      }
+      if (args.length > 0) {
+        result[serverId] = args as readonly string[];
+      }
+    }
+    return result;
   }
 
   /**

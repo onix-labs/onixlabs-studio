@@ -7,7 +7,12 @@ describe('LspSettings', () => {
   let setCalls: LspSettingsData[];
 
   beforeEach(() => {
-    stored = { disabledServers: ['java'], javaPath: null };
+    stored = {
+      disabledServers: ['java'],
+      javaPath: null,
+      typescriptServerPath: null,
+      serverArgs: {},
+    };
     setCalls = [];
     const lsp: unknown = {
       getSettings: (): Promise<LspSettingsData> => Promise.resolve(stored),
@@ -63,5 +68,40 @@ describe('LspSettings', () => {
     await service.setJavaPath('  /opt/java/bin/java  ');
 
     expect(setCalls.at(-1)?.javaPath).toBe('/opt/java/bin/java');
+  });
+
+  it('setTypescriptServerPath_blank_clearsTheOverride', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setTypescriptServerPath('  ');
+
+    expect(setCalls.at(-1)?.typescriptServerPath).toBeNull();
+  });
+
+  it('setTypescriptServerPath_trimsAndStoresThePath', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setTypescriptServerPath('  /srv/tsls/lib/cli.mjs  ');
+
+    expect(setCalls.at(-1)?.typescriptServerPath).toBe('/srv/tsls/lib/cli.mjs');
+  });
+
+  it('setServerArgs_splitsOnWhitespaceAndStores', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setServerArgs('typescript', '  --log-level   4 ');
+
+    expect(setCalls.at(-1)?.serverArgs['typescript']).toEqual(['--log-level', '4']);
+    expect(service.serverArgsText('typescript')).toBe('--log-level 4');
+  });
+
+  it('setServerArgs_blank_clearsTheOverride', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setServerArgs('typescript', '--log-level 4');
+    await service.setServerArgs('typescript', '   ');
+
+    expect(setCalls.at(-1)?.serverArgs['typescript']).toBeUndefined();
+    expect(service.serverArgsText('typescript')).toBe('');
   });
 });

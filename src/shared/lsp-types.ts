@@ -128,6 +128,18 @@ export interface LspSettings {
    * Gets the user's override for the Java runtime executable, or null to auto-detect.
    */
   readonly javaPath: string | null;
+
+  /**
+   * Gets the user's override for the TypeScript language server's entry point (the path to its
+   * JavaScript CLI module, run through the bundled Node runtime), or null to use the bundled server.
+   */
+  readonly typescriptServerPath: string | null;
+
+  /**
+   * Gets extra command-line arguments appended to a server's invocation, keyed by server identifier.
+   * A server with no entry (or an empty array) starts with its default arguments only.
+   */
+  readonly serverArgs: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
