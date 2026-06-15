@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
+import { Builds } from '../../../../../services/tasks/builds';
 import { Icon } from '../../../../../icons/icon';
 import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
 import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
@@ -40,9 +41,29 @@ export class DirectoryRibbon {
   private readonly commands: CodeCommands = inject(CodeCommands);
 
   /**
+   * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
+   */
+  private readonly builds: Builds = inject(Builds);
+
+  /**
    * Gets whether a code editor (a focused well document) is active, enabling the File/Editor groups.
    */
   protected readonly hasActiveEditor: Signal<boolean> = this.commands.hasActiveEditor;
+
+  /**
+   * Gets whether the active workspace can run a build task.
+   */
+  protected readonly canBuild: Signal<boolean> = this.builds.canBuild;
+
+  /**
+   * Gets whether the active workspace can run a run task.
+   */
+  protected readonly canRun: Signal<boolean> = this.builds.canRun;
+
+  /**
+   * Gets whether the active workspace is running a task.
+   */
+  protected readonly running: Signal<boolean> = this.builds.running;
 
   /**
    * Saves the focused well document.
@@ -98,5 +119,19 @@ export class DirectoryRibbon {
    */
   protected onFind(): void {
     this.commands.find();
+  }
+
+  /**
+   * Runs the active workspace's default build task.
+   */
+  protected onBuild(): void {
+    this.builds.build();
+  }
+
+  /**
+   * Runs the active workspace's default run task.
+   */
+  protected onStart(): void {
+    this.builds.start();
   }
 }

@@ -53,6 +53,14 @@ export interface Diagnostic {
    * Gets the absolute file path of the document, or null when unknown or never saved.
    */
   readonly path: string | null;
+
+  /**
+   * Gets how the diagnostic is scoped within the aggregate. A `document` diagnostic (the default) is
+   * kept only while its document is open in this workspace; a `workspace` diagnostic (for example a
+   * build/compiler problem) is kept regardless of whether its file is open, since its provider is
+   * already scoped to this workspace.
+   */
+  readonly scope?: 'document' | 'workspace';
 }
 
 /**
@@ -179,9 +187,13 @@ export class Diagnostics {
     const merged: Diagnostic[] = [];
     for (const diagnostics of this.bySource.values()) {
       for (const diagnostic of diagnostics) {
-        // Keep only diagnostics for documents this workspace owns; markers for other workspaces'
-        // documents (or unbacked models) are filtered out of this aggregate.
-        if (
+        // Workspace-scoped diagnostics (build/compiler problems) are kept as-is: their provider is
+        // already scoped to this workspace and their file need not be open. Document-scoped
+        // diagnostics (the default — Monaco markers, LSP) are kept only for documents this workspace
+        // owns, so markers for other workspaces' documents (or unbacked models) are filtered out.
+        if (diagnostic.scope === 'workspace') {
+          merged.push(diagnostic);
+        } else if (
           diagnostic.documentId !== null &&
           this.documents.get(diagnostic.documentId) !== undefined
         ) {
