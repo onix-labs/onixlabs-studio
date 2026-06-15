@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { LspSemanticTokensLegend } from '../../../shared/lsp-types';
 import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
 import { LspFeatures } from './lsp-features';
@@ -9,6 +10,10 @@ import { LspFeatures } from './lsp-features';
 interface CapturedProviders {
   completion?: { provideCompletionItems(model: unknown, position: unknown): Promise<unknown> };
   hover?: { provideHover(model: unknown, position: unknown): Promise<unknown> };
+  semantic?: {
+    getLegend(): { tokenTypes: string[]; tokenModifiers: string[] };
+    provideDocumentSemanticTokens(model: unknown): Promise<{ data: Uint32Array } | undefined>;
+  };
 }
 
 /**
@@ -42,6 +47,9 @@ function fakeMonacoNamespace(captured: CapturedProviders): unknown {
       },
       registerDefinitionProvider: (): void => undefined,
       registerReferenceProvider: (): void => undefined,
+      registerDocumentSemanticTokensProvider: (_language: string, provider: unknown): void => {
+        captured.semantic = provider as CapturedProviders['semantic'];
+      },
     },
     Uri: { parse: (value: string): unknown => ({ value }) },
   };
@@ -62,12 +70,15 @@ describe('LspFeatures', () => {
   const captured: CapturedProviders = {};
   let requests: { sessionId: string; method: string; params: unknown }[];
   let responses: Record<string, unknown>;
+  let semanticLegend: LspSemanticTokensLegend | null;
 
   beforeEach(() => {
     captured.completion = undefined;
     captured.hover = undefined;
+    captured.semantic = undefined;
     requests = [];
     responses = {};
+    semanticLegend = null;
     const lsp: unknown = {
       request: (sessionId: string, method: string, params: unknown): Promise<unknown> => {
         requests.push({ sessionId, method, params });
@@ -97,7 +108,11 @@ describe('LspFeatures', () => {
     const features: LspFeatures = TestBed.inject(LspFeatures);
     features.registerDocuments((path: string) =>
       path === '/root/app.ts'
-        ? { sessionId: '/root::typescript', uri: 'file:///root/app.ts' }
+        ? {
+            sessionId: '/root::typescript',
+            uri: 'file:///root/app.ts',
+            semanticLegend,
+          }
         : null,
     );
     await flush();
@@ -172,5 +187,51 @@ describe('LspFeatures', () => {
 
     expect(requests).toHaveLength(0);
     expect(list).toBeUndefined();
+  });
+
+  it('semanticTokens_remapsTheServerLegendOntoTheFixedLegend', async () => {
+    // Server legend differs from the fixed one: keyword=15, class=2, method=13, static modifier=3.
+    semanticLegend = {
+      tokenTypes: ['class', 'method', 'field', 'keyword'],
+      tokenModifiers: ['static'],
+    };
+    responses['textDocument/semanticTokens/full'] = {
+      // keyword@0:0 len5, class@0:6 len6, method@1:4 len4 (static)
+      data: [0, 0, 5, 3, 0, 0, 6, 6, 0, 0, 1, 4, 4, 1, 1],
+    };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(requests[0]?.method).toBe('textDocument/semanticTokens/full');
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 5, 15, 0, 0, 6, 6, 2, 0, 1, 4, 4, 13, 8]);
+  });
+
+  it('semanticTokens_dropsUnmappableTypesAndRebasesDeltas', async () => {
+    // 'bracket' has no standard colour and is dropped; the next token re-bases its delta over it.
+    semanticLegend = { tokenTypes: ['class', 'bracket', 'method'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = {
+      // class@0:0 len6, bracket@0:6 len1 (dropped), method@1:0 len4
+      data: [0, 0, 6, 0, 0, 0, 6, 1, 1, 0, 1, 0, 4, 2, 0],
+    };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // class -> type index 2; method -> 13, re-encoded from the class token (line 1, char 0).
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 2, 0, 1, 0, 4, 13, 0]);
+  });
+
+  it('semanticTokens_withoutServerLegend_makesNoRequest', async () => {
+    semanticLegend = null;
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 1, 0, 0] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: unknown = await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(requests).toHaveLength(0);
+    expect(tokens).toBeUndefined();
   });
 });

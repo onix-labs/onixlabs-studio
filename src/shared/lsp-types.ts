@@ -10,6 +10,69 @@
 export type LspServerId = string;
 
 /**
+ * The standard Language Server Protocol semantic token types the client understands. Advertised to
+ * servers as the client's capability and used as the fixed legend the renderer maps each server's own
+ * (possibly different) legend onto, so editor colouring is consistent across languages.
+ */
+export const SEMANTIC_TOKEN_TYPES: readonly string[] = [
+  'namespace',
+  'type',
+  'class',
+  'enum',
+  'interface',
+  'struct',
+  'typeParameter',
+  'parameter',
+  'variable',
+  'property',
+  'enumMember',
+  'event',
+  'function',
+  'method',
+  'macro',
+  'keyword',
+  'modifier',
+  'comment',
+  'string',
+  'number',
+  'regexp',
+  'operator',
+  'decorator',
+];
+
+/**
+ * The standard Language Server Protocol semantic token modifiers the client understands.
+ */
+export const SEMANTIC_TOKEN_MODIFIERS: readonly string[] = [
+  'declaration',
+  'definition',
+  'readonly',
+  'static',
+  'deprecated',
+  'abstract',
+  'async',
+  'modification',
+  'documentation',
+  'defaultLibrary',
+];
+
+/**
+ * Describes a server's semantic token legend: the ordered token-type and token-modifier names the
+ * server's packed token data indexes into.
+ */
+export interface LspSemanticTokensLegend {
+  /**
+   * Gets the ordered token type names.
+   */
+  readonly tokenTypes: readonly string[];
+
+  /**
+   * Gets the ordered token modifier names.
+   */
+  readonly tokenModifiers: readonly string[];
+}
+
+/**
  * Describes a request to start a language-server session.
  */
 export interface LspStartRequest {
