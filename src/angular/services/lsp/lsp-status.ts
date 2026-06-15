@@ -53,6 +53,7 @@ const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   typescript: 'TypeScript',
   java: 'Java',
   python: 'Python',
+  csharp: 'C#',
 };
 
 /**

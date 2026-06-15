@@ -75,6 +75,12 @@ export class LanguageServersSettings {
       label: 'Python',
       description: 'Pyright. Diagnostics, completion, hover, and go-to-definition for Python.',
     },
+    {
+      id: 'csharp',
+      label: 'C#',
+      description:
+        'csharp-ls. Requires the .NET SDK; the server is installed on first use. Build the project for full results.',
+    },
   ];
 
   /**
@@ -108,6 +114,14 @@ export class LanguageServersSettings {
    */
   protected onJavaPathChange(javaPath: string): void {
     void this.lspSettings.setJavaPath(javaPath);
+  }
+
+  /**
+   * Sets the .NET runtime override.
+   * @param dotnetPath The .NET executable path, or an empty string to auto-detect.
+   */
+  protected onDotnetPathChange(dotnetPath: string): void {
+    void this.lspSettings.setDotnetPath(dotnetPath);
   }
 
   /**

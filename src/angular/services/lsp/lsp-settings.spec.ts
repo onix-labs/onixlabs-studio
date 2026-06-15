@@ -10,6 +10,7 @@ describe('LspSettings', () => {
     stored = {
       disabledServers: ['java'],
       javaPath: null,
+      dotnetPath: null,
       typescriptServerPath: null,
       serverArgs: {},
     };
@@ -68,6 +69,14 @@ describe('LspSettings', () => {
     await service.setJavaPath('  /opt/java/bin/java  ');
 
     expect(setCalls.at(-1)?.javaPath).toBe('/opt/java/bin/java');
+  });
+
+  it('setDotnetPath_trimsAndStoresThePath', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setDotnetPath('  /usr/local/share/dotnet/dotnet  ');
+
+    expect(setCalls.at(-1)?.dotnetPath).toBe('/usr/local/share/dotnet/dotnet');
   });
 
   it('setTypescriptServerPath_blank_clearsTheOverride', async () => {

@@ -63,6 +63,7 @@ class FakeLsp implements LspApi {
     return Promise.resolve({
       disabledServers: [],
       javaPath: null,
+      dotnetPath: null,
       typescriptServerPath: null,
       serverArgs: {},
     });

@@ -130,6 +130,12 @@ export interface LspSettings {
   readonly javaPath: string | null;
 
   /**
+   * Gets the user's override for the .NET executable (used to install and host the C# server), or null
+   * to auto-detect.
+   */
+  readonly dotnetPath: string | null;
+
+  /**
    * Gets the user's override for the TypeScript language server's entry point (the path to its
    * JavaScript CLI module, run through the bundled Node runtime), or null to use the bundled server.
    */

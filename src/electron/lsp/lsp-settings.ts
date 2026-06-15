@@ -10,6 +10,7 @@ import { LspSettings } from '../../shared/lsp-types';
 const DEFAULT_SETTINGS: LspSettings = {
   disabledServers: [],
   javaPath: null,
+  dotnetPath: null,
   typescriptServerPath: null,
   serverArgs: {},
 };
@@ -105,6 +106,7 @@ export class LspSettingsManager {
     const candidate: {
       disabledServers?: unknown;
       javaPath?: unknown;
+      dotnetPath?: unknown;
       typescriptServerPath?: unknown;
       serverArgs?: unknown;
     } = value;
@@ -117,6 +119,10 @@ export class LspSettingsManager {
     }
     const javaPath: string | null | undefined = this.parsePath(candidate.javaPath);
     if (javaPath === undefined) {
+      return null;
+    }
+    const dotnetPath: string | null | undefined = this.parsePath(candidate.dotnetPath);
+    if (dotnetPath === undefined) {
       return null;
     }
     const typescriptServerPath: string | null | undefined = this.parsePath(
@@ -134,6 +140,7 @@ export class LspSettingsManager {
     return {
       disabledServers: disabledServers as readonly string[],
       javaPath,
+      dotnetPath,
       typescriptServerPath,
       serverArgs,
     };
