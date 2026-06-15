@@ -164,6 +164,9 @@ export class LspServerRegistry {
     if (serverId === 'typescript') {
       return this.resolveCached(serverId, (): LspResolution => this.buildTypescript());
     }
+    if (serverId === 'python') {
+      return this.resolveCached(serverId, (): LspResolution => this.buildPython());
+    }
     if (serverId === 'java') {
       return this.buildJava(rootPath);
     }
@@ -194,6 +197,17 @@ export class LspServerRegistry {
     const binPath: string | null = this.resolveBin('typescript-language-server');
     return binPath === null
       ? unavailable('The TypeScript language server is not available.')
+      : resolved(nodePackageServer(this.executablePath, binPath));
+  }
+
+  /**
+   * Builds the resolution for the bundled Python server (Pyright).
+   * @returns Returns the resolution.
+   */
+  private buildPython(): LspResolution {
+    const binPath: string | null = this.resolveBin('pyright', 'pyright-langserver');
+    return binPath === null
+      ? unavailable('The Python language server is not available.')
       : resolved(nodePackageServer(this.executablePath, binPath));
   }
 
@@ -231,9 +245,10 @@ export class LspServerRegistry {
   /**
    * Resolves the CLI entry point of an installed npm package from its `bin` field.
    * @param packageName The package whose CLI entry point is resolved.
+   * @param binName The named `bin` entry to resolve, defaulting to the package name.
    * @returns Returns the absolute path of the entry point, or null when it cannot be resolved.
    */
-  private resolveBin(packageName: string): string | null {
+  private resolveBin(packageName: string, binName: string = packageName): string | null {
     try {
       const manifestPath: string = requireFrom.resolve(`${packageName}/package.json`);
       const manifest: { bin?: string | Record<string, string> } = requireFrom(manifestPath) as {
@@ -241,7 +256,7 @@ export class LspServerRegistry {
       };
       const bin: string | Record<string, string> | undefined = manifest.bin;
       const relative: string | undefined =
-        typeof bin === 'string' ? bin : (bin?.[packageName] ?? Object.values(bin ?? {})[0]);
+        typeof bin === 'string' ? bin : (bin?.[binName] ?? Object.values(bin ?? {})[0]);
       if (relative === undefined) {
         return null;
       }

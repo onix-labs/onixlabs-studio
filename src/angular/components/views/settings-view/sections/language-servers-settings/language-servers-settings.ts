@@ -70,6 +70,11 @@ export class LanguageServersSettings {
       description:
         'Eclipse JDT Language Server. Requires a Java 21+ runtime; downloaded on first use.',
     },
+    {
+      id: 'python',
+      label: 'Python',
+      description: 'Pyright. Diagnostics, completion, hover, and go-to-definition for Python.',
+    },
   ];
 
   /**
