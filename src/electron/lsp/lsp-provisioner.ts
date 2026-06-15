@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
-import { createWriteStream, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
@@ -17,10 +18,23 @@ const execFileAsync: (
 ) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
 
 /**
- * Holds the URL of the Eclipse JDT Language Server distribution downloaded on demand.
+ * Holds the pinned Eclipse JDT Language Server version. The distribution is pinned (rather than a
+ * moving snapshot) so every machine provisions the same, verified server; bumping it re-downloads
+ * into a fresh version-scoped directory.
+ */
+const JDTLS_VERSION: string = '1.58.0';
+
+/**
+ * Holds the URL of the pinned Eclipse JDT Language Server distribution.
  */
 const JDTLS_URL: string =
-  'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz';
+  'https://download.eclipse.org/jdtls/milestones/1.58.0/jdt-language-server-1.58.0-202604151538.tar.gz';
+
+/**
+ * Holds the expected SHA-256 of the pinned distribution. The download is verified against this before
+ * it is extracted, so a corrupted or tampered archive of executable code is never run.
+ */
+const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
 
 /**
  * Holds the lowest Java major version the downloaded language server can run on.
@@ -148,7 +162,7 @@ export class LspProvisioner {
    * @returns Returns the installation, or null on failure.
    */
   private async provisionJdtls(): Promise<JdtlsInstall | null> {
-    const installDir: string = path.join(this.serversRoot(), 'jdtls');
+    const installDir: string = path.join(this.serversRoot(), 'jdtls', JDTLS_VERSION);
     try {
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
@@ -157,12 +171,28 @@ export class LspProvisioner {
       await fs.mkdir(installDir, { recursive: true });
       const archive: string = path.join(installDir, 'jdtls.tar.gz');
       await this.download(JDTLS_URL, archive);
+      const digest: string = await this.sha256(archive);
+      if (digest !== JDTLS_SHA256) {
+        await fs.rm(archive, { force: true });
+        return null;
+      }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
       return await this.readInstall(installDir);
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Computes the SHA-256 of a file, streaming it so a large archive is not held in memory.
+   * @param file The file to hash.
+   * @returns Returns the lower-case hex digest.
+   */
+  private async sha256(file: string): Promise<string> {
+    const hash: ReturnType<typeof createHash> = createHash('sha256');
+    await pipeline(createReadStream(file), hash);
+    return hash.digest('hex');
   }
 
   /**
