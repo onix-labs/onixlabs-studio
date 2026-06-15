@@ -136,6 +136,11 @@ export interface LspSettings {
   readonly dotnetPath: string | null;
 
   /**
+   * Gets the user's override for the clangd executable (the C/C++ server), or null to auto-detect.
+   */
+  readonly clangdPath: string | null;
+
+  /**
    * Gets the user's override for the TypeScript language server's entry point (the path to its
    * JavaScript CLI module, run through the bundled Node runtime), or null to use the bundled server.
    */

@@ -105,6 +105,8 @@ const FEATURE_LANGUAGES: readonly string[] = [
   'java',
   'python',
   'csharp',
+  'cpp',
+  'c',
 ];
 
 /**

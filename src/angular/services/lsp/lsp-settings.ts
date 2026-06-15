@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: LspSettingsData = {
   disabledServers: [],
   javaPath: null,
   dotnetPath: null,
+  clangdPath: null,
   typescriptServerPath: null,
   serverArgs: {},
 };
@@ -103,6 +104,17 @@ export class LspSettings {
   public async setDotnetPath(dotnetPath: string): Promise<void> {
     const trimmed: string = dotnetPath.trim();
     await this.store({ ...this.current(), dotnetPath: trimmed === '' ? null : trimmed });
+  }
+
+  /**
+   * Sets the clangd override, persisting the change through the main process. An empty value clears
+   * the override (auto-detect).
+   * @param clangdPath The clangd executable path, or an empty string to auto-detect.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setClangdPath(clangdPath: string): Promise<void> {
+    const trimmed: string = clangdPath.trim();
+    await this.store({ ...this.current(), clangdPath: trimmed === '' ? null : trimmed });
   }
 
   /**

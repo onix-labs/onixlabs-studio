@@ -54,6 +54,7 @@ const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   java: 'Java',
   python: 'Python',
   csharp: 'C#',
+  clangd: 'C/C++',
 };
 
 /**

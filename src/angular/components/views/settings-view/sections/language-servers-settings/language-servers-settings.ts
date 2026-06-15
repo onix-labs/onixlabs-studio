@@ -81,6 +81,12 @@ export class LanguageServersSettings {
       description:
         'csharp-ls. Requires the .NET SDK; the server is installed on first use. Build the project for full results.',
     },
+    {
+      id: 'clangd',
+      label: 'C / C++',
+      description:
+        'clangd. Requires LLVM or Xcode Command Line Tools. A compile_commands.json gives full results.',
+    },
   ];
 
   /**
@@ -122,6 +128,14 @@ export class LanguageServersSettings {
    */
   protected onDotnetPathChange(dotnetPath: string): void {
     void this.lspSettings.setDotnetPath(dotnetPath);
+  }
+
+  /**
+   * Sets the clangd override.
+   * @param clangdPath The clangd executable path, or an empty string to auto-detect.
+   */
+  protected onClangdPathChange(clangdPath: string): void {
+    void this.lspSettings.setClangdPath(clangdPath);
   }
 
   /**

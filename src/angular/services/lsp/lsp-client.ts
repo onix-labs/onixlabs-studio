@@ -157,6 +157,8 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   java: 'java',
   python: 'python',
   csharp: 'csharp',
+  cpp: 'clangd',
+  c: 'clangd',
 };
 
 /**

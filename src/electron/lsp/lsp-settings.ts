@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: LspSettings = {
   disabledServers: [],
   javaPath: null,
   dotnetPath: null,
+  clangdPath: null,
   typescriptServerPath: null,
   serverArgs: {},
 };
@@ -107,6 +108,7 @@ export class LspSettingsManager {
       disabledServers?: unknown;
       javaPath?: unknown;
       dotnetPath?: unknown;
+      clangdPath?: unknown;
       typescriptServerPath?: unknown;
       serverArgs?: unknown;
     } = value;
@@ -125,6 +127,10 @@ export class LspSettingsManager {
     if (dotnetPath === undefined) {
       return null;
     }
+    const clangdPath: string | null | undefined = this.parsePath(candidate.clangdPath);
+    if (clangdPath === undefined) {
+      return null;
+    }
     const typescriptServerPath: string | null | undefined = this.parsePath(
       candidate.typescriptServerPath,
     );
@@ -141,6 +147,7 @@ export class LspSettingsManager {
       disabledServers: disabledServers as readonly string[],
       javaPath,
       dotnetPath,
+      clangdPath,
       typescriptServerPath,
       serverArgs,
     };
