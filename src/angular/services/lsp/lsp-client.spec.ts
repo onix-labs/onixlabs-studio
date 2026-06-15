@@ -101,6 +101,10 @@ class FakeMonaco {
   public getMonaco(): undefined {
     return undefined;
   }
+
+  public ensureLoaded(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 /**
