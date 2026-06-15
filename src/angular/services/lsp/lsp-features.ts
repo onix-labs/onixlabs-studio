@@ -99,7 +99,7 @@ interface LspLocationLink {
 /**
  * Holds the languages editor features are wired for; each must have a registered server.
  */
-const FEATURE_LANGUAGES: readonly string[] = ['typescript', 'javascript', 'java'];
+const FEATURE_LANGUAGES: readonly string[] = ['typescript', 'javascript', 'java', 'python'];
 
 /**
  * Holds the characters that trigger a completion request.

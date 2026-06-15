@@ -76,6 +76,7 @@
     "mermaid": "^11.15.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
+    "pyright": "^1.1.410",
     "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
