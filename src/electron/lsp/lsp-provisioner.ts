@@ -97,6 +97,11 @@ export class LspProvisioner {
   private csharpLsProvision: Promise<string | null> | null = null;
 
   /**
+   * Caches the detected clangd executable lookup, so detection runs once per session.
+   */
+  private clangdProbe: Promise<string | null> | null = null;
+
+  /**
    * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
    * then `java` on the PATH, provided it reports a high enough version. The result is cached for the
    * session (the override is stable per launch).
@@ -141,6 +146,19 @@ export class LspProvisioner {
   public ensureCsharpLs(dotnet: string): Promise<string | null> {
     this.csharpLsProvision ??= this.provisionCsharpLs(dotnet);
     return this.csharpLsProvision;
+  }
+
+  /**
+   * Detects a usable `clangd` executable (for C and C++): the user's override when given, then
+   * `clangd` on the PATH, then the platform's usual install locations (Xcode Command Line Tools,
+   * Homebrew LLVM, system LLVM). clangd is not downloaded; it ships with LLVM/Xcode. The result is
+   * cached for the session.
+   * @param override The user's configured clangd executable, or null to auto-detect.
+   * @returns Returns the clangd executable to launch, or null when none is found.
+   */
+  public detectClangd(override: string | null): Promise<string | null> {
+    this.clangdProbe ??= this.probeClangd(override);
+    return this.clangdProbe;
   }
 
   /**
@@ -242,6 +260,54 @@ export class LspProvisioner {
     try {
       const { stdout }: { stdout: string } = await execFileAsync(executable, ['--list-sdks']);
       return stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Probes for a usable clangd executable without consulting the cache.
+   * @param override The user's configured clangd executable, tried first when given.
+   * @returns Returns the clangd executable, or null when none is found.
+   */
+  private async probeClangd(override: string | null): Promise<string | null> {
+    const candidates: string[] = [];
+    if (override !== null && override.length > 0) {
+      candidates.push(override);
+    }
+    candidates.push(process.platform === 'win32' ? 'clangd.exe' : 'clangd');
+    if (process.platform === 'darwin') {
+      candidates.push(
+        '/usr/bin/clangd',
+        '/Library/Developer/CommandLineTools/usr/bin/clangd',
+        '/opt/homebrew/opt/llvm/bin/clangd',
+        '/usr/local/opt/llvm/bin/clangd',
+      );
+    } else if (process.platform === 'win32') {
+      candidates.push(
+        path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'LLVM', 'bin', 'clangd.exe'),
+      );
+    } else {
+      candidates.push('/usr/bin/clangd', '/usr/local/bin/clangd');
+    }
+
+    for (const candidate of candidates) {
+      if (await this.runsClangd(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Determines whether a clangd executable runs and identifies itself.
+   * @param executable The clangd executable to probe.
+   * @returns Returns true when the executable runs and reports a clangd version.
+   */
+  private async runsClangd(executable: string): Promise<boolean> {
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(executable, ['--version']);
+      return stdout.toLowerCase().includes('clangd');
     } catch {
       return false;
     }

@@ -11,6 +11,7 @@ describe('LspSettings', () => {
       disabledServers: ['java'],
       javaPath: null,
       dotnetPath: null,
+      clangdPath: null,
       typescriptServerPath: null,
       serverArgs: {},
     };
@@ -77,6 +78,14 @@ describe('LspSettings', () => {
     await service.setDotnetPath('  /usr/local/share/dotnet/dotnet  ');
 
     expect(setCalls.at(-1)?.dotnetPath).toBe('/usr/local/share/dotnet/dotnet');
+  });
+
+  it('setClangdPath_trimsAndStoresThePath', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+    await service.setClangdPath('  /usr/bin/clangd  ');
+
+    expect(setCalls.at(-1)?.clangdPath).toBe('/usr/bin/clangd');
   });
 
   it('setTypescriptServerPath_blank_clearsTheOverride', async () => {

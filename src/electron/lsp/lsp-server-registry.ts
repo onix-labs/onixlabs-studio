@@ -159,6 +159,9 @@ export class LspServerRegistry {
     if (serverId === 'csharp') {
       return this.buildCsharp();
     }
+    if (serverId === 'clangd') {
+      return this.buildClangd();
+    }
     return NO_SERVER;
   }
 
@@ -248,6 +251,24 @@ export class LspServerRegistry {
       return resolved({ ...spec, env: { DOTNET_ROOT: path.dirname(dotnet) } });
     }
     return resolved(spec);
+  }
+
+  /**
+   * Builds the resolution for the C/C++ language server (`clangd`), detecting it on the system.
+   * clangd discovers its compile flags from a `compile_commands.json` (or falls back to heuristics)
+   * relative to the workspace root the manager spawns it in.
+   * @returns Returns the resolution, with a reason when clangd is not found.
+   */
+  private async buildClangd(): Promise<LspResolution> {
+    const clangd: string | null = await this.provisioner.detectClangd(
+      this.settings.get().clangdPath,
+    );
+    if (clangd === null) {
+      return unavailable(
+        'clangd not found — install LLVM or Xcode Command Line Tools, or set its path in Settings.',
+      );
+    }
+    return resolved(this.withExtraArgs('clangd', { command: clangd, args: ['--log=error'] }));
   }
 
   /**

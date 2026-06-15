@@ -56,6 +56,18 @@
   />
 </app-setting-row>
 
+<app-setting-row
+  label="clangd"
+  description="Path to the clangd executable used for C and C++. Leave empty to detect it from the PATH, Xcode Command Line Tools, or LLVM."
+>
+  <app-text-field
+    [value]="settings().clangdPath ?? ''"
+    placeholder="Auto-detect"
+    [disabled]="!isAvailable"
+    (valueChange)="onClangdPathChange($event)"
+  />
+</app-setting-row>
+
 <p class="language-servers-hint">
   Changes apply to language servers started afterwards. Reopen a file or restart Studio to apply
   them.

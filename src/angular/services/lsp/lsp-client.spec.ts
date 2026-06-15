@@ -64,6 +64,7 @@ class FakeLsp implements LspApi {
       disabledServers: [],
       javaPath: null,
       dotnetPath: null,
+      clangdPath: null,
       typescriptServerPath: null,
       serverArgs: {},
     });
