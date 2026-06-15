@@ -545,12 +545,7 @@ export class LspClient implements OnDestroy {
             this.status.report(sessionId, serverId, 'unavailable', result.error);
           }
           if (result.success) {
-            const legend: LspSemanticTokensLegend | null = this.semanticLegendOf(result.capabilities);
-            this.legends.set(sessionId, legend);
-            // eslint-disable-next-line no-console
-            console.log('[lsp:diag] session ready', sessionId, {
-              semanticLegend: legend === null ? 'NONE (server sent no legend)' : `${legend.tokenTypes.length} types`,
-            });
+            this.legends.set(sessionId, this.semanticLegendOf(result.capabilities));
           }
           return result.success;
         });

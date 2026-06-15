@@ -282,12 +282,6 @@ export class LspFeatures {
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
     const ref: LspDocumentRef | null = this.resolve(model);
-    // eslint-disable-next-line no-console
-    console.log('[lsp:diag] provideSemanticTokens called', {
-      uri: model.uri.toString(),
-      hasRef: ref !== null,
-      hasLegend: ref?.semanticLegend != null,
-    });
     if (ref === null || this.api === undefined) {
       return undefined;
     }
@@ -304,18 +298,10 @@ export class LspFeatures {
       return undefined;
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
-    // eslint-disable-next-line no-console
-    console.log('[lsp:diag] semanticTokens response', {
-      isArray: Array.isArray(data),
-      serverTokens: Array.isArray(data) ? data.length / 5 : 0,
-    });
     if (!Array.isArray(data)) {
       return undefined;
     }
-    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
-    // eslint-disable-next-line no-console
-    console.log('[lsp:diag] mapped tokens', remapped.length / 5);
-    return { data: remapped };
+    return { data: this.remapSemanticTokens(data as number[], legend) };
   }
 
   /**

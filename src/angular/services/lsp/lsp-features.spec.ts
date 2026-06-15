@@ -51,6 +51,14 @@ function fakeMonacoNamespace(captured: CapturedProviders): unknown {
         captured.semantic = provider as CapturedProviders['semantic'];
       },
     },
+    Emitter: class {
+      public readonly event: () => { dispose(): void } = (): { dispose(): void } => ({
+        dispose: (): void => undefined,
+      });
+      public fire(): void {
+        // No subscribers in tests.
+      }
+    },
     Uri: { parse: (value: string): unknown => ({ value }) },
   };
 }
