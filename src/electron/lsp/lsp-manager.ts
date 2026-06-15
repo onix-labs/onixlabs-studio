@@ -1,5 +1,7 @@
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { statSync } from 'node:fs';
+import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   createMessageConnection,
@@ -141,7 +143,7 @@ export class LspManager {
     if (this.sessions.has(parsed.sessionId)) {
       return { success: true };
     }
-    if (!this.workspaceContext.isRoot(parsed.rootPath)) {
+    if (!this.isAllowedRoot(parsed)) {
       return { success: false, error: 'Workspace root is not open' };
     }
     const resolution: LspResolution = await this.registry.resolve(parsed.serverId, parsed.rootPath);
@@ -358,7 +360,12 @@ export class LspManager {
     if (typeof request !== 'object' || request === null) {
       return null;
     }
-    const candidate: { sessionId?: unknown; serverId?: unknown; rootPath?: unknown } = request;
+    const candidate: {
+      sessionId?: unknown;
+      serverId?: unknown;
+      rootPath?: unknown;
+      standaloneFile?: unknown;
+    } = request;
     if (
       typeof candidate.sessionId !== 'string' ||
       candidate.sessionId.length === 0 ||
@@ -369,11 +376,42 @@ export class LspManager {
     ) {
       return null;
     }
+    if (candidate.standaloneFile !== undefined && typeof candidate.standaloneFile !== 'string') {
+      return null;
+    }
     return {
       sessionId: candidate.sessionId,
       serverId: candidate.serverId,
       rootPath: candidate.rootPath,
+      standaloneFile: candidate.standaloneFile,
     };
+  }
+
+  /**
+   * Determines whether a session may be rooted at the requested path. A path is allowed when it is an
+   * open workspace root, or when the request names a real, existing standalone file whose directory is
+   * exactly that path — so a server can be rooted at a single opened file's folder without a workspace
+   * being open. The server reads the directory directly (it is a trusted child process); this does not
+   * widen the renderer's own, workspace-confined file access.
+   * @param request The parsed start request.
+   * @returns Returns true when the root is allowed.
+   */
+  private isAllowedRoot(request: LspStartRequest): boolean {
+    if (this.workspaceContext.isRoot(request.rootPath)) {
+      return true;
+    }
+    if (request.standaloneFile === undefined) {
+      return false;
+    }
+    const file: string = path.resolve(request.standaloneFile);
+    try {
+      if (!statSync(file).isFile()) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+    return path.dirname(file) === path.resolve(request.rootPath);
   }
 
   /**

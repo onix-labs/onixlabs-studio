@@ -290,6 +290,41 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
   });
 
+  it('syncDocument_withNoWorkspace_rootsTheServerAtTheFilesParentDirectory', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/scratch/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    expect(lsp.starts).toEqual([
+      {
+        sessionId: '/tmp/scratch::typescript',
+        serverId: 'typescript',
+        rootPath: '/tmp/scratch',
+        standaloneFile: '/tmp/scratch/a.ts',
+      },
+    ]);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_outsideTheWorkspaceRoot_isIgnored', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/elsewhere/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    expect(lsp.starts).toHaveLength(0);
+  });
+
   it('syncDocument_whenServerDisabled_doesNotStart', async () => {
     disabledServers.add('typescript');
     const client: LspClient = build();
