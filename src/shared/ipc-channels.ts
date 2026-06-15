@@ -265,4 +265,14 @@ export enum IpcChannel {
    * Notifies the renderer that a session's server process has exited.
    */
   LspServerExit = 'lsp:server-exit',
+
+  /**
+   * Gets the user's language-server settings.
+   */
+  LspGetSettings = 'lsp:get-settings',
+
+  /**
+   * Stores the user's language-server settings.
+   */
+  LspSetSettings = 'lsp:set-settings',
 }

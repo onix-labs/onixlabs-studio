@@ -114,6 +114,23 @@ export interface LspExit {
 }
 
 /**
+ * Describes the user's language-server settings. The settings are owned and persisted by the main
+ * process (so the registry can honour them when it resolves a server) and read by the renderer to
+ * avoid starting a server the user has disabled.
+ */
+export interface LspSettings {
+  /**
+   * Gets the identifiers of the servers the user has turned off.
+   */
+  readonly disabledServers: readonly string[];
+
+  /**
+   * Gets the user's override for the Java runtime executable, or null to auto-detect.
+   */
+  readonly javaPath: string | null;
+}
+
+/**
  * Specifies the language-server operations exposed to the renderer. The main process owns each
  * server's lifecycle (spawn, `initialize`, `shutdown`, crash handling); the renderer drives document
  * synchronisation and language features by forwarding LSP notifications and requests through this
@@ -166,4 +183,17 @@ export interface LspApi {
    * @returns Returns a function that unsubscribes the listener.
    */
   onExit(listener: (exit: LspExit) => void): () => void;
+
+  /**
+   * Gets the user's language-server settings.
+   * @returns Returns the current settings.
+   */
+  getSettings(): Promise<LspSettings>;
+
+  /**
+   * Stores the user's language-server settings.
+   * @param settings The settings to store.
+   * @returns Returns the stored settings.
+   */
+  setSettings(settings: LspSettings): Promise<LspSettings>;
 }

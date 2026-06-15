@@ -4,6 +4,7 @@ import {
   LspApi,
   LspExit,
   LspMessage,
+  LspSettings as LspSettingsData,
   LspStartRequest,
   LspStartResult,
 } from '../../../shared/lsp-types';
@@ -12,6 +13,7 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
 import { LspClient } from './lsp-client';
+import { LspSettings } from './lsp-settings';
 
 /**
  * A fake language-server bridge that records what the client sends and lets the test push server
@@ -55,6 +57,14 @@ class FakeLsp implements LspApi {
     return (): void => {
       this.exitListener = null;
     };
+  }
+
+  public getSettings(): Promise<LspSettingsData> {
+    return Promise.resolve({ disabledServers: [], javaPath: null });
+  }
+
+  public setSettings(settings: LspSettingsData): Promise<LspSettingsData> {
+    return Promise.resolve(settings);
   }
 
   public publishDiagnostics(sessionId: string, uri: string, diagnostics: unknown[]): void {
@@ -122,6 +132,7 @@ describe('LspClient', () => {
   let diagnostics: FakeDiagnostics;
   let monaco: FakeMonaco;
   let root: WritableSignal<DirectoryListing | null>;
+  let disabledServers: Set<string>;
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -134,6 +145,10 @@ describe('LspClient', () => {
         { provide: Diagnostics, useValue: diagnostics },
         { provide: Monaco, useValue: monaco },
         { provide: Workspace, useValue: { root } },
+        {
+          provide: LspSettings,
+          useValue: { isDisabled: (serverId: string): boolean => disabledServers.has(serverId) },
+        },
       ],
     });
     return TestBed.inject(LspClient);
@@ -143,6 +158,7 @@ describe('LspClient', () => {
     lsp = new FakeLsp();
     diagnostics = new FakeDiagnostics();
     monaco = new FakeMonaco();
+    disabledServers = new Set<string>();
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { studio: { lsp: LspApi } }).studio = { lsp };
   });
@@ -265,6 +281,21 @@ describe('LspClient', () => {
 
     expect(lsp.starts).toEqual([{ sessionId: '/root::java', serverId: 'java', rootPath: '/root' }]);
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_whenServerDisabled_doesNotStart', async () => {
+    disabledServers.add('typescript');
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    expect(lsp.starts).toHaveLength(0);
+    expect(lsp.notifications).toHaveLength(0);
   });
 
   it('syncDocument_unsupportedLanguage_doesNothing', async () => {

@@ -11,6 +11,7 @@ import {
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { ApplicationSettings } from './sections/application-settings/application-settings';
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
+import { LanguageServersSettings } from './sections/language-servers-settings/language-servers-settings';
 import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
 import { SecuritySettingsSection } from './sections/security-settings/security-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
@@ -26,6 +27,7 @@ type SettingsSectionId =
   | 'text-editor'
   | 'markdown'
   | 'ai'
+  | 'language-servers'
   | 'security';
 
 /**
@@ -59,6 +61,7 @@ interface SettingsSection {
     TextEditorSettingsSection,
     MarkdownSettings,
     AiSettingsSection,
+    LanguageServersSettings,
     SecuritySettingsSection,
     AppIcon,
   ],
@@ -87,6 +90,7 @@ export class SettingsView {
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
     { id: 'ai', label: 'AI', icon: Icon.AGENT },
+    { id: 'language-servers', label: 'Language Servers', icon: Icon.CODE_INLINE },
     { id: 'security', label: 'Security', icon: Icon.LOCK },
   ];
 

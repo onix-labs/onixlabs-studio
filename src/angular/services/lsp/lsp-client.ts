@@ -8,6 +8,7 @@ import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
+import { LspSettings } from './lsp-settings';
 import { LspStatus } from './lsp-status';
 
 /**
@@ -204,6 +205,11 @@ export class LspClient implements OnDestroy {
   private readonly features: LspFeatures = inject(LspFeatures);
 
   /**
+   * Holds the user's language-server settings, used to skip a server the user has disabled.
+   */
+  private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
    * Holds the disposer that withdraws this client's document resolver, or null when not registered.
    */
   private featuresDisposer: (() => void) | null = null;
@@ -310,7 +316,11 @@ export class LspClient implements OnDestroy {
       return;
     }
     const serverId: string | undefined = LANGUAGE_SERVERS[state.languageId];
-    if (serverId === undefined || !this.isWithin(state.path, root)) {
+    if (
+      serverId === undefined ||
+      this.lspSettings.isDisabled(serverId) ||
+      !this.isWithin(state.path, root)
+    ) {
       return;
     }
     const key: string = this.normalise(state.path);

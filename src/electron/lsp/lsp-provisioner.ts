@@ -81,12 +81,14 @@ export class LspProvisioner {
   private jdtlsProvision: Promise<JdtlsInstall | null> | null = null;
 
   /**
-   * Detects a usable Java executable: the one under `JAVA_HOME` when set, otherwise `java` on the
-   * PATH, provided it reports a high enough version. The result is cached for the session.
+   * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
+   * then `java` on the PATH, provided it reports a high enough version. The result is cached for the
+   * session (the override is stable per launch).
+   * @param override The user's configured Java executable, or null to auto-detect.
    * @returns Returns the Java executable to launch, or null when none is suitable.
    */
-  public detectJava(): Promise<string | null> {
-    this.jdkProbe ??= this.probeJava();
+  public detectJava(override: string | null): Promise<string | null> {
+    this.jdkProbe ??= this.probeJava(override);
     return this.jdkProbe;
   }
 
@@ -117,11 +119,15 @@ export class LspProvisioner {
 
   /**
    * Probes for a usable Java executable without consulting the cache.
+   * @param override The user's configured Java executable, tried first when given.
    * @returns Returns the Java executable, or null when none is suitable.
    */
-  private async probeJava(): Promise<string | null> {
+  private async probeJava(override: string | null): Promise<string | null> {
     const home: string | undefined = process.env['JAVA_HOME'];
     const candidates: string[] = [];
+    if (override !== null && override.length > 0) {
+      candidates.push(override);
+    }
     if (home !== undefined && home.length > 0) {
       candidates.push(path.join(home, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'));
     }
