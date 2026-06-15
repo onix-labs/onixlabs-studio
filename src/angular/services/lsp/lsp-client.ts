@@ -585,6 +585,10 @@ export class LspClient implements OnDestroy {
     );
     this.setMarkers(tracked, params.diagnostics);
     this.publish();
+    // Diagnostics arriving mean the server has analysed the document, so its semantic tokens are now
+    // available. Monaco requested them earlier (before the server was ready) and cached the empty
+    // result, so ask it to request them again — this is what paints highlighting without an edit.
+    this.features.refreshSemanticTokens();
   }
 
   /**
