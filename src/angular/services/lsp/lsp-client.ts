@@ -468,6 +468,9 @@ export class LspClient implements OnDestroy {
         text: content,
       },
     });
+    // Monaco asked for semantic tokens before the server was ready and cached the empty result; now
+    // that the document is open against a running server, ask it to request them again so they paint.
+    this.features.refreshSemanticTokens();
   }
 
   /**

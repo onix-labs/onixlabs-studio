@@ -181,6 +181,13 @@ export class LspFeatures {
   private registered: boolean = false;
 
   /**
+   * Fires to ask Monaco to re-request semantic tokens. Monaco requests them when a document first
+   * opens — before its language server has started — and caches the empty result; firing this once the
+   * server is ready makes it ask again so the tokens actually paint.
+   */
+  private semanticTokensChanged: MonacoApi.Emitter<void> | null = null;
+
+  /**
    * Initializes the service, registering the Monaco providers once Monaco has loaded.
    */
   public constructor() {
@@ -211,6 +218,7 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
+    this.semanticTokensChanged = new monaco.Emitter<void>();
     for (const language of FEATURE_LANGUAGES) {
       monaco.languages.registerCompletionItemProvider(language, {
         triggerCharacters: [...TRIGGER_CHARACTERS],
@@ -244,6 +252,7 @@ export class LspFeatures {
           }),
       });
       monaco.languages.registerDocumentSemanticTokensProvider(language, {
+        onDidChange: this.semanticTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
         provideDocumentSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
@@ -252,6 +261,14 @@ export class LspFeatures {
         releaseDocumentSemanticTokens: (): void => undefined,
       });
     }
+  }
+
+  /**
+   * Asks Monaco to re-request semantic tokens for every open model. Called when a language server
+   * becomes ready, so a document opened before its server started gets coloured without an edit.
+   */
+  public refreshSemanticTokens(): void {
+    this.semanticTokensChanged?.fire();
   }
 
   /**
