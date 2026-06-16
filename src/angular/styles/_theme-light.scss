@@ -5,7 +5,7 @@
   // On the light surface a slightly darker accent reads punchier as hover content than the base.
   --accent-surface-foreground-color: color-mix(in srgb, var(--accent-color), black 15%);
 
-  --root-content-background-color: var(--gray-700);
+  --root-content-background-color: var(--gray-500);
 
   --title-strip-background-color: var(--gray-500);
   --title-strip-border-color: var(--gray-600);
@@ -76,7 +76,7 @@
   --agent-view-surface-color: var(--gray-400);
   --agent-view-border-color: var(--gray-400);
 
-  --status-strip-background-color: var(--gray-500);
+  --status-strip-background-color: var(--gray-400);
   --status-strip-foreground-color: var(--gray-800);
 
   --dock-background-color: var(--gray-400);
@@ -99,6 +99,6 @@
 
   --dock-empty-foreground-color: var(--gray-300);
 
-  // The pane cell that frames each panel: a shade between the dock-area gaps and the panel surface.
-  --dock-pane-background-color: color-mix(in srgb, var(--gray-700) 65%, var(--gray-200));
+  // The pane cell that frames each panel, sitting one shade lighter than the workspace container.
+  --dock-pane-background-color: var(--gray-400);
 }
