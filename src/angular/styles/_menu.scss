@@ -40,3 +40,107 @@
     outline: none;
   }
 }
+
+// The status strip's language-server drop-up. It reuses the popup-menu surface but lists servers
+// (not actions), so each row pairs the server's name and live state with a restart button rather
+// than being a single activatable menu item.
+.lsp-status-menu__panel {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 15rem;
+  padding: 0.25rem;
+  background: var(--menu-background-color);
+  color: var(--menu-foreground-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.lsp-status-menu__heading {
+  margin: 0;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--settings-muted-foreground-color);
+}
+
+.lsp-status-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+}
+
+.lsp-status-menu__item-icon {
+  i {
+    font-size: 1.1rem;
+  }
+}
+
+.lsp-status-menu__item--ready .lsp-status-menu__item-icon {
+  color: var(--accent-color);
+}
+
+// Spin the spinner icon while a server is starting, so the row reads as loading.
+.lsp-status-menu__item--starting .lsp-status-menu__item-icon {
+  display: inline-flex;
+  animation: lsp-status-menu-spin 1s linear infinite;
+}
+
+.lsp-status-menu__item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.lsp-status-menu__item-name {
+  font-weight: 500;
+}
+
+.lsp-status-menu__item-status {
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.lsp-status-menu__restart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    font-size: 1.1rem;
+  }
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--menu-item-background-color--hover);
+    outline: none;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+}
+
+@keyframes lsp-status-menu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -255,6 +255,15 @@ export class LspClient implements OnDestroy {
   private readonly sessions: Map<string, Promise<boolean>> = new Map<string, Promise<boolean>>();
 
   /**
+   * Holds the parameters each session was started with, keyed by session id, so a restart can bring a
+   * server back up even when it currently serves no open documents.
+   */
+  private readonly sessionInfo: Map<
+    string,
+    { serverId: string; rootPath: string; standaloneFile?: string }
+  > = new Map<string, { serverId: string; rootPath: string; standaloneFile?: string }>();
+
+  /**
    * Holds each started session's semantic token legend (the server's own ordered token-type and
    * modifier names), or null when the server does not provide semantic tokens.
    */
@@ -419,6 +428,66 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Restarts a running server: tears its session down and re-opens every document it was serving
+   * against a fresh one. An explicit stop is silent to the renderer (the main process forgets the
+   * session before the process exit fires, so no exit notification is sent), so once stop resolves the
+   * session is gone and can be started anew. The status indicator is held in its starting state for
+   * the whole cycle, so the menu shows a spinner from the click until the new server reports ready.
+   * @param sessionId The session to restart.
+   * @returns Returns a promise that resolves once the documents have been queued against the new server.
+   */
+  public async restart(sessionId: string): Promise<void> {
+    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
+      this.sessionInfo.get(sessionId);
+    if (this.api === undefined || !this.sessions.has(sessionId) || info === undefined) {
+      return;
+    }
+    this.status.setState(sessionId, 'starting');
+    await this.api.stop(sessionId);
+    this.sessions.delete(sessionId);
+    this.legends.delete(sessionId);
+    const documents: TrackedDocument[] = [...this.tracked.values()].filter(
+      (tracked: TrackedDocument): boolean =>
+        `${tracked.rootPath}::${tracked.serverId}` === sessionId,
+    );
+    // With open documents, re-open each against a fresh server: its first diagnostics flip the
+    // indicator back to ready. With none, the server has nothing to analyse and would otherwise spin
+    // forever, so start the bare process and mark it ready once its handshake completes — keeping it
+    // listed rather than vanishing.
+    if (documents.length === 0) {
+      const started: boolean = await this.startSession(
+        sessionId,
+        info.serverId,
+        info.rootPath,
+        info.standaloneFile,
+      );
+      if (started) {
+        this.status.setState(sessionId, 'ready');
+      }
+      return;
+    }
+    for (const tracked of documents) {
+      tracked.opened = false;
+      this.enqueue(tracked, (): Promise<void> => this.reopen(tracked));
+    }
+  }
+
+  /**
+   * Resolves the root a document's server session is rooted at, so the active workspace can be scoped
+   * to its servers. Returns null for a document this client has not tracked against a server.
+   * @param documentId The identifier of the document.
+   * @returns Returns the session root path, or null.
+   */
+  public rootForDocument(documentId: string): string | null {
+    for (const tracked of this.tracked.values()) {
+      if (tracked.documentId === documentId) {
+        return tracked.rootPath;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Tears the client down: stops every server and unsubscribes from notifications. Called when the
    * workspace closes.
    */
@@ -432,6 +501,7 @@ export class LspClient implements OnDestroy {
     }
     this.sessions.clear();
     this.legends.clear();
+    this.sessionInfo.clear();
     this.tracked.clear();
   }
 
@@ -471,6 +541,37 @@ export class LspClient implements OnDestroy {
     // Monaco asked for semantic tokens before the server was ready and cached the empty result; now
     // that the document is open against a running server, ask it to request them again so they paint.
     this.features.refreshSemanticTokens();
+  }
+
+  /**
+   * Re-opens a document against a freshly restarted server, using the latest text from its live editor
+   * model (the client does not retain content, so it reads it back from Monaco).
+   * @param tracked The document to re-open.
+   * @returns Returns a promise that resolves once the open notification has been sent.
+   */
+  private async reopen(tracked: TrackedDocument): Promise<void> {
+    await this.open(tracked, this.currentContent(tracked));
+  }
+
+  /**
+   * Reads a tracked document's current text from its live Monaco model, or an empty string when Monaco
+   * is unavailable or the document has no live model.
+   * @param tracked The document whose text is read.
+   * @returns Returns the current text, or an empty string.
+   */
+  private currentContent(tracked: TrackedDocument): string {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return '';
+    }
+    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    if (modelUri === undefined) {
+      return '';
+    }
+    const model: MonacoApi.editor.ITextModel | null = monaco.editor.getModel(
+      monaco.Uri.parse(modelUri),
+    );
+    return model?.getValue() ?? '';
   }
 
   /**
@@ -524,35 +625,59 @@ export class LspClient implements OnDestroy {
     if (this.api === undefined) {
       return null;
     }
-    const serverId: string = tracked.serverId;
-    const sessionId: string = `${tracked.rootPath}::${serverId}`;
-    let pending: Promise<boolean> | undefined = this.sessions.get(sessionId);
-    if (pending === undefined) {
-      this.status.report(sessionId, serverId, 'starting');
-      pending = this.api
-        .start({
-          sessionId,
-          serverId,
-          rootPath: tracked.rootPath,
-          standaloneFile: tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
-        })
-        .then((result: LspStartResult): boolean => {
-          // `initialize` returning does not mean the server can answer yet: heavy servers (Roslyn,
-          // jdtls) load the whole project for several seconds afterwards, reporting no progress. Keep
-          // the indicator in its starting (spinner) state until the first diagnostics arrive, which is
-          // the signal the server has actually analysed the workspace.
-          if (!result.success) {
-            this.status.report(sessionId, serverId, 'unavailable', result.error);
-          }
-          if (result.success) {
-            this.legends.set(sessionId, this.semanticLegendOf(result.capabilities));
-          }
-          return result.success;
-        });
-      this.sessions.set(sessionId, pending);
-    }
+    const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    const pending: Promise<boolean> =
+      this.sessions.get(sessionId) ??
+      this.startSession(
+        sessionId,
+        tracked.serverId,
+        tracked.rootPath,
+        tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
+      );
     const started: boolean = await pending;
     return started ? sessionId : null;
+  }
+
+  /**
+   * Starts a server session, registering it with the status indicator and recording its start
+   * parameters so it can later be restarted. The indicator is left in its starting state on success:
+   * `initialize` returning does not mean the server can answer yet (heavy servers such as Roslyn and
+   * jdtls load the whole project for several seconds afterwards, reporting no progress), so it is held
+   * as starting until the first diagnostics arrive, the signal the server has analysed the workspace.
+   * @param sessionId The session id to start under.
+   * @param serverId The identifier of the server to start.
+   * @param rootPath The root the session is rooted at.
+   * @param standaloneFile The standalone file the session vouches for, or undefined.
+   * @returns Returns the in-flight start promise, resolving true when the server started.
+   */
+  private startSession(
+    sessionId: string,
+    serverId: string,
+    rootPath: string,
+    standaloneFile?: string,
+  ): Promise<boolean> {
+    if (this.api === undefined) {
+      return Promise.resolve(false);
+    }
+    this.status.register(sessionId, {
+      serverId,
+      rootPath,
+      restart: (): void => void this.restart(sessionId),
+    });
+    this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
+    const pending: Promise<boolean> = this.api
+      .start({ sessionId, serverId, rootPath, standaloneFile })
+      .then((result: LspStartResult): boolean => {
+        if (!result.success) {
+          this.status.setState(sessionId, 'unavailable', result.error);
+        }
+        if (result.success) {
+          this.legends.set(sessionId, this.semanticLegendOf(result.capabilities));
+        }
+        return result.success;
+      });
+    this.sessions.set(sessionId, pending);
+    return pending;
   }
 
   /**
@@ -584,7 +709,7 @@ export class LspClient implements OnDestroy {
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
     // document: flip the indicator from starting to ready, and ask Monaco to re-request semantic
     // tokens (it cached an empty result earlier, before the server was ready) so highlighting paints.
-    this.status.report(message.sessionId, tracked.serverId, 'ready');
+    this.status.setState(message.sessionId, 'ready');
     this.features.refreshSemanticTokens();
   }
 
@@ -668,6 +793,7 @@ export class LspClient implements OnDestroy {
       return;
     }
     this.legends.delete(exit.sessionId);
+    this.sessionInfo.delete(exit.sessionId);
     this.status.remove(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {

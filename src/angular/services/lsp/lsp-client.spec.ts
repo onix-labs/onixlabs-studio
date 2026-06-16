@@ -14,6 +14,7 @@ import { Monaco } from '../monaco/monaco';
 import { Workspace } from '../workspace/workspace';
 import { LspClient } from './lsp-client';
 import { LspSettings } from './lsp-settings';
+import { LspServer, LspStatus } from './lsp-status';
 
 /**
  * A fake language-server bridge that records what the client sends and lets the test push server
@@ -439,5 +440,56 @@ describe('LspClient', () => {
 
     expect(diagnostics.emitted).toHaveLength(0);
     expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('restart_withOpenDocument_stopsStartsAfreshAndReopensTheDocument', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    expect(lsp.starts).toHaveLength(1);
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    expect(lsp.stops).toEqual(['/root::typescript']);
+    expect(lsp.starts).toHaveLength(2);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+    expect(status.servers().map((server: LspServer): string => server.sessionId)).toContain(
+      '/root::typescript',
+    );
+  });
+
+  it('restart_withNoOpenDocuments_restartsTheServerAndKeepsItListed', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    client.closeDocument('doc-1');
+    await flush();
+    expect(status.servers().map((server: LspServer): string => server.sessionId)).toContain(
+      '/root::typescript',
+    );
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    expect(lsp.stops).toEqual(['/root::typescript']);
+    expect(lsp.starts).toHaveLength(2);
+    const server: LspServer | undefined = status
+      .servers()
+      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    expect(server).toBeDefined();
+    expect(server?.state).toBe('ready');
   });
 });

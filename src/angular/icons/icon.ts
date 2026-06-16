@@ -393,6 +393,11 @@ export class Icon {
    */
   public static readonly SPINNER: Icon = new Icon('ph ph-circle-notch');
 
+  /**
+   * Gets the restart icon shown on the language-server menu's restart action.
+   */
+  public static readonly RESTART: Icon = new Icon('ph ph-arrow-clockwise');
+
   // --- Problems: severities and markdown alerts ---
 
   /**
@@ -544,6 +549,11 @@ export class Icon {
    * Gets the downward caret used on menus and split buttons.
    */
   public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');
+
+  /**
+   * Gets the upward caret used on drop-up menus that open above their trigger.
+   */
+  public static readonly CARET_UP: Icon = new Icon('ph ph-caret-up');
 
   /**
    * Gets the rightward caret used on collapsed nodes.

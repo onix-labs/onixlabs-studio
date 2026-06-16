@@ -1,0 +1,43 @@
+// The trigger button reads as a status segment: flush with the strip until hovered, with the ready
+// state picking up the accent colour the old text indicator used. The drop-up panel itself renders
+// through the CDK overlay (outside this component), so its styles live in the global _menu.scss.
+:host {
+  display: inline-flex;
+}
+
+.lsp-status-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--title-strip-button-background-color--hover);
+    outline: none;
+  }
+}
+
+.lsp-status-menu__trigger--ready {
+  color: var(--accent-color);
+}
+
+// Spin the spinner icon while a server is starting, so the trigger reads as in-progress.
+.lsp-status-menu__trigger--starting app-icon:first-child {
+  display: inline-flex;
+  animation: lsp-status-menu-spin 1s linear infinite;
+}
+
+@keyframes lsp-status-menu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

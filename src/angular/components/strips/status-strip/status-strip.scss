@@ -22,19 +22,3 @@
   align-items: center;
   gap: 0.3rem;
 }
-
-.status-strip__lsp--ready {
-  color: var(--accent-color);
-}
-
-// Spin the notch icon while a server is starting, so the indicator reads as in-progress.
-.status-strip__lsp--starting app-icon {
-  display: inline-flex;
-  animation: status-strip-spin 1s linear infinite;
-}
-
-@keyframes status-strip-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { LspIndicator, LspStatus } from './lsp-status';
+import { LspServer, LspStatus } from './lsp-status';
 
 describe('LspStatus', () => {
   let status: LspStatus;
@@ -9,57 +9,99 @@ describe('LspStatus', () => {
     status = TestBed.inject(LspStatus);
   });
 
-  it('indicator_whenNoServers_isNull', () => {
-    expect(status.indicator()).toBeNull();
+  /**
+   * Registers a server with a no-op restart callback unless one is supplied.
+   * @param sessionId The session id.
+   * @param serverId The server id.
+   * @param rootPath The session root.
+   * @param restart The restart callback.
+   */
+  function register(
+    sessionId: string,
+    serverId: string,
+    rootPath: string,
+    restart: () => void = (): void => undefined,
+  ): void {
+    status.register(sessionId, { serverId, rootPath, restart });
+  }
+
+  it('servers_whenNoneRegistered_isEmpty', () => {
+    expect(status.servers()).toEqual([]);
   });
 
-  it('indicator_whenServerStarting_showsStartingState', () => {
-    status.report('/root::java', 'java', 'starting');
+  it('register_addsServerInStartingState', () => {
+    register('/root::java', 'java', '/root');
 
-    const indicator: LspIndicator | null = status.indicator();
-    expect(indicator?.state).toBe('starting');
-    expect(indicator?.label).toContain('Java');
-    expect(indicator?.label).toContain('starting');
+    const servers: readonly LspServer[] = status.servers();
+    expect(servers.length).toBe(1);
+    expect(servers[0]).toEqual(
+      expect.objectContaining({
+        sessionId: '/root::java',
+        serverId: 'java',
+        name: 'Java',
+        rootPath: '/root',
+        state: 'starting',
+      }),
+    );
   });
 
-  it('indicator_whenServerReady_showsReadyState', () => {
-    status.report('/root::typescript', 'typescript', 'ready');
+  it('setState_updatesTrackedServerState', () => {
+    register('/root::typescript', 'typescript', '/root');
+    status.setState('/root::typescript', 'ready');
 
-    const indicator: LspIndicator | null = status.indicator();
-    expect(indicator?.state).toBe('ready');
-    expect(indicator?.label).toContain('TypeScript');
+    expect(status.servers()[0].state).toBe('ready');
   });
 
-  it('indicator_prefersStartingOverReady', () => {
-    status.report('/root::typescript', 'typescript', 'ready');
-    status.report('/root::java', 'java', 'starting');
+  it('setState_carriesTheDetailForUnavailable', () => {
+    register('/root::java', 'java', '/root');
+    status.setState('/root::java', 'unavailable', 'Java 21+ runtime not found');
 
-    expect(status.indicator()?.state).toBe('starting');
+    const server: LspServer = status.servers()[0];
+    expect(server.state).toBe('unavailable');
+    expect(server.detail).toBe('Java 21+ runtime not found');
   });
 
-  it('indicator_prefersReadyOverUnavailable', () => {
-    status.report('/root::java', 'java', 'unavailable');
-    status.report('/root::typescript', 'typescript', 'ready');
+  it('setState_whenSessionUnknown_isIgnored', () => {
+    status.setState('/root::java', 'ready');
 
-    expect(status.indicator()?.state).toBe('ready');
+    expect(status.servers()).toEqual([]);
   });
 
-  it('indicator_whenOnlyUnavailable_showsUnavailableState', () => {
-    status.report('/root::java', 'java', 'unavailable');
+  it('servers_areSortedByName', () => {
+    register('/root::typescript', 'typescript', '/root');
+    register('/root::clangd', 'clangd', '/root');
 
-    expect(status.indicator()?.state).toBe('unavailable');
+    expect(status.servers().map((server: LspServer): string => server.name)).toEqual([
+      'C/C++',
+      'TypeScript',
+    ]);
   });
 
-  it('indicator_whenUnavailableWithReason_showsTheReason', () => {
-    status.report('/root::java', 'java', 'unavailable', 'Java 21+ runtime not found');
+  it('restart_invokesTheRegisteredCallback', () => {
+    let calls: number = 0;
+    register('/root::java', 'java', '/root', (): void => {
+      calls += 1;
+    });
 
-    expect(status.indicator()?.label).toBe('Java 21+ runtime not found');
+    status.restart('/root::java');
+
+    expect(calls).toBe(1);
   });
 
-  it('remove_clearsTheContribution', () => {
-    status.report('/root::java', 'java', 'ready');
+  it('register_keepsTheServerWhenReRegisteredAfterRestart', () => {
+    register('/root::java', 'java', '/root');
+    status.setState('/root::java', 'ready');
+    register('/root::java', 'java', '/root');
+
+    const servers: readonly LspServer[] = status.servers();
+    expect(servers.length).toBe(1);
+    expect(servers[0].state).toBe('starting');
+  });
+
+  it('remove_stopsTrackingTheServer', () => {
+    register('/root::java', 'java', '/root');
     status.remove('/root::java');
 
-    expect(status.indicator()).toBeNull();
+    expect(status.servers()).toEqual([]);
   });
 });

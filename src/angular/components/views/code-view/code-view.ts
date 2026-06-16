@@ -24,6 +24,7 @@ import { LspClient } from '../../../services/lsp/lsp-client';
 import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
+import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
@@ -88,6 +89,12 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * receives language-server diagnostics for the file.
    */
   private readonly lsp: LspClient = inject(LspClient);
+
+  /**
+   * Holds the global active-workspace seam a standalone code tab publishes its file's session root to,
+   * so the status strip's language-server menu can scope itself to the file's server while active.
+   */
+  private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
    * Holds the cursor-position status publisher.
@@ -287,6 +294,12 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         languageId: document.language(),
         content: document.content(),
       });
+      // A standalone code tab is its own top-level tab, so publish its file's server root for the
+      // status strip's language-server menu. A docked editor is not a top-level tab (the directory
+      // tab owns that), so it leaves the published root to its DirectoryView.
+      if (this.removeOnDestroy()) {
+        this.activeWorkspace.setRoot(this.tabId(), this.lsp.rootForDocument(this.tabId()));
+      }
     });
 
     // Honour reveal requests aimed at this view's document, jumping the editor to the line.
@@ -339,6 +352,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     // Only release the document and run terminal when this view owns their lifecycle (standalone
     // tabs). In the dock well a destroy is a re-parent, not a close, so the workspace handles it.
     if (this.removeOnDestroy()) {
+      this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
       this.documents.remove(this.tabId());
       this.codeTerminals.remove(this.tabId());

@@ -18,16 +18,7 @@
         {{ segment.text }}
       </span>
     }
-    @if (lspIndicator(); as indicator) {
-      <span
-        class="status-strip__segment status-strip__lsp"
-        [class]="'status-strip__segment status-strip__lsp status-strip__lsp--' + indicator.state"
-        [title]="indicator.label"
-      >
-        <app-icon [icon]="indicator.icon" />
-        {{ indicator.label }}
-      </span>
-    }
+    <app-lsp-status-menu />
     <app-icon [icon]="Icon.NOTCHES" />
   </div>
 </footer>

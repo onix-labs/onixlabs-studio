@@ -25,6 +25,7 @@ import { LspClient } from '../../../services/lsp/lsp-client';
 import { Output } from '../../../services/output/output';
 import { BuildRunner } from '../../../services/tasks/build-runner';
 import { Builds } from '../../../services/tasks/builds';
+import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
 import { Workspace } from '../../../services/workspace/workspace';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { DockContainer } from '../../dock/dock-container/dock-container';
@@ -81,6 +82,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
+   * Holds the global active-workspace seam this tab publishes its open folder to, so the status
+   * strip's language-server menu can scope itself to this workspace while the tab is active.
+   */
+  private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
    * Holds this tab's scoped dock layout.
    */
   private readonly dockState: DockState = inject(DockState);
@@ -129,6 +136,10 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.builds.unregister(this.buildRunner);
       }
     });
+
+    effect((): void => {
+      this.activeWorkspace.setRoot(this.tabId(), this.workspace.root()?.path ?? null);
+    });
   }
 
   /**
@@ -148,6 +159,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.builds.unregister(this.buildRunner);
+    this.activeWorkspace.clearRoot(this.tabId());
     void this.workspace.closeFolder();
   }
 }
