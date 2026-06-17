@@ -1,9 +1,11 @@
-import { Dirent, existsSync } from 'node:fs';
-import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LspServerId } from '../../shared/lsp-types';
+import { ProjectModel } from '../../shared/project-system';
+import { DotnetProjectSystem } from '../project-system/dotnet-project-system';
+import { ProjectSystemRegistry } from '../project-system/project-system';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -151,6 +153,12 @@ export class LspServerRegistry {
   private readonly settings: LspSettingsManager;
 
   /**
+   * Resolves the project-structure model of a workspace root, used to decide what a structure-aware
+   * server (such as the Roslyn C# server) should open.
+   */
+  private readonly projectSystems: ProjectSystemRegistry = new ProjectSystemRegistry();
+
+  /**
    * Initializes a new instance of the {@link LspServerRegistry} class.
    * @param executablePath The absolute path of the Electron binary (`process.execPath`).
    * @param settings The user's language-server settings.
@@ -158,6 +166,7 @@ export class LspServerRegistry {
   public constructor(executablePath: string, settings: LspSettingsManager) {
     this.executablePath = executablePath;
     this.settings = settings;
+    this.projectSystems.register(new DotnetProjectSystem());
   }
 
   /**
@@ -255,8 +264,9 @@ export class LspServerRegistry {
   /**
    * Builds the resolution for the Roslyn C# language server, detecting a .NET SDK and downloading the
    * server on first use. Unlike most servers, Roslyn does not load a workspace from `rootUri` alone, so
-   * the spec carries a `solution/open` (or `project/open`) notification, pointed at the solution or
-   * projects discovered under the root, for the manager to send after the handshake.
+   * the spec carries a `solution/open` (or `project/open`) notification — pointed at the root's solution
+   * when the .NET project system finds one, and at its loose projects otherwise — for the manager to
+   * send after the handshake.
    * @param rootPath The workspace root the server is rooted at.
    * @returns Returns the resolution, with a reason when .NET is unavailable or the server could not be
    * downloaded.
@@ -275,8 +285,9 @@ export class LspServerRegistry {
       return unavailable('The C# language server could not be downloaded.');
     }
     const logDir: string = await this.provisioner.dataDirectory('roslyn', rootPath);
-    const postInitialize: readonly LspPostInitialize[] | undefined =
-      (await this.discoverCsharpWorkspace(rootPath)) ?? undefined;
+    const model: ProjectModel | null =
+      (await this.projectSystems.get('dotnet')?.load(rootPath)) ?? null;
+    const postInitialize: readonly LspPostInitialize[] | undefined = this.csharpOpenPlan(model);
     const env: Record<string, string> = { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
     if (path.isAbsolute(dotnet)) {
       // Help the server's apphost find the .NET runtime when it is not on the spawned PATH.
@@ -293,71 +304,30 @@ export class LspServerRegistry {
   }
 
   /**
-   * Discovers the C# workspace to open under a root: a solution at the root when present, otherwise the
-   * projects found within a couple of directory levels. Returns the matching post-initialize
-   * notification, or null when neither is found (the server still starts, serving single files).
-   * @param rootPath The workspace root to search.
-   * @returns Returns the notification to send after the handshake, or null.
+   * Translates a .NET project model into the notification that tells Roslyn what to open: the solution
+   * as a unit when one backs the model (so it loads exactly and in order), otherwise the loose projects.
+   * Returns undefined when there is nothing to open (the server still starts, serving single files).
+   * @param model The .NET project model, or null when none was found.
+   * @returns Returns the post-initialize notification, or undefined.
    */
-  private async discoverCsharpWorkspace(
-    rootPath: string,
-  ): Promise<readonly LspPostInitialize[] | null> {
-    const solutions: string[] = await this.findByExtension(rootPath, '.sln', 1);
-    if (solutions.length > 0) {
-      return [{ method: 'solution/open', params: { solution: pathToFileURL(solutions[0]).href } }];
+  private csharpOpenPlan(model: ProjectModel | null): readonly LspPostInitialize[] | undefined {
+    if (model === null) {
+      return undefined;
     }
-    const projects: string[] = await this.findByExtension(rootPath, '.csproj', 2);
-    if (projects.length > 0) {
+    if (model.solution !== null) {
+      return [
+        { method: 'solution/open', params: { solution: pathToFileURL(model.solution.path).href } },
+      ];
+    }
+    if (model.projects.length > 0) {
       return [
         {
           method: 'project/open',
-          params: { projects: projects.map((file: string): string => pathToFileURL(file).href) },
+          params: { projects: model.projects.map((p): string => pathToFileURL(p.path).href) },
         },
       ];
     }
-    return null;
-  }
-
-  /**
-   * Finds files with a given extension under a directory, descending at most `depth` levels and
-   * skipping hidden, dependency, and build-output directories. Failures to read a directory are
-   * treated as empty, so a partially unreadable tree still yields what it can.
-   * @param directory The directory to search.
-   * @param extension The file extension to match (including the leading dot).
-   * @param depth The number of directory levels to descend (1 searches only the directory itself).
-   * @returns Returns the matching absolute file paths.
-   */
-  private async findByExtension(
-    directory: string,
-    extension: string,
-    depth: number,
-  ): Promise<string[]> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-    const results: string[] = [];
-    for (const entry of entries) {
-      const full: string = path.join(directory, entry.name);
-      if (entry.isFile() && entry.name.endsWith(extension)) {
-        results.push(full);
-      } else if (entry.isDirectory() && depth > 1 && !this.isSkippedDirectory(entry.name)) {
-        results.push(...(await this.findByExtension(full, extension, depth - 1)));
-      }
-    }
-    return results;
-  }
-
-  /**
-   * Determines whether a directory should be skipped when discovering C# projects: hidden directories
-   * and the usual dependency and build-output directories never contain the project files to open.
-   * @param name The directory name.
-   * @returns Returns true when the directory should be skipped.
-   */
-  private isSkippedDirectory(name: string): boolean {
-    return name.startsWith('.') || name === 'node_modules' || name === 'bin' || name === 'obj';
+    return undefined;
   }
 
   /**
