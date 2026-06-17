@@ -10,7 +10,7 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
-import type { ProjectModel } from '../shared/project-system';
+import type { ProjectItems, ProjectModel } from '../shared/project-system';
 import type {
   LspExit,
   LspMessage,
@@ -224,6 +224,8 @@ const studioApi: StudioApi = {
   project: {
     loadModel: (root: string): Promise<ProjectModel | null> =>
       ipcRenderer.invoke(IpcChannel.ProjectModelLoad, root) as Promise<ProjectModel | null>,
+    loadItems: (projectPath: string): Promise<ProjectItems | null> =>
+      ipcRenderer.invoke(IpcChannel.ProjectItemsLoad, projectPath) as Promise<ProjectItems | null>,
   },
   ai: {
     getAuthStatus: (): Promise<AiAuthStatus> =>

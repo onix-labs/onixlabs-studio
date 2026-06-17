@@ -1,20 +1,35 @@
 @if (model(); as solution) {
   <div class="tree-list" role="tree">
-    @for (row of rows(); track $index) {
+    @for (row of rows(); track row.key) {
       <button
         type="button"
         class="tree-row"
         role="treeitem"
-        [class.bold]="row.node.type === 'folder'"
+        [class.bold]="row.kind === 'project'"
         [style.padding-left.px]="indentFor(row.depth)"
-        (click)="onRowClick(row.node)"
+        [attr.aria-expanded]="row.expandable ? row.expanded : null"
+        (click)="onRowClick(row)"
       >
+        @if (row.expandable) {
+          <app-icon
+            class="tree-chevron"
+            [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
+          />
+        } @else {
+          <span class="tree-spacer"></span>
+        }
+
         <app-icon
           class="tree-icon"
-          [class.tree-icon--folder]="row.node.type === 'folder'"
-          [icon]="iconFor(row.node)"
+          [class.tree-icon--folder]="row.kind === 'folder' || row.kind === 'item-folder'"
+          [class.tree-icon--project]="row.kind === 'project'"
+          [icon]="iconFor(row)"
         />
-        <span class="tree-name">{{ row.node.name }}</span>
+        <span class="tree-name">{{ row.label }}</span>
+
+        @if (row.loading) {
+          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+        }
       </button>
     }
   </div>

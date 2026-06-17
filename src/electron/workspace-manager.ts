@@ -9,7 +9,7 @@ import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
-import { ProjectModel } from '../shared/project-system';
+import { ProjectItems, ProjectModel } from '../shared/project-system';
 import {
   DirectoryEntry,
   DirectoryListing,
@@ -130,6 +130,11 @@ export class WorkspaceManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<ProjectModel | null> =>
         this.loadProjectModel(root),
     );
+    ipcMain.handle(
+      IpcChannel.ProjectItemsLoad,
+      (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> =>
+        this.loadProjectItems(projectPath),
+    );
   }
 
   /**
@@ -145,6 +150,20 @@ export class WorkspaceManager {
     }
     const system: ProjectSystem | null = await projectSystems.match(root);
     return system === null ? null : system.load(root);
+  }
+
+  /**
+   * Loads a single project's logical contents (its files), confined to projects within an open
+   * workspace so the renderer cannot drive evaluation of arbitrary files.
+   * @param projectPath The candidate project-file path.
+   * @returns Returns the contents, or null when the path is outside the workspace or has no contents.
+   */
+  private async loadProjectItems(projectPath: unknown): Promise<ProjectItems | null> {
+    if (typeof projectPath !== 'string' || !this.workspace.isWithin(projectPath)) {
+      return null;
+    }
+    const system: ProjectSystem | undefined = projectSystems.get('dotnet');
+    return (await system?.loadProjectItems?.(projectPath)) ?? null;
   }
 
   /**

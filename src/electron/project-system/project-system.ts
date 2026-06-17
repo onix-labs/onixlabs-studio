@@ -1,4 +1,4 @@
-import { ProjectModel } from '../../shared/project-system';
+import { ProjectItems, ProjectModel } from '../../shared/project-system';
 
 /**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm
@@ -25,6 +25,14 @@ export interface ProjectSystem {
    * @returns Returns the model, or null when the root has nothing this provider can model.
    */
   load(root: string): Promise<ProjectModel | null>;
+
+  /**
+   * Loads a single project's logical contents (its files), on demand when its node is expanded.
+   * Optional: a provider whose projects have no drillable contents need not implement it.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the contents, or null when they could not be loaded.
+   */
+  loadProjectItems?(projectPath: string): Promise<ProjectItems | null>;
 }
 
 /**

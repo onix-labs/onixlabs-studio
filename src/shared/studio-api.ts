@@ -5,7 +5,7 @@
 
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
-import type { ProjectModel } from './project-system';
+import type { ProjectItems, ProjectModel } from './project-system';
 import type { SecurityApi } from './security-types';
 import type { TaskApi } from './task-types';
 
@@ -421,6 +421,13 @@ export interface ProjectApi {
    * @returns Returns the model, or null when the root has no recognized project system.
    */
   loadModel(root: string): Promise<ProjectModel | null>;
+
+  /**
+   * Loads a single project's logical contents (its files), on demand when its node is expanded.
+   * @param projectPath The absolute project-file path; must be within an open workspace.
+   * @returns Returns the contents, or null when they could not be loaded.
+   */
+  loadItems(projectPath: string): Promise<ProjectItems | null>;
 }
 
 export interface WorkspaceApi {

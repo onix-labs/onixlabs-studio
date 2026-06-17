@@ -41,6 +41,19 @@
   }
 }
 
+.tree-chevron {
+  flex: 0 0 auto;
+  inline-size: 1rem;
+  margin-inline-start: -0.25rem;
+  font-size: 1rem;
+  opacity: 0.75;
+}
+
+.tree-spacer {
+  flex: 0 0 auto;
+  inline-size: 0.75rem;
+}
+
 .tree-icon {
   flex: 0 0 auto;
   font-size: 1rem;
@@ -49,6 +62,25 @@
   &.tree-icon--folder {
     color: var(--accent-color);
     opacity: 1;
+  }
+
+  &.tree-icon--project {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+}
+
+// Spinner shown while a project's contents load.
+.tree-loading {
+  flex: 0 0 auto;
+  font-size: 0.8125rem;
+  opacity: 0.7;
+  animation: tree-spin 0.8s linear infinite;
+}
+
+@keyframes tree-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

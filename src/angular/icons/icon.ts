@@ -359,6 +359,11 @@ export class Icon {
   public static readonly FILE: Icon = new Icon('ph ph-file');
 
   /**
+   * Gets the icon for a project node in the Solution Explorer.
+   */
+  public static readonly PROJECT: Icon = new Icon('ph-duotone ph-cube');
+
+  /**
    * Gets the hidden (dotfile) icon.
    */
   public static readonly FILE_HIDDEN: Icon = new Icon('ph ph-file-dashed');

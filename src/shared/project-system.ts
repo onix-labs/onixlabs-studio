@@ -74,6 +74,60 @@ export interface SolutionFile {
 }
 
 /**
+ * A node in a project's contents tree: either a folder or a file within the project. The tree is the
+ * project's *logical* contents (its compile/content items, honouring linked files), which need not
+ * match the on-disk layout.
+ */
+export type ProjectItemNode =
+  | {
+      /**
+       * Identifies a logical folder within the project.
+       */
+      readonly type: 'folder';
+
+      /**
+       * Gets the folder's display name.
+       */
+      readonly name: string;
+
+      /**
+       * Gets the folder's children.
+       */
+      readonly children: readonly ProjectItemNode[];
+    }
+  | {
+      /**
+       * Identifies a file within the project.
+       */
+      readonly type: 'file';
+
+      /**
+       * Gets the file's display name.
+       */
+      readonly name: string;
+
+      /**
+       * Gets the absolute path of the file on disk.
+       */
+      readonly path: string;
+    };
+
+/**
+ * A project's logical contents, loaded on demand when its node is expanded.
+ */
+export interface ProjectItems {
+  /**
+   * Gets the absolute path of the project file the contents belong to.
+   */
+  readonly projectPath: string;
+
+  /**
+   * Gets the project's logical contents tree.
+   */
+  readonly tree: readonly ProjectItemNode[];
+}
+
+/**
  * A logical project model for a workspace root.
  */
 export interface ProjectModel {

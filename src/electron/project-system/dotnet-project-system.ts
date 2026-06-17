@@ -1,8 +1,36 @@
+import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { ProjectEntry, ProjectModel, ProjectNode } from '../../shared/project-system';
+import { promisify } from 'node:util';
+import {
+  ProjectEntry,
+  ProjectItemNode,
+  ProjectItems,
+  ProjectModel,
+  ProjectNode,
+} from '../../shared/project-system';
 import { ProjectSystem } from './project-system';
+
+/**
+ * Runs a child process and resolves with its standard output and error.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+  options: { maxBuffer: number },
+) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+
+/**
+ * The maximum bytes of `dotnet` output buffered, generous so a large project's item listing is not
+ * truncated.
+ */
+const ITEM_QUERY_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * The MSBuild item types whose members are shown as a project's files.
+ */
+const ITEM_TYPES: readonly string[] = ['Compile', 'Content', 'None', 'EmbeddedResource'];
 
 /**
  * The project-file extensions the .NET project system recognises.
@@ -22,15 +50,36 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['node_modules'
 const PROJECT_SCAN_DEPTH: number = 2;
 
 /**
+ * A mutable folder used while assembling a project's contents tree: named sub-folders and named files
+ * (mapped to their absolute paths), materialised into the immutable tree once all items are placed.
+ */
+interface ItemFolder {
+  /**
+   * Holds the named sub-folders.
+   */
+  readonly folders: Map<string, ItemFolder>;
+
+  /**
+   * Holds the named files, mapped to their absolute paths.
+   */
+  readonly files: Map<string, string>;
+}
+
+/**
  * Models a .NET workspace: an `.slnx` or `.sln` solution when one is present (parsed into its solution
- * folders and projects), or the loose projects discovered under the root otherwise. Reads only the
- * solution file's own listing — it does not evaluate the projects (that is the language server's job).
+ * folders and projects), or the loose projects discovered under the root otherwise. A project's files
+ * are loaded on demand by evaluating its MSBuild items.
  */
 export class DotnetProjectSystem implements ProjectSystem {
   /**
    * Gets the kind identifier of this project system.
    */
   public readonly kind: string = 'dotnet';
+
+  /**
+   * Caches the detected `dotnet` executable lookup, so detection runs once per session.
+   */
+  private dotnetProbe: Promise<string | null> | null = null;
 
   /**
    * Determines whether the root holds a .NET solution or any .NET projects.
@@ -62,6 +111,207 @@ export class DotnetProjectSystem implements ProjectSystem {
     }
     const tree: readonly ProjectNode[] = files.map((file: string): ProjectNode => this.toNode(file));
     return { kind: this.kind, root, solution: null, projects: this.flatten(tree), tree };
+  }
+
+  /**
+   * Loads a project's logical contents by evaluating its MSBuild file items (Compile, Content, None,
+   * EmbeddedResource), honouring linked files. A multi-targeted project is evaluated against one of its
+   * frameworks, since its items live in the per-framework inner build.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
+   */
+  public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+    const dotnet: string | null = await this.resolveDotnet();
+    if (dotnet === null) {
+      return null;
+    }
+    const tfm: string | null = await this.effectiveFramework(dotnet, projectPath);
+    const items: { identity: string; link: string }[] | null = await this.queryItems(
+      dotnet,
+      projectPath,
+      tfm,
+    );
+    if (items === null) {
+      return null;
+    }
+    return { projectPath, tree: this.buildItemTree(projectPath, items) };
+  }
+
+  /**
+   * Detects a usable `dotnet` executable, caching the result. A GUI-launched app does not inherit the
+   * shell `PATH`, so the platform's default install location is tried in addition to the PATH.
+   * @returns Returns the `dotnet` executable, or null when none is found.
+   */
+  private resolveDotnet(): Promise<string | null> {
+    this.dotnetProbe ??= this.probeDotnet();
+    return this.dotnetProbe;
+  }
+
+  /**
+   * Probes for a usable `dotnet` executable without consulting the cache.
+   * @returns Returns the `dotnet` executable, or null when none runs.
+   */
+  private async probeDotnet(): Promise<string | null> {
+    const exe: string = process.platform === 'win32' ? 'dotnet.exe' : 'dotnet';
+    const root: string | undefined = process.env['DOTNET_ROOT'];
+    const candidates: string[] = [];
+    if (root !== undefined && root.length > 0) {
+      candidates.push(path.join(root, exe));
+    }
+    candidates.push('dotnet');
+    candidates.push(
+      process.platform === 'win32'
+        ? path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'dotnet', exe)
+        : '/usr/local/share/dotnet/dotnet',
+    );
+    for (const candidate of candidates) {
+      try {
+        await execFileAsync(candidate, ['--version'], { maxBuffer: ITEM_QUERY_BUFFER });
+        return candidate;
+      } catch {
+        // Try the next candidate.
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolves the framework to evaluate a project against: its single `TargetFramework`, or the first of
+   * its `TargetFrameworks` when multi-targeted, or null when neither is set.
+   * @param dotnet The `dotnet` executable.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the framework moniker, or null.
+   */
+  private async effectiveFramework(dotnet: string, projectPath: string): Promise<string | null> {
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(
+        dotnet,
+        ['build', projectPath, '--getProperty:TargetFramework', '--getProperty:TargetFrameworks'],
+        { maxBuffer: ITEM_QUERY_BUFFER },
+      );
+      const parsed: { Properties?: { TargetFramework?: string; TargetFrameworks?: string } } =
+        JSON.parse(stdout) as { Properties?: { TargetFramework?: string; TargetFrameworks?: string } };
+      const single: string = parsed.Properties?.TargetFramework?.trim() ?? '';
+      if (single.length > 0) {
+        return single;
+      }
+      const many: string = parsed.Properties?.TargetFrameworks?.trim() ?? '';
+      return many.length > 0 ? many.split(';')[0].trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Evaluates a project's file items, optionally against a specific framework.
+   * @param dotnet The `dotnet` executable.
+   * @param projectPath The absolute path of the project file.
+   * @param framework The framework to evaluate against, or null for the default evaluation.
+   * @returns Returns the items (identity and link), or null when evaluation fails.
+   */
+  private async queryItems(
+    dotnet: string,
+    projectPath: string,
+    framework: string | null,
+  ): Promise<{ identity: string; link: string }[] | null> {
+    const args: string[] = ['build', projectPath];
+    for (const type of ITEM_TYPES) {
+      args.push(`--getItem:${type}`);
+    }
+    if (framework !== null) {
+      args.push(`-p:TargetFramework=${framework}`);
+    }
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
+        maxBuffer: ITEM_QUERY_BUFFER,
+      });
+      const parsed: { Items?: Record<string, { Identity?: string; Link?: string }[]> } =
+        JSON.parse(stdout) as { Items?: Record<string, { Identity?: string; Link?: string }[]> };
+      const items: { identity: string; link: string }[] = [];
+      for (const type of ITEM_TYPES) {
+        for (const item of parsed.Items?.[type] ?? []) {
+          if (item.Identity !== undefined && item.Identity.length > 0) {
+            items.push({ identity: item.Identity, link: item.Link ?? '' });
+          }
+        }
+      }
+      return items;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Builds a project's logical contents tree from its items: each item is placed by its link (when set)
+   * or its identity, so linked files appear at their logical location while still opening their real
+   * file. Items that resolve outside the project directory are placed at the root by their file name.
+   * @param projectPath The absolute path of the project file.
+   * @param items The evaluated items.
+   * @returns Returns the contents tree.
+   */
+  private buildItemTree(
+    projectPath: string,
+    items: readonly { identity: string; link: string }[],
+  ): readonly ProjectItemNode[] {
+    const directory: string = path.dirname(projectPath);
+    const root: ItemFolder = { folders: new Map<string, ItemFolder>(), files: new Map<string, string>() };
+    const seen: Set<string> = new Set<string>();
+    for (const item of items) {
+      const logical: string = (item.link.length > 0 ? item.link : item.identity).replace(/\\/g, '/');
+      if (seen.has(logical)) {
+        continue;
+      }
+      seen.add(logical);
+      const segments: string[] = logical.split('/').filter((segment: string): boolean => segment.length > 0);
+      // A path that climbs out of the project (a linked file with no Link metadata) is shown at the root.
+      const placement: string[] = logical.startsWith('../') ? segments.slice(-1) : segments;
+      const absolute: string = path.resolve(directory, item.identity.replace(/\\/g, '/'));
+      this.insertItem(root, placement, absolute);
+    }
+    return this.materialise(root);
+  }
+
+  /**
+   * Inserts a file into the mutable folder structure under its path segments, creating folders as
+   * needed.
+   * @param folder The folder to insert into.
+   * @param segments The file's path segments (the last is the file name).
+   * @param absolute The file's absolute path.
+   */
+  private insertItem(folder: ItemFolder, segments: readonly string[], absolute: string): void {
+    if (segments.length <= 1) {
+      folder.files.set(segments[0] ?? path.basename(absolute), absolute);
+      return;
+    }
+    const [head, ...rest]: readonly string[] = segments;
+    let child: ItemFolder | undefined = folder.folders.get(head);
+    if (child === undefined) {
+      child = { folders: new Map<string, ItemFolder>(), files: new Map<string, string>() };
+      folder.folders.set(head, child);
+    }
+    this.insertItem(child, rest, absolute);
+  }
+
+  /**
+   * Converts the mutable folder structure into a sorted contents tree, folders before files and each
+   * alphabetical.
+   * @param folder The folder to convert.
+   * @returns Returns the folder's children as tree nodes.
+   */
+  private materialise(folder: ItemFolder): readonly ProjectItemNode[] {
+    const folders: ProjectItemNode[] = [...folder.folders.entries()]
+      .sort((a: [string, ItemFolder], b: [string, ItemFolder]): number => a[0].localeCompare(b[0]))
+      .map(
+        ([name, child]: [string, ItemFolder]): ProjectItemNode => ({
+          type: 'folder',
+          name,
+          children: this.materialise(child),
+        }),
+      );
+    const files: ProjectItemNode[] = [...folder.files.entries()]
+      .sort((a: [string, string], b: [string, string]): number => a[0].localeCompare(b[0]))
+      .map(([name, filePath]: [string, string]): ProjectItemNode => ({ type: 'file', name, path: filePath }));
+    return [...folders, ...files];
   }
 
   /**

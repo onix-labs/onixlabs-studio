@@ -1,16 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   inject,
   input,
   InputSignal,
   Signal,
 } from '@angular/core';
-import { ProjectModel, ProjectNode } from '../../../../shared/project-system';
+import { ProjectModel } from '../../../../shared/project-system';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
-import { SolutionModel } from '../../../services/project/solution-model';
+import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -25,24 +24,10 @@ const BASE_INDENT: number = 8;
 const INDENT_STEP: number = 14;
 
 /**
- * A flattened solution-tree row: a node and its depth, so the nested model renders as an indented list.
- */
-interface SolutionRow {
-  /**
-   * Holds the node the row renders.
-   */
-  readonly node: ProjectNode;
-
-  /**
-   * Holds the node's depth beneath the solution root.
-   */
-  readonly depth: number;
-}
-
-/**
- * Renders the logical solution model (solution folders and projects) as the body of the Solution
- * Explorer dock panel — distinct from the File Explorer's filesystem tree. The model is supplied by the
- * tab-scoped {@link SolutionModel}; clicking a project opens its project file.
+ * Renders the logical solution model (solution folders, projects, and each project's files) as the body
+ * of the Solution Explorer dock panel — distinct from the File Explorer's filesystem tree. The model
+ * and its expansion/loading state come from the tab-scoped {@link SolutionModel}; a project's files load
+ * on first expansion. Clicking an expandable row toggles it; clicking a file opens it.
  */
 @Component({
   selector: 'app-solution-panel',
@@ -69,26 +54,23 @@ export class SolutionPanel {
   private readonly solution: SolutionModel = inject(SolutionModel);
 
   /**
-   * Holds the opener used to open a project file into an editor tab.
+   * Holds the opener used to open a file into an editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Gets the current solution model, or null when there is none.
+   * Gets the current solution model, or null when there is none (the empty state).
    */
   public readonly model: Signal<ProjectModel | null> = this.solution.model;
 
   /**
-   * Gets the flattened, indented rows of the solution tree.
+   * Gets the flattened, visible rows of the solution tree.
    */
-  public readonly rows: Signal<readonly SolutionRow[]> = computed((): readonly SolutionRow[] => {
-    const model: ProjectModel | null = this.solution.model();
-    return model === null ? [] : this.flatten(model.tree, 0);
-  });
+  public readonly rows: Signal<readonly SolutionRow[]> = this.solution.rows;
 
   /**
    * Computes the left padding for a row at the given depth.
-   * @param depth The row's depth beneath the solution root.
+   * @param depth The row's depth in the tree.
    * @returns Returns the left padding in pixels.
    */
   public indentFor(depth: number): number {
@@ -96,38 +78,59 @@ export class SolutionPanel {
   }
 
   /**
-   * Resolves the icon for a node.
-   * @param node The node to resolve an icon for.
-   * @returns Returns the node's icon.
+   * Resolves a row's icon by its kind and expansion.
+   * @param row The row to resolve an icon for.
+   * @returns Returns the row's icon.
    */
-  public iconFor(node: ProjectNode): Icon {
-    return node.type === 'folder' ? Icon.DIRECTORY : Icon.FILE;
-  }
-
-  /**
-   * Handles a click on a row: opens a project's file; folders do nothing.
-   * @param node The node whose row was clicked.
-   */
-  public onRowClick(node: ProjectNode): void {
-    if (node.type === 'project') {
-      void this.fileOpener.openPath(node.path);
+  public iconFor(row: SolutionRow): Icon {
+    switch (row.kind) {
+      case 'project':
+        return Icon.PROJECT;
+      case 'folder':
+      case 'item-folder':
+        return row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
+      default:
+        return this.fileIconFor(row.label);
     }
   }
 
   /**
-   * Flattens the nested tree into indented rows, in tree order.
-   * @param nodes The nodes to flatten.
-   * @param depth The depth of the given nodes.
-   * @returns Returns the rows.
+   * Handles a click on a row: toggles an expandable row, or opens a file.
+   * @param row The row that was clicked.
    */
-  private flatten(nodes: readonly ProjectNode[], depth: number): SolutionRow[] {
-    const rows: SolutionRow[] = [];
-    for (const node of nodes) {
-      rows.push({ node, depth });
-      if (node.type === 'folder') {
-        rows.push(...this.flatten(node.children, depth + 1));
-      }
+  public onRowClick(row: SolutionRow): void {
+    if (row.expandable) {
+      this.solution.toggle(row);
+    } else if (row.path !== null) {
+      void this.fileOpener.openPath(row.path);
     }
-    return rows;
+  }
+
+  /**
+   * Resolves a file's icon from its extension.
+   * @param name The file name.
+   * @returns Returns the file's icon.
+   */
+  private fileIconFor(name: string): Icon {
+    const dot: number = name.lastIndexOf('.');
+    switch (dot <= 0 ? '' : name.slice(dot + 1).toLowerCase()) {
+      case 'ts':
+        return Icon.FILE_TYPESCRIPT;
+      case 'js':
+      case 'mjs':
+      case 'cjs':
+        return Icon.FILE_JAVASCRIPT;
+      case 'json':
+        return Icon.FILE_JSON;
+      case 'md':
+        return Icon.FILE_MARKDOWN;
+      case 'xml':
+      case 'csproj':
+      case 'props':
+      case 'targets':
+        return Icon.FILE_JSON;
+      default:
+        return Icon.FILE;
+    }
   }
 }

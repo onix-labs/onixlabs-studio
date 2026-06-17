@@ -187,6 +187,11 @@ export enum IpcChannel {
   ProjectModelLoad = 'project:model-load',
 
   /**
+   * Loads a single project's logical contents (its files), on demand.
+   */
+  ProjectItemsLoad = 'project:items-load',
+
+  /**
    * Gets the agent's current authentication status.
    */
   AiAuthStatus = 'ai:auth-status',
