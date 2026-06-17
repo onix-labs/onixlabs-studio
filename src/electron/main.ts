@@ -176,8 +176,8 @@ class Program {
     // jagged squircle/box-shadow edges on the welcome panel under fractional display scaling on the
     // Intel UHD 630). Must be called before app.whenReady(). Remove once the cause is confirmed.
     if (process.env['STUDIO_DISABLE_GPU'] === '1') {
-      app.disableHardwareAcceleration();
-      console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
+      //app.disableHardwareAcceleration();
+      //console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
     }
 
     void app.whenReady().then(this.onReady.bind(this));
