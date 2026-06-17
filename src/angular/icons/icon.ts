@@ -285,7 +285,12 @@ export class Icon {
   // --- Dock: panels ---
 
   /**
-   * Gets the Solution Explorer panel icon.
+   * Gets the File Explorer panel icon (the filesystem tree).
+   */
+  public static readonly FILE_EXPLORER: Icon = new Icon('ph ph-folder-open');
+
+  /**
+   * Gets the Solution Explorer panel icon (the logical project model).
    */
   public static readonly SOLUTION_EXPLORER: Icon = new Icon('ph ph-tree-structure');
 
@@ -341,7 +346,7 @@ export class Icon {
    */
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
 
-  // --- Solution Explorer: tree files ---
+  // --- File Explorer: tree files ---
 
   /**
    * Gets the collapsed-folder icon used outside the tree (such as the terminal cwd segment).

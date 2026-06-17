@@ -32,7 +32,7 @@ describe('LspStatusMenu', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')).toBeNull();
   });
 
-  it('render_showsTheActiveWorkspacesStartingServer', () => {
+  it('render_labelsTheCategoryAndReflectsTheStartingState', () => {
     status.register('/root::java', { serverId: 'java', rootPath: '/root', restart: (): void => undefined });
     rootPath.set('/root');
     fixture.detectChanges();
@@ -40,11 +40,13 @@ describe('LspStatusMenu', () => {
     const trigger: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
       '.lsp-status-menu__trigger',
     );
-    expect(trigger?.textContent).toContain('Java Language Server');
-    expect(trigger?.textContent).toContain('starting');
+    // The trigger names the category; the server's own name and state live in the menu it opens, while
+    // its aggregate state is carried by the trigger's modifier class.
+    expect(trigger?.textContent).toContain('Language Servers');
+    expect(trigger?.classList).toContain('lsp-status-menu__trigger--starting');
   });
 
-  it('render_whenSeveralServers_summarisesTheCount', () => {
+  it('render_whenSeveralServers_stillLabelsTheCategory', () => {
     status.register('/root::java', { serverId: 'java', rootPath: '/root', restart: (): void => undefined });
     status.register('/root::typescript', {
       serverId: 'typescript',
@@ -56,7 +58,7 @@ describe('LspStatusMenu', () => {
 
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')?.textContent,
-    ).toContain('2 Language Servers');
+    ).toContain('Language Servers');
   });
 
   it('restart_delegatesToTheStatusRegistry', () => {

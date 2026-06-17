@@ -41,7 +41,7 @@ describe('DockState', () => {
 
     expect(isSplitNode(root)).toBe(true);
     expect(firstStackOfRole(root, 'document')?.role).toBe('document');
-    expect(stackOf(root, 'solution').role).toBe('tool');
+    expect(stackOf(root, 'files').role).toBe('tool');
   });
 
   it('tabInto_whenCalled_replacesTheLayoutSignalAndAddsTheTab', () => {
@@ -67,9 +67,9 @@ describe('DockState', () => {
   });
 
   it('splitStack_whenCalled_docksANewStackBesideTheTarget', () => {
-    const solutionId: string = stackOf(state.layout(), 'solution').id;
+    const filesId: string = stackOf(state.layout(), 'files').id;
 
-    state.splitStack(solutionId, 'extra', 'bottom', 'tool');
+    state.splitStack(filesId, 'extra', 'bottom', 'tool');
 
     expect(stackOf(state.layout(), 'extra').panels).toEqual(['extra']);
   });
@@ -105,11 +105,11 @@ describe('DockState', () => {
     const id: string = wellId();
     state.tabInto(id, 'doc-a');
 
-    state.movePanel('solution', id, 0);
+    state.movePanel('files', id, 0);
 
     const well: StackNode = stackOf(state.layout(), 'doc-a');
-    expect(well.panels).toContain('solution');
-    expect(well.active).toBe('solution');
+    expect(well.panels).toContain('files');
+    expect(well.active).toBe('files');
   });
 
   it('setSizes_whenCalledOnASplit_commitsTheNewWeights', () => {

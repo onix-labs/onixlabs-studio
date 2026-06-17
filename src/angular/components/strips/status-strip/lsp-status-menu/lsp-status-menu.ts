@@ -85,11 +85,9 @@ export class LspStatusMenu {
       : servers.some((server: LspServer): boolean => server.state === 'ready')
         ? 'ready'
         : 'unavailable';
-    const label: string =
-      servers.length === 1
-        ? this.describe(servers[0])
-        : `${servers.length} Language Servers`;
-    return { state, label, icon: this.iconFor(state) };
+    // The trigger names the category, not the individual servers, since the menu can list several;
+    // each server's own name and state are shown in the list it opens.
+    return { state, label: 'Language Servers', icon: this.iconFor(state) };
   });
 
   /**
@@ -139,19 +137,4 @@ export class LspStatusMenu {
     }
   }
 
-  /**
-   * Describes a single server for the trigger label.
-   * @param server The server to describe.
-   * @returns Returns the description.
-   */
-  private describe(server: LspServer): string {
-    switch (server.state) {
-      case 'starting':
-        return `${server.name} Language Server: starting…`;
-      case 'ready':
-        return `${server.name} Language Server`;
-      default:
-        return server.detail ?? `${server.name} Language Server: unavailable`;
-    }
-  }
 }

@@ -47,11 +47,11 @@ describe('DockAutoHide', () => {
   });
 
   it('pin_whenToolStack_collapsesItInPlace', () => {
-    const id: string = stackId('solution');
+    const id: string = stackId('files');
 
     autoHide.pin(id);
 
-    expect(isCollapsed('solution')).toBe(true);
+    expect(isCollapsed('files')).toBe(true);
     // The stack keeps its slot in the tree rather than being removed.
     expect(findNode(state.layout(), id)).not.toBeNull();
   });
@@ -99,13 +99,13 @@ describe('DockAutoHide', () => {
   });
 
   it('closePanel_whenLastPanelClosed_removesTheStackAndEndsThePeek', () => {
-    const id: string = stackId('solution');
+    const id: string = stackId('files');
     autoHide.pin(id);
-    autoHide.showFlyout(id, 'solution');
+    autoHide.showFlyout(id, 'files');
 
-    autoHide.closePanel(id, 'solution');
+    autoHide.closePanel(id, 'files');
 
-    expect(findStackOfPanel(state.layout(), 'solution')).toBeNull();
+    expect(findStackOfPanel(state.layout(), 'files')).toBeNull();
     expect(autoHide.flyoutStackId()).toBeNull();
   });
 });

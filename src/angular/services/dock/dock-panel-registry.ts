@@ -62,7 +62,7 @@ export class DockPanelRegistry {
       component: Type<unknown>,
     ): void => this.register({ id, title, icon, role: 'tool', component });
 
-    tool('solution', 'Solution Explorer', Icon.SOLUTION_EXPLORER, TreePanel);
+    tool('files', 'File Explorer', Icon.FILE_EXPLORER, TreePanel);
     tool('agent', 'Agent', Icon.AGENT, AgentPanel);
     tool('output', 'Output', Icon.OUTPUT, OutputPanel);
     tool('errors', 'Error List', Icon.PROBLEMS, ProblemsPanel);

@@ -15,7 +15,7 @@ describe('DockPanelOutlet', () => {
   });
 
   it('should create', () => {
-    fixture.componentRef.setInput('panelId', 'solution');
+    fixture.componentRef.setInput('panelId', 'files');
     fixture.detectChanges();
 
     expect(component).toBeTruthy();

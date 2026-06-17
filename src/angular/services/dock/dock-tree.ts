@@ -494,7 +494,7 @@ export function setSizes(tree: DockNode, splitId: string, sizes: readonly number
 }
 
 /**
- * Builds the seeded default layout: the solution explorer pinned full-height on the left, the agent
+ * Builds the seeded default layout: the file explorer pinned full-height on the left, the agent
  * full-height on the right, and the document well in the centre with the output and error list along
  * the bottom of the editor area. The well starts empty; documents open into it. This is the layout
  * {@link DockState} starts with and resets to.
@@ -504,7 +504,7 @@ export function defaultLayout(): DockNode {
   return mkSplit(
     'row',
     [
-      mkStack('tool', ['solution']),
+      mkStack('tool', ['files']),
       mkSplit('col', [mkStack('document', []), mkStack('tool', ['output', 'errors'])], [4, 1.5]),
       mkStack('tool', ['agent']),
     ],

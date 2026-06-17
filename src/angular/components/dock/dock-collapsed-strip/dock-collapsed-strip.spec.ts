@@ -36,18 +36,18 @@ describe('DockCollapsedStrip', () => {
   });
 
   it('should create', () => {
-    renderCollapsed('solution');
+    renderCollapsed('files');
     expect(component).toBeTruthy();
   });
 
   it('render_whenCollapsed_showsATabPerPanel', () => {
-    renderCollapsed('solution');
+    renderCollapsed('files');
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const tab: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
       '.dock-collapsed-strip__tab',
     );
-    expect(tab?.textContent).toContain('Solution Explorer');
+    expect(tab?.textContent).toContain('File Explorer');
   });
 
   it('render_whenTabClicked_fliesTheStackOut', () => {

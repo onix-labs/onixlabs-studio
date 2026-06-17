@@ -9,9 +9,9 @@ describe('TreePanel', () => {
   let fixture: ComponentFixture<TreePanel>;
 
   const panel: DockPanel = {
-    id: 'solution',
-    title: 'Solution Explorer',
-    icon: Icon.SOLUTION_EXPLORER,
+    id: 'files',
+    title: 'File Explorer',
+    icon: Icon.FILE_EXPLORER,
     role: 'tool',
     component: TreePanel,
   };

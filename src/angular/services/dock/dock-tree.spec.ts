@@ -440,7 +440,7 @@ describe('dock-tree', () => {
       const tree: DockNode = defaultLayout();
 
       expect(isSplitNode(tree)).toBe(true);
-      expect(findStackOfPanel(tree, 'solution')).not.toBeNull();
+      expect(findStackOfPanel(tree, 'files')).not.toBeNull();
       expect(firstStackOfRole(tree, 'document')?.panels).toEqual([]);
       expect(countStacks(tree, 'document')).toBe(1);
     });

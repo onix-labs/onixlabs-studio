@@ -18,9 +18,9 @@ describe('DockPanelRegistry', () => {
   });
 
   it('get_whenExplorerPanelRequested_returnsItWithTheTreePanelComponent', () => {
-    const panel: DockPanel | undefined = registry.get('solution');
+    const panel: DockPanel | undefined = registry.get('files');
 
-    expect(panel?.title).toBe('Solution Explorer');
+    expect(panel?.title).toBe('File Explorer');
     expect(panel?.role).toBe('tool');
     expect(panel?.component).toBe(TreePanel);
   });

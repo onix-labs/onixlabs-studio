@@ -16,7 +16,7 @@ const BASE_INDENT: number = 8;
 const INDENT_STEP: number = 14;
 
 /**
- * Renders the workspace directory tree as the body of the Solution Explorer dock panel. The dock
+ * Renders the workspace directory tree as the body of the File Explorer dock panel. The dock
  * chrome supplies the panel's title bar, so this component renders only the lazy tree (or the
  * "open a folder" empty state) and delegates all state to the {@link Workspace} service.
  */
