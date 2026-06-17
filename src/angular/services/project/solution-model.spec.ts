@@ -1,22 +1,20 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { LspProjectLoad } from '../../../shared/lsp-types';
 import { ProjectItems, ProjectModel } from '../../../shared/project-system';
-import { ProjectApi } from '../../../shared/studio-api';
-import { DirectoryListing } from '../../../shared/studio-api';
+import { DirectoryListing, ProjectApi } from '../../../shared/studio-api';
 import { Workspace } from '../workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
 /**
- * A fake project bridge whose model and per-project contents the test controls, and which can defer a
- * contents request so the loading state is observable mid-flight.
+ * A fake project bridge whose model and per-project contents the test controls, and which can defer all
+ * contents requests so the root's loading state is observable mid-flight.
  */
 class FakeProject implements ProjectApi {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
   public deferItems: boolean = false;
-  private pending: ((items: ProjectItems | null) => void) | null = null;
+  private resolvers: (() => void)[] = [];
 
   public loadModel(): Promise<ProjectModel | null> {
     return Promise.resolve(this.model);
@@ -24,47 +22,33 @@ class FakeProject implements ProjectApi {
 
   public loadItems(projectPath: string): Promise<ProjectItems | null> {
     this.itemRequests.push(projectPath);
+    const value: ProjectItems | null = this.itemsByPath.get(projectPath) ?? null;
     if (this.deferItems) {
       return new Promise<ProjectItems | null>((resolve: (items: ProjectItems | null) => void): void => {
-        this.pending = resolve;
+        this.resolvers.push((): void => resolve(value));
       });
     }
-    return Promise.resolve(this.itemsByPath.get(projectPath) ?? null);
+    return Promise.resolve(value);
   }
 
-  public resolvePending(projectPath: string): void {
-    this.pending?.(this.itemsByPath.get(projectPath) ?? null);
-    this.pending = null;
-  }
-}
-
-/**
- * A fake language-server bridge that captures the load-event listener so the test can push events.
- */
-class FakeLsp {
-  private listener: ((load: LspProjectLoad) => void) | null = null;
-
-  public onProjectLoad(listener: (load: LspProjectLoad) => void): () => void {
-    this.listener = listener;
-    return (): void => {
-      this.listener = null;
-    };
-  }
-
-  public emit(load: LspProjectLoad): void {
-    this.listener?.(load);
+  public resolveAll(): void {
+    const resolvers: (() => void)[] = this.resolvers;
+    this.resolvers = [];
+    for (const resolve of resolvers) {
+      resolve();
+    }
   }
 }
 
 /**
- * A model with a solution folder holding project A and a top-level project B, used across the tests.
+ * A model with a solution folder holding project A and a top-level project B.
  * @returns Returns the model.
  */
 function sampleModel(): ProjectModel {
   return {
     kind: 'dotnet',
     root: '/root',
-    solution: { name: 'sln', path: '/root/sln.slnx' },
+    solution: { name: 'MySolution', path: '/root/MySolution.slnx' },
     projects: [
       { name: 'A', path: '/root/A/A.csproj' },
       { name: 'B', path: '/root/B/B.csproj' },
@@ -102,7 +86,6 @@ function flush(): Promise<void> {
 
 describe('SolutionModel', () => {
   let project: FakeProject;
-  let lsp: FakeLsp;
   let root: WritableSignal<DirectoryListing | null>;
 
   /**
@@ -144,112 +127,104 @@ describe('SolutionModel', () => {
     return model.rows().map((row: SolutionRow): string => row.label);
   }
 
+  /**
+   * Opens the root and settles.
+   * @param model The service under test.
+   * @returns Returns a promise that resolves once opened.
+   */
+  async function open(model: SolutionModel): Promise<void> {
+    root.set({ path: '/root', name: 'root', entries: [] });
+    await settle();
+    void model;
+  }
+
   beforeEach(() => {
     project = new FakeProject();
-    lsp = new FakeLsp();
     root = signal<DirectoryListing | null>(null);
-    (window as unknown as { studio: unknown }).studio = { project, lsp };
+    (window as unknown as { studio: unknown }).studio = { project };
   });
 
   afterEach(() => {
     delete (window as unknown as { studio?: unknown }).studio;
   });
 
-  it('rootOpens_withModel_exposesItAndExpandsSolutionFoldersOnly', async () => {
+  it('rootOpens_withModel_nestsTheStructureUnderASolutionRootNamedAfterTheSolution', async () => {
     project.model = sampleModel();
     const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    await open(model);
+
+    // The root node is the solution name; the folders and projects nest under it.
+    expect(rowFor(model, 'MySolution')?.kind).toBe('solution');
+    expect(rowFor(model, 'MySolution')?.depth).toBe(0);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
+    expect(rowFor(model, 'Group')?.depth).toBe(1);
+    expect(rowFor(model, 'A')?.expanded).toBe(false);
+  });
+
+  it('rootOpens_withoutSolution_namesTheRootAfterTheFolder', async () => {
+    project.model = { kind: 'dotnet', root: '/path/to/MyApp', solution: null, projects: [], tree: [] };
+    const model: SolutionModel = build();
+    root.set({ path: '/path/to/MyApp', name: 'MyApp', entries: [] });
     await settle();
 
-    expect(model.model()).not.toBeNull();
-    // Solution folder Group is expanded (its project A shows); projects A and B are collapsed.
-    expect(labels(model)).toEqual(['Group', 'A', 'B']);
-    expect(rowFor(model, 'Group')?.expanded).toBe(true);
-    expect(rowFor(model, 'A')?.expanded).toBe(false);
+    expect(rowFor(model, 'MyApp')?.kind).toBe('solution');
   });
 
   it('rootOpens_withoutModel_isEmpty', async () => {
     project.model = null;
     const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
+    await open(model);
 
     expect(model.model()).toBeNull();
     expect(model.rows()).toEqual([]);
   });
 
-  it('toggle_collapsesAnExpandedSolutionFolder', async () => {
-    project.model = sampleModel();
-    const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
-
-    model.toggle(rowFor(model, 'Group')!);
-
-    // Collapsing Group hides its child project A.
-    expect(labels(model)).toEqual(['Group', 'B']);
-  });
-
-  it('toggle_expandingAProject_loadsAndShowsItsContents', async () => {
+  it('open_loadsEveryProjectsContentsUpFront', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());
     const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
+    await open(model);
 
-    model.toggle(rowFor(model, 'A')!);
-    await flush();
-
-    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
-    // A's contents appear under it; the sub-folder is collapsed so its file is hidden.
-    expect(labels(model)).toEqual(['Group', 'A', 'Sub', 'g.cs', 'B']);
-    expect(rowFor(model, 'g.cs')?.kind).toBe('file');
-    expect(rowFor(model, 'g.cs')?.expandable).toBe(false);
+    expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('toggle_expandingAProject_marksItLoadingUntilContentsArrive', async () => {
+  it('rootNode_showsTheSpinnerWhileContentsLoad_thenClears', async () => {
     project.model = sampleModel();
-    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
     project.deferItems = true;
     const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
+    await open(model);
+
+    // The spinner sits on the solution root only, never on individual projects.
+    expect(rowFor(model, 'MySolution')?.loading).toBe(true);
+    expect(rowFor(model, 'A')?.loading).toBe(false);
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+
+    project.resolveAll();
+    await flush();
+    expect(rowFor(model, 'MySolution')?.loading).toBe(false);
+  });
+
+  it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+    const requestsAfterOpen: number = project.itemRequests.length;
 
     model.toggle(rowFor(model, 'A')!);
-    expect(rowFor(model, 'A')?.loading).toBe(true);
 
-    project.resolvePending('/root/A/A.csproj');
-    await flush();
-    expect(rowFor(model, 'A')?.loading).toBe(false);
+    // A's contents appear with no further fetch; its sub-folder is collapsed so its file is hidden.
+    expect(project.itemRequests.length).toBe(requestsAfterOpen);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'Sub', 'g.cs', 'B']);
   });
 
-  it('onProjectLoad_marksProjectsLoadingThenClearsEachAsItCompletes', async () => {
+  it('toggle_collapsingTheRoot_hidesEverything', async () => {
     project.model = sampleModel();
     const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
+    await open(model);
 
-    lsp.emit({ rootPath: '/root', event: 'started', projectPath: null });
-    expect(rowFor(model, 'A')?.loading).toBe(true);
-    expect(rowFor(model, 'B')?.loading).toBe(true);
+    model.toggle(rowFor(model, 'MySolution')!);
 
-    lsp.emit({ rootPath: '/root', event: 'loaded', projectPath: '/root/A/A.csproj' });
-    expect(rowFor(model, 'A')?.loading).toBe(false);
-    expect(rowFor(model, 'B')?.loading).toBe(true);
-
-    lsp.emit({ rootPath: '/root', event: 'complete', projectPath: null });
-    expect(rowFor(model, 'B')?.loading).toBe(false);
-  });
-
-  it('onProjectLoad_ignoresEventsForOtherRoots', async () => {
-    project.model = sampleModel();
-    const model: SolutionModel = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
-    await settle();
-
-    lsp.emit({ rootPath: '/elsewhere', event: 'started', projectPath: null });
-
-    expect(rowFor(model, 'A')?.loading).toBe(false);
-    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(labels(model)).toEqual(['MySolution']);
   });
 });

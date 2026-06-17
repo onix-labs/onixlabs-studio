@@ -14,7 +14,6 @@ import type { ProjectItems, ProjectModel } from '../shared/project-system';
 import type {
   LspExit,
   LspMessage,
-  LspProjectLoad,
   LspSettings,
   LspStartRequest,
   LspStartResult,
@@ -303,16 +302,6 @@ const studioApi: StudioApi = {
       ipcRenderer.on(IpcChannel.LspServerExit, handler);
       return (): void => {
         ipcRenderer.removeListener(IpcChannel.LspServerExit, handler);
-      };
-    },
-    onProjectLoad: (listener: (load: LspProjectLoad) => void): (() => void) => {
-      const handler: (event: IpcRendererEvent, load: LspProjectLoad) => void = (
-        _event: IpcRendererEvent,
-        load: LspProjectLoad,
-      ): void => listener(load);
-      ipcRenderer.on(IpcChannel.LspProjectLoad, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.LspProjectLoad, handler);
       };
     },
     getSettings: (): Promise<LspSettings> =>

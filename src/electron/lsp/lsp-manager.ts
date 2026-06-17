@@ -18,19 +18,13 @@ import { IpcChannel } from '../../shared/ipc-channels';
 import {
   LspExit,
   LspMessage,
-  LspProjectLoad,
   LspStartRequest,
   LspStartResult,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '../../shared/lsp-types';
 import { WorkspaceContext } from '../workspace-context';
-import {
-  LspPostInitialize,
-  LspResolution,
-  LspServerRegistry,
-  LspServerSpec,
-} from './lsp-server-registry';
+import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -240,14 +234,8 @@ export class LspManager {
     void connection.sendNotification('initialized', {});
     // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
     // told which solution or project to open here, once the handshake has completed.
-    const postInitialize: readonly LspPostInitialize[] = spec.postInitialize ?? [];
-    for (const message of postInitialize) {
+    for (const message of spec.postInitialize ?? []) {
       void connection.sendNotification(message.method, message.params);
-    }
-    // Telling such a server to open a workspace begins a (possibly long) load; signal it so the
-    // Solution Explorer can show its projects as loading until each reports complete.
-    if (postInitialize.length > 0) {
-      this.send(IpcChannel.LspProjectLoad, { rootPath, event: 'started', projectPath: null });
     }
     return result;
   }
@@ -374,43 +362,8 @@ export class LspManager {
    * @param params The method parameters.
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
-    this.emitProjectLoad(sessionId, method, params);
     const message: LspMessage = { sessionId, method, params };
     this.send(IpcChannel.LspNotification, message);
-  }
-
-  /**
-   * Translates a server's workspace-load notifications into {@link LspProjectLoad} events for the
-   * renderer: `workspace/projectInitializationComplete` ends the load, and a project-loader log line
-   * (Roslyn reports each project's completion through `window/logMessage`) marks one project loaded.
-   * @param sessionId The session the notification belongs to.
-   * @param method The notification method.
-   * @param params The notification parameters.
-   */
-  private emitProjectLoad(sessionId: string, method: string, params: unknown): void {
-    const session: LspSession | undefined = this.sessions.get(sessionId);
-    if (session === undefined) {
-      return;
-    }
-    if (method === 'workspace/projectInitializationComplete') {
-      this.send(IpcChannel.LspProjectLoad, {
-        rootPath: session.rootPath,
-        event: 'complete',
-        projectPath: null,
-      } satisfies LspProjectLoad);
-      return;
-    }
-    if (method === 'window/logMessage') {
-      const text: string = (params as { message?: string }).message ?? '';
-      const match: RegExpExecArray | null = /completed load of (.+\.(?:cs|fs|vb)proj)\s*$/i.exec(text);
-      if (match !== null) {
-        this.send(IpcChannel.LspProjectLoad, {
-          rootPath: session.rootPath,
-          event: 'loaded',
-          projectPath: match[1],
-        } satisfies LspProjectLoad);
-      }
-    }
   }
 
   /**

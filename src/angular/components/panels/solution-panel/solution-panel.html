@@ -5,7 +5,7 @@
         type="button"
         class="tree-row"
         role="treeitem"
-        [class.bold]="row.kind === 'project'"
+        [class.bold]="row.kind === 'project' || row.kind === 'solution'"
         [style.padding-left.px]="indentFor(row.depth)"
         [attr.aria-expanded]="row.expandable ? row.expanded : null"
         (click)="onRowClick(row)"
@@ -22,7 +22,7 @@
         <app-icon
           class="tree-icon"
           [class.tree-icon--folder]="row.kind === 'folder' || row.kind === 'item-folder'"
-          [class.tree-icon--project]="row.kind === 'project'"
+          [class.tree-icon--project]="row.kind === 'project' || row.kind === 'solution'"
           [icon]="iconFor(row)"
         />
         <span class="tree-name">{{ row.label }}</span>

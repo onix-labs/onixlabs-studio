@@ -152,6 +152,7 @@ describe('SolutionPanel', () => {
   });
 
   it('iconFor_resolvesByKindAndExpansion', () => {
+    expect(component.iconFor(makeRow({ kind: 'solution' }))).toBe(Icon.SOLUTION_EXPLORER);
     expect(component.iconFor(makeRow({ kind: 'project' }))).toBe(Icon.PROJECT);
     expect(component.iconFor(makeRow({ kind: 'folder', expanded: true }))).toBe(Icon.FOLDER_OPEN);
     expect(component.iconFor(makeRow({ kind: 'folder', expanded: false }))).toBe(Icon.DIRECTORY);

@@ -9,6 +9,7 @@ import {
   OnInit,
   untracked,
 } from '@angular/core';
+import { ProjectModel } from '../../../../shared/project-system';
 import { DirectoryListing } from '../../../../shared/studio-api';
 import { CodeTerminals } from '../../../services/code-terminals/code-terminals';
 import { Diagnostics } from '../../../services/diagnostics/diagnostics';
@@ -102,6 +103,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly solutionModel: SolutionModel = inject(SolutionModel);
 
   /**
+   * Holds this tab's scoped language-server client, started eagerly for a .NET solution.
+   */
+  private readonly lspClient: LspClient = inject(LspClient);
+
+  /**
    * Holds whether this tab has added the Solution Explorer panel to its layout, so it is added and
    * removed at most once per state change and a user who closes it is not fought.
    */
@@ -162,6 +168,15 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       const hasModel: boolean = this.solutionModel.model() !== null;
       untracked((): void => this.syncSolutionPanel(hasModel));
+    });
+
+    // Start the language server as soon as a .NET solution opens, rather than on the first file, so it
+    // begins loading the workspace up front.
+    effect((): void => {
+      const model: ProjectModel | null = this.solutionModel.model();
+      if (model?.kind === 'dotnet') {
+        untracked((): void => this.lspClient.prestartServer('csharp', model.root));
+      }
     });
   }
 

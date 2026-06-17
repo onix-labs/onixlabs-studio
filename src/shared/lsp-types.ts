@@ -186,28 +186,6 @@ export interface LspExit {
 }
 
 /**
- * Reports a workspace-load lifecycle event from a structure-aware server (such as the Roslyn C#
- * server), so the Solution Explorer can show which projects the language server is still analysing.
- */
-export interface LspProjectLoad {
-  /**
-   * Gets the absolute workspace root the loading server is rooted at.
-   */
-  readonly rootPath: string;
-
-  /**
-   * Gets the lifecycle event: `started` when the server begins loading the workspace, `loaded` when a
-   * single project finishes loading, and `complete` when the whole workspace has finished.
-   */
-  readonly event: 'started' | 'loaded' | 'complete';
-
-  /**
-   * Gets the absolute path of the project that finished loading, for a `loaded` event; otherwise null.
-   */
-  readonly projectPath: string | null;
-}
-
-/**
  * Describes the user's language-server settings. The settings are owned and persisted by the main
  * process (so the registry can honour them when it resolves a server) and read by the renderer to
  * avoid starting a server the user has disabled.
@@ -300,14 +278,6 @@ export interface LspApi {
    * @returns Returns a function that unsubscribes the listener.
    */
   onExit(listener: (exit: LspExit) => void): () => void;
-
-  /**
-   * Subscribes to workspace-load lifecycle events across all sessions, so the Solution Explorer can
-   * show which projects the language server is still analysing.
-   * @param listener Receives each load event.
-   * @returns Returns a function that unsubscribes the listener.
-   */
-  onProjectLoad(listener: (load: LspProjectLoad) => void): () => void;
 
   /**
    * Gets the user's language-server settings.

@@ -482,6 +482,24 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Starts a server for a root ahead of any document opening, so a workspace that is known to need it
+   * (such as a .NET solution) begins loading as soon as it opens rather than on the first file. Does
+   * nothing when the bridge is absent, the server is disabled, or its session is already running.
+   * @param serverId The identifier of the server to start.
+   * @param rootPath The root the server is rooted at.
+   */
+  public prestartServer(serverId: string, rootPath: string): void {
+    if (this.api === undefined || this.lspSettings.isDisabled(serverId)) {
+      return;
+    }
+    const sessionId: string = `${rootPath}::${serverId}`;
+    if (this.sessions.has(sessionId)) {
+      return;
+    }
+    void this.startSession(sessionId, serverId, rootPath);
+  }
+
+  /**
    * Resolves the root a document's server session is rooted at, so the active workspace can be scoped
    * to its servers. Returns null for a document this client has not tracked against a server.
    * @param documentId The identifier of the document.

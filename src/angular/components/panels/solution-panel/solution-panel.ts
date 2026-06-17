@@ -84,6 +84,8 @@ export class SolutionPanel {
    */
   public iconFor(row: SolutionRow): Icon {
     switch (row.kind) {
+      case 'solution':
+        return Icon.SOLUTION_EXPLORER;
       case 'project':
         return Icon.PROJECT;
       case 'folder':
