@@ -159,6 +159,14 @@ interface TrackedDocument {
   opened: boolean;
 
   /**
+   * Holds the text last synchronised to the server. A change is sent as a single edit replacing this
+   * (the whole previous document) with the new text, so the notification carries the range that
+   * servers advertising incremental sync (such as Roslyn) require — a range-less full-text change
+   * crashes them. Empty until the document has been opened.
+   */
+  text: string;
+
+  /**
    * Holds the tail of the per-document operation queue, serialising open/change/close so they reach
    * the server in order even though each awaits the session becoming ready.
    */
@@ -399,6 +407,7 @@ export class LspClient implements OnDestroy {
         languageId: state.languageId,
         version: 1,
         opened: false,
+        text: '',
         queue: Promise.resolve(),
       };
       this.tracked.set(key, tracked);
@@ -530,6 +539,7 @@ export class LspClient implements OnDestroy {
     // successful start, so a server that fails to launch leaves Monaco's diagnostics as a fallback.
     this.suppressBuiltInDiagnostics(tracked.languageId);
     tracked.opened = true;
+    tracked.text = content;
     this.api.notify(sessionId, 'textDocument/didOpen', {
       textDocument: {
         uri: tracked.uri,
@@ -585,15 +595,39 @@ export class LspClient implements OnDestroy {
       await this.open(tracked, content);
       return;
     }
+    // The content effect can re-fire with unchanged text (a re-render, a metadata change); skip the
+    // sync so the server is not handed a redundant whole-document edit.
+    if (content === tracked.text) {
+      return;
+    }
     const sessionId: string | null = await this.ensureSession(tracked);
     if (sessionId === null || this.api === undefined) {
       return;
     }
     tracked.version += 1;
+    // Send the edit as a single change replacing the whole previous document with the new text. This
+    // carries an explicit range, which servers advertising incremental sync require; a range-less
+    // full-text change (valid only under full sync) crashes them.
     this.api.notify(sessionId, 'textDocument/didChange', {
       textDocument: { uri: tracked.uri, version: tracked.version },
-      contentChanges: [{ text: content }],
+      contentChanges: [
+        { range: { start: { line: 0, character: 0 }, end: this.endPosition(tracked.text) }, text: content },
+      ],
     });
+    tracked.text = content;
+  }
+
+  /**
+   * Computes the end position (the position just past the last character) of a document's text, as the
+   * zero-based line and character a server uses to bound a whole-document range.
+   * @param text The document text.
+   * @returns Returns the end position.
+   */
+  private endPosition(text: string): LspPosition {
+    const newline: number = text.lastIndexOf('\n');
+    const line: number = newline < 0 ? 0 : text.slice(0, newline).split('\n').length;
+    const character: number = text.length - (newline + 1);
+    return { line, character };
   }
 
   /**
@@ -686,10 +720,18 @@ export class LspClient implements OnDestroy {
    * @param message The notification from a server.
    */
   private onNotification(message: LspMessage): void {
-    if (
-      message.method !== 'textDocument/publishDiagnostics' ||
-      !this.ownsSession(message.sessionId)
-    ) {
+    if (!this.ownsSession(message.sessionId)) {
+      return;
+    }
+    // Roslyn signals it has finished loading the workspace with this notification rather than (or
+    // before) any diagnostics, so a clean project still flips from starting to ready and paints
+    // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
+    if (message.method === 'workspace/projectInitializationComplete') {
+      this.status.setState(message.sessionId, 'ready');
+      this.features.refreshSemanticTokens();
+      return;
+    }
+    if (message.method !== 'textDocument/publishDiagnostics') {
       return;
     }
     const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;

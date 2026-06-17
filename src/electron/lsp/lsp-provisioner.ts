@@ -42,10 +42,28 @@ const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35
 const MINIMUM_JAVA_VERSION: number = 21;
 
 /**
- * Holds the pinned version of the C# language server (`csharp-ls`), installed as a .NET tool. Pinning
- * keeps every machine on the same, version-scoped install; bumping it installs into a fresh directory.
+ * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
+ * the same engine the open-source vscode-csharp extension uses). The distribution is pinned so every
+ * machine provisions the same server; bumping it downloads into a fresh, version-scoped directory.
+ * This build is the newest published to the public feed below — newer vscode-csharp builds depend on
+ * private feeds and are not publicly downloadable.
  */
-const CSHARP_LS_VERSION: string = '0.25.0';
+const ROSLYN_VERSION: string = '5.4.0-2.26179.14';
+
+/**
+ * Holds the NuGet flat-container base URL of the public Azure DevOps feed the Roslyn server is
+ * published to. A package is fetched from `<base>/<id>/<version>/<id>.<version>.nupkg`, where the id
+ * is lower-cased; a `.nupkg` is a plain zip.
+ */
+const ROSLYN_FEED: string =
+  'https://pkgs.dev.azure.com/azure-public/vside/_packaging/vs-impl/nuget/v3/flat2';
+
+/**
+ * Holds the lowest .NET SDK major version the Roslyn server needs. Its apphost is framework-dependent
+ * (it does not bundle a runtime), and project loading runs design-time builds through the SDK's
+ * MSBuild, so an SDK of at least this major must be installed.
+ */
+const MINIMUM_DOTNET_SDK_VERSION: number = 10;
 
 /**
  * Matches the version reported by `java -version`, capturing the major component (and, for legacy
@@ -92,9 +110,9 @@ export class LspProvisioner {
   private dotnetProbe: Promise<string | null> | null = null;
 
   /**
-   * Caches the in-flight or completed `csharp-ls` installation, so it is installed at most once.
+   * Caches the in-flight or completed Roslyn server download, so it is downloaded at most once.
    */
-  private csharpLsProvision: Promise<string | null> | null = null;
+  private roslynProvision: Promise<string | null> | null = null;
 
   /**
    * Caches the detected clangd executable lookup, so detection runs once per session.
@@ -125,11 +143,12 @@ export class LspProvisioner {
   }
 
   /**
-   * Detects a usable .NET executable (an SDK, which the C# server needs both to install and to run):
-   * the user's override when given, then `DOTNET_ROOT`, then `dotnet` on the PATH, then the platform's
-   * default install location. The result is cached for the session.
+   * Detects a usable .NET executable backed by an SDK of at least {@link MINIMUM_DOTNET_SDK_VERSION}
+   * (which the Roslyn C# server's apphost and design-time builds need): the user's override when given,
+   * then `DOTNET_ROOT`, then `dotnet` on the PATH, then the platform's default install location. The
+   * result is cached for the session.
    * @param override The user's configured .NET executable, or null to auto-detect.
-   * @returns Returns the .NET executable to use, or null when none reports an SDK.
+   * @returns Returns the .NET executable to use, or null when none reports a recent-enough SDK.
    */
   public detectDotnet(override: string | null): Promise<string | null> {
     this.dotnetProbe ??= this.probeDotnet(override);
@@ -137,15 +156,14 @@ export class LspProvisioner {
   }
 
   /**
-   * Ensures the C# language server (`csharp-ls`) is installed under the user-data directory, installing
-   * it as a .NET tool on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
-   * @param dotnet The detected .NET executable used to install and host the tool.
-   * @returns Returns the absolute path of the server executable, or null when it could not be installed.
+   * Ensures the Roslyn C# language server is installed under the user-data directory, downloading and
+   * extracting its platform-specific package on first use and reusing the cached copy thereafter. The
+   * work is shared across concurrent callers.
+   * @returns Returns the absolute path of the server apphost, or null when it could not be provisioned.
    */
-  public ensureCsharpLs(dotnet: string): Promise<string | null> {
-    this.csharpLsProvision ??= this.provisionCsharpLs(dotnet);
-    return this.csharpLsProvision;
+  public ensureRoslyn(): Promise<string | null> {
+    this.roslynProvision ??= this.provisionRoslyn();
+    return this.roslynProvision;
   }
 
   /**
@@ -169,7 +187,10 @@ export class LspProvisioner {
    * @returns Returns the absolute data directory path.
    */
   public async dataDirectory(serverId: string, rootPath: string): Promise<string> {
-    const key: string = Buffer.from(rootPath).toString('hex').slice(0, 32);
+    // Derive the directory from a hash of the whole root path: truncating the path's own bytes (as a
+    // prefix) collides every workspace sharing a leading path segment onto one directory, which makes
+    // a server such as jdtls discard and rebuild its cached workspace index on each launch.
+    const key: string = createHash('sha256').update(rootPath).digest('hex').slice(0, 32);
     const directory: string = path.join(this.serversRoot(), `${serverId}-data`, key);
     await fs.mkdir(directory, { recursive: true });
     return directory;
@@ -244,7 +265,7 @@ export class LspProvisioner {
     );
 
     for (const candidate of candidates) {
-      if (await this.reportsSdk(candidate)) {
+      if (await this.hasSdk(candidate, MINIMUM_DOTNET_SDK_VERSION)) {
         return candidate;
       }
     }
@@ -252,14 +273,19 @@ export class LspProvisioner {
   }
 
   /**
-   * Determines whether a .NET executable reports an installed SDK (which `dotnet tool install` needs).
+   * Determines whether a .NET executable reports an installed SDK of at least a given major version.
    * @param executable The .NET executable to probe.
-   * @returns Returns true when the executable runs and lists at least one SDK.
+   * @param minMajor The lowest SDK major version that qualifies.
+   * @returns Returns true when the executable runs and lists an SDK of at least that major version.
    */
-  private async reportsSdk(executable: string): Promise<boolean> {
+  private async hasSdk(executable: string, minMajor: number): Promise<boolean> {
     try {
       const { stdout }: { stdout: string } = await execFileAsync(executable, ['--list-sdks']);
-      return stdout.trim().length > 0;
+      // Each line looks like `10.0.100 [/usr/local/share/dotnet/sdk]`; the leading number is the major.
+      return stdout.split('\n').some((line: string): boolean => {
+        const match: RegExpExecArray | null = /^(\d+)\./.exec(line.trim());
+        return match !== null && Number(match[1]) >= minMajor;
+      });
     } catch {
       return false;
     }
@@ -314,34 +340,77 @@ export class LspProvisioner {
   }
 
   /**
-   * Installs the C# language server as a .NET tool under the user-data directory, or reuses a cached
-   * copy.
-   * @param dotnet The detected .NET executable.
-   * @returns Returns the server executable path, or null on failure.
+   * Downloads and extracts the Roslyn C# language server's platform-specific package under the
+   * user-data directory, or reuses a cached copy.
+   * @returns Returns the server apphost path, or null on failure (including an unsupported platform).
    */
-  private async provisionCsharpLs(dotnet: string): Promise<string | null> {
-    const installDir: string = path.join(this.serversRoot(), 'csharp-ls', CSHARP_LS_VERSION);
-    const binary: string = path.join(
-      installDir,
-      process.platform === 'win32' ? 'csharp-ls.exe' : 'csharp-ls',
-    );
+  private async provisionRoslyn(): Promise<string | null> {
+    const rid: string | null = this.roslynRid();
+    if (rid === null) {
+      return null;
+    }
+    const installDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION, rid);
+    const executable: string =
+      process.platform === 'win32'
+        ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
+        : 'Microsoft.CodeAnalysis.LanguageServer';
+    const binary: string = path.join(installDir, 'content', 'LanguageServer', rid, executable);
     try {
       if (existsSync(binary)) {
         return binary;
       }
       await fs.mkdir(installDir, { recursive: true });
-      await execFileAsync(dotnet, [
-        'tool',
-        'install',
-        '--tool-path',
-        installDir,
-        'csharp-ls',
-        '--version',
-        CSHARP_LS_VERSION,
-      ]);
-      return existsSync(binary) ? binary : null;
+      const id: string = `microsoft.codeanalysis.languageserver.${rid}`;
+      const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
+      const archive: string = path.join(installDir, 'server.nupkg');
+      await this.download(url, archive);
+      await this.extractZip(archive, installDir);
+      await fs.rm(archive, { force: true });
+      if (!existsSync(binary)) {
+        return null;
+      }
+      // The extracted apphost is the native launcher but the zip does not carry its executable bit.
+      if (process.platform !== 'win32') {
+        await fs.chmod(binary, 0o755);
+      }
+      return binary;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Resolves the .NET runtime identifier of the Roslyn server package for the current platform and
+   * architecture. The `neutral` (runtime-less) package carries no apphost, so an unsupported platform
+   * resolves to null rather than to it.
+   * @returns Returns the runtime identifier (for example `osx-arm64`), or null when unsupported.
+   */
+  private roslynRid(): string | null {
+    const arm: boolean = process.arch === 'arm64';
+    if (process.platform === 'darwin') {
+      return arm ? 'osx-arm64' : 'osx-x64';
+    }
+    if (process.platform === 'win32') {
+      return arm ? 'win-arm64' : 'win-x64';
+    }
+    if (process.platform === 'linux') {
+      return arm ? 'linux-arm64' : 'linux-x64';
+    }
+    return null;
+  }
+
+  /**
+   * Extracts a zip archive (a `.nupkg` is a plain zip) into a directory, shelling out to the platform's
+   * available extractor: `unzip` on macOS and Linux, `tar` (libarchive, which reads zips) on Windows.
+   * @param archive The archive to extract.
+   * @param destination The directory to extract into.
+   * @returns Returns a promise that resolves once extraction completes.
+   */
+  private async extractZip(archive: string, destination: string): Promise<void> {
+    if (process.platform === 'win32') {
+      await execFileAsync('tar', ['-xf', archive, '-C', destination]);
+    } else {
+      await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination]);
     }
   }
 

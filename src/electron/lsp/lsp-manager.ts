@@ -232,6 +232,11 @@ export class LspManager {
       INITIALIZE_TIMEOUT_MS,
     );
     void connection.sendNotification('initialized', {});
+    // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
+    // told which solution or project to open here, once the handshake has completed.
+    for (const message of spec.postInitialize ?? []) {
+      void connection.sendNotification(message.method, message.params);
+    }
     return result;
   }
 
@@ -337,10 +342,13 @@ export class LspManager {
     connection.onRequest('client/registerCapability', (): null => null);
     connection.onRequest('client/unregisterCapability', (): null => null);
     connection.onRequest('window/workDoneProgress/create', (): null => null);
+    // Answer each requested configuration item with null (rather than an empty object): null tells a
+    // server to use its default for that setting, whereas `{}` is parsed as a value and rejected by
+    // servers (such as Roslyn) that expect a scalar per key.
     connection.onRequest(
       'workspace/configuration',
       (params: { items?: readonly unknown[] }): unknown[] =>
-        (params.items ?? []).map((): unknown => ({})),
+        (params.items ?? []).map((): unknown => null),
     );
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.

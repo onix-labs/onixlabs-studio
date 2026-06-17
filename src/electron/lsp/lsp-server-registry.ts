@@ -1,6 +1,8 @@
-import { existsSync } from 'node:fs';
+import { Dirent, existsSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { LspServerId } from '../../shared/lsp-types';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
@@ -29,6 +31,23 @@ const JDTLS_JVM_ARGS: readonly string[] = [
 ];
 
 /**
+ * Describes a notification the manager sends to a server immediately after the `initialized`
+ * handshake, before forwarding renderer traffic. Used by servers that do not load a workspace from
+ * `rootUri` alone and must be told which solution or project to open (such as the Roslyn C# server).
+ */
+export interface LspPostInitialize {
+  /**
+   * Gets the LSP notification method to send.
+   */
+  readonly method: string;
+
+  /**
+   * Gets the notification parameters.
+   */
+  readonly params: unknown;
+}
+
+/**
  * Describes how to spawn a language server. The command and arguments are decided entirely by the
  * main process; the renderer only ever names a server by its {@link LspServerId}.
  */
@@ -54,6 +73,12 @@ export interface LspServerSpec {
    * the server needs none.
    */
   readonly initializationOptions?: unknown;
+
+  /**
+   * Gets the notifications to send immediately after the `initialized` handshake, or undefined when
+   * the server needs none.
+   */
+  readonly postInitialize?: readonly LspPostInitialize[];
 }
 
 /**
@@ -157,7 +182,7 @@ export class LspServerRegistry {
       return this.buildJava(rootPath);
     }
     if (serverId === 'csharp') {
-      return this.buildCsharp();
+      return this.buildCsharp(rootPath);
     }
     if (serverId === 'clangd') {
       return this.buildClangd();
@@ -228,29 +253,111 @@ export class LspServerRegistry {
   }
 
   /**
-   * Builds the resolution for the C# language server (`csharp-ls`), detecting a .NET SDK and
-   * installing the server as a .NET tool on first use. The server discovers the project from the
-   * workspace root the manager spawns it in.
+   * Builds the resolution for the Roslyn C# language server, detecting a .NET SDK and downloading the
+   * server on first use. Unlike most servers, Roslyn does not load a workspace from `rootUri` alone, so
+   * the spec carries a `solution/open` (or `project/open`) notification, pointed at the solution or
+   * projects discovered under the root, for the manager to send after the handshake.
+   * @param rootPath The workspace root the server is rooted at.
    * @returns Returns the resolution, with a reason when .NET is unavailable or the server could not be
-   * installed.
+   * downloaded.
    */
-  private async buildCsharp(): Promise<LspResolution> {
+  private async buildCsharp(rootPath: string): Promise<LspResolution> {
     const dotnet: string | null = await this.provisioner.detectDotnet(
       this.settings.get().dotnetPath,
     );
     if (dotnet === null) {
-      return unavailable('.NET SDK not found — set its path in Settings or install the .NET SDK.');
+      return unavailable(
+        '.NET SDK 10+ not found — set its path in Settings or install the .NET 10 SDK.',
+      );
     }
-    const server: string | null = await this.provisioner.ensureCsharpLs(dotnet);
+    const server: string | null = await this.provisioner.ensureRoslyn();
     if (server === null) {
-      return unavailable('The C# language server (csharp-ls) could not be installed.');
+      return unavailable('The C# language server could not be downloaded.');
     }
-    const spec: LspServerSpec = { command: server, args: [] };
+    const logDir: string = await this.provisioner.dataDirectory('roslyn', rootPath);
+    const postInitialize: readonly LspPostInitialize[] | undefined =
+      (await this.discoverCsharpWorkspace(rootPath)) ?? undefined;
+    const env: Record<string, string> = { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
     if (path.isAbsolute(dotnet)) {
-      // Help the server's apphost find the runtime when .NET is not on the spawned PATH.
-      return resolved({ ...spec, env: { DOTNET_ROOT: path.dirname(dotnet) } });
+      // Help the server's apphost find the .NET runtime when it is not on the spawned PATH.
+      env['DOTNET_ROOT'] = path.dirname(dotnet);
     }
-    return resolved(spec);
+    return resolved(
+      this.withExtraArgs('csharp', {
+        command: server,
+        args: ['--logLevel', 'Information', '--extensionLogDirectory', logDir, '--stdio'],
+        env,
+        postInitialize,
+      }),
+    );
+  }
+
+  /**
+   * Discovers the C# workspace to open under a root: a solution at the root when present, otherwise the
+   * projects found within a couple of directory levels. Returns the matching post-initialize
+   * notification, or null when neither is found (the server still starts, serving single files).
+   * @param rootPath The workspace root to search.
+   * @returns Returns the notification to send after the handshake, or null.
+   */
+  private async discoverCsharpWorkspace(
+    rootPath: string,
+  ): Promise<readonly LspPostInitialize[] | null> {
+    const solutions: string[] = await this.findByExtension(rootPath, '.sln', 1);
+    if (solutions.length > 0) {
+      return [{ method: 'solution/open', params: { solution: pathToFileURL(solutions[0]).href } }];
+    }
+    const projects: string[] = await this.findByExtension(rootPath, '.csproj', 2);
+    if (projects.length > 0) {
+      return [
+        {
+          method: 'project/open',
+          params: { projects: projects.map((file: string): string => pathToFileURL(file).href) },
+        },
+      ];
+    }
+    return null;
+  }
+
+  /**
+   * Finds files with a given extension under a directory, descending at most `depth` levels and
+   * skipping hidden, dependency, and build-output directories. Failures to read a directory are
+   * treated as empty, so a partially unreadable tree still yields what it can.
+   * @param directory The directory to search.
+   * @param extension The file extension to match (including the leading dot).
+   * @param depth The number of directory levels to descend (1 searches only the directory itself).
+   * @returns Returns the matching absolute file paths.
+   */
+  private async findByExtension(
+    directory: string,
+    extension: string,
+    depth: number,
+  ): Promise<string[]> {
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    const results: string[] = [];
+    for (const entry of entries) {
+      const full: string = path.join(directory, entry.name);
+      if (entry.isFile() && entry.name.endsWith(extension)) {
+        results.push(full);
+      } else if (entry.isDirectory() && depth > 1 && !this.isSkippedDirectory(entry.name)) {
+        results.push(...(await this.findByExtension(full, extension, depth - 1)));
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Determines whether a directory should be skipped when discovering C# projects: hidden directories
+   * and the usual dependency and build-output directories never contain the project files to open.
+   * @param name The directory name.
+   * @returns Returns true when the directory should be skipped.
+   */
+  private isSkippedDirectory(name: string): boolean {
+    return name.startsWith('.') || name === 'node_modules' || name === 'bin' || name === 'obj';
   }
 
   /**

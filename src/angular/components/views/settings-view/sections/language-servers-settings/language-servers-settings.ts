@@ -79,7 +79,7 @@ export class LanguageServersSettings {
       id: 'csharp',
       label: 'C#',
       description:
-        'csharp-ls. Requires the .NET SDK; the server is installed on first use. Build the project for full results.',
+        'Roslyn language server. Requires the .NET 10+ SDK; downloaded on first use. Build the project for full results.',
     },
     {
       id: 'clangd',

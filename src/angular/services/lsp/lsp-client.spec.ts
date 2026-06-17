@@ -251,9 +251,16 @@ describe('LspClient', () => {
 
     const changes: { sessionId: string; params: unknown }[] = lsp.notificationsTo('didChange');
     expect(changes).toHaveLength(1);
+    // The change replaces the whole previous document ('a', ending at line 0 character 1) with the new
+    // text, so it carries the range incremental-sync servers require.
     expect(changes[0].params).toEqual({
       textDocument: { uri: 'file:///root/a.ts', version: 2 },
-      contentChanges: [{ text: 'ab' }],
+      contentChanges: [
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+          text: 'ab',
+        },
+      ],
     });
   });
 
