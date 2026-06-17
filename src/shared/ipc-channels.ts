@@ -277,6 +277,12 @@ export enum IpcChannel {
   LspServerExit = 'lsp:server-exit',
 
   /**
+   * Notifies the renderer of a workspace-load lifecycle event (a project finished loading, or the
+   * whole workspace started or finished), so the Solution Explorer can show per-project load state.
+   */
+  LspProjectLoad = 'lsp:project-load',
+
+  /**
    * Gets the user's language-server settings.
    */
   LspGetSettings = 'lsp:get-settings',

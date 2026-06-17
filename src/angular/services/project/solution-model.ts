@@ -1,4 +1,14 @@
-import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  OnDestroy,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
+import { LspApi, LspProjectLoad } from '../../../shared/lsp-types';
 import { ProjectApi } from '../../../shared/studio-api';
 import {
   ProjectItemNode,
@@ -67,7 +77,7 @@ export interface SolutionRow {
  * Outside Electron the bridge is absent and the model stays null.
  */
 @Service()
-export class SolutionModel {
+export class SolutionModel implements OnDestroy {
   /**
    * Holds this tab's workspace, whose root the model is built for.
    */
@@ -77,6 +87,29 @@ export class SolutionModel {
    * Holds the project-system bridge, or undefined when running outside Electron.
    */
   private readonly api: ProjectApi | undefined = window.studio?.project;
+
+  /**
+   * Holds the language-server bridge, used to follow per-project workspace-load state.
+   */
+  private readonly lsp: LspApi | undefined = window.studio?.lsp;
+
+  /**
+   * Holds the disposer that unsubscribes from language-server load events, or null when not subscribed.
+   */
+  private readonly loadDisposer: (() => void) | null = null;
+
+  /**
+   * Holds whether the language server is currently loading this root's workspace, so its projects show
+   * as loading until each reports complete.
+   */
+  private readonly analysing: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the paths of projects the language server has finished loading this analysis pass.
+   */
+  private readonly analysed: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
 
   /**
    * Holds the current model, or null when no root is open or none was recognised.
@@ -131,6 +164,36 @@ export class SolutionModel {
       const root: string | null = this.workspace.root()?.path ?? null;
       void this.refresh(root);
     });
+    this.loadDisposer =
+      this.lsp?.onProjectLoad((load: LspProjectLoad): void => this.onProjectLoad(load)) ?? null;
+  }
+
+  /**
+   * Tears the service down, unsubscribing from language-server load events.
+   */
+  public ngOnDestroy(): void {
+    this.loadDisposer?.();
+  }
+
+  /**
+   * Applies a language-server workspace-load event for this tab's root: a started event marks the
+   * projects loading, each loaded event clears one project, and a complete event clears them all.
+   * @param load The load event.
+   */
+  private onProjectLoad(load: LspProjectLoad): void {
+    if (load.rootPath !== (this.workspace.root()?.path ?? null)) {
+      return;
+    }
+    if (load.event === 'started') {
+      this.analysed.set(new Set<string>());
+      this.analysing.set(true);
+    } else if (load.event === 'complete') {
+      this.analysing.set(false);
+    } else if (load.projectPath !== null) {
+      const next: Set<string> = new Set<string>(this.analysed());
+      next.add(load.projectPath);
+      this.analysed.set(next);
+    }
   }
 
   /**
@@ -179,6 +242,8 @@ export class SolutionModel {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
     this.loadingProjects.set(new Set<string>());
+    this.analysing.set(false);
+    this.analysed.set(new Set<string>());
     const expanded: Set<string> = new Set<string>();
     if (model !== null) {
       this.collectFolderKeys(model.tree, '', expanded);
@@ -269,7 +334,11 @@ export class SolutionModel {
       } else {
         const key: string = `project:${node.path}`;
         const expanded: boolean = this.expandedKeys().has(key);
-        const loading: boolean = this.loadingProjects().has(node.path);
+        // A project shows a spinner while its contents are being fetched, or while the language server
+        // is still analysing the workspace and has not yet reported this project loaded.
+        const loading: boolean =
+          this.loadingProjects().has(node.path) ||
+          (this.analysing() && !this.analysed().has(node.path));
         rows.push(this.row(key, depth, node.name, 'project', true, expanded, loading, node.path));
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {

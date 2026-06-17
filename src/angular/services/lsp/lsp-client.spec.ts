@@ -60,6 +60,10 @@ class FakeLsp implements LspApi {
     };
   }
 
+  public onProjectLoad(): () => void {
+    return (): void => undefined;
+  }
+
   public getSettings(): Promise<LspSettingsData> {
     return Promise.resolve({
       disabledServers: [],
