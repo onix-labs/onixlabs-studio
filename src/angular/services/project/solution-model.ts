@@ -136,9 +136,11 @@ export class SolutionModel {
     if (model === null) {
       return [];
     }
+    const loading: boolean = this.loadingContents();
     const expanded: boolean = this.expandedKeys().has(ROOT_KEY);
+    // The root cannot be expanded while its contents are still loading.
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, this.loadingContents(), null),
+      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', !loading, expanded, loading, null),
     ];
     if (expanded) {
       this.appendNodes(model.tree, 1, '', rows);
@@ -206,10 +208,16 @@ export class SolutionModel {
   private reset(model: ProjectModel | null): void {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
-    this.loadingContents.set(model !== null && model.projects.length > 0);
-    const expanded: Set<string> = new Set<string>([ROOT_KEY]);
+    const loading: boolean = model !== null && model.projects.length > 0;
+    this.loadingContents.set(loading);
+    // Pre-expand the solution folders, but leave the root collapsed until loading finishes so its
+    // structure is revealed only once it is ready.
+    const expanded: Set<string> = new Set<string>();
     if (model !== null) {
       this.collectFolderKeys(model.tree, '', expanded);
+      if (!loading) {
+        expanded.add(ROOT_KEY);
+      }
     }
     this.expandedKeys.set(expanded);
   }
@@ -238,6 +246,10 @@ export class SolutionModel {
     );
     if (generation === this.generation) {
       this.loadingContents.set(false);
+      // Reveal the structure now that it is ready.
+      const expanded: Set<string> = new Set<string>(this.expandedKeys());
+      expanded.add(ROOT_KEY);
+      this.expandedKeys.set(expanded);
     }
   }
 

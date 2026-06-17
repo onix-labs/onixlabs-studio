@@ -5,7 +5,7 @@
         type="button"
         class="tree-row"
         role="treeitem"
-        [class.bold]="row.kind === 'project' || row.kind === 'solution'"
+        [class.bold]="row.kind === 'solution'"
         [style.padding-left.px]="indentFor(row.depth)"
         [attr.aria-expanded]="row.expandable ? row.expanded : null"
         (click)="onRowClick(row)"

@@ -188,20 +188,23 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('rootNode_showsTheSpinnerWhileContentsLoad_thenClears', async () => {
+  it('rootNode_whileContentsLoad_isCollapsedNonExpandableWithSpinner_thenExpands', async () => {
     project.model = sampleModel();
     project.deferItems = true;
     const model: SolutionModel = build();
     await open(model);
 
-    // The spinner sits on the solution root only, never on individual projects.
+    // While loading, only the root node shows — collapsed, not expandable, with the spinner.
+    expect(labels(model)).toEqual(['MySolution']);
     expect(rowFor(model, 'MySolution')?.loading).toBe(true);
-    expect(rowFor(model, 'A')?.loading).toBe(false);
-    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(rowFor(model, 'MySolution')?.expandable).toBe(false);
 
     project.resolveAll();
     await flush();
+    // Once loaded, the spinner clears and the structure is revealed.
     expect(rowFor(model, 'MySolution')?.loading).toBe(false);
+    expect(rowFor(model, 'MySolution')?.expandable).toBe(true);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
