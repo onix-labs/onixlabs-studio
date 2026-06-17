@@ -2,6 +2,7 @@ import { Service, Type } from '@angular/core';
 import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
+import { SolutionPanel } from '../../components/panels/solution-panel/solution-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { Icon } from '../../icons/icon';
 import { DockPanel } from './dock-panel';
@@ -63,6 +64,9 @@ export class DockPanelRegistry {
     ): void => this.register({ id, title, icon, role: 'tool', component });
 
     tool('files', 'File Explorer', Icon.FILE_EXPLORER, TreePanel);
+    // The Solution Explorer is catalogued but not in the seeded layout: the directory view adds it to
+    // the layout only when the open root has a recognised project system, and removes it otherwise.
+    tool('solution', 'Solution Explorer', Icon.SOLUTION_EXPLORER, SolutionPanel);
     tool('agent', 'Agent', Icon.AGENT, AgentPanel);
     tool('output', 'Output', Icon.OUTPUT, OutputPanel);
     tool('errors', 'Error List', Icon.PROBLEMS, ProblemsPanel);

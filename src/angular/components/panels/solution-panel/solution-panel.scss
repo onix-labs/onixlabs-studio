@@ -1,0 +1,83 @@
+// The Solution Explorer body: the logical solution/project tree. The dock tool panel supplies the
+// title bar and frame; this fills the panel body and scrolls. Colours come from the shipped
+// dock/accent tokens so the tree tracks the active theme and accent.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+}
+
+.tree-list {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-block-end: 0.375rem;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  inline-size: 100%;
+  block-size: 1.75rem;
+  padding-inline-end: 0.625rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.tree-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  opacity: 0.85;
+
+  &.tree-icon--folder {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+}
+
+.tree-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  .tree-row.bold & {
+    color: var(--dock-tab-foreground-color--active);
+    font-weight: 600;
+  }
+}
+
+// Empty state shown when the root has no recognised solution or projects.
+.tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.875rem;
+
+  p {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--dock-tab-foreground-color);
+  }
+}

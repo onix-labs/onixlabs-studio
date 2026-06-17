@@ -182,6 +182,11 @@ export enum IpcChannel {
   WorkspaceDelete = 'workspace:delete',
 
   /**
+   * Loads the logical project model (solution and projects) for a workspace root.
+   */
+  ProjectModelLoad = 'project:model-load',
+
+  /**
    * Gets the agent's current authentication status.
    */
   AiAuthStatus = 'ai:auth-status',

@@ -10,6 +10,7 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '../shared/ipc-channels';
+import type { ProjectModel } from '../shared/project-system';
 import type {
   LspExit,
   LspMessage,
@@ -219,6 +220,10 @@ const studioApi: StudioApi = {
       ) as Promise<FileOperationResult>,
     delete: (targetPath: string): Promise<FileOperationResult> =>
       ipcRenderer.invoke(IpcChannel.WorkspaceDelete, targetPath) as Promise<FileOperationResult>,
+  },
+  project: {
+    loadModel: (root: string): Promise<ProjectModel | null> =>
+      ipcRenderer.invoke(IpcChannel.ProjectModelLoad, root) as Promise<ProjectModel | null>,
   },
   ai: {
     getAuthStatus: (): Promise<AiAuthStatus> =>

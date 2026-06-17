@@ -9,6 +9,7 @@ import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
+import { ProjectModel } from '../shared/project-system';
 import {
   DirectoryEntry,
   DirectoryListing,
@@ -16,6 +17,8 @@ import {
   FileOperationResult,
   OpenSelection,
 } from '../shared/studio-api';
+import { projectSystems } from './project-system/default-project-systems';
+import { ProjectSystem } from './project-system/project-system';
 import { WorkspaceContext } from './workspace-context';
 
 /**
@@ -122,6 +125,26 @@ export class WorkspaceManager {
       (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> =>
         this.delete(targetPath),
     );
+    ipcMain.handle(
+      IpcChannel.ProjectModelLoad,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<ProjectModel | null> =>
+        this.loadProjectModel(root),
+    );
+  }
+
+  /**
+   * Loads the logical project model for an open workspace root, resolving the project system that
+   * applies to it. Confined to open roots so the renderer cannot drive a filesystem scan of arbitrary
+   * locations.
+   * @param root The candidate workspace root.
+   * @returns Returns the model, or null when the root is not open or no project system applies.
+   */
+  private async loadProjectModel(root: unknown): Promise<ProjectModel | null> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return null;
+    }
+    const system: ProjectSystem | null = await projectSystems.match(root);
+    return system === null ? null : system.load(root);
   }
 
   /**

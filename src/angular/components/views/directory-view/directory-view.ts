@@ -7,6 +7,7 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  untracked,
 } from '@angular/core';
 import { DirectoryListing } from '../../../../shared/studio-api';
 import { CodeTerminals } from '../../../services/code-terminals/code-terminals';
@@ -16,12 +17,14 @@ import { DockDrag } from '../../../services/dock/dock-drag';
 import { DockFloating } from '../../../services/dock/dock-floating';
 import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
+import { StackNode } from '../../../services/dock/dock-node';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
-import { collectPanelIds } from '../../../services/dock/dock-tree';
+import { collectPanelIds, findStackOfPanel } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '../../../services/lsp/lsp-client';
+import { SolutionModel } from '../../../services/project/solution-model';
 import { Output } from '../../../services/output/output';
 import { BuildRunner } from '../../../services/tasks/build-runner';
 import { Builds } from '../../../services/tasks/builds';
@@ -50,6 +53,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     Diagnostics,
     BuildRunner,
     LspClient,
+    SolutionModel,
     FileOpener,
     DockState,
     DockGeometry,
@@ -91,6 +95,17 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped dock layout.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds this tab's scoped solution model, whose presence drives the Solution Explorer panel.
+   */
+  private readonly solutionModel: SolutionModel = inject(SolutionModel);
+
+  /**
+   * Holds whether this tab has added the Solution Explorer panel to its layout, so it is added and
+   * removed at most once per state change and a user who closes it is not fought.
+   */
+  private solutionShown: boolean = false;
 
   /**
    * Holds this tab's scoped document model.
@@ -140,6 +155,32 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       this.activeWorkspace.setRoot(this.tabId(), this.workspace.root()?.path ?? null);
     });
+
+    // Show the Solution Explorer only while this tab's root has a recognised project system, docking it
+    // beside the File Explorer; remove it when the model goes away. The layout reads/writes are
+    // untracked so the effect reacts to the model alone, not to unrelated dock rearrangements.
+    effect((): void => {
+      const hasModel: boolean = this.solutionModel.model() !== null;
+      untracked((): void => this.syncSolutionPanel(hasModel));
+    });
+  }
+
+  /**
+   * Adds or removes the Solution Explorer panel to match whether a project model is present, tabbing it
+   * into the File Explorer's stack when shown.
+   * @param hasModel Whether this tab currently has a project model.
+   */
+  private syncSolutionPanel(hasModel: boolean): void {
+    if (hasModel && !this.solutionShown) {
+      const filesStack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'files');
+      if (filesStack !== null) {
+        this.dockState.tabInto(filesStack.id, 'solution');
+        this.solutionShown = true;
+      }
+    } else if (!hasModel && this.solutionShown) {
+      this.dockState.removeFromLayout('solution');
+      this.solutionShown = false;
+    }
   }
 
   /**

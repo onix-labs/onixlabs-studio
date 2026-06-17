@@ -5,6 +5,7 @@
 
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
+import type { ProjectModel } from './project-system';
 import type { SecurityApi } from './security-types';
 import type { TaskApi } from './task-types';
 
@@ -409,6 +410,19 @@ export type OpenSelection =
  * path-taking operations are confined to the open workspace root in the main process before any disk
  * access, so the renderer cannot read or write arbitrary locations.
  */
+/**
+ * Defines the project-system operations exposed to the renderer: resolving the logical project model
+ * (solution and projects) the Solution Explorer renders for a workspace root.
+ */
+export interface ProjectApi {
+  /**
+   * Loads the logical project model for a workspace root.
+   * @param root The absolute workspace root path; must be an open root.
+   * @returns Returns the model, or null when the root has no recognized project system.
+   */
+  loadModel(root: string): Promise<ProjectModel | null>;
+}
+
 export interface WorkspaceApi {
   /**
    * Shows a combined open dialog allowing either a file or a folder to be chosen. Choosing a folder
@@ -545,6 +559,11 @@ export interface StudioApi {
    * Gets the workspace (open folder) and directory operations for the application.
    */
   readonly workspace: WorkspaceApi;
+
+  /**
+   * Gets the project-system operations (the logical solution/project model) for the application.
+   */
+  readonly project: ProjectApi;
 
   /**
    * Gets the AI-agent authentication and verification operations for the application.

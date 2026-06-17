@@ -1,0 +1,25 @@
+@if (model(); as solution) {
+  <div class="tree-list" role="tree">
+    @for (row of rows(); track $index) {
+      <button
+        type="button"
+        class="tree-row"
+        role="treeitem"
+        [class.bold]="row.node.type === 'folder'"
+        [style.padding-left.px]="indentFor(row.depth)"
+        (click)="onRowClick(row.node)"
+      >
+        <app-icon
+          class="tree-icon"
+          [class.tree-icon--folder]="row.node.type === 'folder'"
+          [icon]="iconFor(row.node)"
+        />
+        <span class="tree-name">{{ row.node.name }}</span>
+      </button>
+    }
+  </div>
+} @else {
+  <div class="tree-empty">
+    <p>No solution or projects detected in this folder.</p>
+  </div>
+}

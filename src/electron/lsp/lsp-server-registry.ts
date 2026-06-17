@@ -4,8 +4,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LspServerId } from '../../shared/lsp-types';
 import { ProjectModel } from '../../shared/project-system';
-import { DotnetProjectSystem } from '../project-system/dotnet-project-system';
-import { ProjectSystemRegistry } from '../project-system/project-system';
+import { projectSystems } from '../project-system/default-project-systems';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -153,12 +152,6 @@ export class LspServerRegistry {
   private readonly settings: LspSettingsManager;
 
   /**
-   * Resolves the project-structure model of a workspace root, used to decide what a structure-aware
-   * server (such as the Roslyn C# server) should open.
-   */
-  private readonly projectSystems: ProjectSystemRegistry = new ProjectSystemRegistry();
-
-  /**
    * Initializes a new instance of the {@link LspServerRegistry} class.
    * @param executablePath The absolute path of the Electron binary (`process.execPath`).
    * @param settings The user's language-server settings.
@@ -166,7 +159,6 @@ export class LspServerRegistry {
   public constructor(executablePath: string, settings: LspSettingsManager) {
     this.executablePath = executablePath;
     this.settings = settings;
-    this.projectSystems.register(new DotnetProjectSystem());
   }
 
   /**
@@ -286,7 +278,7 @@ export class LspServerRegistry {
     }
     const logDir: string = await this.provisioner.dataDirectory('roslyn', rootPath);
     const model: ProjectModel | null =
-      (await this.projectSystems.get('dotnet')?.load(rootPath)) ?? null;
+      (await projectSystems.get('dotnet')?.load(rootPath)) ?? null;
     const postInitialize: readonly LspPostInitialize[] | undefined = this.csharpOpenPlan(model);
     const env: Record<string, string> = { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
     if (path.isAbsolute(dotnet)) {
