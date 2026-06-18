@@ -3,6 +3,21 @@
   <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
 </app-ribbon-group>
 
+<app-ribbon-group title="Clipboard">
+  <app-ribbon-menu-button
+    [icon]="Icon.PASTE"
+    label="Paste"
+    [items]="pasteItems"
+    (action)="onPaste()"
+    (selected)="onPasteVariant($event)"
+  />
+  <app-ribbon-column>
+    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+  </app-ribbon-column>
+</app-ribbon-group>
+
 <app-ribbon-group title="Format">
   <app-ribbon-button [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
   <app-ribbon-button [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />

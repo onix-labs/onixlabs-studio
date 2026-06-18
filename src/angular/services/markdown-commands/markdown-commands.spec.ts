@@ -9,6 +9,11 @@ import { MarkdownCommandHandler, MarkdownCommands } from './markdown-commands';
  */
 function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
   return {
+    cut: (): void => void calls.add('cut'),
+    copy: (): void => void calls.add('copy'),
+    paste: (): void => void calls.add('paste'),
+    pasteAsPlaintext: (): void => void calls.add('pasteAsPlaintext'),
+    pasteAsCode: (): void => void calls.add('pasteAsCode'),
     toggleBold: (): void => void calls.add('toggleBold'),
     toggleItalic: (): void => void calls.add('toggleItalic'),
     toggleStrikethrough: (): void => void calls.add('toggleStrikethrough'),
@@ -46,6 +51,29 @@ describe('MarkdownCommands', () => {
 
   it('toggleBold_whenNoHandlerRegistered_doesNothing', () => {
     expect((): void => commands.toggleBold()).not.toThrow();
+  });
+
+  it('clipboardCommands_whenHandlerRegistered_forwardToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.cut();
+    commands.copy();
+    commands.paste();
+    commands.pasteAsPlaintext();
+    commands.pasteAsCode();
+    expect(calls.has('cut')).toBe(true);
+    expect(calls.has('copy')).toBe(true);
+    expect(calls.has('paste')).toBe(true);
+    expect(calls.has('pasteAsPlaintext')).toBe(true);
+    expect(calls.has('pasteAsCode')).toBe(true);
+  });
+
+  it('clipboardCommands_whenNoHandlerRegistered_doNothing', () => {
+    expect((): void => commands.cut()).not.toThrow();
+    expect((): void => commands.copy()).not.toThrow();
+    expect((): void => commands.paste()).not.toThrow();
+    expect((): void => commands.pasteAsPlaintext()).not.toThrow();
+    expect((): void => commands.pasteAsCode()).not.toThrow();
   });
 
   it('unregister_whenHandlerMatches_clearsActiveEditor', () => {
