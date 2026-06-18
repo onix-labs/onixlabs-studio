@@ -30,6 +30,31 @@ const DEFAULT_BLOCK_TYPE: MarkdownBlockType = 'paragraph';
  */
 export interface MarkdownCommandHandler {
   /**
+   * Cuts the current selection to the clipboard.
+   */
+  cut(): void;
+
+  /**
+   * Copies the current selection to the clipboard.
+   */
+  copy(): void;
+
+  /**
+   * Pastes the clipboard contents at the selection, parsing them as markdown.
+   */
+  paste(): void;
+
+  /**
+   * Pastes the clipboard contents at the selection as unformatted plain text.
+   */
+  pasteAsPlaintext(): void;
+
+  /**
+   * Pastes the clipboard contents at the selection as a code block.
+   */
+  pasteAsCode(): void;
+
+  /**
    * Toggles bold (strong) formatting on the selection.
    */
   toggleBold(): void;
@@ -139,6 +164,41 @@ export class MarkdownCommands {
    */
   public setActiveBlockType(blockType: MarkdownBlockType): void {
     this.activeBlockTypeSignal.set(blockType);
+  }
+
+  /**
+   * Invokes the cut command on the active editor.
+   */
+  public cut(): void {
+    this.handler()?.cut();
+  }
+
+  /**
+   * Invokes the copy command on the active editor.
+   */
+  public copy(): void {
+    this.handler()?.copy();
+  }
+
+  /**
+   * Invokes the paste command on the active editor, parsing the clipboard as markdown.
+   */
+  public paste(): void {
+    this.handler()?.paste();
+  }
+
+  /**
+   * Invokes the paste-as-plaintext command on the active editor.
+   */
+  public pasteAsPlaintext(): void {
+    this.handler()?.pasteAsPlaintext();
+  }
+
+  /**
+   * Invokes the paste-as-code command on the active editor.
+   */
+  public pasteAsCode(): void {
+    this.handler()?.pasteAsCode();
   }
 
   /**

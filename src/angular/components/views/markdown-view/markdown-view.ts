@@ -20,8 +20,8 @@ import {
 } from '@angular/core';
 import { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
-import { editorViewCtx } from '@milkdown/kit/core';
-import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
+import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
+import { Slice, type Node as ProseMirrorNode, type NodeType } from '@milkdown/kit/prose/model';
 import { type Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import type { ListenerManager } from '@milkdown/plugin-listener';
@@ -39,6 +39,7 @@ import {
 } from '@milkdown/preset-commonmark';
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
 import { callCommand } from '@milkdown/utils';
+import type { Parser } from '@milkdown/transformer';
 import { blockReorderPlugin } from '../../../milkdown/block-reorder-plugin';
 import { colorPreviewPlugin } from '../../../milkdown/color-preview-plugin';
 import { emojiPlugin } from '../../../milkdown/emoji-plugin';
@@ -478,6 +479,11 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
     }
 
     this.commandHandler = {
+      cut: (): void => this.clipboardCommand('cut'),
+      copy: (): void => this.clipboardCommand('copy'),
+      paste: (): void => this.pasteMarkdown(crepe),
+      pasteAsPlaintext: (): void => this.pastePlaintext(crepe),
+      pasteAsCode: (): void => this.pasteCode(crepe),
       toggleBold: (): void => this.run(crepe, callCommand(toggleStrongCommand.key)),
       toggleItalic: (): void => this.run(crepe, callCommand(toggleEmphasisCommand.key)),
       toggleStrikethrough: (): void => this.run(crepe, callCommand(toggleStrikethroughCommand.key)),
@@ -500,6 +506,87 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
   private run(crepe: Crepe, action: (ctx: Ctx) => unknown): void {
     this.focusEditor();
     crepe.editor.action(action);
+  }
+
+  /**
+   * Focuses the editor and runs a native clipboard command (cut or copy) against its selection, so
+   * the editor's own clipboard serialisation handles the formatted content.
+   * @param command The clipboard command to execute.
+   */
+  private clipboardCommand(command: 'cut' | 'copy'): void {
+    this.focusEditor();
+    document.execCommand(command);
+  }
+
+  /**
+   * Reads the clipboard text and, when it holds any, hands it to the given editor action. Browsers
+   * block programmatic `paste`, so each paste variant reads the clipboard and inserts the text itself.
+   * @param action The action to run with the clipboard text.
+   */
+  private withClipboardText(action: (text: string) => void): void {
+    void navigator.clipboard
+      .readText()
+      .then((text: string): void => {
+        if (text.length === 0) {
+          return;
+        }
+        action(text);
+      })
+      .catch((): void => undefined);
+  }
+
+  /**
+   * Pastes the clipboard contents at the selection, parsing them as markdown so formatting is
+   * preserved.
+   * @param crepe The editor instance.
+   */
+  private pasteMarkdown(crepe: Crepe): void {
+    this.withClipboardText((text: string): void => {
+      crepe.editor.action((ctx: Ctx): void => {
+        const parser: Parser = ctx.get(parserCtx);
+        const doc: ProseMirrorNode = parser(text);
+        const view: EditorView = ctx.get(editorViewCtx);
+        const slice: Slice = new Slice(doc.content, 0, 0);
+        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+        view.focus();
+      });
+    });
+  }
+
+  /**
+   * Pastes the clipboard contents at the selection as unformatted plain text.
+   * @param crepe The editor instance.
+   */
+  private pastePlaintext(crepe: Crepe): void {
+    this.withClipboardText((text: string): void => {
+      crepe.editor.action((ctx: Ctx): void => {
+        const view: EditorView = ctx.get(editorViewCtx);
+        view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+        view.focus();
+      });
+    });
+  }
+
+  /**
+   * Pastes the clipboard contents at the selection as a code block.
+   * @param crepe The editor instance.
+   */
+  private pasteCode(crepe: Crepe): void {
+    this.withClipboardText((text: string): void => {
+      crepe.editor.action((ctx: Ctx): void => {
+        const view: EditorView = ctx.get(editorViewCtx);
+        const codeBlockType: NodeType | undefined = view.state.schema.nodes['code_block'];
+        if (codeBlockType === undefined) {
+          return;
+        }
+        const codeBlock: ProseMirrorNode = codeBlockType.create(
+          null,
+          view.state.schema.text(text),
+        );
+        view.dispatch(view.state.tr.replaceSelectionWith(codeBlock).scrollIntoView());
+        view.focus();
+      });
+    });
   }
 
   /**

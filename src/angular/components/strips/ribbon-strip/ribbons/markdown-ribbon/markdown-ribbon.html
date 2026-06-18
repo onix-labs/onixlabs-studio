@@ -3,14 +3,22 @@
   <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
 </app-ribbon-group>
 
-<app-ribbon-group title="Format">
-  <app-ribbon-button [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
-  <app-ribbon-button [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />
-  <app-ribbon-button [icon]="Icon.STRIKETHROUGH" label="Strike" (action)="onStrikethrough()" />
-  <app-ribbon-button [icon]="Icon.CODE_INLINE" label="Code" (action)="onInlineCode()" />
+<app-ribbon-group title="Clipboard">
+  <app-ribbon-menu-button
+    [icon]="Icon.PASTE"
+    label="Paste"
+    [items]="pasteItems"
+    (action)="onPaste()"
+    (selected)="onPasteVariant($event)"
+  />
+  <app-ribbon-column>
+    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+  </app-ribbon-column>
 </app-ribbon-group>
 
-<app-ribbon-group title="Structure">
+<app-ribbon-group title="Format">
   <app-ribbon-column>
     <app-ribbon-field
       label="Style"
@@ -18,6 +26,32 @@
       [value]="blockLabel()"
       (changed)="onBlockChange($event)"
     />
+    <app-ribbon-row>
+      <app-ribbon-button-small
+        [icon]="Icon.BOLD"
+        label="Bold"
+        [iconOnly]="true"
+        (action)="onBold()"
+      />
+      <app-ribbon-button-small
+        [icon]="Icon.ITALIC"
+        label="Italic"
+        [iconOnly]="true"
+        (action)="onItalic()"
+      />
+      <app-ribbon-button-small
+        [icon]="Icon.STRIKETHROUGH"
+        label="Strike"
+        [iconOnly]="true"
+        (action)="onStrikethrough()"
+      />
+      <app-ribbon-button-small
+        [icon]="Icon.CODE_INLINE"
+        label="Code"
+        [iconOnly]="true"
+        (action)="onInlineCode()"
+      />
+    </app-ribbon-row>
   </app-ribbon-column>
 </app-ribbon-group>
 

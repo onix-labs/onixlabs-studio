@@ -20,6 +20,9 @@ import { Icon } from '../../../../../icons/icon';
   templateUrl: './ribbon-button-small.html',
   styleUrl: './ribbon-button-small.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.ribbon-button-small--icon-only]': 'iconOnly()',
+  },
 })
 export class RibbonButtonSmall {
   /**
@@ -36,6 +39,12 @@ export class RibbonButtonSmall {
    * Gets a value indicating whether the button is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether only the icon is shown. The label is kept as the button's
+   * accessible name and tooltip, but its text is hidden.
+   */
+  public readonly iconOnly: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets a value indicating whether the button is a latching toggle rather than a one-shot action.

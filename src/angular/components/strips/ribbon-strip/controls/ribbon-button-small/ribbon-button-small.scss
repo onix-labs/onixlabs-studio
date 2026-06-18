@@ -3,6 +3,21 @@
   flex: 1;
 }
 
+// Icon-only buttons (e.g. the markdown Format row) drop their label, so they shrink to the icon
+// rather than stretching to share the lane's width.
+:host(.ribbon-button-small--icon-only) {
+  flex: 0 0 auto;
+
+  .ribbon-button-small {
+    justify-content: center;
+    gap: 0;
+    // Equal padding on every side gives the icon a little breathing room while keeping the button
+    // square (border-box + aspect-ratio).
+    padding: 0.25rem;
+    aspect-ratio: 1;
+  }
+}
+
 .ribbon-button-small {
   display: flex;
   flex: 1;

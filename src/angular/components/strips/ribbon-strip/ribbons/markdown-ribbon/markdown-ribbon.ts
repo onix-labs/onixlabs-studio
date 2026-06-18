@@ -10,6 +10,11 @@ import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-but
 import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
 import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
 import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
+import {
+  RibbonMenuButton,
+  RibbonMenuItem,
+} from '../../controls/ribbon-menu-button/ribbon-menu-button';
+import { RibbonRow } from '../../controls/ribbon-row/ribbon-row';
 
 /**
  * Maps each selectable block type to the label shown in the ribbon's style field.
@@ -48,15 +53,38 @@ const LABEL_BLOCK_TYPES: ReadonlyMap<string, MarkdownBlockType> = new Map<
 const DEFAULT_BLOCK_LABEL: string = 'Paragraph';
 
 /**
+ * Identifies the paste-as-markdown dropdown item.
+ */
+const PASTE_MARKDOWN: string = 'markdown';
+
+/**
+ * Identifies the paste-as-plaintext dropdown item.
+ */
+const PASTE_PLAINTEXT: string = 'plaintext';
+
+/**
+ * Identifies the paste-as-code dropdown item.
+ */
+const PASTE_CODE: string = 'code';
+
+/**
  * Represents the contextual ribbon shown when a markdown tab is active. Its controls drive formatting
  * on the active markdown editor through the {@link MarkdownCommands} registry, and its style field
  * follows the cursor's block type.
  */
 @Component({
   selector: 'app-markdown-ribbon',
-  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonButtonSmall, RibbonField],
+  imports: [
+    RibbonGroup,
+    RibbonColumn,
+    RibbonButton,
+    RibbonButtonSmall,
+    RibbonField,
+    RibbonMenuButton,
+    RibbonRow,
+  ],
   templateUrl: './markdown-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrls: ['../ribbon-row.scss', './markdown-ribbon.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownRibbon {
@@ -74,6 +102,54 @@ export class MarkdownRibbon {
    * Holds the documents service backing the file actions.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Gets the paste variants offered by the Clipboard group's menu button.
+   */
+  protected readonly pasteItems: readonly RibbonMenuItem[] = [
+    { id: PASTE_MARKDOWN, label: 'Paste as Markdown', icon: Icon.MARKDOWN },
+    { id: PASTE_PLAINTEXT, label: 'Paste as Plaintext', icon: Icon.PASTE },
+    { id: PASTE_CODE, label: 'Paste as Code', icon: Icon.CODE_INLINE },
+  ];
+
+  /**
+   * Cuts the selection in the active editor.
+   */
+  protected onCut(): void {
+    this.commands.cut();
+  }
+
+  /**
+   * Copies the selection in the active editor.
+   */
+  protected onCopy(): void {
+    this.commands.copy();
+  }
+
+  /**
+   * Pastes the clipboard contents into the active editor as markdown.
+   */
+  protected onPaste(): void {
+    this.commands.paste();
+  }
+
+  /**
+   * Pastes the clipboard contents using the variant chosen from the menu button's dropdown.
+   * @param id The chosen paste variant's identifier.
+   */
+  protected onPasteVariant(id: string): void {
+    switch (id) {
+      case PASTE_PLAINTEXT:
+        this.commands.pasteAsPlaintext();
+        break;
+      case PASTE_CODE:
+        this.commands.pasteAsCode();
+        break;
+      default:
+        this.commands.paste();
+        break;
+    }
+  }
 
   /**
    * Saves the active document.
