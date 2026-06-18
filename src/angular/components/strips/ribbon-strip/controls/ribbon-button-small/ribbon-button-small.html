@@ -2,9 +2,13 @@
   type="button"
   class="ribbon-button-small"
   [disabled]="disabled()"
+  [attr.title]="iconOnly() ? label() : null"
+  [attr.aria-label]="iconOnly() ? label() : null"
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >
   <app-icon [icon]="icon()" [size]="1" />
-  <span>{{ label() }}</span>
+  @if (!iconOnly()) {
+    <span>{{ label() }}</span>
+  }
 </button>

@@ -9,18 +9,14 @@
 }
 
 .ribbon-field__label {
-  text-transform: uppercase;
-  font-size: 0.55rem;
-  line-height: 1;
-  color: var(--ribbon-group-title-foreground-color);
+  display: none;
 }
 
 .ribbon-field__select {
   min-inline-size: 8rem;
-  padding: 0.1rem 0.35rem;
+  padding: 0.3rem;
   font: inherit;
-  font-size: 0.7rem;
-  line-height: 1.2;
+  font-size: 0.8rem;
   color: inherit;
   background: var(--ribbon-field-background-color);
   border: 0.0625rem solid var(--ribbon-field-border-color);

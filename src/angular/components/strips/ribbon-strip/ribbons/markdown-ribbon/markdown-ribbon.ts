@@ -84,7 +84,7 @@ const PASTE_CODE: string = 'code';
     RibbonRow,
   ],
   templateUrl: './markdown-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrls: ['../ribbon-row.scss', './markdown-ribbon.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownRibbon {

@@ -27,14 +27,30 @@
       (changed)="onBlockChange($event)"
     />
     <app-ribbon-row>
-      <app-ribbon-button-small [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
-      <app-ribbon-button-small [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />
+      <app-ribbon-button-small
+        [icon]="Icon.BOLD"
+        label="Bold"
+        [iconOnly]="true"
+        (action)="onBold()"
+      />
+      <app-ribbon-button-small
+        [icon]="Icon.ITALIC"
+        label="Italic"
+        [iconOnly]="true"
+        (action)="onItalic()"
+      />
       <app-ribbon-button-small
         [icon]="Icon.STRIKETHROUGH"
         label="Strike"
+        [iconOnly]="true"
         (action)="onStrikethrough()"
       />
-      <app-ribbon-button-small [icon]="Icon.CODE_INLINE" label="Code" (action)="onInlineCode()" />
+      <app-ribbon-button-small
+        [icon]="Icon.CODE_INLINE"
+        label="Code"
+        [iconOnly]="true"
+        (action)="onInlineCode()"
+      />
     </app-ribbon-row>
   </app-ribbon-column>
 </app-ribbon-group>

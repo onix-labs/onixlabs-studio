@@ -36,6 +36,12 @@ export class RibbonButton {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether only the icon is shown. The label is kept as the button's
+   * accessible name and tooltip, but its text is hidden.
+   */
+  public readonly iconOnly: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits when the button is activated.
    */
   public readonly action: OutputEmitterRef<void> = output<void>();
