@@ -14,6 +14,7 @@ import {
   RibbonMenuButton,
   RibbonMenuItem,
 } from '../../controls/ribbon-menu-button/ribbon-menu-button';
+import { RibbonRow } from '../../controls/ribbon-row/ribbon-row';
 
 /**
  * Maps each selectable block type to the label shown in the ribbon's style field.
@@ -80,6 +81,7 @@ const PASTE_CODE: string = 'code';
     RibbonButtonSmall,
     RibbonField,
     RibbonMenuButton,
+    RibbonRow,
   ],
   templateUrl: './markdown-ribbon.html',
   styleUrl: '../ribbon-row.scss',

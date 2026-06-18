@@ -19,13 +19,6 @@
 </app-ribbon-group>
 
 <app-ribbon-group title="Format">
-  <app-ribbon-button [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
-  <app-ribbon-button [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />
-  <app-ribbon-button [icon]="Icon.STRIKETHROUGH" label="Strike" (action)="onStrikethrough()" />
-  <app-ribbon-button [icon]="Icon.CODE_INLINE" label="Code" (action)="onInlineCode()" />
-</app-ribbon-group>
-
-<app-ribbon-group title="Structure">
   <app-ribbon-column>
     <app-ribbon-field
       label="Style"
@@ -33,6 +26,16 @@
       [value]="blockLabel()"
       (changed)="onBlockChange($event)"
     />
+    <app-ribbon-row>
+      <app-ribbon-button-small [icon]="Icon.BOLD" label="Bold" (action)="onBold()" />
+      <app-ribbon-button-small [icon]="Icon.ITALIC" label="Italic" (action)="onItalic()" />
+      <app-ribbon-button-small
+        [icon]="Icon.STRIKETHROUGH"
+        label="Strike"
+        (action)="onStrikethrough()"
+      />
+      <app-ribbon-button-small [icon]="Icon.CODE_INLINE" label="Code" (action)="onInlineCode()" />
+    </app-ribbon-row>
   </app-ribbon-column>
 </app-ribbon-group>
 
