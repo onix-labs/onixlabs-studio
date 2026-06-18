@@ -190,6 +190,8 @@ class Program {
     const window: BrowserWindow = new BrowserWindow({
       width: 1280,
       height: 800,
+      minWidth: 800,
+      minHeight: 600,
       show: false,
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 14, y: 14 },
