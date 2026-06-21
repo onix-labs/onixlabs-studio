@@ -1,8 +1,13 @@
 <label class="ribbon-field">
   <span class="ribbon-field__label">{{ label() }}</span>
-  <select class="ribbon-field__select" [disabled]="disabled()" (change)="onChange($event)">
+  <select
+    class="ribbon-field__select"
+    [disabled]="disabled()"
+    [value]="value() ?? options()[0]"
+    (change)="onChange($event)"
+  >
     @for (option of options(); track option) {
-      <option [value]="option" [selected]="option === value()">{{ option }}</option>
+      <option [value]="option">{{ option }}</option>
     }
   </select>
 </label>

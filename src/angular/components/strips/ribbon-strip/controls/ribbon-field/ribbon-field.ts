@@ -45,9 +45,16 @@ export class RibbonField {
 
   /**
    * Handles a change on the select, emitting the {@link changed} event.
+   *
+   * The field is controlled: it shows whatever the parent supplies through {@link value}, not the
+   * user's raw pick. After emitting, the select is re-asserted to {@link value} so a pick the parent
+   * does not adopt cannot leave the native select stuck on it (the value binding alone cannot correct
+   * this, as Angular skips writes it considers unchanged).
    * @param event The DOM change event raised by the underlying select.
    */
   protected onChange(event: Event): void {
-    this.changed.emit((event.target as HTMLSelectElement).value);
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    this.changed.emit(select.value);
+    select.value = this.value() ?? this.options()[0] ?? '';
   }
 }
