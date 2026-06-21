@@ -1,0 +1,42 @@
+// The trigger sits at the end of the tab strip and matches the title strip's action buttons. The
+// drop-down panel itself renders through the CDK overlay (outside this component), so its styles live
+// in the global _menu.scss.
+// The auto inline-start margin absorbs the free space between the tabs and the trigger, pushing the
+// trigger (and the window controls that follow it) to the far right of the strip.
+:host {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: auto;
+  margin-inline-end: 0.5rem;
+  -webkit-app-region: no-drag;
+}
+
+.title-strip-tab-menu__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.125rem;
+  block-size: 1.75rem;
+  inline-size: 1.75rem;
+  font-size: 1.25rem;
+  background: transparent;
+  color: var(--title-strip-button-foreground-color);
+  border: 0.0625rem solid transparent;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}

@@ -1,5 +1,6 @@
+// The tab menu that precedes this carries the auto inline-start margin that pushes the right-hand
+// cluster over, so the window controls simply follow it flush against the strip's end.
 :host {
-  margin-inline-start: auto;
   -webkit-app-region: no-drag;
 }
 

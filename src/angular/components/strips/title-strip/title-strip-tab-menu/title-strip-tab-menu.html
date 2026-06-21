@@ -1,0 +1,33 @@
+<button
+  type="button"
+  class="title-strip-tab-menu__trigger"
+  title="Open tabs"
+  aria-label="Open tabs"
+  [cdkMenuTriggerFor]="menu"
+  [cdkMenuPosition]="menuPosition"
+>
+  <app-icon [icon]="Icon.CARET_DOWN" />
+</button>
+
+<ng-template #menu>
+  <div class="title-strip-tab-menu__panel" cdkMenu>
+    @for (group of groups(); track group.label) {
+      <p class="title-strip-tab-menu__heading">{{ group.label }}</p>
+      @for (tab of group.tabs; track tab.id) {
+        <button
+          type="button"
+          class="title-strip-tab-menu__item"
+          [class.title-strip-tab-menu__item--active]="tab.id === activeTabId()"
+          cdkMenuItem
+          (cdkMenuItemTriggered)="onSelect(tab)"
+        >
+          <app-icon class="title-strip-tab-menu__item-icon" [icon]="tab.icon" [size]="1.5" />
+          <span class="title-strip-tab-menu__item-label">{{ tab.title }}</span>
+          @if (tab.dirty) {
+            <span class="title-strip-tab-menu__item-dirty" aria-label="Unsaved changes"></span>
+          }
+        </button>
+      }
+    }
+  </div>
+</ng-template>
