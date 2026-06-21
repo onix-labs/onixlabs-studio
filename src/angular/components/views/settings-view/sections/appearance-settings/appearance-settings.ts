@@ -1,8 +1,29 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { AccentColor, ACCENT_COLORS, Theme, ThemeMode } from '../../../../../services/theme/theme';
+import { RibbonAlignment, Settings } from '../../../../../services/settings/settings';
 import { Icon } from '../../../../../icons/icon';
 import { AppIcon } from '../../../../shared/icon/app-icon';
+
+/**
+ * Describes a selectable ribbon-alignment option in the appearance settings.
+ */
+interface RibbonAlignmentOption {
+  /**
+   * Gets the alignment the option applies.
+   */
+  readonly value: RibbonAlignment;
+
+  /**
+   * Gets the label shown for the option.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the icon shown for the option.
+   */
+  readonly icon: Icon;
+}
 
 /**
  * Describes a selectable theme-mode option in the appearance settings.
@@ -42,6 +63,11 @@ export class AppearanceSettings {
   private readonly theme: Theme = inject(Theme);
 
   /**
+   * Holds the settings service backing the ribbon alignment control.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the currently selected theme mode.
    */
   protected readonly mode: Signal<ThemeMode> = this.theme.mode;
@@ -66,6 +92,20 @@ export class AppearanceSettings {
   protected readonly accentColors: readonly AccentColor[] = ACCENT_COLORS;
 
   /**
+   * Gets the currently selected ribbon alignment.
+   */
+  protected readonly ribbonAlignment: Signal<RibbonAlignment> = this.settings.ribbonAlignment;
+
+  /**
+   * Gets the ribbon-alignment options offered by the selector.
+   */
+  protected readonly ribbonAlignmentOptions: readonly RibbonAlignmentOption[] = [
+    { value: 'left', label: 'Left', icon: Icon.ALIGN_LEFT },
+    { value: 'center', label: 'Center', icon: Icon.ALIGN_CENTER },
+    { value: 'right', label: 'Right', icon: Icon.ALIGN_RIGHT },
+  ];
+
+  /**
    * Selects the given theme mode.
    * @param mode The theme mode to apply.
    */
@@ -79,5 +119,13 @@ export class AppearanceSettings {
    */
   protected selectAccent(accent: AccentColor): void {
     this.theme.setAccent(accent);
+  }
+
+  /**
+   * Selects the given ribbon alignment.
+   * @param alignment The ribbon alignment to apply.
+   */
+  protected selectRibbonAlignment(alignment: RibbonAlignment): void {
+    this.settings.setRibbonAlignment(alignment);
   }
 }

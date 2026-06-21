@@ -21,9 +21,12 @@ describe('AppearanceSettings', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_whenShown_offersEveryThemeModeAndAccent', () => {
+  it('render_whenShown_offersEveryThemeModeAccentAndAlignment', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelectorAll('.segmented__option').length).toBe(3);
+    const theme: Element = element.querySelector('[aria-label="Theme"]')!;
+    const alignment: Element = element.querySelector('[aria-label="Ribbon alignment"]')!;
+    expect(theme.querySelectorAll('.segmented__option').length).toBe(3);
+    expect(alignment.querySelectorAll('.segmented__option').length).toBe(3);
     expect(element.querySelectorAll('.swatch').length).toBe(8);
   });
 });
