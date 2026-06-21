@@ -9,6 +9,11 @@
     gap: 0.5rem;
     padding: 0.3rem;
     padding-inline-start: 0.5rem;
+    // Tabs size to their title, bounded between a minimum (64px, holding just the icon and close
+    // button) and a maximum (240px, past which the title truncates). When the strip fills, the tabs
+    // shrink from their content width toward the minimum; past that the strip scrolls.
+    min-inline-size: 4rem;
+    max-inline-size: 15rem;
     user-select: none;
     color: var(--title-strip-tab-foreground-color);
     background-color: var(--title-strip-tab-background-color);
@@ -91,6 +96,21 @@
       }
     }
 
+    // The leading icon keeps its size as the tab shrinks; only the title gives way.
+    > app-icon {
+      flex-shrink: 0;
+    }
+
+    // The title sizes to its text (flex-basis auto), so the tab hugs its content. It shrinks and
+    // truncates when the tab is squeezed below that — by the max-width cap or a crowded strip —
+    // collapsing entirely once only the icon and close button fit.
+    .tab-title {
+      flex: auto;
+      min-inline-size: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
     .tab-dirty {
       flex-shrink: 0;
       inline-size: 0.5rem;
@@ -111,6 +131,7 @@
 
     button {
       display: flex;
+      flex-shrink: 0;
       align-items: center;
       justify-content: center;
       block-size: 1.25rem;
