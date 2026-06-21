@@ -5,17 +5,26 @@
 
 <app-ribbon-group title="Clipboard">
   <app-ribbon-menu-button
+    [icon]="Icon.CUT"
+    label="Cut"
+    [items]="cutItems"
+    (action)="onCut()"
+    (selected)="onCutVariant($event)"
+  />
+  <app-ribbon-menu-button
+    [icon]="Icon.COPY"
+    label="Copy"
+    [items]="copyItems"
+    (action)="onCopy()"
+    (selected)="onCopyVariant($event)"
+  />
+  <app-ribbon-menu-button
     [icon]="Icon.PASTE"
     label="Paste"
     [items]="pasteItems"
     (action)="onPaste()"
     (selected)="onPasteVariant($event)"
   />
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-  </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Format">

@@ -54,6 +54,7 @@ import {
 } from '../../../milkdown/github-alert-plugin';
 import { htmlImagePlugin } from '../../../milkdown/html-image-plugin';
 import { mermaidPlugin, renderMermaidDiagram } from '../../../milkdown/mermaid-plugin';
+import { pasteCleanPlugin } from '../../../milkdown/paste-clean-plugin';
 import { subscriptSuperscriptPlugin } from '../../../milkdown/subscript-superscript-plugin';
 import { Milkdown } from '../../../services/milkdown/milkdown';
 import {
@@ -369,6 +370,7 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
         },
       });
 
+      crepe.editor.use(pasteCleanPlugin);
       crepe.editor.use(subscriptSuperscriptPlugin);
       crepe.editor.use(htmlImagePlugin);
       crepe.editor.use(githubAlertPlugin);
@@ -480,7 +482,9 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
 
     this.commandHandler = {
       cut: (): void => this.clipboardCommand('cut'),
+      cutAsPlaintext: (): void => this.cutPlaintext(crepe),
       copy: (): void => this.clipboardCommand('copy'),
+      copyAsPlaintext: (): void => this.copyPlaintext(crepe),
       paste: (): void => this.pasteMarkdown(crepe),
       pasteAsPlaintext: (): void => this.pastePlaintext(crepe),
       pasteAsCode: (): void => this.pasteCode(crepe),
@@ -516,6 +520,36 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
   private clipboardCommand(command: 'cut' | 'copy'): void {
     this.focusEditor();
     document.execCommand(command);
+  }
+
+  /**
+   * Copies the current selection to the clipboard as unformatted plain text, discarding markdown
+   * syntax. Blocks are joined with newlines so multi-paragraph selections survive as readable text.
+   * @param crepe The editor instance.
+   */
+  private copyPlaintext(crepe: Crepe): void {
+    crepe.editor.action((ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      const selection: Selection = view.state.selection;
+      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
+      void navigator.clipboard.writeText(text).catch((): void => undefined);
+      view.focus();
+    });
+  }
+
+  /**
+   * Cuts the current selection to the clipboard as unformatted plain text, then deletes it.
+   * @param crepe The editor instance.
+   */
+  private cutPlaintext(crepe: Crepe): void {
+    crepe.editor.action((ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      const selection: Selection = view.state.selection;
+      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
+      void navigator.clipboard.writeText(text).catch((): void => undefined);
+      view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+      view.focus();
+    });
   }
 
   /**
@@ -579,10 +613,7 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
         if (codeBlockType === undefined) {
           return;
         }
-        const codeBlock: ProseMirrorNode = codeBlockType.create(
-          null,
-          view.state.schema.text(text),
-        );
+        const codeBlock: ProseMirrorNode = codeBlockType.create(null, view.state.schema.text(text));
         view.dispatch(view.state.tr.replaceSelectionWith(codeBlock).scrollIntoView());
         view.focus();
       });

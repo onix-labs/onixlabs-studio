@@ -10,7 +10,9 @@ import { MarkdownCommandHandler, MarkdownCommands } from './markdown-commands';
 function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
   return {
     cut: (): void => void calls.add('cut'),
+    cutAsPlaintext: (): void => void calls.add('cutAsPlaintext'),
     copy: (): void => void calls.add('copy'),
+    copyAsPlaintext: (): void => void calls.add('copyAsPlaintext'),
     paste: (): void => void calls.add('paste'),
     pasteAsPlaintext: (): void => void calls.add('pasteAsPlaintext'),
     pasteAsCode: (): void => void calls.add('pasteAsCode'),
@@ -57,12 +59,16 @@ describe('MarkdownCommands', () => {
     const calls: Set<string> = new Set<string>();
     commands.register(recordingHandler(calls));
     commands.cut();
+    commands.cutAsPlaintext();
     commands.copy();
+    commands.copyAsPlaintext();
     commands.paste();
     commands.pasteAsPlaintext();
     commands.pasteAsCode();
     expect(calls.has('cut')).toBe(true);
+    expect(calls.has('cutAsPlaintext')).toBe(true);
     expect(calls.has('copy')).toBe(true);
+    expect(calls.has('copyAsPlaintext')).toBe(true);
     expect(calls.has('paste')).toBe(true);
     expect(calls.has('pasteAsPlaintext')).toBe(true);
     expect(calls.has('pasteAsCode')).toBe(true);
@@ -70,7 +76,9 @@ describe('MarkdownCommands', () => {
 
   it('clipboardCommands_whenNoHandlerRegistered_doNothing', () => {
     expect((): void => commands.cut()).not.toThrow();
+    expect((): void => commands.cutAsPlaintext()).not.toThrow();
     expect((): void => commands.copy()).not.toThrow();
+    expect((): void => commands.copyAsPlaintext()).not.toThrow();
     expect((): void => commands.paste()).not.toThrow();
     expect((): void => commands.pasteAsPlaintext()).not.toThrow();
     expect((): void => commands.pasteAsCode()).not.toThrow();

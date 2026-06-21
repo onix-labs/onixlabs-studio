@@ -30,14 +30,24 @@ const DEFAULT_BLOCK_TYPE: MarkdownBlockType = 'paragraph';
  */
 export interface MarkdownCommandHandler {
   /**
-   * Cuts the current selection to the clipboard.
+   * Cuts the current selection to the clipboard as markdown, preserving its formatting.
    */
   cut(): void;
 
   /**
-   * Copies the current selection to the clipboard.
+   * Cuts the current selection to the clipboard as unformatted plain text.
+   */
+  cutAsPlaintext(): void;
+
+  /**
+   * Copies the current selection to the clipboard as markdown, preserving its formatting.
    */
   copy(): void;
+
+  /**
+   * Copies the current selection to the clipboard as unformatted plain text.
+   */
+  copyAsPlaintext(): void;
 
   /**
    * Pastes the clipboard contents at the selection, parsing them as markdown.
@@ -167,17 +177,31 @@ export class MarkdownCommands {
   }
 
   /**
-   * Invokes the cut command on the active editor.
+   * Invokes the cut command on the active editor, serialising the selection as markdown.
    */
   public cut(): void {
     this.handler()?.cut();
   }
 
   /**
-   * Invokes the copy command on the active editor.
+   * Invokes the cut-as-plaintext command on the active editor.
+   */
+  public cutAsPlaintext(): void {
+    this.handler()?.cutAsPlaintext();
+  }
+
+  /**
+   * Invokes the copy command on the active editor, serialising the selection as markdown.
    */
   public copy(): void {
     this.handler()?.copy();
+  }
+
+  /**
+   * Invokes the copy-as-plaintext command on the active editor.
+   */
+  public copyAsPlaintext(): void {
+    this.handler()?.copyAsPlaintext();
   }
 
   /**
