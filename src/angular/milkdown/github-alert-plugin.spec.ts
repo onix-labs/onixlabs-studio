@@ -60,19 +60,19 @@ describe('GitHub Alert Plugin', () => {
 
   describe('Icon mapping', () => {
     const ALERT_ICONS: Record<string, Icon> = {
-      note: Icon.INFO,
-      tip: Icon.HINT,
-      important: Icon.IMPORTANT,
-      warning: Icon.WARNING,
-      caution: Icon.CAUTION,
+      note: Icon.ALERT_NOTE,
+      tip: Icon.ALERT_TIP,
+      important: Icon.ALERT_IMPORTANT,
+      warning: Icon.ALERT_WARNING,
+      caution: Icon.ALERT_CAUTION,
     };
 
     it('should have an icon for each alert type', () => {
-      expect(ALERT_ICONS['note']).toBe(Icon.INFO);
-      expect(ALERT_ICONS['tip']).toBe(Icon.HINT);
-      expect(ALERT_ICONS['important']).toBe(Icon.IMPORTANT);
-      expect(ALERT_ICONS['warning']).toBe(Icon.WARNING);
-      expect(ALERT_ICONS['caution']).toBe(Icon.CAUTION);
+      expect(ALERT_ICONS['note']).toBe(Icon.ALERT_NOTE);
+      expect(ALERT_ICONS['tip']).toBe(Icon.ALERT_TIP);
+      expect(ALERT_ICONS['important']).toBe(Icon.ALERT_IMPORTANT);
+      expect(ALERT_ICONS['warning']).toBe(Icon.ALERT_WARNING);
+      expect(ALERT_ICONS['caution']).toBe(Icon.ALERT_CAUTION);
     });
 
     it('should have exactly 5 alert types defined', () => {

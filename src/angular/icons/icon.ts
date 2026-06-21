@@ -436,14 +436,29 @@ export class Icon {
   public static readonly SUCCESS: Icon = new Icon('ph ph-check-circle');
 
   /**
-   * Gets the important-callout icon (used by markdown alerts).
+   * Gets the duotone Note icon used by markdown alerts.
    */
-  public static readonly IMPORTANT: Icon = new Icon('ph ph-warning-circle');
+  public static readonly ALERT_NOTE: Icon = new Icon('ph-duotone ph-info');
 
   /**
-   * Gets the caution-callout icon (used by markdown alerts).
+   * Gets the duotone Tip icon used by markdown alerts.
    */
-  public static readonly CAUTION: Icon = new Icon('ph ph-warning-octagon');
+  public static readonly ALERT_TIP: Icon = new Icon('ph-duotone ph-lightbulb');
+
+  /**
+   * Gets the duotone Important icon used by markdown alerts.
+   */
+  public static readonly ALERT_IMPORTANT: Icon = new Icon('ph-duotone ph-warning-circle');
+
+  /**
+   * Gets the duotone Warning icon used by markdown alerts.
+   */
+  public static readonly ALERT_WARNING: Icon = new Icon('ph-duotone ph-warning');
+
+  /**
+   * Gets the duotone Caution icon used by markdown alerts.
+   */
+  public static readonly ALERT_CAUTION: Icon = new Icon('ph-duotone ph-warning-octagon');
 
   // --- Agent chat ---
 

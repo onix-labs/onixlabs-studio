@@ -530,6 +530,7 @@ app-markdown-view .milkdown .ProseMirror-placeholder::before {
 app-markdown-view .milkdown .ProseMirror {
   .github-alert {
     display: flex;
+    align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem;
     margin: 1rem 0;
@@ -541,8 +542,17 @@ app-markdown-view .milkdown .ProseMirror {
 
     .alert-icon {
       flex-shrink: 0;
-      font-size: 1.25rem;
-      line-height: 1.6;
+      // Geometrically centre the glyph within one text line's height. Relying on the font baseline
+      // (via line-height) renders the glyph too high, so the box is made one line tall and the glyph
+      // is flex-centred inside it. With the container's align-items: flex-start, the icon stays
+      // pinned to the first line when the content wraps onto more lines.
+      display: inline-flex;
+      align-items: center;
+      height: calc(var(--markdown-font-size, 16px) * 1.6);
+      font-size: 1.5rem;
+      // Optical correction: the Phosphor glyph sits high within its own em box, so nudge it down to
+      // visually centre against the text. Expressed in em so it scales with the icon size.
+      transform: translateY(0.1em);
     }
 
     .alert-content {
