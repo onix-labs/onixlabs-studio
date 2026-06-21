@@ -9,9 +9,9 @@
 // Splits the view into a left section navigation and a right content pane.
 .settings {
   display: flex;
-  gap: 0.5rem;
+  gap: 1rem;
   block-size: 100%;
-  padding: 0.5rem;
+  padding: 1rem;
   overflow: hidden;
   background: var(--settings-background-color);
 }
@@ -19,19 +19,15 @@
 // The left navigation lists the settings sections.
 .settings__nav {
   display: flex;
-  flex: 0 0 14rem;
+  flex: 0 0 16rem;
   flex-direction: column;
-  gap: 0.125rem;
-  padding: 1rem 0.75rem;
+  gap: 0.25rem;
+  padding: 0.5rem;
   overflow: auto;
-  border-inline-end: 0.0625rem solid var(--settings-border-color);
-}
-
-.settings__nav-title {
-  margin: 0 0 0.75rem;
-  padding-inline: 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 600;
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: 1rem;
+  corner-shape: squircle;
+  background: var(--settings-nav-background-color);
 }
 
 .settings__nav-item {
@@ -76,12 +72,7 @@
 .settings__content {
   flex: 1;
   min-inline-size: 0;
-  padding: 2rem 2.5rem;
   overflow: auto;
-}
-
-.settings__section {
-  inline-size: min(40rem, 100%);
 }
 
 .settings__section-title {
