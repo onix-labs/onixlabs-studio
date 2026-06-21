@@ -79,11 +79,11 @@ const ALERT_PATTERN: RegExp = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i;
  * Icon for each alert type.
  */
 const ALERT_ICONS: Record<AlertType, Icon> = {
-  note: Icon.INFO,
-  tip: Icon.HINT,
-  important: Icon.IMPORTANT,
-  warning: Icon.WARNING,
-  caution: Icon.CAUTION,
+  note: Icon.ALERT_NOTE,
+  tip: Icon.ALERT_TIP,
+  important: Icon.ALERT_IMPORTANT,
+  warning: Icon.ALERT_WARNING,
+  caution: Icon.ALERT_CAUTION,
 };
 
 /**

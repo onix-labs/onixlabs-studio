@@ -5,17 +5,26 @@
 
 <app-ribbon-group title="Clipboard">
   <app-ribbon-menu-button
+    [icon]="Icon.CUT"
+    label="Cut"
+    [items]="cutItems"
+    (action)="onCut()"
+    (selected)="onCutVariant($event)"
+  />
+  <app-ribbon-menu-button
+    [icon]="Icon.COPY"
+    label="Copy"
+    [items]="copyItems"
+    (action)="onCopy()"
+    (selected)="onCopyVariant($event)"
+  />
+  <app-ribbon-menu-button
     [icon]="Icon.PASTE"
     label="Paste"
     [items]="pasteItems"
     (action)="onPaste()"
     (selected)="onPasteVariant($event)"
   />
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-  </app-ribbon-column>
 </app-ribbon-group>
 
 <app-ribbon-group title="Format">
@@ -60,10 +69,10 @@
     <app-ribbon-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
     <app-ribbon-button-small
       [icon]="Icon.NUMBERED_LIST"
-      label="Numbered"
+      label="Numbers"
       (action)="onOrderedList()"
     />
-    <app-ribbon-button-small [icon]="Icon.TASK_LIST" label="Task" (action)="onTaskList()" />
+    <app-ribbon-button-small [icon]="Icon.TASK_LIST" label="Tasks" (action)="onTaskList()" />
   </app-ribbon-column>
 </app-ribbon-group>
 

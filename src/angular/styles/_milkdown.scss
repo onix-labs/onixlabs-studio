@@ -175,6 +175,26 @@ app-markdown-view .milkdown .ProseMirror {
 
   blockquote {
     font-size: var(--markdown-font-size, 16px) !important;
+    margin: 1rem 0 !important;
+    padding: 1rem !important;
+    border: 1px solid var(--crepe-color-outline) !important;
+    border-left-width: 0.25rem !important;
+    border-radius: 1rem !important;
+    corner-shape: squircle;
+    background: var(--crepe-color-surface) !important;
+
+    // Rendered as a boxed callout (like the GitHub alerts), so the default left accent bar is hidden.
+    &::before {
+      display: none !important;
+    }
+
+    > *:first-child {
+      margin-top: 0;
+    }
+
+    > *:last-child {
+      margin-bottom: 0;
+    }
   }
 
   strong,
@@ -203,7 +223,8 @@ app-markdown-view .milkdown .ProseMirror {
     width: 100%;
     margin: 1em 0;
     border: 1px solid var(--crepe-color-outline);
-    border-radius: 8px;
+    border-radius: 1rem;
+    corner-shape: squircle;
     overflow: hidden;
   }
 
@@ -229,7 +250,8 @@ app-markdown-view .milkdown .ProseMirror {
   }
 
   .milkdown-code-block {
-    border-radius: 8px;
+    border-radius: 1rem;
+    corner-shape: squircle;
     overflow: hidden;
 
     .cm-gutters {
@@ -252,6 +274,7 @@ app-markdown-view .milkdown .ProseMirror {
     background: var(--crepe-color-outline) !important;
     background-clip: border-box !important;
     border-radius: 9999px !important;
+    corner-shape: squircle;
     margin: 2em 0 !important;
   }
 
@@ -259,7 +282,8 @@ app-markdown-view .milkdown .ProseMirror {
     display: block;
     max-width: 100%;
     height: auto;
-    border-radius: 0.5em;
+    border-radius: 1rem;
+    corner-shape: squircle;
     margin-left: auto;
     margin-right: auto;
   }
@@ -288,6 +312,7 @@ app-markdown-view .milkdown .ProseMirror {
           max-width: 100%;
           height: auto;
           border-radius: 0.5em;
+          corner-shape: squircle;
         }
       }
 
@@ -295,6 +320,7 @@ app-markdown-view .milkdown .ProseMirror {
         outline: 2px solid var(--crepe-color-primary);
         outline-offset: 4px;
         border-radius: 4px;
+        corner-shape: squircle;
       }
     }
 
@@ -312,6 +338,7 @@ app-markdown-view .milkdown .ProseMirror {
         background: var(--crepe-color-surface);
         border: 1px solid var(--crepe-color-outline);
         border-radius: 0.5em;
+        corner-shape: squircle;
         resize: vertical;
         outline: none;
         box-sizing: border-box;
@@ -503,17 +530,29 @@ app-markdown-view .milkdown .ProseMirror-placeholder::before {
 app-markdown-view .milkdown .ProseMirror {
   .github-alert {
     display: flex;
+    align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem;
     margin: 1rem 0;
-    border-radius: 0.5rem;
+    border-radius: 1rem;
+    corner-shape: squircle;
     border-width: 1px;
+    border-left-width: 0.25rem;
     border-style: solid;
 
     .alert-icon {
       flex-shrink: 0;
-      font-size: 1.25rem;
-      line-height: 1.6;
+      // Geometrically centre the glyph within one text line's height. Relying on the font baseline
+      // (via line-height) renders the glyph too high, so the box is made one line tall and the glyph
+      // is flex-centred inside it. With the container's align-items: flex-start, the icon stays
+      // pinned to the first line when the content wraps onto more lines.
+      display: inline-flex;
+      align-items: center;
+      height: calc(var(--markdown-font-size, 16px) * 1.6);
+      font-size: 1.5rem;
+      // Optical correction: the Phosphor glyph sits high within its own em box, so nudge it down to
+      // visually centre against the text. Expressed in em so it scales with the icon size.
+      transform: translateY(0.1em);
     }
 
     .alert-content {
@@ -533,6 +572,7 @@ app-markdown-view .milkdown .ProseMirror {
   .github-alert-note {
     background: rgba(59, 130, 246, 0.1);
     border-color: rgba(59, 130, 246, 0.4);
+    color: #3b82f6;
 
     .alert-icon {
       color: #3b82f6;
@@ -542,6 +582,7 @@ app-markdown-view .milkdown .ProseMirror {
   .github-alert-tip {
     background: rgba(34, 197, 94, 0.1);
     border-color: rgba(34, 197, 94, 0.4);
+    color: #22c55e;
 
     .alert-icon {
       color: #22c55e;
@@ -551,6 +592,7 @@ app-markdown-view .milkdown .ProseMirror {
   .github-alert-important {
     background: rgba(168, 85, 247, 0.1);
     border-color: rgba(168, 85, 247, 0.4);
+    color: #a855f7;
 
     .alert-icon {
       color: #a855f7;
@@ -560,6 +602,7 @@ app-markdown-view .milkdown .ProseMirror {
   .github-alert-warning {
     background: rgba(234, 179, 8, 0.1);
     border-color: rgba(234, 179, 8, 0.4);
+    color: #eab308;
 
     .alert-icon {
       color: #eab308;
@@ -569,6 +612,7 @@ app-markdown-view .milkdown .ProseMirror {
   .github-alert-caution {
     background: rgba(239, 68, 68, 0.1);
     border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
 
     .alert-icon {
       color: #ef4444;
@@ -578,10 +622,6 @@ app-markdown-view .milkdown .ProseMirror {
 
 [data-theme-mode='dark'] app-markdown-view .milkdown .ProseMirror {
   hr {
-    background: var(--crepe-color-outline) !important;
-  }
-
-  blockquote::before {
     background: var(--crepe-color-outline) !important;
   }
 
@@ -611,13 +651,9 @@ app-markdown-view .milkdown .ProseMirror {
   }
 }
 
-// Light theme: rules and blockquote bars read better against a lighter outline.
+// Light theme: rules read better against a lighter outline.
 app-markdown-view .milkdown .ProseMirror {
   hr {
-    background: var(--gray-500) !important;
-  }
-
-  blockquote::before {
     background: var(--gray-500) !important;
   }
 }
@@ -633,6 +669,7 @@ app-markdown-view .milkdown .ProseMirror {
     height: 0.9em;
     margin-right: 0.35em;
     border-radius: 0.2em;
+    corner-shape: squircle;
     vertical-align: middle;
     background-image:
       linear-gradient(45deg, #ccc 25%, transparent 25%),
@@ -652,6 +689,7 @@ app-markdown-view .milkdown .ProseMirror {
       position: absolute;
       inset: 0;
       border-radius: inherit;
+      corner-shape: squircle;
       background-color: inherit;
     }
   }
@@ -664,7 +702,8 @@ app-markdown-view .milkdown .ProseMirror {
 app-markdown-view .milkdown .ProseMirror {
   .mermaid-block {
     margin: 1em 0;
-    border-radius: 0.5em;
+    border-radius: 1rem;
+    corner-shape: squircle;
     overflow: hidden;
 
     &.rendered {
@@ -694,6 +733,7 @@ app-markdown-view .milkdown .ProseMirror {
         padding: 1em;
         background: rgba(239, 68, 68, 0.1);
         border-radius: 0.25em;
+        corner-shape: squircle;
       }
 
       &:hover {
@@ -715,7 +755,8 @@ app-markdown-view .milkdown .ProseMirror {
         caret-color: var(--crepe-color-on-surface);
         background: var(--crepe-color-surface);
         border: 1px solid var(--crepe-color-outline);
-        border-radius: 0.5em;
+        border-radius: 1rem;
+        corner-shape: squircle;
         resize: vertical;
         outline: none;
         box-sizing: border-box;

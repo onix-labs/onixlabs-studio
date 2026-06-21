@@ -32,6 +32,11 @@ const BLOCK_TYPE_LABELS: ReadonlyMap<MarkdownBlockType, string> = new Map<
   ['heading-6', 'Heading 6'],
   ['blockquote', 'Blockquote'],
   ['code-block', 'Code Block'],
+  ['alert-note', 'Note'],
+  ['alert-tip', 'Tip'],
+  ['alert-important', 'Important'],
+  ['alert-warning', 'Warning'],
+  ['alert-caution', 'Caution'],
 ]);
 
 /**
@@ -53,19 +58,19 @@ const LABEL_BLOCK_TYPES: ReadonlyMap<string, MarkdownBlockType> = new Map<
 const DEFAULT_BLOCK_LABEL: string = 'Paragraph';
 
 /**
- * Identifies the paste-as-markdown dropdown item.
+ * Identifies the markdown variant of a clipboard dropdown item, preserving formatting.
  */
-const PASTE_MARKDOWN: string = 'markdown';
+const VARIANT_MARKDOWN: string = 'markdown';
 
 /**
- * Identifies the paste-as-plaintext dropdown item.
+ * Identifies the plain-text variant of a clipboard dropdown item, discarding formatting.
  */
-const PASTE_PLAINTEXT: string = 'plaintext';
+const VARIANT_PLAINTEXT: string = 'plaintext';
 
 /**
- * Identifies the paste-as-code dropdown item.
+ * Identifies the paste-as-code-block dropdown item.
  */
-const PASTE_CODE: string = 'code';
+const VARIANT_CODE: string = 'code';
 
 /**
  * Represents the contextual ribbon shown when a markdown tab is active. Its controls drive formatting
@@ -104,45 +109,86 @@ export class MarkdownRibbon {
   private readonly documents: Documents = inject(Documents);
 
   /**
-   * Gets the paste variants offered by the Clipboard group's menu button.
+   * Gets the cut variants offered by the Clipboard group's Cut menu button.
    */
-  protected readonly pasteItems: readonly RibbonMenuItem[] = [
-    { id: PASTE_MARKDOWN, label: 'Paste as Markdown', icon: Icon.MARKDOWN },
-    { id: PASTE_PLAINTEXT, label: 'Paste as Plaintext', icon: Icon.PASTE },
-    { id: PASTE_CODE, label: 'Paste as Code', icon: Icon.CODE_INLINE },
+  protected readonly cutItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_MARKDOWN, label: 'Cut as Markdown', icon: Icon.MARKDOWN },
+    { id: VARIANT_PLAINTEXT, label: 'Cut as Plain Text', icon: Icon.CUT },
   ];
 
   /**
-   * Cuts the selection in the active editor.
+   * Gets the copy variants offered by the Clipboard group's Copy menu button.
+   */
+  protected readonly copyItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_MARKDOWN, label: 'Copy as Markdown', icon: Icon.MARKDOWN },
+    { id: VARIANT_PLAINTEXT, label: 'Copy as Plain Text', icon: Icon.COPY },
+  ];
+
+  /**
+   * Gets the paste variants offered by the Clipboard group's Paste menu button.
+   */
+  protected readonly pasteItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_MARKDOWN, label: 'Paste as Markdown', icon: Icon.MARKDOWN },
+    { id: VARIANT_PLAINTEXT, label: 'Paste as Plain Text', icon: Icon.PASTE },
+    { id: VARIANT_CODE, label: 'Paste as Code Block', icon: Icon.CODE_INLINE },
+  ];
+
+  /**
+   * Cuts the selection in the active editor as markdown, the Cut button's default action.
    */
   protected onCut(): void {
     this.commands.cut();
   }
 
   /**
-   * Copies the selection in the active editor.
+   * Cuts the selection using the variant chosen from the Cut menu button's dropdown.
+   * @param id The chosen cut variant's identifier.
+   */
+  protected onCutVariant(id: string): void {
+    if (id === VARIANT_PLAINTEXT) {
+      this.commands.cutAsPlaintext();
+    } else {
+      this.commands.cut();
+    }
+  }
+
+  /**
+   * Copies the selection in the active editor as markdown, the Copy button's default action.
    */
   protected onCopy(): void {
     this.commands.copy();
   }
 
   /**
-   * Pastes the clipboard contents into the active editor as markdown.
+   * Copies the selection using the variant chosen from the Copy menu button's dropdown.
+   * @param id The chosen copy variant's identifier.
+   */
+  protected onCopyVariant(id: string): void {
+    if (id === VARIANT_PLAINTEXT) {
+      this.commands.copyAsPlaintext();
+    } else {
+      this.commands.copy();
+    }
+  }
+
+  /**
+   * Pastes the clipboard contents into the active editor as markdown, the Paste button's default
+   * action.
    */
   protected onPaste(): void {
     this.commands.paste();
   }
 
   /**
-   * Pastes the clipboard contents using the variant chosen from the menu button's dropdown.
+   * Pastes the clipboard contents using the variant chosen from the Paste menu button's dropdown.
    * @param id The chosen paste variant's identifier.
    */
   protected onPasteVariant(id: string): void {
     switch (id) {
-      case PASTE_PLAINTEXT:
+      case VARIANT_PLAINTEXT:
         this.commands.pasteAsPlaintext();
         break;
-      case PASTE_CODE:
+      case VARIANT_CODE:
         this.commands.pasteAsCode();
         break;
       default:
