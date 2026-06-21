@@ -32,12 +32,12 @@ export class MarkdownSettings {
   protected readonly markdown: Signal<MarkdownEditorSettings> = this.settings.markdownEditor;
 
   /**
-   * Gets the options offered by the margin size dropdown.
+   * Gets the options offered by the container width dropdown.
    */
   protected readonly marginOptions: readonly DropdownOption[] = [
-    { value: 'narrow', label: 'Narrow' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'wide', label: 'Wide' },
+    { value: 'narrow', label: 'Narrow (1024px)' },
+    { value: 'medium', label: 'Medium (1440px)' },
+    { value: 'wide', label: 'Wide (1600px)' },
     { value: 'full-width', label: 'Full width' },
   ];
 

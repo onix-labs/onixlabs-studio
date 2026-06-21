@@ -23,7 +23,10 @@
   />
 </app-setting-row>
 
-<app-setting-row label="Margin size" description="Width of the document margins.">
+<app-setting-row
+  label="Container width"
+  description="Maximum content width. Steps down to the next breakpoint when the editor is too narrow, and goes fluid below 1024px."
+>
   <app-dropdown
     [options]="marginOptions"
     [value]="markdown().marginSize"
