@@ -32,6 +32,11 @@ const BLOCK_TYPE_LABELS: ReadonlyMap<MarkdownBlockType, string> = new Map<
   ['heading-6', 'Heading 6'],
   ['blockquote', 'Blockquote'],
   ['code-block', 'Code Block'],
+  ['alert-note', 'Note'],
+  ['alert-tip', 'Tip'],
+  ['alert-important', 'Important'],
+  ['alert-warning', 'Warning'],
+  ['alert-caution', 'Caution'],
 ]);
 
 /**
