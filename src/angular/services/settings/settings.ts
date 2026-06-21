@@ -23,6 +23,11 @@ export type ImageSizing = 'fixed' | 'sizable';
 export type DefaultDocumentType = 'code' | 'markdown';
 
 /**
+ * Identifies how the ribbon's controls are aligned within the ribbon strip.
+ */
+export type RibbonAlignment = 'left' | 'center' | 'right';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -123,6 +128,16 @@ export interface ApplicationSettings {
 }
 
 /**
+ * Defines the appearance settings.
+ */
+export interface AppearanceSettings {
+  /**
+   * Gets the alignment of the ribbon's controls within the ribbon strip.
+   */
+  readonly ribbonAlignment: RibbonAlignment;
+}
+
+/**
  * Defines the markdown editor settings.
  */
 export interface MarkdownEditorSettings {
@@ -191,6 +206,11 @@ export interface AppSettings {
   readonly application: ApplicationSettings;
 
   /**
+   * Gets the appearance settings.
+   */
+  readonly appearance: AppearanceSettings;
+
+  /**
    * Gets the text editor settings with profiles.
    */
   readonly textEditor: TextEditorSettingsWithProfiles;
@@ -222,6 +242,11 @@ interface LegacyAppSettings {
   readonly application?: Partial<ApplicationSettings>;
 
   /**
+   * Gets the persisted appearance settings, if any.
+   */
+  readonly appearance?: Partial<AppearanceSettings>;
+
+  /**
    * Gets the persisted text editor settings, in either the legacy flat or the profile-aware format.
    */
   readonly textEditor?: LegacyTextEditorSettings | TextEditorSettingsWithProfiles;
@@ -243,6 +268,13 @@ interface LegacyAppSettings {
 const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
   defaultDocumentType: 'code',
   undoStackSize: 100,
+};
+
+/**
+ * Holds the default appearance settings.
+ */
+const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  ribbonAlignment: 'left',
 };
 
 /**
@@ -328,6 +360,20 @@ export class Settings {
    */
   public readonly application: Signal<ApplicationSettings> = computed(
     (): ApplicationSettings => this.settingsSignal().application,
+  );
+
+  /**
+   * Gets the appearance settings.
+   */
+  public readonly appearance: Signal<AppearanceSettings> = computed(
+    (): AppearanceSettings => this.settingsSignal().appearance,
+  );
+
+  /**
+   * Gets the alignment of the ribbon's controls within the ribbon strip.
+   */
+  public readonly ribbonAlignment: Signal<RibbonAlignment> = computed(
+    (): RibbonAlignment => this.settingsSignal().appearance.ribbonAlignment,
   );
 
   /**
@@ -426,6 +472,27 @@ export class Settings {
    */
   public setDefaultDocumentType(type: DefaultDocumentType): void {
     this.updateApplicationSettings({ defaultDocumentType: type });
+  }
+
+  /**
+   * Updates the appearance settings.
+   * @param updates The partial appearance settings to apply.
+   */
+  public updateAppearanceSettings(updates: Partial<AppearanceSettings>): void {
+    this.settingsSignal.update(
+      (current: AppSettings): AppSettings => ({
+        ...current,
+        appearance: { ...current.appearance, ...updates },
+      }),
+    );
+  }
+
+  /**
+   * Sets the alignment of the ribbon's controls within the ribbon strip.
+   * @param alignment The ribbon alignment to apply.
+   */
+  public setRibbonAlignment(alignment: RibbonAlignment): void {
+    this.updateAppearanceSettings({ ribbonAlignment: alignment });
   }
 
   /**
@@ -670,6 +737,7 @@ export class Settings {
 
     return {
       application: { ...DEFAULT_APPLICATION_SETTINGS, ...partial.application },
+      appearance: { ...DEFAULT_APPEARANCE_SETTINGS, ...partial.appearance },
       textEditor,
       markdownEditor: { ...DEFAULT_MARKDOWN_EDITOR_SETTINGS, ...partial.markdownEditor },
       ai: {

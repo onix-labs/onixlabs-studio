@@ -189,6 +189,21 @@ export class Icon {
   public static readonly CODE_INLINE: Icon = new Icon('ph ph-code');
 
   /**
+   * Gets the align-left icon.
+   */
+  public static readonly ALIGN_LEFT: Icon = new Icon('ph ph-text-align-left');
+
+  /**
+   * Gets the align-center icon.
+   */
+  public static readonly ALIGN_CENTER: Icon = new Icon('ph ph-text-align-center');
+
+  /**
+   * Gets the align-right icon.
+   */
+  public static readonly ALIGN_RIGHT: Icon = new Icon('ph ph-text-align-right');
+
+  /**
    * Gets the table icon.
    */
   public static readonly TABLE: Icon = new Icon('ph-duotone ph-grid-nine');

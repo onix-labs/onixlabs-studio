@@ -16,3 +16,13 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+// Ribbon control alignment (left is the natural flex-start default). The `safe` keyword falls back to
+// flex-start when the controls overflow the strip's width, so nothing is pushed out of reach.
+:host(.ribbon-strip--align-center) .ribbon {
+  justify-content: safe center;
+}
+
+:host(.ribbon-strip--align-right) .ribbon {
+  justify-content: safe flex-end;
+}
