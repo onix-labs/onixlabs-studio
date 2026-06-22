@@ -73,6 +73,16 @@ const VARIANT_PLAINTEXT: string = 'plaintext';
 const VARIANT_CODE: string = 'code';
 
 /**
+ * Identifies the Save menu's save-as dropdown item.
+ */
+const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * Identifies the Save menu's export-to-PDF dropdown item.
+ */
+const VARIANT_EXPORT_PDF: string = 'export-pdf';
+
+/**
  * Represents the contextual ribbon shown when a markdown tab is active. Its controls drive formatting
  * on the active markdown editor through the {@link MarkdownCommands} registry, and its style field
  * follows the cursor's block type.
@@ -107,6 +117,14 @@ export class MarkdownRibbon {
    * Holds the documents service backing the file actions.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Gets the variants offered by the File group's Save menu button.
+   */
+  protected readonly saveItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+    { id: VARIANT_EXPORT_PDF, label: 'Export to PDF', icon: Icon.EXPORT_PDF },
+  ];
 
   /**
    * Gets the cut variants offered by the Clipboard group's Cut menu button.
@@ -198,10 +216,38 @@ export class MarkdownRibbon {
   }
 
   /**
-   * Saves the active document.
+   * Saves the active document, the Save button's default action. A document that already has a file
+   * is written in place; a new document falls through to a Save As dialog.
    */
   protected onSave(): void {
     void this.documents.saveActive();
+  }
+
+  /**
+   * Runs the action chosen from the Save menu button's dropdown.
+   * @param id The chosen save variant's identifier.
+   */
+  protected onSaveVariant(id: string): void {
+    switch (id) {
+      case VARIANT_SAVE_AS:
+        void this.documents.saveActiveAs();
+        break;
+      case VARIANT_EXPORT_PDF:
+        this.onExportPdf();
+        break;
+      default:
+        void this.documents.saveActive();
+        break;
+    }
+  }
+
+  /**
+   * Exports the active document to PDF.
+   *
+   * TODO: PDF export is not yet implemented; this is a stub until that lands.
+   */
+  protected onExportPdf(): void {
+    // Intentionally empty until PDF export is implemented.
   }
 
   /**

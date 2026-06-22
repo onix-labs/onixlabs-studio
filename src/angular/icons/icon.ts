@@ -103,6 +103,16 @@ export class Icon {
   public static readonly SAVE: Icon = new Icon('ph-duotone ph-floppy-disk');
 
   /**
+   * Gets the save-as (save to a new file) icon.
+   */
+  public static readonly SAVE_AS: Icon = new Icon('ph-duotone ph-floppy-disk-back');
+
+  /**
+   * Gets the export-to-PDF icon.
+   */
+  public static readonly EXPORT_PDF: Icon = new Icon('ph-duotone ph-file-pdf');
+
+  /**
    * Gets the print icon.
    */
   public static readonly PRINT: Icon = new Icon('ph-duotone ph-printer');

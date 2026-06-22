@@ -1,5 +1,11 @@
 <app-ribbon-group title="File">
-  <app-ribbon-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
+  <app-ribbon-menu-button
+    [icon]="Icon.SAVE"
+    label="Save"
+    [items]="saveItems"
+    (action)="onSave()"
+    (selected)="onSaveVariant($event)"
+  />
   <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
 </app-ribbon-group>
 
