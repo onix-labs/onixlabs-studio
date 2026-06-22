@@ -36,8 +36,30 @@
   }
 }
 
+// The row pairs the tab (an activate button) with a close button. The row carries the hover surface
+// so hovering anywhere on it — including the close button — highlights the whole row.
 .title-strip-tab-menu__item {
   display: flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:has(:focus-visible) {
+    background: var(--menu-item-background-color--hover);
+  }
+}
+
+.title-strip-tab-menu__item--active {
+  color: var(--accent-color);
+}
+
+// The activate button fills the row up to the close button.
+.title-strip-tab-menu__select {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.6rem;
@@ -47,20 +69,47 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: inherit;
   cursor: pointer;
-  transition: var(--hover-transition);
 
-  &:hover,
   &:focus-visible {
-    background: var(--menu-item-background-color--hover);
     outline: none;
   }
 }
 
-.title-strip-tab-menu__item--active {
-  color: var(--accent-color);
+.title-strip-tab-menu__close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  margin-inline-end: 0.35rem;
+  font: inherit;
+  font-size: 1rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  // Subdued until the row or the button itself is hovered, so it does not clutter the list.
+  opacity: 0;
+  transition: var(--hover-transition);
+
+  .title-strip-tab-menu__item:hover &,
+  &:focus-visible {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--title-strip-tab-close-button-background-color--hover);
+    color: var(--title-strip-tab-close-button-foreground-color--hover);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
 }
 
 .title-strip-tab-menu__item-label {

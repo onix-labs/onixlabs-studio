@@ -93,4 +93,13 @@ export class TitleStripTabMenu {
   protected onSelect(tab: Tab): void {
     this.tabsService.activate(tab.id);
   }
+
+  /**
+   * Closes the given tab. The menu stays open so several tabs can be closed in succession; its
+   * grouped list updates as tabs (and emptied categories) fall away.
+   * @param tab The tab to close.
+   */
+  protected onClose(tab: Tab): void {
+    this.tabsService.close(tab.id);
+  }
 }
