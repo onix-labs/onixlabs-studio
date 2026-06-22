@@ -123,6 +123,12 @@ export class MarkdownRibbon {
    */
   protected readonly saveItems: readonly RibbonMenuItem[] = [
     { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+  ];
+
+  /**
+   * Gets the variants offered by the File group's Print menu button.
+   */
+  protected readonly printItems: readonly RibbonMenuItem[] = [
     { id: VARIANT_EXPORT_PDF, label: 'Export to PDF', icon: Icon.EXPORT_PDF },
   ];
 
@@ -228,16 +234,22 @@ export class MarkdownRibbon {
    * @param id The chosen save variant's identifier.
    */
   protected onSaveVariant(id: string): void {
-    switch (id) {
-      case VARIANT_SAVE_AS:
-        void this.documents.saveActiveAs();
-        break;
-      case VARIANT_EXPORT_PDF:
-        this.onExportPdf();
-        break;
-      default:
-        void this.documents.saveActive();
-        break;
+    if (id === VARIANT_SAVE_AS) {
+      void this.documents.saveActiveAs();
+    } else {
+      void this.documents.saveActive();
+    }
+  }
+
+  /**
+   * Runs the action chosen from the Print menu button's dropdown.
+   * @param id The chosen print variant's identifier.
+   */
+  protected onPrintVariant(id: string): void {
+    if (id === VARIANT_EXPORT_PDF) {
+      this.onExportPdf();
+    } else {
+      this.onPrint();
     }
   }
 

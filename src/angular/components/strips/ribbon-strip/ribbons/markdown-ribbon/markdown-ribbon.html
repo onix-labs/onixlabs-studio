@@ -6,7 +6,13 @@
     (action)="onSave()"
     (selected)="onSaveVariant($event)"
   />
-  <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
+  <app-ribbon-menu-button
+    [icon]="Icon.PRINT"
+    label="Print"
+    [items]="printItems"
+    (action)="onPrint()"
+    (selected)="onPrintVariant($event)"
+  />
 </app-ribbon-group>
 
 <app-ribbon-group title="Clipboard">
