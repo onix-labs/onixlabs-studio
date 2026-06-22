@@ -29,9 +29,6 @@
   // foot is no longer clipped. (No compensating negative margin: pulling the row back over the action
   // buttons let scrolled tabs render on top of them, so the first tab simply keeps this lead gap.)
   padding-inline-start: 0.75rem;
-  // The host strip is a drag region; an inherited drag area swallows wheel and pointer events, making
-  // the scroll intermittent. Opting the whole tab list out keeps scrolling and clicks reliable.
-  -webkit-app-region: no-drag;
   // The strip has no room for a scrollbar and the tab menu already lists every tab, so the scrollbar
   // is hidden; a trackpad swipe or shift-wheel still scrolls the tabs.
   scrollbar-width: none;
@@ -39,4 +36,13 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+// The host strip is a drag region, and an inherited drag area swallows the wheel and pointer events
+// the scroll needs. Only opt the tab list out once it is actually overflowing: then it is wall-to-wall
+// tabs with no empty space, so scrolling and clicks stay reliable across it. While it still has room
+// to spare its empty space keeps inheriting the drag region, so the window can be moved by it (the
+// tabs themselves carry their own no-drag, so they remain clickable either way).
+.tab-list--scrollable {
+  -webkit-app-region: no-drag;
 }

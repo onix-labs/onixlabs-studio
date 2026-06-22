@@ -1,5 +1,17 @@
 import { CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, Component, ElementRef, inject, Signal } from '@angular/core';
+import {
+  afterNextRender,
+  afterRenderEffect,
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+  Signal,
+  viewChild,
+  WritableSignal,
+} from '@angular/core';
 import { Tab } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
@@ -32,6 +44,25 @@ export class TitleStripTabList {
   ) as ElementRef<HTMLElement>;
 
   /**
+   * Holds the lifecycle scope used to tear the resize observer down.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
+
+  /**
+   * Holds the scrolling tab-list element, measured to detect horizontal overflow.
+   */
+  private readonly tabListElement: Signal<ElementRef<HTMLElement>> =
+    viewChild.required<ElementRef<HTMLElement>>('tabList');
+
+  /**
+   * Gets whether the tab list overflows its width and is therefore scrolling. It drives the
+   * drag-region opt-out: an overflowing strip is no-drag across its whole surface so the wheel
+   * scrolls it from anywhere, whereas a strip with room to spare stays draggable in its empty space so
+   * the window can still be moved by it (the tabs themselves remain individually no-drag either way).
+   */
+  protected readonly overflowing: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the ordered list of open tabs.
    */
   protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabs;
@@ -40,6 +71,32 @@ export class TitleStripTabList {
    * Gets the identifier of the active tab, or undefined when no tab is open.
    */
   protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
+
+  /**
+   * Wires up overflow measurement: after every render that changes the open tabs (which can change
+   * the content width), and whenever the strip itself is resized.
+   */
+  public constructor() {
+    afterRenderEffect((): void => {
+      this.tabs();
+      this.measureOverflow();
+    });
+    afterNextRender((): void => {
+      const element: HTMLElement = this.tabListElement().nativeElement;
+      const observer: ResizeObserver = new ResizeObserver((): void => this.measureOverflow());
+      observer.observe(element);
+      this.destroyRef.onDestroy((): void => observer.disconnect());
+    });
+  }
+
+  /**
+   * Recomputes whether the tab list overflows its visible width. A one-pixel tolerance absorbs
+   * sub-pixel rounding so a strip that exactly fits is not treated as overflowing.
+   */
+  private measureOverflow(): void {
+    const element: HTMLElement = this.tabListElement().nativeElement;
+    this.overflowing.set(element.scrollWidth > element.clientWidth + 1);
+  }
 
   /**
    * Activates the given tab.

@@ -1,5 +1,7 @@
 <div
+  #tabList
   class="tab-list"
+  [class.tab-list--scrollable]="overflowing()"
   role="tablist"
   cdkDropList
   cdkDropListOrientation="horizontal"
