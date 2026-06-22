@@ -41,12 +41,6 @@
 
 <app-ribbon-group title="Format">
   <app-ribbon-column>
-    <app-ribbon-field
-      label="Style"
-      [options]="blockOptions"
-      [value]="blockLabel()"
-      (changed)="onBlockChange($event)"
-    />
     <app-ribbon-row>
       <app-ribbon-button-small
         [icon]="Icon.BOLD"
@@ -73,6 +67,12 @@
         (action)="onInlineCode()"
       />
     </app-ribbon-row>
+    <app-ribbon-field
+      label="Style"
+      [options]="blockOptions"
+      [value]="blockLabel()"
+      (changed)="onBlockChange($event)"
+    />
   </app-ribbon-column>
 </app-ribbon-group>
 
