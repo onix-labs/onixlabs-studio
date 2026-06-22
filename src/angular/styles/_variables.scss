@@ -46,6 +46,9 @@
   // command buttons (title strip, ribbon) are transparent at rest and adopt this surface on hover.
   // Built from the accent RGB triplet so it tracks whichever accent the Theme service applies.
   --accent-surface-background-color: rgba(var(--accent-color-rgb), 0.15);
+  // A stronger accent fill, used to lift a nested control (a split/menu button's dropdown half)
+  // above the shared surface when it is hovered directly.
+  --accent-surface-background-color-strong: rgba(var(--accent-color-rgb), 0.3);
   --accent-surface-border-color: rgba(var(--accent-color-rgb), 0.6);
   --accent-surface-foreground-color: var(--accent-color);
 
