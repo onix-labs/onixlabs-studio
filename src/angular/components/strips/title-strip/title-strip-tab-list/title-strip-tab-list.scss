@@ -4,8 +4,39 @@
   display: contents;
 }
 
+// The tab list fills the space between the action buttons and the right-hand cluster (the tab menu
+// and window controls). A zero flex-basis with min-inline-size: 0 lets it shrink below its content
+// width so the tabs shrink to their minimum first; past that it scrolls horizontally within its own
+// bounds, leaving the surrounding controls fixed in place — the way a browser's tab strip behaves.
 .tab-list {
   display: flex;
+  flex: 1 1 0;
+  min-inline-size: 0;
   align-items: flex-end;
   gap: 0.25rem;
+  overflow-x: auto;
+  // A horizontal scroll container must clip the other axis too (the browser will not leave it
+  // visible), which would otherwise shave the active tab's one-pixel overlap onto the rail. The
+  // bottom padding drops the clip edge just below that overlap, and the equal negative margin pulls
+  // the row back so the tabs still meet the rail and the strip's layout is unchanged — the tab list
+  // is the tallest flex child, so its margin-box height (and thus the strip height) does not move.
+  overflow-y: hidden;
+  padding-block-end: 0.125rem;
+  margin-block-end: -0.125rem;
+  // The same clip would shave the active tab's ::before foot, which sweeps ~0.6875rem to the left of
+  // the tab to meet the rail; for the first tab that falls at scroll position zero, outside the
+  // container. The inline-start padding opens that much lead room inside the scroll origin so the
+  // foot is no longer clipped. (No compensating negative margin: pulling the row back over the action
+  // buttons let scrolled tabs render on top of them, so the first tab simply keeps this lead gap.)
+  padding-inline-start: 0.75rem;
+  // The host strip is a drag region; an inherited drag area swallows wheel and pointer events, making
+  // the scroll intermittent. Opting the whole tab list out keeps scrolling and clicks reliable.
+  -webkit-app-region: no-drag;
+  // The strip has no room for a scrollbar and the tab menu already lists every tab, so the scrollbar
+  // is hidden; a trackpad swipe or shift-wheel still scrolls the tabs.
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -13,12 +13,19 @@
     'status-strip';
 }
 
+// The strips share one grid column. A grid item defaults to min-width: auto (its min-content), so
+// any strip whose content is wider than the window — the title strip's tabs, the ribbon's groups —
+// stretches the shared column past the window, dragging the others off-screen with it (the tab menu,
+// the window controls, the status bar). Pinning each strip's minimum to zero holds the column to the
+// window so every strip stays in view and scrolls its own overflow internally instead.
 .title-strip {
   grid-area: title-strip;
+  min-inline-size: 0;
 }
 
 .ribbon-strip {
   grid-area: ribbon-strip;
+  min-inline-size: 0;
 }
 
 .content {
@@ -31,6 +38,7 @@
 
 .status-strip {
   grid-area: status-strip;
+  min-inline-size: 0;
 }
 
 // The welcome screen renders itself as a fixed full-bleed overlay, so it sits outside the grid flow.

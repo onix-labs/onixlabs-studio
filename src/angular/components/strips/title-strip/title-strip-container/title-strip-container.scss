@@ -19,6 +19,8 @@
 // that follow, which carry the same nudge.
 .window-lock {
   position: relative;
+  // Never shrink: only the tab list flexes, so the lock toggle stays visible at any window width.
+  flex: none;
   display: inline-flex;
   align-items: center;
   margin-inline-end: 0.5rem;

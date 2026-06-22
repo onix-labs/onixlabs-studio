@@ -5,6 +5,7 @@
   cdkDropListOrientation="horizontal"
   [cdkDropListSortPredicate]="sortPredicate"
   (cdkDropListDropped)="onDrop($event)"
+  (wheel)="onWheel($event)"
 >
   @for (tab of tabs(); track tab.id) {
     <app-title-strip-tab

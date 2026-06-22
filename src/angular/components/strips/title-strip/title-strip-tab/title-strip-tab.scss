@@ -12,8 +12,8 @@
     // Tabs size to their title, bounded between a minimum (64px, holding just the icon and close
     // button) and a maximum (240px, past which the title truncates). When the strip fills, the tabs
     // shrink from their content width toward the minimum; past that the strip scrolls.
-    min-inline-size: 4rem;
-    max-inline-size: 15rem;
+    min-inline-size: 8rem;
+    max-inline-size: 16rem;
     user-select: none;
     color: var(--title-strip-tab-foreground-color);
     background-color: var(--title-strip-tab-background-color);

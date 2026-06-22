@@ -4,6 +4,8 @@
 // The auto inline-start margin absorbs the free space between the tabs and the trigger, pushing the
 // trigger (and the window controls that follow it) to the far right of the strip.
 :host {
+  // Never shrink: only the tab list flexes, so the tab menu's chevron stays visible at any width.
+  flex: none;
   display: inline-flex;
   align-items: center;
   margin-inline-start: auto;
