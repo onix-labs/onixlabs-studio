@@ -28,7 +28,7 @@
   // container. The inline-start padding opens that much lead room inside the scroll origin so the
   // foot is no longer clipped. (No compensating negative margin: pulling the row back over the action
   // buttons let scrolled tabs render on top of them, so the first tab simply keeps this lead gap.)
-  padding-inline-start: 0.75rem;
+  padding-inline-start: 0.3rem;
   // The strip has no room for a scrollbar and the tab menu already lists every tab, so the scrollbar
   // is hidden; a trackpad swipe or shift-wheel still scrolls the tabs.
   scrollbar-width: none;
