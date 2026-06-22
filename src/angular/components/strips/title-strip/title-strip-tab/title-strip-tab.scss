@@ -109,6 +109,7 @@
       min-inline-size: 0;
       overflow: hidden;
       white-space: nowrap;
+      text-overflow: ellipsis;
     }
 
     .tab-dirty {

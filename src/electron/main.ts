@@ -188,6 +188,7 @@ class Program {
    */
   private createWindow(): void {
     const window: BrowserWindow = new BrowserWindow({
+      backgroundColor: "#000000",
       width: 1280,
       height: 800,
       minWidth: 800,

@@ -84,6 +84,7 @@
     min-inline-size: 0;
     overflow: hidden;
     white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   // Mirrors the active tab's close button. It is purely decorative on the chip, so it carries no
