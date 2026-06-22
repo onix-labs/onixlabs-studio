@@ -43,4 +43,13 @@ describe('Milkdown', () => {
     settings.updateMarkdownEditorSettings({ imageSizing: 'sizable' });
     expect(milkdown.imageSizing()).toBe('sizable');
   });
+
+  it('imageAlignment_whenSettingChanges_reflectsSetting', () => {
+    settings.updateMarkdownEditorSettings({ imageAlignment: 'center' });
+    expect(milkdown.imageAlignment()).toBe('center');
+  });
+
+  it('imageAlignment_byDefault_isLeft', () => {
+    expect(milkdown.imageAlignment()).toBe('left');
+  });
 });

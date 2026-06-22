@@ -6,6 +6,9 @@
   [class.wide]="marginClass() === 'wide'"
   [class.full-width]="marginClass() === 'full-width'"
   [class.image-fixed]="imageSizing() === 'fixed'"
+  [class.image-align-left]="imageAlignment() === 'left'"
+  [class.image-align-center]="imageAlignment() === 'center'"
+  [class.image-align-right]="imageAlignment() === 'right'"
 >
   <div #editorContainer class="editor-container"></div>
 </div>

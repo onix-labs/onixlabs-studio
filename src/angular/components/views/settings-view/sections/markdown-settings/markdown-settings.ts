@@ -4,6 +4,7 @@ import { NumberField } from '../../../../forms/number-field/number-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { TextField } from '../../../../forms/text-field/text-field';
 import {
+  ImageAlignment,
   ImageSizing,
   MarginSize,
   MarkdownEditorSettings,
@@ -11,7 +12,7 @@ import {
 } from '../../../../../services/settings/settings';
 
 /**
- * Represents the Markdown editor settings section: fonts, size, margin and image sizing.
+ * Represents the Markdown editor settings section: fonts, size, margin, and image sizing and alignment.
  */
 @Component({
   selector: 'app-markdown-settings',
@@ -47,6 +48,15 @@ export class MarkdownSettings {
   protected readonly imageSizingOptions: readonly DropdownOption[] = [
     { value: 'fixed', label: 'Fixed' },
     { value: 'sizable', label: 'Sizable' },
+  ];
+
+  /**
+   * Gets the options offered by the image alignment dropdown.
+   */
+  protected readonly imageAlignmentOptions: readonly DropdownOption[] = [
+    { value: 'left', label: 'Left' },
+    { value: 'center', label: 'Center' },
+    { value: 'right', label: 'Right' },
   ];
 
   /**
@@ -87,5 +97,13 @@ export class MarkdownSettings {
    */
   protected onImageSizingChange(value: string): void {
     this.settings.updateMarkdownEditorSettings({ imageSizing: value as ImageSizing });
+  }
+
+  /**
+   * Sets the image alignment.
+   * @param value The selected image alignment.
+   */
+  protected onImageAlignmentChange(value: string): void {
+    this.settings.updateMarkdownEditorSettings({ imageAlignment: value as ImageAlignment });
   }
 }

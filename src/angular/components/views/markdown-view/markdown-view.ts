@@ -54,6 +54,7 @@ import {
   wrapInWarningAlertCommand,
 } from '../../../milkdown/github-alert-plugin';
 import { htmlImagePlugin } from '../../../milkdown/html-image-plugin';
+import { fileToDataUrl, installImageResolver } from '../../../milkdown/media-source';
 import { mermaidPlugin, renderMermaidDiagram } from '../../../milkdown/mermaid-plugin';
 import { pasteCleanPlugin } from '../../../milkdown/paste-clean-plugin';
 import { subscriptSuperscriptPlugin } from '../../../milkdown/subscript-superscript-plugin';
@@ -64,7 +65,12 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
 } from '../../../services/markdown-commands/markdown-commands';
-import { ImageSizing, MarginSize, Settings } from '../../../services/settings/settings';
+import {
+  ImageAlignment,
+  ImageSizing,
+  MarginSize,
+  Settings,
+} from '../../../services/settings/settings';
 
 /**
  * Heading level for an H1 element.
@@ -233,9 +239,19 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   protected readonly imageSizing: Signal<ImageSizing> = this.milkdown.imageSizing;
 
   /**
+   * Gets the image alignment, bound to a class that horizontally aligns rendered images.
+   */
+  protected readonly imageAlignment: Signal<ImageAlignment> = this.milkdown.imageAlignment;
+
+  /**
    * Holds the Crepe editor instance, or null before creation and after destruction.
    */
   private crepe: Crepe | null = null;
+
+  /**
+   * Holds the disposer that stops the local-image source resolver, or null when no editor is mounted.
+   */
+  private disposeImageResolver: (() => void) | null = null;
 
   /**
    * Holds a value indicating whether the next content input change should be ignored because it
@@ -396,6 +412,21 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
+   * Gets the absolute directory of the backing document's file, against which a relative image source
+   * resolves. Returns an empty string when the document has no path yet (an unsaved tab), in which case
+   * relative images cannot be located until the document is saved.
+   * @returns Returns the document's directory, or an empty string.
+   */
+  private documentDirectory(): string {
+    const filePath: string | null = this.documents.get(this.documentId())?.filePath() ?? null;
+    if (filePath === null) {
+      return '';
+    }
+    const separator: number = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    return separator < 0 ? '' : filePath.slice(0, separator);
+  }
+
+  /**
    * Creates the Crepe editor, registers the application's plugins, and wires its listeners. Runs
    * outside the Angular zone so the editor's own DOM churn does not trigger change detection.
    */
@@ -423,6 +454,11 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         featureConfigs: {
           [Crepe.Feature.Placeholder]: { text: 'Start writing...' },
           [Crepe.Feature.CodeMirror]: { previewOnlyByDefault: true },
+          // Embed a pasted or dropped image as a self-contained data URL so it persists across a save
+          // and reopen; Crepe's default blob URL is discarded when the editor is torn down.
+          [Crepe.Feature.ImageBlock]: {
+            onUpload: (file: File): Promise<string> => fileToDataUrl(file),
+          },
         },
       });
 
@@ -468,6 +504,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       this.applyEditorStyles();
 
+      // Rewrite local image sources to the media scheme so they load through the main process; remote,
+      // data and blob sources are left untouched.
+      this.disposeImageResolver = installImageResolver(container, (): string =>
+        this.documentDirectory(),
+      );
+
       container.addEventListener('click', this.boundHtmlImageClickHandler);
       container.addEventListener('click', this.boundMermaidClickHandler);
       container.addEventListener('keydown', this.boundKeydownHandler);
@@ -486,6 +528,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Destroys the Crepe editor, removing listeners and releasing the command handler.
    */
   private async destroyEditor(): Promise<void> {
+    this.disposeImageResolver?.();
+    this.disposeImageResolver = null;
+
     const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
     if (container !== undefined) {
       container.removeEventListener('click', this.boundHtmlImageClickHandler);

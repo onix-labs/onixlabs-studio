@@ -41,3 +41,14 @@
     (valueChange)="onImageSizingChange($event)"
   />
 </app-setting-row>
+
+<app-setting-row
+  label="Image alignment"
+  description="How images are horizontally aligned in the document."
+>
+  <app-dropdown
+    [options]="imageAlignmentOptions"
+    [value]="markdown().imageAlignment"
+    (valueChange)="onImageAlignmentChange($event)"
+  />
+</app-setting-row>

@@ -1,5 +1,11 @@
 import { computed, inject, Service, Signal } from '@angular/core';
-import { ImageSizing, MarginSize, MarkdownEditorSettings, Settings } from '../settings/settings';
+import {
+  ImageAlignment,
+  ImageSizing,
+  MarginSize,
+  MarkdownEditorSettings,
+  Settings,
+} from '../settings/settings';
 
 /**
  * Holds the system default sans-serif font stack applied when the markdown body font is unset.
@@ -50,6 +56,13 @@ export class Milkdown {
    */
   public readonly imageSizing: Signal<ImageSizing> = computed(
     (): ImageSizing => this.markdownSettings().imageSizing,
+  );
+
+  /**
+   * Gets the image alignment, which the view maps to a class that horizontally aligns images.
+   */
+  public readonly imageAlignment: Signal<ImageAlignment> = computed(
+    (): ImageAlignment => this.markdownSettings().imageAlignment,
   );
 
   /**

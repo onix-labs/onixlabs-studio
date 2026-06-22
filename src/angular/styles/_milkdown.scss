@@ -284,8 +284,19 @@ app-markdown-view .milkdown .ProseMirror {
     height: auto;
     border-radius: 1rem;
     corner-shape: squircle;
-    margin-left: auto;
-    margin-right: auto;
+    // Horizontal alignment is owned by the image-alignment classes on the editor wrapper (default
+    // left); see the alignment rules below.
+  }
+
+  // Inline code (`like this`): a little breathing room and a light border around the tinted area.
+  // Code blocks render through CodeMirror rather than a `<code>` element, so this targets inline code
+  // only.
+  code {
+    padding-block: 0;
+    padding-inline: 0.25rem;
+    border: 1px solid var(--crepe-color-outline);
+    border-radius: 0.5rem;
+    corner-shape: squircle;
   }
 
   .html-image-block {
@@ -350,6 +361,25 @@ app-markdown-view .milkdown .ProseMirror {
       }
     }
   }
+}
+
+// -----------------------------------------------------------------------------
+// Image alignment
+// -----------------------------------------------------------------------------
+// The markdown editor's image-alignment setting (default left) maps to a class on the editor wrapper,
+// which positions block-level images by their auto margins. HTML image blocks carry their own
+// alignment and are unaffected.
+
+app-markdown-view .image-align-left .milkdown .ProseMirror img {
+  margin-inline: 0 auto;
+}
+
+app-markdown-view .image-align-center .milkdown .ProseMirror img {
+  margin-inline: auto;
+}
+
+app-markdown-view .image-align-right .milkdown .ProseMirror img {
+  margin-inline: auto 0;
 }
 
 // -----------------------------------------------------------------------------

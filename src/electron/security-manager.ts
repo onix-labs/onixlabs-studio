@@ -10,6 +10,7 @@ import {
 } from 'electron';
 import { IpcChannel } from '../shared/ipc-channels';
 import type { ImageSourcePolicy } from '../shared/security-types';
+import { MEDIA_SCHEME } from './media-protocol';
 
 /**
  * The image-source policies accepted from the renderer, used to validate untrusted input.
@@ -31,9 +32,11 @@ export class SecurityManager {
   private readonly isDev: boolean = process.env['ELECTRON_START_URL'] !== undefined;
 
   /**
-   * Holds the active image-source policy.
+   * Holds the active image-source policy. Defaults to allowing `https:` images (in addition to the
+   * always-permitted local, data and blob sources) so the markdown editor shows remote images out of
+   * the box; plain `http:` stays blocked until the user opts into it.
    */
-  private policy: ImageSourcePolicy = 'local';
+  private policy: ImageSourcePolicy = 'https';
 
   /**
    * Restores the persisted policy, installs the CSP response-header listener, and registers the
@@ -90,7 +93,9 @@ export class SecurityManager {
    * @returns Returns the space-separated image sources.
    */
   private imageSources(): string {
-    const base: string = "'self' data: blob:";
+    // The custom media scheme is always permitted: it is the main process's own loader for the local
+    // image files the markdown editor references, serving them in place of the forbidden `file:` scheme.
+    const base: string = `'self' data: blob: ${MEDIA_SCHEME}:`;
     if (this.policy === 'https') {
       return `${base} https:`;
     }
@@ -114,7 +119,8 @@ export class SecurityManager {
   }
 
   /**
-   * Restores the persisted policy from the user-data directory, defaulting to the safest policy.
+   * Restores the persisted policy from the user-data directory, defaulting to the `https` policy when
+   * none has been saved.
    * @returns Returns the restored policy.
    */
   private load(): ImageSourcePolicy {
@@ -128,9 +134,9 @@ export class SecurityManager {
         }
       }
     } catch {
-      // Fall through to the safe default when the store is missing or corrupt.
+      // Fall through to the default when the store is missing or corrupt.
     }
-    return 'local';
+    return 'https';
   }
 
   /**

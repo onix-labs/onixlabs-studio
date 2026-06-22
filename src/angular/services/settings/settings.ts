@@ -28,6 +28,11 @@ export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
 export type ImageSizing = 'fixed' | 'sizable';
 
 /**
+ * Identifies how images are horizontally aligned in the markdown editor.
+ */
+export type ImageAlignment = 'left' | 'center' | 'right';
+
+/**
  * Identifies the document type created by default for new documents.
  */
 export type DefaultDocumentType = 'code' | 'markdown';
@@ -195,6 +200,11 @@ export interface MarkdownEditorSettings {
    * Gets the image sizing behaviour.
    */
   readonly imageSizing: ImageSizing;
+
+  /**
+   * Gets the horizontal alignment applied to images.
+   */
+  readonly imageAlignment: ImageAlignment;
 }
 
 /**
@@ -333,6 +343,7 @@ const DEFAULT_MARKDOWN_EDITOR_SETTINGS: MarkdownEditorSettings = {
   fontSize: 16,
   marginSize: 'medium',
   imageSizing: 'fixed',
+  imageAlignment: 'left',
 };
 
 /**

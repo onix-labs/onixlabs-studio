@@ -19,6 +19,7 @@ import { FileWatcher } from './file-watcher';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
+import { MediaProtocol } from './media-protocol';
 import { SecurityManager } from './security-manager';
 import { TaskRunner } from './task-runner';
 import { TerminalManager } from './terminal-manager';
@@ -115,14 +116,17 @@ class Program {
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
    */
-  private readonly aiManager: AiManager = new AiManager(
-    (): BrowserWindow | null => this.window,
-  );
+  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null => this.window);
 
   /**
    * Owns the runtime security policy: the Content-Security-Policy header and the image-source policy.
    */
   private readonly securityManager: SecurityManager = new SecurityManager();
+
+  /**
+   * Serves local image files to the markdown editor over the custom media protocol.
+   */
+  private readonly mediaProtocol: MediaProtocol = new MediaProtocol();
 
   /**
    * Tracks the open workspace root and confines filesystem operations to it.
@@ -180,6 +184,10 @@ class Program {
       //console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
     }
 
+    // A privileged scheme must be declared before the app is ready, so the media protocol's scheme is
+    // registered here; its request handler is installed once ready (see registerIpcHandlers).
+    MediaProtocol.registerScheme();
+
     void app.whenReady().then(this.onReady.bind(this));
   }
 
@@ -188,7 +196,7 @@ class Program {
    */
   private createWindow(): void {
     const window: BrowserWindow = new BrowserWindow({
-      backgroundColor: "#000000",
+      backgroundColor: '#000000',
       width: 1280,
       height: 800,
       minWidth: 800,
@@ -270,6 +278,7 @@ class Program {
     );
 
     this.securityManager.register();
+    this.mediaProtocol.register();
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();
