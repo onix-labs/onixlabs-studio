@@ -278,6 +278,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.handleBackdropMousedown.bind(this);
 
   /**
+   * Holds the bound keydown handler backing the editor's save shortcut, retained for cleanup.
+   */
+  private readonly boundKeydownHandler: (event: KeyboardEvent) => void =
+    this.handleKeydown.bind(this);
+
+  /**
    * Holds the currently-editing HTML image block element, or null.
    */
   private currentHtmlImageBlock: HTMLElement | null = null;
@@ -464,6 +470,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       container.addEventListener('click', this.boundHtmlImageClickHandler);
       container.addEventListener('click', this.boundMermaidClickHandler);
+      container.addEventListener('keydown', this.boundKeydownHandler);
       this.editorWrapper().nativeElement.addEventListener(
         'mousedown',
         this.boundBackdropMousedownHandler,
@@ -483,6 +490,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     if (container !== undefined) {
       container.removeEventListener('click', this.boundHtmlImageClickHandler);
       container.removeEventListener('click', this.boundMermaidClickHandler);
+      container.removeEventListener('keydown', this.boundKeydownHandler);
     }
 
     const wrapper: HTMLDivElement | undefined = this.editorWrapper()?.nativeElement;
@@ -765,6 +773,24 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       }
     }
     return 'paragraph';
+  }
+
+  /**
+   * Handles keydown events within the editor, saving the document on Cmd/Ctrl+S and suppressing the
+   * browser's own save action.
+   * @param event The keydown event.
+   */
+  private handleKeydown(event: KeyboardEvent): void {
+    const isSaveChord: boolean =
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 's';
+    if (!isSaveChord) {
+      return;
+    }
+    event.preventDefault();
+    void this.documents.save(this.documentId());
   }
 
   /**
