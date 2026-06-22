@@ -34,6 +34,15 @@
   />
 </app-setting-row>
 
+<app-setting-row label="Tab size" description="Number of spaces per indentation level.">
+  <app-number-field
+    [min]="1"
+    [max]="8"
+    [value]="global().tabSize"
+    (valueChange)="onGlobalNumberChange('tabSize', $event)"
+  />
+</app-setting-row>
+
 <app-setting-row label="Font family" description="Editor font family.">
   <app-text-field
     [value]="global().fontFamily"
@@ -86,6 +95,28 @@
             [checked]="resolvedValue(profile, setting.key)"
             [disabled]="!isOverridden(profile, setting.key)"
             (checkedChange)="onOverrideValue(profile, setting.key, $event)"
+          />
+        </div>
+      }
+
+      @for (setting of numberSettings; track setting.key) {
+        <div class="override">
+          <!-- The label wraps the checkbox's projected native input, associating them at runtime;
+               the lint rule cannot see through the component boundary to verify this statically. -->
+          <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+          <label class="override__check">
+            <app-checkbox
+              [checked]="isOverridden(profile, setting.key)"
+              (checkedChange)="onOverrideToggle(profile, setting.key, $event)"
+            />
+            <span>Override {{ setting.label }}</span>
+          </label>
+          <app-number-field
+            [min]="setting.min"
+            [max]="setting.max"
+            [value]="resolvedNumber(profile, setting.key)"
+            [disabled]="!isOverridden(profile, setting.key)"
+            (valueChange)="onNumberOverrideValue(profile, setting.key, $event)"
           />
         </div>
       }

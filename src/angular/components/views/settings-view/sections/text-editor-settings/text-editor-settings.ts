@@ -21,7 +21,22 @@ import { AppIcon } from '../../../../shared/icon/app-icon';
 /**
  * Identifies a boolean text editor setting that can be overridden per profile.
  */
-type BooleanSettingKey = 'showLineNumbers' | 'showMinimap' | 'wordWrap' | 'stickyScroll';
+type BooleanSettingKey =
+  | 'showLineNumbers'
+  | 'showMinimap'
+  | 'wordWrap'
+  | 'stickyScroll'
+  | 'insertSpaces';
+
+/**
+ * Identifies a numeric text editor setting that can be overridden per profile.
+ */
+type NumberSettingKey = 'tabSize';
+
+/**
+ * Identifies any text editor setting that can be overridden per profile.
+ */
+type OverridableSettingKey = BooleanSettingKey | NumberSettingKey;
 
 /**
  * Describes a boolean text editor setting offered as a toggle and a per-profile override.
@@ -41,6 +56,36 @@ interface BooleanSetting {
    * Gets the description shown beneath the label.
    */
   readonly description: string;
+}
+
+/**
+ * Describes a numeric text editor setting offered as a number field and a per-profile override.
+ */
+interface NumberSetting {
+  /**
+   * Gets the settings key the entry controls.
+   */
+  readonly key: NumberSettingKey;
+
+  /**
+   * Gets the label shown for the entry.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the description shown beneath the label.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the minimum value accepted by the field.
+   */
+  readonly min: number;
+
+  /**
+   * Gets the maximum value accepted by the field.
+   */
+  readonly max: number;
 }
 
 /**
@@ -97,6 +142,24 @@ export class TextEditorSettingsSection {
     { key: 'showMinimap', label: 'Minimap', description: 'Show the minimap overview.' },
     { key: 'wordWrap', label: 'Word wrap', description: 'Wrap long lines.' },
     { key: 'stickyScroll', label: 'Sticky scroll', description: 'Pin the current scope context.' },
+    {
+      key: 'insertSpaces',
+      label: 'Insert spaces',
+      description: 'Indent using spaces instead of tabs.',
+    },
+  ];
+
+  /**
+   * Gets the numeric settings offered as number fields and per-profile overrides.
+   */
+  protected readonly numberSettings: readonly NumberSetting[] = [
+    {
+      key: 'tabSize',
+      label: 'Tab size',
+      description: 'Number of spaces per indentation level.',
+      min: 1,
+      max: 8,
+    },
   ];
 
   /**
@@ -204,6 +267,15 @@ export class TextEditorSettingsSection {
   }
 
   /**
+   * Sets a numeric global text editor setting.
+   * @param key The setting to set.
+   * @param value The new value.
+   */
+  protected onGlobalNumberChange(key: NumberSettingKey, value: number): void {
+    this.settings.updateTextEditorSettings({ [key]: value });
+  }
+
+  /**
    * Creates a new, empty editor profile.
    */
   protected addProfile(): void {
@@ -228,12 +300,12 @@ export class TextEditorSettingsSection {
   }
 
   /**
-   * Determines whether a profile overrides a boolean setting.
+   * Determines whether a profile overrides a setting.
    * @param profile The profile to inspect.
    * @param key The setting to inspect.
    * @returns Returns true when the profile overrides the setting; otherwise, false.
    */
-  protected isOverridden(profile: EditorProfile, key: BooleanSettingKey): boolean {
+  protected isOverridden(profile: EditorProfile, key: OverridableSettingKey): boolean {
     return profile.settings[key] !== undefined;
   }
 
@@ -257,7 +329,7 @@ export class TextEditorSettingsSection {
    */
   protected onOverrideToggle(
     profile: EditorProfile,
-    key: BooleanSettingKey,
+    key: OverridableSettingKey,
     enabled: boolean,
   ): void {
     const next: Record<string, unknown> = { ...profile.settings };
@@ -276,6 +348,33 @@ export class TextEditorSettingsSection {
    * @param value The new value.
    */
   protected onOverrideValue(profile: EditorProfile, key: BooleanSettingKey, value: boolean): void {
+    this.settings.updateProfile(profile.id, {
+      settings: { ...profile.settings, [key]: value },
+    });
+  }
+
+  /**
+   * Resolves the effective value of a numeric setting for a profile, falling back to the global
+   * value when the profile does not override it.
+   * @param profile The profile to resolve for.
+   * @param key The setting to resolve.
+   * @returns Returns the resolved numeric value.
+   */
+  protected resolvedNumber(profile: EditorProfile, key: NumberSettingKey): number {
+    return profile.settings[key] ?? this.global()[key];
+  }
+
+  /**
+   * Sets the overridden value of a numeric setting for a profile.
+   * @param profile The profile to update.
+   * @param key The setting to set.
+   * @param value The new value.
+   */
+  protected onNumberOverrideValue(
+    profile: EditorProfile,
+    key: NumberSettingKey,
+    value: number,
+  ): void {
     this.settings.updateProfile(profile.id, {
       settings: { ...profile.settings, [key]: value },
     });

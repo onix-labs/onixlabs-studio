@@ -77,6 +77,16 @@ export interface TextEditorSettings {
   readonly cursorSmoothCaretAnimation: CursorSmoothCaretAnimation;
 
   /**
+   * Gets a value indicating whether indentation inserts spaces instead of tabs.
+   */
+  readonly insertSpaces: boolean;
+
+  /**
+   * Gets the number of spaces a single indentation level occupies.
+   */
+  readonly tabSize: number;
+
+  /**
    * Gets the editor font family.
    */
   readonly fontFamily: string;
@@ -308,6 +318,8 @@ const DEFAULT_TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   stickyScroll: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
+  insertSpaces: true,
+  tabSize: 2,
   fontFamily: 'JetBrains Mono',
   fontSize: 14,
 };
@@ -641,6 +653,8 @@ export class Settings {
       cursorBlinking: profile.settings.cursorBlinking ?? global.cursorBlinking,
       cursorSmoothCaretAnimation:
         profile.settings.cursorSmoothCaretAnimation ?? global.cursorSmoothCaretAnimation,
+      insertSpaces: profile.settings.insertSpaces ?? global.insertSpaces,
+      tabSize: profile.settings.tabSize ?? global.tabSize,
       fontFamily: profile.settings.fontFamily ?? global.fontFamily,
       fontSize: profile.settings.fontSize ?? global.fontSize,
     };

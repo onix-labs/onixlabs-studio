@@ -209,6 +209,9 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         stickyScroll: { enabled: resolved.stickyScroll },
         cursorBlinking: resolved.cursorBlinking,
         cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
+        tabSize: resolved.tabSize,
+        insertSpaces: resolved.insertSpaces,
+        detectIndentation: false,
         fontFamily: `"${resolved.fontFamily}", monospace`,
         fontSize: resolved.fontSize,
       });

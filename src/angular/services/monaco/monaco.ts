@@ -314,8 +314,11 @@ export class Monaco {
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',
-      tabSize: 2,
-      insertSpaces: true,
+      tabSize: resolved.tabSize,
+      insertSpaces: resolved.insertSpaces,
+      // Honour the configured indent verbatim rather than inferring it from file contents, so the
+      // tab-size and tabs/spaces settings are authoritative.
+      detectIndentation: false,
       cursorBlinking: resolved.cursorBlinking,
       cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
       smoothScrolling: true,
