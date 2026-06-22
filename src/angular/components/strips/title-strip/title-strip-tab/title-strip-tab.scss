@@ -9,9 +9,9 @@
     gap: 0.5rem;
     padding: 0.3rem;
     padding-inline-start: 0.5rem;
-    // Tabs size to their title, bounded between a minimum (64px, holding just the icon and close
-    // button) and a maximum (240px, past which the title truncates). When the strip fills, the tabs
-    // shrink from their content width toward the minimum; past that the strip scrolls.
+    // Tabs size to their title, bounded between a minimum (128px) and a maximum (256px, past which
+    // the title truncates). When the strip fills, the tabs shrink from their content width toward the
+    // minimum; past that the strip scrolls.
     min-inline-size: 8rem;
     max-inline-size: 16rem;
     user-select: none;
