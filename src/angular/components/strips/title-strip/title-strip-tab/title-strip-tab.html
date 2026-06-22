@@ -10,7 +10,7 @@
   (cdkDragStarted)="onDragStarted($event)"
 >
   <app-icon [icon]="tab().icon" [size]="1.5" />
-  <span>{{ tab().title }}</span>
+  <span class="tab-title">{{ tab().title }}</span>
   @if (tab().dirty) {
     <span class="tab-dirty" aria-label="Unsaved changes"></span>
   }
@@ -29,7 +29,7 @@
 
   <div class="tab-chip" *cdkDragPreview>
     <app-icon [icon]="tab().icon" [size]="1.5" />
-    <span>{{ tab().title }}</span>
+    <span class="tab-title">{{ tab().title }}</span>
     <button type="button" aria-hidden="true" tabindex="-1">
       <app-icon [icon]="Icon.CLOSE" />
     </button>

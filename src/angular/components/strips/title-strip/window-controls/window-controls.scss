@@ -1,5 +1,8 @@
+// The tab menu that precedes this carries the auto inline-start margin that pushes the right-hand
+// cluster over, so the window controls simply follow it flush against the strip's end.
 :host {
-  margin-inline-start: auto;
+  // Never shrink: only the tab list flexes, so the window controls stay visible at any width.
+  flex: none;
   -webkit-app-region: no-drag;
 }
 

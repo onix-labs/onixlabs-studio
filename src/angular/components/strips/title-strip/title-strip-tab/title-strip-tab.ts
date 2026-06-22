@@ -5,6 +5,8 @@ import {
   DragConstrainPosition,
 } from '@angular/cdk/drag-drop';
 import {
+  AfterRenderRef,
+  afterRenderEffect,
   ApplicationRef,
   ChangeDetectionStrategy,
   Component,
@@ -85,6 +87,20 @@ export class TitleStripTab {
   protected readonly isPinned: Signal<boolean> = computed(
     (): boolean => this.tab().type === 'settings',
   );
+
+  /**
+   * Keeps the active tab within the scrolled tab strip's viewport: whenever this tab becomes active
+   * — whether by a click, the keyboard, or a pick from the overflow menu — it is scrolled into view,
+   * so a tab selected while off-screen is brought back into sight. `block: 'nearest'` leaves the
+   * vertical position untouched, scrolling only along the strip.
+   */
+  private readonly scrollActiveIntoView: AfterRenderRef = afterRenderEffect((): void => {
+    if (this.isActive()) {
+      this.hostElement.nativeElement
+        .querySelector<HTMLElement>('[role="tab"]')
+        ?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    }
+  });
 
   /**
    * Emits when the user selects the tab.

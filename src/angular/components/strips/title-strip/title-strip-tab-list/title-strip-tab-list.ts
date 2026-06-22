@@ -66,6 +66,28 @@ export class TitleStripTabList {
   }
 
   /**
+   * Scrolls the overflowing tab strip horizontally in response to the wheel. The strip hides its
+   * scrollbar, so a plain mouse wheel (which reports vertical delta) would otherwise leave the
+   * off-screen tabs unreachable; the larger of the two axes is mapped onto the horizontal scroll
+   * position, leaving a trackpad's native horizontal scroll working as before. It is a no-op when the
+   * strip is not overflowing, so vertical wheel events pass through unhindered.
+   * @param event The wheel event.
+   */
+  protected onWheel(event: WheelEvent): void {
+    const strip: HTMLElement = event.currentTarget as HTMLElement;
+    if (strip.scrollWidth <= strip.clientWidth) {
+      return;
+    }
+    const delta: number =
+      Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (delta === 0) {
+      return;
+    }
+    strip.scrollLeft += delta;
+    event.preventDefault();
+  }
+
+  /**
    * Determines whether a dragged tab may settle at the given index, keeping the pinned settings
    * tab at the front by forbidding any other tab from displacing index 0 during a drag.
    * @param index The candidate index the dragged tab would occupy.

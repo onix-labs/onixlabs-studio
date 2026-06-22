@@ -1,4 +1,6 @@
 :host {
+  // Never shrink: only the tab list flexes, so the action buttons stay visible at any window width.
+  flex: none;
   display: flex;
   gap: 0.1rem;
   margin-block-end: 0.2rem;

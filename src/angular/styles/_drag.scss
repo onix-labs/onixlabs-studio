@@ -17,6 +17,10 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  // Sizes to its title like a live tab, within the same min/max bounds, so the dragged chip sits
+  // over the placeholder it leaves behind.
+  min-inline-size: 4rem;
+  max-inline-size: 15rem;
   // Matches the active tab's padding so the chip is the same height and its bottom meets the rail.
   padding: 0.32rem;
   padding-inline-start: 0.5rem;
@@ -70,9 +74,23 @@
     border-inline-end: 0.0625rem solid var(--title-strip-border-color);
   }
 
+  // The leading icon holds its size; the title takes the slack and collapses, mirroring a live tab.
+  > app-icon {
+    flex-shrink: 0;
+  }
+
+  .tab-title {
+    flex: auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   // Mirrors the active tab's close button. It is purely decorative on the chip, so it carries no
   // interactivity — the real button stays behind on the tab in the strip.
   button {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
