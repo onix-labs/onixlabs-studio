@@ -15,6 +15,12 @@ import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
 import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
 
 /**
+ * Identifies the Monaco plain-text language, used as the syntax field's fallback when the active
+ * document's language is unknown or its entry has not been created yet.
+ */
+const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
+
+/**
  * Represents the contextual ribbon shown when a code tab is active. File actions act on the active
  * document, editor commands route through the {@link CodeCommands} registry, the language field sets
  * the active document's syntax, and Run/Terminal drive the docked run terminal.
@@ -107,8 +113,8 @@ export class CodeRibbon {
    * Gets the display name of the active document's language.
    */
   protected readonly languageName: Signal<string> = computed((): string => {
-    const language: string = this.activeDocument()?.language() ?? '';
-    return this.nameById.get(language) ?? '';
+    const language: string = this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID;
+    return this.nameById.get(language) ?? this.nameById.get(PLAIN_TEXT_LANGUAGE_ID) ?? '';
   });
 
   /**
