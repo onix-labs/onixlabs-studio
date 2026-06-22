@@ -1,10 +1,14 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
+  Signal,
+  viewChild,
 } from '@angular/core';
 
 /**
@@ -42,6 +46,28 @@ export class RibbonField {
    * Emits the newly selected option when the selection changes.
    */
   public readonly changed: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Holds the underlying native select element.
+   */
+  private readonly select: Signal<ElementRef<HTMLSelectElement>> =
+    viewChild.required<ElementRef<HTMLSelectElement>>('select');
+
+  /**
+   * Reflects the controlled value onto the native select after each render. Binding `[value]` on a
+   * `<select>` is unreliable because it can be applied before the `@for` options exist, leaving the
+   * control showing its first option; re-asserting after render (and whenever value or options
+   * change) keeps the displayed option in sync with {@link value}.
+   */
+  constructor() {
+    afterRenderEffect((): void => {
+      const element: HTMLSelectElement = this.select().nativeElement;
+      const desired: string = this.value() ?? this.options()[0] ?? '';
+      if (element.value !== desired) {
+        element.value = desired;
+      }
+    });
+  }
 
   /**
    * Handles a change on the select, emitting the {@link changed} event.

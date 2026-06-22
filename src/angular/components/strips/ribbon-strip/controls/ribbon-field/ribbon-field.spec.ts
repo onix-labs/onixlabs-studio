@@ -27,6 +27,20 @@ describe('RibbonField', () => {
     expect(element.querySelectorAll('option').length).toBe(2);
   });
 
+  it('value_onInitialRender_selectsTheBoundValueNotTheFirstOption', async () => {
+    // Reproduces the code ribbon's language field showing the first option ("C") instead of the
+    // controlled value ("Plain Text") on first render.
+    const fresh: ComponentFixture<RibbonField> = TestBed.createComponent(RibbonField);
+    fresh.componentRef.setInput('label', 'Language');
+    fresh.componentRef.setInput('options', ['C', 'C#', 'Plain Text', 'TypeScript']);
+    fresh.componentRef.setInput('value', 'Plain Text');
+    fresh.detectChanges();
+    await fresh.whenStable();
+
+    const select: HTMLSelectElement = (fresh.nativeElement as HTMLElement).querySelector('select')!;
+    expect(select.value).toBe('Plain Text');
+  });
+
   it('value_whenInputChangesAfterUserSelection_followsTheNewValue', async () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const select: HTMLSelectElement = element.querySelector<HTMLSelectElement>('select')!;
