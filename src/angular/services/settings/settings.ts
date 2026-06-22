@@ -8,6 +8,16 @@ import { SettingsStore } from '../settings-store/settings-store';
 export type CurrentLineHighlightStyle = 'outline' | 'filled';
 
 /**
+ * Identifies the text editor cursor blinking animation style.
+ */
+export type CursorBlinkingStyle = 'blink' | 'smooth' | 'phase' | 'expand' | 'solid';
+
+/**
+ * Identifies how the text editor cursor animates as it moves between positions.
+ */
+export type CursorSmoothCaretAnimation = 'off' | 'on' | 'explicit';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -55,6 +65,16 @@ export interface TextEditorSettings {
    * Gets a value indicating whether sticky scroll (pinned scope context) is shown.
    */
   readonly stickyScroll: boolean;
+
+  /**
+   * Gets the cursor blinking animation style.
+   */
+  readonly cursorBlinking: CursorBlinkingStyle;
+
+  /**
+   * Gets how the cursor animates as it moves between positions.
+   */
+  readonly cursorSmoothCaretAnimation: CursorSmoothCaretAnimation;
 
   /**
    * Gets the editor font family.
@@ -286,6 +306,8 @@ const DEFAULT_TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   currentLineHighlight: 'outline',
   wordWrap: false,
   stickyScroll: true,
+  cursorBlinking: 'blink',
+  cursorSmoothCaretAnimation: 'off',
   fontFamily: 'JetBrains Mono',
   fontSize: 14,
 };
@@ -616,6 +638,9 @@ export class Settings {
       currentLineHighlight: profile.settings.currentLineHighlight ?? global.currentLineHighlight,
       wordWrap: profile.settings.wordWrap ?? global.wordWrap,
       stickyScroll: profile.settings.stickyScroll ?? global.stickyScroll,
+      cursorBlinking: profile.settings.cursorBlinking ?? global.cursorBlinking,
+      cursorSmoothCaretAnimation:
+        profile.settings.cursorSmoothCaretAnimation ?? global.cursorSmoothCaretAnimation,
       fontFamily: profile.settings.fontFamily ?? global.fontFamily,
       fontSize: profile.settings.fontSize ?? global.fontSize,
     };

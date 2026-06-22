@@ -15,6 +15,25 @@
   />
 </app-setting-row>
 
+<app-setting-row label="Cursor blinking" description="How the cursor blinks.">
+  <app-dropdown
+    [options]="cursorBlinkingOptions"
+    [value]="global().cursorBlinking"
+    (valueChange)="onCursorBlinkingChange($event)"
+  />
+</app-setting-row>
+
+<app-setting-row
+  label="Smooth caret animation"
+  description="Animate the cursor sliding between positions."
+>
+  <app-dropdown
+    [options]="cursorSmoothCaretAnimationOptions"
+    [value]="global().cursorSmoothCaretAnimation"
+    (valueChange)="onCursorSmoothCaretAnimationChange($event)"
+  />
+</app-setting-row>
+
 <app-setting-row label="Font family" description="Editor font family.">
   <app-text-field
     [value]="global().fontFamily"

@@ -207,6 +207,8 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
+        cursorBlinking: resolved.cursorBlinking,
+        cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
         fontFamily: `"${resolved.fontFamily}", monospace`,
         fontSize: resolved.fontSize,
       });

@@ -316,8 +316,8 @@ export class Monaco {
       renderWhitespace: 'selection',
       tabSize: 2,
       insertSpaces: true,
-      cursorBlinking: 'blink',
-      cursorSmoothCaretAnimation: 'off',
+      cursorBlinking: resolved.cursorBlinking,
+      cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
       smoothScrolling: true,
       padding: { top: 16 },
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only

@@ -9,6 +9,8 @@ import { TextField } from '../../../../forms/text-field/text-field';
 import { Toggle } from '../../../../forms/toggle/toggle';
 import {
   CurrentLineHighlightStyle,
+  CursorBlinkingStyle,
+  CursorSmoothCaretAnimation,
   EditorProfile,
   Settings,
   TextEditorSettings,
@@ -106,6 +108,26 @@ export class TextEditorSettingsSection {
   ];
 
   /**
+   * Gets the options offered by the cursor-blinking dropdown.
+   */
+  protected readonly cursorBlinkingOptions: readonly DropdownOption[] = [
+    { value: 'blink', label: 'Blink' },
+    { value: 'smooth', label: 'Smooth' },
+    { value: 'phase', label: 'Phase' },
+    { value: 'expand', label: 'Expand' },
+    { value: 'solid', label: 'Solid (no blink)' },
+  ];
+
+  /**
+   * Gets the options offered by the smooth-caret-animation dropdown.
+   */
+  protected readonly cursorSmoothCaretAnimationOptions: readonly DropdownOption[] = [
+    { value: 'off', label: 'Off' },
+    { value: 'on', label: 'On' },
+    { value: 'explicit', label: 'Explicit (only on jumps)' },
+  ];
+
+  /**
    * Gets the language identifiers offered when assigning languages to a profile.
    */
   protected readonly languageOptions: readonly string[] = [
@@ -142,6 +164,26 @@ export class TextEditorSettingsSection {
   protected onHighlightChange(value: string): void {
     this.settings.updateTextEditorSettings({
       currentLineHighlight: value as CurrentLineHighlightStyle,
+    });
+  }
+
+  /**
+   * Sets the global cursor blinking style.
+   * @param value The selected blinking style.
+   */
+  protected onCursorBlinkingChange(value: string): void {
+    this.settings.updateTextEditorSettings({
+      cursorBlinking: value as CursorBlinkingStyle,
+    });
+  }
+
+  /**
+   * Sets the global smooth caret animation mode.
+   * @param value The selected animation mode.
+   */
+  protected onCursorSmoothCaretAnimationChange(value: string): void {
+    this.settings.updateTextEditorSettings({
+      cursorSmoothCaretAnimation: value as CursorSmoothCaretAnimation,
     });
   }
 
