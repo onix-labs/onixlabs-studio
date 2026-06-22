@@ -425,7 +425,7 @@ export class Documents {
     if (entry === undefined) {
       return false;
     }
-    const suggested: string = entry.filePath() ?? entry.fileName();
+    const suggested: string = entry.filePath() ?? this.suggestedFileName(entry);
     const targetPath: string | null = await this.fileSystem.saveDialog(suggested);
     if (targetPath === null) {
       return false;
@@ -572,6 +572,21 @@ export class Documents {
   private basename(filePath: string): string {
     const segments: string[] = filePath.split(/[\\/]/);
     return segments[segments.length - 1];
+  }
+
+  /**
+   * Builds the file name suggested in the save dialog for a new document, appending the extension for
+   * the document's language (for example `.md` for markdown) when its name does not already carry one.
+   * @param entry The document entry being saved.
+   * @returns Returns the suggested file name.
+   */
+  private suggestedFileName(entry: DocumentEntry): string {
+    const name: string = entry.fileName();
+    if (this.extname(name) !== '') {
+      return name;
+    }
+    const extension: string = this.monaco.getExtensionForLanguage(entry.language());
+    return extension === '' ? name : `${name}${extension}`;
   }
 
   /**
