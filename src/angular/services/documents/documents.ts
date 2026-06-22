@@ -166,16 +166,17 @@ export class Documents {
   public readonly activeDocumentId: Signal<string | null> = this.activeDocument.asReadonly();
 
   /**
-   * Returns the document for a tab, creating an empty untitled document when none exists yet.
+   * Returns the document for a tab, creating an empty document when none exists yet.
    * @param id The owning tab identifier.
+   * @param defaultName The display name given to a freshly created document; defaults to `Untitled`.
    * @returns Returns the tab's code document.
    */
-  public ensure(id: string): CodeDocument {
+  public ensure(id: string, defaultName: string = UNTITLED_NAME): CodeDocument {
     const existing: DocumentEntry | undefined = this.entries.get(id);
     if (existing !== undefined) {
       return existing.document;
     }
-    const entry: DocumentEntry = this.createEntry(id);
+    const entry: DocumentEntry = this.createEntry(id, defaultName);
     this.entries.set(id, entry);
     this.syncTab(id);
     return entry.document;
@@ -445,11 +446,12 @@ export class Documents {
   /**
    * Creates an empty untitled document entry for a tab.
    * @param id The owning tab identifier.
+   * @param defaultName The display name given to the new document; defaults to `Untitled`.
    * @returns Returns the created entry.
    */
-  private createEntry(id: string): DocumentEntry {
+  private createEntry(id: string, defaultName: string = UNTITLED_NAME): DocumentEntry {
     const filePath: WritableSignal<string | null> = signal<string | null>(null);
-    const fileName: WritableSignal<string> = signal<string>(UNTITLED_NAME);
+    const fileName: WritableSignal<string> = signal<string>(defaultName);
     const language: WritableSignal<string> = signal<string>(DEFAULT_LANGUAGE);
     const content: WritableSignal<string> = signal<string>('');
     const original: WritableSignal<string> = signal<string>('');

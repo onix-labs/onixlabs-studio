@@ -10,6 +10,7 @@ import {
   NgZone,
   OnChanges,
   OnDestroy,
+  OnInit,
   output,
   OutputEmitterRef,
   signal,
@@ -57,6 +58,7 @@ import { mermaidPlugin, renderMermaidDiagram } from '../../../milkdown/mermaid-p
 import { pasteCleanPlugin } from '../../../milkdown/paste-clean-plugin';
 import { subscriptSuperscriptPlugin } from '../../../milkdown/subscript-superscript-plugin';
 import { Milkdown } from '../../../services/milkdown/milkdown';
+import { Documents } from '../../../services/documents/documents';
 import {
   MarkdownBlockType,
   MarkdownCommandHandler,
@@ -125,6 +127,17 @@ const TEXTAREA_EXTRA_ROWS: number = 1;
 const INITIAL_MERMAID_ID: number = 0;
 
 /**
+ * Display name given to a new, unsaved markdown document.
+ */
+const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
+
+/**
+ * Monaco language identifier applied to markdown documents, so a new document still serialises and
+ * saves as markdown before it has a file extension.
+ */
+const MARKDOWN_LANGUAGE: string = 'markdown';
+
+/**
  * Represents the markdown editor view, hosting a Milkdown Crepe WYSIWYG editor with the application's
  * custom plugins, theming and ribbon command integration.
  */
@@ -135,11 +148,16 @@ const INITIAL_MERMAID_ID: number = 0;
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
+export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   /**
    * Holds the service resolving markdown editor styles from settings.
    */
   private readonly milkdown: Milkdown = inject(Milkdown);
+
+  /**
+   * Holds the documents service owning the tab's content, file association and dirty state.
+   */
+  private readonly documents: Documents = inject(Documents);
 
   /**
    * Holds the settings service supplying the markdown editor preferences.
@@ -168,6 +186,20 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
    */
   private readonly editorWrapper: Signal<ElementRef<HTMLDivElement>> =
     viewChild.required<ElementRef<HTMLDivElement>>('editorWrapper');
+
+  /**
+   * Gets the identifier of the backing document, used to register the document and target saves at
+   * it. For a standalone markdown tab this is the tab id; in a workspace's document well it is the
+   * well document id.
+   */
+  public readonly documentId: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets whether the backing document is released when this view is destroyed. True for standalone
+   * markdown tabs, whose destruction means the tab was closed. False inside the document well, where
+   * the workspace owns the document's lifecycle and a destroy is a re-parent, not a close.
+   */
+  public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Gets the markdown content the editor is initialised with.
@@ -292,12 +324,23 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
       if (active) {
         this.registerCommandHandler();
         this.refreshActiveBlockType();
+        this.documents.setActiveDocument(this.documentId());
         this.focusEditor();
       } else if (this.commandHandler !== null) {
         this.commands.unregister(this.commandHandler);
         this.commandHandler = null;
       }
     });
+  }
+
+  /**
+   * Registers the backing document so the ribbon's save commands target it, seeding a new markdown
+   * document with its display name and language. An existing document (a file opened into the well)
+   * keeps its own name and content.
+   */
+  public ngOnInit(): void {
+    this.documents.ensure(this.documentId(), NEW_MARKDOWN_DOCUMENT_NAME);
+    this.documents.setLanguage(this.documentId(), MARKDOWN_LANGUAGE);
   }
 
   /**
@@ -333,10 +376,17 @@ export class MarkdownView implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Destroys the editor when the component is torn down.
+   * Destroys the editor when the component is torn down, clearing the active-document focus and
+   * releasing the backing document when this view owns its lifecycle (a standalone tab).
    */
   public ngOnDestroy(): void {
     void this.destroyEditor();
+    if (this.documents.activeDocumentId() === this.documentId()) {
+      this.documents.setActiveDocument(null);
+    }
+    if (this.removeOnDestroy()) {
+      this.documents.remove(this.documentId());
+    }
   }
 
   /**

@@ -12,6 +12,7 @@
       }
       @case ('markdown') {
         <app-markdown-view
+          [documentId]="tab.id"
           [content]="markdownContent(tab.id)"
           [isActive]="tab.id === activeTabId()"
           (contentChange)="onMarkdownChange(tab.id, $event)"

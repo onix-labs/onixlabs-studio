@@ -1,7 +1,9 @@
 @if (isMarkdown()) {
   <app-markdown-view
+    [documentId]="documentId()"
     [content]="markdownContent()"
     [isActive]="isActive()"
+    [removeOnDestroy]="false"
     (contentChange)="onMarkdownChange($event)"
   />
 } @else {
