@@ -47,6 +47,12 @@ export interface CodeDocument {
   readonly content: Signal<string>;
 
   /**
+   * Gets the last-saved content, used as the change-margin's saved baseline. Updates on save and on
+   * reload from disk.
+   */
+  readonly savedContent: Signal<string>;
+
+  /**
    * Gets a value indicating whether the content differs from the last-saved content.
    */
   readonly dirty: Signal<boolean>;
@@ -510,6 +516,7 @@ export class Documents {
       fileName: fileName.asReadonly(),
       language: language.asReadonly(),
       content: content.asReadonly(),
+      savedContent: original.asReadonly(),
       dirty,
     };
     return { document, filePath, fileName, language, content, original, watchDisposer: null };

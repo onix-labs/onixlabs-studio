@@ -107,4 +107,9 @@
 
   // The pane cell that frames each panel, sitting one shade lighter than the workspace container.
   --dock-pane-background-color: var(--gray-400);
+
+  // Monaco change-margin save-state marks: unsaved (yellow), saved-this-session (green), deleted (red).
+  --change-margin-unsaved: #d7a824;
+  --change-margin-saved: #2ea043;
+  --change-margin-deleted: #d13438;
 }

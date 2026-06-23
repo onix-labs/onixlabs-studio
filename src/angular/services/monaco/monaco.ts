@@ -471,6 +471,9 @@ export class Monaco {
       fontSize: resolved.fontSize,
       fontFamily: `"${resolved.fontFamily}", monospace`,
       lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
+      // Widen the line-decorations lane to ~1rem so the change-margin bars sit in a clear gap between
+      // the line numbers and the code, rather than hard against the text.
+      lineDecorationsWidth: 16,
       wordWrap: resolved.wordWrap ? 'on' : 'off',
       stickyScroll: { enabled: resolved.stickyScroll },
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',

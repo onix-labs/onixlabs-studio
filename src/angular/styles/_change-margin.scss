@@ -1,0 +1,34 @@
+// Change margin: the Visual-Studio-style save-state bars Monaco draws in the line-decorations lane.
+// Monaco renders decorations into its own DOM, outside Angular's view encapsulation, so these classes
+// must live in a global stylesheet to take effect. The colours are theme tokens (see the theme
+// partials); the width is a shared token (see _variables.scss).
+
+// Monaco sizes each decoration element to the full lane width, so the bar is painted as a vertical
+// stripe constrained to the bar width and centred horizontally in the lane, rather than a left border.
+.change-margin--unsaved,
+.change-margin--saved {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: var(--change-margin-width) 100%;
+}
+
+.change-margin--unsaved {
+  background-image: linear-gradient(var(--change-margin-unsaved), var(--change-margin-unsaved));
+}
+
+.change-margin--saved {
+  background-image: linear-gradient(var(--change-margin-saved), var(--change-margin-saved));
+}
+
+// A small downward caret marking where lines were deleted, sitting on the surviving line above,
+// centred in the lane.
+.change-margin--deleted::before {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid var(--change-margin-deleted);
+}

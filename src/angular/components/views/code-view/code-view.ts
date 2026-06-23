@@ -15,6 +15,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
+import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
 import { CodeStatus } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
@@ -117,6 +119,11 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
 
   /**
+   * Holds the change-margin registry that draws the editor's save-state gutter bars.
+   */
+  private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
+
+  /**
    * Holds the size, in pixels, of the docked terminal pane.
    */
   private readonly terminalSizeSignal: WritableSignal<number> =
@@ -191,6 +198,12 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private commandHandler: CodeCommandHandler | null = null;
 
   /**
+   * Holds the change-margin controller drawing the save-state gutter bars, or null before the editor
+   * is created and after disposal.
+   */
+  private changeMargin: ChangeMarginController | null = null;
+
+  /**
    * Initialises the view, wiring effects for live settings/theme, external content updates, language
    * changes, and activation.
    */
@@ -223,6 +236,9 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.monaco
         .getMonaco()
         ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
+      // Re-resolve the change-margin overview-ruler colours for the active theme (the gutter bars
+      // themselves follow CSS automatically).
+      this.changeMargin?.setColors(this.changeMargins.resolveColors());
     });
 
     effect((): void => {
@@ -236,6 +252,20 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         this.ignoreNextChange = true;
         editor.setValue(content);
       }
+    });
+
+    // Keep the change-margin's saved baseline current: every line in sync with it shows a saved (green)
+    // bar and every line that differs an unsaved (yellow) bar. Re-runs when the last-saved content
+    // changes (save, reload) and when the file path appears (first save of a new document), at which
+    // point its lines flip from entirely unsaved to baselined.
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      const savedContent: string = document?.savedContent() ?? '';
+      const hasSavedVersion: boolean = (document?.filePath() ?? null) !== null;
+      if (!this.editorReady()) {
+        return;
+      }
+      this.changeMargin?.setBaseline(savedContent, hasSavedVersion);
     });
 
     effect((): void => {
@@ -468,6 +498,15 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       },
     );
 
+    // Seed the change margin with the document's saved baseline, before the effects that drive its
+    // baseline and theme colours run on editorReady becoming true. A document with no file path has no
+    // saved version yet, so its lines start as unsaved.
+    this.changeMargin = this.changeMargins.attach(
+      this.editor,
+      document.savedContent(),
+      document.filePath() !== null,
+    );
+
     this.editorReady.set(true);
   }
 
@@ -475,6 +514,10 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Disposes the Monaco editor and releases the command handler.
    */
   private disposeEditor(): void {
+    if (this.changeMargin !== null) {
+      this.changeMargins.detach(this.changeMargin);
+      this.changeMargin = null;
+    }
     if (this.commandHandler !== null) {
       this.codeCommands.forget(this.commandHandler);
       this.commandHandler = null;

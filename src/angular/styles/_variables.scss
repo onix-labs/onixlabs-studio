@@ -56,4 +56,7 @@
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
   --dock-panel-radius: 0.5rem;
+
+  // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
+  --change-margin-width: 4px;
 }
