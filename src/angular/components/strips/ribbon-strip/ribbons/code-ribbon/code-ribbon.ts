@@ -13,6 +13,11 @@ import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import {
+  RibbonStripMenuButton,
+  RibbonMenuItem,
+} from '../../ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
 
 /**
  * Identifies the Monaco plain-text language, used as the syntax field's fallback when the active
@@ -21,13 +26,32 @@ import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
 
 /**
+ * Identifies the Save-As item in the Save menu button's dropdown.
+ */
+const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * Identifies the Export-to-PDF item in the Print menu button's dropdown.
+ */
+const VARIANT_EXPORT_PDF: string = 'export-pdf';
+
+/**
  * Represents the contextual ribbon shown when a code tab is active. File actions act on the active
  * document, editor commands route through the {@link CodeCommands} registry, the language field sets
  * the active document's syntax, and Run/Terminal drive the docked run terminal.
  */
 @Component({
   selector: 'app-code-ribbon',
-  imports: [RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripButtonSmall, RibbonStripCheck, RibbonStripField],
+  imports: [
+    RibbonStripGroup,
+    RibbonStripColumn,
+    RibbonStripRow,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripMenuButton,
+    RibbonStripCheck,
+    RibbonStripField,
+  ],
   templateUrl: './code-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -146,6 +170,20 @@ export class CodeRibbon {
   );
 
   /**
+   * Gets the extra actions offered by the Save menu button's dropdown.
+   */
+  protected readonly saveItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+  ];
+
+  /**
+   * Gets the extra actions offered by the Print menu button's dropdown.
+   */
+  protected readonly printItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_EXPORT_PDF, label: 'Export to PDF', icon: Icon.EXPORT_PDF },
+  ];
+
+  /**
    * Saves the active document.
    */
   protected onSave(): void {
@@ -153,10 +191,43 @@ export class CodeRibbon {
   }
 
   /**
+   * Runs the action chosen from the Save menu button's dropdown.
+   * @param id The chosen save variant's identifier.
+   */
+  protected onSaveVariant(id: string): void {
+    if (id === VARIANT_SAVE_AS) {
+      void this.documents.saveActiveAs();
+    } else {
+      void this.documents.saveActive();
+    }
+  }
+
+  /**
    * Prints the active document via the browser print dialog.
    */
   protected onPrint(): void {
     window.print();
+  }
+
+  /**
+   * Runs the action chosen from the Print menu button's dropdown.
+   * @param id The chosen print variant's identifier.
+   */
+  protected onPrintVariant(id: string): void {
+    if (id === VARIANT_EXPORT_PDF) {
+      this.onExportPdf();
+    } else {
+      this.onPrint();
+    }
+  }
+
+  /**
+   * Exports the active document to PDF.
+   *
+   * TODO: PDF export is not yet implemented; this is a stub until that lands.
+   */
+  protected onExportPdf(): void {
+    // Intentionally empty until PDF export is implemented.
   }
 
   /**

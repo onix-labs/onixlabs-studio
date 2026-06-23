@@ -1,33 +1,26 @@
 <app-ribbon-strip-group title="File">
-  <app-ribbon-strip-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
-  <app-ribbon-strip-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.SAVE"
+    label="Save"
+    [items]="saveItems"
+    (action)="onSave()"
+    (selected)="onSaveVariant($event)"
+  />
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.PRINT"
+    label="Print"
+    [items]="printItems"
+    (action)="onPrint()"
+    (selected)="onPrintVariant($event)"
+  />
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Language">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-field
-      label="Syntax"
-      [options]="languageOptions"
-      [value]="languageName()"
-      (changed)="onLanguageChange($event)"
-    />
-  </app-ribbon-strip-column>
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Run">
-  <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
-  <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Clipboard">
+<app-ribbon-strip-group title="Edit">
   <app-ribbon-strip-column>
     <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
     <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
     <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
   </app-ribbon-strip-column>
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Edit">
   <app-ribbon-strip-column>
     <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
     <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
@@ -35,8 +28,20 @@
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Format">
-  <app-ribbon-strip-button [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
+<app-ribbon-strip-group title="Language">
+  <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
+  <app-ribbon-strip-column [spread]="true">
+    <app-ribbon-strip-field
+      label="Syntax"
+      [options]="languageOptions"
+      [value]="languageName()"
+      [fullWidth]="false"
+      (changed)="onLanguageChange($event)"
+    />
+    <app-ribbon-strip-row>
+      <app-ribbon-strip-button-small [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
+    </app-ribbon-strip-row>
+  </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="View">
@@ -49,4 +54,8 @@
       (toggled)="onLineNumbers($event)"
     />
   </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Tools">
+  <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
 </app-ribbon-strip-group>

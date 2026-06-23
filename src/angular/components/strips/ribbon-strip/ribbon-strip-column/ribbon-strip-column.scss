@@ -5,8 +5,8 @@
   gap: 0.25rem;
 }
 
-// Fill the group's lane height and push the first row to the top, the last to the bottom.
+// Fill the group's lane height and distribute the rows with equal space around each.
 :host(.ribbon-column--spread) {
   align-self: stretch;
-  justify-content: space-between;
+  justify-content: space-around;
 }

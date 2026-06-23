@@ -43,6 +43,12 @@ export class RibbonStripField {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the select stretches to fill its container width (the default)
+   * rather than sizing to its own content.
+   */
+  public readonly fullWidth: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Emits the newly selected option when the selection changes.
    */
   public readonly changed: OutputEmitterRef<string> = output<string>();
