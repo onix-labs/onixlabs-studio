@@ -279,22 +279,6 @@
   -webkit-app-region: no-drag;
 }
 
-// The panel zooms and fades in each time the welcome becomes visible (the animation property is only
-// present in the visible state, so it replays on every show).
-.welcome--visible .welcome__panel {
-  animation: modalzoom 1s cubic-bezier(0.785, 0.135, 0.15, 0.86);
-}
-
-@keyframes modalzoom {
-  0% {
-    opacity: 0;
-    transform: scale3d(0.75, 0.75, 0);
-  }
-  75% {
-    opacity: 1;
-  }
-}
-
 .welcome__close {
   position: absolute;
   inset-block-start: 1rem;

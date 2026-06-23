@@ -9,7 +9,7 @@
   (keydown.enter)="selectTab.emit()"
   (cdkDragStarted)="onDragStarted($event)"
 >
-  <app-icon [icon]="tab().icon" [size]="1.5" />
+  <app-icon [icon]="tab().icon" [size]="1.25" />
   <span class="tab-title">{{ tab().title }}</span>
   @if (tab().dirty) {
     <span class="tab-dirty" aria-label="Unsaved changes"></span>
