@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Tabs } from '../../services/tabs/tabs';
 import { ContentHost } from '../content-host/content-host';
-import { RibbonStrip } from '../strips/ribbon-strip/ribbon-strip';
-import { StatusStrip } from '../strips/status-strip/status-strip';
+import { RibbonStripContainer } from '../strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
+import { StatusStripContainer } from '../strips/status-strip/status-strip-container/status-strip-container';
 import { TitleStripContainer } from '../strips/title-strip/title-strip-container/title-strip-container';
 import { WelcomeScreen } from '../welcome-screen/welcome-screen';
 
@@ -12,7 +12,7 @@ import { WelcomeScreen } from '../welcome-screen/welcome-screen';
  */
 @Component({
   selector: 'app-root',
-  imports: [RibbonStrip, StatusStrip, TitleStripContainer, ContentHost, WelcomeScreen],
+  imports: [RibbonStripContainer, StatusStripContainer, TitleStripContainer, ContentHost, WelcomeScreen],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

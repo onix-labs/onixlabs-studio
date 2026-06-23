@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonStrip } from './ribbon-strip';
+import { RibbonStripContainer } from './ribbon-strip-container';
 
-describe('RibbonStrip', () => {
-  let component: RibbonStrip;
-  let fixture: ComponentFixture<RibbonStrip>;
+describe('RibbonStripContainer', () => {
+  let component: RibbonStripContainer;
+  let fixture: ComponentFixture<RibbonStripContainer>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonStrip],
+      imports: [RibbonStripContainer],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonStrip);
+    fixture = TestBed.createComponent(RibbonStripContainer);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

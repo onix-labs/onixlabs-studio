@@ -1,13 +1,13 @@
 @if (hasTabs()) {
   <app-title-strip-container class="title-strip" />
   @if (!isSettingsActive()) {
-    <app-ribbon-strip class="ribbon-strip" />
+    <app-ribbon-strip-container class="ribbon-strip" />
   }
   <main class="content">
     <app-content-host />
   </main>
   @if (!isSettingsActive()) {
-    <app-status-strip class="status-strip" />
+    <app-status-strip-container class="status-strip" />
   }
 }
 

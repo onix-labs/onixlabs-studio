@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
-import { Tab } from '../../../services/tabs/tab';
-import { Tabs } from '../../../services/tabs/tabs';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
-import { LspStatusMenu } from './lsp-status-menu/lsp-status-menu';
+import { StatusBar, StatusSegment } from '../../../../services/status-bar/status-bar';
+import { Tab } from '../../../../services/tabs/tab';
+import { Tabs } from '../../../../services/tabs/tabs';
+import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { LspStatusMenu } from '../lsp-status-menu/lsp-status-menu';
 
 /**
  * Represents the status strip, which shows contextual segments published by the active view and
@@ -12,13 +12,13 @@ import { LspStatusMenu } from './lsp-status-menu/lsp-status-menu';
  * servers running for the active workspace are surfaced by the embedded drop-up menu.
  */
 @Component({
-  selector: 'app-status-strip',
+  selector: 'app-status-strip-container',
   imports: [AppIcon, LspStatusMenu],
-  templateUrl: './status-strip.html',
-  styleUrl: './status-strip.scss',
+  templateUrl: './status-strip-container.html',
+  styleUrl: './status-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class StatusStrip {
+export class StatusStripContainer {
   /**
    * Gets the icon set, exposed for the template.
    */

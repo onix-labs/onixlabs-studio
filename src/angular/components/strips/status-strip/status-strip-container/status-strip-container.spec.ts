@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { StatusStrip } from './status-strip';
+import { StatusStripContainer } from './status-strip-container';
 
-describe('StatusStrip', () => {
-  let component: StatusStrip;
-  let fixture: ComponentFixture<StatusStrip>;
+describe('StatusStripContainer', () => {
+  let component: StatusStripContainer;
+  let fixture: ComponentFixture<StatusStripContainer>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [StatusStrip],
+      imports: [StatusStripContainer],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(StatusStrip);
+    fixture = TestBed.createComponent(StatusStripContainer);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });
