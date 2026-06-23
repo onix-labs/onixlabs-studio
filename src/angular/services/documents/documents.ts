@@ -150,6 +150,15 @@ export class Documents {
   private readonly entries: Map<string, DocumentEntry> = new Map<string, DocumentEntry>();
 
   /**
+   * Tracks structural changes to {@link entries}. The map is not reactive, yet entries are created
+   * lazily (a code tab's document is materialised when its view mounts, after the tab is already
+   * active). Reading this signal from {@link get} lets computeds that resolve a document by id —
+   * such as the ribbon's language field — re-run when an entry appears or is removed, rather than
+   * caching the absent document from their first evaluation.
+   */
+  private readonly entriesVersion: WritableSignal<number> = signal<number>(0);
+
+  /**
    * Holds the id of the document currently focused for editing, kept current by the active editor.
    * Used so save commands target the right document whether it is a tab or a document-well editor.
    */
@@ -178,6 +187,7 @@ export class Documents {
     }
     const entry: DocumentEntry = this.createEntry(id, defaultName);
     this.entries.set(id, entry);
+    this.markEntriesChanged();
     this.syncTab(id);
     return entry.document;
   }
@@ -204,6 +214,7 @@ export class Documents {
     this.entries.get(id)?.watchDisposer?.();
     this.fileConflicts.clear(id);
     this.entries.delete(id);
+    this.markEntriesChanged();
   }
 
   /**
@@ -221,7 +232,17 @@ export class Documents {
    * @returns Returns the tab's document, or undefined when none exists.
    */
   public get(id: string): CodeDocument | undefined {
+    // Track structural changes so a computed that resolves a document by id re-runs when the entry
+    // is created (entries are materialised lazily, after the tab is already active).
+    this.entriesVersion();
     return this.entries.get(id)?.document;
+  }
+
+  /**
+   * Records that {@link entries} has gained or lost a member, so document-resolving computeds re-run.
+   */
+  private markEntriesChanged(): void {
+    this.entriesVersion.update((version: number): number => version + 1);
   }
 
   /**
@@ -258,6 +279,7 @@ export class Documents {
     const id: string = this.tabs.open('code').id;
     const entry: DocumentEntry = this.createEntry(id);
     this.entries.set(id, entry);
+    this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
@@ -287,6 +309,7 @@ export class Documents {
     const tab: Tab = this.tabs.open(type);
     const entry: DocumentEntry = this.createEntry(tab.id);
     this.entries.set(tab.id, entry);
+    this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
@@ -320,6 +343,7 @@ export class Documents {
     const id: string = `well-doc-${this.wellSequence}`;
     const entry: DocumentEntry = this.createEntry(id);
     this.entries.set(id, entry);
+    this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
