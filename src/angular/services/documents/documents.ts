@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { FileInfo } from '../../../shared/studio-api';
+import { FileInfo, SaveDialogChoice } from '../../../shared/studio-api';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
@@ -215,6 +215,30 @@ export class Documents {
     this.fileConflicts.clear(id);
     this.entries.delete(id);
     this.markEntriesChanged();
+  }
+
+  /**
+   * Closes a tab, prompting to save, discard, or cancel when its document has unsaved changes
+   * (reusing the native confirm-save dialog). Cancelling — or cancelling a save-as — keeps the tab
+   * open so the work is not lost; otherwise the document is released and the tab removed. Tabs with
+   * no document (such as terminals or settings) close without a prompt.
+   * @param id The tab identifier.
+   * @returns Returns a promise that resolves once the close has been resolved.
+   */
+  public async closeTab(id: string): Promise<void> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry?.document.dirty() === true) {
+      const choice: SaveDialogChoice = await this.fileSystem.confirmSave(entry.fileName());
+      if (choice === 'cancel') {
+        return;
+      }
+      if (choice === 'save' && !(await this.save(id))) {
+        // The user cancelled the save-as dialog; keep the tab open.
+        return;
+      }
+    }
+    this.remove(id);
+    this.tabs.close(id);
   }
 
   /**

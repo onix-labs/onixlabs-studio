@@ -12,6 +12,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Documents } from '../../../../services/documents/documents';
 import { Tab } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
@@ -35,6 +36,11 @@ export class TitleStripTabList {
    * Holds the tab registry that backs the list.
    */
   private readonly tabsService: Tabs = inject(Tabs);
+
+  /**
+   * Holds the documents registry, used to prompt for unsaved changes when closing a tab.
+   */
+  private readonly documents: Documents = inject(Documents);
 
   /**
    * Holds a reference to the host element, used to move keyboard focus between tabs.
@@ -107,11 +113,11 @@ export class TitleStripTabList {
   }
 
   /**
-   * Closes the given tab.
+   * Closes the given tab, prompting to save when it has unsaved changes.
    * @param tab The tab to close.
    */
   protected onClose(tab: Tab): void {
-    this.tabsService.close(tab.id);
+    void this.documents.closeTab(tab.id);
   }
 
   /**

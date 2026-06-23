@@ -2,6 +2,7 @@ import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { FileInfo } from '../../../shared/studio-api';
+import { FileSystem } from '../file-system/file-system';
 import { Tab } from '../tabs/tab';
 import { Tabs } from '../tabs/tabs';
 import { CodeDocument, Documents } from './documents';
@@ -37,6 +38,44 @@ describe('Documents', () => {
   it('ensure_whenCalledTwice_returnsSameDocument', () => {
     const tab: Tab = tabs.open('code');
     expect(documents.ensure(tab.id)).toBe(documents.ensure(tab.id));
+  });
+
+  it('ensure_whenDefaultNameGiven_namesTheNewDocument', () => {
+    const tab: Tab = tabs.open('code');
+    expect(documents.ensure(tab.id, 'New Document').fileName()).toBe('New Document');
+  });
+
+  it('closeTab_whenDocumentClean_closesAndReleasesTheTab', async () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+
+    await documents.closeTab(tab.id);
+
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
+    expect(documents.get(tab.id)).toBeUndefined();
+  });
+
+  it('closeTab_whenDirtyAndDiscarded_closesTheTab', async () => {
+    // Outside Electron the confirm-save dialog defaults to discarding, so the dirty tab closes.
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setContent(tab.id, 'changed');
+
+    await documents.closeTab(tab.id);
+
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
+  });
+
+  it('closeTab_whenDirtyAndCancelled_keepsTheTabOpen', async () => {
+    vi.spyOn(TestBed.inject(FileSystem), 'confirmSave').mockResolvedValue('cancel');
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setContent(tab.id, 'changed');
+
+    await documents.closeTab(tab.id);
+
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(true);
+    expect(documents.get(tab.id)).not.toBeUndefined();
   });
 
   it('setContent_whenContentDiffersFromOriginal_marksDocumentDirty', () => {

@@ -33,6 +33,11 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 const COMMAND_SOURCE: string = 'ribbon';
 
 /**
+ * Holds the display name given to a new, unsaved code document (matching the markdown editor).
+ */
+const NEW_DOCUMENT_NAME: string = 'New Document';
+
+/**
  * Holds the minimum size, in pixels, of the docked terminal pane.
  */
 const MIN_TERMINAL_SIZE: number = 80;
@@ -327,7 +332,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Resolves the backing document for the owning tab.
    */
   public ngOnInit(): void {
-    this.document.set(this.documents.ensure(this.tabId()));
+    this.document.set(this.documents.ensure(this.tabId(), NEW_DOCUMENT_NAME));
   }
 
   /**

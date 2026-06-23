@@ -2,6 +2,7 @@ import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '../../../../icons/icon';
+import { Documents } from '../../../../services/documents/documents';
 import { Tab, TabType } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { AppIcon } from '../../../shared/icon/app-icon';
@@ -61,6 +62,11 @@ export class TitleStripTabMenu {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
+   * Holds the documents registry, used to prompt for unsaved changes when closing a tab.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Gets the identifier of the active tab, or undefined when no tab is open.
    */
   protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
@@ -100,6 +106,6 @@ export class TitleStripTabMenu {
    * @param tab The tab to close.
    */
   protected onClose(tab: Tab): void {
-    this.tabsService.close(tab.id);
+    void this.documents.closeTab(tab.id);
   }
 }
