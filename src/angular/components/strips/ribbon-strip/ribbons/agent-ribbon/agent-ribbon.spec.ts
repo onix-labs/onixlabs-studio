@@ -2,7 +2,8 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../../../../shared/ai-types';
-import { Agent } from '../../../../../services/agent/agent';
+import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
+import { AgentSessions } from '../../../../../services/agent-sessions/agent-sessions';
 import { AgentRibbon } from './agent-ribbon';
 
 /**
@@ -81,21 +82,26 @@ describe('AgentRibbon', () => {
     providerChoices = [];
     modelChoices = [];
     running = signal<boolean>(false);
-    const agentStub: Partial<Agent> = {
+    const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
       provider: signal<AiProviderId>('claude'),
       models: signal<readonly AiModelInfo[]>(MODELS),
       model: signal<string>('claude-opus-4-8'),
-      isRunning: running,
-      clear: (): void => void (cleared += 1),
-      stop: (): void => void (stopped += 1),
       setProvider: (id: AiProviderId): void => void providerChoices.push(id),
       setModel: (id: string): void => void modelChoices.push(id),
+    };
+    const sessionsStub: Partial<AgentSessions> = {
+      isRunning: running,
+      newChat: (): void => void (cleared += 1),
+      stop: (): void => void (stopped += 1),
     };
 
     await TestBed.configureTestingModule({
       imports: [AgentRibbon],
-      providers: [{ provide: Agent, useValue: agentStub }],
+      providers: [
+        { provide: AgentEngine, useValue: engineStub },
+        { provide: AgentSessions, useValue: sessionsStub },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AgentRibbon);

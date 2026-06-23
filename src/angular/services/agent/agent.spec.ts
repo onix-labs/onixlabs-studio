@@ -2,11 +2,11 @@ import { TestBed } from '@angular/core/testing';
 
 import type {
   AiEvent,
-  AiModelInfo,
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
 } from '../../../shared/ai-types';
+import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
 import { Settings } from '../settings/settings';
 import { Agent, AgentItem } from './agent';
@@ -84,7 +84,7 @@ describe('Agent', () => {
       },
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: AiRuntime, useValue: runtimeStub }],
+      providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
     });
     agent = TestBed.inject(Agent);
   });
@@ -101,21 +101,10 @@ describe('Agent', () => {
     expect(agent.isRunning()).toBe(true);
   });
 
-  it('model_whenProvidersLoaded_defaultsToTheProviderDefault', async () => {
-    await agent.loadProviders();
-
-    expect(agent.models().map((model: AiModelInfo): string => model.id)).toEqual([
-      'claude-opus-4-8',
-      'claude-sonnet-4-6',
-    ]);
-    expect(agent.model()).toBe('claude-opus-4-8');
-  });
-
-  it('setModel_whenProviderOffersIt_isHonouredAndSent', async () => {
-    await agent.loadProviders();
-    agent.setModel('claude-sonnet-4-6');
-
-    expect(agent.model()).toBe('claude-sonnet-4-6');
+  it('send_whenModelSelectedOnTheEngine_forwardsIt', async () => {
+    const engine: AgentEngine = TestBed.inject(AgentEngine);
+    await engine.loadProviders();
+    engine.setModel('claude-sonnet-4-6');
 
     agent.send('hi');
 

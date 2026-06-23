@@ -2,8 +2,9 @@ import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular
 import { AgentChat } from '../../shared/agent-chat/agent-chat';
 
 /**
- * Hosts the agent conversation as a top-level tab. The chat shell and its state live in
- * {@link AgentChat} and the Agent service, shared with the dockable agent panel.
+ * Hosts the agent conversation as a top-level tab. The chat shell lives in {@link AgentChat}, which
+ * owns this tab's own agent session — the transcript is per-tab, not shared with other agent tabs or
+ * the dockable agent panel.
  */
 @Component({
   selector: 'app-agent-view',
@@ -13,6 +14,11 @@ import { AgentChat } from '../../shared/agent-chat/agent-chat';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentView {
+  /**
+   * Gets the identifier of the tab hosting this view.
+   */
+  public readonly tabId: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
   /**
    * Gets a value indicating whether the view belongs to the active tab.
    */

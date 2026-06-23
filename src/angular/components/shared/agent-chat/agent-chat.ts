@@ -1,30 +1,36 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
+  effect,
   HostListener,
   inject,
+  input,
+  InputSignal,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
-import { Dropdown, DropdownOption } from '../../forms/dropdown/dropdown';
+import { AgentSessions } from '../../../services/agent-sessions/agent-sessions';
+import { Tabs } from '../../../services/tabs/tabs';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../icon/app-icon';
 import { MarkdownPipe } from './markdown-pipe';
 
 /**
- * Renders the agent conversation as a structured, provider-agnostic transcript above a composer:
+ * Renders one agent conversation as a structured, provider-agnostic transcript above a composer:
  * user/assistant turns (assistant text rendered as markdown), dim reasoning, tool-activity chips, and
- * inline permission prompts. State lives in the {@link Agent} service, so the agent tab and the
- * dockable agent panel show the same conversation. Sending streams a live response; Stop aborts it.
- * Links in agent output open in the OS browser rather than navigating the app.
+ * inline permission prompts. The conversation lives in a per-instance {@link Agent} session provided
+ * here, so every agent tab and the dockable agent panel each own an independent transcript. Sending
+ * streams a live response; Stop aborts it. The provider/model selection lives in the agent ribbon's
+ * Engine group, not the composer. Links in agent output open in the OS browser rather than navigating
+ * the app.
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, Dropdown, MarkdownPipe],
+  imports: [AppIcon, MarkdownPipe],
+  providers: [Agent],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,9 +42,30 @@ export class AgentChat {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the agent conversation service.
+   * Holds this conversation's agent session.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the registry the active agent tab's session is published to for the ribbon to drive.
+   */
+  private readonly sessions: AgentSessions = inject(AgentSessions);
+
+  /**
+   * Holds the tab registry, used to light this conversation's tab while it awaits a decision.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
+   * (e.g. the dockable agent panel).
+   */
+  public readonly tabId: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
+   * Gets a value indicating whether the hosting tab is the active tab.
+   */
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Holds the current composer text.
@@ -56,47 +83,6 @@ export class AgentChat {
   public readonly isRunning: Signal<boolean> = this.agent.isRunning;
 
   /**
-   * Gets the registered providers and their availability.
-   */
-  public readonly providers: Signal<readonly AiProviderInfo[]> = this.agent.providers;
-
-  /**
-   * Gets the selected provider.
-   */
-  public readonly provider: Signal<AiProviderId> = this.agent.provider;
-
-  /**
-   * Gets the models offered by the selected provider.
-   */
-  public readonly models: Signal<readonly AiModelInfo[]> = this.agent.models;
-
-  /**
-   * Gets the selected model identifier.
-   */
-  public readonly model: Signal<string> = this.agent.model;
-
-  /**
-   * Gets the providers projected onto the dropdown's option shape; unavailable providers are offered
-   * but disabled.
-   */
-  protected readonly providerOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.providers().map((option: AiProviderInfo) => ({
-        value: option.id,
-        label: option.label,
-        disabled: !option.available,
-      })),
-  );
-
-  /**
-   * Gets the models offered by the selected provider, projected onto the dropdown's option shape.
-   */
-  protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.models().map((option: AiModelInfo) => ({ value: option.id, label: option.label })),
-  );
-
-  /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
    */
   public readonly awaitingDecision: Signal<boolean> = this.agent.awaitingDecision;
@@ -107,27 +93,40 @@ export class AgentChat {
   public readonly draft: Signal<string> = this.draftText.asReadonly();
 
   /**
+   * Initializes a new instance of the {@link AgentChat} class, publishing this conversation as the
+   * ribbon's target while its tab is active and lighting the tab's attention dot while it awaits a
+   * decision in the background.
+   */
+  public constructor() {
+    effect((): void => {
+      const active: boolean = this.isActive();
+      untracked((): void => {
+        if (active) {
+          this.sessions.setActive(this.agent);
+        } else {
+          this.sessions.clearActive(this.agent);
+        }
+      });
+    });
+
+    effect((): void => {
+      const id: string | undefined = this.tabId();
+      const waiting: boolean = this.awaitingDecision();
+      const active: boolean = this.isActive();
+      untracked((): void => {
+        if (id !== undefined) {
+          this.tabs.setAttention(id, waiting && !active);
+        }
+      });
+    });
+  }
+
+  /**
    * Records composer input.
    * @param value The new composer text.
    */
   public onInput(value: string): void {
     this.draftText.set(value);
-  }
-
-  /**
-   * Selects the provider runs go through.
-   * @param id The provider id.
-   */
-  public onProviderChange(id: string): void {
-    this.agent.setProvider(id as AiProviderId);
-  }
-
-  /**
-   * Selects the model runs go through.
-   * @param id The model id.
-   */
-  public onModelChange(id: string): void {
-    this.agent.setModel(id);
   }
 
   /**
@@ -147,13 +146,6 @@ export class AgentChat {
    */
   public stop(): void {
     this.agent.stop();
-  }
-
-  /**
-   * Clears the transcript.
-   */
-  public clear(): void {
-    this.agent.clear();
   }
 
   /**

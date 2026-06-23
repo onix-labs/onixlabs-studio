@@ -84,22 +84,6 @@
     ></textarea>
 
     <div class="agent__controls">
-      <app-dropdown
-        ariaLabel="Provider"
-        [options]="providerOptions()"
-        [value]="provider()"
-        (valueChange)="onProviderChange($event)"
-      />
-
-      @if (models().length > 0) {
-        <app-dropdown
-          ariaLabel="Model"
-          [options]="modelOptions()"
-          [value]="model()"
-          (valueChange)="onModelChange($event)"
-        />
-      }
-
       @if (isRunning()) {
         <button
           type="button"

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import type { AiModelInfo, AiProviderInfo } from '../../../../../../shared/ai-types';
-import { Agent } from '../../../../../services/agent/agent';
+import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
+import { AgentSessions } from '../../../../../services/agent-sessions/agent-sessions';
 import { Icon } from '../../../../../icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
@@ -10,10 +11,11 @@ import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 
 /**
- * Represents the contextual ribbon shown when an agent tab is active. The Session and Engine groups
- * are wired to the {@link Agent} service — New Chat clears the transcript, Stop aborts the in-flight
- * run, and the Provider and Model fields drive the same selection the chat composer uses. The Context
- * and Options controls are disabled placeholders for capabilities that do not exist yet.
+ * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
+ * active tab's conversation through {@link AgentSessions} — New Chat clears its transcript and Stop
+ * aborts its in-flight run — while the Engine group's Provider and Model fields drive the global
+ * selection owned by {@link AgentEngine}. The Context and Options controls are disabled placeholders
+ * for capabilities that do not exist yet.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -29,20 +31,25 @@ export class AgentRibbon {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the agent conversation service the ribbon drives.
+   * Holds the global engine selection the Engine group drives.
    */
-  private readonly agent: Agent = inject(Agent);
+  private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
-   * Gets a value indicating whether a run is in flight.
+   * Holds the active agent tab's session the Session group drives.
    */
-  protected readonly isRunning: Signal<boolean> = this.agent.isRunning;
+  private readonly sessions: AgentSessions = inject(AgentSessions);
+
+  /**
+   * Gets a value indicating whether the active tab's run is in flight.
+   */
+  protected readonly isRunning: Signal<boolean> = this.sessions.isRunning;
 
   /**
    * Gets the provider labels offered by the Provider field.
    */
   protected readonly providerLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.agent.providers().map((provider: AiProviderInfo): string => provider.label),
+    this.engine.providers().map((provider: AiProviderInfo): string => provider.label),
   );
 
   /**
@@ -50,17 +57,17 @@ export class AgentRibbon {
    */
   protected readonly providerLabel: Signal<string> = computed(
     (): string =>
-      this.agent
+      this.engine
         .providers()
-        .find((provider: AiProviderInfo): boolean => provider.id === this.agent.provider())?.label ??
-      '',
+        .find((provider: AiProviderInfo): boolean => provider.id === this.engine.provider())
+        ?.label ?? '',
   );
 
   /**
    * Gets the model labels offered by the Model field.
    */
   protected readonly modelLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.agent.models().map((model: AiModelInfo): string => model.label),
+    this.engine.models().map((model: AiModelInfo): string => model.label),
   );
 
   /**
@@ -68,22 +75,22 @@ export class AgentRibbon {
    */
   protected readonly modelLabel: Signal<string> = computed(
     (): string =>
-      this.agent.models().find((model: AiModelInfo): boolean => model.id === this.agent.model())
+      this.engine.models().find((model: AiModelInfo): boolean => model.id === this.engine.model())
         ?.label ?? '',
   );
 
   /**
-   * Starts a fresh conversation by clearing the transcript.
+   * Starts a fresh conversation by clearing the active tab's transcript.
    */
   protected newChat(): void {
-    this.agent.clear();
+    this.sessions.newChat();
   }
 
   /**
-   * Stops the in-flight run.
+   * Stops the active tab's in-flight run.
    */
   protected stop(): void {
-    this.agent.stop();
+    this.sessions.stop();
   }
 
   /**
@@ -91,11 +98,11 @@ export class AgentRibbon {
    * @param label The label emitted by the Provider field.
    */
   protected onProviderLabel(label: string): void {
-    const match: AiProviderInfo | undefined = this.agent
+    const match: AiProviderInfo | undefined = this.engine
       .providers()
       .find((provider: AiProviderInfo): boolean => provider.label === label);
     if (match !== undefined) {
-      this.agent.setProvider(match.id);
+      this.engine.setProvider(match.id);
     }
   }
 
@@ -104,11 +111,11 @@ export class AgentRibbon {
    * @param label The label emitted by the Model field.
    */
   protected onModelLabel(label: string): void {
-    const match: AiModelInfo | undefined = this.agent
+    const match: AiModelInfo | undefined = this.engine
       .models()
       .find((model: AiModelInfo): boolean => model.label === label);
     if (match !== undefined) {
-      this.agent.setModel(match.id);
+      this.engine.setModel(match.id);
     }
   }
 }

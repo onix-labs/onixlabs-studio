@@ -1,14 +1,9 @@
-import { computed, effect, inject, Service, signal, Signal, untracked, WritableSignal } from '@angular/core';
-import type {
-  AiEvent,
-  AiModelInfo,
-  AiProviderId,
-  AiProviderInfo,
-  AiRunState,
-} from '../../../shared/ai-types';
+import { computed, DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AiEvent, AiRunState } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
+import { AgentEngine } from '../agent-engine/agent-engine';
+import { AgentSessionHandle } from '../agent-sessions/agent-sessions';
 import { Settings } from '../settings/settings';
-import { Tabs } from '../tabs/tabs';
 import { Workspace } from '../workspace/workspace';
 
 /**
@@ -88,23 +83,26 @@ export interface AgentItem {
 }
 
 /**
- * Owns the agent conversation: it drives runs through the {@link AiRuntime} and folds the streamed
- * provider-agnostic events into a structured transcript (text, reasoning, tool activity, inline
- * permission prompts). State is exposed as signals so the agent tab and the dockable agent panel
- * render the same conversation. While a decision is pending on an inactive agent tab, that tab's
- * attention dot is lit.
+ * Owns a single agent conversation: it drives runs through the {@link AiRuntime} and folds the
+ * streamed provider-agnostic events into a structured transcript (text, reasoning, tool activity,
+ * inline permission prompts). State is exposed as signals so the hosting view renders the
+ * conversation. The provider/model the run goes through is the global selection owned by
+ * {@link AgentEngine}.
+ *
+ * This service is per-conversation, not a singleton: it is provided at the {@link AgentChat}
+ * component level so every agent tab and the dockable agent panel each get their own transcript.
  */
-@Service()
-export class Agent {
+@Service({ autoProvided: false })
+export class Agent implements AgentSessionHandle {
   /**
    * Holds the agent runtime the conversation runs through.
    */
   private readonly runtime: AiRuntime = inject(AiRuntime);
 
   /**
-   * Holds the tab registry, used to flag agent tabs awaiting a decision.
+   * Holds the global engine selection, the source of the provider and model a run goes through.
    */
-  private readonly tabs: Tabs = inject(Tabs);
+  private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
    * Holds the workspace, used to scope runs to the open folder.
@@ -112,10 +110,14 @@ export class Agent {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
-   * Holds the settings service, the persisted source of truth for provider/model selection and the
-   * run's permission posture and token cap.
+   * Holds the settings service, the source of the run's permission posture and token cap.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the destroy notifier used to unsubscribe this conversation from runtime events.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
    * Holds the ordered transcript.
@@ -126,13 +128,6 @@ export class Agent {
    * Holds a value indicating whether a run is in flight.
    */
   private readonly busy: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds the registered providers and their availability.
-   */
-  private readonly providerList: WritableSignal<readonly AiProviderInfo[]> = signal<
-    readonly AiProviderInfo[]
-  >([]);
 
   /**
    * Holds the identifier of the in-flight run, or null when none.
@@ -155,44 +150,6 @@ export class Agent {
   public readonly isRunning: Signal<boolean> = this.busy.asReadonly();
 
   /**
-   * Gets the registered providers and their availability.
-   */
-  public readonly providers: Signal<readonly AiProviderInfo[]> = this.providerList.asReadonly();
-
-  /**
-   * Gets the selected provider (persisted via {@link Settings}).
-   */
-  public readonly provider: Signal<AiProviderId> = this.settings.aiProvider;
-
-  /**
-   * Gets the descriptor of the selected provider, or undefined before the providers load.
-   */
-  private readonly providerInfo: Signal<AiProviderInfo | undefined> = computed(
-    (): AiProviderInfo | undefined =>
-      this.providerList().find((info: AiProviderInfo): boolean => info.id === this.provider()),
-  );
-
-  /**
-   * Gets the models offered by the selected provider, in display order.
-   */
-  public readonly models: Signal<readonly AiModelInfo[]> = computed(
-    (): readonly AiModelInfo[] => this.providerInfo()?.models ?? [],
-  );
-
-  /**
-   * Gets the effective model identifier: the user's choice when the provider offers it, otherwise the
-   * provider's default (empty only before the providers load).
-   */
-  public readonly model: Signal<string> = computed((): string => {
-    const models: readonly AiModelInfo[] = this.models();
-    const chosen: string = this.settings.aiModelFor(this.provider());
-    if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
-      return chosen;
-    }
-    return this.providerInfo()?.defaultModelId ?? '';
-  });
-
-  /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
    */
   public readonly awaitingDecision: Signal<boolean> = computed((): boolean =>
@@ -202,62 +159,14 @@ export class Agent {
   );
 
   /**
-   * Initializes a new instance of the {@link Agent} class, subscribing to runtime events, loading the
-   * providers, and keeping agent-tab attention in sync with pending decisions.
+   * Initializes a new instance of the {@link Agent} class, subscribing to runtime events for the
+   * lifetime of the hosting view.
    */
   public constructor() {
-    this.runtime.onEvent((event: AiEvent): void => this.onEvent(event));
-    void this.loadProviders();
-    effect((): void => {
-      const waiting: boolean = this.awaitingDecision();
-      const active: string | undefined = this.tabs.activeTabId();
-      untracked((): void => {
-        for (const tab of this.tabs.tabs()) {
-          if (tab.type === 'agent') {
-            this.tabs.setAttention(tab.id, waiting && tab.id !== active);
-          }
-        }
-      });
-    });
-  }
-
-  /**
-   * Loads the providers and selects an available one when the current selection is unavailable.
-   * @returns Returns a promise that resolves once the providers are loaded.
-   */
-  public async loadProviders(): Promise<void> {
-    const providers: readonly AiProviderInfo[] = await this.runtime.listProviders();
-    this.providerList.set(providers);
-    const current: AiProviderId = this.provider();
-    const currentAvailable: boolean = providers.some(
-      (provider: AiProviderInfo): boolean => provider.id === current && provider.available,
+    const unsubscribe: () => void = this.runtime.onEvent((event: AiEvent): void =>
+      this.onEvent(event),
     );
-    if (!currentAvailable) {
-      const fallback: AiProviderInfo | undefined = providers.find(
-        (provider: AiProviderInfo): boolean => provider.available,
-      );
-      if (fallback !== undefined) {
-        this.settings.setAiProvider(fallback.id);
-      }
-    }
-  }
-
-  /**
-   * Selects the provider runs go through.
-   * @param id The provider id.
-   */
-  public setProvider(id: AiProviderId): void {
-    this.settings.setAiProvider(id);
-  }
-
-  /**
-   * Selects the model runs go through, persisted per provider. The choice is honoured while the active
-   * provider offers it and is otherwise ignored in favour of the provider's default (see
-   * {@link model}).
-   * @param id The model id.
-   */
-  public setModel(id: string): void {
-    this.settings.setAiModel(this.provider(), id);
+    this.destroyRef.onDestroy(unsubscribe);
   }
 
   /**
@@ -271,9 +180,9 @@ export class Agent {
     }
     this.push({ kind: 'user', text: trimmed });
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.provider(), trimmed, {
+    this.activeRequestId = this.runtime.run(this.engine.provider(), trimmed, {
       workspaceRoot: this.workspace.root()?.path ?? null,
-      model: this.model(),
+      model: this.engine.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       tokenCap: this.settings.aiTokenCap(),
     });

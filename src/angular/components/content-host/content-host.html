@@ -22,7 +22,7 @@
         <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('agent') {
-        <app-agent-view [isActive]="tab.id === activeTabId()" />
+        <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('source-control') {
         <app-source-control-view [isActive]="tab.id === activeTabId()" />

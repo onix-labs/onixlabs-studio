@@ -15,7 +15,7 @@ import type {
   AiProviderInfo,
   AiVerifyResult,
 } from '../../../../../../shared/ai-types';
-import { Agent } from '../../../../../services/agent/agent';
+import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
 import { AiAuth } from '../../../../../services/ai-auth/ai-auth';
 import { Settings } from '../../../../../services/settings/settings';
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
@@ -29,8 +29,8 @@ import { AppIcon } from '../../../../shared/icon/app-icon';
  * Represents the AI section of the settings view: provider and per-provider model selection, the
  * authentication state (with an API-key entry and an end-to-end verification check), the default
  * permission posture, and the per-request token cap. Provider/model selection is shared with the agent
- * (both go through {@link Settings}); auth is driven through {@link AiAuth}, which keeps the key in the
- * main process.
+ * through {@link AgentEngine} (both persist via {@link Settings}); auth is driven through
+ * {@link AiAuth}, which keeps the key in the main process.
  */
 @Component({
   selector: 'app-ai-settings',
@@ -51,9 +51,9 @@ export class AiSettingsSection {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the agent service, the shared source of provider/model selection.
+   * Holds the engine service, the shared source of provider/model selection.
    */
-  private readonly agent: Agent = inject(Agent);
+  private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
    * Holds the agent authentication service.
@@ -94,12 +94,12 @@ export class AiSettingsSection {
   /**
    * Gets the selected provider.
    */
-  protected readonly provider: Signal<AiProviderId> = this.agent.provider;
+  protected readonly provider: Signal<AiProviderId> = this.engine.provider;
 
   /**
    * Gets the selected model.
    */
-  protected readonly model: Signal<string> = this.agent.model;
+  protected readonly model: Signal<string> = this.engine.model;
 
   /**
    * Gets the permission posture.
@@ -136,7 +136,7 @@ export class AiSettingsSection {
    */
   protected readonly providerOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.agent
+      this.engine
         .providers()
         .map((info: AiProviderInfo): DropdownOption => ({ value: info.id, label: info.label })),
   );
@@ -146,7 +146,7 @@ export class AiSettingsSection {
    */
   protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.agent
+      this.engine
         .models()
         .map((info: AiModelInfo): DropdownOption => ({ value: info.id, label: info.label })),
   );
@@ -172,7 +172,7 @@ export class AiSettingsSection {
    * @param id The provider id.
    */
   protected onProviderChange(id: string): void {
-    this.agent.setProvider(id as AiProviderId);
+    this.engine.setProvider(id as AiProviderId);
   }
 
   /**
@@ -180,7 +180,7 @@ export class AiSettingsSection {
    * @param id The model id.
    */
   protected onModelChange(id: string): void {
-    this.agent.setModel(id);
+    this.engine.setModel(id);
   }
 
   /**
