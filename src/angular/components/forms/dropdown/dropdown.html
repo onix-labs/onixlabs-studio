@@ -1,5 +1,13 @@
-<select class="dropdown" [disabled]="disabled()" (change)="onChange($event)">
+<select
+  #select
+  class="dropdown"
+  [attr.aria-label]="ariaLabel()"
+  [disabled]="disabled()"
+  (change)="onChange($event)"
+>
   @for (option of options(); track option.value) {
-    <option [value]="option.value" [selected]="option.value === value()">{{ option.label }}</option>
+    <option [value]="option.value" [disabled]="option.disabled" [selected]="option.value === value()">
+      {{ option.label }}
+    </option>
   }
 </select>

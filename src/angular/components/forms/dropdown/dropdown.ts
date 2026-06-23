@@ -1,10 +1,14 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   input,
   InputSignal,
-  model,
-  ModelSignal,
+  output,
+  OutputEmitterRef,
+  Signal,
+  viewChild,
 } from '@angular/core';
 
 /**
@@ -20,11 +24,21 @@ export interface DropdownOption {
    * Gets the label shown for the option.
    */
   readonly label: string;
+
+  /**
+   * Gets a value indicating whether the option is offered but cannot be selected.
+   */
+  readonly disabled?: boolean;
 }
 
 /**
  * Represents a single-select dropdown, backed by a native select for accessibility. Values are
  * exchanged as strings; callers map them to their own union types.
+ *
+ * The control is controlled: it displays whatever {@link value} supplies and reports picks through
+ * {@link valueChange} without adopting them itself. This lets a parent clamp or reject a pick — the
+ * native select is re-asserted to {@link value} after each render, so a pick the parent does not
+ * adopt cannot leave it stuck (`[selected]` alone cannot correct this once the select is dirty).
  */
 @Component({
   selector: 'app-dropdown',
@@ -41,9 +55,9 @@ export class Dropdown {
     input.required<readonly DropdownOption[]>();
 
   /**
-   * Gets or sets the selected value.
+   * Gets the selected value.
    */
-  public readonly value: ModelSignal<string> = model<string>('');
+  public readonly value: InputSignal<string> = input<string>('');
 
   /**
    * Gets a value indicating whether the dropdown is disabled.
@@ -51,10 +65,45 @@ export class Dropdown {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Handles a change on the underlying select, updating the {@link value} model.
+   * Gets the accessible name applied to the underlying select when there is no visible label.
+   */
+  public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
+   * Emits the newly picked value when the selection changes.
+   */
+  public readonly valueChange: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Holds the underlying native select element.
+   */
+  private readonly select: Signal<ElementRef<HTMLSelectElement>> =
+    viewChild.required<ElementRef<HTMLSelectElement>>('select');
+
+  /**
+   * Reflects {@link value} onto the native select after each render so the displayed option stays in
+   * sync — both on first render (before any user interaction) and after a pick the parent declines to
+   * adopt, which would otherwise leave the dirty select stuck on the rejected option.
+   */
+  public constructor() {
+    afterRenderEffect((): void => {
+      const element: HTMLSelectElement = this.select().nativeElement;
+      if (element.value !== this.value()) {
+        element.value = this.value();
+      }
+    });
+  }
+
+  /**
+   * Handles a change on the underlying select, reporting the picked value to the parent and snapping
+   * the native select back to {@link value}. A native `change` sets the select's dirty value flag,
+   * which no signal tracks, so the re-assert here covers the case the parent declines the pick; if it
+   * adopts, the updated {@link value} input re-asserts the new selection on the next render.
    * @param event The DOM change event raised by the select.
    */
   protected onChange(event: Event): void {
-    this.value.set((event.target as HTMLSelectElement).value);
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    this.valueChange.emit(select.value);
+    select.value = this.value();
   }
 }

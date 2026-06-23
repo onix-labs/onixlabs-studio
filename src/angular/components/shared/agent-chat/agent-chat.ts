@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   HostListener,
   inject,
   signal,
@@ -9,6 +10,7 @@ import {
 } from '@angular/core';
 import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
+import { Dropdown, DropdownOption } from '../../forms/dropdown/dropdown';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../icon/app-icon';
 import { MarkdownPipe } from './markdown-pipe';
@@ -22,7 +24,7 @@ import { MarkdownPipe } from './markdown-pipe';
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, MarkdownPipe],
+  imports: [AppIcon, Dropdown, MarkdownPipe],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,6 +74,27 @@ export class AgentChat {
    * Gets the selected model identifier.
    */
   public readonly model: Signal<string> = this.agent.model;
+
+  /**
+   * Gets the providers projected onto the dropdown's option shape; unavailable providers are offered
+   * but disabled.
+   */
+  protected readonly providerOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.providers().map((option: AiProviderInfo) => ({
+        value: option.id,
+        label: option.label,
+        disabled: !option.available,
+      })),
+  );
+
+  /**
+   * Gets the models offered by the selected provider, projected onto the dropdown's option shape.
+   */
+  protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.models().map((option: AiModelInfo) => ({ value: option.id, label: option.label })),
+  );
 
   /**
    * Gets a value indicating whether the agent is waiting on a permission decision.

@@ -61,19 +61,15 @@ describe('AgentRibbon', () => {
   }
 
   /**
-   * Finds a ribbon field's select by its caption.
+   * Finds a ribbon field's select by its caption (exposed as the select's accessible name).
    * @param caption The field caption.
    * @returns Returns the matching select element.
    */
   function field(caption: string): HTMLSelectElement {
-    const match: Element | undefined = Array.from(
-      host.querySelectorAll('label.ribbon-field'),
-    ).find(
-      (element: Element): boolean =>
-        element.querySelector('.ribbon-field__label')?.textContent?.trim() === caption,
+    const select: HTMLSelectElement | null = host.querySelector<HTMLSelectElement>(
+      `select[aria-label="${caption}"]`,
     );
-    const select: HTMLSelectElement | null | undefined = match?.querySelector('select');
-    if (select === null || select === undefined) {
+    if (select === null) {
       throw new Error(`No field captioned "${caption}"`);
     }
     return select;

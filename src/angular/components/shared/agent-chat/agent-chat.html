@@ -84,28 +84,20 @@
     ></textarea>
 
     <div class="agent__controls">
-      <select
-        class="agent__provider"
-        aria-label="Provider"
+      <app-dropdown
+        ariaLabel="Provider"
+        [options]="providerOptions()"
         [value]="provider()"
-        (change)="onProviderChange($any($event.target).value)"
-      >
-        @for (option of providers(); track option.id) {
-          <option [value]="option.id" [disabled]="!option.available">{{ option.label }}</option>
-        }
-      </select>
+        (valueChange)="onProviderChange($event)"
+      />
 
       @if (models().length > 0) {
-        <select
-          class="agent__provider"
-          aria-label="Model"
+        <app-dropdown
+          ariaLabel="Model"
+          [options]="modelOptions()"
           [value]="model()"
-          (change)="onModelChange($any($event.target).value)"
-        >
-          @for (option of models(); track option.id) {
-            <option [value]="option.id">{{ option.label }}</option>
-          }
-        </select>
+          (valueChange)="onModelChange($event)"
+        />
       }
 
       @if (isRunning()) {

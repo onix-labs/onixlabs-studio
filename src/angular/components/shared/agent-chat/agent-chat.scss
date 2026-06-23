@@ -213,16 +213,6 @@
   gap: 0.5rem;
 }
 
-.agent__provider {
-  padding: 0.4rem 0.5rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: var(--agent-view-surface-color);
-  border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: 0.6rem;
-  corner-shape: squircle;
-}
-
 .agent__send {
   display: grid;
   place-items: center;

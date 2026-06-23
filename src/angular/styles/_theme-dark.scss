@@ -46,8 +46,6 @@
   --ribbon-control-background-color--hover: var(--gray-700);
   --ribbon-control-border-color--hover: var(--gray-600);
   --ribbon-control-background-color--active: var(--gray-900);
-  --ribbon-field-background-color: var(--gray-900);
-  --ribbon-field-border-color: var(--gray-600);
   --ribbon-divider-color: var(--gray-700);
 
   --form-control-background-color: var(--gray-900);
@@ -58,6 +56,13 @@
   --form-knob-color: var(--gray-300);
   --form-on-accent-color: var(--gray-100);
   --form-muted-foreground-color: var(--gray-400);
+
+  // Dropdown picker menu (rendered by the customizable-select popup). Hover reaches for the accent.
+  --dropdown-menu-background-color: var(--gray-800);
+  --dropdown-menu-foreground-color: var(--gray-100);
+  --dropdown-menu-border-color: var(--gray-700);
+  --dropdown-menu-item-background-color--hover: var(--accent-color);
+  --dropdown-menu-item-foreground-color--hover: var(--form-on-accent-color);
 
   --settings-background-color: var(--gray-800);
   --settings-nav-background-color: var(--gray-900);
