@@ -7,23 +7,23 @@ import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-s
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripSplitButton } from '../../ribbon-strip-split-button/ribbon-strip-split-button';
+import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
 
 /**
- * Represents the contextual ribbon shown when a directory tab is active. The File and Editor groups
- * route Save and edit commands through the {@link CodeCommands} seam; the Solution Build and Run
- * groups dispatch through the {@link Builds} seam to the active workspace's build runner (the Task
- * picker chooses what Start runs). The Target and Source-Control groups remain static scaffolding.
+ * Represents the contextual ribbon shown when a directory tab is active. The Edit group routes edit
+ * commands through the {@link CodeCommands} seam; the Solution Build and Run groups dispatch through
+ * the {@link Builds} seam to the active workspace's build runner (the Task picker chooses what Start
+ * runs). The Target and Source-Control groups remain static scaffolding.
  */
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
     RibbonStripGroup,
     RibbonStripColumn,
+    RibbonStripRow,
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripField,
-    RibbonStripSplitButton,
   ],
   templateUrl: './directory-ribbon.html',
   styleUrl: '../ribbon-row.scss',
@@ -36,7 +36,7 @@ export class DirectoryRibbon {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the editor command seam the File and Editor groups dispatch through.
+   * Holds the editor command seam the Edit group dispatches through.
    */
   private readonly commands: CodeCommands = inject(CodeCommands);
 
@@ -44,11 +44,6 @@ export class DirectoryRibbon {
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
    */
   private readonly builds: Builds = inject(Builds);
-
-  /**
-   * Gets whether a code editor (a focused well document) is active, enabling the File/Editor groups.
-   */
-  protected readonly hasActiveEditor: Signal<boolean> = this.commands.hasActiveEditor;
 
   /**
    * Gets whether the active workspace can run a build task.
@@ -76,20 +71,6 @@ export class DirectoryRibbon {
   protected readonly taskLabels: Signal<readonly string[]> = computed((): readonly string[] =>
     this.builds.tasks().map((task: BuildTask): string => task.label),
   );
-
-  /**
-   * Saves the focused well document.
-   */
-  protected onSave(): void {
-    this.commands.save();
-  }
-
-  /**
-   * Saves the focused well document to a newly chosen path.
-   */
-  protected onSaveAs(): void {
-    this.commands.saveAs();
-  }
 
   /**
    * Cuts the selection in the focused editor.

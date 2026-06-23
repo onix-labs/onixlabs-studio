@@ -2,6 +2,16 @@
   display: inline-flex;
 }
 
+// Stretch to the container width; the select drops its content-width floor so it can fill (or shrink).
+:host(.dropdown--full) {
+  display: flex;
+}
+
+:host(.dropdown--full) .dropdown {
+  flex: 1;
+  min-inline-size: 0;
+}
+
 .dropdown {
   display: inline-flex;
   align-items: center;

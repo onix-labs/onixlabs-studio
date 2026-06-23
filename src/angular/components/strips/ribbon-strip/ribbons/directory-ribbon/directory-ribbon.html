@@ -1,19 +1,15 @@
-<app-ribbon-strip-group title="File">
+<app-ribbon-strip-group title="Solution">
   <app-ribbon-strip-button
-    [icon]="Icon.SAVE"
-    label="Save"
-    [disabled]="!hasActiveEditor()"
-    (action)="onSave()"
+    [icon]="Icon.BUILD"
+    label="Build"
+    [disabled]="!canBuild() || running()"
+    (action)="onBuild()"
   />
-  <app-ribbon-strip-button
-    [icon]="Icon.SAVE"
-    label="Save As"
-    [disabled]="!hasActiveEditor()"
-    (action)="onSaveAs()"
-  />
+  <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" />
+  <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" />
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Editor">
+<app-ribbon-strip-group title="Edit">
   <app-ribbon-strip-column>
     <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
     <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
@@ -26,32 +22,8 @@
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Solution">
-  <app-ribbon-strip-button
-    [icon]="Icon.BUILD"
-    label="Build"
-    [disabled]="!canBuild() || running()"
-    (action)="onBuild()"
-  />
-  <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" />
-  <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" />
-</app-ribbon-strip-group>
-
 <app-ribbon-strip-group title="Run">
-  <app-ribbon-strip-split-button
-    [icon]="Icon.PLAY"
-    label="Start"
-    menuLabel="Debug"
-    [disabled]="!canStart() || running()"
-    (action)="onStart()"
-  />
-  <app-ribbon-strip-button-small
-    [icon]="Icon.STOP"
-    label="Stop"
-    [disabled]="!running()"
-    (action)="onStop()"
-  />
-  <app-ribbon-strip-column>
+  <app-ribbon-strip-column [spread]="true">
     <app-ribbon-strip-field
       label="Task"
       [options]="taskLabels()"
@@ -59,11 +31,24 @@
       [disabled]="taskLabels().length === 0"
       (changed)="onSelectTask($event)"
     />
+    <app-ribbon-strip-row>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.PLAY"
+        label="Start"
+        [disabled]="!canStart() || running()"
+        (action)="onStart()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.DEBUG"
+        label="Debug"
+        [disabled]="!canStart() || running()"
+      />
+    </app-ribbon-strip-row>
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Target">
-  <app-ribbon-strip-column>
+  <app-ribbon-strip-column [spread]="true">
     <app-ribbon-strip-field label="Configuration" [options]="['Debug', 'Release']" value="Debug" />
     <app-ribbon-strip-field label="Platform" [options]="['Any CPU', 'x64', 'ARM64']" value="Any CPU" />
   </app-ribbon-strip-column>

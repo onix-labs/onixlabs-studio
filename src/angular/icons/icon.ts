@@ -162,6 +162,11 @@ export class Icon {
   public static readonly STOP: Icon = new Icon('ph-duotone ph-stop');
 
   /**
+   * Gets the debug icon.
+   */
+  public static readonly DEBUG: Icon = new Icon('ph-duotone ph-bug');
+
+  /**
    * Gets the format-document (magic wand) icon.
    */
   public static readonly FORMAT: Icon = new Icon('ph-duotone ph-magic-wand');

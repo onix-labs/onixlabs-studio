@@ -46,6 +46,9 @@ export interface DropdownOption {
   templateUrl: './dropdown.html',
   styleUrl: './dropdown.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.dropdown--full]': 'fullWidth()',
+  },
 })
 export class Dropdown {
   /**
@@ -68,6 +71,12 @@ export class Dropdown {
    * Gets the accessible name applied to the underlying select when there is no visible label.
    */
   public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
+   * Gets a value indicating whether the dropdown stretches to fill its container's width rather than
+   * sizing to its own content.
+   */
+  public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Emits the newly picked value when the selection changes.
