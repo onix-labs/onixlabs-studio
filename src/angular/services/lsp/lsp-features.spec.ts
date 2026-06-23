@@ -79,6 +79,7 @@ describe('LspFeatures', () => {
   let requests: { sessionId: string; method: string; params: unknown }[];
   let responses: Record<string, unknown>;
   let semanticLegend: LspSemanticTokensLegend | null;
+  let suppressWhen: ((model: unknown) => boolean) | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -87,6 +88,7 @@ describe('LspFeatures', () => {
     requests = [];
     responses = {};
     semanticLegend = null;
+    suppressWhen = undefined;
     const lsp: unknown = {
       request: (sessionId: string, method: string, params: unknown): Promise<unknown> => {
         requests.push({ sessionId, method, params });
@@ -109,6 +111,10 @@ describe('LspFeatures', () => {
     const monaco: unknown = {
       ensureLoaded: (): Promise<void> => Promise.resolve(),
       getMonaco: (): unknown => fakeMonacoNamespace(captured),
+      suppressHeuristicTokensWhen: (predicate: (model: unknown) => boolean): (() => void) => {
+        suppressWhen = predicate;
+        return (): void => undefined;
+      },
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -214,6 +220,23 @@ describe('LspFeatures', () => {
 
     expect(requests[0]?.method).toBe('textDocument/semanticTokens/full');
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 5, 15, 0, 0, 6, 6, 2, 0, 1, 4, 4, 13, 8]);
+  });
+
+  it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
+    semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
+    await build();
+
+    expect(suppressWhen?.({ uri: { toString: (): string => MODEL_URI } })).toBe(true);
+    expect(suppressWhen?.({ uri: { toString: (): string => 'inmemory://model/other' } })).toBe(
+      false,
+    );
+  });
+
+  it('doesNotSuppressHeuristicTokens_whenTheServerHasNoLegendYet', async () => {
+    semanticLegend = null;
+    await build();
+
+    expect(suppressWhen?.({ uri: { toString: (): string => MODEL_URI } })).toBe(false);
   });
 
   it('semanticTokens_dropsUnmappableTypesAndRebasesDeltas', async () => {

@@ -1,3 +1,4 @@
+import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { FileInfo } from '../../../shared/studio-api';
@@ -111,5 +112,39 @@ describe('Documents', () => {
 
     expect(dirty.map((entry: { id: string }): string => entry.id)).toEqual([modified.id]);
     expect(dirty[0].name).toBe(modifiedDocument.fileName());
+  });
+
+  it('get_whenDocumentCreatedAfterFirstRead_reflectsTheNewDocument', () => {
+    const tab: Tab = tabs.open('code');
+    const resolved: Signal<CodeDocument | undefined> = computed(
+      (): CodeDocument | undefined => documents.get(tab.id),
+    );
+    // The ribbon reads the active document before the code view has materialised it; the lookup must
+    // re-run once the entry is created, not cache the absent document.
+    expect(resolved()).toBeUndefined();
+    const document: CodeDocument = documents.ensure(tab.id);
+    expect(resolved()).toBe(document);
+  });
+
+  it('get_whenDocumentRemoved_reflectsTheRemoval', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    const resolved: Signal<CodeDocument | undefined> = computed(
+      (): CodeDocument | undefined => documents.get(tab.id),
+    );
+    expect(resolved()).not.toBeUndefined();
+    documents.remove(tab.id);
+    expect(resolved()).toBeUndefined();
+  });
+
+  it('setLanguage_whenLanguageChanged_isReflectedByADocumentResolvingComputed', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    const language: Signal<string> = computed(
+      (): string => documents.get(tab.id)?.language() ?? 'none',
+    );
+    expect(language()).toBe('plaintext');
+    documents.setLanguage(tab.id, 'typescript');
+    expect(language()).toBe('typescript');
   });
 });
