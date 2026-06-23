@@ -105,6 +105,14 @@ export class CodeTerminals {
   }
 
   /**
+   * Hides a tab's terminal panel, leaving it mounted so its session is preserved.
+   * @param id The owning tab identifier.
+   */
+  public hide(id: string): void {
+    this.update(id, { visible: false });
+  }
+
+  /**
    * Switches a tab's layout between stacked and side-by-side.
    * @param id The owning tab identifier.
    */

@@ -26,6 +26,13 @@ describe('CodeTerminals', () => {
     expect(codeTerminals.isMounted('tab-1')).toBe(true);
   });
 
+  it('hide_whenVisible_hidesButStaysMounted', () => {
+    codeTerminals.show('tab-1');
+    codeTerminals.hide('tab-1');
+    expect(codeTerminals.isVisible('tab-1')).toBe(false);
+    expect(codeTerminals.isMounted('tab-1')).toBe(true);
+  });
+
   it('toggleLayout_whenStacked_switchesToSideBySide', () => {
     expect(codeTerminals.layout('tab-1')).toBe('stacked');
     codeTerminals.toggleLayout('tab-1');

@@ -130,6 +130,13 @@ export class CodeTerminalPanel {
   }
 
   /**
+   * Hides the terminal panel, leaving its session mounted so it can be reopened.
+   */
+  protected onClose(): void {
+    this.codeTerminals.hide(this.tabId());
+  }
+
+  /**
    * Writes the tab's pending run command to the terminal, then clears it.
    */
   private flushPending(): void {
