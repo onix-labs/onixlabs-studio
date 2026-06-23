@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '../../../../../icons/icon';
-import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
-import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
-import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
-import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
+import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
+import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
 
 /**
@@ -13,7 +13,7 @@ import { TerminalCommands } from '../../../../../services/terminal-commands/term
  */
 @Component({
   selector: 'app-terminal-ribbon',
-  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonCheck],
+  imports: [RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripCheck],
   templateUrl: './terminal-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

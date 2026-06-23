@@ -6,21 +6,21 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../../../shared/icon/app-icon';
-import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '../../../../icons/icon';
 
 /**
  * Represents a split button in the ribbon: a large primary action with an attached chevron that
  * opens a related menu.
  */
 @Component({
-  selector: 'app-ribbon-split-button',
+  selector: 'app-ribbon-strip-split-button',
   imports: [AppIcon],
-  templateUrl: './ribbon-split-button.html',
-  styleUrl: './ribbon-split-button.scss',
+  templateUrl: './ribbon-strip-split-button.html',
+  styleUrl: './ribbon-strip-split-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonSplitButton {
+export class RibbonStripSplitButton {
   /**
    * Gets the icon set, exposed for the template.
    */

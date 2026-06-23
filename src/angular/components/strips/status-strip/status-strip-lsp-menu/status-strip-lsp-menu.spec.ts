@@ -2,22 +2,22 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LspServer, LspStatus } from '../../../../services/lsp/lsp-status';
 import { ActiveWorkspace } from '../../../../services/workspace/active-workspace';
-import { LspStatusMenu } from './lsp-status-menu';
+import { StatusStripLspMenu } from './status-strip-lsp-menu';
 
-describe('LspStatusMenu', () => {
-  let fixture: ComponentFixture<LspStatusMenu>;
+describe('StatusStripLspMenu', () => {
+  let fixture: ComponentFixture<StatusStripLspMenu>;
   let status: LspStatus;
   let rootPath: WritableSignal<string | null>;
 
   beforeEach(async () => {
     rootPath = signal<string | null>(null);
     await TestBed.configureTestingModule({
-      imports: [LspStatusMenu],
+      imports: [StatusStripLspMenu],
       providers: [{ provide: ActiveWorkspace, useValue: { rootPath } }],
     }).compileComponents();
 
     status = TestBed.inject(LspStatus);
-    fixture = TestBed.createComponent(LspStatusMenu);
+    fixture = TestBed.createComponent(StatusStripLspMenu);
   });
 
   it('should create', () => {

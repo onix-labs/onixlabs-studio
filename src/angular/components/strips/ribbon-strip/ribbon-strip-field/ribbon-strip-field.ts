@@ -8,20 +8,20 @@ import {
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
-import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
+import { Dropdown, DropdownOption } from '../../../forms/dropdown/dropdown';
 
 /**
  * Represents a labelled select (dropdown) field in the ribbon, backed by the shared
  * {@link Dropdown} atom so the picker menu and chevron match the rest of the app.
  */
 @Component({
-  selector: 'app-ribbon-field',
+  selector: 'app-ribbon-strip-field',
   imports: [Dropdown],
-  templateUrl: './ribbon-field.html',
-  styleUrl: './ribbon-field.scss',
+  templateUrl: './ribbon-strip-field.html',
+  styleUrl: './ribbon-strip-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonField {
+export class RibbonStripField {
   /**
    * Gets the caption used as the field's accessible name.
    */

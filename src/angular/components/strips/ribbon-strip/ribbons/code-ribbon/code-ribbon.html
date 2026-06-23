@@ -1,52 +1,52 @@
-<app-ribbon-group title="File">
-  <app-ribbon-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
-  <app-ribbon-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="File">
+  <app-ribbon-strip-button [icon]="Icon.SAVE" label="Save" (action)="onSave()" />
+  <app-ribbon-strip-button [icon]="Icon.PRINT" label="Print" (action)="onPrint()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Language">
-  <app-ribbon-column>
-    <app-ribbon-field
+<app-ribbon-strip-group title="Language">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-field
       label="Syntax"
       [options]="languageOptions"
       [value]="languageName()"
       (changed)="onLanguageChange($event)"
     />
-  </app-ribbon-column>
-</app-ribbon-group>
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Run">
-  <app-ribbon-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
-  <app-ribbon-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Run">
+  <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
+  <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Clipboard">
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="Clipboard">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Edit">
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
-    <app-ribbon-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
-    <app-ribbon-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="Edit">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+    <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+    <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Format">
-  <app-ribbon-button [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Format">
+  <app-ribbon-strip-button [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="View">
-  <app-ribbon-column>
-    <app-ribbon-check label="Word Wrap" [checked]="wordWrap()" (toggled)="onWordWrap($event)" />
-    <app-ribbon-check label="Minimap" [checked]="minimap()" (toggled)="onMinimap($event)" />
-    <app-ribbon-check
+<app-ribbon-strip-group title="View">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-check label="Word Wrap" [checked]="wordWrap()" (toggled)="onWordWrap($event)" />
+    <app-ribbon-strip-check label="Minimap" [checked]="minimap()" (toggled)="onMinimap($event)" />
+    <app-ribbon-strip-check
       label="Line Numbers"
       [checked]="lineNumbers()"
       (toggled)="onLineNumbers($event)"
     />
-  </app-ribbon-column>
-</app-ribbon-group>
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>

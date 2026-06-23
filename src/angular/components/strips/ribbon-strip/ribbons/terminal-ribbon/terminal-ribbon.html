@@ -1,32 +1,32 @@
-<app-ribbon-group title="Session">
-  <app-ribbon-button [icon]="Icon.CLEAR" label="Clear" (action)="onClear()" />
-  <app-ribbon-button [icon]="Icon.TERMINAL" label="Restart" (action)="onRestart()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Session">
+  <app-ribbon-strip-button [icon]="Icon.CLEAR" label="Clear" (action)="onClear()" />
+  <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Restart" (action)="onRestart()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Clipboard">
-  <app-ribbon-button [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-  <app-ribbon-button [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-  <app-ribbon-button [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Clipboard">
+  <app-ribbon-strip-button [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+  <app-ribbon-strip-button [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+  <app-ribbon-strip-button [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Actions">
-  <app-ribbon-button [icon]="Icon.LIST" label="List" (action)="onList()" />
-  <app-ribbon-button [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
-  <app-ribbon-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Actions">
+  <app-ribbon-strip-button [icon]="Icon.LIST" label="List" (action)="onList()" />
+  <app-ribbon-strip-button [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
+  <app-ribbon-strip-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Locations">
-  <app-ribbon-button [icon]="Icon.HOME" label="Home" (action)="onHome()" />
-  <app-ribbon-button [icon]="Icon.ROOT" label="Root" (action)="onRoot()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Locations">
+  <app-ribbon-strip-button [icon]="Icon.HOME" label="Home" (action)="onHome()" />
+  <app-ribbon-strip-button [icon]="Icon.ROOT" label="Root" (action)="onRoot()" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="View">
-  <app-ribbon-column>
-    <app-ribbon-check label="Scroll Lock" />
-    <app-ribbon-check label="Word Wrap" [checked]="true" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="View">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-check label="Scroll Lock" />
+    <app-ribbon-strip-check label="Word Wrap" [checked]="true" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="AI">
-  <app-ribbon-button [icon]="Icon.AGENT" label="Agent" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="AI">
+  <app-ribbon-strip-button [icon]="Icon.AGENT" label="Agent" />
+</app-ribbon-strip-group>

@@ -6,19 +6,19 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { Checkbox } from '../../../../forms/checkbox/checkbox';
+import { Checkbox } from '../../../forms/checkbox/checkbox';
 
 /**
  * Represents a labelled checkbox option in the ribbon.
  */
 @Component({
-  selector: 'app-ribbon-check',
+  selector: 'app-ribbon-strip-check',
   imports: [Checkbox],
-  templateUrl: './ribbon-check.html',
-  styleUrl: './ribbon-check.scss',
+  templateUrl: './ribbon-strip-check.html',
+  styleUrl: './ribbon-strip-check.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonCheck {
+export class RibbonStripCheck {
   /**
    * Gets the label displayed beside the checkbox.
    */

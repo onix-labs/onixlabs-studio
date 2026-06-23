@@ -1,18 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonButtonSmall } from './ribbon-button-small';
-import { Icon } from '../../../../../icons/icon';
+import { RibbonStripButtonSmall } from './ribbon-strip-button-small';
+import { Icon } from '../../../../icons/icon';
 
-describe('RibbonButtonSmall', () => {
-  let component: RibbonButtonSmall;
-  let fixture: ComponentFixture<RibbonButtonSmall>;
+describe('RibbonStripButtonSmall', () => {
+  let component: RibbonStripButtonSmall;
+  let fixture: ComponentFixture<RibbonStripButtonSmall>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonButtonSmall],
+      imports: [RibbonStripButtonSmall],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonButtonSmall);
+    fixture = TestBed.createComponent(RibbonStripButtonSmall);
     fixture.componentRef.setInput('icon', Icon.COPY);
     fixture.componentRef.setInput('label', 'Copy');
     component = fixture.componentInstance;

@@ -4,13 +4,13 @@ import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular
  * Represents a titled group of related controls within the ribbon strip.
  */
 @Component({
-  selector: 'app-ribbon-group',
+  selector: 'app-ribbon-strip-group',
   imports: [],
-  templateUrl: './ribbon-group.html',
-  styleUrl: './ribbon-group.scss',
+  templateUrl: './ribbon-strip-group.html',
+  styleUrl: './ribbon-strip-group.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonGroup {
+export class RibbonStripGroup {
   /**
    * Gets the title displayed beneath the group's controls.
    */

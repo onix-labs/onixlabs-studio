@@ -1,78 +1,78 @@
-<app-ribbon-group title="File">
-  <app-ribbon-button
+<app-ribbon-strip-group title="File">
+  <app-ribbon-strip-button
     [icon]="Icon.SAVE"
     label="Save"
     [disabled]="!hasActiveEditor()"
     (action)="onSave()"
   />
-  <app-ribbon-button
+  <app-ribbon-strip-button
     [icon]="Icon.SAVE"
     label="Save As"
     [disabled]="!hasActiveEditor()"
     (action)="onSaveAs()"
   />
-</app-ribbon-group>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Editor">
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-  </app-ribbon-column>
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
-    <app-ribbon-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
-    <app-ribbon-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="Editor">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+  </app-ribbon-strip-column>
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+    <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+    <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Solution">
-  <app-ribbon-button
+<app-ribbon-strip-group title="Solution">
+  <app-ribbon-strip-button
     [icon]="Icon.BUILD"
     label="Build"
     [disabled]="!canBuild() || running()"
     (action)="onBuild()"
   />
-  <app-ribbon-button [icon]="Icon.REBUILD" label="Rebuild" />
-  <app-ribbon-button [icon]="Icon.CLEAN" label="Clean" />
-</app-ribbon-group>
+  <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" />
+  <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" />
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Run">
-  <app-ribbon-split-button
+<app-ribbon-strip-group title="Run">
+  <app-ribbon-strip-split-button
     [icon]="Icon.PLAY"
     label="Start"
     menuLabel="Debug"
     [disabled]="!canStart() || running()"
     (action)="onStart()"
   />
-  <app-ribbon-button-small
+  <app-ribbon-strip-button-small
     [icon]="Icon.STOP"
     label="Stop"
     [disabled]="!running()"
     (action)="onStop()"
   />
-  <app-ribbon-column>
-    <app-ribbon-field
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-field
       label="Task"
       [options]="taskLabels()"
       [value]="startLabel()"
       [disabled]="taskLabels().length === 0"
       (changed)="onSelectTask($event)"
     />
-  </app-ribbon-column>
-</app-ribbon-group>
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Target">
-  <app-ribbon-column>
-    <app-ribbon-field label="Configuration" [options]="['Debug', 'Release']" value="Debug" />
-    <app-ribbon-field label="Platform" [options]="['Any CPU', 'x64', 'ARM64']" value="Any CPU" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="Target">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-field label="Configuration" [options]="['Debug', 'Release']" value="Debug" />
+    <app-ribbon-strip-field label="Platform" [options]="['Any CPU', 'x64', 'ARM64']" value="Any CPU" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Source Control">
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.GIT_COMMIT" label="Commit" />
-    <app-ribbon-button-small [icon]="Icon.ARROW_UP" label="Push" />
-    <app-ribbon-button-small [icon]="Icon.ARROW_DOWN" label="Pull" />
-  </app-ribbon-column>
-</app-ribbon-group>
+<app-ribbon-strip-group title="Source Control">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.GIT_COMMIT" label="Commit" />
+    <app-ribbon-strip-button-small [icon]="Icon.ARROW_UP" label="Push" />
+    <app-ribbon-strip-button-small [icon]="Icon.ARROW_DOWN" label="Pull" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>

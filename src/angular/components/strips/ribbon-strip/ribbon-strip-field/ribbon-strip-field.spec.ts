@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonField } from './ribbon-field';
+import { RibbonStripField } from './ribbon-strip-field';
 
-describe('RibbonField', () => {
-  let component: RibbonField;
-  let fixture: ComponentFixture<RibbonField>;
+describe('RibbonStripField', () => {
+  let component: RibbonStripField;
+  let fixture: ComponentFixture<RibbonStripField>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonField],
+      imports: [RibbonStripField],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonField);
+    fixture = TestBed.createComponent(RibbonStripField);
     fixture.componentRef.setInput('label', 'Configuration');
     fixture.componentRef.setInput('options', ['Debug', 'Release']);
     component = fixture.componentInstance;
@@ -30,7 +30,7 @@ describe('RibbonField', () => {
   it('value_onInitialRender_selectsTheBoundValueNotTheFirstOption', async () => {
     // Reproduces the code ribbon's language field showing the first option ("C") instead of the
     // controlled value ("Plain Text") on first render.
-    const fresh: ComponentFixture<RibbonField> = TestBed.createComponent(RibbonField);
+    const fresh: ComponentFixture<RibbonStripField> = TestBed.createComponent(RibbonStripField);
     fresh.componentRef.setInput('label', 'Language');
     fresh.componentRef.setInput('options', ['C', 'C#', 'Plain Text', 'TypeScript']);
     fresh.componentRef.setInput('value', 'Plain Text');

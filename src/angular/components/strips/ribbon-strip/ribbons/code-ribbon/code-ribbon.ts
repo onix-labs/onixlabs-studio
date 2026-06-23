@@ -7,12 +7,12 @@ import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '../../../../../services/settings/settings';
 import { Tabs } from '../../../../../services/tabs/tabs';
 import { Icon } from '../../../../../icons/icon';
-import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
-import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
-import { RibbonCheck } from '../../controls/ribbon-check/ribbon-check';
-import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
-import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
-import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
+import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
+import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 
 /**
  * Identifies the Monaco plain-text language, used as the syntax field's fallback when the active
@@ -27,7 +27,7 @@ const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
  */
 @Component({
   selector: 'app-code-ribbon',
-  imports: [RibbonGroup, RibbonColumn, RibbonButton, RibbonButtonSmall, RibbonCheck, RibbonField],
+  imports: [RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripButtonSmall, RibbonStripCheck, RibbonStripField],
   templateUrl: './code-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

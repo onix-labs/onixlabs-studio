@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonCheck } from './ribbon-check';
+import { RibbonStripCheck } from './ribbon-strip-check';
 
-describe('RibbonCheck', () => {
-  let component: RibbonCheck;
-  let fixture: ComponentFixture<RibbonCheck>;
+describe('RibbonStripCheck', () => {
+  let component: RibbonStripCheck;
+  let fixture: ComponentFixture<RibbonStripCheck>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonCheck],
+      imports: [RibbonStripCheck],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonCheck);
+    fixture = TestBed.createComponent(RibbonStripCheck);
     fixture.componentRef.setInput('label', 'Word Wrap');
     component = fixture.componentInstance;
     await fixture.whenStable();

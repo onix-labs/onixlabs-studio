@@ -34,13 +34,13 @@ interface LspSummary {
  * button summarises them and is hidden when the active workspace runs none.
  */
 @Component({
-  selector: 'app-lsp-status-menu',
+  selector: 'app-status-strip-lsp-menu',
   imports: [AppIcon, CdkMenuTrigger, CdkMenu],
-  templateUrl: './lsp-status-menu.html',
-  styleUrl: './lsp-status-menu.scss',
+  templateUrl: './status-strip-lsp-menu.html',
+  styleUrl: './status-strip-lsp-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LspStatusMenu {
+export class StatusStripLspMenu {
   /**
    * Gets the icon set, exposed for the template.
    */

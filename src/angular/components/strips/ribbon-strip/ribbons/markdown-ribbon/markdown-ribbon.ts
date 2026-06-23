@@ -5,16 +5,16 @@ import {
 } from '../../../../../services/markdown-commands/markdown-commands';
 import { Documents } from '../../../../../services/documents/documents';
 import { Icon } from '../../../../../icons/icon';
-import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
-import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
-import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
-import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
-import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
+import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 import {
-  RibbonMenuButton,
+  RibbonStripMenuButton,
   RibbonMenuItem,
-} from '../../controls/ribbon-menu-button/ribbon-menu-button';
-import { RibbonRow } from '../../controls/ribbon-row/ribbon-row';
+} from '../../ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
 
 /**
  * Maps each selectable block type to the label shown in the ribbon's style field.
@@ -90,13 +90,13 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
 @Component({
   selector: 'app-markdown-ribbon',
   imports: [
-    RibbonGroup,
-    RibbonColumn,
-    RibbonButton,
-    RibbonButtonSmall,
-    RibbonField,
-    RibbonMenuButton,
-    RibbonRow,
+    RibbonStripGroup,
+    RibbonStripColumn,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripField,
+    RibbonStripMenuButton,
+    RibbonStripRow,
   ],
   templateUrl: './markdown-ribbon.html',
   styleUrls: ['../ribbon-row.scss', './markdown-ribbon.scss'],

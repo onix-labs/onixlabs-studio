@@ -1,94 +1,94 @@
-<app-ribbon-group title="File">
-  <app-ribbon-menu-button
+<app-ribbon-strip-group title="File">
+  <app-ribbon-strip-menu-button
     [icon]="Icon.SAVE"
     label="Save"
     [items]="saveItems"
     (action)="onSave()"
     (selected)="onSaveVariant($event)"
   />
-  <app-ribbon-menu-button
+  <app-ribbon-strip-menu-button
     [icon]="Icon.PRINT"
     label="Print"
     [items]="printItems"
     (action)="onPrint()"
     (selected)="onPrintVariant($event)"
   />
-</app-ribbon-group>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Clipboard">
-  <app-ribbon-menu-button
+<app-ribbon-strip-group title="Clipboard">
+  <app-ribbon-strip-menu-button
     [icon]="Icon.CUT"
     label="Cut"
     [items]="cutItems"
     (action)="onCut()"
     (selected)="onCutVariant($event)"
   />
-  <app-ribbon-menu-button
+  <app-ribbon-strip-menu-button
     [icon]="Icon.COPY"
     label="Copy"
     [items]="copyItems"
     (action)="onCopy()"
     (selected)="onCopyVariant($event)"
   />
-  <app-ribbon-menu-button
+  <app-ribbon-strip-menu-button
     [icon]="Icon.PASTE"
     label="Paste"
     [items]="pasteItems"
     (action)="onPaste()"
     (selected)="onPasteVariant($event)"
   />
-</app-ribbon-group>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Format">
-  <app-ribbon-column>
-    <app-ribbon-row>
-      <app-ribbon-button-small
+<app-ribbon-strip-group title="Format">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-row>
+      <app-ribbon-strip-button-small
         [icon]="Icon.BOLD"
         label="Bold"
         [iconOnly]="true"
         (action)="onBold()"
       />
-      <app-ribbon-button-small
+      <app-ribbon-strip-button-small
         [icon]="Icon.ITALIC"
         label="Italic"
         [iconOnly]="true"
         (action)="onItalic()"
       />
-      <app-ribbon-button-small
+      <app-ribbon-strip-button-small
         [icon]="Icon.STRIKETHROUGH"
         label="Strike"
         [iconOnly]="true"
         (action)="onStrikethrough()"
       />
-      <app-ribbon-button-small
+      <app-ribbon-strip-button-small
         [icon]="Icon.CODE_INLINE"
         label="Code"
         [iconOnly]="true"
         (action)="onInlineCode()"
       />
-    </app-ribbon-row>
-    <app-ribbon-field
+    </app-ribbon-strip-row>
+    <app-ribbon-strip-field
       label="Style"
       [options]="blockOptions"
       [value]="blockLabel()"
       (changed)="onBlockChange($event)"
     />
-  </app-ribbon-column>
-</app-ribbon-group>
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Lists">
-  <app-ribbon-column>
-    <app-ribbon-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
-    <app-ribbon-button-small
+<app-ribbon-strip-group title="Lists">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
+    <app-ribbon-strip-button-small
       [icon]="Icon.NUMBERED_LIST"
       label="Numbers"
       (action)="onOrderedList()"
     />
-    <app-ribbon-button-small [icon]="Icon.TASK_LIST" label="Tasks" (action)="onTaskList()" />
-  </app-ribbon-column>
-</app-ribbon-group>
+    <app-ribbon-strip-button-small [icon]="Icon.TASK_LIST" label="Tasks" (action)="onTaskList()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
 
-<app-ribbon-group title="Insert">
-  <app-ribbon-button [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
-  <app-ribbon-button [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
-</app-ribbon-group>
+<app-ribbon-strip-group title="Insert">
+  <app-ribbon-strip-button [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
+  <app-ribbon-strip-button [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
+</app-ribbon-strip-group>

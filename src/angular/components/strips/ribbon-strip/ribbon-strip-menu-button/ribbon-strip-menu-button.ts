@@ -8,15 +8,15 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../../../shared/icon/app-icon';
-import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '../../../../icons/icon';
 
 /**
- * Describes a single entry in a {@link RibbonMenuButton}'s dropdown.
+ * Describes a single entry in a {@link RibbonStripMenuButton}'s dropdown.
  */
 export interface RibbonMenuItem {
   /**
-   * Gets the identifier emitted through {@link RibbonMenuButton.select} when the item is chosen.
+   * Gets the identifier emitted through {@link RibbonStripMenuButton.select} when the item is chosen.
    */
   readonly id: string;
 
@@ -33,17 +33,17 @@ export interface RibbonMenuItem {
 
 /**
  * Represents a menu button in the ribbon: a large primary action with an attached chevron that opens
- * a dropdown of related variants. Unlike {@link RibbonSplitButton}, whose chevron emits a single menu
+ * a dropdown of related variants. Unlike {@link RibbonStripSplitButton}, whose chevron emits a single menu
  * event, this control renders the variants itself and emits the chosen one through {@link select}.
  */
 @Component({
-  selector: 'app-ribbon-menu-button',
+  selector: 'app-ribbon-strip-menu-button',
   imports: [AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
-  templateUrl: './ribbon-menu-button.html',
-  styleUrl: './ribbon-menu-button.scss',
+  templateUrl: './ribbon-strip-menu-button.html',
+  styleUrl: './ribbon-strip-menu-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonMenuButton {
+export class RibbonStripMenuButton {
   /**
    * Gets the icon set, exposed for the template.
    */

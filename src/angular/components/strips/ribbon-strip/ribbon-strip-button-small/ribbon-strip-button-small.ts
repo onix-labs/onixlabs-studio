@@ -6,25 +6,25 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../../../shared/icon/app-icon';
-import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '../../../../icons/icon';
 
 /**
  * Represents a small command button in the ribbon, rendering an icon beside a label. Three small
- * buttons stack to the height of a single large {@link RibbonButton}. When {@link toggle} is set
+ * buttons stack to the height of a single large {@link RibbonStripButton}. When {@link toggle} is set
  * the button behaves as a latching toggle, reflecting its {@link pressed} state.
  */
 @Component({
-  selector: 'app-ribbon-button-small',
+  selector: 'app-ribbon-strip-button-small',
   imports: [AppIcon],
-  templateUrl: './ribbon-button-small.html',
-  styleUrl: './ribbon-button-small.scss',
+  templateUrl: './ribbon-strip-button-small.html',
+  styleUrl: './ribbon-strip-button-small.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.ribbon-button-small--icon-only]': 'iconOnly()',
   },
 })
-export class RibbonButtonSmall {
+export class RibbonStripButtonSmall {
   /**
    * Gets the icon to display.
    */

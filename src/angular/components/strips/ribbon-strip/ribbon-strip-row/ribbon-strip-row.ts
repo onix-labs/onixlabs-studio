@@ -2,14 +2,14 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 /**
  * Represents a horizontal lane within a ribbon group, laying its projected controls out in a row.
- * Paired with a {@link RibbonColumn}, it lets a group stack rows of controls (for example a field
+ * Paired with a {@link RibbonStripColumn}, it lets a group stack rows of controls (for example a field
  * above a row of small buttons) within the group's fixed height.
  */
 @Component({
-  selector: 'app-ribbon-row',
+  selector: 'app-ribbon-strip-row',
   imports: [],
-  templateUrl: './ribbon-row.html',
-  styleUrl: './ribbon-row.scss',
+  templateUrl: './ribbon-strip-row.html',
+  styleUrl: './ribbon-strip-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonRow {}
+export class RibbonStripRow {}

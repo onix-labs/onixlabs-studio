@@ -6,20 +6,20 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../../../shared/icon/app-icon';
-import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '../../../../icons/icon';
 
 /**
  * Represents a large command button in the ribbon, rendering an icon above a label.
  */
 @Component({
-  selector: 'app-ribbon-button',
+  selector: 'app-ribbon-strip-button',
   imports: [AppIcon],
-  templateUrl: './ribbon-button.html',
-  styleUrl: './ribbon-button.scss',
+  templateUrl: './ribbon-strip-button.html',
+  styleUrl: './ribbon-strip-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonButton {
+export class RibbonStripButton {
   /**
    * Gets the icon to display.
    */

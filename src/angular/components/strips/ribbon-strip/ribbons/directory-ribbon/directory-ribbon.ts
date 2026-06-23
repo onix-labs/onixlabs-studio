@@ -2,12 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
 import { Builds, BuildTask } from '../../../../../services/tasks/builds';
 import { Icon } from '../../../../../icons/icon';
-import { RibbonButton } from '../../controls/ribbon-button/ribbon-button';
-import { RibbonButtonSmall } from '../../controls/ribbon-button-small/ribbon-button-small';
-import { RibbonColumn } from '../../controls/ribbon-column/ribbon-column';
-import { RibbonField } from '../../controls/ribbon-field/ribbon-field';
-import { RibbonGroup } from '../../controls/ribbon-group/ribbon-group';
-import { RibbonSplitButton } from '../../controls/ribbon-split-button/ribbon-split-button';
+import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripSplitButton } from '../../ribbon-strip-split-button/ribbon-strip-split-button';
 
 /**
  * Represents the contextual ribbon shown when a directory tab is active. The File and Editor groups
@@ -18,12 +18,12 @@ import { RibbonSplitButton } from '../../controls/ribbon-split-button/ribbon-spl
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
-    RibbonGroup,
-    RibbonColumn,
-    RibbonButton,
-    RibbonButtonSmall,
-    RibbonField,
-    RibbonSplitButton,
+    RibbonStripGroup,
+    RibbonStripColumn,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripField,
+    RibbonStripSplitButton,
   ],
   templateUrl: './directory-ribbon.html',
   styleUrl: '../ribbon-row.scss',

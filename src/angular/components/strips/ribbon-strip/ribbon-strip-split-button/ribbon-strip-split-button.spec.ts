@@ -1,18 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonSplitButton } from './ribbon-split-button';
-import { Icon } from '../../../../../icons/icon';
+import { RibbonStripSplitButton } from './ribbon-strip-split-button';
+import { Icon } from '../../../../icons/icon';
 
-describe('RibbonSplitButton', () => {
-  let component: RibbonSplitButton;
-  let fixture: ComponentFixture<RibbonSplitButton>;
+describe('RibbonStripSplitButton', () => {
+  let component: RibbonStripSplitButton;
+  let fixture: ComponentFixture<RibbonStripSplitButton>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonSplitButton],
+      imports: [RibbonStripSplitButton],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonSplitButton);
+    fixture = TestBed.createComponent(RibbonStripSplitButton);
     fixture.componentRef.setInput('icon', Icon.PLAY);
     fixture.componentRef.setInput('label', 'Start');
     fixture.componentRef.setInput('menuLabel', 'Debug');

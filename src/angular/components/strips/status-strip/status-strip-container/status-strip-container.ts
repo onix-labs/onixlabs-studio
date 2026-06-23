@@ -4,7 +4,7 @@ import { Tab } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { Icon } from '../../../../icons/icon';
 import { AppIcon } from '../../../shared/icon/app-icon';
-import { LspStatusMenu } from '../lsp-status-menu/lsp-status-menu';
+import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 
 /**
  * Represents the status strip, which shows contextual segments published by the active view and
@@ -13,7 +13,7 @@ import { LspStatusMenu } from '../lsp-status-menu/lsp-status-menu';
  */
 @Component({
   selector: 'app-status-strip-container',
-  imports: [AppIcon, LspStatusMenu],
+  imports: [AppIcon, StatusStripLspMenu],
   templateUrl: './status-strip-container.html',
   styleUrl: './status-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

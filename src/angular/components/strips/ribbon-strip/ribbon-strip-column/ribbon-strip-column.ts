@@ -6,10 +6,10 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
  * side by side within a single group.
  */
 @Component({
-  selector: 'app-ribbon-column',
+  selector: 'app-ribbon-strip-column',
   imports: [],
-  templateUrl: './ribbon-column.html',
-  styleUrl: './ribbon-column.scss',
+  templateUrl: './ribbon-strip-column.html',
+  styleUrl: './ribbon-strip-column.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RibbonColumn {}
+export class RibbonStripColumn {}

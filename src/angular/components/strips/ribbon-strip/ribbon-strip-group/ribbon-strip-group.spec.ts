@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { RibbonGroup } from './ribbon-group';
+import { RibbonStripGroup } from './ribbon-strip-group';
 
-describe('RibbonGroup', () => {
-  let component: RibbonGroup;
-  let fixture: ComponentFixture<RibbonGroup>;
+describe('RibbonStripGroup', () => {
+  let component: RibbonStripGroup;
+  let fixture: ComponentFixture<RibbonStripGroup>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RibbonGroup],
+      imports: [RibbonStripGroup],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RibbonGroup);
+    fixture = TestBed.createComponent(RibbonStripGroup);
     fixture.componentRef.setInput('title', 'Clipboard');
     component = fixture.componentInstance;
     await fixture.whenStable();
