@@ -219,6 +219,11 @@ export class LspFeatures {
     }
     this.registered = true;
     this.semanticTokensChanged = new monaco.Emitter<void>();
+    // Suppress Monaco's heuristic semantic tokens for any model a language server can serve, so the
+    // server's accurate tokens are the sole source and the heuristic does no redundant work.
+    this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
+      this.servesSemanticTokens(model),
+    );
     for (const language of FEATURE_LANGUAGES) {
       monaco.languages.registerCompletionItemProvider(language, {
         triggerCharacters: [...TRIGGER_CHARACTERS],
@@ -278,6 +283,19 @@ export class LspFeatures {
    * @returns Returns the semantic tokens, or undefined when no server owns the model or it provides
    * none.
    */
+  /**
+   * Gets whether a language server can serve semantic tokens for a model: it owns the model and has
+   * reported a token legend. Used to suppress Monaco's heuristic tokens for documents the server
+   * colours, while leaving server-less documents (and documents whose server has not started) to the
+   * heuristic.
+   * @param model The model a token request is for.
+   * @returns Returns true when a server serves semantic tokens for the model.
+   */
+  private servesSemanticTokens(model: MonacoApi.editor.ITextModel): boolean {
+    const legend: LspSemanticTokensLegend | null | undefined = this.resolve(model)?.semanticLegend;
+    return legend !== undefined && legend !== null;
+  }
+
   private async provideSemanticTokens(
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {

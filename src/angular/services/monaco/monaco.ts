@@ -176,6 +176,141 @@ const FALLBACK_GRAYS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The languages whose Monaco-bundled Monarch tokenizer colours keywords, strings and comments but
+ * leaves type and method identifiers in the default foreground. TypeScript and JavaScript are
+ * excluded because their language service already supplies semantic tokens.
+ */
+const HEURISTIC_SEMANTIC_TOKEN_LANGUAGES: readonly string[] = [
+  'csharp',
+  'java',
+  'kotlin',
+  'rust',
+  'go',
+  'cpp',
+  'c',
+];
+
+/**
+ * The semantic-token legend for the heuristic provider: index 0 is `type`, index 1 is `function`.
+ * The registered themes colour both (see {@link Monaco.defineThemes}).
+ */
+const HEURISTIC_SEMANTIC_TOKEN_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
+  tokenTypes: ['type', 'function'],
+  tokenModifiers: [],
+};
+
+// Index into the legend's tokenTypes for the "type" classification.
+const HEURISTIC_TYPE_INDEX: number = 0;
+// Index into the legend's tokenTypes for the "function" classification.
+const HEURISTIC_FUNCTION_INDEX: number = 1;
+// Sentinel value indicating an identifier was not classified.
+const HEURISTIC_NO_TOKEN_INDEX: number = -1;
+// Minimum identifier length required before treating a PascalCase identifier as a type.
+const HEURISTIC_MIN_TYPE_NAME_LENGTH: number = 1;
+// Bitset of token modifiers applied to each emitted token (none).
+const HEURISTIC_NO_MODIFIERS: number = 0;
+// Delta-line value identifying a token on the same line as the previous one.
+const HEURISTIC_SAME_LINE_DELTA: number = 0;
+// Step used to adjust binary-search bounds by a single index.
+const HEURISTIC_SEARCH_STEP: number = 1;
+// Right shift amount that halves a value (integer divide by two).
+const HEURISTIC_HALVE_SHIFT: number = 1;
+
+/**
+ * A minimal view of a Monaco Monarch token: the column it starts at and its scope name. Matches the
+ * shape of {@link MonacoApi.Token} (`monaco.editor.tokenize` output) without depending on the
+ * loaded editor, so the scan can be unit tested.
+ */
+export interface MonarchToken {
+  /**
+   * Gets the zero-based column the token starts at.
+   */
+  readonly offset: number;
+
+  /**
+   * Gets the token's scope name (for example `keyword.cs` or `identifier`).
+   */
+  readonly type: string;
+}
+
+/**
+ * Builds delta-packed semantic tokens that colour type and method identifiers a Monarch tokenizer
+ * leaves uncoloured. Emits a `type` token for a PascalCase identifier and a `function` token for an
+ * identifier immediately followed by `(`, skipping any identifier the Monarch pass already classified
+ * as a string, comment or keyword so it never repaints over them.
+ *
+ * This is heuristic, not semantic: PascalCase constants colour as types, method definitions colour
+ * the same as calls, and similar minor mislabels are inherent. A language server supersedes it.
+ * @param source The full document text.
+ * @param monarchLines The Monarch tokens per line (from `monaco.editor.tokenize`), used only to skip
+ * strings, comments and keywords.
+ * @returns Returns the delta-packed token data for a Monaco `SemanticTokens` result.
+ */
+export function buildHeuristicSemanticTokens(
+  source: string,
+  monarchLines: readonly (readonly MonarchToken[])[],
+): Uint32Array {
+  const lines: readonly string[] = source.split(/\r\n|\r|\n/);
+  const identifierPattern: RegExp = /\b([A-Za-z_]\w*)(\s*[<(])?/g;
+  const isSkippableTokenType: (type: string) => boolean = (type: string): boolean =>
+    type.startsWith('string') || type.startsWith('comment') || type.startsWith('keyword');
+  const data: number[] = [];
+  let prevLine: number = 0;
+  let prevChar: number = 0;
+
+  for (let lineIdx: number = 0; lineIdx < lines.length; lineIdx++) {
+    const line: string = lines[lineIdx];
+    const lineTokens: readonly MonarchToken[] = monarchLines[lineIdx] ?? [];
+
+    // Binary search the Monarch token covering a column, so identifiers inside strings or comments
+    // can be skipped.
+    const tokenTypeAt: (col: number) => string = (col: number): string => {
+      let lo: number = 0;
+      let hi: number = lineTokens.length - HEURISTIC_SEARCH_STEP;
+      let best: number = 0;
+      while (lo <= hi) {
+        const mid: number = (lo + hi) >> HEURISTIC_HALVE_SHIFT;
+        if (lineTokens[mid].offset <= col) {
+          best = mid;
+          lo = mid + HEURISTIC_SEARCH_STEP;
+        } else {
+          hi = mid - HEURISTIC_SEARCH_STEP;
+        }
+      }
+      return lineTokens[best]?.type ?? '';
+    };
+
+    identifierPattern.lastIndex = 0;
+    let match: RegExpExecArray | null = identifierPattern.exec(line);
+    while (match !== null) {
+      const name: string = match[1];
+      const trailer: string = (match[2] ?? '').trim();
+      const startChar: number = match.index;
+
+      if (!isSkippableTokenType(tokenTypeAt(startChar))) {
+        let tokenTypeIdx: number = HEURISTIC_NO_TOKEN_INDEX;
+        if (trailer === '(') {
+          tokenTypeIdx = HEURISTIC_FUNCTION_INDEX;
+        } else if (/^[A-Z]/.test(name) && name.length > HEURISTIC_MIN_TYPE_NAME_LENGTH) {
+          tokenTypeIdx = HEURISTIC_TYPE_INDEX;
+        }
+        if (tokenTypeIdx !== HEURISTIC_NO_TOKEN_INDEX) {
+          const deltaLine: number = lineIdx - prevLine;
+          const deltaChar: number =
+            deltaLine === HEURISTIC_SAME_LINE_DELTA ? startChar - prevChar : startChar;
+          data.push(deltaLine, deltaChar, name.length, tokenTypeIdx, HEURISTIC_NO_MODIFIERS);
+          prevLine = lineIdx;
+          prevChar = startChar;
+        }
+      }
+      match = identifierPattern.exec(line);
+    }
+  }
+
+  return new Uint32Array(data);
+}
+
+/**
  * Loads and configures Monaco for the code editor: bootstraps the AMD loader, wires the worker
  * environment, registers the application's themes (built from the `--gray-*` palette), and exposes
  * language detection and default editor options derived from settings.
@@ -204,6 +339,14 @@ export class Monaco {
    * Holds the in-flight load promise, so concurrent callers share a single load.
    */
   private loadPromise: Promise<void> | null = null;
+
+  /**
+   * Holds predicates that suppress the heuristic semantic tokens for the models they own. A language
+   * server registers one (via {@link suppressHeuristicTokensWhen}) so its accurate tokens are never
+   * second-guessed by the heuristic for documents it serves.
+   */
+  private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
+    new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
 
   /**
    * Gets a value indicating whether Monaco has finished loading.
@@ -518,17 +661,28 @@ export class Monaco {
   }
 
   /**
-   * Registers a heuristic semantic-tokens provider for the languages whose Monaco-bundled Monarch
-   * tokenizer leaves type and method identifiers uncolored (C#, Java, C, C++, Go, Rust, Kotlin). The
-   * provider re-scans the buffer per request, emitting a `type` token for PascalCase identifiers and
-   * a `function` token for identifiers immediately followed by `(`, which the registered themes then
-   * paint (see {@link defineThemes}). Positions Monarch already classified as string/comment/keyword
-   * are skipped so it never repaints over them.
-   *
-   * This is heuristic, not semantic: PascalCase constants colour as types, method definitions colour
-   * the same as calls, and similar minor mislabels are inherent. TypeScript/JavaScript have a real
-   * language service that already supplies semantic tokens, so they are excluded; a workspace's
-   * language server, when present, supersedes this for accuracy.
+   * Registers a predicate that suppresses the heuristic semantic tokens for the models it owns, so a
+   * language server that supplies accurate semantic tokens for a document is never second-guessed —
+   * and the heuristic skips its work — for that document. Predicates accumulate, so several owners
+   * (for example one per workspace) can register independently.
+   * @param predicate Returns true for a model the caller serves semantic tokens for.
+   * @returns Returns a function that removes the predicate.
+   */
+  public suppressHeuristicTokensWhen(
+    predicate: (model: MonacoApi.editor.ITextModel) => boolean,
+  ): () => void {
+    this.heuristicTokenSuppressors.add(predicate);
+    return (): void => {
+      this.heuristicTokenSuppressors.delete(predicate);
+    };
+  }
+
+  /**
+   * Registers the heuristic semantic-tokens provider for the {@link HEURISTIC_SEMANTIC_TOKEN_LANGUAGES}
+   * whose Monaco-bundled Monarch tokenizer leaves type and method identifiers uncoloured. The token
+   * scan is {@link buildHeuristicSemanticTokens}; the registered themes paint the emitted `type` and
+   * `function` tokens (see {@link defineThemes}). A document a language server serves is skipped (see
+   * {@link suppressHeuristicTokensWhen}), so the server's accurate tokens win without contention.
    */
   private registerHeuristicSemanticTokens(): void {
     const monaco: typeof MonacoApi | undefined = window.monaco;
@@ -536,102 +690,37 @@ export class Monaco {
       return;
     }
 
-    // Index into the legend's tokenTypes for the "type" classification.
-    const TOKEN_TYPE_INDEX: number = 0;
-    // Index into the legend's tokenTypes for the "function" classification.
-    const TOKEN_FUNCTION_INDEX: number = 1;
-    // Sentinel value indicating an identifier was not classified.
-    const NO_TOKEN_TYPE_INDEX: number = -1;
-    // Minimum identifier length required before treating PascalCase as a type.
-    const MIN_TYPE_NAME_LENGTH: number = 1;
-    // Bitset of token modifiers applied to each emitted token (none).
-    const NO_TOKEN_MODIFIERS: number = 0;
-    // Delta-line value identifying a token on the same line as the previous one.
-    const SAME_LINE_DELTA: number = 0;
-    // Step used to adjust binary-search bounds by a single index.
-    const BINARY_SEARCH_STEP: number = 1;
-    // Right shift amount that halves a value (integer divide by two).
-    const HALVE_SHIFT: number = 1;
-
-    const legend: MonacoApi.languages.SemanticTokensLegend = {
-      tokenTypes: ['type', 'function'],
-      tokenModifiers: [],
-    };
-
-    // Languages whose Monaco-bundled Monarch tokenizer doesn't colour type/method identifiers.
-    const targets: readonly string[] = ['csharp', 'java', 'kotlin', 'rust', 'go', 'cpp', 'c'];
-
-    const identifierPattern: RegExp = /\b([A-Za-z_]\w*)(\s*[<(])?/g;
-    const isSkippableTokenType: (type: string) => boolean = (type: string): boolean =>
-      type.startsWith('string') || type.startsWith('comment') || type.startsWith('keyword');
-
-    for (const languageId of targets) {
+    for (const languageId of HEURISTIC_SEMANTIC_TOKEN_LANGUAGES) {
       monaco.languages.registerDocumentSemanticTokensProvider(languageId, {
-        getLegend: (): MonacoApi.languages.SemanticTokensLegend => legend,
+        getLegend: (): MonacoApi.languages.SemanticTokensLegend => HEURISTIC_SEMANTIC_TOKEN_LEGEND,
         releaseDocumentSemanticTokens: (): void => undefined,
         provideDocumentSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
-        ): MonacoApi.languages.SemanticTokens => {
+        ): MonacoApi.languages.SemanticTokens | null => {
+          if (this.isHeuristicTokensSuppressed(model)) {
+            return null;
+          }
           const source: string = model.getValue();
           const monarchLines: MonacoApi.Token[][] = monaco.editor.tokenize(source, languageId);
-          const lines: readonly string[] = source.split(/\r\n|\r|\n/);
-          const data: number[] = [];
-          let prevLine: number = 0;
-          let prevChar: number = 0;
-
-          for (let lineIdx: number = 0; lineIdx < lines.length; lineIdx++) {
-            const line: string = lines[lineIdx];
-            const lineTokens: MonacoApi.Token[] = monarchLines[lineIdx] ?? [];
-
-            // Binary search the Monarch token covering a given column, so identifiers inside
-            // strings or comments can be skipped.
-            const tokenTypeAt: (col: number) => string = (col: number): string => {
-              let lo: number = 0;
-              let hi: number = lineTokens.length - BINARY_SEARCH_STEP;
-              let best: number = 0;
-              while (lo <= hi) {
-                const mid: number = (lo + hi) >> HALVE_SHIFT;
-                if (lineTokens[mid].offset <= col) {
-                  best = mid;
-                  lo = mid + BINARY_SEARCH_STEP;
-                } else {
-                  hi = mid - BINARY_SEARCH_STEP;
-                }
-              }
-              return lineTokens[best]?.type ?? '';
-            };
-
-            identifierPattern.lastIndex = 0;
-            let match: RegExpExecArray | null = identifierPattern.exec(line);
-            while (match !== null) {
-              const name: string = match[1];
-              const trailer: string = (match[2] ?? '').trim();
-              const startChar: number = match.index;
-
-              if (!isSkippableTokenType(tokenTypeAt(startChar))) {
-                let tokenTypeIdx: number = NO_TOKEN_TYPE_INDEX;
-                if (trailer === '(') {
-                  tokenTypeIdx = TOKEN_FUNCTION_INDEX;
-                } else if (/^[A-Z]/.test(name) && name.length > MIN_TYPE_NAME_LENGTH) {
-                  tokenTypeIdx = TOKEN_TYPE_INDEX;
-                }
-                if (tokenTypeIdx !== NO_TOKEN_TYPE_INDEX) {
-                  const deltaLine: number = lineIdx - prevLine;
-                  const deltaChar: number =
-                    deltaLine === SAME_LINE_DELTA ? startChar - prevChar : startChar;
-                  data.push(deltaLine, deltaChar, name.length, tokenTypeIdx, NO_TOKEN_MODIFIERS);
-                  prevLine = lineIdx;
-                  prevChar = startChar;
-                }
-              }
-              match = identifierPattern.exec(line);
-            }
-          }
-
-          return { data: new Uint32Array(data), resultId: undefined };
+          return { data: buildHeuristicSemanticTokens(source, monarchLines), resultId: undefined };
         },
       });
     }
+  }
+
+  /**
+   * Gets whether the heuristic semantic tokens are suppressed for a model because a registered owner
+   * (typically a language server) serves it.
+   * @param model The model a token request is for.
+   * @returns Returns true when any registered predicate claims the model.
+   */
+  private isHeuristicTokensSuppressed(model: MonacoApi.editor.ITextModel): boolean {
+    for (const predicate of this.heuristicTokenSuppressors) {
+      if (predicate(model)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
