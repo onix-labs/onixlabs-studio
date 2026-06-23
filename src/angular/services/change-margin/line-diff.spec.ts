@@ -74,10 +74,33 @@ describe('computeLineChanges', () => {
     expect(sorted(result.deletionAnchors)).toEqual([]);
   });
 
-  it('insertion_whenDuplicateLineInsertedWithTrailingContext_attributesItToTheEarliestLine', () => {
-    // Inserting a second 'x' between 'x' and 'y' is ambiguous; it slides up to the earliest line.
+  it('insertion_whenDuplicateNonBlankBlockPastedBelow_marksThePastedLowerCopyNotTheOriginal', () => {
+    // Copying a block and pasting it below the original must mark the pasted (lower) copy, leaving the
+    // untouched original above it clean. Sliding is restricted to blank lines, so the substantive
+    // content keeps the diff's own attribution rather than sliding up onto the original.
+    const result: LineChangeSet = computeLineChanges(
+      ['keep', 'first()', 'second()'],
+      ['keep', 'first()', 'second()', 'first()', 'second()'],
+    );
+    expect(sorted(result.changedLines)).toEqual([4, 5]);
+    expect(sorted(result.deletionAnchors)).toEqual([]);
+  });
+
+  it('insertion_whenBlankSeparatedBlockPastedBelow_marksThePastedBlockIncludingItsLeadingBlank', () => {
+    // Copying "blank + block" and pasting it below (as when duplicating a method) marks the pasted
+    // copy, even though its leading blank could slide up — the block's substantive lines pin it.
+    const result: LineChangeSet = computeLineChanges(
+      ['head', '', 'sig', 'end'],
+      ['head', '', 'sig', 'end', '', 'sig', 'end'],
+    );
+    expect(sorted(result.changedLines)).toEqual([5, 6, 7]);
+    expect(sorted(result.deletionAnchors)).toEqual([]);
+  });
+
+  it('insertion_whenDuplicateNonBlankLineInserted_keepsTheDiffsAttribution', () => {
+    // A non-blank duplicate is not slid; it keeps the diff's attribution rather than moving up.
     const result: LineChangeSet = computeLineChanges(['x', 'y'], ['x', 'x', 'y']);
-    expect(sorted(result.changedLines)).toEqual([1]);
+    expect(sorted(result.changedLines)).toEqual([2]);
     expect(sorted(result.deletionAnchors)).toEqual([]);
   });
 

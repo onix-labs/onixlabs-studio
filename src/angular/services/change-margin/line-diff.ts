@@ -49,12 +49,25 @@ interface DiffHunk {
 }
 
 /**
- * Normalises a line diff by sliding each pure insertion or deletion as far up as the surrounding
- * identical context allows. When a line is inserted next to an identical line (for example a blank
- * line typed next to an existing blank line), the diff is free to attribute the change to either line;
- * sliding upward attributes it to the earliest position, which is the line the edit was made on. This
- * is purely an attribution change — the original and modified contents the hunks describe are
- * preserved, because a slide only swaps lines of equal value.
+ * Determines whether a line is blank, that is empty or whitespace only.
+ * @param line The line to test.
+ * @returns Returns true when the line has no non-whitespace content.
+ */
+function isBlank(line: string): boolean {
+  return line.trim() === '';
+}
+
+/**
+ * Normalises a line diff by sliding each pure insertion or deletion up through identical *blank*
+ * context. When a blank line is inserted or deleted next to an existing blank line (for example
+ * pressing enter on a line above a blank line), the diff is free to attribute the change to either
+ * blank; sliding upward attributes it to the earliest one, which is the line the edit was made on.
+ *
+ * Sliding is restricted to blank lines on purpose. Runs of substantive content are left at the diff's
+ * own attribution, so duplicating a block of code and pasting it below the original marks the pasted
+ * (lower) copy rather than sliding the marks onto the untouched original above it. This is purely an
+ * attribution change — the original and modified contents the hunks describe are preserved, because a
+ * slide only ever swaps lines of equal value.
  * @param input The raw diff hunks.
  * @returns Returns the normalised hunks.
  */
@@ -82,7 +95,8 @@ function slideChangesUpward(input: ArrayChange<string>[]): DiffHunk[] {
       !previous.removed &&
       previous.value.length > 0 &&
       (following === undefined || (!following.added && !following.removed)) &&
-      previous.value[previous.value.length - 1] === hunk.value[hunk.value.length - 1]
+      previous.value[previous.value.length - 1] === hunk.value[hunk.value.length - 1] &&
+      isBlank(hunk.value[hunk.value.length - 1])
     ) {
       if (following === undefined) {
         // The run is at the end of the document; create the trailing common context to slide into.
