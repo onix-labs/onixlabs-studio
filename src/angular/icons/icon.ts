@@ -611,6 +611,11 @@ export class Icon {
   public static readonly CARET_UP: Icon = new Icon('ph ph-caret-up');
 
   /**
+   * Gets the leftward caret used on back navigation and collapsed nodes in right-to-left layouts.
+   */
+  public static readonly CARET_LEFT: Icon = new Icon('ph ph-caret-left');
+
+  /**
    * Gets the rightward caret used on collapsed nodes.
    */
   public static readonly CARET_RIGHT: Icon = new Icon('ph ph-caret-right');
@@ -619,6 +624,16 @@ export class Icon {
    * Gets the filled downward caret used on expanded tree nodes.
    */
   public static readonly CARET_DOWN_FILL: Icon = new Icon('ph-fill ph-caret-down');
+
+  /**
+   * Gets the filled upward caret used on expanded tree nodes that open above their trigger.
+   */
+  public static readonly CARET_UP_FILL: Icon = new Icon('ph-fill ph-caret-up');
+
+  /**
+   * Gets the filled leftward caret used on collapsed tree nodes in right-to-left layouts.
+   */
+  public static readonly CARET_LEFT_FILL: Icon = new Icon('ph-fill ph-caret-left');
 
   /**
    * Gets the filled rightward caret used on collapsed tree nodes.

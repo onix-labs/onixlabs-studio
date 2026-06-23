@@ -26,10 +26,6 @@
   }
 }
 
-.lsp-status-menu__trigger--ready {
-  color: var(--accent-color);
-}
-
 // Spin the spinner icon while a server is starting, so the trigger reads as in-progress.
 .lsp-status-menu__trigger--starting app-icon:first-child {
   display: inline-flex;

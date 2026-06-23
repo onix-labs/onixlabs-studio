@@ -2,14 +2,11 @@
   <button
     type="button"
     class="lsp-status-menu__trigger"
-    [class]="'lsp-status-menu__trigger lsp-status-menu__trigger--' + summary.state"
     [title]="summary.label"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
   >
-    <app-icon [icon]="summary.icon" />
     <span class="lsp-status-menu__trigger-label">{{ summary.label }}</span>
-    <app-icon [icon]="Icon.CARET_UP" />
   </button>
 }
 
