@@ -34,11 +34,11 @@
     cursor: default;
   }
 
-  // Chevron drawn by the picker; swaps the native arrow for our icon font and flips when open.
+  // Caret drawn by the picker; points down when closed and flips up when the menu is open.
   &::picker-icon {
-    font-family: 'Phosphor';
+    font-family: 'Phosphor-Fill';
     font-size: 0.8rem;
-    content: '\e136'; // ph-caret-down
+    content: '\e136'; // ph-caret-down (fill weight — a solid caret, not a line chevron)
     color: var(--form-muted-foreground-color);
     transition: rotate 150ms ease-in-out;
   }
