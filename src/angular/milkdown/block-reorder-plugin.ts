@@ -353,7 +353,8 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       if (newState.selection.empty) {
         return null;
       }
-      deselectArmedAt = null;
+      // Stay armed for the rest of the window so a re-selection on a later pointer event is collapsed
+      // too; the window expiry above disarms it.
       return newState.tr.setSelection(
         TextSelection.near(newState.doc.resolve(newState.selection.from), NEXT_STEP),
       );
