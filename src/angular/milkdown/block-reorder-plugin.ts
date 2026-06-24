@@ -52,6 +52,13 @@ const DRAG_IMAGE_HOTSPOT: number = 0;
 const IMMEDIATE_TIMEOUT: number = 0;
 
 /**
+ * Window (ms) after a reorder ends during which the next non-empty selection is collapsed, to defeat
+ * the block plugin's post-drag re-selection. Long enough to cover its deferred re-select, short enough
+ * not to catch a deliberate selection the user makes afterwards.
+ */
+const DESELECT_WINDOW: number = 500;
+
+/**
  * Splice delete-count of zero, used to insert without removing elements.
  */
 const NO_DELETE: number = 0;
@@ -111,6 +118,9 @@ const REORDERING_CLASS: string = 'cdk-reordering';
 export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
   // Per-editor drag geometry; null when no drag is active.
   let metrics: Metrics | null = null;
+  // Timestamp until which the next non-empty selection is collapsed (see appendTransaction); null when
+  // not armed. Set when a reorder ends, to defeat the block plugin's post-drag re-selection.
+  let deselectArmedAt: number | null = null;
   // Native dragend listener, registered on document during a drag so cleanup
   // runs even when the drop happens outside the editor.
   let onDocumentDragEnd: (() => void) | null = null;
@@ -265,48 +275,19 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       document.removeEventListener('dragend', onDocumentDragEnd);
       onDocumentDragEnd = null;
     }
+    // Arm the deselect window: Crepe's block plugin re-selects the dragged block after the drag ends,
+    // in its own transaction. The plugin's appendTransaction collapses the first non-empty selection
+    // within this window, so the re-selection cannot win the race.
+    deselectArmedAt = Date.now();
     if (dispatchReset) {
-      const tr: Transaction = view.state.tr.setMeta(reorderKey, {
-        active: false,
-        source: NO_INDEX,
-        insertBefore: NO_INDEX,
-      });
-      // Deselect the dragged block so a cancelled or in-place drop leaves nothing selected.
-      if (!view.state.selection.empty) {
-        tr.setSelection(TextSelection.near(view.state.doc.resolve(view.state.selection.from), NEXT_STEP));
-      }
-      view.dispatch(tr);
+      view.dispatch(
+        view.state.tr.setMeta(reorderKey, {
+          active: false,
+          source: NO_INDEX,
+          insertBefore: NO_INDEX,
+        }),
+      );
     }
-    // Crepe's block plugin re-selects the dragged block after the drag ends, overriding the inline
-    // collapse; defer a final deselect across the next two frames so whichever selection it leaves —
-    // a node selection or a text range over the block — is collapsed to a caret.
-    deselectSoon(view);
-  }
-
-  /**
-   * Collapses any non-empty selection to a caret over the next two animation frames, after the block
-   * plugin's post-drag re-selection has settled. Guards against the view being torn down first.
-   * @param view The editor view to deselect in.
-   */
-  function deselectSoon(view: EditorView): void {
-    const collapse: () => void = (): void => {
-      try {
-        const selection: EditorState['selection'] = view.state.selection;
-        if (!selection.empty) {
-          view.dispatch(
-            view.state.tr.setSelection(
-              TextSelection.near(view.state.doc.resolve(selection.from), NEXT_STEP),
-            ),
-          );
-        }
-      } catch {
-        // The view was destroyed before the deferred deselect ran; nothing to do.
-      }
-    };
-    requestAnimationFrame((): void => {
-      collapse();
-      requestAnimationFrame(collapse);
-    });
   }
 
   /**
@@ -352,6 +333,30 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
           | undefined;
         return meta ? { ...value, ...meta } : value;
       },
+    },
+
+    // While the deselect window is armed (just after a reorder), collapse the first non-empty
+    // selection — the block plugin re-selects the dragged block in its own transaction, and catching
+    // it here, at the transaction level, can't lose the race a deferred callback would.
+    appendTransaction(
+      _transactions: readonly Transaction[],
+      _oldState: EditorState,
+      newState: EditorState,
+    ): Transaction | null {
+      if (deselectArmedAt === null) {
+        return null;
+      }
+      if (Date.now() - deselectArmedAt > DESELECT_WINDOW) {
+        deselectArmedAt = null;
+        return null;
+      }
+      if (newState.selection.empty) {
+        return null;
+      }
+      deselectArmedAt = null;
+      return newState.tr.setSelection(
+        TextSelection.near(newState.doc.resolve(newState.selection.from), NEXT_STEP),
+      );
     },
 
     view(view: EditorView): PluginView {
