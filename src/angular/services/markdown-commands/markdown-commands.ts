@@ -46,9 +46,9 @@ export interface OutlineHeading {
   readonly text: string;
 
   /**
-   * Gets the editor document position the heading starts at, used to navigate to it.
+   * Gets the heading's zero-based ordinal among the document's headings, used to navigate to it.
    */
-  readonly pos: number;
+  readonly index: number;
 }
 
 /**
@@ -173,10 +173,10 @@ export interface MarkdownCommandHandler {
   setBlockType(blockType: MarkdownBlockType): void;
 
   /**
-   * Moves the selection to the heading at the given document position and scrolls it into view.
-   * @param pos The heading's document position.
+   * Scrolls the editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
    */
-  goToHeading(pos: number): void;
+  goToHeading(index: number): void;
 }
 
 /**
@@ -303,11 +303,11 @@ export class MarkdownCommands {
   }
 
   /**
-   * Navigates the active editor to the heading at the given document position.
-   * @param pos The heading's document position.
+   * Navigates the active editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
    */
-  public goToHeading(pos: number): void {
-    this.handler()?.goToHeading(pos);
+  public goToHeading(index: number): void {
+    this.handler()?.goToHeading(index);
   }
 
   /**

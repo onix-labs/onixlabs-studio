@@ -574,9 +574,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.contentChange.emit(markdown);
           });
           if (this.isActive()) {
-            const view: EditorView = ctx.get(editorViewCtx);
-            this.publishHistoryState(view);
-            this.publishOutline(view);
+            this.publishHistoryState(ctx.get(editorViewCtx));
+            this.refreshOutline();
           }
         });
 
@@ -703,7 +702,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       insertText: (text: string): void => this.insertRawText(crepe, text),
       appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
-      goToHeading: (pos: number): void => this.goToHeading(crepe, pos),
+      goToHeading: (index: number): void => this.scrollToHeading(index),
     };
 
     this.commands.register(this.commandHandler);
@@ -962,9 +961,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       });
       this.publishHistoryState(view);
     });
-    // Refresh the outline outside the editor action (and the editor-creation window), so activating a
-    // tab whose content has not changed still populates the Outline panel.
-    this.refreshOutlineSoon();
+    // Refresh the outline from the rendered DOM (deferred), so activating a tab whose content has not
+    // changed still populates the Outline panel.
+    this.refreshOutline();
   }
 
   /**
@@ -973,8 +972,17 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param view The editor view to read the history depth from.
    */
   private publishHistoryState(view: EditorView): void {
-    const canUndo: boolean = undoDepth(view.state) > 0;
-    const canRedo: boolean = redoDepth(view.state) > 0;
+    let canUndo: boolean = false;
+    let canRedo: boolean = false;
+    try {
+      // These read the history plugin's state, which is not yet available while the initial content
+      // load transaction is applying; reading it then throws into the transaction and corrupts the
+      // editor, so guard it and skip until the plugin is ready.
+      canUndo = undoDepth(view.state) > 0;
+      canRedo = redoDepth(view.state) > 0;
+    } catch {
+      return;
+    }
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
     });
@@ -986,59 +994,46 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * same heading node, so both are captured.
    * @param view The editor view to read the headings from.
    */
-  private publishOutline(view: EditorView): void {
-    const headings: OutlineHeading[] = [];
-    try {
-      view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
-        if (node.type.name === 'heading') {
-          const level: unknown = node.attrs['level'];
-          headings.push({
-            id: `heading-${pos}`,
-            level: typeof level === 'number' ? level : 1,
-            text: node.textContent,
-            pos,
-          });
-          return false;
-        }
-        return true;
-      });
-    } catch {
-      return;
-    }
-    this.zone.run((): void => {
-      this.commands.setOutline(headings);
-    });
-  }
-
-  /**
-   * Republishes the outline on the next tick, outside the editor-creation window, so activating a tab
-   * whose content has not changed (and therefore fires no update) still populates the Outline panel.
-   */
-  private refreshOutlineSoon(): void {
+  private refreshOutline(): void {
+    // Read the rendered heading elements rather than the editor state: this never touches the
+    // ProseMirror plugins, so it cannot interfere with the editor (whatever transaction is in flight),
+    // and it runs on the next tick so the DOM reflects the latest content. Both ATX and setext
+    // headings render as the same h1-h6 elements, so both are captured.
     setTimeout((): void => {
-      const crepe: Crepe | null = this.crepe;
-      if (crepe === null || !this.isActive()) {
+      if (!this.isActive()) {
         return;
       }
-      crepe.editor.action((ctx: Ctx): void => {
-        this.publishOutline(ctx.get(editorViewCtx));
+      const headings: OutlineHeading[] = this.readHeadingElements().map(
+        (element: HTMLElement, index: number): OutlineHeading => ({
+          id: `heading-${index}`,
+          level: Number(element.tagName.charAt(1)) || 1,
+          text: element.textContent ?? '',
+          index,
+        }),
+      );
+      this.zone.run((): void => {
+        this.commands.setOutline(headings);
       });
     }, NEXT_TICK_DELAY);
   }
 
   /**
-   * Moves the selection to the heading at the given document position and scrolls it into view.
-   * @param crepe The editor instance.
-   * @param pos The heading's document position.
+   * Scrolls the editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
    */
-  private goToHeading(crepe: Crepe, pos: number): void {
-    this.run(crepe, (ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const target: number = Math.min(pos + 1, view.state.doc.content.size);
-      const selection: Selection = TextSelection.near(view.state.doc.resolve(target));
-      view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
-      view.focus();
-    });
+  private scrollToHeading(index: number): void {
+    const element: HTMLElement | undefined = this.readHeadingElements()[index];
+    element?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  /**
+   * Gets the editor's rendered heading elements (h1-h6) in document order.
+   * @returns Returns the heading elements.
+   */
+  private readHeadingElements(): HTMLElement[] {
+    return Array.from(
+      this.editorContainer().nativeElement.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'),
+    );
   }
 
   /**

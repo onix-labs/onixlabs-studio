@@ -121,6 +121,6 @@ export class MarkdownOutlinePanel {
    * @param heading The heading to scroll to.
    */
   protected goTo(heading: OutlineHeading): void {
-    this.commands.goToHeading(heading.pos);
+    this.commands.goToHeading(heading.index);
   }
 }

@@ -152,7 +152,7 @@ describe('MarkdownCommands', () => {
   });
 
   it('setOutline_whenCalled_updatesOutline', () => {
-    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', pos: 0 }]);
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', index: 0 }]);
     expect(commands.outline().length).toBe(1);
     expect(commands.outline()[0].text).toBe('Intro');
   });
@@ -165,7 +165,7 @@ describe('MarkdownCommands', () => {
   });
 
   it('register_whenHandlerRegistered_resetsOutline', () => {
-    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', pos: 0 }]);
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', index: 0 }]);
     commands.register(recordingHandler(new Set<string>()));
     expect(commands.outline().length).toBe(0);
   });

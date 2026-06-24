@@ -36,8 +36,8 @@ describe('MarkdownOutlinePanel', () => {
 
   it('render_whenHeadings_listsThemInDocumentOrder', () => {
     commands.setOutline([
-      { id: 'heading-2', level: 1, text: 'Title', pos: 2 },
-      { id: 'heading-9', level: 2, text: 'Section', pos: 9 },
+      { id: 'heading-0', level: 1, text: 'Title', index: 0 },
+      { id: 'heading-1', level: 2, text: 'Section', index: 1 },
     ]);
     fixture.detectChanges();
 
