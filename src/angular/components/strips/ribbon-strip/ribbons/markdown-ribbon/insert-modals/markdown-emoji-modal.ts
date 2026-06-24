@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -10,40 +11,140 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { nameToEmoji } from 'gemoji';
+import { gemoji } from 'gemoji';
+import { SettingsStore } from '../../../../../../services/settings-store/settings-store';
 import { Modal } from '../../../../../shared/modal/modal';
 
 /**
- * Pairs an emoji's shortcode name with its Unicode character.
+ * Pairs an emoji's Unicode character with its primary shortcode name.
  */
 interface EmojiEntry {
-  /**
-   * Gets the emoji's shortcode name (for example `smile`).
-   */
-  readonly name: string;
-
   /**
    * Gets the emoji's Unicode character.
    */
   readonly emoji: string;
+
+  /**
+   * Gets the emoji's primary shortcode name (for example `smile`).
+   */
+  readonly name: string;
 }
 
 /**
- * Holds the full emoji list, derived once from the shortcode map that the markdown editor's emoji
- * plugin already bundles, so the picker adds no further weight to the bundle.
+ * Groups emoji under a display category.
  */
-const EMOJI_ENTRIES: readonly EmojiEntry[] = Object.entries(nameToEmoji).map(
-  ([name, emoji]: [string, string]): EmojiEntry => ({ name, emoji }),
+interface EmojiCategory {
+  /**
+   * Gets the category's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the emoji in the category.
+   */
+  readonly emojis: readonly EmojiEntry[];
+}
+
+/**
+ * An emoji entry paired with the lower-cased text it is matched against during search.
+ */
+interface SearchableEmoji extends EmojiEntry {
+  /**
+   * Gets the lower-cased names, tags, and description searched against.
+   */
+  readonly search: string;
+}
+
+/**
+ * Maps each `gemoji` category to the display category shown in the picker. The two Unicode "Smileys
+ * & Emotion" and "People & Body" groups are merged into a single "Smileys & People" section.
+ */
+const CATEGORY_MAP: Readonly<Record<string, string>> = {
+  'Smileys & Emotion': 'Smileys & People',
+  'People & Body': 'Smileys & People',
+  'Animals & Nature': 'Animals & Nature',
+  'Food & Drink': 'Food & Drink',
+  Activities: 'Activity',
+  'Travel & Places': 'Travel & Places',
+  Objects: 'Objects',
+  Symbols: 'Symbols',
+  Flags: 'Flags',
+};
+
+/**
+ * The display categories, in the order they appear in the picker.
+ */
+const CATEGORY_ORDER: readonly string[] = [
+  'Smileys & People',
+  'Animals & Nature',
+  'Food & Drink',
+  'Activity',
+  'Travel & Places',
+  'Objects',
+  'Symbols',
+  'Flags',
+];
+
+/**
+ * The emoji grouped into ordered display categories, built once from the dataset.
+ */
+const CATEGORIES: readonly EmojiCategory[] = buildCategories();
+
+/**
+ * Every emoji with its searchable text, built once for the search path.
+ */
+const SEARCHABLE: readonly SearchableEmoji[] = gemoji.map(
+  (entry): SearchableEmoji => ({
+    emoji: entry.emoji,
+    name: entry.names[0],
+    search: `${entry.names.join(' ')} ${entry.tags.join(' ')} ${entry.description}`.toLowerCase(),
+  }),
 );
 
 /**
- * Caps the number of emoji shown at once so the grid stays responsive; search narrows the full set.
+ * Looks up an emoji's primary name from its character, used to label recent emoji.
+ */
+const NAME_BY_EMOJI: ReadonlyMap<string, string> = new Map<string, string>(
+  gemoji.map((entry): [string, string] => [entry.emoji, entry.names[0]]),
+);
+
+/**
+ * Groups the dataset into the ordered display categories.
+ * @returns Returns the ordered categories.
+ */
+function buildCategories(): readonly EmojiCategory[] {
+  const groups: Map<string, EmojiEntry[]> = new Map<string, EmojiEntry[]>(
+    CATEGORY_ORDER.map((name: string): [string, EmojiEntry[]] => [name, []]),
+  );
+  for (const entry of gemoji) {
+    const category: string | undefined = CATEGORY_MAP[entry.category];
+    if (category !== undefined) {
+      groups.get(category)?.push({ emoji: entry.emoji, name: entry.names[0] });
+    }
+  }
+  return CATEGORY_ORDER.map((name: string): EmojiCategory => ({ name, emojis: groups.get(name) ?? [] }));
+}
+
+/**
+ * Caps the number of search results shown so the grid stays responsive.
  */
 const MAX_RESULTS: number = 240;
 
 /**
- * A searchable emoji picker. Emoji are matched by their shortcode name; selecting one emits its
- * Unicode character to insert. Hosted by the markdown ribbon's Insert group.
+ * Caps the number of remembered recent emoji.
+ */
+const MAX_RECENT: number = 24;
+
+/**
+ * The settings-store key under which recent emoji are persisted.
+ */
+const RECENT_KEY: string = 'markdown.recent-emoji';
+
+/**
+ * A categorised, searchable emoji picker. Emoji are grouped under Recent and the standard Unicode
+ * categories; searching matches their shortcode names, tags, and descriptions. Selecting an emoji
+ * emits its Unicode character to insert and records it as recent. Hosted by the markdown ribbon's
+ * Insert group.
  */
 @Component({
   selector: 'app-markdown-emoji-modal',
@@ -52,13 +153,30 @@ const MAX_RESULTS: number = 240;
   styleUrl: './insert-modal.scss',
   styles: [
     `
-      .emoji-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(2.2rem, 1fr));
-        gap: 0.15rem;
-        max-block-size: 16rem;
+      .emoji-scroll {
+        max-block-size: 18rem;
         margin-block-start: 0.6rem;
         overflow-y: auto;
+      }
+
+      .emoji-category-title {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 1;
+        margin: 0;
+        padding: 0.35rem 0.1rem 0.2rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--welcome-muted-foreground-color);
+        background: var(--body-background-color);
+      }
+
+      .emoji-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(2.6rem, 1fr));
+        gap: 0.15rem;
       }
 
       .emoji-cell {
@@ -66,7 +184,7 @@ const MAX_RESULTS: number = 240;
         align-items: center;
         justify-content: center;
         aspect-ratio: 1;
-        font-size: 1.3rem;
+        font-size: 1.5rem;
         line-height: 1;
         background: transparent;
         border: 0.0625rem solid transparent;
@@ -108,27 +226,74 @@ const MAX_RESULTS: number = 240;
         />
       </div>
 
-      @if (results().length > 0) {
-        <div class="emoji-grid">
-          @for (item of results(); track item.name) {
-            <button
-              type="button"
-              class="emoji-cell"
-              [attr.title]="item.name"
-              [attr.aria-label]="item.name"
-              (click)="pick(item.emoji)"
-            >
-              {{ item.emoji }}
-            </button>
+      <div class="emoji-scroll">
+        @if (query().length > 0) {
+          @if (searchResults().length > 0) {
+            <div class="emoji-grid">
+              @for (item of searchResults(); track item.emoji) {
+                <button
+                  type="button"
+                  class="emoji-cell"
+                  [attr.title]="item.name"
+                  [attr.aria-label]="item.name"
+                  (click)="pick(item.emoji)"
+                >
+                  {{ item.emoji }}
+                </button>
+              }
+            </div>
+          } @else {
+            <p class="emoji-empty">No emoji match “{{ query() }}”.</p>
           }
-        </div>
-      } @else {
-        <p class="emoji-empty">No emoji match “{{ query() }}”.</p>
-      }
+        } @else {
+          @if (recentEntries().length > 0) {
+            <section>
+              <h3 class="emoji-category-title">Recent</h3>
+              <div class="emoji-grid">
+                @for (item of recentEntries(); track item.emoji) {
+                  <button
+                    type="button"
+                    class="emoji-cell"
+                    [attr.title]="item.name"
+                    [attr.aria-label]="item.name"
+                    (click)="pick(item.emoji)"
+                  >
+                    {{ item.emoji }}
+                  </button>
+                }
+              </div>
+            </section>
+          }
+
+          @for (category of categories; track category.name) {
+            <section>
+              <h3 class="emoji-category-title">{{ category.name }}</h3>
+              <div class="emoji-grid">
+                @for (item of category.emojis; track item.emoji) {
+                  <button
+                    type="button"
+                    class="emoji-cell"
+                    [attr.title]="item.name"
+                    [attr.aria-label]="item.name"
+                    (click)="pick(item.emoji)"
+                  >
+                    {{ item.emoji }}
+                  </button>
+                }
+              </div>
+            </section>
+          }
+        }
+      </div>
     </app-modal>
   `,
 })
 export class MarkdownEmojiModal {
+  /**
+   * Holds the persisted store backing the recent-emoji list.
+   */
+  private readonly store: SettingsStore = inject(SettingsStore);
+
   /**
    * Gets a value indicating whether the modal is open.
    */
@@ -145,36 +310,66 @@ export class MarkdownEmojiModal {
   public readonly submitted: OutputEmitterRef<string> = output<string>();
 
   /**
+   * Gets the ordered emoji categories shown when not searching.
+   */
+  protected readonly categories: readonly EmojiCategory[] = CATEGORIES;
+
+  /**
    * Holds the search-query field value.
    */
   protected readonly query: WritableSignal<string> = signal<string>('');
 
   /**
-   * Gets the emoji whose shortcode name matches the current query, capped to {@link MAX_RESULTS}. An
-   * empty query shows the first page of the full set.
+   * Holds the recent emoji characters, most recent first, persisted across sessions.
    */
-  protected readonly results: Signal<readonly EmojiEntry[]> = computed((): readonly EmojiEntry[] => {
-    const term: string = this.query().trim().toLowerCase();
-    if (term.length === 0) {
-      return EMOJI_ENTRIES.slice(0, MAX_RESULTS);
-    }
-    const matches: EmojiEntry[] = [];
-    for (const item of EMOJI_ENTRIES) {
-      if (item.name.includes(term)) {
-        matches.push(item);
-        if (matches.length >= MAX_RESULTS) {
-          break;
-        }
-      }
-    }
-    return matches;
-  });
+  private readonly recent: WritableSignal<readonly string[]> = signal<readonly string[]>(
+    this.store.get<readonly string[]>(RECENT_KEY, []),
+  );
 
   /**
-   * Picks an emoji, emitting it and resetting the search.
+   * Gets the recent emoji as displayable entries.
+   */
+  protected readonly recentEntries: Signal<readonly EmojiEntry[]> = computed(
+    (): readonly EmojiEntry[] =>
+      this.recent().map((emoji: string): EmojiEntry => ({
+        emoji,
+        name: NAME_BY_EMOJI.get(emoji) ?? emoji,
+      })),
+  );
+
+  /**
+   * Gets the emoji matching the current query, capped to {@link MAX_RESULTS}.
+   */
+  protected readonly searchResults: Signal<readonly EmojiEntry[]> = computed(
+    (): readonly EmojiEntry[] => {
+      const term: string = this.query().trim().toLowerCase();
+      if (term.length === 0) {
+        return [];
+      }
+      const matches: EmojiEntry[] = [];
+      for (const item of SEARCHABLE) {
+        if (item.search.includes(term)) {
+          matches.push(item);
+          if (matches.length >= MAX_RESULTS) {
+            break;
+          }
+        }
+      }
+      return matches;
+    },
+  );
+
+  /**
+   * Picks an emoji: records it as recent, emits it, and resets the search.
    * @param emoji The chosen emoji's Unicode character.
    */
   protected pick(emoji: string): void {
+    const next: readonly string[] = [
+      emoji,
+      ...this.recent().filter((existing: string): boolean => existing !== emoji),
+    ].slice(0, MAX_RECENT);
+    this.recent.set(next);
+    this.store.set(RECENT_KEY, next);
     this.submitted.emit(emoji);
     this.reset();
     this.closed.emit();
