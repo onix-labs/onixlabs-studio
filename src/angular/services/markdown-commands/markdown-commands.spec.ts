@@ -36,6 +36,7 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
       calls.add('readDocument');
       return '# Document';
     },
+    replaceDocument: (): void => void calls.add('replaceDocument'),
   };
 }
 
@@ -175,6 +176,17 @@ describe('MarkdownCommands', () => {
 
   it('readActiveDocument_whenNoHandlerRegistered_returnsNull', () => {
     expect(commands.readActiveDocument()).toBeNull();
+  });
+
+  it('replaceActiveDocument_whenHandlerRegistered_forwardsAndReportsTrue', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    expect(commands.replaceActiveDocument('# New')).toBe(true);
+    expect(calls.has('replaceDocument')).toBe(true);
+  });
+
+  it('replaceActiveDocument_whenNoHandlerRegistered_reportsFalse', () => {
+    expect(commands.replaceActiveDocument('# New')).toBe(false);
   });
 
   it('register_whenHandlerRegistered_resetsOutline', () => {

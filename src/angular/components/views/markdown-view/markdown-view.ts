@@ -802,6 +802,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
       goToHeading: (index: number): void => this.scrollToHeading(index),
       readDocument: (): string => crepe.getMarkdown(),
+      replaceDocument: (markdown: string): void => this.replaceDocument(markdown),
     };
 
     this.commands.register(this.commandHandler);
@@ -1181,10 +1182,30 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       return;
     }
     const source: string = crepe.getMarkdown();
-    const next: string = source.slice(0, start) + replacement + source.slice(end);
+    this.replaceDocumentContent(crepe, source.slice(0, start) + replacement + source.slice(end));
+  }
+
+  /**
+   * Replaces the editor's entire content by parsing the given markdown and swapping the document in a
+   * single, undoable transaction. Backs the agent's replace-document capability and the review
+   * suggestion apply.
+   * @param markdown The new markdown source.
+   */
+  private replaceDocument(markdown: string): void {
+    if (this.crepe !== null) {
+      this.replaceDocumentContent(this.crepe, markdown);
+    }
+  }
+
+  /**
+   * Parses markdown and replaces the whole document with it in one undoable transaction.
+   * @param crepe The editor instance.
+   * @param markdown The new markdown source.
+   */
+  private replaceDocumentContent(crepe: Crepe, markdown: string): void {
     this.run(crepe, (ctx: Ctx): void => {
       const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(next);
+      const doc: ProseMirrorNode = parser(markdown);
       const view: EditorView = ctx.get(editorViewCtx);
       view.dispatch(
         view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content).scrollIntoView(),

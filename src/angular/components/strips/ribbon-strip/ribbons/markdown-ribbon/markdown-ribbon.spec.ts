@@ -39,6 +39,7 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     setBlockType: noop,
     goToHeading: noop,
     readDocument: (): string => '',
+    replaceDocument: noop,
   };
 }
 

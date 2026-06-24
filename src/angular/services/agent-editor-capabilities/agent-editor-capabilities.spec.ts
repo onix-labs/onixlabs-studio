@@ -10,11 +10,13 @@ import {
 import { AgentEditorCapabilities } from './agent-editor-capabilities';
 
 /**
- * Builds a markdown command handler whose document text is fixed and whose commands are no-ops.
- * @param document The markdown source the handler reports.
+ * Builds a markdown command handler whose document text is backed by a mutable string and whose
+ * commands are no-ops.
+ * @param initial The initial markdown source.
  * @returns Returns the handler.
  */
-function markdownHandler(document: string): MarkdownCommandHandler {
+function markdownHandler(initial: string): MarkdownCommandHandler {
+  let document: string = initial;
   const noop: () => void = (): void => undefined;
   return {
     cut: noop,
@@ -41,6 +43,9 @@ function markdownHandler(document: string): MarkdownCommandHandler {
     setBlockType: noop,
     goToHeading: noop,
     readDocument: (): string => document,
+    replaceDocument: (markdown: string): void => {
+      document = markdown;
+    },
   };
 }
 
@@ -137,5 +142,23 @@ describe('AgentEditorCapabilities', () => {
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({})).toEqual({ ok: false });
+  });
+
+  it('replace_whenMarkdownEditorActive_updatesTheMarkdownDocument', () => {
+    markdownCommands.register(markdownHandler('# old'));
+    const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
+
+    expect(replace?.({ text: '# new' })).toEqual({ ok: true });
+    expect(markdownCommands.readActiveDocument()).toBe('# new');
+  });
+
+  it('replace_whenBothEditorsActive_prefersTheMarkdownEditor', () => {
+    codeCommands.register(textHandler('code old'));
+    markdownCommands.register(markdownHandler('# md old'));
+    const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
+
+    expect(replace?.({ text: '# md new' })).toEqual({ ok: true });
+    expect(markdownCommands.readActiveDocument()).toBe('# md new');
+    expect(codeCommands.readActiveText()).toBe('code old');
   });
 });

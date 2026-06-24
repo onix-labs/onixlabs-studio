@@ -183,6 +183,12 @@ export interface MarkdownCommandHandler {
    * @returns Returns the live markdown source.
    */
   readDocument(): string;
+
+  /**
+   * Replaces the editor's entire content by parsing the given markdown, as a single undoable edit.
+   * @param markdown The new markdown source.
+   */
+  replaceDocument(markdown: string): void;
 }
 
 /**
@@ -323,6 +329,21 @@ export class MarkdownCommands {
    */
   public readActiveDocument(): string | null {
     return this.handler()?.readDocument() ?? null;
+  }
+
+  /**
+   * Replaces the active markdown editor's entire content from the given markdown, for the agent to
+   * edit the document. Returns false when no markdown editor is active.
+   * @param markdown The new markdown source.
+   * @returns Returns true when a markdown editor was available and updated.
+   */
+  public replaceActiveDocument(markdown: string): boolean {
+    const handler: MarkdownCommandHandler | null = this.handler();
+    if (handler === null) {
+      return false;
+    }
+    handler.replaceDocument(markdown);
+    return true;
   }
 
   /**

@@ -79,13 +79,20 @@ export class AgentEditorCapabilities {
   }
 
   /**
-   * Replaces the active editor's text from a `{ text }` input.
+   * Replaces the active editor's text from a `{ text }` input, preferring the active markdown editor
+   * (the new text is parsed as markdown) over the active code editor.
    * @param input The capability input.
    * @returns Returns the {@link ReplaceResult}.
    */
   private replaceActive(input: unknown): ReplaceResult {
     const text: string | null = this.extractText(input);
-    return text === null ? { ok: false } : { ok: this.codeCommands.replaceActiveText(text) };
+    if (text === null) {
+      return { ok: false };
+    }
+    if (this.markdownCommands.replaceActiveDocument(text)) {
+      return { ok: true };
+    }
+    return { ok: this.codeCommands.replaceActiveText(text) };
   }
 
   /**
