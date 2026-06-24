@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { RibbonAlignment, Settings } from '../../../../services/settings/settings';
 import { TabType } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { AgentRibbon } from '../ribbons/agent-ribbon/agent-ribbon';
@@ -18,10 +17,6 @@ import { TerminalRibbon } from '../ribbons/terminal-ribbon/terminal-ribbon';
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '[class.ribbon-strip--align-center]': "alignment() === 'center'",
-    '[class.ribbon-strip--align-right]': "alignment() === 'right'",
-  },
 })
 export class RibbonStripContainer {
   /**
@@ -30,19 +25,9 @@ export class RibbonStripContainer {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Holds the settings service supplying the ribbon alignment.
-   */
-  private readonly settings: Settings = inject(Settings);
-
-  /**
    * Gets the type of the active tab, or `undefined` when no tab is active.
    */
   protected readonly activeType: Signal<TabType | undefined> = computed(
     (): TabType | undefined => this.tabsService.activeTab()?.type,
   );
-
-  /**
-   * Gets the alignment of the ribbon's controls within the strip.
-   */
-  protected readonly alignment: Signal<RibbonAlignment> = this.settings.ribbonAlignment;
 }

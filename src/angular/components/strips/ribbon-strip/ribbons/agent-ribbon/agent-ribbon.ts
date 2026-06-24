@@ -9,6 +9,7 @@ import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
 
 /**
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
@@ -19,7 +20,7 @@ import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
  */
 @Component({
   selector: 'app-agent-ribbon',
-  imports: [RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripButtonSmall, RibbonStripCheck, RibbonStripField],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripButtonSmall, RibbonStripCheck, RibbonStripField],
   templateUrl: './agent-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

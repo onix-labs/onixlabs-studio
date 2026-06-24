@@ -1,6 +1,8 @@
-// Shared host layout for every per-tab-type ribbon: a horizontal row of ribbon groups.
+// Shared host layout for every per-tab-type ribbon: it fills the strip width and hosts the overflow
+// wrapper, which lays the groups out in a row and moves any that do not fit into a dropdown.
 :host {
   display: flex;
+  flex: 1;
   align-items: stretch;
-  gap: 0.5rem;
+  min-inline-size: 0;
 }

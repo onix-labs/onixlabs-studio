@@ -7,6 +7,7 @@ import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-s
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
 import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
 
 /**
@@ -18,6 +19,7 @@ import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
+    RibbonStripOverflow,
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripRow,

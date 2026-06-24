@@ -1,0 +1,85 @@
+:host {
+  // Fill the strip width and become the positioning context for the overflow flyout.
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+// The visible lane of groups. Clips anything past the available width; the reflow logic moves those
+// groups into the flyout before they would clip, so this only guards against sub-pixel spill.
+.ribbon-overflow__row {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+// Alignment of the groups within the row. `safe` falls back to flex-start if they would overflow, so
+// nothing is pushed out of reach mid-reflow.
+.ribbon-overflow__row--center {
+  justify-content: safe center;
+}
+
+.ribbon-overflow__row--right {
+  justify-content: safe flex-end;
+}
+
+// The overflow trigger, styled as a ribbon control. Its display is managed imperatively (hidden when
+// nothing overflows), so it occupies space only when needed.
+.ribbon-overflow__more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  align-self: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: 1rem;
+  color: var(--ribbon-control-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: 0.4rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &--active {
+    background: var(--ribbon-control-background-color--hover);
+    border-color: var(--ribbon-control-border-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+// The overflow flyout: a dropdown of the groups that did not fit, stacked in document order.
+.ribbon-overflow__flyout {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 0;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-block-size: min(70vh, 32rem);
+  margin-block-start: 0.25rem;
+  padding: 0.5rem;
+  background: var(--dropdown-menu-background-color);
+  border: 0.0625rem solid var(--dropdown-menu-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.3);
+  overflow-y: auto;
+}
+
+.ribbon-overflow__flyout--open {
+  display: flex;
+}

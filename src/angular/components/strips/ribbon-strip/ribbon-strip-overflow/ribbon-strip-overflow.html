@@ -1,0 +1,23 @@
+<div
+  #row
+  class="ribbon-overflow__row"
+  [class.ribbon-overflow__row--center]="alignment() === 'center'"
+  [class.ribbon-overflow__row--right]="alignment() === 'right'"
+>
+  <ng-content />
+</div>
+
+<button
+  #more
+  type="button"
+  class="ribbon-overflow__more"
+  [class.ribbon-overflow__more--active]="flyoutOpen()"
+  [attr.aria-expanded]="flyoutOpen()"
+  aria-haspopup="menu"
+  aria-label="More ribbon groups"
+  (click)="toggle($event)"
+>
+  <app-icon [icon]="Icon.MORE" />
+</button>
+
+<div #flyout class="ribbon-overflow__flyout" [class.ribbon-overflow__flyout--open]="flyoutOpen()"></div>

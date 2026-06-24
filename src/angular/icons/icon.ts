@@ -304,6 +304,11 @@ export class Icon {
   public static readonly REFRESH: Icon = new Icon('ph ph-arrow-clockwise');
 
   /**
+   * Gets the overflow (more) icon, shown on the ribbon's overflow-menu trigger when groups do not fit.
+   */
+  public static readonly MORE: Icon = new Icon('ph-bold ph-dots-three');
+
+  /**
    * Gets the check icon, shown on the Review panel's primary suggestion.
    */
   public static readonly CHECK: Icon = new Icon('ph ph-check');

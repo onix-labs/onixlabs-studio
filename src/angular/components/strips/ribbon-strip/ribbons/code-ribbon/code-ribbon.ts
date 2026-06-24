@@ -13,6 +13,7 @@ import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
 import {
   RibbonStripMenuButton,
   RibbonMenuItem,
@@ -43,6 +44,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
 @Component({
   selector: 'app-code-ribbon',
   imports: [
+    RibbonStripOverflow,
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripRow,
