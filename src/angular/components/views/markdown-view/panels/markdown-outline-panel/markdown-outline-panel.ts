@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  afterRenderEffect,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  Signal,
+} from '@angular/core';
 import { Icon } from '../../../../../icons/icon';
 import {
   MarkdownCommands,
@@ -144,6 +152,26 @@ export class MarkdownOutlinePanel {
    * Holds the markdown command registry publishing the active editor's outline and active heading.
    */
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
+   * Holds the panel's host element, used to find and reveal the active row.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+
+  /**
+   * Initialises the panel, keeping the active heading scrolled into view in the outline as the reader
+   * moves through the document.
+   */
+  public constructor() {
+    afterRenderEffect((): void => {
+      // Track the active index so this re-runs whenever it changes, after the row's active class has
+      // been applied. `nearest` scrolls only when the row is off-screen, and only as far as needed.
+      this.activeIndex();
+      this.host.nativeElement
+        .querySelector<HTMLElement>('.outline__item--active')
+        ?.scrollIntoView({ block: 'nearest' });
+    });
+  }
 
   /**
    * Gets the active document's headings, in document order.
