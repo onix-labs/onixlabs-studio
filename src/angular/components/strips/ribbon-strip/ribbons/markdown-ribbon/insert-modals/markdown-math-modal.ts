@@ -37,8 +37,8 @@ export interface MathInsert {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert math" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert math</h2>
+    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Math" (dismiss)="cancel()">
+      <h2 class="insert-modal__title">Insert Math</h2>
 
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="math-expression">LaTeX expression</label>

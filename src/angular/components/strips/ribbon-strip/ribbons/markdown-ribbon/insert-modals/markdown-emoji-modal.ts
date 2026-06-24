@@ -285,8 +285,8 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
     `,
   ],
   template: `
-    <app-modal [open]="open()" [width]="32" ariaLabel="Insert emoji" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert emoji</h2>
+    <app-modal [open]="open()" [width]="32" ariaLabel="Insert Emoji" (dismiss)="cancel()">
+      <h2 class="insert-modal__title">Insert Emoji</h2>
 
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="emoji-search">Search</label>

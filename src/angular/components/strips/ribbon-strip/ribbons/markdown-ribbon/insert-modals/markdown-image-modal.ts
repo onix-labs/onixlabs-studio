@@ -37,8 +37,8 @@ export interface ImageInsert {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert image" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert image</h2>
+    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Image" (dismiss)="cancel()">
+      <h2 class="insert-modal__title">Insert Image</h2>
 
       <div class="insert-modal__row">
         <div class="insert-modal__field">

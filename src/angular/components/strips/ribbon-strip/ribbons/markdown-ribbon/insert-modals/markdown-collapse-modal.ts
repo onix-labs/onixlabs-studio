@@ -37,8 +37,8 @@ export interface CollapseInsert {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert collapsible block" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert collapsible block</h2>
+    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Collapsible Block" (dismiss)="cancel()">
+      <h2 class="insert-modal__title">Insert Collapsible Block</h2>
 
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="collapse-summary">Summary</label>
