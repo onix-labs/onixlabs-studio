@@ -8,6 +8,7 @@
     padding-inline-start: 1rem;
     color: var(--status-strip-foreground-color);
     background-color: var(--status-strip-background-color);
+    border-block-start: 0.0625rem solid var(--title-strip-border-color);
   }
 }
 
