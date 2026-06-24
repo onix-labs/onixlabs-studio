@@ -4,6 +4,7 @@
   [disabled]="disabled()"
   [attr.title]="iconOnly() ? label() : null"
   [attr.aria-label]="iconOnly() ? label() : null"
+  [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >
   <app-icon [icon]="icon()" [size]="1.5" />

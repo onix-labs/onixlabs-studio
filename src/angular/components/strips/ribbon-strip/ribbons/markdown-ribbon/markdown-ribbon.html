@@ -15,7 +15,7 @@
   />
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Clipboard">
+<app-ribbon-strip-group title="Edit">
   <app-ribbon-strip-menu-button
     [icon]="Icon.CUT"
     label="Cut"
@@ -37,10 +37,31 @@
     (action)="onPaste()"
     (selected)="onPasteVariant($event)"
   />
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small
+      [icon]="Icon.UNDO"
+      label="Undo"
+      [disabled]="!canUndo()"
+      (action)="onUndo()"
+    />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.REDO"
+      label="Redo"
+      [disabled]="!canRedo()"
+      (action)="onRedo()"
+    />
+    <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+  </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Format">
   <app-ribbon-strip-column [spread]="true">
+    <app-ribbon-strip-field
+      label="Style"
+      [options]="blockOptions"
+      [value]="blockLabel()"
+      (changed)="onBlockChange($event)"
+    />
     <app-ribbon-strip-row>
       <app-ribbon-strip-button-small
         [icon]="Icon.BOLD"
@@ -67,18 +88,16 @@
         (action)="onInlineCode()"
       />
     </app-ribbon-strip-row>
-    <app-ribbon-strip-field
-      label="Style"
-      [options]="blockOptions"
-      [value]="blockLabel()"
-      (changed)="onBlockChange($event)"
-    />
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Lists">
   <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.BULLET_LIST"
+      label="Bullets"
+      (action)="onBulletList()"
+    />
     <app-ribbon-strip-button-small
       [icon]="Icon.NUMBERED_LIST"
       label="Numbers"
@@ -88,7 +107,96 @@
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Insert">
-  <app-ribbon-strip-button [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
-  <app-ribbon-strip-button [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
+<app-ribbon-strip-group title="Blocks">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
+    <app-ribbon-strip-button-small [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.COLLAPSE"
+      label="Collapse"
+      (action)="onCollapse()"
+    />
+  </app-ribbon-strip-column>
 </app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Media">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.IMAGE" label="Image" (action)="onImage()" />
+    <app-ribbon-strip-button-small [icon]="Icon.DIAGRAM" label="Diagram" (action)="onDiagram()" />
+    <app-ribbon-strip-button-small [icon]="Icon.MATH" label="Math" (action)="onMath()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Inline">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.LINK" label="Link" (action)="onLink()" />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.FOOTNOTE"
+      label="Footnote"
+      (action)="onFootnote()"
+    />
+    <app-ribbon-strip-button-small [icon]="Icon.EMOJI" label="Emoji" (action)="onEmoji()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Tools">
+  <app-ribbon-strip-button
+    [icon]="Icon.OUTLINE"
+    label="Outline"
+    [toggle]="true"
+    [pressed]="activePanel() === 'outline'"
+    (action)="onOutline()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.REVIEW"
+    label="Review"
+    [toggle]="true"
+    [pressed]="activePanel() === 'review'"
+    (action)="onReview()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.READER"
+    label="Reader"
+    [toggle]="true"
+    [pressed]="activePanel() === 'reader'"
+    (action)="onReader()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.AGENT"
+    label="Agent"
+    [toggle]="true"
+    [pressed]="activePanel() === 'agent'"
+    (action)="onAgent()"
+  />
+</app-ribbon-strip-group>
+
+<app-markdown-image-modal
+  [open]="imageOpen()"
+  (submitted)="onImageSubmit($event)"
+  (closed)="imageOpen.set(false)"
+/>
+<app-markdown-link-modal
+  [open]="linkOpen()"
+  (submitted)="onLinkSubmit($event)"
+  (closed)="linkOpen.set(false)"
+/>
+<app-markdown-math-modal
+  [open]="mathOpen()"
+  (submitted)="onMathSubmit($event)"
+  (closed)="mathOpen.set(false)"
+/>
+<app-markdown-collapse-modal
+  [open]="collapseOpen()"
+  (submitted)="onCollapseSubmit($event)"
+  (closed)="collapseOpen.set(false)"
+/>
+<app-markdown-footnote-modal
+  [open]="footnoteOpen()"
+  (submitted)="onFootnoteSubmit($event)"
+  (closed)="footnoteOpen.set(false)"
+/>
+<app-markdown-emoji-modal
+  [open]="emojiOpen()"
+  (submitted)="onEmojiSubmit($event)"
+  (closed)="emojiOpen.set(false)"
+/>

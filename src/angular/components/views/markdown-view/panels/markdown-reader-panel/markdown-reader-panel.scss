@@ -1,0 +1,157 @@
+.ra-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+// Transport row.
+.ra-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.ra-skip,
+.ra-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    color: var(--accent-surface-foreground-color);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.ra-skip {
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: 0.9rem;
+}
+
+.ra-play {
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  font-size: 1.25rem;
+  color: var(--accent-color);
+  border-color: var(--accent-surface-border-color);
+  background: var(--accent-surface-background-color);
+}
+
+// Scrubber.
+.ra-scrub {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ra-scrubber {
+  inline-size: 100%;
+  block-size: 0.35rem;
+  margin: 0;
+  appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--accent-color) 0%,
+    var(--accent-color) var(--ra-fill, 0%),
+    var(--form-track-color) var(--ra-fill, 0%),
+    var(--form-track-color) 100%
+  );
+  border-radius: 0.25rem;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    inline-size: 0.85rem;
+    block-size: 0.85rem;
+    background: var(--accent-color);
+    border: 0.125rem solid var(--form-knob-color);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+  }
+}
+
+.ra-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--welcome-muted-foreground-color);
+}
+
+// Labelled control rows.
+.ra-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ra-control-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--welcome-muted-foreground-color);
+}
+
+.ra-segments {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.ra-segment {
+  flex: 1;
+  block-size: 1.6rem;
+  padding-inline: 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--welcome-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &.active {
+    color: var(--accent-color);
+    font-weight: 600;
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+
+  &:hover:not(.active) {
+    color: var(--body-foreground-color);
+    border-color: var(--accent-surface-border-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.ra-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--welcome-muted-foreground-color);
+}

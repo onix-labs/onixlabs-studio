@@ -3,7 +3,51 @@ import { TestBed } from '@angular/core/testing';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
 import { AiCapability, AiRuntime } from '../ai-runtime/ai-runtime';
 import { CodeCommandHandler, CodeCommands } from '../code-commands/code-commands';
+import {
+  MarkdownCommandHandler,
+  MarkdownCommands,
+} from '../markdown-commands/markdown-commands';
 import { AgentEditorCapabilities } from './agent-editor-capabilities';
+
+/**
+ * Builds a markdown command handler whose document text is backed by a mutable string and whose
+ * commands are no-ops.
+ * @param initial The initial markdown source.
+ * @returns Returns the handler.
+ */
+function markdownHandler(initial: string): MarkdownCommandHandler {
+  let document: string = initial;
+  const noop: () => void = (): void => undefined;
+  return {
+    cut: noop,
+    cutAsPlaintext: noop,
+    copy: noop,
+    copyAsPlaintext: noop,
+    paste: noop,
+    pasteAsPlaintext: noop,
+    pasteAsCode: noop,
+    undo: noop,
+    redo: noop,
+    toggleBold: noop,
+    toggleItalic: noop,
+    toggleStrikethrough: noop,
+    toggleInlineCode: noop,
+    toggleBulletList: noop,
+    toggleOrderedList: noop,
+    insertTable: noop,
+    insertHorizontalRule: noop,
+    insertMarkdown: noop,
+    insertInlineMarkdown: noop,
+    insertText: noop,
+    appendMarkdown: noop,
+    setBlockType: noop,
+    goToHeading: noop,
+    readDocument: (): string => document,
+    replaceDocument: (markdown: string): void => {
+      document = markdown;
+    },
+  };
+}
 
 /**
  * Builds a code command handler whose text is backed by a mutable string and whose ribbon commands
@@ -33,6 +77,7 @@ function textHandler(initial: string): CodeCommandHandler {
 describe('AgentEditorCapabilities', () => {
   let registered: Map<string, AiCapability>;
   let codeCommands: CodeCommands;
+  let markdownCommands: MarkdownCommands;
 
   beforeEach(() => {
     registered = new Map<string, AiCapability>();
@@ -46,6 +91,7 @@ describe('AgentEditorCapabilities', () => {
       providers: [{ provide: AiRuntime, useValue: runtimeStub }],
     });
     codeCommands = TestBed.inject(CodeCommands);
+    markdownCommands = TestBed.inject(MarkdownCommands);
     // Instantiate the service so it registers its capabilities.
     TestBed.inject(AgentEditorCapabilities);
   });
@@ -68,6 +114,21 @@ describe('AgentEditorCapabilities', () => {
     expect(read?.(undefined)).toEqual({ available: true, text: 'hello' });
   });
 
+  it('read_whenMarkdownEditorActive_returnsItsLiveSource', () => {
+    markdownCommands.register(markdownHandler('# Live markdown'));
+    const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
+
+    expect(read?.(undefined)).toEqual({ available: true, text: '# Live markdown' });
+  });
+
+  it('read_whenBothEditorsActive_prefersTheMarkdownEditor', () => {
+    codeCommands.register(textHandler('code text'));
+    markdownCommands.register(markdownHandler('# Markdown'));
+    const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
+
+    expect(read?.(undefined)).toEqual({ available: true, text: '# Markdown' });
+  });
+
   it('replace_whenEditorActive_updatesTheDocumentAndReportsOk', () => {
     codeCommands.register(textHandler('old'));
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
@@ -81,5 +142,23 @@ describe('AgentEditorCapabilities', () => {
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({})).toEqual({ ok: false });
+  });
+
+  it('replace_whenMarkdownEditorActive_updatesTheMarkdownDocument', () => {
+    markdownCommands.register(markdownHandler('# old'));
+    const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
+
+    expect(replace?.({ text: '# new' })).toEqual({ ok: true });
+    expect(markdownCommands.readActiveDocument()).toBe('# new');
+  });
+
+  it('replace_whenBothEditorsActive_prefersTheMarkdownEditor', () => {
+    codeCommands.register(textHandler('code old'));
+    markdownCommands.register(markdownHandler('# md old'));
+    const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
+
+    expect(replace?.({ text: '# md new' })).toEqual({ ok: true });
+    expect(markdownCommands.readActiveDocument()).toBe('# md new');
+    expect(codeCommands.readActiveText()).toBe('code old');
   });
 });

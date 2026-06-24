@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -39,6 +40,8 @@ import {
   wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark';
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
+import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
+import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
 import type { Parser } from '@milkdown/transformer';
 import { blockReorderPlugin } from '../../../milkdown/block-reorder-plugin';
@@ -64,13 +67,29 @@ import {
   MarkdownBlockType,
   MarkdownCommandHandler,
   MarkdownCommands,
+  OutlineHeading,
 } from '../../../services/markdown-commands/markdown-commands';
 import {
   ImageAlignment,
   ImageSizing,
   MarginSize,
+  PanelPosition,
   Settings,
 } from '../../../services/settings/settings';
+import {
+  MarkdownPanel,
+  MarkdownPanels,
+} from '../../../services/markdown-panels/markdown-panels';
+import { Review } from '../../../services/markdown-review/markdown-review';
+import { ReviewIssue, ReviewSession } from '../../../services/markdown-review/review-types';
+import { Reader } from '../../../services/markdown-reader/markdown-reader';
+import { HighlightMode, ReadSession } from '../../../services/markdown-reader/reader-types';
+import { buildReadModel, ReadModel } from '../../../services/markdown-reader/read-model';
+import { ReadWord } from '../../../services/markdown-reader/read-tokenize';
+import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
+import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
+import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
+import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
 
 /**
  * Heading level for an H1 element.
@@ -113,6 +132,21 @@ const ROOT_DEPTH: number = 0;
 const NEXT_TICK_DELAY: number = 0;
 
 /**
+ * Minimum width of a markdown tool panel, in pixels.
+ */
+const MIN_PANEL_SIZE: number = 220;
+
+/**
+ * Maximum width of a markdown tool panel, in pixels.
+ */
+const MAX_PANEL_SIZE: number = 720;
+
+/**
+ * Default width of a markdown tool panel, in pixels.
+ */
+const DEFAULT_PANEL_SIZE: number = 320;
+
+/**
  * Minimum number of rows for the HTML image editor textarea.
  */
 const HTML_IMAGE_EDITOR_MIN_ROWS: number = 3;
@@ -133,6 +167,53 @@ const TEXTAREA_EXTRA_ROWS: number = 1;
 const INITIAL_MERMAID_ID: number = 0;
 
 /**
+ * Sentinel returned by {@link String.indexOf} when no match is found.
+ */
+const NOT_FOUND: number = -1;
+
+/**
+ * Single-character step used when scanning rendered text for the next occurrence of a word.
+ */
+const WORD_STEP: number = 1;
+
+/**
+ * Minimum source length used when computing a review reveal's proportional position, guarding against
+ * division by zero on an empty document.
+ */
+const MIN_SOURCE_LENGTH: number = 1;
+
+/**
+ * Divisor that centres a revealed review range within the scroll viewport.
+ */
+const REVEAL_CENTRE_DIVISOR: number = 2;
+
+/**
+ * CSS Custom Highlight registry name for a revealed review issue.
+ */
+const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
+
+/**
+ * Duration in milliseconds the review reveal highlight stays before it is cleared.
+ */
+const REVIEW_FLASH_DURATION: number = 1600;
+
+/**
+ * CSS Custom Highlight registry name for the read-along spoken word.
+ */
+const READ_HIGHLIGHT_WORD: string = 'markdown-read-word';
+
+/**
+ * CSS Custom Highlight registry name for the read-along spoken sentence.
+ */
+const READ_HIGHLIGHT_SENTENCE: string = 'markdown-read-sentence';
+
+/**
+ * Comfort margin in pixels from the viewport edges within which the spoken word is considered visible
+ * and does not trigger a follow scroll.
+ */
+const READ_REVEAL_MARGIN: number = 120;
+
+/**
  * Display name given to a new, unsaved markdown document.
  */
 const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
@@ -149,10 +230,13 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
  */
 @Component({
   selector: 'app-markdown-view',
-  imports: [],
+  imports: [MarkdownOutlinePanel, MarkdownReviewPanel, MarkdownAgentPanel, MarkdownReaderPanel],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.panels-left]': 'panelPosition() === "left"',
+  },
 })
 export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   /**
@@ -174,6 +258,98 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Holds the markdown command registry the ribbon routes formatting commands through.
    */
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
+   * Holds the tool-panel registry tracking which side panel (if any) is open.
+   */
+  private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Holds the review service the editor registers its source, edit, and reveal seam with while active.
+   */
+  private readonly review: Review = inject(Review);
+
+  /**
+   * Holds the review session registered with the {@link Review} service while active, or null.
+   */
+  private reviewSession: ReviewSession | null = null;
+
+  /**
+   * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
+   */
+  private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the reader service the editor publishes its read model and highlight seam to while active.
+   */
+  private readonly reader: Reader = inject(Reader);
+
+  /**
+   * Holds the read session registered with the {@link Reader} service while active, or null.
+   */
+  private readSession: ReadSession | null = null;
+
+  /**
+   * Holds the words of the current read model, in rendered-DOM order.
+   */
+  private readWords: readonly ReadWord[] = [];
+
+  /**
+   * Holds a DOM range per read-model word, aligned to {@link readWords} by index.
+   */
+  private readWordRanges: readonly Range[] = [];
+
+  /**
+   * Gets the tool panel currently open beside the editor, or `none` when none is open.
+   */
+  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
+
+  /**
+   * Gets which side of the editor the tool panels are shown on.
+   */
+  protected readonly panelPosition: Signal<PanelPosition> = computed(
+    (): PanelPosition => this.settings.markdownEditor().panelPosition,
+  );
+
+  /**
+   * Holds the width of the open tool panel, in pixels, adjusted by dragging the splitter.
+   */
+  protected readonly panelSize: WritableSignal<number> = signal<number>(DEFAULT_PANEL_SIZE);
+
+  /**
+   * Holds the pointer coordinate at the start of a panel-splitter drag.
+   */
+  private panelDragOrigin: number = 0;
+
+  /**
+   * Holds the panel width at the start of a panel-splitter drag.
+   */
+  private panelDragOriginSize: number = 0;
+
+  /**
+   * Begins a splitter drag that resizes the open tool panel. The drag direction is mirrored when the
+   * panel is docked on the left so dragging towards the editor always shrinks the panel.
+   * @param event The originating pointer event.
+   */
+  protected onPanelSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.panelDragOrigin = event.clientX;
+    this.panelDragOriginSize = this.panelSize();
+    const sign: number = this.panelPosition() === 'left' ? -1 : 1;
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = (this.panelDragOrigin - move.clientX) * sign;
+      this.panelSize.set(
+        Math.min(MAX_PANEL_SIZE, Math.max(MIN_PANEL_SIZE, this.panelDragOriginSize + delta)),
+      );
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
 
   /**
    * Holds the Angular zone, used to create the editor outside change detection.
@@ -345,12 +521,18 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       if (active) {
         this.registerCommandHandler();
+        this.registerReviewSession();
+        this.registerReadSession();
         this.refreshActiveBlockType();
         this.documents.setActiveDocument(this.documentId());
         this.focusEditor();
-      } else if (this.commandHandler !== null) {
-        this.commands.unregister(this.commandHandler);
-        this.commandHandler = null;
+      } else {
+        if (this.commandHandler !== null) {
+          this.commands.unregister(this.commandHandler);
+          this.commandHandler = null;
+        }
+        this.unregisterReviewSession();
+        this.unregisterReadSession();
       }
     });
   }
@@ -473,7 +655,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       crepe.editor.use(blockReorderPlugin);
 
       crepe.on((api: ListenerManager): void => {
-        api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
+        api.markdownUpdated((ctx: Ctx, markdown: string): void => {
+          // The very first update fires while the editor is still being created (the initial content
+          // load); doing work here breaks that init, so skip it. The initial outline is instead
+          // published on a deferred tick by refreshOutlineSoon once creation has settled.
           if (!this.hasReceivedFirstUpdate) {
             this.hasReceivedFirstUpdate = true;
             return;
@@ -482,9 +667,15 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.ignoreNextChange = true;
             this.contentChange.emit(markdown);
           });
+          if (this.isActive()) {
+            this.publishHistoryState(ctx.get(editorViewCtx));
+            this.refreshOutline();
+            this.zone.run((): void => this.review.notifySourceChanged());
+            this.publishReadModel();
+          }
         });
 
-        api.selectionUpdated((_ctx: Ctx, selection: Selection): void => {
+        api.selectionUpdated((ctx: Ctx, selection: Selection): void => {
           if (!this.isActive()) {
             return;
           }
@@ -492,6 +683,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
           this.zone.run((): void => {
             this.commands.setActiveBlockType(blockType);
           });
+          this.publishHistoryState(ctx.get(editorViewCtx));
         });
       });
 
@@ -548,6 +740,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.commands.unregister(this.commandHandler);
       this.commandHandler = null;
     }
+    this.unregisterReviewSession();
+    this.unregisterReadSession();
 
     if (this.crepe !== null) {
       await this.crepe.destroy();
@@ -591,6 +785,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       paste: (): void => this.pasteMarkdown(crepe),
       pasteAsPlaintext: (): void => this.pastePlaintext(crepe),
       pasteAsCode: (): void => this.pasteCode(crepe),
+      undo: (): void => this.run(crepe, callCommand(undoCommand.key)),
+      redo: (): void => this.run(crepe, callCommand(redoCommand.key)),
       toggleBold: (): void => this.run(crepe, callCommand(toggleStrongCommand.key)),
       toggleItalic: (): void => this.run(crepe, callCommand(toggleEmphasisCommand.key)),
       toggleStrikethrough: (): void => this.run(crepe, callCommand(toggleStrikethroughCommand.key)),
@@ -599,7 +795,14 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       toggleOrderedList: (): void => this.run(crepe, callCommand(wrapInOrderedListCommand.key)),
       insertTable: (): void => this.run(crepe, callCommand(insertTableCommand.key)),
       insertHorizontalRule: (): void => this.run(crepe, callCommand(insertHrCommand.key)),
+      insertMarkdown: (markdown: string): void => this.insertParsedBlock(crepe, markdown),
+      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(crepe, markdown),
+      insertText: (text: string): void => this.insertRawText(crepe, text),
+      appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
+      goToHeading: (index: number): void => this.scrollToHeading(index),
+      readDocument: (): string => crepe.getMarkdown(),
+      replaceDocument: (markdown: string): void => this.replaceDocument(markdown),
     };
 
     this.commands.register(this.commandHandler);
@@ -724,6 +927,71 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
+   * Parses markdown and inserts it as block-level content at the cursor, replacing any selection.
+   * @param crepe The editor instance.
+   * @param markdown The markdown to parse and insert.
+   */
+  private insertParsedBlock(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.replaceSelection(new Slice(doc.content, 0, 0)).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Parses markdown and inserts its inline content at the cursor, replacing any selection. The parsed
+   * document's first block holds the inline content (such as a link), which is spliced into the
+   * current block rather than inserted as a new paragraph.
+   * @param crepe The editor instance.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  private insertParsedInline(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      const block: ProseMirrorNode | null = doc.content.firstChild;
+      const inline: Slice = new Slice(block !== null ? block.content : doc.content, 0, 0);
+      view.dispatch(view.state.tr.replaceSelection(inline).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Inserts raw text at the cursor, replacing any selection.
+   * @param crepe The editor instance.
+   * @param text The text to insert.
+   */
+  private insertRawText(crepe: Crepe, text: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Parses markdown and appends it as block-level content at the end of the document, leaving the
+   * selection where it was. Used for content that lives apart from the cursor, such as a footnote
+   * definition.
+   * @param crepe The editor instance.
+   * @param markdown The markdown to parse and append.
+   */
+  private appendParsedBlock(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      const end: number = view.state.doc.content.size;
+      view.dispatch(view.state.tr.insert(end, doc.content).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
    * Applies a block type to the current block by dispatching the matching Crepe command.
    * @param crepe The editor instance.
    * @param blockType The block type to apply.
@@ -791,6 +1059,469 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.zone.run((): void => {
         this.commands.setActiveBlockType(blockType);
       });
+      this.publishHistoryState(view);
+    });
+    // Refresh the outline from the rendered DOM (deferred), so activating a tab whose content has not
+    // changed still populates the Outline panel.
+    this.refreshOutline();
+  }
+
+  /**
+   * Publishes whether the editor currently has undoable and redoable edits to the command registry, so
+   * the ribbon can enable or disable its Undo and Redo controls.
+   * @param view The editor view to read the history depth from.
+   */
+  private publishHistoryState(view: EditorView): void {
+    let canUndo: boolean = false;
+    let canRedo: boolean = false;
+    try {
+      // These read the history plugin's state, which is not yet available while the initial content
+      // load transaction is applying; reading it then throws into the transaction and corrupts the
+      // editor, so guard it and skip until the plugin is ready.
+      canUndo = undoDepth(view.state) > 0;
+      canRedo = redoDepth(view.state) > 0;
+    } catch {
+      return;
+    }
+    this.zone.run((): void => {
+      this.commands.setHistoryState(canUndo, canRedo);
+    });
+  }
+
+  /**
+   * Walks the document for heading nodes and publishes the resulting outline to the command registry,
+   * so the Outline panel reflects the document's headings. Both ATX and setext headings parse to the
+   * same heading node, so both are captured.
+   * @param view The editor view to read the headings from.
+   */
+  private refreshOutline(): void {
+    // Read the rendered heading elements rather than the editor state: this never touches the
+    // ProseMirror plugins, so it cannot interfere with the editor (whatever transaction is in flight),
+    // and it runs on the next tick so the DOM reflects the latest content. Both ATX and setext
+    // headings render as the same h1-h6 elements, so both are captured.
+    setTimeout((): void => {
+      if (!this.isActive()) {
+        return;
+      }
+      const headings: OutlineHeading[] = this.readHeadingElements().map(
+        (element: HTMLElement, index: number): OutlineHeading => ({
+          id: `heading-${index}`,
+          level: Number(element.tagName.charAt(1)) || 1,
+          text: element.textContent ?? '',
+          index,
+        }),
+      );
+      this.zone.run((): void => {
+        this.commands.setOutline(headings);
+      });
+    }, NEXT_TICK_DELAY);
+  }
+
+  /**
+   * Scrolls the editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
+   */
+  private scrollToHeading(index: number): void {
+    const element: HTMLElement | undefined = this.readHeadingElements()[index];
+    element?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  /**
+   * Gets the editor's rendered heading elements (h1-h6) in document order.
+   * @returns Returns the heading elements.
+   */
+  private readHeadingElements(): HTMLElement[] {
+    // Scope to the editable content (.ProseMirror) so the block-edit menu's category headings
+    // ("Text", "List", "Advanced") — which live outside the document — are not picked up.
+    return Array.from(
+      this.editorContainer().nativeElement.querySelectorAll<HTMLElement>(
+        '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6',
+      ),
+    );
+  }
+
+  /**
+   * Registers this view as the active review session, so the Review panel can read the live source,
+   * apply suggestions, and reveal flagged ranges in this editor.
+   */
+  private registerReviewSession(): void {
+    if (this.reviewSession !== null) {
+      return;
+    }
+    this.reviewSession = {
+      getSource: (): string => this.crepe?.getMarkdown() ?? '',
+      applyEdit: (start: number, end: number, replacement: string): void =>
+        this.applyReviewEdit(start, end, replacement),
+      reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
+    };
+    this.review.registerSession(this.reviewSession);
+  }
+
+  /**
+   * Unregisters this view's review session and clears any active reveal highlight.
+   */
+  private unregisterReviewSession(): void {
+    if (this.reviewSession !== null) {
+      this.review.unregisterSession(this.reviewSession);
+      this.reviewSession = null;
+    }
+    this.clearReviewFlash();
+  }
+
+  /**
+   * Applies a review suggestion by replacing the source range with the given text. The replacement is
+   * computed against the serialised markdown (the same source the issue offsets were derived from),
+   * then the whole document is re-parsed and swapped in a single, undoable transaction.
+   * @param start The start offset of the range to replace.
+   * @param end The end offset (exclusive) of the range to replace.
+   * @param replacement The replacement text.
+   */
+  private applyReviewEdit(start: number, end: number, replacement: string): void {
+    const crepe: Crepe | null = this.crepe;
+    if (crepe === null) {
+      return;
+    }
+    const source: string = crepe.getMarkdown();
+    this.replaceDocumentContent(crepe, source.slice(0, start) + replacement + source.slice(end));
+  }
+
+  /**
+   * Replaces the editor's entire content by parsing the given markdown and swapping the document in a
+   * single, undoable transaction. Backs the agent's replace-document capability and the review
+   * suggestion apply.
+   * @param markdown The new markdown source.
+   */
+  private replaceDocument(markdown: string): void {
+    if (this.crepe !== null) {
+      this.replaceDocumentContent(this.crepe, markdown);
+    }
+  }
+
+  /**
+   * Parses markdown and replaces the whole document with it in one undoable transaction.
+   * @param crepe The editor instance.
+   * @param markdown The new markdown source.
+   */
+  private replaceDocumentContent(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(
+        view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content).scrollIntoView(),
+      );
+      view.focus();
+    });
+  }
+
+  /**
+   * Scrolls the flagged text of a review issue into view and briefly highlights it. The flagged word
+   * is located in the rendered text at the occurrence closest to the issue's proportional position in
+   * the source (the rendered text differs from the markdown source, so this is an approximate match).
+   * @param issue The issue to reveal.
+   */
+  private revealReviewIssue(issue: ReviewIssue): void {
+    const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
+    const root: HTMLElement | null | undefined =
+      container?.querySelector<HTMLElement>('.ProseMirror');
+    if (root === null || root === undefined || issue.word.length === 0) {
+      return;
+    }
+
+    const walker: TreeWalker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const segments: { node: Text; start: number }[] = [];
+    let rendered: string = '';
+    let node: Node | null = walker.nextNode();
+    while (node !== null) {
+      const textNode: Text = node as Text;
+      segments.push({ node: textNode, start: rendered.length });
+      rendered += textNode.textContent ?? '';
+      node = walker.nextNode();
+    }
+
+    const sourceLength: number = Math.max(MIN_SOURCE_LENGTH, this.reviewSourceLength());
+    const target: number = (issue.start / sourceLength) * rendered.length;
+    let best: number = NOT_FOUND;
+    let bestDelta: number = Number.POSITIVE_INFINITY;
+    let found: number = rendered.indexOf(issue.word);
+    while (found !== NOT_FOUND) {
+      const delta: number = Math.abs(found - target);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = found;
+      }
+      found = rendered.indexOf(issue.word, found + WORD_STEP);
+    }
+    if (best === NOT_FOUND) {
+      return;
+    }
+
+    const range: Range | null = this.rangeFromRendered(segments, best, best + issue.word.length);
+    if (range === null) {
+      return;
+    }
+    this.scrollRangeIntoView(range, container);
+    this.flashReviewRange(range);
+  }
+
+  /**
+   * Gets the length of the editor's serialised markdown source, used to position a review reveal.
+   * @returns Returns the source length, or zero when no editor is mounted.
+   */
+  private reviewSourceLength(): number {
+    return this.crepe?.getMarkdown().length ?? 0;
+  }
+
+  /**
+   * Scrolls the editor's scroll container so the given range is centred in view.
+   * @param range The range to reveal.
+   * @param container The editor container the range lives in.
+   */
+  private scrollRangeIntoView(range: Range, container: HTMLDivElement | undefined): void {
+    const scroller: HTMLElement | null | undefined =
+      container?.closest<HTMLElement>('.editor-scroll');
+    if (scroller === null || scroller === undefined) {
+      return;
+    }
+    const rect: DOMRect = range.getBoundingClientRect();
+    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        (rect.top - scrollerRect.top) -
+        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
+      behavior: 'smooth',
+    });
+  }
+
+  /**
+   * Builds a DOM range spanning the given rendered-text offsets.
+   * @param segments The text-node segments with their start offsets.
+   * @param start The start offset in the rendered text.
+   * @param end The end offset (exclusive) in the rendered text.
+   * @returns Returns the range, or null when it cannot be resolved.
+   */
+  private rangeFromRendered(
+    segments: readonly { node: Text; start: number }[],
+    start: number,
+    end: number,
+  ): Range | null {
+    const startSegment: { node: Text; start: number } | undefined = this.segmentAt(segments, start);
+    const endSegment: { node: Text; start: number } | undefined = this.segmentAt(
+      segments,
+      end - WORD_STEP,
+    );
+    if (startSegment === undefined || endSegment === undefined) {
+      return null;
+    }
+    const range: Range = document.createRange();
+    range.setStart(startSegment.node, start - startSegment.start);
+    range.setEnd(endSegment.node, end - endSegment.start);
+    return range;
+  }
+
+  /**
+   * Finds the text-node segment containing a rendered-text offset.
+   * @param segments The segments.
+   * @param offset The rendered-text offset.
+   * @returns Returns the containing segment, or undefined.
+   */
+  private segmentAt(
+    segments: readonly { node: Text; start: number }[],
+    offset: number,
+  ): { node: Text; start: number } | undefined {
+    let match: { node: Text; start: number } | undefined;
+    for (const segment of segments) {
+      if (segment.start <= offset) {
+        match = segment;
+      } else {
+        break;
+      }
+    }
+    return match;
+  }
+
+  /**
+   * Briefly highlights a range using the CSS Custom Highlight API, which paints over the rendered text
+   * without mutating the editor's DOM or document. Clears any prior flash first. No-ops where the API
+   * is unavailable (such as under unit tests).
+   * @param range The range to flash.
+   */
+  private flashReviewRange(range: Range): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    this.clearReviewFlash();
+    CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
+    this.reviewFlashTimer = setTimeout((): void => {
+      this.clearReviewFlash();
+    }, REVIEW_FLASH_DURATION);
+  }
+
+  /**
+   * Clears the review reveal highlight and its pending timer, if any.
+   */
+  private clearReviewFlash(): void {
+    if (this.reviewFlashTimer !== null) {
+      clearTimeout(this.reviewFlashTimer);
+      this.reviewFlashTimer = null;
+    }
+    if (this.supportsHighlight()) {
+      CSS.highlights.delete(REVIEW_HIGHLIGHT_NAME);
+    }
+  }
+
+  /**
+   * Determines whether the CSS Custom Highlight API is available for review and read-along
+   * highlighting.
+   * @returns Returns true when the API can be used.
+   */
+  private supportsHighlight(): boolean {
+    return (
+      typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && Boolean(CSS.highlights)
+    );
+  }
+
+  /**
+   * Registers this view as the active read session and publishes its rendered word model, so the
+   * Reader panel can speak the document and highlight the spoken word here.
+   */
+  private registerReadSession(): void {
+    if (this.readSession !== null) {
+      return;
+    }
+    this.readSession = {
+      highlight: (index: number, mode: HighlightMode): void => this.highlightReadWord(index, mode),
+      clearHighlight: (): void => this.clearReadHighlight(),
+      revealWord: (index: number): void => this.revealReadWord(index),
+    };
+    this.reader.registerSession(this.readSession);
+    this.publishReadModel();
+  }
+
+  /**
+   * Clears any read-along highlight and unregisters this view as the read session.
+   */
+  private unregisterReadSession(): void {
+    if (this.readSession === null) {
+      return;
+    }
+    this.clearReadHighlight();
+    this.reader.unregisterSession(this.readSession);
+    this.readSession = null;
+    this.readWords = [];
+    this.readWordRanges = [];
+  }
+
+  /**
+   * Builds the read-along model from the rendered document and publishes it to the reader, keeping the
+   * local word ranges for in-document highlighting.
+   */
+  private publishReadModel(): void {
+    if (this.readSession === null) {
+      return;
+    }
+    const root: HTMLElement | null =
+      this.editorContainer()?.nativeElement.querySelector<HTMLElement>('.ProseMirror') ?? null;
+    const model: ReadModel = buildReadModel(root);
+    this.readWords = model.document.words;
+    this.readWordRanges = model.ranges;
+    this.zone.run((): void => this.reader.setDocument(model.document));
+  }
+
+  /**
+   * Highlights the read-along word at the given index, or its sentence, using the CSS Custom Highlight
+   * API, which paints over the rendered text without mutating ProseMirror's DOM.
+   * @param wordIndex The word to highlight.
+   * @param mode Whether to highlight the single word or its sentence.
+   */
+  private highlightReadWord(wordIndex: number, mode: HighlightMode): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    const word: ReadWord | undefined = this.readWords[wordIndex];
+    const wordRange: Range | undefined = this.readWordRanges[wordIndex];
+    if (word === undefined || wordRange === undefined) {
+      this.clearReadHighlight();
+      return;
+    }
+    if (mode === 'sentence') {
+      CSS.highlights.set(
+        READ_HIGHLIGHT_SENTENCE,
+        new Highlight(this.sentenceRange(wordIndex, word.sentenceIndex)),
+      );
+      CSS.highlights.delete(READ_HIGHLIGHT_WORD);
+    } else {
+      CSS.highlights.set(READ_HIGHLIGHT_WORD, new Highlight(wordRange));
+      CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
+    }
+  }
+
+  /**
+   * Builds a DOM range spanning every word in the given sentence.
+   * @param wordIndex A word within the sentence.
+   * @param sentenceIndex The sentence index to span.
+   * @returns Returns the sentence range.
+   */
+  private sentenceRange(wordIndex: number, sentenceIndex: number): Range {
+    let start: number = wordIndex;
+    let end: number = wordIndex;
+    while (
+      start - WORD_STEP >= 0 &&
+      this.readWords[start - WORD_STEP].sentenceIndex === sentenceIndex
+    ) {
+      start -= WORD_STEP;
+    }
+    while (
+      end + WORD_STEP < this.readWords.length &&
+      this.readWords[end + WORD_STEP].sentenceIndex === sentenceIndex
+    ) {
+      end += WORD_STEP;
+    }
+    const startRange: Range = this.readWordRanges[start];
+    const endRange: Range = this.readWordRanges[end];
+    const range: Range = document.createRange();
+    range.setStart(startRange.startContainer, startRange.startOffset);
+    range.setEnd(endRange.endContainer, endRange.endOffset);
+    return range;
+  }
+
+  /**
+   * Clears the read-along highlight from the document.
+   */
+  private clearReadHighlight(): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    CSS.highlights.delete(READ_HIGHLIGHT_WORD);
+    CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
+  }
+
+  /**
+   * Smoothly scrolls the spoken word into view when it drifts near or past the viewport edges, keeping
+   * the read-along position comfortably visible.
+   * @param wordIndex The word to reveal.
+   */
+  private revealReadWord(wordIndex: number): void {
+    const range: Range | undefined = this.readWordRanges[wordIndex];
+    const scroller: HTMLElement | null | undefined =
+      this.editorContainer()?.nativeElement.closest<HTMLElement>('.editor-scroll');
+    if (range === undefined || scroller === null || scroller === undefined) {
+      return;
+    }
+    const rect: DOMRect = range.getBoundingClientRect();
+    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
+    const aboveComfort: boolean = rect.top < scrollerRect.top + READ_REVEAL_MARGIN;
+    const belowComfort: boolean = rect.bottom > scrollerRect.bottom - READ_REVEAL_MARGIN;
+    if (!aboveComfort && !belowComfort) {
+      return;
+    }
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        (rect.top - scrollerRect.top) -
+        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
+      behavior: 'smooth',
     });
   }
 

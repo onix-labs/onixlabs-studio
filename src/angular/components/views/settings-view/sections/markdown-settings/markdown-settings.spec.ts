@@ -23,6 +23,6 @@ describe('MarkdownSettings', () => {
 
   it('render_whenShown_rendersASettingRowPerControl', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelectorAll('app-setting-row').length).toBe(6);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
   });
 });

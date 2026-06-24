@@ -2,71 +2,42 @@
   display: contents;
 }
 
-// The full-bleed overlay centres the panel. It doubles as the window's drag handle (so the
-// frameless window can move when no title strip is present) and, when summoned over content, blurs
-// what sits behind it. It stays mounted and toggles its visible state so the backdrop blur, the
-// panel, and the ambient orbs can all animate in and out (modern CSS: @starting-style + discrete
-// display transition — Electron's Chromium supports both).
-.welcome {
-  --welcome-fade-duration: 280ms;
-  --welcome-ambient-backdrop-color: rgba(8, 10, 22, 0.82);
-
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  isolation: isolate;
-  background: transparent;
-  backdrop-filter: blur(0);
+// Theme the reusable modal for the welcome presentation: a wide frosted panel over a blurred
+// backdrop. These custom properties are consumed by the modal (with card defaults) and inherit down
+// into it.
+.welcome-modal {
+  --modal-fade-duration: 280ms;
+  --modal-panel-inline-size: min(52rem, 100%);
+  --modal-panel-padding: 2rem;
+  // Mostly opaque (20% see-through), frosted so the orbs read as a soft glow through the edges.
+  --modal-panel-background: color-mix(in srgb, var(--welcome-panel-background-color) 80%, transparent);
+  --modal-panel-backdrop-filter: blur(1.25rem);
+  --modal-panel-border-color: var(--welcome-border-color);
+  --modal-panel-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
+  --modal-backdrop-color: var(--welcome-backdrop-color);
 }
 
-// Shown state: the backdrop tint and blur fade in. The transition lives here, not on the base, so it
-// runs only on entry — dismissing reverts to the (untransitioned) base state instantly, no exit fade.
-.welcome--visible {
-  display: flex;
-  background: var(--welcome-backdrop-color);
-  backdrop-filter: blur(var(--welcome-backdrop-blur));
-  transition:
-    background var(--welcome-fade-duration) ease,
-    backdrop-filter var(--welcome-fade-duration) ease;
-
-  @starting-style {
-    background: transparent;
-    backdrop-filter: blur(0);
-  }
+// Cold-start scene: a darker canvas so the glowing orbs read against it, with no content behind to
+// blur. The modal additionally treats this backdrop as a window-drag region (driven by
+// `draggableBackdrop`) since there is no title strip to move the frameless window by.
+.welcome-modal--ambient {
+  --modal-backdrop-color: rgba(8, 10, 22, 0.82);
+  --modal-backdrop-blur: 0;
 }
 
-// Cold-start scene: a darker canvas so the glowing orbs read against it. Only here is the backdrop a
-// window-drag handle — at a cold start there is no title strip to move the frameless window by. As a
-// modal over content the title strip handles dragging, so the overlay stays fully interactive (its
-// controls, including the close button, would otherwise sit in the drag region and swallow clicks).
-.welcome--visible.welcome--ambient {
-  background: var(--welcome-ambient-backdrop-color);
-  -webkit-app-region: drag;
-
-  @starting-style {
-    background: transparent;
-  }
-}
-
-// The drifting orb layer, behind the panel. Visible (and animating) only in the ambient cold-start
-// scene; isolated so the orbs' screen blend stays within the overlay.
+// The drifting orb layer, projected behind the panel. Visible (and animating) only in the ambient
+// cold-start scene.
 .welcome__orbs {
   position: absolute;
   inset: 0;
-  z-index: 0;
   overflow: hidden;
-  pointer-events: none;
   opacity: 0;
 }
 
-.welcome--ambient .welcome__orbs {
+.welcome__orbs--active {
   opacity: 1;
   // Fade in only; the base state has no transition, so the orbs vanish instantly on exit.
-  transition: opacity var(--welcome-fade-duration) ease;
+  transition: opacity 280ms ease;
 
   @starting-style {
     opacity: 0;
@@ -82,7 +53,7 @@
   animation-play-state: paused;
 }
 
-.welcome--ambient .welcome__orb {
+.welcome__orbs--active .welcome__orb {
   animation-play-state: running;
 }
 
@@ -255,56 +226,6 @@
   }
   84% {
     transform: translate(-4vw, 7vh) scale(1.05);
-  }
-}
-
-// The centred card. Everything inside it opts out of the drag region so the controls stay clickable.
-// It zooms and fades in (and back out) on a slow-fast-slow cubic-bezier; its resting hidden state is
-// the zoomed-down, transparent one so the transition runs both ways.
-.welcome__panel {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  inline-size: min(52rem, 100%);
-  max-block-size: 100%;
-  padding: 2rem;
-  // Mostly opaque (20% see-through), frosted so the orbs read as a soft glow through the edges.
-  background: color-mix(in srgb, var(--welcome-panel-background-color) 80%, transparent);
-  backdrop-filter: blur(1.25rem);
-  border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: 2rem;
-  corner-shape: squircle;
-  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
-  -webkit-app-region: no-drag;
-}
-
-.welcome__close {
-  position: absolute;
-  inset-block-start: 1rem;
-  inset-inline-end: 1rem;
-  // Absolutely-positioned children don't reliably inherit the panel's no-drag, so without this the
-  // button sits in the window-drag region and its clicks are swallowed.
-  -webkit-app-region: no-drag;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.9rem;
-  block-size: 1.9rem;
-  font-size: 1.1rem;
-  color: var(--welcome-muted-foreground-color);
-  background: transparent;
-  border: none;
-  border-radius: 0.5rem;
-  corner-shape: squircle;
-  cursor: pointer;
-  transition: var(--hover-transition);
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
   }
 }
 
@@ -536,15 +457,12 @@
   opacity: 0.8;
 }
 
-// Honour reduced-motion: no zoom, no drift — just show/hide.
+// Honour reduced-motion: no drift — just show/hide. (The modal honours reduced-motion itself.)
 @media (prefers-reduced-motion: reduce) {
-  .welcome,
-  .welcome__orbs,
-  .welcome__panel {
+  .welcome__orbs--active {
     transition: none;
   }
 
-  .welcome--visible .welcome__panel,
   .welcome__orb {
     animation: none;
   }

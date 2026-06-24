@@ -1,18 +1,24 @@
-<!-- The backdrop is draggable so the frameless window can still be moved when no title strip is
-     present; the panel and its controls opt back out of the drag region so they stay interactive.
-     When shown as a modal it blurs the content behind and a backdrop click dismisses it. -->
-<!-- The backdrop is a convenience click-to-dismiss surface; keyboard parity is provided by the
-     Escape handler on the host, and the panel within holds the real focusable controls. -->
-<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
-<section
-  class="welcome"
-  [class.welcome--visible]="visible()"
-  [class.welcome--ambient]="ambient()"
-  (click)="onBackdrop($event)"
+<!-- The welcome screen is a themed modal. It renders full-bleed (and draggable, so the frameless
+     window can still be moved) at a cold start, and as a dismissable modal that blurs the content
+     behind it when summoned from the title strip's new-tab button. The drifting orbs are projected
+     behind the panel and shown only at a cold start. -->
+<app-modal
+  class="welcome-modal"
+  [class.welcome-modal--ambient]="ambient()"
+  [open]="visible()"
+  [dismissable]="dismissable()"
+  [draggableBackdrop]="ambient()"
+  ariaLabel="ONIXLabs Studio"
+  (dismiss)="close()"
 >
-  <!-- Drifting, blurred blue/purple orbs — an ambient backdrop shown only at a cold start, never when
-       the welcome screen is summoned as a modal over content. Purely decorative. -->
-  <div class="welcome__orbs" aria-hidden="true">
+  <!-- Drifting, blurred blue/purple/pink orbs — an ambient backdrop shown only at a cold start, never
+       when the welcome screen is summoned as a modal over content. Purely decorative. -->
+  <div
+    modalBackdrop
+    class="welcome__orbs"
+    [class.welcome__orbs--active]="ambient()"
+    aria-hidden="true"
+  >
     <span class="welcome__orb welcome__orb--a"></span>
     <span class="welcome__orb welcome__orb--b"></span>
     <span class="welcome__orb welcome__orb--c"></span>
@@ -21,97 +27,89 @@
     <span class="welcome__orb welcome__orb--f"></span>
   </div>
 
-  <div class="welcome__panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-    @if (dismissable()) {
-      <button type="button" class="welcome__close" aria-label="Close" (click)="close()">
-        <app-icon [icon]="Icon.CLOSE" />
-      </button>
-    }
-
-    <header class="welcome__header">
-      <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
-      <div class="welcome__intro">
-        <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
-        <p class="welcome__standfirst">Your whole workflow in one window.</p>
-        <p class="welcome__instruction">Create or open something to get started.</p>
-      </div>
-    </header>
-
-    <div class="welcome__body">
-      <div class="welcome__actions">
-        <button type="button" class="welcome__action" (click)="openFiles()">
-          <app-icon [icon]="Icon.WELCOME_DIRECTORY" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">Open Directory or File</span>
-            <span class="welcome__action-hint">Browse the file system</span>
-          </span>
-        </button>
-
-        <button type="button" class="welcome__action" (click)="create('source-control')">
-          <app-icon [icon]="Icon.WELCOME_SOURCE_CONTROL" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">Open Repository</span>
-            <span class="welcome__action-hint">A visual source-control workspace</span>
-          </span>
-        </button>
-
-        <button type="button" class="welcome__action" (click)="create('code')">
-          <app-icon [icon]="Icon.WELCOME_CODE" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">New Code File</span>
-            <span class="welcome__action-hint">Plain text or source code</span>
-          </span>
-        </button>
-
-        <button type="button" class="welcome__action" (click)="create('markdown')">
-          <app-icon [icon]="Icon.WELCOME_MARKDOWN" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">New Markdown File</span>
-            <span class="welcome__action-hint">A formatted document</span>
-          </span>
-        </button>
-
-        <button type="button" class="welcome__action" (click)="create('terminal')">
-          <app-icon [icon]="Icon.WELCOME_TERMINAL" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">New Terminal</span>
-            <span class="welcome__action-hint">A command-line session</span>
-          </span>
-        </button>
-
-        <button type="button" class="welcome__action" (click)="create('agent')">
-          <app-icon [icon]="Icon.WELCOME_AGENT" [size]="2" />
-          <span class="welcome__action-text">
-            <span class="welcome__action-label">New Agent</span>
-            <span class="welcome__action-hint">An AI assistant session</span>
-          </span>
-        </button>
-      </div>
-
-      <section class="welcome__recent" aria-label="Recent items">
-        <h2 class="welcome__recent-title">Recent Items</h2>
-        @if (recent().length > 0) {
-          <ul class="welcome__recent-list">
-            @for (item of recent(); track item.id) {
-              <li>
-                <button type="button" class="welcome__recent-item">
-                  <app-icon [icon]="item.icon" />
-                  <span class="welcome__recent-text">
-                    <span class="welcome__recent-name">{{ item.name }}</span>
-                    <span class="welcome__recent-detail">{{ item.detail }}</span>
-                  </span>
-                </button>
-              </li>
-            }
-          </ul>
-        } @else {
-          <div class="welcome__recent-empty">
-            <app-icon [icon]="Icon.RECENT" [size]="2" />
-            <p class="welcome__recent-empty-title">No recent items yet</p>
-            <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
-          </div>
-        }
-      </section>
+  <header class="welcome__header">
+    <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
+    <div class="welcome__intro">
+      <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
+      <p class="welcome__standfirst">Your whole workflow in one window.</p>
+      <p class="welcome__instruction">Create or open something to get started.</p>
     </div>
+  </header>
+
+  <div class="welcome__body">
+    <div class="welcome__actions">
+      <button type="button" class="welcome__action" (click)="openFiles()">
+        <app-icon [icon]="Icon.WELCOME_DIRECTORY" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">Open Directory or File</span>
+          <span class="welcome__action-hint">Browse the file system</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('source-control')">
+        <app-icon [icon]="Icon.WELCOME_SOURCE_CONTROL" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">Open Repository</span>
+          <span class="welcome__action-hint">A visual source-control workspace</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('code')">
+        <app-icon [icon]="Icon.WELCOME_CODE" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Code File</span>
+          <span class="welcome__action-hint">Plain text or source code</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('markdown')">
+        <app-icon [icon]="Icon.WELCOME_MARKDOWN" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Markdown File</span>
+          <span class="welcome__action-hint">A formatted document</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('terminal')">
+        <app-icon [icon]="Icon.WELCOME_TERMINAL" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Terminal</span>
+          <span class="welcome__action-hint">A command-line session</span>
+        </span>
+      </button>
+
+      <button type="button" class="welcome__action" (click)="create('agent')">
+        <app-icon [icon]="Icon.WELCOME_AGENT" [size]="2" />
+        <span class="welcome__action-text">
+          <span class="welcome__action-label">New Agent</span>
+          <span class="welcome__action-hint">An AI assistant session</span>
+        </span>
+      </button>
+    </div>
+
+    <section class="welcome__recent" aria-label="Recent items">
+      <h2 class="welcome__recent-title">Recent Items</h2>
+      @if (recent().length > 0) {
+        <ul class="welcome__recent-list">
+          @for (item of recent(); track item.id) {
+            <li>
+              <button type="button" class="welcome__recent-item">
+                <app-icon [icon]="item.icon" />
+                <span class="welcome__recent-text">
+                  <span class="welcome__recent-name">{{ item.name }}</span>
+                  <span class="welcome__recent-detail">{{ item.detail }}</span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="welcome__recent-empty">
+          <app-icon [icon]="Icon.RECENT" [size]="2" />
+          <p class="welcome__recent-empty-title">No recent items yet</p>
+          <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
+        </div>
+      }
+    </section>
   </div>
-</section>
+</app-modal>

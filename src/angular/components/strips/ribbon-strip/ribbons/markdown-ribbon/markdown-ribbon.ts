@@ -1,9 +1,21 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import {
   MarkdownBlockType,
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
 import { Documents } from '../../../../../services/documents/documents';
+import {
+  MarkdownPanel,
+  MarkdownPanels,
+} from '../../../../../services/markdown-panels/markdown-panels';
 import { Icon } from '../../../../../icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
@@ -15,6 +27,12 @@ import {
   RibbonMenuItem,
 } from '../../ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
+import { CollapseInsert, MarkdownCollapseModal } from './insert-modals/markdown-collapse-modal';
+import { MarkdownEmojiModal } from './insert-modals/markdown-emoji-modal';
+import { FootnoteInsert, MarkdownFootnoteModal } from './insert-modals/markdown-footnote-modal';
+import { ImageInsert, MarkdownImageModal } from './insert-modals/markdown-image-modal';
+import { LinkInsert, MarkdownLinkModal } from './insert-modals/markdown-link-modal';
+import { MarkdownMathModal, MathInsert } from './insert-modals/markdown-math-modal';
 
 /**
  * Maps each selectable block type to the label shown in the ribbon's style field.
@@ -97,6 +115,12 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     RibbonStripField,
     RibbonStripMenuButton,
     RibbonStripRow,
+    MarkdownImageModal,
+    MarkdownLinkModal,
+    MarkdownMathModal,
+    MarkdownCollapseModal,
+    MarkdownFootnoteModal,
+    MarkdownEmojiModal,
   ],
   templateUrl: './markdown-ribbon.html',
   styleUrls: ['../ribbon-row.scss', './markdown-ribbon.scss'],
@@ -117,6 +141,16 @@ export class MarkdownRibbon {
    * Holds the documents service backing the file actions.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the tool-panel registry the Tools group toggles.
+   */
+  private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Gets the tool panel currently open, so the Tools buttons reflect their pressed state.
+   */
+  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
 
   /**
    * Gets the variants offered by the File group's Save menu button.
@@ -156,6 +190,68 @@ export class MarkdownRibbon {
     { id: VARIANT_PLAINTEXT, label: 'Paste as Plain Text', icon: Icon.PASTE },
     { id: VARIANT_CODE, label: 'Paste as Code Block', icon: Icon.CODE_INLINE },
   ];
+
+  /**
+   * Gets a value indicating whether there is an edit that can be undone.
+   */
+  protected readonly canUndo: Signal<boolean> = this.commands.canUndo;
+
+  /**
+   * Gets a value indicating whether there is an undone edit that can be redone.
+   */
+  protected readonly canRedo: Signal<boolean> = this.commands.canRedo;
+
+  /**
+   * Undoes the last edit in the active editor.
+   */
+  protected onUndo(): void {
+    this.commands.undo();
+  }
+
+  /**
+   * Redoes the last undone edit in the active editor.
+   */
+  protected onRedo(): void {
+    this.commands.redo();
+  }
+
+  /**
+   * Opens the find widget.
+   *
+   * TODO: the markdown editor does not yet provide a find widget; this is a placeholder until one
+   * lands (the Monaco-backed code editor has its own).
+   */
+  protected onFind(): void {
+    // Intentionally empty until the markdown editor exposes a find command.
+  }
+
+  /**
+   * Toggles the Outline tool panel.
+   */
+  protected onOutline(): void {
+    this.panels.toggle('outline');
+  }
+
+  /**
+   * Toggles the Review tool panel.
+   */
+  protected onReview(): void {
+    this.panels.toggle('review');
+  }
+
+  /**
+   * Toggles the Agent tool panel.
+   */
+  protected onAgent(): void {
+    this.panels.toggle('agent');
+  }
+
+  /**
+   * Toggles the Reader tool panel.
+   */
+  protected onReader(): void {
+    this.panels.toggle('reader');
+  }
 
   /**
    * Cuts the selection in the active editor as markdown, the Cut button's default action.
@@ -334,6 +430,41 @@ export class MarkdownRibbon {
   }
 
   /**
+   * Holds whether the image insert modal is open.
+   */
+  protected readonly imageOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the link insert modal is open.
+   */
+  protected readonly linkOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the math insert modal is open.
+   */
+  protected readonly mathOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the collapsible-block insert modal is open.
+   */
+  protected readonly collapseOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the footnote insert modal is open.
+   */
+  protected readonly footnoteOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the emoji insert modal is open.
+   */
+  protected readonly emojiOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Counts inserted footnotes so each unlabelled footnote gets a unique reference.
+   */
+  private footnoteCounter: number = 0;
+
+  /**
    * Inserts a table at the cursor.
    */
   protected onTable(): void {
@@ -345,6 +476,115 @@ export class MarkdownRibbon {
    */
   protected onDivider(): void {
     this.commands.insertHorizontalRule();
+  }
+
+  /**
+   * Opens the image insert modal.
+   */
+  protected onImage(): void {
+    this.imageOpen.set(true);
+  }
+
+  /**
+   * Inserts the image chosen in the modal as a markdown image.
+   * @param image The image source and alt text.
+   */
+  protected onImageSubmit(image: ImageInsert): void {
+    this.commands.insertMarkdown(`![${image.alt}](${image.url})`);
+  }
+
+  /**
+   * Opens the link insert modal.
+   */
+  protected onLink(): void {
+    this.linkOpen.set(true);
+  }
+
+  /**
+   * Inserts the link chosen in the modal at the cursor.
+   * @param link The link text and URL.
+   */
+  protected onLinkSubmit(link: LinkInsert): void {
+    const text: string = link.text.length > 0 ? link.text : link.url;
+    this.commands.insertInlineMarkdown(`[${text}](${link.url})`);
+  }
+
+  /**
+   * Opens the math insert modal.
+   */
+  protected onMath(): void {
+    this.mathOpen.set(true);
+  }
+
+  /**
+   * Inserts the math expression chosen in the modal, as a block or inline formula.
+   * @param math The expression and whether it is a block formula.
+   */
+  protected onMathSubmit(math: MathInsert): void {
+    if (math.block) {
+      this.commands.insertMarkdown(`$$\n${math.expression}\n$$`);
+    } else {
+      this.commands.insertInlineMarkdown(`$${math.expression}$`);
+    }
+  }
+
+  /**
+   * Inserts a starter Mermaid diagram block at the cursor, edited live in the editor.
+   */
+  protected onDiagram(): void {
+    this.commands.insertMarkdown('```mermaid\nflowchart TD\n  A[Start] --> B[End]\n```');
+  }
+
+  /**
+   * Opens the footnote insert modal.
+   */
+  protected onFootnote(): void {
+    this.footnoteOpen.set(true);
+  }
+
+  /**
+   * Inserts the footnote chosen in the modal: a reference at the cursor and a definition appended to
+   * the document.
+   * @param footnote The footnote reference label and content.
+   */
+  protected onFootnoteSubmit(footnote: FootnoteInsert): void {
+    const sanitized: string = footnote.label.replace(/\s+/g, '-');
+    const reference: string = sanitized.length > 0 ? sanitized : `fn-${++this.footnoteCounter}`;
+    this.commands.insertInlineMarkdown(`[^${reference}]`);
+    this.commands.appendMarkdown(`[^${reference}]: ${footnote.content}`);
+  }
+
+  /**
+   * Opens the collapsible-block insert modal.
+   */
+  protected onCollapse(): void {
+    this.collapseOpen.set(true);
+  }
+
+  /**
+   * Inserts the collapsible (details/summary) block chosen in the modal.
+   * @param collapse The block summary and optional body.
+   */
+  protected onCollapseSubmit(collapse: CollapseInsert): void {
+    const body: string = collapse.body.length > 0 ? collapse.body : '';
+    this.commands.insertMarkdown(
+      `<details>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
+    );
+  }
+
+  /**
+   * Opens the emoji insert modal.
+   */
+  protected onEmoji(): void {
+    this.emojiOpen.set(true);
+  }
+
+  /**
+   * Inserts the emoji chosen in the modal at the cursor.
+   * @param emoji The chosen emoji's Unicode character.
+   */
+  protected onEmojiSubmit(emoji: string): void {
+    this.commands.insertText(emoji);
   }
 
   /**

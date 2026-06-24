@@ -1,3 +1,50 @@
 <app-icon class="source-control__icon" [icon]="Icon.SOURCE_CONTROL" [size]="3" />
 <h1 class="source-control__title">Source Control</h1>
 <p class="source-control__hint">A visual Git workspace is on the way.</p>
+
+<!-- Temporary harness: exercises the reusable modal in both dismissable and blocking modes until the
+     real source-control surface lands. -->
+<div class="source-control__demo">
+  <button type="button" class="source-control__demo-button" (click)="openDismissable()">
+    Open dismissable modal
+  </button>
+  <button type="button" class="source-control__demo-button" (click)="openBlocking()">
+    Open non-dismissable modal
+  </button>
+</div>
+
+<app-modal
+  [open]="dismissableOpen()"
+  [dismissable]="true"
+  [width]="40"
+  ariaLabel="Dismissable demo modal"
+  (dismiss)="closeDismissable()"
+>
+  <h2 class="source-control__modal-title">Dismissable Modal</h2>
+  <p class="source-control__modal-body">
+    Click the backdrop, press Escape, or use the close button to dismiss this modal.
+  </p>
+  <div class="source-control__modal-actions">
+    <button type="button" class="source-control__modal-button" (click)="closeDismissable()">
+      Done
+    </button>
+  </div>
+</app-modal>
+
+<app-modal
+  [open]="blockingOpen()"
+  [dismissable]="false"
+  [width]="24"
+  ariaLabel="Non-dismissable demo modal"
+  (dismiss)="closeBlocking()"
+>
+  <h2 class="source-control__modal-title">Non-Dismissable Modal</h2>
+  <p class="source-control__modal-body">
+    The backdrop and the Escape key won't close this one — you must choose an action below.
+  </p>
+  <div class="source-control__modal-actions">
+    <button type="button" class="source-control__modal-button" (click)="closeBlocking()">
+      Confirm
+    </button>
+  </div>
+</app-modal>

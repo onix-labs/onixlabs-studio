@@ -60,6 +60,7 @@ export class FileManager {
         this.write(filePath, content),
     );
     ipcMain.handle(IpcChannel.DialogOpenFile, (): Promise<FileInfo | null> => this.openDialog());
+    ipcMain.handle(IpcChannel.DialogPickImage, (): Promise<string | null> => this.pickImage());
     ipcMain.handle(
       IpcChannel.DialogSaveFile,
       (_event: IpcMainInvokeEvent, defaultPath: unknown): Promise<string | null> =>
@@ -130,6 +131,28 @@ export class FileManager {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Shows an open-image dialog and returns the chosen file's path, without reading its contents.
+   * @returns Returns the chosen image's absolute path, or null when cancelled.
+   */
+  private async pickImage(): Promise<string | null> {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return null;
+    }
+    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
   }
 
   /**

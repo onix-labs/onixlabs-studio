@@ -26,6 +26,32 @@ export type MarkdownBlockType =
 const DEFAULT_BLOCK_TYPE: MarkdownBlockType = 'paragraph';
 
 /**
+ * Describes a heading in the document outline, including its level, text, and the editor position to
+ * navigate to. Both ATX (`#`) and setext (underlined) headings are represented uniformly.
+ */
+export interface OutlineHeading {
+  /**
+   * Gets a stable identifier for the heading (derived from its document position).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the heading level, from 1 to 6.
+   */
+  readonly level: number;
+
+  /**
+   * Gets the heading's text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the heading's zero-based ordinal among the document's headings, used to navigate to it.
+   */
+  readonly index: number;
+}
+
+/**
  * Defines the formatting commands the markdown ribbon can invoke on the active markdown editor.
  */
 export interface MarkdownCommandHandler {
@@ -63,6 +89,16 @@ export interface MarkdownCommandHandler {
    * Pastes the clipboard contents at the selection as a code block.
    */
   pasteAsCode(): void;
+
+  /**
+   * Undoes the last edit.
+   */
+  undo(): void;
+
+  /**
+   * Redoes the last undone edit.
+   */
+  redo(): void;
 
   /**
    * Toggles bold (strong) formatting on the selection.
@@ -105,10 +141,54 @@ export interface MarkdownCommandHandler {
   insertHorizontalRule(): void;
 
   /**
+   * Inserts parsed markdown as block-level content at the cursor, replacing any selection.
+   * @param markdown The markdown to parse and insert (for example an image, code fence, or HTML block).
+   */
+  insertMarkdown(markdown: string): void;
+
+  /**
+   * Inserts parsed markdown as inline content at the cursor, replacing any selection. The markdown is
+   * parsed and its inline content (such as a link or inline math) is spliced into the current block.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  insertInlineMarkdown(markdown: string): void;
+
+  /**
+   * Inserts raw text at the cursor, replacing any selection.
+   * @param text The text to insert (for example a Unicode emoji).
+   */
+  insertText(text: string): void;
+
+  /**
+   * Appends parsed markdown as block-level content at the end of the document. Used for content that
+   * lives apart from the cursor, such as a footnote definition.
+   * @param markdown The markdown to parse and append.
+   */
+  appendMarkdown(markdown: string): void;
+
+  /**
    * Sets the block type (paragraph, heading, blockquote, code block) of the current block.
    * @param blockType The block type to apply.
    */
   setBlockType(blockType: MarkdownBlockType): void;
+
+  /**
+   * Scrolls the editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
+   */
+  goToHeading(index: number): void;
+
+  /**
+   * Reads the editor's current markdown source, reflecting unsaved edits.
+   * @returns Returns the live markdown source.
+   */
+  readDocument(): string;
+
+  /**
+   * Replaces the editor's entire content by parsing the given markdown, as a single undoable edit.
+   * @param markdown The new markdown source.
+   */
+  replaceDocument(markdown: string): void;
 }
 
 /**
@@ -135,6 +215,23 @@ export class MarkdownCommands {
     signal<MarkdownBlockType>(DEFAULT_BLOCK_TYPE);
 
   /**
+   * Holds whether the active editor has an edit that can be undone.
+   */
+  private readonly canUndoSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the active editor has an undone edit that can be redone.
+   */
+  private readonly canRedoSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the active editor's document outline.
+   */
+  private readonly outlineSignal: WritableSignal<readonly OutlineHeading[]> = signal<
+    readonly OutlineHeading[]
+  >([]);
+
+  /**
    * Gets a value indicating whether a markdown editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -148,12 +245,31 @@ export class MarkdownCommands {
     this.activeBlockTypeSignal.asReadonly();
 
   /**
+   * Gets a value indicating whether the active editor has an edit that can be undone.
+   */
+  public readonly canUndo: Signal<boolean> = this.canUndoSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether the active editor has an undone edit that can be redone.
+   */
+  public readonly canRedo: Signal<boolean> = this.canRedoSignal.asReadonly();
+
+  /**
+   * Gets the active editor's document outline (its headings), or an empty list when no editor is
+   * active.
+   */
+  public readonly outline: Signal<readonly OutlineHeading[]> = this.outlineSignal.asReadonly();
+
+  /**
    * Registers the active markdown editor's command handler, resetting the tracked block type.
    * @param handler The handler to register.
    */
   public register(handler: MarkdownCommandHandler): void {
     this.handler.set(handler);
     this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
+    this.canUndoSignal.set(false);
+    this.canRedoSignal.set(false);
+    this.outlineSignal.set([]);
   }
 
   /**
@@ -164,6 +280,9 @@ export class MarkdownCommands {
     if (this.handler() === handler) {
       this.handler.set(null);
       this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
+      this.canUndoSignal.set(false);
+      this.canRedoSignal.set(false);
+      this.outlineSignal.set([]);
     }
   }
 
@@ -174,6 +293,57 @@ export class MarkdownCommands {
    */
   public setActiveBlockType(blockType: MarkdownBlockType): void {
     this.activeBlockTypeSignal.set(blockType);
+  }
+
+  /**
+   * Sets whether the active editor currently has undoable and redoable edits, so the ribbon can
+   * enable or disable its Undo and Redo controls.
+   * @param canUndo Whether there is an edit that can be undone.
+   * @param canRedo Whether there is an undone edit that can be redone.
+   */
+  public setHistoryState(canUndo: boolean, canRedo: boolean): void {
+    this.canUndoSignal.set(canUndo);
+    this.canRedoSignal.set(canRedo);
+  }
+
+  /**
+   * Sets the active editor's document outline, so the Outline panel can reflect the headings.
+   * @param outline The headings in document order.
+   */
+  public setOutline(outline: readonly OutlineHeading[]): void {
+    this.outlineSignal.set(outline);
+  }
+
+  /**
+   * Navigates the active editor to the heading with the given ordinal.
+   * @param index The heading's zero-based ordinal among the document's headings.
+   */
+  public goToHeading(index: number): void {
+    this.handler()?.goToHeading(index);
+  }
+
+  /**
+   * Reads the active markdown editor's current source, including unsaved edits, for the agent to act
+   * on. Returns null when no markdown editor is active.
+   * @returns Returns the live markdown source, or null.
+   */
+  public readActiveDocument(): string | null {
+    return this.handler()?.readDocument() ?? null;
+  }
+
+  /**
+   * Replaces the active markdown editor's entire content from the given markdown, for the agent to
+   * edit the document. Returns false when no markdown editor is active.
+   * @param markdown The new markdown source.
+   * @returns Returns true when a markdown editor was available and updated.
+   */
+  public replaceActiveDocument(markdown: string): boolean {
+    const handler: MarkdownCommandHandler | null = this.handler();
+    if (handler === null) {
+      return false;
+    }
+    handler.replaceDocument(markdown);
+    return true;
   }
 
   /**
@@ -223,6 +393,20 @@ export class MarkdownCommands {
    */
   public pasteAsCode(): void {
     this.handler()?.pasteAsCode();
+  }
+
+  /**
+   * Invokes the undo command on the active editor.
+   */
+  public undo(): void {
+    this.handler()?.undo();
+  }
+
+  /**
+   * Invokes the redo command on the active editor.
+   */
+  public redo(): void {
+    this.handler()?.redo();
   }
 
   /**
@@ -279,6 +463,38 @@ export class MarkdownCommands {
    */
   public insertHorizontalRule(): void {
     this.handler()?.insertHorizontalRule();
+  }
+
+  /**
+   * Inserts parsed markdown as block-level content at the active editor's cursor.
+   * @param markdown The markdown to parse and insert.
+   */
+  public insertMarkdown(markdown: string): void {
+    this.handler()?.insertMarkdown(markdown);
+  }
+
+  /**
+   * Inserts parsed markdown as inline content at the active editor's cursor.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  public insertInlineMarkdown(markdown: string): void {
+    this.handler()?.insertInlineMarkdown(markdown);
+  }
+
+  /**
+   * Inserts raw text at the active editor's cursor.
+   * @param text The text to insert.
+   */
+  public insertText(text: string): void {
+    this.handler()?.insertText(text);
+  }
+
+  /**
+   * Appends parsed markdown as block-level content at the end of the active editor's document.
+   * @param markdown The markdown to parse and append.
+   */
+  public appendMarkdown(markdown: string): void {
+    this.handler()?.appendMarkdown(markdown);
   }
 
   /**

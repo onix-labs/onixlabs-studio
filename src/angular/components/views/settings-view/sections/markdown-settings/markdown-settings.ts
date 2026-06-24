@@ -8,6 +8,7 @@ import {
   ImageSizing,
   MarginSize,
   MarkdownEditorSettings,
+  PanelPosition,
   Settings,
 } from '../../../../../services/settings/settings';
 
@@ -60,6 +61,14 @@ export class MarkdownSettings {
   ];
 
   /**
+   * Gets the options offered by the panel position dropdown.
+   */
+  protected readonly panelPositionOptions: readonly DropdownOption[] = [
+    { value: 'left', label: 'Left' },
+    { value: 'right', label: 'Right' },
+  ];
+
+  /**
    * Sets the body-text font family.
    * @param value The entered font family.
    */
@@ -105,5 +114,13 @@ export class MarkdownSettings {
    */
   protected onImageAlignmentChange(value: string): void {
     this.settings.updateMarkdownEditorSettings({ imageAlignment: value as ImageAlignment });
+  }
+
+  /**
+   * Sets which side of the editor the tool panels are shown on.
+   * @param value The selected panel position.
+   */
+  protected onPanelPositionChange(value: string): void {
+    this.settings.updateMarkdownEditorSettings({ panelPosition: value as PanelPosition });
   }
 }

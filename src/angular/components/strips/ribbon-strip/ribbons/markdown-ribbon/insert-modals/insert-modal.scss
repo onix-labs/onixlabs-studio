@@ -1,0 +1,119 @@
+// Shared form styling for the markdown Insert group's modals. Each modal projects its fields into the
+// reusable app-modal panel; these styles give the fields a consistent look.
+.insert-modal__title {
+  margin: 0 0 0.9rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.insert-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-block-end: 0.8rem;
+}
+
+.insert-modal__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--welcome-muted-foreground-color);
+}
+
+.insert-modal__input,
+.insert-modal__textarea {
+  inline-size: 100%;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+
+  &:focus-visible {
+    border-color: var(--accent-color);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0;
+  }
+}
+
+.insert-modal__textarea {
+  min-block-size: 5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+// A field paired with a trailing button (e.g. the image URL + Browse).
+.insert-modal__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+
+  .insert-modal__field {
+    flex: 1;
+    margin-block-end: 0;
+  }
+}
+
+// A horizontal choice (e.g. the math inline/block toggle).
+.insert-modal__choice {
+  display: flex;
+  gap: 1rem;
+  margin-block-end: 0.8rem;
+}
+
+.insert-modal__choice-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.insert-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-block-start: 0.4rem;
+}
+
+.insert-modal__button {
+  padding: 0.45rem 1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+  }
+}
+
+.insert-modal__button--primary {
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--gray-100);
+    background: var(--accent-color);
+  }
+}

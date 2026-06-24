@@ -16,6 +16,8 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     paste: (): void => void calls.add('paste'),
     pasteAsPlaintext: (): void => void calls.add('pasteAsPlaintext'),
     pasteAsCode: (): void => void calls.add('pasteAsCode'),
+    undo: (): void => void calls.add('undo'),
+    redo: (): void => void calls.add('redo'),
     toggleBold: (): void => void calls.add('toggleBold'),
     toggleItalic: (): void => void calls.add('toggleItalic'),
     toggleStrikethrough: (): void => void calls.add('toggleStrikethrough'),
@@ -24,7 +26,17 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     toggleOrderedList: (): void => void calls.add('toggleOrderedList'),
     insertTable: (): void => void calls.add('insertTable'),
     insertHorizontalRule: (): void => void calls.add('insertHorizontalRule'),
+    insertMarkdown: (): void => void calls.add('insertMarkdown'),
+    insertInlineMarkdown: (): void => void calls.add('insertInlineMarkdown'),
+    insertText: (): void => void calls.add('insertText'),
+    appendMarkdown: (): void => void calls.add('appendMarkdown'),
     setBlockType: (): void => void calls.add('setBlockType'),
+    goToHeading: (): void => void calls.add('goToHeading'),
+    readDocument: (): string => {
+      calls.add('readDocument');
+      return '# Document';
+    },
+    replaceDocument: (): void => void calls.add('replaceDocument'),
   };
 }
 
@@ -84,6 +96,40 @@ describe('MarkdownCommands', () => {
     expect((): void => commands.pasteAsCode()).not.toThrow();
   });
 
+  it('insertCommands_whenHandlerRegistered_forwardToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.insertMarkdown('![](x)');
+    commands.insertInlineMarkdown('[a](b)');
+    commands.insertText('🙂');
+    commands.appendMarkdown('[^1]: note');
+    expect(calls.has('insertMarkdown')).toBe(true);
+    expect(calls.has('insertInlineMarkdown')).toBe(true);
+    expect(calls.has('insertText')).toBe(true);
+    expect(calls.has('appendMarkdown')).toBe(true);
+  });
+
+  it('insertCommands_whenNoHandlerRegistered_doNothing', () => {
+    expect((): void => commands.insertMarkdown('x')).not.toThrow();
+    expect((): void => commands.insertInlineMarkdown('x')).not.toThrow();
+    expect((): void => commands.insertText('x')).not.toThrow();
+    expect((): void => commands.appendMarkdown('x')).not.toThrow();
+  });
+
+  it('historyCommands_whenHandlerRegistered_forwardToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.undo();
+    commands.redo();
+    expect(calls.has('undo')).toBe(true);
+    expect(calls.has('redo')).toBe(true);
+  });
+
+  it('historyCommands_whenNoHandlerRegistered_doNothing', () => {
+    expect((): void => commands.undo()).not.toThrow();
+    expect((): void => commands.redo()).not.toThrow();
+  });
+
   it('unregister_whenHandlerMatches_clearsActiveEditor', () => {
     const handler: MarkdownCommandHandler = recordingHandler(new Set<string>());
     commands.register(handler);
@@ -95,6 +141,58 @@ describe('MarkdownCommands', () => {
     commands.register(recordingHandler(new Set<string>()));
     commands.unregister(recordingHandler(new Set<string>()));
     expect(commands.hasActiveEditor()).toBe(true);
+  });
+
+  it('setHistoryState_whenCalled_updatesCanUndoAndCanRedo', () => {
+    commands.setHistoryState(true, false);
+    expect(commands.canUndo()).toBe(true);
+    expect(commands.canRedo()).toBe(false);
+  });
+
+  it('register_whenHandlerRegistered_resetsHistoryState', () => {
+    commands.setHistoryState(true, true);
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.canUndo()).toBe(false);
+    expect(commands.canRedo()).toBe(false);
+  });
+
+  it('setOutline_whenCalled_updatesOutline', () => {
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', index: 0 }]);
+    expect(commands.outline().length).toBe(1);
+    expect(commands.outline()[0].text).toBe('Intro');
+  });
+
+  it('goToHeading_whenHandlerRegistered_forwardsToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.goToHeading(12);
+    expect(calls.has('goToHeading')).toBe(true);
+  });
+
+  it('readActiveDocument_whenHandlerRegistered_returnsTheLiveSource', () => {
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.readActiveDocument()).toBe('# Document');
+  });
+
+  it('readActiveDocument_whenNoHandlerRegistered_returnsNull', () => {
+    expect(commands.readActiveDocument()).toBeNull();
+  });
+
+  it('replaceActiveDocument_whenHandlerRegistered_forwardsAndReportsTrue', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    expect(commands.replaceActiveDocument('# New')).toBe(true);
+    expect(calls.has('replaceDocument')).toBe(true);
+  });
+
+  it('replaceActiveDocument_whenNoHandlerRegistered_reportsFalse', () => {
+    expect(commands.replaceActiveDocument('# New')).toBe(false);
+  });
+
+  it('register_whenHandlerRegistered_resetsOutline', () => {
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', index: 0 }]);
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.outline().length).toBe(0);
   });
 
   it('setActiveBlockType_whenCalled_updatesActiveBlockType', () => {

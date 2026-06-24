@@ -38,4 +38,10 @@
     cursor: default;
     pointer-events: none;
   }
+
+  &[aria-pressed='true'] {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+  }
 }

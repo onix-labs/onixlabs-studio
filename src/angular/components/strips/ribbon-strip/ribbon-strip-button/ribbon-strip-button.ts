@@ -42,6 +42,17 @@ export class RibbonStripButton {
   public readonly iconOnly: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the button is a latching toggle rather than a one-shot action.
+   */
+  public readonly toggle: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the toggle is currently pressed. Only meaningful when
+   * {@link toggle} is set.
+   */
+  public readonly pressed: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits when the button is activated.
    */
   public readonly action: OutputEmitterRef<void> = output<void>();

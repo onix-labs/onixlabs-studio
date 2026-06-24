@@ -14,7 +14,7 @@ import { FileConflict, FileConflicts } from '../../../services/file-conflicts/fi
     @if (conflict(); as current) {
       <div class="overlay" role="presentation">
         <div class="card" role="alertdialog" aria-labelledby="conflict-title">
-          <h2 class="title" id="conflict-title">File changed on disk</h2>
+          <h2 class="title" id="conflict-title">File Changed on Disk</h2>
           <p class="body">
             <strong>{{ current.name }}</strong> was changed outside the editor, but you have unsaved
             changes. Keep your version, or reload the version on disk (discarding your edits)?

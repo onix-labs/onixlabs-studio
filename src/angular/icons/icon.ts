@@ -162,6 +162,26 @@ export class Icon {
   public static readonly STOP: Icon = new Icon('ph-duotone ph-stop');
 
   /**
+   * Gets the pause icon, shown on the Reader panel's transport toggle while playing.
+   */
+  public static readonly PAUSE: Icon = new Icon('ph-fill ph-pause');
+
+  /**
+   * Gets the filled play icon, shown on the Reader panel's transport toggle while paused.
+   */
+  public static readonly PLAY_FILL: Icon = new Icon('ph-fill ph-play');
+
+  /**
+   * Gets the skip-to-previous icon, shown on the Reader panel's previous-paragraph control.
+   */
+  public static readonly SKIP_BACK: Icon = new Icon('ph-fill ph-skip-back');
+
+  /**
+   * Gets the skip-to-next icon, shown on the Reader panel's next-paragraph control.
+   */
+  public static readonly SKIP_FORWARD: Icon = new Icon('ph-fill ph-skip-forward');
+
+  /**
    * Gets the debug icon.
    */
   public static readonly DEBUG: Icon = new Icon('ph-duotone ph-bug');
@@ -227,6 +247,71 @@ export class Icon {
    * Gets the horizontal-divider icon.
    */
   public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+
+  /**
+   * Gets the image icon, shown on the markdown Insert group's Image button.
+   */
+  public static readonly IMAGE: Icon = new Icon('ph ph-image');
+
+  /**
+   * Gets the link icon, shown on the markdown Insert group's Link button.
+   */
+  public static readonly LINK: Icon = new Icon('ph ph-link');
+
+  /**
+   * Gets the math icon, shown on the markdown Insert group's Math button.
+   */
+  public static readonly MATH: Icon = new Icon('ph ph-function');
+
+  /**
+   * Gets the diagram icon, shown on the markdown Insert group's Diagram button.
+   */
+  public static readonly DIAGRAM: Icon = new Icon('ph ph-graph');
+
+  /**
+   * Gets the footnote icon, shown on the markdown Insert group's Footnote button.
+   */
+  public static readonly FOOTNOTE: Icon = new Icon('ph ph-asterisk');
+
+  /**
+   * Gets the collapse (details/summary) icon, shown on the markdown Insert group's Collapse button.
+   */
+  public static readonly COLLAPSE: Icon = new Icon('ph ph-caret-circle-down');
+
+  /**
+   * Gets the emoji icon, shown on the markdown Insert group's Emoji button.
+   */
+  public static readonly EMOJI: Icon = new Icon('ph ph-smiley');
+
+  /**
+   * Gets the outline icon, shown on the markdown Tools group's Outline button.
+   */
+  public static readonly OUTLINE: Icon = new Icon('ph ph-list-dashes');
+
+  /**
+   * Gets the review (spelling and grammar) icon, shown on the markdown Tools group's Review button.
+   */
+  public static readonly REVIEW: Icon = new Icon('ph-duotone ph-text-aa');
+
+  /**
+   * Gets the reader (read-aloud) icon, shown on the markdown Tools group's Reader button.
+   */
+  public static readonly READER: Icon = new Icon('ph-duotone ph-speaker-high');
+
+  /**
+   * Gets the refresh icon, shown on the Review panel's re-analyse action.
+   */
+  public static readonly REFRESH: Icon = new Icon('ph ph-arrow-clockwise');
+
+  /**
+   * Gets the check icon, shown on the Review panel's primary suggestion.
+   */
+  public static readonly CHECK: Icon = new Icon('ph ph-check');
+
+  /**
+   * Gets the dictionary (book) icon, shown on the Review panel's add-to-dictionary action.
+   */
+  public static readonly DICTIONARY: Icon = new Icon('ph ph-book-bookmark');
 
   /**
    * Gets the bullet-list icon.
