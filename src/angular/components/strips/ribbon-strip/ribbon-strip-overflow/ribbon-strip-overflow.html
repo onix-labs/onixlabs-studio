@@ -1,12 +1,3 @@
-<div
-  #row
-  class="ribbon-overflow__row"
-  [class.ribbon-overflow__row--center]="alignment() === 'center'"
-  [class.ribbon-overflow__row--right]="alignment() === 'right'"
->
-  <ng-content />
-</div>
-
 <button
   #more
   type="button"
@@ -17,7 +8,16 @@
   aria-label="More ribbon groups"
   (click)="toggle($event)"
 >
-  <app-icon [icon]="Icon.MORE" />
+  <app-icon [icon]="Icon.CARET_DOWN" />
 </button>
+
+<div
+  #row
+  class="ribbon-overflow__row"
+  [class.ribbon-overflow__row--center]="alignment() === 'center'"
+  [class.ribbon-overflow__row--right]="alignment() === 'right'"
+>
+  <ng-content />
+</div>
 
 <div #flyout class="ribbon-overflow__flyout" [class.ribbon-overflow__flyout--open]="flyoutOpen()"></div>

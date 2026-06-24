@@ -29,21 +29,21 @@
   justify-content: safe flex-end;
 }
 
-// The overflow trigger, styled as a ribbon control. Its display is managed imperatively (hidden when
-// nothing overflows), so it occupies space only when needed.
+// The overflow trigger, on the left of the row and shaped like a ribbon group: it stretches to the
+// full group height, carries the group border, and takes the darker group fill. Its display is
+// managed imperatively (hidden when nothing overflows), so it occupies space only when needed.
 .ribbon-overflow__more {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  align-self: center;
-  inline-size: 2rem;
-  block-size: 2rem;
-  font-size: 1rem;
+  align-self: stretch;
+  padding-inline: 0.5rem;
+  font-size: 0.9rem;
   color: var(--ribbon-control-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid transparent;
-  border-radius: 0.4rem;
+  background: var(--ribbon-group-title-background-color);
+  border: 0.0625rem solid var(--ribbon-group-border-color);
+  border-radius: 0.5rem;
   corner-shape: squircle;
   cursor: pointer;
   transition: var(--hover-transition);
@@ -56,7 +56,7 @@
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
+    outline-offset: -0.125rem;
   }
 }
 
@@ -64,7 +64,7 @@
 .ribbon-overflow__flyout {
   position: absolute;
   inset-block-start: 100%;
-  inset-inline-end: 0;
+  inset-inline-start: 0;
   z-index: 20;
   display: none;
   flex-direction: column;
