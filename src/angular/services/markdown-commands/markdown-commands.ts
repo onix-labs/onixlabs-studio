@@ -232,6 +232,12 @@ export class MarkdownCommands {
   >([]);
 
   /**
+   * Holds the index, within the outline, of the heading the reader is currently at (driven by the
+   * editor's scroll position). Drives the Outline panel's active marker.
+   */
+  private readonly activeHeadingSignal: WritableSignal<number> = signal<number>(0);
+
+  /**
    * Gets a value indicating whether a markdown editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -261,6 +267,11 @@ export class MarkdownCommands {
   public readonly outline: Signal<readonly OutlineHeading[]> = this.outlineSignal.asReadonly();
 
   /**
+   * Gets the index, within the outline, of the heading the reader is currently at.
+   */
+  public readonly activeHeadingIndex: Signal<number> = this.activeHeadingSignal.asReadonly();
+
+  /**
    * Registers the active markdown editor's command handler, resetting the tracked block type.
    * @param handler The handler to register.
    */
@@ -270,6 +281,7 @@ export class MarkdownCommands {
     this.canUndoSignal.set(false);
     this.canRedoSignal.set(false);
     this.outlineSignal.set([]);
+    this.activeHeadingSignal.set(0);
   }
 
   /**
@@ -312,6 +324,15 @@ export class MarkdownCommands {
    */
   public setOutline(outline: readonly OutlineHeading[]): void {
     this.outlineSignal.set(outline);
+  }
+
+  /**
+   * Sets the index of the heading the reader is currently at, so the Outline panel can move its active
+   * marker.
+   * @param index The active heading's zero-based ordinal among the document's headings.
+   */
+  public setActiveHeading(index: number): void {
+    this.activeHeadingSignal.set(index);
   }
 
   /**

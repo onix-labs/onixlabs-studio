@@ -132,6 +132,30 @@ const ROOT_DEPTH: number = 0;
 const NEXT_TICK_DELAY: number = 0;
 
 /**
+ * Distance in pixels below the top of the editor's scroll viewport of the reading line: the active
+ * heading is the last whose top has crossed it, and clicking an outline entry lands that heading
+ * exactly on it. The two must be the same value — were the click gap smaller than the activation
+ * line, a clicked heading would land above the line with the next heading already past it, and the
+ * Outline marker would jump ahead by one whenever a section is shorter than the gap between them.
+ */
+const READING_LINE_OFFSET: number = 56;
+
+/**
+ * Divisor applied to the viewport width to probe the reading line at the editor's horizontal centre,
+ * where the centred document content always sits.
+ */
+const READING_PROBE_DIVISOR: number = 2;
+
+/**
+ * Pixels a clicked heading is parked above the reading line. Landing it on the line exactly leaves the
+ * probe at the heading's top edge, where the hit-test is ambiguous (it can resolve to the previous
+ * block); the small cushion puts the probe firmly inside the heading and absorbs the slack between the
+ * smooth scroll's final event and its true resting position. Must stay below the shortest heading's
+ * line height so the heading still owns the line.
+ */
+const HEADING_LAND_BIAS: number = 8;
+
+/**
  * Minimum width of a markdown tool panel, in pixels.
  */
 const MIN_PANEL_SIZE: number = 220;
@@ -476,6 +500,30 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.handleKeydown.bind(this);
 
   /**
+   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
+   * event-listener cleanup.
+   */
+  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
+
+  /**
+   * Holds the editor's scroll container, to which the scroll-spy listener is attached.
+   */
+  private scrollContainer: HTMLElement | null = null;
+
+  /**
+   * Holds the editor view, used to derive the outline from the document model and to map the reading
+   * line's screen coordinate to a document position for the scroll-spy. Null before creation.
+   */
+  private editorView: EditorView | null = null;
+
+  /**
+   * Holds the document position of each heading node, in document order, captured when the outline is
+   * built. The scroll-spy maps a coordinate to a position and finds the last heading at or before it,
+   * so the active index always refers to the same heading list the Outline panel renders.
+   */
+  private headingPositions: readonly number[] = [];
+
+  /**
    * Holds the currently-editing HTML image block element, or null.
    */
   private currentHtmlImageBlock: HTMLElement | null = null;
@@ -548,10 +596,13 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Creates the editor once the view's elements are available.
+   * Creates the editor once the view's elements are available and starts the outline scroll-spy.
    */
   public ngAfterViewInit(): void {
     void this.createEditor();
+    this.scrollContainer =
+      this.editorContainer().nativeElement.closest<HTMLElement>('.editor-scroll');
+    this.scrollContainer?.addEventListener('scroll', this.boundScrollHandler, { passive: true });
   }
 
   /**
@@ -584,6 +635,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * releasing the backing document when this view owns its lifecycle (a standalone tab).
    */
   public ngOnDestroy(): void {
+    this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
+    this.scrollContainer = null;
     void this.destroyEditor();
     if (this.documents.activeDocumentId() === this.documentId()) {
       this.documents.setActiveDocument(null);
@@ -690,6 +743,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.crepe = crepe;
       await crepe.create();
 
+      // Capture the editor view so the outline can be derived from the document model and the
+      // scroll-spy can map screen coordinates to document positions (see updateActiveHeading).
+      crepe.editor.action((ctx: Ctx): void => {
+        this.editorView = ctx.get(editorViewCtx);
+      });
+
       if (this.readOnly()) {
         crepe.setReadonly(true);
       }
@@ -749,6 +808,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.isEditorReady.set(false);
     }
 
+    this.editorView = null;
+    this.headingPositions = [];
     this.hasReceivedFirstUpdate = false;
   }
 
@@ -1089,55 +1150,102 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Walks the document for heading nodes and publishes the resulting outline to the command registry,
-   * so the Outline panel reflects the document's headings. Both ATX and setext headings parse to the
-   * same heading node, so both are captured.
-   * @param view The editor view to read the headings from.
+   * Walks the document model for heading nodes and publishes the resulting outline to the command
+   * registry, so the Outline panel reflects the document's headings, capturing each heading's document
+   * position for the scroll-spy. Both ATX and setext headings parse to the same heading node, so both
+   * are captured. Reads the document (not the DOM), so the outline and the scroll-spy share one source
+   * of truth — the same heading list, in the same order — and cannot drift apart.
    */
   private refreshOutline(): void {
-    // Read the rendered heading elements rather than the editor state: this never touches the
-    // ProseMirror plugins, so it cannot interfere with the editor (whatever transaction is in flight),
-    // and it runs on the next tick so the DOM reflects the latest content. Both ATX and setext
-    // headings render as the same h1-h6 elements, so both are captured.
+    // Deferred a tick so the document reflects the latest content. Reading the document is a pure read
+    // that never touches the editor's plugins, so it cannot interfere with an in-flight transaction.
     setTimeout((): void => {
-      if (!this.isActive()) {
+      const view: EditorView | null = this.editorView;
+      if (!this.isActive() || view === null) {
         return;
       }
-      const headings: OutlineHeading[] = this.readHeadingElements().map(
-        (element: HTMLElement, index: number): OutlineHeading => ({
-          id: `heading-${index}`,
-          level: Number(element.tagName.charAt(1)) || 1,
-          text: element.textContent ?? '',
-          index,
-        }),
-      );
+      const headings: OutlineHeading[] = [];
+      const positions: number[] = [];
+      view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
+        if (node.type.name !== 'heading') {
+          return true;
+        }
+        positions.push(pos);
+        headings.push({
+          id: `heading-${headings.length}`,
+          level: (node.attrs['level'] as number) || HEADING_LEVEL_1,
+          text: node.textContent,
+          index: headings.length,
+        });
+        return false;
+      });
+      this.headingPositions = positions;
       this.zone.run((): void => {
         this.commands.setOutline(headings);
       });
+      this.updateActiveHeading();
     }, NEXT_TICK_DELAY);
   }
 
   /**
-   * Scrolls the editor to the heading with the given ordinal.
-   * @param index The heading's zero-based ordinal among the document's headings.
+   * Recomputes which heading the reader is currently at and publishes its index, so the Outline panel
+   * can move its active marker. Maps the reading line ({@link READING_LINE_OFFSET} below the viewport
+   * top) to a document position through the editor's own hit-testing, then takes the last heading at or
+   * before that position — robust against hidden, transformed, or asynchronously-rendered content that
+   * a DOM-rectangle scan trips over. Reads layout synchronously on scroll (rather than deferring to an
+   * animation frame, which can be suspended) so the marker never appears frozen.
    */
-  private scrollToHeading(index: number): void {
-    const element: HTMLElement | undefined = this.readHeadingElements()[index];
-    element?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  private updateActiveHeading(): void {
+    const view: EditorView | null = this.editorView;
+    if (!this.isActive() || this.scrollContainer === null || view === null) {
+      return;
+    }
+    if (this.headingPositions.length === 0) {
+      this.zone.run((): void => this.commands.setActiveHeading(0));
+      return;
+    }
+    const viewport: DOMRect = this.scrollContainer.getBoundingClientRect();
+    const at: { pos: number } | null = view.posAtCoords({
+      left: viewport.left + viewport.width / READING_PROBE_DIVISOR,
+      top: viewport.top + READING_LINE_OFFSET,
+    });
+    if (at === null) {
+      return;
+    }
+    let active: number = 0;
+    for (let index: number = 0; index < this.headingPositions.length; index++) {
+      if (this.headingPositions[index] <= at.pos) {
+        active = index;
+      } else {
+        break;
+      }
+    }
+    this.zone.run((): void => this.commands.setActiveHeading(active));
   }
 
   /**
-   * Gets the editor's rendered heading elements (h1-h6) in document order.
-   * @returns Returns the heading elements.
+   * Jumps the editor so the heading with the given ordinal lands just above the reading line. The jump
+   * is instant rather than animated: a single scroll event fires at the exact resting position, so the
+   * scroll-spy reads it once and unambiguously activates the clicked heading — an animated scroll's
+   * easing tail fires its final event short of rest and settles a heading off. The marker still glides
+   * to the heading through its own transition.
+   * @param index The heading's zero-based ordinal among the document's headings.
    */
-  private readHeadingElements(): HTMLElement[] {
-    // Scope to the editable content (.ProseMirror) so the block-edit menu's category headings
-    // ("Text", "List", "Advanced") — which live outside the document — are not picked up.
-    return Array.from(
-      this.editorContainer().nativeElement.querySelectorAll<HTMLElement>(
-        '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6',
-      ),
-    );
+  private scrollToHeading(index: number): void {
+    const view: EditorView | null = this.editorView;
+    const scroller: HTMLElement | null = this.scrollContainer;
+    const pos: number | undefined = this.headingPositions[index];
+    if (view === null || scroller === null || pos === undefined) {
+      return;
+    }
+    const headingTop: number = view.coordsAtPos(pos).top;
+    const offset: number =
+      headingTop -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop -
+      READING_LINE_OFFSET +
+      HEADING_LAND_BIAS;
+    scroller.scrollTo({ top: offset, behavior: 'auto' });
   }
 
   /**
