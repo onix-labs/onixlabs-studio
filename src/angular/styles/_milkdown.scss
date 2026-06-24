@@ -971,3 +971,18 @@ app-markdown-view .milkdown {
   background-color: rgb(var(--accent-color-rgb), 0.28);
   color: inherit;
 }
+
+// -----------------------------------------------------------------------------
+// Read-along highlight
+// -----------------------------------------------------------------------------
+// The Reader panel paints the spoken word (or its sentence) via the CSS Custom
+// Highlight API, registered under `markdown-read-word` / `markdown-read-sentence`.
+// Global, because it targets text inside the encapsulation-free `.ProseMirror`.
+::highlight(markdown-read-sentence) {
+  background-color: rgb(var(--accent-color-rgb), 0.14);
+}
+
+::highlight(markdown-read-word) {
+  background-color: rgb(var(--accent-color-rgb), 0.38);
+  color: inherit;
+}

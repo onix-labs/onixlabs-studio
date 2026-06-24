@@ -1,38 +1,191 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Reader } from '../../../../../services/markdown-reader/markdown-reader';
+import { HighlightMode, VoiceOption } from '../../../../../services/markdown-reader/reader-types';
 import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
 
 /**
- * The Reader tool panel: reads the document aloud using the browser Speech Synthesis API, with a
- * karaoke-style follow-along mode that selects the word currently being spoken.
- *
- * Scaffold only — the reader is not yet built.
+ * Upper bound of the scrubber range input, giving sub-percent seek granularity.
+ */
+const SCRUB_MAX: number = 1000;
+
+/**
+ * Multiplier converting a 0–1 fraction to a percentage.
+ */
+const PERCENT: number = 100;
+
+/**
+ * Slow (0.75×) playback option.
+ */
+const SPEED_SLOW: number = 0.75;
+
+/**
+ * Normal (1×) playback option.
+ */
+const SPEED_NORMAL: number = 1;
+
+/**
+ * Faster (1.5×) playback option.
+ */
+const SPEED_FAST: number = 1.5;
+
+/**
+ * Fastest (2×) playback option.
+ */
+const SPEED_FASTEST: number = 2;
+
+/**
+ * Selectable playback speeds.
+ */
+const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_FASTEST];
+
+/**
+ * The Reader tool panel: reads the active document aloud through the platform Speech Synthesis API —
+ * the spoken word or sentence is highlighted in the document itself — with transport, scrubber,
+ * speed, highlight-mode, and voice controls.
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [MarkdownToolPanel],
+  imports: [MarkdownToolPanel, AppIcon],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <app-markdown-tool-panel title="Reader" [icon]="Icon.READER">
-      <p class="tool-panel-placeholder">
-        Read-aloud controls with karaoke-style follow-along will appear here.
-      </p>
-    </app-markdown-tool-panel>
-  `,
-  styles: [
-    `
-      .tool-panel-placeholder {
-        margin: 0;
-        font-size: 0.85rem;
-        line-height: 1.5;
-        color: var(--welcome-muted-foreground-color);
-      }
-    `,
-  ],
+  templateUrl: './markdown-reader-panel.html',
+  styleUrl: './markdown-reader-panel.scss',
 })
 export class MarkdownReaderPanel {
   /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the reader playback service.
+   */
+  private readonly reader: Reader = inject(Reader);
+
+  /**
+   * Gets whether there is a document available to read.
+   */
+  protected readonly canRead: Signal<boolean> = this.reader.canRead;
+
+  /**
+   * Gets whether playback is active.
+   */
+  protected readonly isPlaying: Signal<boolean> = this.reader.isPlaying;
+
+  /**
+   * Gets playback progress as a fraction (0–1).
+   */
+  protected readonly progress: Signal<number> = this.reader.progress;
+
+  /**
+   * Gets the estimated elapsed time label.
+   */
+  protected readonly elapsedLabel: Signal<string> = this.reader.elapsedLabel;
+
+  /**
+   * Gets the estimated total duration label.
+   */
+  protected readonly totalLabel: Signal<string> = this.reader.totalLabel;
+
+  /**
+   * Gets the active playback rate.
+   */
+  protected readonly rate: Signal<number> = this.reader.rate;
+
+  /**
+   * Gets the active highlight mode.
+   */
+  protected readonly highlightMode: Signal<HighlightMode> = this.reader.highlightMode;
+
+  /**
+   * Gets the available voices.
+   */
+  protected readonly voices: Signal<readonly VoiceOption[]> = this.reader.voices;
+
+  /**
+   * Gets the selected voice.
+   */
+  protected readonly selectedVoice: Signal<VoiceOption | null> = this.reader.selectedVoice;
+
+  /**
+   * Gets the selectable playback speeds.
+   */
+  protected readonly speeds: readonly number[] = SPEEDS;
+
+  /**
+   * Gets the upper bound of the scrubber range input.
+   */
+  protected readonly scrubMax: number = SCRUB_MAX;
+
+  /**
+   * Toggles play and pause.
+   */
+  protected onToggle(): void {
+    this.reader.toggle();
+  }
+
+  /**
+   * Skips to the previous paragraph.
+   */
+  protected onSkipBack(): void {
+    this.reader.skipBackward();
+  }
+
+  /**
+   * Skips to the next paragraph.
+   */
+  protected onSkipForward(): void {
+    this.reader.skipForward();
+  }
+
+  /**
+   * Seeks to the scrubber's position.
+   * @param event The range input event.
+   */
+  protected onSeek(event: Event): void {
+    const value: number = Number((event.target as HTMLInputElement).value);
+    this.reader.seekToFraction(value / this.scrubMax);
+  }
+
+  /**
+   * Sets the playback speed.
+   * @param speed The speed multiplier.
+   */
+  protected onSpeed(speed: number): void {
+    this.reader.setRate(speed);
+  }
+
+  /**
+   * Sets the highlight mode.
+   * @param mode The highlight mode.
+   */
+  protected onHighlight(mode: HighlightMode): void {
+    this.reader.setHighlightMode(mode);
+  }
+
+  /**
+   * Selects a voice.
+   * @param event The select change event.
+   */
+  protected onVoice(event: Event): void {
+    this.reader.setVoiceUri((event.target as HTMLSelectElement).value);
+  }
+
+  /**
+   * Formats a speed multiplier as a label (for example `1.5×`).
+   * @param speed The speed multiplier.
+   * @returns Returns the label.
+   */
+  protected speedLabel(speed: number): string {
+    return `${speed}×`;
+  }
+
+  /**
+   * Gets the scrubber fill width as a CSS percentage string.
+   * @returns Returns the fill percentage (for example `42%`).
+   */
+  protected fillPercent(): string {
+    return `${this.progress() * PERCENT}%`;
+  }
 }

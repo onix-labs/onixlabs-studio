@@ -82,6 +82,10 @@ import {
 } from '../../../services/markdown-panels/markdown-panels';
 import { Review } from '../../../services/markdown-review/markdown-review';
 import { ReviewIssue, ReviewSession } from '../../../services/markdown-review/review-types';
+import { Reader } from '../../../services/markdown-reader/markdown-reader';
+import { HighlightMode, ReadSession } from '../../../services/markdown-reader/reader-types';
+import { buildReadModel, ReadModel } from '../../../services/markdown-reader/read-model';
+import { ReadWord } from '../../../services/markdown-reader/read-tokenize';
 import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
@@ -194,6 +198,22 @@ const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
 const REVIEW_FLASH_DURATION: number = 1600;
 
 /**
+ * CSS Custom Highlight registry name for the read-along spoken word.
+ */
+const READ_HIGHLIGHT_WORD: string = 'markdown-read-word';
+
+/**
+ * CSS Custom Highlight registry name for the read-along spoken sentence.
+ */
+const READ_HIGHLIGHT_SENTENCE: string = 'markdown-read-sentence';
+
+/**
+ * Comfort margin in pixels from the viewport edges within which the spoken word is considered visible
+ * and does not trigger a follow scroll.
+ */
+const READ_REVEAL_MARGIN: number = 120;
+
+/**
  * Display name given to a new, unsaved markdown document.
  */
 const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
@@ -258,6 +278,26 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
    */
   private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the reader service the editor publishes its read model and highlight seam to while active.
+   */
+  private readonly reader: Reader = inject(Reader);
+
+  /**
+   * Holds the read session registered with the {@link Reader} service while active, or null.
+   */
+  private readSession: ReadSession | null = null;
+
+  /**
+   * Holds the words of the current read model, in rendered-DOM order.
+   */
+  private readWords: readonly ReadWord[] = [];
+
+  /**
+   * Holds a DOM range per read-model word, aligned to {@link readWords} by index.
+   */
+  private readWordRanges: readonly Range[] = [];
 
   /**
    * Gets the tool panel currently open beside the editor, or `none` when none is open.
@@ -482,6 +522,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       if (active) {
         this.registerCommandHandler();
         this.registerReviewSession();
+        this.registerReadSession();
         this.refreshActiveBlockType();
         this.documents.setActiveDocument(this.documentId());
         this.focusEditor();
@@ -491,6 +532,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
           this.commandHandler = null;
         }
         this.unregisterReviewSession();
+        this.unregisterReadSession();
       }
     });
   }
@@ -629,6 +671,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.publishHistoryState(ctx.get(editorViewCtx));
             this.refreshOutline();
             this.zone.run((): void => this.review.notifySourceChanged());
+            this.publishReadModel();
           }
         });
 
@@ -698,6 +741,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.commandHandler = null;
     }
     this.unregisterReviewSession();
+    this.unregisterReadSession();
 
     if (this.crepe !== null) {
       await this.crepe.destroy();
@@ -1306,13 +1350,157 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Determines whether the CSS Custom Highlight API is available for review reveal highlighting.
+   * Determines whether the CSS Custom Highlight API is available for review and read-along
+   * highlighting.
    * @returns Returns true when the API can be used.
    */
   private supportsHighlight(): boolean {
     return (
       typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && Boolean(CSS.highlights)
     );
+  }
+
+  /**
+   * Registers this view as the active read session and publishes its rendered word model, so the
+   * Reader panel can speak the document and highlight the spoken word here.
+   */
+  private registerReadSession(): void {
+    if (this.readSession !== null) {
+      return;
+    }
+    this.readSession = {
+      highlight: (index: number, mode: HighlightMode): void => this.highlightReadWord(index, mode),
+      clearHighlight: (): void => this.clearReadHighlight(),
+      revealWord: (index: number): void => this.revealReadWord(index),
+    };
+    this.reader.registerSession(this.readSession);
+    this.publishReadModel();
+  }
+
+  /**
+   * Clears any read-along highlight and unregisters this view as the read session.
+   */
+  private unregisterReadSession(): void {
+    if (this.readSession === null) {
+      return;
+    }
+    this.clearReadHighlight();
+    this.reader.unregisterSession(this.readSession);
+    this.readSession = null;
+    this.readWords = [];
+    this.readWordRanges = [];
+  }
+
+  /**
+   * Builds the read-along model from the rendered document and publishes it to the reader, keeping the
+   * local word ranges for in-document highlighting.
+   */
+  private publishReadModel(): void {
+    if (this.readSession === null) {
+      return;
+    }
+    const root: HTMLElement | null =
+      this.editorContainer()?.nativeElement.querySelector<HTMLElement>('.ProseMirror') ?? null;
+    const model: ReadModel = buildReadModel(root);
+    this.readWords = model.document.words;
+    this.readWordRanges = model.ranges;
+    this.zone.run((): void => this.reader.setDocument(model.document));
+  }
+
+  /**
+   * Highlights the read-along word at the given index, or its sentence, using the CSS Custom Highlight
+   * API, which paints over the rendered text without mutating ProseMirror's DOM.
+   * @param wordIndex The word to highlight.
+   * @param mode Whether to highlight the single word or its sentence.
+   */
+  private highlightReadWord(wordIndex: number, mode: HighlightMode): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    const word: ReadWord | undefined = this.readWords[wordIndex];
+    const wordRange: Range | undefined = this.readWordRanges[wordIndex];
+    if (word === undefined || wordRange === undefined) {
+      this.clearReadHighlight();
+      return;
+    }
+    if (mode === 'sentence') {
+      CSS.highlights.set(
+        READ_HIGHLIGHT_SENTENCE,
+        new Highlight(this.sentenceRange(wordIndex, word.sentenceIndex)),
+      );
+      CSS.highlights.delete(READ_HIGHLIGHT_WORD);
+    } else {
+      CSS.highlights.set(READ_HIGHLIGHT_WORD, new Highlight(wordRange));
+      CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
+    }
+  }
+
+  /**
+   * Builds a DOM range spanning every word in the given sentence.
+   * @param wordIndex A word within the sentence.
+   * @param sentenceIndex The sentence index to span.
+   * @returns Returns the sentence range.
+   */
+  private sentenceRange(wordIndex: number, sentenceIndex: number): Range {
+    let start: number = wordIndex;
+    let end: number = wordIndex;
+    while (
+      start - WORD_STEP >= 0 &&
+      this.readWords[start - WORD_STEP].sentenceIndex === sentenceIndex
+    ) {
+      start -= WORD_STEP;
+    }
+    while (
+      end + WORD_STEP < this.readWords.length &&
+      this.readWords[end + WORD_STEP].sentenceIndex === sentenceIndex
+    ) {
+      end += WORD_STEP;
+    }
+    const startRange: Range = this.readWordRanges[start];
+    const endRange: Range = this.readWordRanges[end];
+    const range: Range = document.createRange();
+    range.setStart(startRange.startContainer, startRange.startOffset);
+    range.setEnd(endRange.endContainer, endRange.endOffset);
+    return range;
+  }
+
+  /**
+   * Clears the read-along highlight from the document.
+   */
+  private clearReadHighlight(): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    CSS.highlights.delete(READ_HIGHLIGHT_WORD);
+    CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
+  }
+
+  /**
+   * Smoothly scrolls the spoken word into view when it drifts near or past the viewport edges, keeping
+   * the read-along position comfortably visible.
+   * @param wordIndex The word to reveal.
+   */
+  private revealReadWord(wordIndex: number): void {
+    const range: Range | undefined = this.readWordRanges[wordIndex];
+    const scroller: HTMLElement | null | undefined =
+      this.editorContainer()?.nativeElement.closest<HTMLElement>('.editor-scroll');
+    if (range === undefined || scroller === null || scroller === undefined) {
+      return;
+    }
+    const rect: DOMRect = range.getBoundingClientRect();
+    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
+    const aboveComfort: boolean = rect.top < scrollerRect.top + READ_REVEAL_MARGIN;
+    const belowComfort: boolean = rect.bottom > scrollerRect.bottom - READ_REVEAL_MARGIN;
+    if (!aboveComfort && !belowComfort) {
+      return;
+    }
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        (rect.top - scrollerRect.top) -
+        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
+      behavior: 'smooth',
+    });
   }
 
   /**

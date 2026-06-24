@@ -162,6 +162,26 @@ export class Icon {
   public static readonly STOP: Icon = new Icon('ph-duotone ph-stop');
 
   /**
+   * Gets the pause icon, shown on the Reader panel's transport toggle while playing.
+   */
+  public static readonly PAUSE: Icon = new Icon('ph-fill ph-pause');
+
+  /**
+   * Gets the filled play icon, shown on the Reader panel's transport toggle while paused.
+   */
+  public static readonly PLAY_FILL: Icon = new Icon('ph-fill ph-play');
+
+  /**
+   * Gets the skip-to-previous icon, shown on the Reader panel's previous-paragraph control.
+   */
+  public static readonly SKIP_BACK: Icon = new Icon('ph-fill ph-skip-back');
+
+  /**
+   * Gets the skip-to-next icon, shown on the Reader panel's next-paragraph control.
+   */
+  public static readonly SKIP_FORWARD: Icon = new Icon('ph-fill ph-skip-forward');
+
+  /**
    * Gets the debug icon.
    */
   public static readonly DEBUG: Icon = new Icon('ph-duotone ph-bug');
