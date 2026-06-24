@@ -41,6 +41,12 @@
 
 <app-ribbon-strip-group title="Format">
   <app-ribbon-strip-column [spread]="true">
+    <app-ribbon-strip-field
+      label="Style"
+      [options]="blockOptions"
+      [value]="blockLabel()"
+      (changed)="onBlockChange($event)"
+    />
     <app-ribbon-strip-row>
       <app-ribbon-strip-button-small
         [icon]="Icon.BOLD"
@@ -67,12 +73,6 @@
         (action)="onInlineCode()"
       />
     </app-ribbon-strip-row>
-    <app-ribbon-strip-field
-      label="Style"
-      [options]="blockOptions"
-      [value]="blockLabel()"
-      (changed)="onBlockChange($event)"
-    />
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
@@ -90,56 +90,41 @@
 
 <app-ribbon-strip-group title="Insert">
   <div class="insert-grid">
-    <button type="button" class="insert-button" title="Table" aria-label="Table" (click)="onTable()">
+    <button type="button" class="insert-button" (click)="onTable()">
       <app-icon [icon]="Icon.TABLE" />
+      <span class="insert-button__label">Table</span>
     </button>
-    <button type="button" class="insert-button" title="Image" aria-label="Image" (click)="onImage()">
+    <button type="button" class="insert-button" (click)="onImage()">
       <app-icon [icon]="Icon.IMAGE" />
+      <span class="insert-button__label">Image</span>
     </button>
-    <button
-      type="button"
-      class="insert-button"
-      title="Divider"
-      aria-label="Divider"
-      (click)="onDivider()"
-    >
+    <button type="button" class="insert-button" (click)="onDivider()">
       <app-icon [icon]="Icon.DIVIDER" />
+      <span class="insert-button__label">Divider</span>
     </button>
-    <button type="button" class="insert-button" title="Link" aria-label="Link" (click)="onLink()">
+    <button type="button" class="insert-button" (click)="onLink()">
       <app-icon [icon]="Icon.LINK" />
+      <span class="insert-button__label">Link</span>
     </button>
-    <button type="button" class="insert-button" title="Math" aria-label="Math" (click)="onMath()">
+    <button type="button" class="insert-button" (click)="onMath()">
       <app-icon [icon]="Icon.MATH" />
+      <span class="insert-button__label">Math</span>
     </button>
-    <button
-      type="button"
-      class="insert-button"
-      title="Diagram"
-      aria-label="Diagram"
-      (click)="onDiagram()"
-    >
+    <button type="button" class="insert-button" (click)="onDiagram()">
       <app-icon [icon]="Icon.DIAGRAM" />
+      <span class="insert-button__label">Diagram</span>
     </button>
-    <button
-      type="button"
-      class="insert-button"
-      title="Footnote"
-      aria-label="Footnote"
-      (click)="onFootnote()"
-    >
+    <button type="button" class="insert-button" (click)="onFootnote()">
       <app-icon [icon]="Icon.FOOTNOTE" />
+      <span class="insert-button__label">Footnote</span>
     </button>
-    <button
-      type="button"
-      class="insert-button"
-      title="Collapse"
-      aria-label="Collapse"
-      (click)="onCollapse()"
-    >
+    <button type="button" class="insert-button" (click)="onCollapse()">
       <app-icon [icon]="Icon.COLLAPSE" />
+      <span class="insert-button__label">Collapse</span>
     </button>
-    <button type="button" class="insert-button" title="Emoji" aria-label="Emoji" (click)="onEmoji()">
+    <button type="button" class="insert-button" (click)="onEmoji()">
       <app-icon [icon]="Icon.EMOJI" />
+      <span class="insert-button__label">Emoji</span>
     </button>
   </div>
 </app-ribbon-strip-group>

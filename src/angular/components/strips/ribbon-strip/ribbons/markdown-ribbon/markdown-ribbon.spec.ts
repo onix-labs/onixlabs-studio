@@ -75,7 +75,7 @@ describe('MarkdownRibbon', () => {
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
 
-    element.querySelector<HTMLButtonElement>('.insert-button[aria-label="Diagram"]')!.click();
+    insertButton('Diagram').click();
 
     expect(inserted.some((entry: string): boolean => entry.startsWith('block:```mermaid'))).toBe(
       true,
@@ -85,9 +85,24 @@ describe('MarkdownRibbon', () => {
   it('imageButton_whenClicked_opensTheImageModal', () => {
     expect(element.querySelector('.modal--visible')).toBeNull();
 
-    element.querySelector<HTMLButtonElement>('.insert-button[aria-label="Image"]')!.click();
+    insertButton('Image').click();
     fixture.detectChanges();
 
     expect(element.querySelector('.modal--visible')).not.toBeNull();
   });
+
+  /**
+   * Finds an Insert-group button by its visible label.
+   * @param label The button's label text.
+   * @returns Returns the matching button.
+   */
+  function insertButton(label: string): HTMLButtonElement {
+    const buttons: HTMLButtonElement[] = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.insert-button'),
+    );
+    return buttons.find(
+      (button: HTMLButtonElement): boolean =>
+        button.querySelector('.insert-button__label')?.textContent?.trim() === label,
+    )!;
+  }
 });
