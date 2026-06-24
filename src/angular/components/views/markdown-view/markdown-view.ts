@@ -496,6 +496,14 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   private scrollContainer: HTMLElement | null = null;
 
   /**
+   * Holds the exact heading elements the current outline was built from, captured together so the
+   * scroll-spy's active index always indexes the same array the Outline panel renders. Reading the DOM
+   * afresh on each scroll could otherwise return a different set than the outline (async block
+   * rendering, editor churn), drifting the active marker onto the wrong row.
+   */
+  private headingElements: readonly HTMLElement[] = [];
+
+  /**
    * Holds the currently-editing HTML image block element, or null.
    */
   private currentHtmlImageBlock: HTMLElement | null = null;
@@ -1128,7 +1136,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       if (!this.isActive()) {
         return;
       }
-      const headings: OutlineHeading[] = this.readHeadingElements().map(
+      // Capture the heading elements once and build the outline from them, so the scroll-spy can index
+      // the very same array (see headingElements).
+      this.headingElements = this.readHeadingElements();
+      const headings: OutlineHeading[] = this.headingElements.map(
         (element: HTMLElement, index: number): OutlineHeading => ({
           id: `heading-${index}`,
           level: Number(element.tagName.charAt(1)) || 1,
@@ -1154,7 +1165,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     if (!this.isActive() || this.scrollContainer === null) {
       return;
     }
-    const headings: HTMLElement[] = this.readHeadingElements();
+    const headings: readonly HTMLElement[] = this.headingElements;
     if (headings.length === 0) {
       this.zone.run((): void => this.commands.setActiveHeading(0));
       return;
@@ -1185,7 +1196,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   private scrollToHeading(index: number): void {
-    const element: HTMLElement | undefined = this.readHeadingElements()[index];
+    const element: HTMLElement | undefined = this.headingElements[index];
     const scroller: HTMLElement | null = this.scrollContainer;
     if (element === undefined || scroller === null) {
       return;
