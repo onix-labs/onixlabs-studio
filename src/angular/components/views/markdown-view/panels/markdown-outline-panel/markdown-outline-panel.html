@@ -1,0 +1,34 @@
+<app-markdown-tool-panel title="Outline" [icon]="Icon.OUTLINE">
+  @if (rows().length > 0) {
+    <div class="outline">
+      <svg class="outline__connector" [style.height.px]="height()" aria-hidden="true">
+        <path class="outline__connector-path" [attr.d]="connectorPath()" />
+      </svg>
+
+      <div
+        class="outline__marker"
+        [style.left.px]="markerLeft()"
+        [style.top.px]="markerTop()"
+        [style.height.px]="markerHeight"
+        aria-hidden="true"
+      ></div>
+
+      @for (heading of rows(); track heading.id; let i = $index) {
+        <button
+          type="button"
+          class="outline__item"
+          [class.outline__item--active]="i === activeIndex()"
+          [attr.data-level]="heading.level"
+          [attr.aria-current]="i === activeIndex() ? 'true' : null"
+          [style.padding-inline-start.px]="textPadding(heading.level)"
+          [title]="heading.text"
+          (click)="goTo(heading)"
+        >
+          {{ heading.text || 'Untitled heading' }}
+        </button>
+      }
+    </div>
+  } @else {
+    <p class="outline__empty">No headings yet. Add a heading to build the outline.</p>
+  }
+</app-markdown-tool-panel>

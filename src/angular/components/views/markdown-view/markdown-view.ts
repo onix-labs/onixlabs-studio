@@ -132,6 +132,19 @@ const ROOT_DEPTH: number = 0;
 const NEXT_TICK_DELAY: number = 0;
 
 /**
+ * Distance in pixels below the top of the editor's scroll viewport within which a heading is
+ * considered the one currently being read. The active heading is the last whose top is above this
+ * line; the Outline panel marks it.
+ */
+const ACTIVE_HEADING_THRESHOLD: number = 130;
+
+/**
+ * Gap in pixels left above a heading when scrolling it to the top of the viewport from the outline, so
+ * it does not sit flush against the edge.
+ */
+const HEADING_SCROLL_GAP: number = 40;
+
+/**
  * Minimum width of a markdown tool panel, in pixels.
  */
 const MIN_PANEL_SIZE: number = 220;
@@ -476,6 +489,17 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.handleKeydown.bind(this);
 
   /**
+   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
+   * event-listener cleanup.
+   */
+  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
+
+  /**
+   * Holds the editor's scroll container, to which the scroll-spy listener is attached.
+   */
+  private scrollContainer: HTMLElement | null = null;
+
+  /**
    * Holds the currently-editing HTML image block element, or null.
    */
   private currentHtmlImageBlock: HTMLElement | null = null;
@@ -548,10 +572,13 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Creates the editor once the view's elements are available.
+   * Creates the editor once the view's elements are available and starts the outline scroll-spy.
    */
   public ngAfterViewInit(): void {
     void this.createEditor();
+    this.scrollContainer =
+      this.editorContainer().nativeElement.closest<HTMLElement>('.editor-scroll');
+    this.scrollContainer?.addEventListener('scroll', this.boundScrollHandler, { passive: true });
   }
 
   /**
@@ -584,6 +611,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * releasing the backing document when this view owns its lifecycle (a standalone tab).
    */
   public ngOnDestroy(): void {
+    this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
+    this.scrollContainer = null;
     void this.destroyEditor();
     if (this.documents.activeDocumentId() === this.documentId()) {
       this.documents.setActiveDocument(null);
@@ -1114,16 +1143,53 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.zone.run((): void => {
         this.commands.setOutline(headings);
       });
+      this.updateActiveHeading();
     }, NEXT_TICK_DELAY);
   }
 
   /**
-   * Scrolls the editor to the heading with the given ordinal.
+   * Recomputes which heading the reader is currently at and publishes its index, so the Outline panel
+   * can move its active marker. The active heading is the last whose top sits within
+   * {@link ACTIVE_HEADING_THRESHOLD} of the viewport top, defaulting to the first before any heading
+   * has scrolled past the threshold. Reads layout synchronously on scroll (rather than deferring to an
+   * animation frame, which can be suspended) so the marker never appears frozen.
+   */
+  private updateActiveHeading(): void {
+    if (!this.isActive() || this.scrollContainer === null) {
+      return;
+    }
+    const headings: HTMLElement[] = this.readHeadingElements();
+    if (headings.length === 0) {
+      this.zone.run((): void => this.commands.setActiveHeading(0));
+      return;
+    }
+    const viewportTop: number = this.scrollContainer.getBoundingClientRect().top;
+    let active: number = 0;
+    headings.forEach((heading: HTMLElement, index: number): void => {
+      if (heading.getBoundingClientRect().top - viewportTop <= ACTIVE_HEADING_THRESHOLD) {
+        active = index;
+      }
+    });
+    this.zone.run((): void => this.commands.setActiveHeading(active));
+  }
+
+  /**
+   * Scrolls the editor so the heading with the given ordinal sits just below the top of the viewport,
+   * leaving a small gap. The resulting scroll updates the active heading through the scroll-spy.
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   private scrollToHeading(index: number): void {
     const element: HTMLElement | undefined = this.readHeadingElements()[index];
-    element?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const scroller: HTMLElement | null = this.scrollContainer;
+    if (element === undefined || scroller === null) {
+      return;
+    }
+    const offset: number =
+      element.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop -
+      HEADING_SCROLL_GAP;
+    scroller.scrollTo({ top: offset, behavior: 'smooth' });
   }
 
   /**

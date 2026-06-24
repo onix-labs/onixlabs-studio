@@ -195,6 +195,17 @@ describe('MarkdownCommands', () => {
     expect(commands.outline().length).toBe(0);
   });
 
+  it('setActiveHeading_whenCalled_updatesTheActiveHeadingIndex', () => {
+    commands.setActiveHeading(3);
+    expect(commands.activeHeadingIndex()).toBe(3);
+  });
+
+  it('register_whenHandlerRegistered_resetsActiveHeadingToZero', () => {
+    commands.setActiveHeading(3);
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.activeHeadingIndex()).toBe(0);
+  });
+
   it('setActiveBlockType_whenCalled_updatesActiveBlockType', () => {
     commands.setActiveBlockType('heading-2');
     expect(commands.activeBlockType()).toBe('heading-2');
