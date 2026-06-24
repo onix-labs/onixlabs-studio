@@ -68,10 +68,11 @@ export class RibbonStripOverflow {
     viewChild.required<ElementRef<HTMLDivElement>>('row');
 
   /**
-   * Holds the trigger button that opens the overflow flyout.
+   * Holds the trailing trigger wrapper (the button and its flyout), which stays the last item in the
+   * row so the trigger always sits directly after the last visible group.
    */
-  private readonly more: Signal<ElementRef<HTMLButtonElement>> =
-    viewChild.required<ElementRef<HTMLButtonElement>>('more');
+  private readonly moreWrap: Signal<ElementRef<HTMLDivElement>> =
+    viewChild.required<ElementRef<HTMLDivElement>>('moreWrap');
 
   /**
    * Holds the flyout the overflowed groups are moved into.
@@ -165,41 +166,49 @@ export class RibbonStripOverflow {
 
   /**
    * Recomputes which groups fit the available width: pulls groups back from the flyout while they fit,
-   * then pushes the trailing groups out while the row overflows. The trigger button's width is
-   * reserved during measurement so the result is stable.
+   * then pushes the trailing groups out while the row overflows. The trigger sits at the end of the
+   * row (so it follows the last visible group); its width is reserved during measurement, then the
+   * trigger is hidden when nothing overflows.
    */
   private reflow(): void {
     const row: HTMLDivElement = this.row().nativeElement;
-    const more: HTMLButtonElement = this.more().nativeElement;
+    const moreWrap: HTMLDivElement = this.moreWrap().nativeElement;
     const flyout: HTMLDivElement = this.flyout().nativeElement;
 
-    // Reserve the trigger's width during measurement (hidden but laid out), so the fit calculation
-    // accounts for it whether or not it ends up visible.
-    more.style.visibility = 'hidden';
-    more.style.display = '';
+    // Reserve the trigger's width during measurement, so the fit calculation accounts for it whether
+    // or not it ends up visible.
+    moreWrap.style.display = '';
 
-    // Expansion: bring groups back into the row, in document order, while they still fit.
+    // Expansion: bring groups back into the row, before the trigger, while they still fit.
     while (flyout.firstElementChild !== null) {
-      row.appendChild(flyout.firstElementChild);
+      row.insertBefore(flyout.firstElementChild, moreWrap);
       if (this.isOverflowing(row)) {
-        flyout.insertBefore(row.lastElementChild!, flyout.firstElementChild);
+        flyout.insertBefore(moreWrap.previousElementSibling!, flyout.firstElementChild);
         break;
       }
     }
 
     // Contraction: move the trailing groups into the flyout while the row overflows, always keeping
     // at least one group visible.
-    while (this.isOverflowing(row) && row.children.length > 1) {
-      flyout.insertBefore(row.lastElementChild!, flyout.firstElementChild);
+    while (this.isOverflowing(row) && this.groupCount(row) > 1) {
+      flyout.insertBefore(moreWrap.previousElementSibling!, flyout.firstElementChild);
     }
 
     const count: number = flyout.children.length;
-    more.style.visibility = '';
-    more.style.display = count > 0 ? '' : 'none';
+    moreWrap.style.display = count > 0 ? '' : 'none';
     this.overflowCount.set(count);
     if (count === 0) {
       this.flyoutOpen.set(false);
     }
+  }
+
+  /**
+   * Gets the number of groups currently in the row (its children excluding the trailing trigger).
+   * @param row The row element.
+   * @returns Returns the visible group count.
+   */
+  private groupCount(row: HTMLDivElement): number {
+    return row.children.length - 1;
   }
 
   /**
@@ -212,14 +221,15 @@ export class RibbonStripOverflow {
   }
 
   /**
-   * Moves every overflowed group back into the row, restoring the original DOM order so Angular's view
-   * teardown removes the projected groups from where it created them.
+   * Moves every overflowed group back into the row, before the trigger, restoring the original DOM
+   * order so Angular's view teardown removes the projected groups from where it created them.
    */
   private restoreGroups(): void {
     const row: HTMLDivElement = this.row().nativeElement;
+    const moreWrap: HTMLDivElement = this.moreWrap().nativeElement;
     const flyout: HTMLDivElement = this.flyout().nativeElement;
     while (flyout.firstElementChild !== null) {
-      row.appendChild(flyout.firstElementChild);
+      row.insertBefore(flyout.firstElementChild, moreWrap);
     }
   }
 }

@@ -57,11 +57,15 @@ describe('RibbonStripOverflow', () => {
   });
 
   /**
-   * Gets the live group count in the visible row.
+   * Gets the live group count directly in the visible row (the trailing trigger and its flyout, which
+   * also live in the row, are excluded by matching only direct-child groups).
    * @returns Returns the number of groups in the row.
    */
   function rowCount(): number {
-    return host.querySelectorAll('.ribbon-overflow__row .group').length;
+    const row: HTMLElement = host.querySelector('.ribbon-overflow__row')!;
+    return Array.from(row.children).filter((child: Element): boolean =>
+      child.classList.contains('group'),
+    ).length;
   }
 
   /**
@@ -69,7 +73,7 @@ describe('RibbonStripOverflow', () => {
    * @returns Returns the number of groups in the flyout.
    */
   function flyoutCount(): number {
-    return host.querySelectorAll('.ribbon-overflow__flyout .group').length;
+    return host.querySelectorAll('.ribbon-overflow__flyout > .group').length;
   }
 
   it('should create', () => {

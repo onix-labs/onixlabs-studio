@@ -1,22 +1,21 @@
 :host {
-  // Fill the strip width and become the positioning context for the overflow flyout.
-  position: relative;
+  // Fill the strip width; the row lays the groups (and the trailing trigger) out within it.
   display: flex;
   flex: 1;
   align-items: stretch;
-  gap: 0.5rem;
   min-inline-size: 0;
 }
 
-// The visible lane of groups. Clips anything past the available width; the reflow logic moves those
-// groups into the flyout before they would clip, so this only guards against sub-pixel spill.
+// The lane of groups followed by the overflow trigger. Overflow stays visible so the trigger's flyout
+// can drop below the strip; horizontal fit is handled by the reflow, which moves groups that do not
+// fit into the flyout rather than letting them clip.
 .ribbon-overflow__row {
   display: flex;
   flex: 1;
   align-items: stretch;
   gap: 0.5rem;
   min-inline-size: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 // Alignment of the groups within the row. `safe` falls back to flex-start if they would overflow, so
@@ -29,15 +28,22 @@
   justify-content: safe flex-end;
 }
 
-// The overflow trigger, on the left of the row and shaped like a ribbon group: it stretches to the
-// full group height, carries the group border, and takes the darker group fill. Its display is
-// managed imperatively (hidden when nothing overflows), so it occupies space only when needed.
+// The trailing trigger wrapper: kept as the last row item so the trigger always sits directly after
+// the last visible group, and the positioning context for its flyout. Its display is managed
+// imperatively (hidden when nothing overflows), so it takes space — and a gap — only when needed.
+.ribbon-overflow__more-wrap {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+// The trigger, shaped like a ribbon group: full group height, the group border, and the darker group
+// fill, with a down chevron.
 .ribbon-overflow__more {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  align-self: stretch;
   padding-inline: 0.5rem;
   font-size: 0.9rem;
   color: var(--ribbon-control-foreground-color);
@@ -60,11 +66,12 @@
   }
 }
 
-// The overflow flyout: a dropdown of the groups that did not fit, stacked in document order.
+// The overflow flyout: a dropdown of the groups that did not fit, stacked in document order, dropping
+// from below the trigger and extending towards the centre so it stays on screen.
 .ribbon-overflow__flyout {
   position: absolute;
   inset-block-start: 100%;
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   z-index: 20;
   display: none;
   flex-direction: column;
