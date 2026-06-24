@@ -1159,10 +1159,18 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.zone.run((): void => this.commands.setActiveHeading(0));
       return;
     }
-    const viewportTop: number = this.scrollContainer.getBoundingClientRect().top;
+    const readingLine: number =
+      this.scrollContainer.getBoundingClientRect().top + READING_LINE_OFFSET;
     let active: number = 0;
     headings.forEach((heading: HTMLElement, index: number): void => {
-      if (heading.getBoundingClientRect().top - viewportTop <= READING_LINE_OFFSET) {
+      const rect: DOMRect = heading.getBoundingClientRect();
+      // Skip headings that are not laid out — a collapsed block's headings, or Crepe's hidden
+      // block-edit clones, report an all-zero rect, and a top of 0 would otherwise count as crossing
+      // the reading line and (being later in document order) wrongly win, jumping the marker ahead.
+      if (rect.height === 0) {
+        return;
+      }
+      if (rect.top <= readingLine) {
         active = index;
       }
     });
