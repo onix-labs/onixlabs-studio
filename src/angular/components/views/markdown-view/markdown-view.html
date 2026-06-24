@@ -1,14 +1,35 @@
-<div
-  #editorWrapper
-  class="editor-wrapper"
-  [class.narrow]="marginClass() === 'narrow'"
-  [class.medium]="marginClass() === 'medium'"
-  [class.wide]="marginClass() === 'wide'"
-  [class.full-width]="marginClass() === 'full-width'"
-  [class.image-fixed]="imageSizing() === 'fixed'"
-  [class.image-align-left]="imageAlignment() === 'left'"
-  [class.image-align-center]="imageAlignment() === 'center'"
-  [class.image-align-right]="imageAlignment() === 'right'"
->
-  <div #editorContainer class="editor-container"></div>
+<div class="editor-scroll">
+  <div
+    #editorWrapper
+    class="editor-wrapper"
+    [class.narrow]="marginClass() === 'narrow'"
+    [class.medium]="marginClass() === 'medium'"
+    [class.wide]="marginClass() === 'wide'"
+    [class.full-width]="marginClass() === 'full-width'"
+    [class.image-fixed]="imageSizing() === 'fixed'"
+    [class.image-align-left]="imageAlignment() === 'left'"
+    [class.image-align-center]="imageAlignment() === 'center'"
+    [class.image-align-right]="imageAlignment() === 'right'"
+  >
+    <div #editorContainer class="editor-container"></div>
+  </div>
 </div>
+
+@if (isActive() && activePanel() !== 'none') {
+  <aside class="tool-panel">
+    @switch (activePanel()) {
+      @case ('outline') {
+        <app-markdown-outline-panel />
+      }
+      @case ('review') {
+        <app-markdown-review-panel />
+      }
+      @case ('agent') {
+        <app-markdown-agent-panel />
+      }
+      @case ('reader') {
+        <app-markdown-reader-panel />
+      }
+    }
+  </aside>
+}

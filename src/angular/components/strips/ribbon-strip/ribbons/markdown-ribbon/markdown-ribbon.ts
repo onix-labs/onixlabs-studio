@@ -12,6 +12,10 @@ import {
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
 import { Documents } from '../../../../../services/documents/documents';
+import {
+  MarkdownPanel,
+  MarkdownPanels,
+} from '../../../../../services/markdown-panels/markdown-panels';
 import { Icon } from '../../../../../icons/icon';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
@@ -137,6 +141,16 @@ export class MarkdownRibbon {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the tool-panel registry the Tools group toggles.
+   */
+  private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Gets the tool panel currently open, so the Tools buttons reflect their pressed state.
+   */
+  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
+
+  /**
    * Gets the variants offered by the File group's Save menu button.
    */
   protected readonly saveItems: readonly RibbonMenuItem[] = [
@@ -207,6 +221,34 @@ export class MarkdownRibbon {
    */
   protected onFind(): void {
     // Intentionally empty until the markdown editor exposes a find command.
+  }
+
+  /**
+   * Toggles the Outline tool panel.
+   */
+  protected onOutline(): void {
+    this.panels.toggle('outline');
+  }
+
+  /**
+   * Toggles the Review tool panel.
+   */
+  protected onReview(): void {
+    this.panels.toggle('review');
+  }
+
+  /**
+   * Toggles the Agent tool panel.
+   */
+  protected onAgent(): void {
+    this.panels.toggle('agent');
+  }
+
+  /**
+   * Toggles the Reader tool panel.
+   */
+  protected onReader(): void {
+    this.panels.toggle('reader');
   }
 
   /**

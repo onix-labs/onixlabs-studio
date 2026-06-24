@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -71,8 +72,17 @@ import {
   ImageAlignment,
   ImageSizing,
   MarginSize,
+  PanelPosition,
   Settings,
 } from '../../../services/settings/settings';
+import {
+  MarkdownPanel,
+  MarkdownPanels,
+} from '../../../services/markdown-panels/markdown-panels';
+import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
+import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
+import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
+import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
 
 /**
  * Heading level for an H1 element.
@@ -151,10 +161,13 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
  */
 @Component({
   selector: 'app-markdown-view',
-  imports: [],
+  imports: [MarkdownOutlinePanel, MarkdownReviewPanel, MarkdownAgentPanel, MarkdownReaderPanel],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.panels-left]': 'panelPosition() === "left"',
+  },
 })
 export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   /**
@@ -176,6 +189,23 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Holds the markdown command registry the ribbon routes formatting commands through.
    */
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
+   * Holds the tool-panel registry tracking which side panel (if any) is open.
+   */
+  private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Gets the tool panel currently open beside the editor, or `none` when none is open.
+   */
+  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
+
+  /**
+   * Gets which side of the editor the tool panels are shown on.
+   */
+  protected readonly panelPosition: Signal<PanelPosition> = computed(
+    (): PanelPosition => this.settings.markdownEditor().panelPosition,
+  );
 
   /**
    * Holds the Angular zone, used to create the editor outside change detection.

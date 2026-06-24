@@ -264,6 +264,21 @@ export class Icon {
   public static readonly EMOJI: Icon = new Icon('ph ph-smiley');
 
   /**
+   * Gets the outline icon, shown on the markdown Tools group's Outline button.
+   */
+  public static readonly OUTLINE: Icon = new Icon('ph ph-list-dashes');
+
+  /**
+   * Gets the review (spelling and grammar) icon, shown on the markdown Tools group's Review button.
+   */
+  public static readonly REVIEW: Icon = new Icon('ph ph-text-aa');
+
+  /**
+   * Gets the reader (read-aloud) icon, shown on the markdown Tools group's Reader button.
+   */
+  public static readonly READER: Icon = new Icon('ph ph-speaker-high');
+
+  /**
    * Gets the bullet-list icon.
    */
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');

@@ -4,6 +4,7 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
+import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown-panels';
 import { MarkdownRibbon } from './markdown-ribbon';
 
 /**
@@ -117,6 +118,15 @@ describe('MarkdownRibbon', () => {
     smallButton('Bullets').click();
 
     expect(inserted).toContain('bullet-list');
+  });
+
+  it('outlineButton_whenClicked_togglesTheOutlinePanel', () => {
+    const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
+    expect(panels.active()).toBe('none');
+
+    smallButton('Outline').click();
+
+    expect(panels.active()).toBe('outline');
   });
 
   it('imageButton_whenClicked_opensTheImageModal', () => {
