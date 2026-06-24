@@ -82,15 +82,15 @@
       </div>
 
       <div class="ra-control">
-        <label class="ra-control-label" for="ra-voice">Voice</label>
-        @if (voices().length > 0) {
-          <select id="ra-voice" class="ra-voice-select" (change)="onVoice($event)">
-            @for (voice of voices(); track voice.uri) {
-              <option [value]="voice.uri" [selected]="voice.uri === selectedVoice()?.uri">
-                {{ voice.name }} · {{ voice.lang }}
-              </option>
-            }
-          </select>
+        <span class="ra-control-label" id="ra-voice-label">Voice</span>
+        @if (voiceOptions().length > 0) {
+          <app-dropdown
+            [options]="voiceOptions()"
+            [value]="selectedVoiceUri()"
+            [fullWidth]="true"
+            ariaLabel="Voice"
+            (valueChange)="onVoice($event)"
+          />
         } @else {
           <p class="ra-empty">No voices available.</p>
         }

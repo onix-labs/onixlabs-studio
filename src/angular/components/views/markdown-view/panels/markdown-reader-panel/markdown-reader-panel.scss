@@ -149,29 +149,6 @@
   }
 }
 
-.ra-voice-select {
-  inline-size: 100%;
-  block-size: 1.9rem;
-  padding-inline: 0.5rem;
-  font: inherit;
-  font-size: 0.78rem;
-  color: var(--body-foreground-color);
-  background: var(--form-control-background-color);
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: 0.375rem;
-  corner-shape: squircle;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--form-control-border-color--hover);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
 .ra-empty {
   margin: 0;
   font-size: 0.85rem;

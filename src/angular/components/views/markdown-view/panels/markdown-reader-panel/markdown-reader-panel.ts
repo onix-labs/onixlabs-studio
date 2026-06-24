@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '../../../../../icons/icon';
 import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { Reader } from '../../../../../services/markdown-reader/markdown-reader';
 import { HighlightMode, VoiceOption } from '../../../../../services/markdown-reader/reader-types';
 import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
@@ -47,7 +48,7 @@ const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_F
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [MarkdownToolPanel, AppIcon],
+  imports: [MarkdownToolPanel, AppIcon, Dropdown],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-reader-panel.html',
   styleUrl: './markdown-reader-panel.scss',
@@ -109,6 +110,26 @@ export class MarkdownReaderPanel {
   protected readonly selectedVoice: Signal<VoiceOption | null> = this.reader.selectedVoice;
 
   /**
+   * Gets the available voices as dropdown options.
+   */
+  protected readonly voiceOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.voices().map(
+        (voice: VoiceOption): DropdownOption => ({
+          value: voice.uri,
+          label: `${voice.name} · ${voice.lang}`,
+        }),
+      ),
+  );
+
+  /**
+   * Gets the selected voice's URI, or an empty string when none is selected.
+   */
+  protected readonly selectedVoiceUri: Signal<string> = computed(
+    (): string => this.selectedVoice()?.uri ?? '',
+  );
+
+  /**
    * Gets the selectable playback speeds.
    */
   protected readonly speeds: readonly number[] = SPEEDS;
@@ -166,10 +187,10 @@ export class MarkdownReaderPanel {
 
   /**
    * Selects a voice.
-   * @param event The select change event.
+   * @param uri The chosen voice URI.
    */
-  protected onVoice(event: Event): void {
-    this.reader.setVoiceUri((event.target as HTMLSelectElement).value);
+  protected onVoice(uri: string): void {
+    this.reader.setVoiceUri(uri);
   }
 
   /**
