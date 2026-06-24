@@ -147,6 +147,15 @@ const READING_LINE_OFFSET: number = 56;
 const READING_PROBE_DIVISOR: number = 2;
 
 /**
+ * Pixels a clicked heading is parked above the reading line. Landing it on the line exactly leaves the
+ * probe at the heading's top edge, where the hit-test is ambiguous (it can resolve to the previous
+ * block); the small cushion puts the probe firmly inside the heading and absorbs the slack between the
+ * smooth scroll's final event and its true resting position. Must stay below the shortest heading's
+ * line height so the heading still owns the line.
+ */
+const HEADING_LAND_BIAS: number = 8;
+
+/**
  * Minimum width of a markdown tool panel, in pixels.
  */
 const MIN_PANEL_SIZE: number = 220;
@@ -1215,9 +1224,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Scrolls the editor so the heading with the given ordinal lands on the reading line, the same
-   * position the scroll-spy activates at, so the clicked heading becomes active. The resulting scroll
-   * updates the active heading through the scroll-spy.
+   * Scrolls the editor so the heading with the given ordinal lands just above the reading line, so the
+   * scroll-spy unambiguously activates the clicked heading once the smooth scroll settles. The
+   * resulting scroll updates the active heading through the scroll-spy.
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   private scrollToHeading(index: number): void {
@@ -1229,7 +1238,11 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     }
     const headingTop: number = view.coordsAtPos(pos).top;
     const offset: number =
-      headingTop - scroller.getBoundingClientRect().top + scroller.scrollTop - READING_LINE_OFFSET;
+      headingTop -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop -
+      READING_LINE_OFFSET +
+      HEADING_LAND_BIAS;
     scroller.scrollTo({ top: offset, behavior: 'smooth' });
   }
 
