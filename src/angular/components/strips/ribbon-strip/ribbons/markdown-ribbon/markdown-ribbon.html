@@ -77,15 +77,13 @@
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Lists">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small [icon]="Icon.BULLET_LIST" label="Bullets" (action)="onBulletList()" />
-    <app-ribbon-strip-button-small
-      [icon]="Icon.NUMBERED_LIST"
-      label="Numbers"
-      (action)="onOrderedList()"
-    />
-    <app-ribbon-strip-button-small [icon]="Icon.TASK_LIST" label="Tasks" (action)="onTaskList()" />
-  </app-ribbon-strip-column>
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.BULLET_LIST"
+    label="List"
+    [items]="listItems"
+    (action)="onBulletList()"
+    (selected)="onListVariant($event)"
+  />
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Insert">

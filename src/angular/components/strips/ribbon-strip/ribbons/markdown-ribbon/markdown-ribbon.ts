@@ -97,6 +97,21 @@ const VARIANT_SAVE_AS: string = 'save-as';
 const VARIANT_EXPORT_PDF: string = 'export-pdf';
 
 /**
+ * Identifies the bulleted-list item in the List menu button's dropdown.
+ */
+const VARIANT_BULLET_LIST: string = 'bullet-list';
+
+/**
+ * Identifies the numbered-list item in the List menu button's dropdown.
+ */
+const VARIANT_NUMBERED_LIST: string = 'numbered-list';
+
+/**
+ * Identifies the task-list item in the List menu button's dropdown.
+ */
+const VARIANT_TASK_LIST: string = 'task-list';
+
+/**
  * Represents the contextual ribbon shown when a markdown tab is active. Its controls drive formatting
  * on the active markdown editor through the {@link MarkdownCommands} registry, and its style field
  * follows the cursor's block type.
@@ -175,6 +190,16 @@ export class MarkdownRibbon {
     { id: VARIANT_MARKDOWN, label: 'Paste as Markdown', icon: Icon.MARKDOWN },
     { id: VARIANT_PLAINTEXT, label: 'Paste as Plain Text', icon: Icon.PASTE },
     { id: VARIANT_CODE, label: 'Paste as Code Block', icon: Icon.CODE_INLINE },
+  ];
+
+  /**
+   * Gets the list types offered by the Lists group's List menu button. The button itself inserts a
+   * bulleted list; the dropdown offers all three.
+   */
+  protected readonly listItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_BULLET_LIST, label: 'Bulleted List', icon: Icon.BULLET_LIST },
+    { id: VARIANT_NUMBERED_LIST, label: 'Numbered List', icon: Icon.NUMBERED_LIST },
+    { id: VARIANT_TASK_LIST, label: 'Task List', icon: Icon.TASK_LIST },
   ];
 
   /**
@@ -351,6 +376,24 @@ export class MarkdownRibbon {
    */
   protected onOrderedList(): void {
     this.commands.toggleOrderedList();
+  }
+
+  /**
+   * Applies the list type chosen from the List menu button's dropdown.
+   * @param id The chosen list variant's identifier.
+   */
+  protected onListVariant(id: string): void {
+    switch (id) {
+      case VARIANT_NUMBERED_LIST:
+        this.onOrderedList();
+        break;
+      case VARIANT_TASK_LIST:
+        this.onTaskList();
+        break;
+      default:
+        this.onBulletList();
+        break;
+    }
   }
 
   /**
