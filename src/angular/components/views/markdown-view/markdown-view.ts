@@ -562,6 +562,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((ctx: Ctx, markdown: string): void => {
+          // The outline is published from this listener (the editor is settled here) rather than from
+          // the activation path, which runs inside the fragile editor-creation window. This fires on
+          // the initial content load too, so opening a document populates the outline.
+          if (this.isActive()) {
+            this.publishOutline(ctx.get(editorViewCtx));
+          }
           if (!this.hasReceivedFirstUpdate) {
             this.hasReceivedFirstUpdate = true;
             return;
@@ -571,9 +577,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.contentChange.emit(markdown);
           });
           if (this.isActive()) {
-            const view: EditorView = ctx.get(editorViewCtx);
-            this.publishHistoryState(view);
-            this.publishOutline(view);
+            this.publishHistoryState(ctx.get(editorViewCtx));
           }
         });
 
@@ -958,8 +962,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         this.commands.setActiveBlockType(blockType);
       });
       this.publishHistoryState(view);
-      this.publishOutline(view);
     });
+    // Refresh the outline outside the editor action (and the editor-creation window), so activating a
+    // tab whose content has not changed still populates the Outline panel.
+    this.refreshOutlineSoon();
   }
 
   /**
@@ -997,6 +1003,22 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.zone.run((): void => {
       this.commands.setOutline(headings);
     });
+  }
+
+  /**
+   * Republishes the outline on the next tick, outside the editor-creation window, so activating a tab
+   * whose content has not changed (and therefore fires no update) still populates the Outline panel.
+   */
+  private refreshOutlineSoon(): void {
+    setTimeout((): void => {
+      const crepe: Crepe | null = this.crepe;
+      if (crepe === null || !this.isActive()) {
+        return;
+      }
+      crepe.editor.action((ctx: Ctx): void => {
+        this.publishOutline(ctx.get(editorViewCtx));
+      });
+    }, NEXT_TICK_DELAY);
   }
 
   /**
