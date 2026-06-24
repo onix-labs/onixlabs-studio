@@ -24,8 +24,8 @@ describe('Root', () => {
   it('render_whenNoTabsOpen_showsTheWelcomeScreenInsteadOfTheStrips', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
-    // The welcome screen stays mounted; it shows by taking the visible state.
-    expect(element.querySelector('.welcome--visible')).not.toBeNull();
+    // The welcome screen stays mounted; it shows by taking the modal's visible state.
+    expect(element.querySelector('.modal--visible')).not.toBeNull();
     expect(element.querySelector('.title-strip')).toBeNull();
     expect(element.querySelector('.status-strip')).toBeNull();
   });
@@ -38,7 +38,7 @@ describe('Root', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
     // Mounted but not visible (no cold-start, no modal summoned).
-    expect(element.querySelector('.welcome--visible')).toBeNull();
+    expect(element.querySelector('.modal--visible')).toBeNull();
     expect(element.querySelector('.title-strip')).not.toBeNull();
     expect(element.querySelector('.ribbon-strip')).not.toBeNull();
     expect(element.querySelector('.content')).not.toBeNull();

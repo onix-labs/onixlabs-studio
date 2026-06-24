@@ -6,23 +6,23 @@ import { Tabs } from '../../services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
 import { Icon } from '../../icons/icon';
 import { AppIcon } from '../shared/icon/app-icon';
+import { Modal } from '../shared/modal/modal';
 
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.
  *
  * It renders full-bleed when no tabs are open, and as a dismissable modal over the existing content
  * when summoned from the title strip's new-tab button. Either way it presents the application
- * identity, the create/open actions, and the list of recent items.
+ * identity, the create/open actions, and the list of recent items. The backdrop, dismissal, and
+ * animation are provided by the reusable {@link Modal}; the welcome screen overrides its theming for
+ * the frosted panel and projects the drifting orbs behind it.
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon],
+  imports: [AppIcon, Modal],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '(document:keydown.escape)': 'onEscape()',
-  },
 })
 export class WelcomeScreen {
   /**
@@ -102,31 +102,12 @@ export class WelcomeScreen {
   }
 
   /**
-   * Closes the welcome screen when it is shown as a dismissable modal.
+   * Closes the welcome screen when it is shown as a dismissable modal. Invoked by the modal's dismiss
+   * output, which only fires when dismissal is permitted; the guard keeps it safe regardless.
    */
   protected close(): void {
     if (this.dismissable()) {
       this.welcomeModal.close();
     }
-  }
-
-  /**
-   * Handles a click on the backdrop, dismissing the modal when the click falls outside the panel.
-   * @param event The originating click event.
-   */
-  protected onBackdrop(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.close();
-    }
-  }
-
-  /**
-   * Handles the Escape key, dismissing the modal when it is visible and can be dismissed.
-   */
-  protected onEscape(): void {
-    if (!this.visible()) {
-      return;
-    }
-    this.close();
   }
 }

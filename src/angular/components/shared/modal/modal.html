@@ -1,0 +1,31 @@
+<!-- The backdrop is a convenience click-to-dismiss surface; keyboard parity is provided by the
+     Escape handler on the host, and the panel within holds the real focusable controls. A decorative
+     layer can be projected behind the panel via the `modalBackdrop` slot. When marked draggable the
+     backdrop doubles as the window-drag region; the panel opts back out so it stays interactive. -->
+<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+<section
+  class="modal"
+  [class.modal--visible]="open()"
+  [class.modal--draggable]="draggableBackdrop()"
+  (click)="onBackdrop($event)"
+>
+  <div class="modal__backdrop" aria-hidden="true">
+    <ng-content select="[modalBackdrop]" />
+  </div>
+
+  <div
+    class="modal__panel"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="ariaLabel()"
+    [style.--modal-panel-inline-size]="panelInlineSize()"
+  >
+    @if (dismissable() && showClose()) {
+      <button type="button" class="modal__close" aria-label="Close" (click)="requestDismiss()">
+        <app-icon [icon]="Icon.CLOSE" />
+      </button>
+    }
+
+    <ng-content />
+  </div>
+</section>

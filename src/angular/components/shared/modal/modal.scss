@@ -1,0 +1,120 @@
+:host {
+  display: contents;
+}
+
+// The full-bleed overlay centres the panel. It stays mounted and toggles its visible state so the
+// backdrop tint/blur and the panel can animate in and out (modern CSS: @starting-style + discrete
+// display transition — Electron's Chromium supports both). All presentation is themed through
+// `--modal-*` custom properties, consumed here with card defaults so a bare modal looks right.
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  isolation: isolate;
+  background: transparent;
+  backdrop-filter: blur(0);
+}
+
+// Shown state: the backdrop tint and blur fade in. The transition lives here, not on the base, so it
+// runs only on entry — dismissing reverts to the (untransitioned) base state instantly, no exit fade.
+.modal--visible {
+  display: flex;
+  background: var(--modal-backdrop-color, rgba(0, 0, 0, 0.45));
+  backdrop-filter: blur(var(--modal-backdrop-blur, var(--welcome-backdrop-blur)));
+  transition:
+    background var(--modal-fade-duration, 200ms) ease,
+    backdrop-filter var(--modal-fade-duration, 200ms) ease;
+
+  @starting-style {
+    background: transparent;
+    backdrop-filter: blur(0);
+  }
+}
+
+// Only when explicitly requested is the backdrop a window-drag handle (the frameless cold-start
+// presentation, where there is no title strip to move the window by). The panel opts back out below.
+.modal--draggable.modal--visible {
+  -webkit-app-region: drag;
+}
+
+// The decorative layer projected behind the panel. Non-interactive so backdrop clicks still reach
+// the dismiss handler; isolated so any blend modes inside stay within the overlay.
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+// The centred card. Everything inside opts out of the drag region so the controls stay clickable. It
+// zooms and fades in on entry; its resting hidden state is the zoomed-down, transparent one.
+.modal__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  inline-size: var(--modal-panel-inline-size, min(28rem, 100%));
+  max-block-size: 100%;
+  padding: var(--modal-panel-padding, 1.5rem);
+  color: var(--body-foreground-color);
+  background: var(--modal-panel-background, var(--body-background-color));
+  backdrop-filter: var(--modal-panel-backdrop-filter, none);
+  border: 0.0625rem solid var(--modal-panel-border-color, var(--dock-border-color));
+  border-radius: var(--modal-panel-radius, 2rem);
+  corner-shape: squircle;
+  box-shadow: var(--modal-panel-shadow, 0 1rem 3rem rgba(0, 0, 0, 0.4));
+  -webkit-app-region: no-drag;
+
+  .modal--visible & {
+    transition:
+      opacity var(--modal-fade-duration, 200ms) ease,
+      transform var(--modal-fade-duration, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
+
+    @starting-style {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+}
+
+.modal__close {
+  position: absolute;
+  inset-block-start: 1rem;
+  inset-inline-end: 1rem;
+  // Absolutely-positioned children don't reliably inherit the panel's no-drag, so without this the
+  // button sits in the window-drag region and its clicks are swallowed.
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.9rem;
+  block-size: 1.9rem;
+  font-size: 1.1rem;
+  color: var(--welcome-muted-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// Honour reduced-motion: no fade, no zoom — just show/hide.
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .modal__panel {
+    transition: none;
+  }
+}

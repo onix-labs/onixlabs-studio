@@ -27,8 +27,9 @@ describe('WelcomeScreen', () => {
   });
 
   it('coldStart_whenNoTabs_isVisibleWithAmbientOrbs', () => {
-    expect(host.querySelector('.welcome--visible')).not.toBeNull();
-    expect(host.querySelector('.welcome--ambient')).not.toBeNull();
+    expect(host.querySelector('.modal--visible')).not.toBeNull();
+    expect(host.querySelector('.welcome-modal--ambient')).not.toBeNull();
+    expect(host.querySelector('.welcome__orbs--active')).not.toBeNull();
     expect(host.querySelectorAll('.welcome__orb').length).toBe(6);
   });
 
@@ -36,7 +37,7 @@ describe('WelcomeScreen', () => {
     tabs.open('terminal');
     fixture.detectChanges();
 
-    expect(host.querySelector('.welcome--visible')).toBeNull();
+    expect(host.querySelector('.modal--visible')).toBeNull();
   });
 
   it('withTabs_whenModalOpen_isVisibleButNotAmbient', () => {
@@ -44,7 +45,7 @@ describe('WelcomeScreen', () => {
     modal.open();
     fixture.detectChanges();
 
-    expect(host.querySelector('.welcome--visible')).not.toBeNull();
-    expect(host.querySelector('.welcome--ambient')).toBeNull();
+    expect(host.querySelector('.modal--visible')).not.toBeNull();
+    expect(host.querySelector('.welcome-modal--ambient')).toBeNull();
   });
 });
