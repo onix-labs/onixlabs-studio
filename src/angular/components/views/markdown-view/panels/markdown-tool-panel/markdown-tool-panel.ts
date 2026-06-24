@@ -27,53 +27,70 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
   styles: [
     `
       :host {
+        --tool-panel-bar-background: var(--gray-200);
+        --tool-panel-bar-foreground: var(--gray-700);
+        --tool-panel-bar-border: var(--gray-300);
+        --tool-panel-body-background: var(--gray-100);
+
         display: flex;
         flex-direction: column;
         block-size: 100%;
         color: var(--body-foreground-color);
-        background: var(--body-background-color);
+        background: var(--tool-panel-body-background);
+      }
+
+      :host-context([data-theme-mode='dark']) {
+        --tool-panel-bar-background: var(--gray-800);
+        --tool-panel-bar-foreground: var(--gray-400);
+        --tool-panel-bar-border: var(--gray-700);
+        --tool-panel-body-background: var(--gray-900);
       }
 
       .tool-panel__header {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 0.5rem 0.5rem 0.75rem;
-        border-block-end: 0.0625rem solid var(--dock-border-color);
+        gap: 0.4rem;
+        padding: 0.25rem 0.5rem;
+        background: var(--tool-panel-bar-background);
+        color: var(--tool-panel-bar-foreground);
+        border-block-end: 0.0625rem solid var(--tool-panel-bar-border);
       }
 
       .tool-panel__icon {
-        color: var(--accent-color);
+        font-size: 0.9rem;
       }
 
       .tool-panel__title {
         flex: 1;
         margin: 0;
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        font-size: 0.75rem;
+        font-weight: 500;
       }
 
       .tool-panel__close {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        inline-size: 1.6rem;
-        block-size: 1.6rem;
-        color: var(--welcome-muted-foreground-color);
+        inline-size: 1.5rem;
+        block-size: 1.5rem;
+        font-size: 0.9rem;
+        color: inherit;
         background: transparent;
-        border: none;
+        border: 0.0625rem solid transparent;
         border-radius: 0.375rem;
         corner-shape: squircle;
         cursor: pointer;
         transition: var(--hover-transition);
 
-        &:hover,
-        &:focus-visible {
+        &:hover {
           color: var(--accent-surface-foreground-color);
           background: var(--accent-surface-background-color);
-          outline: none;
+          border-color: var(--accent-surface-border-color);
+        }
+
+        &:focus-visible {
+          outline: var(--focus-ring-width) solid var(--focus-ring-color);
+          outline-offset: -0.125rem;
         }
       }
 

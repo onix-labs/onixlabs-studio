@@ -125,6 +125,21 @@ const ROOT_DEPTH: number = 0;
 const NEXT_TICK_DELAY: number = 0;
 
 /**
+ * Minimum width of a markdown tool panel, in pixels.
+ */
+const MIN_PANEL_SIZE: number = 220;
+
+/**
+ * Maximum width of a markdown tool panel, in pixels.
+ */
+const MAX_PANEL_SIZE: number = 720;
+
+/**
+ * Default width of a markdown tool panel, in pixels.
+ */
+const DEFAULT_PANEL_SIZE: number = 320;
+
+/**
  * Minimum number of rows for the HTML image editor textarea.
  */
 const HTML_IMAGE_EDITOR_MIN_ROWS: number = 3;
@@ -206,6 +221,46 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   protected readonly panelPosition: Signal<PanelPosition> = computed(
     (): PanelPosition => this.settings.markdownEditor().panelPosition,
   );
+
+  /**
+   * Holds the width of the open tool panel, in pixels, adjusted by dragging the splitter.
+   */
+  protected readonly panelSize: WritableSignal<number> = signal<number>(DEFAULT_PANEL_SIZE);
+
+  /**
+   * Holds the pointer coordinate at the start of a panel-splitter drag.
+   */
+  private panelDragOrigin: number = 0;
+
+  /**
+   * Holds the panel width at the start of a panel-splitter drag.
+   */
+  private panelDragOriginSize: number = 0;
+
+  /**
+   * Begins a splitter drag that resizes the open tool panel. The drag direction is mirrored when the
+   * panel is docked on the left so dragging towards the editor always shrinks the panel.
+   * @param event The originating pointer event.
+   */
+  protected onPanelSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.panelDragOrigin = event.clientX;
+    this.panelDragOriginSize = this.panelSize();
+    const sign: number = this.panelPosition() === 'left' ? -1 : 1;
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = (this.panelDragOrigin - move.clientX) * sign;
+      this.panelSize.set(
+        Math.min(MAX_PANEL_SIZE, Math.max(MIN_PANEL_SIZE, this.panelDragOriginSize + delta)),
+      );
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
 
   /**
    * Holds the Angular zone, used to create the editor outside change detection.

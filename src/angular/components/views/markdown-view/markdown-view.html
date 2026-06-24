@@ -17,7 +17,13 @@
   </div>
 
   @if (isActive() && activePanel() !== 'none') {
-    <aside class="tool-panel">
+    <div
+      class="markdown-layout__splitter"
+      role="separator"
+      aria-orientation="vertical"
+      (mousedown)="onPanelSplitterDown($event)"
+    ></div>
+    <aside class="tool-panel" [style.flex-basis.px]="panelSize()">
       @switch (activePanel()) {
         @case ('outline') {
           <app-markdown-outline-panel />
