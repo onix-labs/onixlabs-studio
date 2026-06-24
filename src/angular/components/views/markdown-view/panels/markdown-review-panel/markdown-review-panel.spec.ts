@@ -24,4 +24,10 @@ describe('MarkdownReviewPanel', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.tool-panel__title')?.textContent).toContain('Review');
   });
+
+  it('render_whenNoActiveEditor_promptsToOpenADocument', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.rv-empty')?.textContent).toContain('Open a markdown document');
+    expect(element.querySelector('.rv-chips')).toBeNull();
+  });
 });

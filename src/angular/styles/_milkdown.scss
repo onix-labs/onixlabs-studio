@@ -959,3 +959,15 @@ app-markdown-view .milkdown {
     opacity: 1;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Review reveal highlight
+// -----------------------------------------------------------------------------
+// The Review panel briefly paints the flagged range via the CSS Custom Highlight
+// API (registered under the name `markdown-review-flag`). This must be global: it
+// targets text inside the `.ProseMirror` element, which lives outside Angular's
+// view encapsulation.
+::highlight(markdown-review-flag) {
+  background-color: rgb(var(--accent-color-rgb), 0.28);
+  color: inherit;
+}

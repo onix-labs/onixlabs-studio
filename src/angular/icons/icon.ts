@@ -279,6 +279,21 @@ export class Icon {
   public static readonly READER: Icon = new Icon('ph-duotone ph-speaker-high');
 
   /**
+   * Gets the refresh icon, shown on the Review panel's re-analyse action.
+   */
+  public static readonly REFRESH: Icon = new Icon('ph ph-arrow-clockwise');
+
+  /**
+   * Gets the check icon, shown on the Review panel's primary suggestion.
+   */
+  public static readonly CHECK: Icon = new Icon('ph ph-check');
+
+  /**
+   * Gets the dictionary (book) icon, shown on the Review panel's add-to-dictionary action.
+   */
+  public static readonly DICTIONARY: Icon = new Icon('ph ph-book-bookmark');
+
+  /**
    * Gets the bullet-list icon.
    */
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');

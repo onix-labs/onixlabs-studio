@@ -80,6 +80,8 @@ import {
   MarkdownPanel,
   MarkdownPanels,
 } from '../../../services/markdown-panels/markdown-panels';
+import { Review } from '../../../services/markdown-review/markdown-review';
+import { ReviewIssue, ReviewSession } from '../../../services/markdown-review/review-types';
 import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
@@ -161,6 +163,37 @@ const TEXTAREA_EXTRA_ROWS: number = 1;
 const INITIAL_MERMAID_ID: number = 0;
 
 /**
+ * Sentinel returned by {@link String.indexOf} when no match is found.
+ */
+const NOT_FOUND: number = -1;
+
+/**
+ * Single-character step used when scanning rendered text for the next occurrence of a word.
+ */
+const WORD_STEP: number = 1;
+
+/**
+ * Minimum source length used when computing a review reveal's proportional position, guarding against
+ * division by zero on an empty document.
+ */
+const MIN_SOURCE_LENGTH: number = 1;
+
+/**
+ * Divisor that centres a revealed review range within the scroll viewport.
+ */
+const REVEAL_CENTRE_DIVISOR: number = 2;
+
+/**
+ * CSS Custom Highlight registry name for a revealed review issue.
+ */
+const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
+
+/**
+ * Duration in milliseconds the review reveal highlight stays before it is cleared.
+ */
+const REVIEW_FLASH_DURATION: number = 1600;
+
+/**
  * Display name given to a new, unsaved markdown document.
  */
 const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
@@ -210,6 +243,21 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Holds the tool-panel registry tracking which side panel (if any) is open.
    */
   private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Holds the review service the editor registers its source, edit, and reveal seam with while active.
+   */
+  private readonly review: Review = inject(Review);
+
+  /**
+   * Holds the review session registered with the {@link Review} service while active, or null.
+   */
+  private reviewSession: ReviewSession | null = null;
+
+  /**
+   * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
+   */
+  private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Gets the tool panel currently open beside the editor, or `none` when none is open.
@@ -433,12 +481,16 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       if (active) {
         this.registerCommandHandler();
+        this.registerReviewSession();
         this.refreshActiveBlockType();
         this.documents.setActiveDocument(this.documentId());
         this.focusEditor();
-      } else if (this.commandHandler !== null) {
-        this.commands.unregister(this.commandHandler);
-        this.commandHandler = null;
+      } else {
+        if (this.commandHandler !== null) {
+          this.commands.unregister(this.commandHandler);
+          this.commandHandler = null;
+        }
+        this.unregisterReviewSession();
       }
     });
   }
@@ -576,6 +628,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
           if (this.isActive()) {
             this.publishHistoryState(ctx.get(editorViewCtx));
             this.refreshOutline();
+            this.zone.run((): void => this.review.notifySourceChanged());
           }
         });
 
@@ -644,6 +697,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.commands.unregister(this.commandHandler);
       this.commandHandler = null;
     }
+    this.unregisterReviewSession();
 
     if (this.crepe !== null) {
       await this.crepe.destroy();
@@ -1037,6 +1091,227 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.editorContainer().nativeElement.querySelectorAll<HTMLElement>(
         '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6',
       ),
+    );
+  }
+
+  /**
+   * Registers this view as the active review session, so the Review panel can read the live source,
+   * apply suggestions, and reveal flagged ranges in this editor.
+   */
+  private registerReviewSession(): void {
+    if (this.reviewSession !== null) {
+      return;
+    }
+    this.reviewSession = {
+      getSource: (): string => this.crepe?.getMarkdown() ?? '',
+      applyEdit: (start: number, end: number, replacement: string): void =>
+        this.applyReviewEdit(start, end, replacement),
+      reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
+    };
+    this.review.registerSession(this.reviewSession);
+  }
+
+  /**
+   * Unregisters this view's review session and clears any active reveal highlight.
+   */
+  private unregisterReviewSession(): void {
+    if (this.reviewSession !== null) {
+      this.review.unregisterSession(this.reviewSession);
+      this.reviewSession = null;
+    }
+    this.clearReviewFlash();
+  }
+
+  /**
+   * Applies a review suggestion by replacing the source range with the given text. The replacement is
+   * computed against the serialised markdown (the same source the issue offsets were derived from),
+   * then the whole document is re-parsed and swapped in a single, undoable transaction.
+   * @param start The start offset of the range to replace.
+   * @param end The end offset (exclusive) of the range to replace.
+   * @param replacement The replacement text.
+   */
+  private applyReviewEdit(start: number, end: number, replacement: string): void {
+    const crepe: Crepe | null = this.crepe;
+    if (crepe === null) {
+      return;
+    }
+    const source: string = crepe.getMarkdown();
+    const next: string = source.slice(0, start) + replacement + source.slice(end);
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(next);
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(
+        view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content).scrollIntoView(),
+      );
+      view.focus();
+    });
+  }
+
+  /**
+   * Scrolls the flagged text of a review issue into view and briefly highlights it. The flagged word
+   * is located in the rendered text at the occurrence closest to the issue's proportional position in
+   * the source (the rendered text differs from the markdown source, so this is an approximate match).
+   * @param issue The issue to reveal.
+   */
+  private revealReviewIssue(issue: ReviewIssue): void {
+    const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
+    const root: HTMLElement | null | undefined =
+      container?.querySelector<HTMLElement>('.ProseMirror');
+    if (root === null || root === undefined || issue.word.length === 0) {
+      return;
+    }
+
+    const walker: TreeWalker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const segments: { node: Text; start: number }[] = [];
+    let rendered: string = '';
+    let node: Node | null = walker.nextNode();
+    while (node !== null) {
+      const textNode: Text = node as Text;
+      segments.push({ node: textNode, start: rendered.length });
+      rendered += textNode.textContent ?? '';
+      node = walker.nextNode();
+    }
+
+    const sourceLength: number = Math.max(MIN_SOURCE_LENGTH, this.reviewSourceLength());
+    const target: number = (issue.start / sourceLength) * rendered.length;
+    let best: number = NOT_FOUND;
+    let bestDelta: number = Number.POSITIVE_INFINITY;
+    let found: number = rendered.indexOf(issue.word);
+    while (found !== NOT_FOUND) {
+      const delta: number = Math.abs(found - target);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = found;
+      }
+      found = rendered.indexOf(issue.word, found + WORD_STEP);
+    }
+    if (best === NOT_FOUND) {
+      return;
+    }
+
+    const range: Range | null = this.rangeFromRendered(segments, best, best + issue.word.length);
+    if (range === null) {
+      return;
+    }
+    this.scrollRangeIntoView(range, container);
+    this.flashReviewRange(range);
+  }
+
+  /**
+   * Gets the length of the editor's serialised markdown source, used to position a review reveal.
+   * @returns Returns the source length, or zero when no editor is mounted.
+   */
+  private reviewSourceLength(): number {
+    return this.crepe?.getMarkdown().length ?? 0;
+  }
+
+  /**
+   * Scrolls the editor's scroll container so the given range is centred in view.
+   * @param range The range to reveal.
+   * @param container The editor container the range lives in.
+   */
+  private scrollRangeIntoView(range: Range, container: HTMLDivElement | undefined): void {
+    const scroller: HTMLElement | null | undefined =
+      container?.closest<HTMLElement>('.editor-scroll');
+    if (scroller === null || scroller === undefined) {
+      return;
+    }
+    const rect: DOMRect = range.getBoundingClientRect();
+    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        (rect.top - scrollerRect.top) -
+        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
+      behavior: 'smooth',
+    });
+  }
+
+  /**
+   * Builds a DOM range spanning the given rendered-text offsets.
+   * @param segments The text-node segments with their start offsets.
+   * @param start The start offset in the rendered text.
+   * @param end The end offset (exclusive) in the rendered text.
+   * @returns Returns the range, or null when it cannot be resolved.
+   */
+  private rangeFromRendered(
+    segments: readonly { node: Text; start: number }[],
+    start: number,
+    end: number,
+  ): Range | null {
+    const startSegment: { node: Text; start: number } | undefined = this.segmentAt(segments, start);
+    const endSegment: { node: Text; start: number } | undefined = this.segmentAt(
+      segments,
+      end - WORD_STEP,
+    );
+    if (startSegment === undefined || endSegment === undefined) {
+      return null;
+    }
+    const range: Range = document.createRange();
+    range.setStart(startSegment.node, start - startSegment.start);
+    range.setEnd(endSegment.node, end - endSegment.start);
+    return range;
+  }
+
+  /**
+   * Finds the text-node segment containing a rendered-text offset.
+   * @param segments The segments.
+   * @param offset The rendered-text offset.
+   * @returns Returns the containing segment, or undefined.
+   */
+  private segmentAt(
+    segments: readonly { node: Text; start: number }[],
+    offset: number,
+  ): { node: Text; start: number } | undefined {
+    let match: { node: Text; start: number } | undefined;
+    for (const segment of segments) {
+      if (segment.start <= offset) {
+        match = segment;
+      } else {
+        break;
+      }
+    }
+    return match;
+  }
+
+  /**
+   * Briefly highlights a range using the CSS Custom Highlight API, which paints over the rendered text
+   * without mutating the editor's DOM or document. Clears any prior flash first. No-ops where the API
+   * is unavailable (such as under unit tests).
+   * @param range The range to flash.
+   */
+  private flashReviewRange(range: Range): void {
+    if (!this.supportsHighlight()) {
+      return;
+    }
+    this.clearReviewFlash();
+    CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
+    this.reviewFlashTimer = setTimeout((): void => {
+      this.clearReviewFlash();
+    }, REVIEW_FLASH_DURATION);
+  }
+
+  /**
+   * Clears the review reveal highlight and its pending timer, if any.
+   */
+  private clearReviewFlash(): void {
+    if (this.reviewFlashTimer !== null) {
+      clearTimeout(this.reviewFlashTimer);
+      this.reviewFlashTimer = null;
+    }
+    if (this.supportsHighlight()) {
+      CSS.highlights.delete(REVIEW_HIGHLIGHT_NAME);
+    }
+  }
+
+  /**
+   * Determines whether the CSS Custom Highlight API is available for review reveal highlighting.
+   * @returns Returns true when the API can be used.
+   */
+  private supportsHighlight(): boolean {
+    return (
+      typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && Boolean(CSS.highlights)
     );
   }
 
