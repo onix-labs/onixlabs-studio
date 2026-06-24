@@ -1224,9 +1224,11 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Scrolls the editor so the heading with the given ordinal lands just above the reading line, so the
-   * scroll-spy unambiguously activates the clicked heading once the smooth scroll settles. The
-   * resulting scroll updates the active heading through the scroll-spy.
+   * Jumps the editor so the heading with the given ordinal lands just above the reading line. The jump
+   * is instant rather than animated: a single scroll event fires at the exact resting position, so the
+   * scroll-spy reads it once and unambiguously activates the clicked heading — an animated scroll's
+   * easing tail fires its final event short of rest and settles a heading off. The marker still glides
+   * to the heading through its own transition.
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   private scrollToHeading(index: number): void {
@@ -1243,7 +1245,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       scroller.scrollTop -
       READING_LINE_OFFSET +
       HEADING_LAND_BIAS;
-    scroller.scrollTo({ top: offset, behavior: 'smooth' });
+    scroller.scrollTo({ top: offset, behavior: 'auto' });
   }
 
   /**
