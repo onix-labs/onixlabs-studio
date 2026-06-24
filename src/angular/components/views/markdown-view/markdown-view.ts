@@ -67,6 +67,7 @@ import {
   MarkdownBlockType,
   MarkdownCommandHandler,
   MarkdownCommands,
+  OutlineHeading,
 } from '../../../services/markdown-commands/markdown-commands';
 import {
   ImageAlignment,
@@ -570,7 +571,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.contentChange.emit(markdown);
           });
           if (this.isActive()) {
-            this.publishHistoryState(ctx.get(editorViewCtx));
+            const view: EditorView = ctx.get(editorViewCtx);
+            this.publishHistoryState(view);
+            this.publishOutline(view);
           }
         });
 
@@ -697,6 +700,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       insertText: (text: string): void => this.insertRawText(crepe, text),
       appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
+      goToHeading: (pos: number): void => this.goToHeading(crepe, pos),
     };
 
     this.commands.register(this.commandHandler);
@@ -954,6 +958,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         this.commands.setActiveBlockType(blockType);
       });
       this.publishHistoryState(view);
+      this.publishOutline(view);
     });
   }
 
@@ -967,6 +972,45 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     const canRedo: boolean = redoDepth(view.state) > 0;
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
+    });
+  }
+
+  /**
+   * Walks the document for heading nodes and publishes the resulting outline to the command registry,
+   * so the Outline panel reflects the document's headings. Both ATX and setext headings parse to the
+   * same heading node, so both are captured.
+   * @param view The editor view to read the headings from.
+   */
+  private publishOutline(view: EditorView): void {
+    const headings: OutlineHeading[] = [];
+    view.state.doc.descendants((node: ProseMirrorNode, pos: number): void => {
+      if (node.type.name === 'heading') {
+        const level: unknown = node.attrs['level'];
+        headings.push({
+          id: `heading-${pos}`,
+          level: typeof level === 'number' ? level : 1,
+          text: node.textContent,
+          pos,
+        });
+      }
+    });
+    this.zone.run((): void => {
+      this.commands.setOutline(headings);
+    });
+  }
+
+  /**
+   * Moves the selection to the heading at the given document position and scrolls it into view.
+   * @param crepe The editor instance.
+   * @param pos The heading's document position.
+   */
+  private goToHeading(crepe: Crepe, pos: number): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      const target: number = Math.min(pos + 1, view.state.doc.content.size);
+      const selection: Selection = TextSelection.near(view.state.doc.resolve(target));
+      view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+      view.focus();
     });
   }
 

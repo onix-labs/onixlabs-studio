@@ -31,6 +31,7 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     insertText: (): void => void calls.add('insertText'),
     appendMarkdown: (): void => void calls.add('appendMarkdown'),
     setBlockType: (): void => void calls.add('setBlockType'),
+    goToHeading: (): void => void calls.add('goToHeading'),
   };
 }
 
@@ -148,6 +149,25 @@ describe('MarkdownCommands', () => {
     commands.register(recordingHandler(new Set<string>()));
     expect(commands.canUndo()).toBe(false);
     expect(commands.canRedo()).toBe(false);
+  });
+
+  it('setOutline_whenCalled_updatesOutline', () => {
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', pos: 0 }]);
+    expect(commands.outline().length).toBe(1);
+    expect(commands.outline()[0].text).toBe('Intro');
+  });
+
+  it('goToHeading_whenHandlerRegistered_forwardsToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.goToHeading(12);
+    expect(calls.has('goToHeading')).toBe(true);
+  });
+
+  it('register_whenHandlerRegistered_resetsOutline', () => {
+    commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', pos: 0 }]);
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.outline().length).toBe(0);
   });
 
   it('setActiveBlockType_whenCalled_updatesActiveBlockType', () => {

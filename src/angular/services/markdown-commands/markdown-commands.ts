@@ -26,6 +26,32 @@ export type MarkdownBlockType =
 const DEFAULT_BLOCK_TYPE: MarkdownBlockType = 'paragraph';
 
 /**
+ * Describes a heading in the document outline, including its level, text, and the editor position to
+ * navigate to. Both ATX (`#`) and setext (underlined) headings are represented uniformly.
+ */
+export interface OutlineHeading {
+  /**
+   * Gets a stable identifier for the heading (derived from its document position).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the heading level, from 1 to 6.
+   */
+  readonly level: number;
+
+  /**
+   * Gets the heading's text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the editor document position the heading starts at, used to navigate to it.
+   */
+  readonly pos: number;
+}
+
+/**
  * Defines the formatting commands the markdown ribbon can invoke on the active markdown editor.
  */
 export interface MarkdownCommandHandler {
@@ -145,6 +171,12 @@ export interface MarkdownCommandHandler {
    * @param blockType The block type to apply.
    */
   setBlockType(blockType: MarkdownBlockType): void;
+
+  /**
+   * Moves the selection to the heading at the given document position and scrolls it into view.
+   * @param pos The heading's document position.
+   */
+  goToHeading(pos: number): void;
 }
 
 /**
@@ -181,6 +213,13 @@ export class MarkdownCommands {
   private readonly canRedoSignal: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the active editor's document outline.
+   */
+  private readonly outlineSignal: WritableSignal<readonly OutlineHeading[]> = signal<
+    readonly OutlineHeading[]
+  >([]);
+
+  /**
    * Gets a value indicating whether a markdown editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -204,6 +243,12 @@ export class MarkdownCommands {
   public readonly canRedo: Signal<boolean> = this.canRedoSignal.asReadonly();
 
   /**
+   * Gets the active editor's document outline (its headings), or an empty list when no editor is
+   * active.
+   */
+  public readonly outline: Signal<readonly OutlineHeading[]> = this.outlineSignal.asReadonly();
+
+  /**
    * Registers the active markdown editor's command handler, resetting the tracked block type.
    * @param handler The handler to register.
    */
@@ -212,6 +257,7 @@ export class MarkdownCommands {
     this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
     this.canUndoSignal.set(false);
     this.canRedoSignal.set(false);
+    this.outlineSignal.set([]);
   }
 
   /**
@@ -224,6 +270,7 @@ export class MarkdownCommands {
       this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
       this.canUndoSignal.set(false);
       this.canRedoSignal.set(false);
+      this.outlineSignal.set([]);
     }
   }
 
@@ -245,6 +292,22 @@ export class MarkdownCommands {
   public setHistoryState(canUndo: boolean, canRedo: boolean): void {
     this.canUndoSignal.set(canUndo);
     this.canRedoSignal.set(canRedo);
+  }
+
+  /**
+   * Sets the active editor's document outline, so the Outline panel can reflect the headings.
+   * @param outline The headings in document order.
+   */
+  public setOutline(outline: readonly OutlineHeading[]): void {
+    this.outlineSignal.set(outline);
+  }
+
+  /**
+   * Navigates the active editor to the heading at the given document position.
+   * @param pos The heading's document position.
+   */
+  public goToHeading(pos: number): void {
+    this.handler()?.goToHeading(pos);
   }
 
   /**
