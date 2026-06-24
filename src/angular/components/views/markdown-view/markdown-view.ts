@@ -599,6 +599,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       toggleOrderedList: (): void => this.run(crepe, callCommand(wrapInOrderedListCommand.key)),
       insertTable: (): void => this.run(crepe, callCommand(insertTableCommand.key)),
       insertHorizontalRule: (): void => this.run(crepe, callCommand(insertHrCommand.key)),
+      insertMarkdown: (markdown: string): void => this.insertParsedBlock(crepe, markdown),
+      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(crepe, markdown),
+      insertText: (text: string): void => this.insertRawText(crepe, text),
+      appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
     };
 
@@ -720,6 +724,71 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         view.dispatch(view.state.tr.replaceSelectionWith(codeBlock).scrollIntoView());
         view.focus();
       });
+    });
+  }
+
+  /**
+   * Parses markdown and inserts it as block-level content at the cursor, replacing any selection.
+   * @param crepe The editor instance.
+   * @param markdown The markdown to parse and insert.
+   */
+  private insertParsedBlock(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.replaceSelection(new Slice(doc.content, 0, 0)).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Parses markdown and inserts its inline content at the cursor, replacing any selection. The parsed
+   * document's first block holds the inline content (such as a link), which is spliced into the
+   * current block rather than inserted as a new paragraph.
+   * @param crepe The editor instance.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  private insertParsedInline(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      const block: ProseMirrorNode | null = doc.content.firstChild;
+      const inline: Slice = new Slice(block !== null ? block.content : doc.content, 0, 0);
+      view.dispatch(view.state.tr.replaceSelection(inline).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Inserts raw text at the cursor, replacing any selection.
+   * @param crepe The editor instance.
+   * @param text The text to insert.
+   */
+  private insertRawText(crepe: Crepe, text: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+      view.focus();
+    });
+  }
+
+  /**
+   * Parses markdown and appends it as block-level content at the end of the document, leaving the
+   * selection where it was. Used for content that lives apart from the cursor, such as a footnote
+   * definition.
+   * @param crepe The editor instance.
+   * @param markdown The markdown to parse and append.
+   */
+  private appendParsedBlock(crepe: Crepe, markdown: string): void {
+    this.run(crepe, (ctx: Ctx): void => {
+      const parser: Parser = ctx.get(parserCtx);
+      const doc: ProseMirrorNode = parser(markdown);
+      const view: EditorView = ctx.get(editorViewCtx);
+      const end: number = view.state.doc.content.size;
+      view.dispatch(view.state.tr.insert(end, doc.content).scrollIntoView());
+      view.focus();
     });
   }
 

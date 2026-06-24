@@ -122,6 +122,11 @@ export enum IpcChannel {
   DialogOpenFile = 'dialog:open-file',
 
   /**
+   * Shows an open-image dialog and returns the chosen file's path, without reading its contents.
+   */
+  DialogPickImage = 'dialog:pick-image',
+
+  /**
    * Shows a save-file dialog and returns the chosen path.
    */
   DialogSaveFile = 'dialog:save-file',

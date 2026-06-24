@@ -114,6 +114,8 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.FileWrite, path, content) as Promise<FileWriteResult>,
     openDialog: (): Promise<FileInfo | null> =>
       ipcRenderer.invoke(IpcChannel.DialogOpenFile) as Promise<FileInfo | null>,
+    pickImage: (): Promise<string | null> =>
+      ipcRenderer.invoke(IpcChannel.DialogPickImage) as Promise<string | null>,
     saveDialog: (defaultPath?: string): Promise<string | null> =>
       ipcRenderer.invoke(IpcChannel.DialogSaveFile, defaultPath) as Promise<string | null>,
     confirmSave: (fileName: string): Promise<SaveDialogChoice> =>

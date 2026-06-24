@@ -15,7 +15,7 @@
   />
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Clipboard">
+<app-ribbon-strip-group title="Edit">
   <app-ribbon-strip-menu-button
     [icon]="Icon.CUT"
     label="Cut"
@@ -89,6 +89,88 @@
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Insert">
-  <app-ribbon-strip-button [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
-  <app-ribbon-strip-button [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
+  <div class="insert-grid">
+    <button type="button" class="insert-button" title="Table" aria-label="Table" (click)="onTable()">
+      <app-icon [icon]="Icon.TABLE" />
+    </button>
+    <button type="button" class="insert-button" title="Image" aria-label="Image" (click)="onImage()">
+      <app-icon [icon]="Icon.IMAGE" />
+    </button>
+    <button
+      type="button"
+      class="insert-button"
+      title="Divider"
+      aria-label="Divider"
+      (click)="onDivider()"
+    >
+      <app-icon [icon]="Icon.DIVIDER" />
+    </button>
+    <button type="button" class="insert-button" title="Link" aria-label="Link" (click)="onLink()">
+      <app-icon [icon]="Icon.LINK" />
+    </button>
+    <button type="button" class="insert-button" title="Math" aria-label="Math" (click)="onMath()">
+      <app-icon [icon]="Icon.MATH" />
+    </button>
+    <button
+      type="button"
+      class="insert-button"
+      title="Diagram"
+      aria-label="Diagram"
+      (click)="onDiagram()"
+    >
+      <app-icon [icon]="Icon.DIAGRAM" />
+    </button>
+    <button
+      type="button"
+      class="insert-button"
+      title="Footnote"
+      aria-label="Footnote"
+      (click)="onFootnote()"
+    >
+      <app-icon [icon]="Icon.FOOTNOTE" />
+    </button>
+    <button
+      type="button"
+      class="insert-button"
+      title="Collapse"
+      aria-label="Collapse"
+      (click)="onCollapse()"
+    >
+      <app-icon [icon]="Icon.COLLAPSE" />
+    </button>
+    <button type="button" class="insert-button" title="Emoji" aria-label="Emoji" (click)="onEmoji()">
+      <app-icon [icon]="Icon.EMOJI" />
+    </button>
+  </div>
 </app-ribbon-strip-group>
+
+<app-markdown-image-modal
+  [open]="imageOpen()"
+  (submitted)="onImageSubmit($event)"
+  (closed)="imageOpen.set(false)"
+/>
+<app-markdown-link-modal
+  [open]="linkOpen()"
+  (submitted)="onLinkSubmit($event)"
+  (closed)="linkOpen.set(false)"
+/>
+<app-markdown-math-modal
+  [open]="mathOpen()"
+  (submitted)="onMathSubmit($event)"
+  (closed)="mathOpen.set(false)"
+/>
+<app-markdown-collapse-modal
+  [open]="collapseOpen()"
+  (submitted)="onCollapseSubmit($event)"
+  (closed)="collapseOpen.set(false)"
+/>
+<app-markdown-footnote-modal
+  [open]="footnoteOpen()"
+  (submitted)="onFootnoteSubmit($event)"
+  (closed)="footnoteOpen.set(false)"
+/>
+<app-markdown-emoji-modal
+  [open]="emojiOpen()"
+  (submitted)="onEmojiSubmit($event)"
+  (closed)="emojiOpen.set(false)"
+/>

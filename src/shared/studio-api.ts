@@ -262,6 +262,13 @@ export interface FileApi {
   openDialog(): Promise<FileInfo | null>;
 
   /**
+   * Shows an open-image dialog and returns the chosen file's absolute path. Unlike {@link openDialog}
+   * the file's contents are not read, so it is suitable for referencing large binary images.
+   * @returns Returns the chosen image's absolute path, or null when the dialog was cancelled.
+   */
+  pickImage(): Promise<string | null>;
+
+  /**
    * Shows a save-file dialog and returns the chosen path.
    * @param defaultPath The path suggested in the dialog.
    * @returns Returns the chosen absolute path, or null when the dialog was cancelled.

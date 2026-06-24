@@ -105,6 +105,32 @@ export interface MarkdownCommandHandler {
   insertHorizontalRule(): void;
 
   /**
+   * Inserts parsed markdown as block-level content at the cursor, replacing any selection.
+   * @param markdown The markdown to parse and insert (for example an image, code fence, or HTML block).
+   */
+  insertMarkdown(markdown: string): void;
+
+  /**
+   * Inserts parsed markdown as inline content at the cursor, replacing any selection. The markdown is
+   * parsed and its inline content (such as a link or inline math) is spliced into the current block.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  insertInlineMarkdown(markdown: string): void;
+
+  /**
+   * Inserts raw text at the cursor, replacing any selection.
+   * @param text The text to insert (for example a Unicode emoji).
+   */
+  insertText(text: string): void;
+
+  /**
+   * Appends parsed markdown as block-level content at the end of the document. Used for content that
+   * lives apart from the cursor, such as a footnote definition.
+   * @param markdown The markdown to parse and append.
+   */
+  appendMarkdown(markdown: string): void;
+
+  /**
    * Sets the block type (paragraph, heading, blockquote, code block) of the current block.
    * @param blockType The block type to apply.
    */
@@ -279,6 +305,38 @@ export class MarkdownCommands {
    */
   public insertHorizontalRule(): void {
     this.handler()?.insertHorizontalRule();
+  }
+
+  /**
+   * Inserts parsed markdown as block-level content at the active editor's cursor.
+   * @param markdown The markdown to parse and insert.
+   */
+  public insertMarkdown(markdown: string): void {
+    this.handler()?.insertMarkdown(markdown);
+  }
+
+  /**
+   * Inserts parsed markdown as inline content at the active editor's cursor.
+   * @param markdown The inline markdown to parse and insert.
+   */
+  public insertInlineMarkdown(markdown: string): void {
+    this.handler()?.insertInlineMarkdown(markdown);
+  }
+
+  /**
+   * Inserts raw text at the active editor's cursor.
+   * @param text The text to insert.
+   */
+  public insertText(text: string): void {
+    this.handler()?.insertText(text);
+  }
+
+  /**
+   * Appends parsed markdown as block-level content at the end of the active editor's document.
+   * @param markdown The markdown to parse and append.
+   */
+  public appendMarkdown(markdown: string): void {
+    this.handler()?.appendMarkdown(markdown);
   }
 
   /**

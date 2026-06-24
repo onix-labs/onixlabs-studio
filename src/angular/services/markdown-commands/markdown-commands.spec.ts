@@ -24,6 +24,10 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     toggleOrderedList: (): void => void calls.add('toggleOrderedList'),
     insertTable: (): void => void calls.add('insertTable'),
     insertHorizontalRule: (): void => void calls.add('insertHorizontalRule'),
+    insertMarkdown: (): void => void calls.add('insertMarkdown'),
+    insertInlineMarkdown: (): void => void calls.add('insertInlineMarkdown'),
+    insertText: (): void => void calls.add('insertText'),
+    appendMarkdown: (): void => void calls.add('appendMarkdown'),
     setBlockType: (): void => void calls.add('setBlockType'),
   };
 }
@@ -82,6 +86,26 @@ describe('MarkdownCommands', () => {
     expect((): void => commands.paste()).not.toThrow();
     expect((): void => commands.pasteAsPlaintext()).not.toThrow();
     expect((): void => commands.pasteAsCode()).not.toThrow();
+  });
+
+  it('insertCommands_whenHandlerRegistered_forwardToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.insertMarkdown('![](x)');
+    commands.insertInlineMarkdown('[a](b)');
+    commands.insertText('🙂');
+    commands.appendMarkdown('[^1]: note');
+    expect(calls.has('insertMarkdown')).toBe(true);
+    expect(calls.has('insertInlineMarkdown')).toBe(true);
+    expect(calls.has('insertText')).toBe(true);
+    expect(calls.has('appendMarkdown')).toBe(true);
+  });
+
+  it('insertCommands_whenNoHandlerRegistered_doNothing', () => {
+    expect((): void => commands.insertMarkdown('x')).not.toThrow();
+    expect((): void => commands.insertInlineMarkdown('x')).not.toThrow();
+    expect((): void => commands.insertText('x')).not.toThrow();
+    expect((): void => commands.appendMarkdown('x')).not.toThrow();
   });
 
   it('unregister_whenHandlerMatches_clearsActiveEditor', () => {

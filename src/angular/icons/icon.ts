@@ -229,6 +229,41 @@ export class Icon {
   public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
 
   /**
+   * Gets the image icon, shown on the markdown Insert group's Image button.
+   */
+  public static readonly IMAGE: Icon = new Icon('ph ph-image');
+
+  /**
+   * Gets the link icon, shown on the markdown Insert group's Link button.
+   */
+  public static readonly LINK: Icon = new Icon('ph ph-link');
+
+  /**
+   * Gets the math icon, shown on the markdown Insert group's Math button.
+   */
+  public static readonly MATH: Icon = new Icon('ph ph-function');
+
+  /**
+   * Gets the diagram icon, shown on the markdown Insert group's Diagram button.
+   */
+  public static readonly DIAGRAM: Icon = new Icon('ph ph-graph');
+
+  /**
+   * Gets the footnote icon, shown on the markdown Insert group's Footnote button.
+   */
+  public static readonly FOOTNOTE: Icon = new Icon('ph ph-asterisk');
+
+  /**
+   * Gets the collapse (details/summary) icon, shown on the markdown Insert group's Collapse button.
+   */
+  public static readonly COLLAPSE: Icon = new Icon('ph ph-caret-circle-down');
+
+  /**
+   * Gets the emoji icon, shown on the markdown Insert group's Emoji button.
+   */
+  public static readonly EMOJI: Icon = new Icon('ph ph-smiley');
+
+  /**
    * Gets the bullet-list icon.
    */
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');

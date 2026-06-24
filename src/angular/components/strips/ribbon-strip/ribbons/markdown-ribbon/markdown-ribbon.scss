@@ -6,3 +6,41 @@ app-ribbon-strip-row {
   // Spread the square formatting buttons across the field's width above them.
   justify-content: space-between;
 }
+
+// The Insert group's 3x3 grid of small icon buttons, sized so three rows fit the fixed ribbon
+// content height (4rem) without overflowing the group lane.
+.insert-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.15rem;
+  align-content: center;
+}
+
+.insert-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.7rem;
+  block-size: 1.2rem;
+  font-size: 0.9rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: 0.375rem;
+  corner-shape: squircle;
+  cursor: pointer;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
