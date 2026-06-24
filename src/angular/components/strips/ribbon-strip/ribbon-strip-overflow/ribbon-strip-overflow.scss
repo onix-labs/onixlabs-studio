@@ -66,17 +66,19 @@
   }
 }
 
-// The overflow flyout: a dropdown of the groups that did not fit, stacked in document order, dropping
-// from below the trigger and extending towards the centre so it stays on screen.
+// The overflow flyout: a dropdown of the groups that did not fit, laid out in a row (like a
+// continuation of the ribbon), dropping from below the trigger and extending towards the centre so it
+// stays on screen. Caps its width and scrolls horizontally if many groups overflow.
 .ribbon-overflow__flyout {
   position: absolute;
   inset-block-start: 100%;
   inset-inline-end: 0;
   z-index: 20;
   display: none;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   gap: 0.5rem;
-  max-block-size: min(70vh, 32rem);
+  max-inline-size: min(80vw, 60rem);
   margin-block-start: 0.25rem;
   padding: 0.5rem;
   background: var(--dropdown-menu-background-color);
@@ -84,7 +86,7 @@
   border-radius: 0.5rem;
   corner-shape: squircle;
   box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.3);
-  overflow-y: auto;
+  overflow-x: auto;
 }
 
 .ribbon-overflow__flyout--open {
