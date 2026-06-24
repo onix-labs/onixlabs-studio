@@ -562,12 +562,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((ctx: Ctx, markdown: string): void => {
-          // The outline is published from this listener (the editor is settled here) rather than from
-          // the activation path, which runs inside the fragile editor-creation window. This fires on
-          // the initial content load too, so opening a document populates the outline.
-          if (this.isActive()) {
-            this.publishOutline(ctx.get(editorViewCtx));
-          }
+          // The very first update fires while the editor is still being created (the initial content
+          // load); doing work here breaks that init, so skip it. The initial outline is instead
+          // published on a deferred tick by refreshOutlineSoon once creation has settled.
           if (!this.hasReceivedFirstUpdate) {
             this.hasReceivedFirstUpdate = true;
             return;
@@ -577,7 +574,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.contentChange.emit(markdown);
           });
           if (this.isActive()) {
-            this.publishHistoryState(ctx.get(editorViewCtx));
+            const view: EditorView = ctx.get(editorViewCtx);
+            this.publishHistoryState(view);
+            this.publishOutline(view);
           }
         });
 
@@ -989,17 +988,23 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    */
   private publishOutline(view: EditorView): void {
     const headings: OutlineHeading[] = [];
-    view.state.doc.descendants((node: ProseMirrorNode, pos: number): void => {
-      if (node.type.name === 'heading') {
-        const level: unknown = node.attrs['level'];
-        headings.push({
-          id: `heading-${pos}`,
-          level: typeof level === 'number' ? level : 1,
-          text: node.textContent,
-          pos,
-        });
-      }
-    });
+    try {
+      view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
+        if (node.type.name === 'heading') {
+          const level: unknown = node.attrs['level'];
+          headings.push({
+            id: `heading-${pos}`,
+            level: typeof level === 'number' ? level : 1,
+            text: node.textContent,
+            pos,
+          });
+          return false;
+        }
+        return true;
+      });
+    } catch {
+      return;
+    }
     this.zone.run((): void => {
       this.commands.setOutline(headings);
     });
