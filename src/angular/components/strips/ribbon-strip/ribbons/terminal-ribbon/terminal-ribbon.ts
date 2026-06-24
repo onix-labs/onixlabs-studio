@@ -4,6 +4,7 @@ import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button
 import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
 import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
 
 /**
@@ -13,7 +14,7 @@ import { TerminalCommands } from '../../../../../services/terminal-commands/term
  */
 @Component({
   selector: 'app-terminal-ribbon',
-  imports: [RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripCheck],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripCheck],
   templateUrl: './terminal-ribbon.html',
   styleUrl: '../ribbon-row.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

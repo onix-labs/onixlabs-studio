@@ -1,61 +1,63 @@
-<app-ribbon-strip-group title="File">
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.SAVE"
-    label="Save"
-    [items]="saveItems"
-    (action)="onSave()"
-    (selected)="onSaveVariant($event)"
-  />
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.PRINT"
-    label="Print"
-    [items]="printItems"
-    (action)="onPrint()"
-    (selected)="onPrintVariant($event)"
-  />
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Edit">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-  </app-ribbon-strip-column>
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
-    <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
-    <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-  </app-ribbon-strip-column>
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Language">
-  <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
-  <app-ribbon-strip-column [spread]="true">
-    <app-ribbon-strip-field
-      label="Syntax"
-      [options]="languageOptions"
-      [value]="languageName()"
-      [fullWidth]="false"
-      (changed)="onLanguageChange($event)"
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [items]="saveItems"
+      (action)="onSave()"
+      (selected)="onSaveVariant($event)"
     />
-    <app-ribbon-strip-row>
-      <app-ribbon-strip-button-small [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
-    </app-ribbon-strip-row>
-  </app-ribbon-strip-column>
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="View">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-check label="Word Wrap" [checked]="wordWrap()" (toggled)="onWordWrap($event)" />
-    <app-ribbon-strip-check label="Minimap" [checked]="minimap()" (toggled)="onMinimap($event)" />
-    <app-ribbon-strip-check
-      label="Line Numbers"
-      [checked]="lineNumbers()"
-      (toggled)="onLineNumbers($event)"
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.PRINT"
+      label="Print"
+      [items]="printItems"
+      (action)="onPrint()"
+      (selected)="onPrintVariant($event)"
     />
-  </app-ribbon-strip-column>
-</app-ribbon-strip-group>
+  </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Tools">
-  <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
-</app-ribbon-strip-group>
+  <app-ribbon-strip-group title="Edit">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+      <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+      <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+      <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+      <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Language">
+    <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
+    <app-ribbon-strip-column [spread]="true">
+      <app-ribbon-strip-field
+        label="Syntax"
+        [options]="languageOptions"
+        [value]="languageName()"
+        [fullWidth]="false"
+        (changed)="onLanguageChange($event)"
+      />
+      <app-ribbon-strip-row>
+        <app-ribbon-strip-button-small [icon]="Icon.FORMAT" label="Format" (action)="onFormat()" />
+      </app-ribbon-strip-row>
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-check label="Word Wrap" [checked]="wordWrap()" (toggled)="onWordWrap($event)" />
+      <app-ribbon-strip-check label="Minimap" [checked]="minimap()" (toggled)="onMinimap($event)" />
+      <app-ribbon-strip-check
+        label="Line Numbers"
+        [checked]="lineNumbers()"
+        (toggled)="onLineNumbers($event)"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Tools">
+    <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Terminal" (action)="onTerminal()" />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

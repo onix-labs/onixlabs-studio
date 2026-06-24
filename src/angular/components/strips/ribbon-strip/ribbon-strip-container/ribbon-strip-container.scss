@@ -12,18 +12,10 @@
 .ribbon {
   display: flex;
   align-items: stretch;
-  gap: 0.5rem;
   padding: 0.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-// Ribbon control alignment (left is the natural flex-start default). The `safe` keyword falls back to
-// flex-start when the controls overflow the strip's width, so nothing is pushed out of reach.
-:host(.ribbon-strip--align-center) .ribbon {
-  justify-content: safe center;
-}
-
-:host(.ribbon-strip--align-right) .ribbon {
-  justify-content: safe flex-end;
+  // The active ribbon fills this width and its overflow wrapper moves groups that do not fit into a
+  // dropdown (clipping is handled inside that wrapper, so the strip never scrolls). Overflow stays
+  // visible here so the overflow flyout, which drops below the strip, is not clipped. Alignment of the
+  // groups is owned by the wrapper.
+  overflow: visible;
 }

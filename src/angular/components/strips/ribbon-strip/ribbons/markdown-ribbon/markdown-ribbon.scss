@@ -7,3 +7,9 @@ app-ribbon-strip-row {
   justify-content: space-between;
 }
 
+// The insert-modal hosts render full-screen fixed overlays, so they need no place in the ribbon's
+// flex flow. Take them out of it entirely, so they neither add width nor a gap beside the groups.
+.markdown-ribbon__overlays {
+  position: absolute;
+}
+
