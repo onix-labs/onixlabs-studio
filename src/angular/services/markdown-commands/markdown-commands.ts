@@ -171,6 +171,16 @@ export class MarkdownCommands {
     signal<MarkdownBlockType>(DEFAULT_BLOCK_TYPE);
 
   /**
+   * Holds whether the active editor has an edit that can be undone.
+   */
+  private readonly canUndoSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the active editor has an undone edit that can be redone.
+   */
+  private readonly canRedoSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets a value indicating whether a markdown editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -184,12 +194,24 @@ export class MarkdownCommands {
     this.activeBlockTypeSignal.asReadonly();
 
   /**
+   * Gets a value indicating whether the active editor has an edit that can be undone.
+   */
+  public readonly canUndo: Signal<boolean> = this.canUndoSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether the active editor has an undone edit that can be redone.
+   */
+  public readonly canRedo: Signal<boolean> = this.canRedoSignal.asReadonly();
+
+  /**
    * Registers the active markdown editor's command handler, resetting the tracked block type.
    * @param handler The handler to register.
    */
   public register(handler: MarkdownCommandHandler): void {
     this.handler.set(handler);
     this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
+    this.canUndoSignal.set(false);
+    this.canRedoSignal.set(false);
   }
 
   /**
@@ -200,6 +222,8 @@ export class MarkdownCommands {
     if (this.handler() === handler) {
       this.handler.set(null);
       this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
+      this.canUndoSignal.set(false);
+      this.canRedoSignal.set(false);
     }
   }
 
@@ -210,6 +234,17 @@ export class MarkdownCommands {
    */
   public setActiveBlockType(blockType: MarkdownBlockType): void {
     this.activeBlockTypeSignal.set(blockType);
+  }
+
+  /**
+   * Sets whether the active editor currently has undoable and redoable edits, so the ribbon can
+   * enable or disable its Undo and Redo controls.
+   * @param canUndo Whether there is an edit that can be undone.
+   * @param canRedo Whether there is an undone edit that can be redone.
+   */
+  public setHistoryState(canUndo: boolean, canRedo: boolean): void {
+    this.canUndoSignal.set(canUndo);
+    this.canRedoSignal.set(canRedo);
   }
 
   /**

@@ -137,6 +137,19 @@ describe('MarkdownCommands', () => {
     expect(commands.hasActiveEditor()).toBe(true);
   });
 
+  it('setHistoryState_whenCalled_updatesCanUndoAndCanRedo', () => {
+    commands.setHistoryState(true, false);
+    expect(commands.canUndo()).toBe(true);
+    expect(commands.canRedo()).toBe(false);
+  });
+
+  it('register_whenHandlerRegistered_resetsHistoryState', () => {
+    commands.setHistoryState(true, true);
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.canUndo()).toBe(false);
+    expect(commands.canRedo()).toBe(false);
+  });
+
   it('setActiveBlockType_whenCalled_updatesActiveBlockType', () => {
     commands.setActiveBlockType('heading-2');
     expect(commands.activeBlockType()).toBe('heading-2');

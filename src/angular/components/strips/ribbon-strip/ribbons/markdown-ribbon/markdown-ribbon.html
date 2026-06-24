@@ -16,10 +16,6 @@
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Edit">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
-    <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
-  </app-ribbon-strip-column>
   <app-ribbon-strip-menu-button
     [icon]="Icon.CUT"
     label="Cut"
@@ -41,6 +37,21 @@
     (action)="onPaste()"
     (selected)="onPasteVariant($event)"
   />
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small
+      [icon]="Icon.UNDO"
+      label="Undo"
+      [disabled]="!canUndo()"
+      (action)="onUndo()"
+    />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.REDO"
+      label="Redo"
+      [disabled]="!canRedo()"
+      (action)="onRedo()"
+    />
+    <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+  </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Format">

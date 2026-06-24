@@ -40,6 +40,7 @@ import {
 } from '@milkdown/preset-commonmark';
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
 import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
+import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
 import type { Parser } from '@milkdown/transformer';
 import { blockReorderPlugin } from '../../../milkdown/block-reorder-plugin';
@@ -474,7 +475,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       crepe.editor.use(blockReorderPlugin);
 
       crepe.on((api: ListenerManager): void => {
-        api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
+        api.markdownUpdated((ctx: Ctx, markdown: string): void => {
           if (!this.hasReceivedFirstUpdate) {
             this.hasReceivedFirstUpdate = true;
             return;
@@ -483,9 +484,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
             this.ignoreNextChange = true;
             this.contentChange.emit(markdown);
           });
+          if (this.isActive()) {
+            this.publishHistoryState(ctx.get(editorViewCtx));
+          }
         });
 
-        api.selectionUpdated((_ctx: Ctx, selection: Selection): void => {
+        api.selectionUpdated((ctx: Ctx, selection: Selection): void => {
           if (!this.isActive()) {
             return;
           }
@@ -493,6 +497,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
           this.zone.run((): void => {
             this.commands.setActiveBlockType(blockType);
           });
+          this.publishHistoryState(ctx.get(editorViewCtx));
         });
       });
 
@@ -863,6 +868,20 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       this.zone.run((): void => {
         this.commands.setActiveBlockType(blockType);
       });
+      this.publishHistoryState(view);
+    });
+  }
+
+  /**
+   * Publishes whether the editor currently has undoable and redoable edits to the command registry, so
+   * the ribbon can enable or disable its Undo and Redo controls.
+   * @param view The editor view to read the history depth from.
+   */
+  private publishHistoryState(view: EditorView): void {
+    const canUndo: boolean = undoDepth(view.state) > 0;
+    const canRedo: boolean = redoDepth(view.state) > 0;
+    this.zone.run((): void => {
+      this.commands.setHistoryState(canUndo, canRedo);
     });
   }
 

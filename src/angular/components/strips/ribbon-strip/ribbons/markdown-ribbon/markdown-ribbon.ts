@@ -176,6 +176,16 @@ export class MarkdownRibbon {
   ];
 
   /**
+   * Gets a value indicating whether there is an edit that can be undone.
+   */
+  protected readonly canUndo: Signal<boolean> = this.commands.canUndo;
+
+  /**
+   * Gets a value indicating whether there is an undone edit that can be redone.
+   */
+  protected readonly canRedo: Signal<boolean> = this.commands.canRedo;
+
+  /**
    * Undoes the last edit in the active editor.
    */
   protected onUndo(): void {
@@ -187,6 +197,16 @@ export class MarkdownRibbon {
    */
   protected onRedo(): void {
     this.commands.redo();
+  }
+
+  /**
+   * Opens the find widget.
+   *
+   * TODO: the markdown editor does not yet provide a find widget; this is a placeholder until one
+   * lands (the Monaco-backed code editor has its own).
+   */
+  protected onFind(): void {
+    // Intentionally empty until the markdown editor exposes a find command.
   }
 
   /**

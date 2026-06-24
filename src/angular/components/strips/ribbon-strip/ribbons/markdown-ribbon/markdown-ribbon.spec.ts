@@ -80,14 +80,23 @@ describe('MarkdownRibbon', () => {
     expect(titles).not.toContain('Insert');
   });
 
-  it('undoButton_whenClicked_undoes', () => {
+  it('undoButton_whenHistoryAvailable_undoes', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
+    commands.setHistoryState(true, false);
+    fixture.detectChanges();
 
     smallButton('Undo').click();
 
     expect(inserted).toContain('undo');
+  });
+
+  it('undoButton_whenNoHistory_isDisabled', () => {
+    TestBed.inject(MarkdownCommands).setHistoryState(false, false);
+    fixture.detectChanges();
+
+    expect(smallButton('Undo').disabled).toBe(true);
   });
 
   it('tableButton_whenClicked_insertsATable', () => {
