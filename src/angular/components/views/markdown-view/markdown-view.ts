@@ -1031,8 +1031,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @returns Returns the heading elements.
    */
   private readHeadingElements(): HTMLElement[] {
+    // Scope to the editable content (.ProseMirror) so the block-edit menu's category headings
+    // ("Text", "List", "Advanced") — which live outside the document — are not picked up.
     return Array.from(
-      this.editorContainer().nativeElement.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'),
+      this.editorContainer().nativeElement.querySelectorAll<HTMLElement>(
+        '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6',
+      ),
     );
   }
 
