@@ -250,7 +250,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
 
       .emoji-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(2.6rem, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(3rem, 1fr));
         gap: 0.15rem;
       }
 
@@ -259,7 +259,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
         align-items: center;
         justify-content: center;
         aspect-ratio: 1;
-        font-size: 1.5rem;
+        font-size: 2rem;
         line-height: 1;
         background: transparent;
         border: 0.0625rem solid transparent;
