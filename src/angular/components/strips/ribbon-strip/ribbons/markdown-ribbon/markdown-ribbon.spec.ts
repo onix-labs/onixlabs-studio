@@ -25,10 +25,10 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     toggleItalic: noop,
     toggleStrikethrough: noop,
     toggleInlineCode: noop,
-    toggleBulletList: noop,
-    toggleOrderedList: noop,
-    insertTable: noop,
-    insertHorizontalRule: noop,
+    toggleBulletList: (): void => void inserted.push('bullet-list'),
+    toggleOrderedList: (): void => void inserted.push('ordered-list'),
+    insertTable: (): void => void inserted.push('table'),
+    insertHorizontalRule: (): void => void inserted.push('divider'),
     insertMarkdown: (markdown: string): void => void inserted.push(`block:${markdown}`),
     insertInlineMarkdown: (markdown: string): void => void inserted.push(`inline:${markdown}`),
     insertText: (text: string): void => void inserted.push(`text:${text}`),
@@ -66,43 +66,53 @@ describe('MarkdownRibbon', () => {
     expect(titles).not.toContain('Clipboard');
   });
 
-  it('insertGroup_whenRendered_showsNineIconButtons', () => {
-    expect(element.querySelectorAll('.insert-grid .insert-button').length).toBe(9);
+  it('insertGroup_whenRendered_showsTheFourCategoryMenuButtons', () => {
+    expect(menuPrimary('Lists')).not.toBeUndefined();
+    expect(menuPrimary('Blocks')).not.toBeUndefined();
+    expect(menuPrimary('Media')).not.toBeUndefined();
+    expect(menuPrimary('Inline')).not.toBeUndefined();
   });
 
-  it('insertButtons_whenClicked_routeTableDividerAndDiagram', () => {
+  it('blocksButton_whenPrimaryClicked_insertsATable', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
 
-    insertButton('Diagram').click();
+    menuPrimary('Blocks').click();
 
-    expect(inserted.some((entry: string): boolean => entry.startsWith('block:```mermaid'))).toBe(
-      true,
-    );
+    expect(inserted).toContain('table');
   });
 
-  it('imageButton_whenClicked_opensTheImageModal', () => {
+  it('listsButton_whenPrimaryClicked_insertsABulletedList', () => {
+    const inserted: string[] = [];
+    const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
+    commands.register(recordingHandler(inserted));
+
+    menuPrimary('Lists').click();
+
+    expect(inserted).toContain('bullet-list');
+  });
+
+  it('mediaButton_whenPrimaryClicked_opensTheImageModal', () => {
     expect(element.querySelector('.modal--visible')).toBeNull();
 
-    insertButton('Image').click();
+    menuPrimary('Media').click();
     fixture.detectChanges();
 
     expect(element.querySelector('.modal--visible')).not.toBeNull();
   });
 
   /**
-   * Finds an Insert-group button by its visible label.
-   * @param label The button's label text.
+   * Finds a menu button's primary action button by its label.
+   * @param label The primary action's label text.
    * @returns Returns the matching button.
    */
-  function insertButton(label: string): HTMLButtonElement {
+  function menuPrimary(label: string): HTMLButtonElement {
     const buttons: HTMLButtonElement[] = Array.from(
-      element.querySelectorAll<HTMLButtonElement>('.insert-button'),
+      element.querySelectorAll<HTMLButtonElement>('.ribbon-menu-button__action'),
     );
     return buttons.find(
-      (button: HTMLButtonElement): boolean =>
-        button.querySelector('.insert-button__label')?.textContent?.trim() === label,
+      (button: HTMLButtonElement): boolean => button.querySelector('span')?.textContent?.trim() === label,
     )!;
   }
 });

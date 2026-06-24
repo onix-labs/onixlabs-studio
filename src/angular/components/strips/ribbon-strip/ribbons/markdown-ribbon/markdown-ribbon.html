@@ -76,55 +76,35 @@
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Lists">
+<app-ribbon-strip-group title="Insert">
   <app-ribbon-strip-menu-button
     [icon]="Icon.BULLET_LIST"
-    label="List"
+    label="Lists"
     [items]="listItems"
     (action)="onBulletList()"
     (selected)="onListVariant($event)"
   />
-</app-ribbon-strip-group>
-
-<app-ribbon-strip-group title="Insert">
-  <div class="insert-grid">
-    <button type="button" class="insert-button" (click)="onTable()">
-      <app-icon [icon]="Icon.TABLE" />
-      <span class="insert-button__label">Table</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onImage()">
-      <app-icon [icon]="Icon.IMAGE" />
-      <span class="insert-button__label">Image</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onDivider()">
-      <app-icon [icon]="Icon.DIVIDER" />
-      <span class="insert-button__label">Divider</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onLink()">
-      <app-icon [icon]="Icon.LINK" />
-      <span class="insert-button__label">Link</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onMath()">
-      <app-icon [icon]="Icon.MATH" />
-      <span class="insert-button__label">Math</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onDiagram()">
-      <app-icon [icon]="Icon.DIAGRAM" />
-      <span class="insert-button__label">Diagram</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onFootnote()">
-      <app-icon [icon]="Icon.FOOTNOTE" />
-      <span class="insert-button__label">Footnote</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onCollapse()">
-      <app-icon [icon]="Icon.COLLAPSE" />
-      <span class="insert-button__label">Collapse</span>
-    </button>
-    <button type="button" class="insert-button" (click)="onEmoji()">
-      <app-icon [icon]="Icon.EMOJI" />
-      <span class="insert-button__label">Emoji</span>
-    </button>
-  </div>
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.TABLE"
+    label="Blocks"
+    [items]="blockItems"
+    (action)="onTable()"
+    (selected)="onBlockVariant($event)"
+  />
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.IMAGE"
+    label="Media"
+    [items]="mediaItems"
+    (action)="onImage()"
+    (selected)="onMediaVariant($event)"
+  />
+  <app-ribbon-strip-menu-button
+    [icon]="Icon.LINK"
+    label="Inline"
+    [items]="inlineItems"
+    (action)="onLink()"
+    (selected)="onInlineVariant($event)"
+  />
 </app-ribbon-strip-group>
 
 <app-markdown-image-modal
