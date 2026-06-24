@@ -20,6 +20,7 @@ import { IpcChannel } from '../../shared/ipc-channels';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { OllamaProvider } from './ollama-provider';
 import { RendererBridge } from './renderer-bridge';
 import { VercelAiProvider } from './vercel-ai-provider';
 
@@ -76,9 +77,11 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
     const vercel: VercelAiProvider = new VercelAiProvider();
+    const ollama: OllamaProvider = new OllamaProvider();
     this.providers = new Map<AiProviderId, AgentProvider>([
       [this.claude.id, this.claude],
       [vercel.id, vercel],
+      [ollama.id, ollama],
     ]);
   }
 

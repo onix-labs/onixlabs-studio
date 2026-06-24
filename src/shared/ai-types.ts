@@ -69,8 +69,9 @@ export interface AiVerifyResult {
  *
  * - `claude`: the Claude Agent SDK (local login or API key; deep local agentic capability).
  * - `vercel`: the Vercel AI SDK (API key only; the seam to additional model back-ends later).
+ * - `ollama`: a local Ollama server (no credentials; runs open models like Qwen on the user's machine).
  */
-export type AiProviderId = 'claude' | 'vercel';
+export type AiProviderId = 'claude' | 'vercel' | 'ollama';
 
 /**
  * Describes a model a provider can run a turn with.
