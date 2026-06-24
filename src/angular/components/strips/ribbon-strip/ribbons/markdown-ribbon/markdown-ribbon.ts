@@ -96,42 +96,6 @@ const VARIANT_SAVE_AS: string = 'save-as';
 const VARIANT_EXPORT_PDF: string = 'export-pdf';
 
 /**
- * Identifies the bulleted-list item in the List menu button's dropdown.
- */
-const VARIANT_BULLET_LIST: string = 'bullet-list';
-
-/**
- * Identifies the numbered-list item in the List menu button's dropdown.
- */
-const VARIANT_NUMBERED_LIST: string = 'numbered-list';
-
-/**
- * Identifies the task-list item in the List menu button's dropdown.
- */
-const VARIANT_TASK_LIST: string = 'task-list';
-
-/**
- * Identifies the items in the Blocks menu button's dropdown.
- */
-const VARIANT_TABLE: string = 'table';
-const VARIANT_DIVIDER: string = 'divider';
-const VARIANT_COLLAPSE: string = 'collapse';
-
-/**
- * Identifies the items in the Media menu button's dropdown.
- */
-const VARIANT_IMAGE: string = 'image';
-const VARIANT_DIAGRAM: string = 'diagram';
-const VARIANT_MATH: string = 'math';
-
-/**
- * Identifies the items in the Inline menu button's dropdown.
- */
-const VARIANT_LINK: string = 'link';
-const VARIANT_FOOTNOTE: string = 'footnote';
-const VARIANT_EMOJI: string = 'emoji';
-
-/**
  * Represents the contextual ribbon shown when a markdown tab is active. Its controls drive formatting
  * on the active markdown editor through the {@link MarkdownCommands} registry, and its style field
  * follows the cursor's block type.
@@ -209,43 +173,6 @@ export class MarkdownRibbon {
     { id: VARIANT_MARKDOWN, label: 'Paste as Markdown', icon: Icon.MARKDOWN },
     { id: VARIANT_PLAINTEXT, label: 'Paste as Plain Text', icon: Icon.PASTE },
     { id: VARIANT_CODE, label: 'Paste as Code Block', icon: Icon.CODE_INLINE },
-  ];
-
-  /**
-   * Gets the list types offered by the Lists menu button. The button itself inserts a bulleted list;
-   * the dropdown offers all three.
-   */
-  protected readonly listItems: readonly RibbonMenuItem[] = [
-    { id: VARIANT_BULLET_LIST, label: 'Bulleted List', icon: Icon.BULLET_LIST },
-    { id: VARIANT_NUMBERED_LIST, label: 'Numbered List', icon: Icon.NUMBERED_LIST },
-    { id: VARIANT_TASK_LIST, label: 'Task List', icon: Icon.TASK_LIST },
-  ];
-
-  /**
-   * Gets the block structures offered by the Blocks menu button. The button itself inserts a table.
-   */
-  protected readonly blockItems: readonly RibbonMenuItem[] = [
-    { id: VARIANT_TABLE, label: 'Table', icon: Icon.TABLE },
-    { id: VARIANT_DIVIDER, label: 'Divider', icon: Icon.DIVIDER },
-    { id: VARIANT_COLLAPSE, label: 'Collapsible Block', icon: Icon.COLLAPSE },
-  ];
-
-  /**
-   * Gets the embeds offered by the Media menu button. The button itself inserts an image.
-   */
-  protected readonly mediaItems: readonly RibbonMenuItem[] = [
-    { id: VARIANT_IMAGE, label: 'Image', icon: Icon.IMAGE },
-    { id: VARIANT_DIAGRAM, label: 'Diagram', icon: Icon.DIAGRAM },
-    { id: VARIANT_MATH, label: 'Math', icon: Icon.MATH },
-  ];
-
-  /**
-   * Gets the inline elements offered by the Inline menu button. The button itself inserts a link.
-   */
-  protected readonly inlineItems: readonly RibbonMenuItem[] = [
-    { id: VARIANT_LINK, label: 'Link', icon: Icon.LINK },
-    { id: VARIANT_FOOTNOTE, label: 'Footnote', icon: Icon.FOOTNOTE },
-    { id: VARIANT_EMOJI, label: 'Emoji', icon: Icon.EMOJI },
   ];
 
   /**
@@ -422,78 +349,6 @@ export class MarkdownRibbon {
    */
   protected onOrderedList(): void {
     this.commands.toggleOrderedList();
-  }
-
-  /**
-   * Applies the list type chosen from the Lists menu button's dropdown.
-   * @param id The chosen list variant's identifier.
-   */
-  protected onListVariant(id: string): void {
-    switch (id) {
-      case VARIANT_NUMBERED_LIST:
-        this.onOrderedList();
-        break;
-      case VARIANT_TASK_LIST:
-        this.onTaskList();
-        break;
-      default:
-        this.onBulletList();
-        break;
-    }
-  }
-
-  /**
-   * Inserts the block structure chosen from the Blocks menu button's dropdown.
-   * @param id The chosen block variant's identifier.
-   */
-  protected onBlockVariant(id: string): void {
-    switch (id) {
-      case VARIANT_DIVIDER:
-        this.onDivider();
-        break;
-      case VARIANT_COLLAPSE:
-        this.onCollapse();
-        break;
-      default:
-        this.onTable();
-        break;
-    }
-  }
-
-  /**
-   * Inserts the embed chosen from the Media menu button's dropdown.
-   * @param id The chosen media variant's identifier.
-   */
-  protected onMediaVariant(id: string): void {
-    switch (id) {
-      case VARIANT_DIAGRAM:
-        this.onDiagram();
-        break;
-      case VARIANT_MATH:
-        this.onMath();
-        break;
-      default:
-        this.onImage();
-        break;
-    }
-  }
-
-  /**
-   * Inserts the inline element chosen from the Inline menu button's dropdown.
-   * @param id The chosen inline variant's identifier.
-   */
-  protected onInlineVariant(id: string): void {
-    switch (id) {
-      case VARIANT_FOOTNOTE:
-        this.onFootnote();
-        break;
-      case VARIANT_EMOJI:
-        this.onEmoji();
-        break;
-      default:
-        this.onLink();
-        break;
-    }
   }
 
   /**

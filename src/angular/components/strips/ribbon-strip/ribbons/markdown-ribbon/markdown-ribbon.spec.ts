@@ -66,50 +66,55 @@ describe('MarkdownRibbon', () => {
     expect(titles).not.toContain('Clipboard');
   });
 
-  it('insertGroup_whenRendered_showsTheFourCategoryMenuButtons', () => {
-    expect(menuPrimary('Lists')).not.toBeUndefined();
-    expect(menuPrimary('Blocks')).not.toBeUndefined();
-    expect(menuPrimary('Media')).not.toBeUndefined();
-    expect(menuPrimary('Inline')).not.toBeUndefined();
+  it('groups_whenRendered_includeListsBlocksMediaInline', () => {
+    const titles: string[] = Array.from(element.querySelectorAll('.ribbon-group__title')).map(
+      (title: Element): string => title.textContent?.trim() ?? '',
+    );
+
+    expect(titles).toContain('Lists');
+    expect(titles).toContain('Blocks');
+    expect(titles).toContain('Media');
+    expect(titles).toContain('Inline');
+    expect(titles).not.toContain('Insert');
   });
 
-  it('blocksButton_whenPrimaryClicked_insertsATable', () => {
+  it('tableButton_whenClicked_insertsATable', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
 
-    menuPrimary('Blocks').click();
+    smallButton('Table').click();
 
     expect(inserted).toContain('table');
   });
 
-  it('listsButton_whenPrimaryClicked_insertsABulletedList', () => {
+  it('bulletedButton_whenClicked_insertsABulletedList', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
 
-    menuPrimary('Lists').click();
+    smallButton('Bulleted').click();
 
     expect(inserted).toContain('bullet-list');
   });
 
-  it('mediaButton_whenPrimaryClicked_opensTheImageModal', () => {
+  it('imageButton_whenClicked_opensTheImageModal', () => {
     expect(element.querySelector('.modal--visible')).toBeNull();
 
-    menuPrimary('Media').click();
+    smallButton('Image').click();
     fixture.detectChanges();
 
     expect(element.querySelector('.modal--visible')).not.toBeNull();
   });
 
   /**
-   * Finds a menu button's primary action button by its label.
-   * @param label The primary action's label text.
+   * Finds a small ribbon button by its label.
+   * @param label The button's label text.
    * @returns Returns the matching button.
    */
-  function menuPrimary(label: string): HTMLButtonElement {
+  function smallButton(label: string): HTMLButtonElement {
     const buttons: HTMLButtonElement[] = Array.from(
-      element.querySelectorAll<HTMLButtonElement>('.ribbon-menu-button__action'),
+      element.querySelectorAll<HTMLButtonElement>('.ribbon-button-small'),
     );
     return buttons.find(
       (button: HTMLButtonElement): boolean => button.querySelector('span')?.textContent?.trim() === label,

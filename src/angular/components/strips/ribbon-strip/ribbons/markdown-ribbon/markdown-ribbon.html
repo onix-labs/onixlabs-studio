@@ -76,35 +76,52 @@
   </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
-<app-ribbon-strip-group title="Insert">
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.BULLET_LIST"
-    label="Lists"
-    [items]="listItems"
-    (action)="onBulletList()"
-    (selected)="onListVariant($event)"
-  />
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.TABLE"
-    label="Blocks"
-    [items]="blockItems"
-    (action)="onTable()"
-    (selected)="onBlockVariant($event)"
-  />
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.IMAGE"
-    label="Media"
-    [items]="mediaItems"
-    (action)="onImage()"
-    (selected)="onMediaVariant($event)"
-  />
-  <app-ribbon-strip-menu-button
-    [icon]="Icon.LINK"
-    label="Inline"
-    [items]="inlineItems"
-    (action)="onLink()"
-    (selected)="onInlineVariant($event)"
-  />
+<app-ribbon-strip-group title="Lists">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small
+      [icon]="Icon.BULLET_LIST"
+      label="Bulleted"
+      (action)="onBulletList()"
+    />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.NUMBERED_LIST"
+      label="Numbered"
+      (action)="onOrderedList()"
+    />
+    <app-ribbon-strip-button-small [icon]="Icon.TASK_LIST" label="Task" (action)="onTaskList()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Blocks">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.TABLE" label="Table" (action)="onTable()" />
+    <app-ribbon-strip-button-small [icon]="Icon.DIVIDER" label="Divider" (action)="onDivider()" />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.COLLAPSE"
+      label="Collapse"
+      (action)="onCollapse()"
+    />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Media">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.IMAGE" label="Image" (action)="onImage()" />
+    <app-ribbon-strip-button-small [icon]="Icon.DIAGRAM" label="Diagram" (action)="onDiagram()" />
+    <app-ribbon-strip-button-small [icon]="Icon.MATH" label="Math" (action)="onMath()" />
+  </app-ribbon-strip-column>
+</app-ribbon-strip-group>
+
+<app-ribbon-strip-group title="Inline">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.LINK" label="Link" (action)="onLink()" />
+    <app-ribbon-strip-button-small
+      [icon]="Icon.FOOTNOTE"
+      label="Footnote"
+      (action)="onFootnote()"
+    />
+    <app-ribbon-strip-button-small [icon]="Icon.EMOJI" label="Emoji" (action)="onEmoji()" />
+  </app-ribbon-strip-column>
 </app-ribbon-strip-group>
 
 <app-markdown-image-modal
