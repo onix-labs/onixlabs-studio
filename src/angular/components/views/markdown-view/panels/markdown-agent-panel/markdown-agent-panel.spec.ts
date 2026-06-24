@@ -24,4 +24,9 @@ describe('MarkdownAgentPanel', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.tool-panel__title')?.textContent).toContain('Agent');
   });
+
+  it('render_whenShown_hostsTheAgentChat', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('app-agent-chat')).not.toBeNull();
+  });
 });

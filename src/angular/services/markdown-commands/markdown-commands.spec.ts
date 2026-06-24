@@ -32,6 +32,10 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     appendMarkdown: (): void => void calls.add('appendMarkdown'),
     setBlockType: (): void => void calls.add('setBlockType'),
     goToHeading: (): void => void calls.add('goToHeading'),
+    readDocument: (): string => {
+      calls.add('readDocument');
+      return '# Document';
+    },
   };
 }
 
@@ -162,6 +166,15 @@ describe('MarkdownCommands', () => {
     commands.register(recordingHandler(calls));
     commands.goToHeading(12);
     expect(calls.has('goToHeading')).toBe(true);
+  });
+
+  it('readActiveDocument_whenHandlerRegistered_returnsTheLiveSource', () => {
+    commands.register(recordingHandler(new Set<string>()));
+    expect(commands.readActiveDocument()).toBe('# Document');
+  });
+
+  it('readActiveDocument_whenNoHandlerRegistered_returnsNull', () => {
+    expect(commands.readActiveDocument()).toBeNull();
   });
 
   it('register_whenHandlerRegistered_resetsOutline', () => {

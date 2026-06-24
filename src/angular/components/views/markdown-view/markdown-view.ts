@@ -801,6 +801,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
       goToHeading: (index: number): void => this.scrollToHeading(index),
+      readDocument: (): string => crepe.getMarkdown(),
     };
 
     this.commands.register(this.commandHandler);

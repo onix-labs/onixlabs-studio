@@ -20,7 +20,7 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
         <app-icon [icon]="Icon.CLOSE" />
       </button>
     </header>
-    <div class="tool-panel__body">
+    <div class="tool-panel__body" [class.tool-panel__body--flush]="flush()">
       <ng-content />
     </div>
   `,
@@ -99,6 +99,13 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
         padding: 0.75rem;
         overflow: auto;
       }
+
+      // A flush body hosts content that manages its own padding and scrolling (such as the agent
+      // chat), filling the panel edge to edge.
+      .tool-panel__body--flush {
+        padding: 0;
+        overflow: hidden;
+      }
     `,
   ],
 })
@@ -117,6 +124,12 @@ export class MarkdownToolPanel {
    * Gets the icon shown beside the title.
    */
   public readonly icon: InputSignal<Icon> = input.required<Icon>();
+
+  /**
+   * Gets a value indicating whether the body is flush — without padding or its own scroll — so the
+   * projected content (such as the agent chat) fills the panel and manages its own layout.
+   */
+  public readonly flush: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Holds the panel registry the close button routes through.

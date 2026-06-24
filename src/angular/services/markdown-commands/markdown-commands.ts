@@ -177,6 +177,12 @@ export interface MarkdownCommandHandler {
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   goToHeading(index: number): void;
+
+  /**
+   * Reads the editor's current markdown source, reflecting unsaved edits.
+   * @returns Returns the live markdown source.
+   */
+  readDocument(): string;
 }
 
 /**
@@ -308,6 +314,15 @@ export class MarkdownCommands {
    */
   public goToHeading(index: number): void {
     this.handler()?.goToHeading(index);
+  }
+
+  /**
+   * Reads the active markdown editor's current source, including unsaved edits, for the agent to act
+   * on. Returns null when no markdown editor is active.
+   * @returns Returns the live markdown source, or null.
+   */
+  public readActiveDocument(): string | null {
+    return this.handler()?.readDocument() ?? null;
   }
 
   /**

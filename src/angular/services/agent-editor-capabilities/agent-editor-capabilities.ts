@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
 import { CodeCommands } from '../code-commands/code-commands';
+import { MarkdownCommands } from '../markdown-commands/markdown-commands';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 
 /**
@@ -47,6 +48,12 @@ export class AgentEditorCapabilities {
   private readonly codeCommands: CodeCommands = inject(CodeCommands);
 
   /**
+   * Holds the markdown-editor command seam, consulted first so the agent reads the live markdown
+   * document (including unsaved edits) when a markdown editor is active.
+   */
+  private readonly markdownCommands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
    * Initializes a new instance of the {@link AgentEditorCapabilities} class, registering the editor
    * capabilities.
    */
@@ -58,10 +65,15 @@ export class AgentEditorCapabilities {
   }
 
   /**
-   * Reads the active editor's text.
+   * Reads the active editor's text, preferring the active markdown editor's live source (including
+   * unsaved edits) over the active code editor.
    * @returns Returns the {@link ReadResult}.
    */
   private readActive(): ReadResult {
+    const markdown: string | null = this.markdownCommands.readActiveDocument();
+    if (markdown !== null) {
+      return { available: true, text: markdown };
+    }
     const text: string | null = this.codeCommands.readActiveText();
     return text === null ? { available: false, text: '' } : { available: true, text };
   }

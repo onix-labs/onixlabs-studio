@@ -38,6 +38,7 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     appendMarkdown: (markdown: string): void => void inserted.push(`append:${markdown}`),
     setBlockType: noop,
     goToHeading: noop,
+    readDocument: (): string => '',
   };
 }
 
