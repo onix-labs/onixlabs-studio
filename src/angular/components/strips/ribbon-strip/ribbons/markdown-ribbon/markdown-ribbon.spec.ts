@@ -88,12 +88,12 @@ describe('MarkdownRibbon', () => {
     expect(inserted).toContain('table');
   });
 
-  it('bulletedButton_whenClicked_insertsABulletedList', () => {
+  it('bulletsButton_whenClicked_insertsABulletedList', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register(recordingHandler(inserted));
 
-    smallButton('Bulleted').click();
+    smallButton('Bullets').click();
 
     expect(inserted).toContain('bullet-list');
   });
