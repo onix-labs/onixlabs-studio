@@ -29,8 +29,7 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
       :host {
         --tool-panel-bar-background: var(--gray-200);
         --tool-panel-bar-foreground: var(--gray-700);
-        --tool-panel-bar-border: var(--gray-300);
-        --tool-panel-body-background: var(--gray-100);
+        --tool-panel-body-background: var(--gray-200);
 
         display: flex;
         flex-direction: column;
@@ -40,20 +39,18 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
       }
 
       :host-context([data-theme-mode='dark']) {
-        --tool-panel-bar-background: var(--gray-800);
+        --tool-panel-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
         --tool-panel-bar-foreground: var(--gray-400);
-        --tool-panel-bar-border: var(--gray-700);
-        --tool-panel-body-background: var(--gray-900);
+        --tool-panel-body-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
       }
 
       .tool-panel__header {
         display: flex;
         align-items: center;
         gap: 0.4rem;
-        padding: 0.25rem 0.5rem;
+        padding: 0.25rem 0.125rem 0.25rem 0.5rem;
         background: var(--tool-panel-bar-background);
         color: var(--tool-panel-bar-foreground);
-        border-block-end: 0.0625rem solid var(--tool-panel-bar-border);
       }
 
       .tool-panel__icon {
@@ -64,7 +61,9 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
         flex: 1;
         margin: 0;
         font-size: 0.75rem;
-        font-weight: 500;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
       }
 
       .tool-panel__close {
