@@ -7,22 +7,27 @@
   // part of the page. Built from the shared gray primitives and switched on the resolved theme.
   --markdown-view-background: var(--gray-100);
 
-  // A flex row of the scrolling editor area and an optional tool panel beside it.
-  display: flex;
-  inline-size: 100%;
+  // The host is forced to `display: block` by the content host, so the flex layout lives on the inner
+  // `.markdown-layout` wrapper below rather than on the host itself.
   block-size: 100%;
-  min-block-size: 0;
   overflow: hidden;
   background: var(--markdown-view-background);
 }
 
-// When tool panels open on the left, reverse the row so the panel precedes the editor.
-:host(.panels-left) {
-  flex-direction: row-reverse;
-}
-
 :host-context([data-theme-mode='dark']) {
   --markdown-view-background: var(--gray-900);
+}
+
+// A flex row of the scrolling editor area and an optional tool panel beside it.
+.markdown-layout {
+  display: flex;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// When tool panels open on the left, reverse the row so the panel precedes the editor.
+:host(.panels-left) .markdown-layout {
+  flex-direction: row-reverse;
 }
 
 // The scrolling editor area. It establishes a container context so the document width responds to the
