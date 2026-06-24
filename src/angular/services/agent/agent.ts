@@ -261,7 +261,7 @@ export class Agent implements AgentSessionHandle {
         });
         break;
       case 'status':
-        this.onStatus(event.state);
+        this.onStatus(event.state, event.detail);
         break;
       default:
         break;
@@ -269,20 +269,37 @@ export class Agent implements AgentSessionHandle {
   }
 
   /**
-   * Handles a run lifecycle change, ending the run on a terminal state.
+   * Handles a run lifecycle change, ending the run on a terminal state. Every terminal state leaves a
+   * visible mark so a run never just stops with no explanation: an error shows its reason, a stop is
+   * noted, and a run that completed without producing any output says so.
    * @param state The new state.
+   * @param detail A short description carried by the event (the failure reason on an error).
    */
-  private onStatus(state: AiRunState): void {
+  private onStatus(state: AiRunState, detail: string): void {
     if (state === 'started') {
       return;
     }
     this.busy.set(false);
     this.activeRequestId = null;
     if (state === 'error') {
-      this.push({ kind: 'assistant', text: '_The agent run ended with an error._' });
+      const reason: string = detail.trim().length > 0 ? detail : 'The agent run ended with an error.';
+      this.push({ kind: 'assistant', text: `_${reason}_` });
     } else if (state === 'aborted') {
       this.push({ kind: 'assistant', text: '_Stopped._' });
+    } else if (state === 'completed' && !this.producedReply()) {
+      this.push({ kind: 'assistant', text: '_The model returned no output._' });
     }
+  }
+
+  /**
+   * Gets a value indicating whether the run produced anything after the user's message (any assistant
+   * text, reasoning, tool activity, or permission prompt). Used to flag an empty completion.
+   * @returns Returns true when the last transcript item is not the user's prompt.
+   */
+  private producedReply(): boolean {
+    const items: readonly AgentItem[] = this.log();
+    const last: AgentItem | undefined = items[items.length - 1];
+    return last !== undefined && last.kind !== 'user';
   }
 
   /**

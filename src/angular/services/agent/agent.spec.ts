@@ -186,6 +186,43 @@ describe('Agent', () => {
     expect(agent.isRunning()).toBe(false);
   });
 
+  it('status_whenErrorWithDetail_showsTheReason', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'Ollama is not running.' });
+
+    expect(agent.isRunning()).toBe(false);
+    expect(lastItem()?.kind).toBe('assistant');
+    expect(lastItem()?.text).toBe('_Ollama is not running._');
+  });
+
+  it('status_whenErrorWithoutDetail_fallsBackToAGenericMessage', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: '' });
+
+    expect(lastItem()?.text).toBe('_The agent run ended with an error._');
+  });
+
+  it('status_whenCompletedWithNoOutput_notesIt', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(lastItem()?.kind).toBe('assistant');
+    expect(lastItem()?.text).toBe('_The model returned no output._');
+  });
+
+  it('status_whenCompletedAfterAReply_doesNotNoteEmptyOutput', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Hello' });
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(lastItem()?.kind).toBe('assistant');
+    expect(lastItem()?.text).toBe('Hello');
+  });
+
   it('stop_whenRunning_abortsTheRun', () => {
     agent.send('hi');
 
