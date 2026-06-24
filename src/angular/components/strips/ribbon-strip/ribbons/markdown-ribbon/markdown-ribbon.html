@@ -140,38 +140,34 @@
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Tools">
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small
-      [icon]="Icon.OUTLINE"
-      label="Outline"
-      [toggle]="true"
-      [pressed]="activePanel() === 'outline'"
-      (action)="onOutline()"
-    />
-    <app-ribbon-strip-button-small
-      [icon]="Icon.REVIEW"
-      label="Review"
-      [toggle]="true"
-      [pressed]="activePanel() === 'review'"
-      (action)="onReview()"
-    />
-  </app-ribbon-strip-column>
-  <app-ribbon-strip-column>
-    <app-ribbon-strip-button-small
-      [icon]="Icon.AGENT"
-      label="Agent"
-      [toggle]="true"
-      [pressed]="activePanel() === 'agent'"
-      (action)="onAgent()"
-    />
-    <app-ribbon-strip-button-small
-      [icon]="Icon.READER"
-      label="Reader"
-      [toggle]="true"
-      [pressed]="activePanel() === 'reader'"
-      (action)="onReader()"
-    />
-  </app-ribbon-strip-column>
+  <app-ribbon-strip-button
+    [icon]="Icon.OUTLINE"
+    label="Outline"
+    [toggle]="true"
+    [pressed]="activePanel() === 'outline'"
+    (action)="onOutline()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.REVIEW"
+    label="Review"
+    [toggle]="true"
+    [pressed]="activePanel() === 'review'"
+    (action)="onReview()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.AGENT"
+    label="Agent"
+    [toggle]="true"
+    [pressed]="activePanel() === 'agent'"
+    (action)="onAgent()"
+  />
+  <app-ribbon-strip-button
+    [icon]="Icon.READER"
+    label="Reader"
+    [toggle]="true"
+    [pressed]="activePanel() === 'reader'"
+    (action)="onReader()"
+  />
 </app-ribbon-strip-group>
 
 <app-markdown-image-modal

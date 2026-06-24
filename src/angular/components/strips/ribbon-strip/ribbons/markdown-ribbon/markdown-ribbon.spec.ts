@@ -124,7 +124,12 @@ describe('MarkdownRibbon', () => {
     const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
     expect(panels.active()).toBe('none');
 
-    smallButton('Outline').click();
+    const outline: HTMLButtonElement = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.ribbon-button'),
+    ).find(
+      (button: HTMLButtonElement): boolean => button.querySelector('span')?.textContent?.trim() === 'Outline',
+    )!;
+    outline.click();
 
     expect(panels.active()).toBe('outline');
   });

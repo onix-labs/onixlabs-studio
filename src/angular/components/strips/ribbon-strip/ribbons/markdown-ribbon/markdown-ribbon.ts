@@ -17,6 +17,7 @@ import {
   MarkdownPanels,
 } from '../../../../../services/markdown-panels/markdown-panels';
 import { Icon } from '../../../../../icons/icon';
+import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
@@ -109,6 +110,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
   imports: [
     RibbonStripGroup,
     RibbonStripColumn,
+    RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripField,
     RibbonStripMenuButton,
