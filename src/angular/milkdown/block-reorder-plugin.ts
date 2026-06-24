@@ -272,17 +272,27 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
         insertBefore: NO_INDEX,
       });
       // Deselect the dragged block so a cancelled or in-place drop leaves nothing selected.
-      if (view.state.selection instanceof NodeSelection) {
+      if (!view.state.selection.empty) {
         tr.setSelection(TextSelection.near(view.state.doc.resolve(view.state.selection.from), NEXT_STEP));
       }
       view.dispatch(tr);
     }
     // Crepe's block plugin re-selects the dragged block after the drag ends, overriding the inline
-    // collapse; defer a final deselect to the next tick so any node selection it leaves is cleared.
-    setTimeout((): void => {
+    // collapse; defer a final deselect across the next two frames so whichever selection it leaves —
+    // a node selection or a text range over the block — is collapsed to a caret.
+    deselectSoon(view);
+  }
+
+  /**
+   * Collapses any non-empty selection to a caret over the next two animation frames, after the block
+   * plugin's post-drag re-selection has settled. Guards against the view being torn down first.
+   * @param view The editor view to deselect in.
+   */
+  function deselectSoon(view: EditorView): void {
+    const collapse: () => void = (): void => {
       try {
         const selection: EditorState['selection'] = view.state.selection;
-        if (selection instanceof NodeSelection) {
+        if (!selection.empty) {
           view.dispatch(
             view.state.tr.setSelection(
               TextSelection.near(view.state.doc.resolve(selection.from), NEXT_STEP),
@@ -292,7 +302,11 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       } catch {
         // The view was destroyed before the deferred deselect ran; nothing to do.
       }
-    }, IMMEDIATE_TIMEOUT);
+    };
+    requestAnimationFrame((): void => {
+      collapse();
+      requestAnimationFrame(collapse);
+    });
   }
 
   /**
