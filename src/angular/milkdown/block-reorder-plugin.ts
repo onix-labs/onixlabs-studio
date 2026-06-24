@@ -275,9 +275,8 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       document.removeEventListener('dragend', onDocumentDragEnd);
       onDocumentDragEnd = null;
     }
-    // Arm the deselect window: Crepe's block plugin re-selects the dragged block after the drag ends,
-    // in its own transaction. The plugin's appendTransaction collapses the first non-empty selection
-    // within this window, so the re-selection cannot win the race.
+    // Arm the deselect window: a re-selection within it is collapsed by appendTransaction so the
+    // editor's own selection cannot be left on the dragged block.
     deselectArmedAt = Date.now();
     if (dispatchReset) {
       view.dispatch(
@@ -288,6 +287,14 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
         }),
       );
     }
+    // The native drag-drop leaves a browser text-range selection highlighting the dropped block that
+    // the editor's own (collapsed) selection does not clear. Drop it on the next frames, once the
+    // browser has finished settling the drop.
+    requestAnimationFrame((): void => {
+      const domSelection: Selection | null = view.dom.ownerDocument.getSelection();
+      domSelection?.removeAllRanges();
+      requestAnimationFrame((): void => view.dom.ownerDocument.getSelection()?.removeAllRanges());
+    });
   }
 
   /**
