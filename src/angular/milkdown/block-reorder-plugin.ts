@@ -1,6 +1,6 @@
 import { $prose } from '@milkdown/kit/utils';
 import type { $Prose } from '@milkdown/utils';
-import { Plugin, PluginKey, NodeSelection } from '@milkdown/kit/prose/state';
+import { Plugin, PluginKey, NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction, PluginView } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import type { EditorView } from '@milkdown/kit/prose/view';
@@ -266,13 +266,16 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       onDocumentDragEnd = null;
     }
     if (dispatchReset) {
-      view.dispatch(
-        view.state.tr.setMeta(reorderKey, {
-          active: false,
-          source: NO_INDEX,
-          insertBefore: NO_INDEX,
-        }),
-      );
+      const tr: Transaction = view.state.tr.setMeta(reorderKey, {
+        active: false,
+        source: NO_INDEX,
+        insertBefore: NO_INDEX,
+      });
+      // Deselect the dragged block so a cancelled or in-place drop leaves nothing selected.
+      if (view.state.selection instanceof NodeSelection) {
+        tr.setSelection(TextSelection.near(view.state.doc.resolve(view.state.selection.from), NEXT_STEP));
+      }
+      view.dispatch(tr);
     }
   }
 
@@ -439,6 +442,8 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
               tr.delete(from, from + node.nodeSize);
               const mapped: number = tr.mapping.map(insPos, MAP_BIAS);
               tr.insert(mapped, node);
+              // Collapse to a caret in the moved block so nothing is left selected after the drop.
+              tr.setSelection(TextSelection.near(tr.doc.resolve(mapped), NEXT_STEP));
               // Fold the visual reset into the move so decorations clear in the
               // same render and never reference stale positions.
               tr.setMeta(reorderKey, { active: false, source: NO_INDEX, insertBefore: NO_INDEX });
