@@ -271,12 +271,12 @@ export class Icon {
   /**
    * Gets the review (spelling and grammar) icon, shown on the markdown Tools group's Review button.
    */
-  public static readonly REVIEW: Icon = new Icon('ph ph-text-aa');
+  public static readonly REVIEW: Icon = new Icon('ph-duotone ph-text-aa');
 
   /**
    * Gets the reader (read-aloud) icon, shown on the markdown Tools group's Reader button.
    */
-  public static readonly READER: Icon = new Icon('ph ph-speaker-high');
+  public static readonly READER: Icon = new Icon('ph-duotone ph-speaker-high');
 
   /**
    * Gets the bullet-list icon.
