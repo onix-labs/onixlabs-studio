@@ -73,6 +73,33 @@ describe('MarkdownEmojiModal', () => {
     ]);
   });
 
+  it('tabs_whenNoRecent_showOneTabPerCategory', () => {
+    const tabs: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.emoji-tab'),
+    );
+
+    expect(tabs.length).toBe(8);
+    expect(tabs[0].classList).toContain('emoji-tab--active');
+    expect(tabs[0].getAttribute('aria-label')).toBe('Smileys & People');
+  });
+
+  it('tabClick_whenClicked_marksTheTabActive', () => {
+    const flags: HTMLButtonElement = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.emoji-tab'),
+    ).find((tab: HTMLButtonElement): boolean => tab.getAttribute('aria-label') === 'Flags')!;
+
+    flags.click();
+    fixture.detectChanges();
+
+    expect(flags.classList).toContain('emoji-tab--active');
+  });
+
+  it('tabs_whenSearching_areHidden', () => {
+    setSearch('rocket');
+
+    expect(host.querySelector('.emoji-tab')).toBeNull();
+  });
+
   it('search_whenQueried_showsAFlatFilteredGrid', () => {
     setSearch('rocket');
 

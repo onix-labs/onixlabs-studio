@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -86,6 +87,42 @@ const CATEGORY_ORDER: readonly string[] = [
 ];
 
 /**
+ * The display name of the recent-emoji section, also used as its scroll-tab.
+ */
+const RECENT_CATEGORY: string = 'Recent';
+
+/**
+ * Associates a section with the glyph shown on its scroll-tab.
+ */
+interface EmojiTab {
+  /**
+   * Gets the section's category name (its scroll target).
+   */
+  readonly category: string;
+
+  /**
+   * Gets the representative glyph shown on the tab.
+   */
+  readonly glyph: string;
+}
+
+/**
+ * The scroll-tabs shown above the grid, one per section. The Recent tab is shown only when there are
+ * recent emoji.
+ */
+const TABS: readonly EmojiTab[] = [
+  { category: RECENT_CATEGORY, glyph: '🕐' },
+  { category: 'Smileys & People', glyph: '😀' },
+  { category: 'Animals & Nature', glyph: '🐻' },
+  { category: 'Food & Drink', glyph: '🍔' },
+  { category: 'Activity', glyph: '⚽' },
+  { category: 'Travel & Places', glyph: '✈️' },
+  { category: 'Objects', glyph: '💡' },
+  { category: 'Symbols', glyph: '🔣' },
+  { category: 'Flags', glyph: '🚩' },
+];
+
+/**
  * The emoji grouped into ordered display categories, built once from the dataset.
  */
 const CATEGORIES: readonly EmojiCategory[] = buildCategories();
@@ -153,9 +190,47 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
   styleUrl: './insert-modal.scss',
   styles: [
     `
-      .emoji-scroll {
-        max-block-size: 18rem;
+      .emoji-tabs {
+        display: flex;
+        gap: 0.1rem;
         margin-block-start: 0.6rem;
+        border-block-end: 0.0625rem solid var(--dock-border-color);
+      }
+
+      .emoji-tab {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem 0;
+        font-size: 1.1rem;
+        line-height: 1;
+        background: transparent;
+        border: none;
+        border-block-end: 0.125rem solid transparent;
+        cursor: pointer;
+        opacity: 0.65;
+        transition: var(--hover-transition);
+
+        &:hover {
+          opacity: 1;
+        }
+
+        &:focus-visible {
+          outline: var(--focus-ring-width) solid var(--focus-ring-color);
+          outline-offset: -0.125rem;
+        }
+      }
+
+      .emoji-tab--active {
+        opacity: 1;
+        border-block-end-color: var(--accent-color);
+      }
+
+      .emoji-scroll {
+        position: relative;
+        max-block-size: 18rem;
+        margin-block-start: 0.4rem;
         overflow-y: auto;
       }
 
@@ -226,7 +301,24 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
         />
       </div>
 
-      <div class="emoji-scroll">
+      @if (query().length === 0) {
+        <div class="emoji-tabs" role="tablist">
+          @for (tab of visibleTabs(); track tab.category) {
+            <button
+              type="button"
+              class="emoji-tab"
+              [class.emoji-tab--active]="effectiveActive() === tab.category"
+              [attr.title]="tab.category"
+              [attr.aria-label]="tab.category"
+              (click)="scrollTo(tab.category)"
+            >
+              {{ tab.glyph }}
+            </button>
+          }
+        </div>
+      }
+
+      <div class="emoji-scroll" (scroll)="onScroll()">
         @if (query().length > 0) {
           @if (searchResults().length > 0) {
             <div class="emoji-grid">
@@ -247,7 +339,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
           }
         } @else {
           @if (recentEntries().length > 0) {
-            <section>
+            <section data-category="Recent">
               <h3 class="emoji-category-title">Recent</h3>
               <div class="emoji-grid">
                 @for (item of recentEntries(); track item.emoji) {
@@ -266,7 +358,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
           }
 
           @for (category of categories; track category.name) {
-            <section>
+            <section [attr.data-category]="category.name">
               <h3 class="emoji-category-title">{{ category.name }}</h3>
               <div class="emoji-grid">
                 @for (item of category.emojis; track item.emoji) {
@@ -293,6 +385,17 @@ export class MarkdownEmojiModal {
    * Holds the persisted store backing the recent-emoji list.
    */
   private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds this component's host element, used to find the scroll container and its sections.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+
+  /**
+   * Holds the category whose section is currently at the top of the scroll area, driving the active
+   * tab. Empty until the user scrolls, in which case the first tab is treated as active.
+   */
+  protected readonly activeCategory: WritableSignal<string> = signal<string>('');
 
   /**
    * Gets a value indicating whether the modal is open.
@@ -338,6 +441,23 @@ export class MarkdownEmojiModal {
   );
 
   /**
+   * Gets the scroll-tabs to show, dropping the Recent tab when there are no recent emoji.
+   */
+  protected readonly visibleTabs: Signal<readonly EmojiTab[]> = computed((): readonly EmojiTab[] =>
+    TABS.filter(
+      (tab: EmojiTab): boolean =>
+        tab.category !== RECENT_CATEGORY || this.recentEntries().length > 0,
+    ),
+  );
+
+  /**
+   * Gets the category to highlight as active: the scrolled-to one, or the first tab before any scroll.
+   */
+  protected readonly effectiveActive: Signal<string> = computed(
+    (): string => this.activeCategory() || this.visibleTabs()[0]?.category || '',
+  );
+
+  /**
    * Gets the emoji matching the current query, capped to {@link MAX_RESULTS}.
    */
   protected readonly searchResults: Signal<readonly EmojiEntry[]> = computed(
@@ -373,6 +493,46 @@ export class MarkdownEmojiModal {
     this.submitted.emit(emoji);
     this.reset();
     this.closed.emit();
+  }
+
+  /**
+   * Scrolls the picker to the given category's section and marks its tab active.
+   * @param category The category to scroll to.
+   */
+  protected scrollTo(category: string): void {
+    const root: HTMLElement = this.host.nativeElement;
+    const container: HTMLElement | null = root.querySelector<HTMLElement>('.emoji-scroll');
+    const section: HTMLElement | null = root.querySelector<HTMLElement>(
+      `[data-category="${category}"]`,
+    );
+    if (container !== null && section !== null) {
+      container.scrollTop = section.offsetTop;
+    }
+    this.activeCategory.set(category);
+  }
+
+  /**
+   * Tracks which section is at the top of the scroll area as the user scrolls, so the matching tab is
+   * highlighted.
+   */
+  protected onScroll(): void {
+    const container: HTMLElement | null =
+      this.host.nativeElement.querySelector<HTMLElement>('.emoji-scroll');
+    if (container === null) {
+      return;
+    }
+    const sections: HTMLElement[] = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-category]'),
+    );
+    let current: string = '';
+    for (const section of sections) {
+      if (section.offsetTop <= container.scrollTop + 4) {
+        current = section.dataset['category'] ?? '';
+      } else {
+        break;
+      }
+    }
+    this.activeCategory.set(current);
   }
 
   /**
