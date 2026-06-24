@@ -277,6 +277,22 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       }
       view.dispatch(tr);
     }
+    // Crepe's block plugin re-selects the dragged block after the drag ends, overriding the inline
+    // collapse; defer a final deselect to the next tick so any node selection it leaves is cleared.
+    setTimeout((): void => {
+      try {
+        const selection: EditorState['selection'] = view.state.selection;
+        if (selection instanceof NodeSelection) {
+          view.dispatch(
+            view.state.tr.setSelection(
+              TextSelection.near(view.state.doc.resolve(selection.from), NEXT_STEP),
+            ),
+          );
+        }
+      } catch {
+        // The view was destroyed before the deferred deselect ran; nothing to do.
+      }
+    }, IMMEDIATE_TIMEOUT);
   }
 
   /**
