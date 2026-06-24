@@ -1,6 +1,6 @@
 import { $prose } from '@milkdown/kit/utils';
 import type { $Prose } from '@milkdown/utils';
-import { Plugin, PluginKey, NodeSelection } from '@milkdown/kit/prose/state';
+import { Plugin, PluginKey, NodeSelection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction, PluginView } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import type { EditorView } from '@milkdown/kit/prose/view';
@@ -50,6 +50,13 @@ const DRAG_IMAGE_HOTSPOT: number = 0;
  * Timeout (ms) used to defer placeholder removal until after the drag snapshot.
  */
 const IMMEDIATE_TIMEOUT: number = 0;
+
+/**
+ * Window (ms) after a reorder ends during which the next non-empty selection is collapsed, to defeat
+ * the block plugin's post-drag re-selection. Long enough to cover its deferred re-select, short enough
+ * not to catch a deliberate selection the user makes afterwards.
+ */
+const DESELECT_WINDOW: number = 500;
 
 /**
  * Splice delete-count of zero, used to insert without removing elements.
@@ -111,6 +118,9 @@ const REORDERING_CLASS: string = 'cdk-reordering';
 export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
   // Per-editor drag geometry; null when no drag is active.
   let metrics: Metrics | null = null;
+  // Timestamp until which the next non-empty selection is collapsed (see appendTransaction); null when
+  // not armed. Set when a reorder ends, to defeat the block plugin's post-drag re-selection.
+  let deselectArmedAt: number | null = null;
   // Native dragend listener, registered on document during a drag so cleanup
   // runs even when the drop happens outside the editor.
   let onDocumentDragEnd: (() => void) | null = null;
@@ -265,6 +275,9 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       document.removeEventListener('dragend', onDocumentDragEnd);
       onDocumentDragEnd = null;
     }
+    // Arm the deselect window: a re-selection within it is collapsed by appendTransaction so the
+    // editor's own selection cannot be left on the dragged block.
+    deselectArmedAt = Date.now();
     if (dispatchReset) {
       view.dispatch(
         view.state.tr.setMeta(reorderKey, {
@@ -274,6 +287,14 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
         }),
       );
     }
+    // The native drag-drop leaves a browser text-range selection highlighting the dropped block that
+    // the editor's own (collapsed) selection does not clear. Drop it on the next frames, once the
+    // browser has finished settling the drop.
+    requestAnimationFrame((): void => {
+      const domSelection: Selection | null = view.dom.ownerDocument.getSelection();
+      domSelection?.removeAllRanges();
+      requestAnimationFrame((): void => view.dom.ownerDocument.getSelection()?.removeAllRanges());
+    });
   }
 
   /**
@@ -319,6 +340,31 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
           | undefined;
         return meta ? { ...value, ...meta } : value;
       },
+    },
+
+    // While the deselect window is armed (just after a reorder), collapse the first non-empty
+    // selection — the block plugin re-selects the dragged block in its own transaction, and catching
+    // it here, at the transaction level, can't lose the race a deferred callback would.
+    appendTransaction(
+      _transactions: readonly Transaction[],
+      _oldState: EditorState,
+      newState: EditorState,
+    ): Transaction | null {
+      if (deselectArmedAt === null) {
+        return null;
+      }
+      if (Date.now() - deselectArmedAt > DESELECT_WINDOW) {
+        deselectArmedAt = null;
+        return null;
+      }
+      if (newState.selection.empty) {
+        return null;
+      }
+      // Stay armed for the rest of the window so a re-selection on a later pointer event is collapsed
+      // too; the window expiry above disarms it.
+      return newState.tr.setSelection(
+        TextSelection.near(newState.doc.resolve(newState.selection.from), NEXT_STEP),
+      );
     },
 
     view(view: EditorView): PluginView {
@@ -439,6 +485,8 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
               tr.delete(from, from + node.nodeSize);
               const mapped: number = tr.mapping.map(insPos, MAP_BIAS);
               tr.insert(mapped, node);
+              // Collapse to a caret in the moved block so nothing is left selected after the drop.
+              tr.setSelection(TextSelection.near(tr.doc.resolve(mapped), NEXT_STEP));
               // Fold the visual reset into the move so decorations clear in the
               // same render and never reference stale positions.
               tr.setMeta(reorderKey, { active: false, source: NO_INDEX, insertBefore: NO_INDEX });

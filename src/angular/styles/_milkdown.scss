@@ -895,34 +895,21 @@ app-markdown-view .milkdown .ProseMirror .cdk-reorder-shift {
   will-change: transform;
 }
 
-// The floating ghost preview is appended to document.body, outside `.milkdown`,
-// so it is styled with an unscoped selector.
+// The floating ghost preview that followed the cursor is suppressed; the in-place drop placeholder
+// alone communicates the move. It is appended to document.body, outside `.milkdown`, so it is hidden
+// with an unscoped selector.
 .cdk-reorder-ghost {
-  outline: 2px dashed var(--crepe-color-outline);
-  outline-offset: -2px;
-  border-radius: 1rem;
-  corner-shape: squircle;
-  opacity: 0.85;
-  z-index: 10000;
-  background: var(--crepe-color-background, transparent);
-  color: var(--crepe-color-on-background, inherit);
+  display: none !important;
 }
 
+// The in-place drop placeholder — the dragged block's slot — shown as a translucent accent fill with
+// a dashed accent border, matching the markdown table's radius and corner shape.
 app-markdown-view .milkdown .ProseMirror .cdk-reorder-dragged {
-  background: var(--crepe-color-hover) !important;
-  color: var(--crepe-color-on-surface-variant) !important;
-  transition:
-    background 180ms ease,
-    color 180ms ease;
-
-  *,
-  a,
-  strong,
-  em,
-  code,
-  span {
-    color: var(--crepe-color-on-surface-variant) !important;
-  }
+  background: rgb(var(--accent-color-rgb), 0.12) !important;
+  border: 0.0625rem dashed var(--accent-color) !important;
+  border-radius: 1rem;
+  corner-shape: squircle;
+  transition: background 180ms ease;
 }
 
 // Text caret blink: Crepe's `Cursor` feature swaps the native caret for a

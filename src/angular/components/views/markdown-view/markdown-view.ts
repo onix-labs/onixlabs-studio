@@ -24,7 +24,7 @@ import { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { Slice, type Node as ProseMirrorNode, type NodeType } from '@milkdown/kit/prose/model';
-import { type Selection, TextSelection } from '@milkdown/kit/prose/state';
+import { AllSelection, type Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import type { ListenerManager } from '@milkdown/plugin-listener';
 import {
@@ -500,6 +500,13 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.handleKeydown.bind(this);
 
   /**
+   * Holds the bound capture-phase handler for the progressive Select All chord, retained for cleanup.
+   * Capture phase so it runs before ProseMirror's own Mod-a binding.
+   */
+  private readonly boundSelectAllHandler: (event: KeyboardEvent) => void =
+    this.handleSelectAll.bind(this);
+
+  /**
    * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
    * event-listener cleanup.
    */
@@ -764,6 +771,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       container.addEventListener('click', this.boundHtmlImageClickHandler);
       container.addEventListener('click', this.boundMermaidClickHandler);
       container.addEventListener('keydown', this.boundKeydownHandler);
+      container.addEventListener('keydown', this.boundSelectAllHandler, { capture: true });
       this.editorWrapper().nativeElement.addEventListener(
         'mousedown',
         this.boundBackdropMousedownHandler,
@@ -787,6 +795,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       container.removeEventListener('click', this.boundHtmlImageClickHandler);
       container.removeEventListener('click', this.boundMermaidClickHandler);
       container.removeEventListener('keydown', this.boundKeydownHandler);
+      container.removeEventListener('keydown', this.boundSelectAllHandler, { capture: true });
     }
 
     const wrapper: HTMLDivElement | undefined = this.editorWrapper()?.nativeElement;
@@ -1675,6 +1684,39 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     }
     event.preventDefault();
     void this.documents.save(this.documentId());
+  }
+
+  /**
+   * Handles the Select All chord (Cmd/Ctrl+A) progressively: the first press selects the current
+   * block's content; a second press, when the block is already fully selected, selects the whole
+   * document. Runs in the capture phase and stops the event so it pre-empts ProseMirror's own Mod-a
+   * binding (which always selects the whole document).
+   * @param event The keydown event.
+   */
+  private handleSelectAll(event: KeyboardEvent): void {
+    const isSelectAllChord: boolean =
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 'a';
+    const view: EditorView | null = this.editorView;
+    if (!isSelectAllChord || view === null) {
+      return;
+    }
+    if (!view.hasFocus()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selection: Selection = view.state.selection;
+    const blockStart: number = selection.$from.start();
+    const blockEnd: number = selection.$from.end();
+    const coversBlock: boolean = selection.from <= blockStart && selection.to >= blockEnd;
+    const next: Selection = coversBlock
+      ? new AllSelection(view.state.doc)
+      : TextSelection.create(view.state.doc, blockStart, blockEnd);
+    view.dispatch(view.state.tr.setSelection(next));
   }
 
   /**
