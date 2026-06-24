@@ -58,6 +58,12 @@ const MIN_PROGRESS: number = 0;
 const MAX_PROGRESS: number = 1;
 
 /**
+ * Substring (case-insensitive) a platform voice name must contain to be offered. Only the higher
+ * quality "Enhanced" voices are surfaced, hiding the lower-fidelity defaults.
+ */
+const ENHANCED_VOICE: string = 'enhanced';
+
+/**
  * Resolves the platform speech synthesiser, or null when the runtime does not provide one (such as a
  * headless test environment).
  * @returns Returns the speech controller, or null.
@@ -586,7 +592,11 @@ export class Reader {
     if (this.synthesis === null) {
       return;
     }
-    const voices: SpeechSynthesisVoice[] = this.synthesis.getVoices();
+    const voices: SpeechSynthesisVoice[] = this.synthesis
+      .getVoices()
+      .filter((voice: SpeechSynthesisVoice): boolean =>
+        voice.name.toLowerCase().includes(ENHANCED_VOICE),
+      );
     this.voicesState.set(
       voices.map(
         (voice: SpeechSynthesisVoice): VoiceOption => ({

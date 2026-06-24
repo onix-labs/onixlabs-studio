@@ -57,6 +57,17 @@
     rotate: 180deg;
   }
 
+  // The chosen option's label as shown in the closed control: keep it on a single line and truncate
+  // with an ellipsis instead of wrapping, so a long label (such as a voice name) cannot grow the
+  // control's height. Shrinks within the flex row, leaving the caret visible.
+  selectedcontent {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   // Options render inside the popup but remain children of the select, so they stay in scope.
   option {
     display: flex;

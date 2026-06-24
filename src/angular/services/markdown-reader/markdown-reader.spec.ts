@@ -32,7 +32,10 @@ class FakeSynthesis {
   }
 
   public getVoices(): SpeechSynthesisVoice[] {
-    return [{ voiceURI: 'v1', name: 'Voice One', lang: 'en-US' } as SpeechSynthesisVoice];
+    return [
+      { voiceURI: 'v1', name: 'Voice One (Enhanced)', lang: 'en-US' } as SpeechSynthesisVoice,
+      { voiceURI: 'v2', name: 'Voice Two', lang: 'en-US' } as SpeechSynthesisVoice,
+    ];
   }
 }
 
@@ -75,8 +78,8 @@ describe('Reader', () => {
     expect(reader.canRead()).toBe(true);
   });
 
-  it('voices_whenEngineSet_areLoadedWithADefaultSelection', () => {
-    expect(reader.voices().length).toBe(1);
+  it('voices_whenEngineSet_loadsOnlyEnhancedVoicesWithADefaultSelection', () => {
+    expect(reader.voices().map((voice): string => voice.uri)).toEqual(['v1']);
     expect(reader.selectedVoice()?.uri).toBe('v1');
   });
 
