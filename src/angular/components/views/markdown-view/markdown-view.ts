@@ -39,6 +39,7 @@ import {
   wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark';
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
+import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { callCommand } from '@milkdown/utils';
 import type { Parser } from '@milkdown/transformer';
 import { blockReorderPlugin } from '../../../milkdown/block-reorder-plugin';
@@ -591,6 +592,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       paste: (): void => this.pasteMarkdown(crepe),
       pasteAsPlaintext: (): void => this.pastePlaintext(crepe),
       pasteAsCode: (): void => this.pasteCode(crepe),
+      undo: (): void => this.run(crepe, callCommand(undoCommand.key)),
+      redo: (): void => this.run(crepe, callCommand(redoCommand.key)),
       toggleBold: (): void => this.run(crepe, callCommand(toggleStrongCommand.key)),
       toggleItalic: (): void => this.run(crepe, callCommand(toggleEmphasisCommand.key)),
       toggleStrikethrough: (): void => this.run(crepe, callCommand(toggleStrikethroughCommand.key)),

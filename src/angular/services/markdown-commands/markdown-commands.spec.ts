@@ -16,6 +16,8 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     paste: (): void => void calls.add('paste'),
     pasteAsPlaintext: (): void => void calls.add('pasteAsPlaintext'),
     pasteAsCode: (): void => void calls.add('pasteAsCode'),
+    undo: (): void => void calls.add('undo'),
+    redo: (): void => void calls.add('redo'),
     toggleBold: (): void => void calls.add('toggleBold'),
     toggleItalic: (): void => void calls.add('toggleItalic'),
     toggleStrikethrough: (): void => void calls.add('toggleStrikethrough'),
@@ -106,6 +108,20 @@ describe('MarkdownCommands', () => {
     expect((): void => commands.insertInlineMarkdown('x')).not.toThrow();
     expect((): void => commands.insertText('x')).not.toThrow();
     expect((): void => commands.appendMarkdown('x')).not.toThrow();
+  });
+
+  it('historyCommands_whenHandlerRegistered_forwardToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register(recordingHandler(calls));
+    commands.undo();
+    commands.redo();
+    expect(calls.has('undo')).toBe(true);
+    expect(calls.has('redo')).toBe(true);
+  });
+
+  it('historyCommands_whenNoHandlerRegistered_doNothing', () => {
+    expect((): void => commands.undo()).not.toThrow();
+    expect((): void => commands.redo()).not.toThrow();
   });
 
   it('unregister_whenHandlerMatches_clearsActiveEditor', () => {

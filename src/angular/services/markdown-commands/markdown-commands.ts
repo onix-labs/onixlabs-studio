@@ -65,6 +65,16 @@ export interface MarkdownCommandHandler {
   pasteAsCode(): void;
 
   /**
+   * Undoes the last edit.
+   */
+  undo(): void;
+
+  /**
+   * Redoes the last undone edit.
+   */
+  redo(): void;
+
+  /**
    * Toggles bold (strong) formatting on the selection.
    */
   toggleBold(): void;
@@ -249,6 +259,20 @@ export class MarkdownCommands {
    */
   public pasteAsCode(): void {
     this.handler()?.pasteAsCode();
+  }
+
+  /**
+   * Invokes the undo command on the active editor.
+   */
+  public undo(): void {
+    this.handler()?.undo();
+  }
+
+  /**
+   * Invokes the redo command on the active editor.
+   */
+  public redo(): void {
+    this.handler()?.redo();
   }
 
   /**

@@ -21,6 +21,8 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     paste: noop,
     pasteAsPlaintext: noop,
     pasteAsCode: noop,
+    undo: (): void => void inserted.push('undo'),
+    redo: (): void => void inserted.push('redo'),
     toggleBold: noop,
     toggleItalic: noop,
     toggleStrikethrough: noop,
@@ -76,6 +78,16 @@ describe('MarkdownRibbon', () => {
     expect(titles).toContain('Media');
     expect(titles).toContain('Inline');
     expect(titles).not.toContain('Insert');
+  });
+
+  it('undoButton_whenClicked_undoes', () => {
+    const inserted: string[] = [];
+    const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
+    commands.register(recordingHandler(inserted));
+
+    smallButton('Undo').click();
+
+    expect(inserted).toContain('undo');
   });
 
   it('tableButton_whenClicked_insertsATable', () => {

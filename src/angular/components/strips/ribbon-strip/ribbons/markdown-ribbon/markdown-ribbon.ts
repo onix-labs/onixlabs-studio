@@ -176,6 +176,20 @@ export class MarkdownRibbon {
   ];
 
   /**
+   * Undoes the last edit in the active editor.
+   */
+  protected onUndo(): void {
+    this.commands.undo();
+  }
+
+  /**
+   * Redoes the last undone edit in the active editor.
+   */
+  protected onRedo(): void {
+    this.commands.redo();
+  }
+
+  /**
    * Cuts the selection in the active editor as markdown, the Cut button's default action.
    */
   protected onCut(): void {

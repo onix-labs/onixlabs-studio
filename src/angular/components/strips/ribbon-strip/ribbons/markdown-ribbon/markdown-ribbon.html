@@ -16,6 +16,10 @@
 </app-ribbon-strip-group>
 
 <app-ribbon-strip-group title="Edit">
+  <app-ribbon-strip-column>
+    <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
+    <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
+  </app-ribbon-strip-column>
   <app-ribbon-strip-menu-button
     [icon]="Icon.CUT"
     label="Cut"
