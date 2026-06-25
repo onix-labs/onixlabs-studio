@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { CodeAgents } from '../../../../../services/code-agents/code-agents';
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
 import { CodeRunner } from '../../../../../services/code-runner/code-runner';
 import { CodeTerminals } from '../../../../../services/code-terminals/code-terminals';
@@ -93,6 +94,11 @@ export class CodeRibbon {
    * Holds the docked-terminal panel state backing the Terminal toggle.
    */
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+
+  /**
+   * Holds the docked agent-panel state backing the Agent toggle.
+   */
+  private readonly codeAgents: CodeAgents = inject(CodeAgents);
 
   /**
    * Holds the settings service backing the view toggles.
@@ -311,6 +317,16 @@ export class CodeRibbon {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
       this.codeTerminals.toggle(id);
+    }
+  }
+
+  /**
+   * Toggles the docked agent panel for the active tab.
+   */
+  protected onAgent(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.codeAgents.toggle(id);
     }
   }
 

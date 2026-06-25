@@ -17,6 +17,7 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
+import { CodeAgents } from '../../../services/code-agents/code-agents';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
 import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
@@ -27,6 +28,7 @@ import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
 import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
+import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
@@ -55,11 +57,26 @@ const MAX_TERMINAL_SIZE: number = 1600;
 const DEFAULT_TERMINAL_SIZE: number = 260;
 
 /**
+ * Holds the minimum size, in pixels, of the docked agent pane.
+ */
+const MIN_AGENT_SIZE: number = 240;
+
+/**
+ * Holds the maximum size, in pixels, of the docked agent pane.
+ */
+const MAX_AGENT_SIZE: number = 900;
+
+/**
+ * Holds the initial size, in pixels, of the docked agent pane.
+ */
+const DEFAULT_AGENT_SIZE: number = 360;
+
+/**
  * Represents the code editor view, hosting a Monaco editor bound to the owning tab's document.
  */
 @Component({
   selector: 'app-code-view',
-  imports: [CodeTerminalPanel],
+  imports: [CodeTerminalPanel, CodeAgentPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -132,6 +149,11 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
 
   /**
+   * Holds the docked agent-panel state.
+   */
+  private readonly codeAgents: CodeAgents = inject(CodeAgents);
+
+  /**
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
    */
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
@@ -143,12 +165,17 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     signal<number>(DEFAULT_TERMINAL_SIZE);
 
   /**
+   * Holds the size, in pixels, of the docked agent pane.
+   */
+  private readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
+
+  /**
    * Holds the splitter drag origin (pointer coordinate at drag start).
    */
   private dragOrigin: number = 0;
 
   /**
-   * Holds the terminal pane size at the start of a splitter drag.
+   * Holds the pane size at the start of a splitter drag.
    */
   private dragOriginSize: number = 0;
 
@@ -429,6 +456,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.lsp.closeDocument(this.tabId());
       this.documents.remove(this.tabId());
       this.codeTerminals.remove(this.tabId());
+      this.codeAgents.remove(this.tabId());
     }
   }
 
@@ -482,6 +510,56 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         Math.max(MIN_TERMINAL_SIZE, this.dragOriginSize + delta),
       );
       this.terminalSizeSignal.set(next);
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.codeAgents.isMounted(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected agentVisible(): boolean {
+    return this.codeAgents.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets the size, in pixels, of the docked agent pane.
+   * @returns Returns the agent pane size.
+   */
+  protected agentSize(): number {
+    return this.agentSizeSignal();
+  }
+
+  /**
+   * Begins a splitter drag that resizes the docked agent pane. The agent always docks to the right,
+   * so the drag is horizontal: moving the splitter left widens the agent.
+   * @param event The originating pointer event.
+   */
+  protected onAgentSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.dragOrigin = event.clientX;
+    this.dragOriginSize = this.agentSizeSignal();
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = this.dragOrigin - move.clientX;
+      const next: number = Math.min(
+        MAX_AGENT_SIZE,
+        Math.max(MIN_AGENT_SIZE, this.dragOriginSize + delta),
+      );
+      this.agentSizeSignal.set(next);
     };
     const onUp: () => void = (): void => {
       document.removeEventListener('mousemove', onMove);
