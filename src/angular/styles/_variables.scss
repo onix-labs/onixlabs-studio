@@ -13,6 +13,17 @@
 :root[data-corners='round'] {
   --app-corner-shape: round;
   --border-radius-multiplier: 0.5;
+
+  // Active-tab "feet": the concave scoops that join a tab to its rail (title-strip tabs, the drag
+  // chip, and both dock-tab orientations all share this geometry). They are concave by nature, so
+  // they must NOT follow --app-corner-shape to a convex `round` — each foot reads these two knobs
+  // instead, with squircle-mode fallbacks baked in at the call sites, so this block is the single
+  // place to tune the round-mode feet. --tab-foot-corner-shape sets the scoop depth (less negative =
+  // shallower; a round tab corner often wants a touch shallower than the squircle-era -2.3);
+  // --tab-foot-reach nudges how far each foot reaches toward the rail (raise to close a hairline
+  // gap, lower if the foot overlaps the tab corner).
+  --tab-foot-corner-shape: superellipse(-2.3);
+  --tab-foot-reach: 0.0625rem;
 }
 
 :root {

@@ -47,11 +47,13 @@
     bottom: 0;
     background: var(--title-strip-tab-background-color--active);
     mask: none;
-    corner-shape: var(--app-corner-shape, superellipse(-2.3));
+    // Concave scoop — kept off the --app-corner-shape gate; shares the --tab-foot-* knobs (see
+    // styles/_variables.scss). Fallback preserves squircle-mode appearance.
+    corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
   }
 
   &::before {
-    left: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    left: calc(-1 * var(--title-strip-tab-border-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top left,
       transparent var(--title-strip-tab-border-radius),
@@ -63,7 +65,7 @@
   }
 
   &::after {
-    right: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    right: calc(-1 * var(--title-strip-tab-border-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top right,
       transparent var(--title-strip-tab-border-radius),

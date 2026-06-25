@@ -276,7 +276,9 @@
   inline-size: var(--dock-panel-radius);
   margin-inline: -0.125rem;
   background: var(--dock-tab-background-color--active);
-  corner-shape: var(--app-corner-shape, superellipse(-2.3));
+  // Concave scoops, not convex box corners — kept off the --app-corner-shape gate; they share the
+  // --tab-foot-* knobs (see styles/_variables.scss). Fallback preserves squircle-mode appearance.
+  corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
 }
 
 // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
@@ -331,7 +333,7 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    left: calc(-1 * var(--dock-panel-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top left,
       transparent var(--dock-panel-radius),
@@ -343,7 +345,7 @@
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    right: calc(-1 * var(--dock-panel-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top right,
       transparent var(--dock-panel-radius),
@@ -403,7 +405,7 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    left: calc(-1 * var(--dock-panel-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at bottom left,
       transparent var(--dock-panel-radius),
@@ -415,7 +417,7 @@
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    right: calc(-1 * var(--dock-panel-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at bottom right,
       transparent var(--dock-panel-radius),
