@@ -28,8 +28,8 @@
   color: var(--body-foreground-color);
   background: var(--body-background-color);
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 
   &:focus-visible {
     border-color: var(--accent-color);
@@ -84,8 +84,8 @@
   color: var(--body-foreground-color);
   background: transparent;
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition:
     var(--hover-transition),

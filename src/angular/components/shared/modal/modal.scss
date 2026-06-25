@@ -65,8 +65,8 @@
   background: var(--modal-panel-background, var(--body-background-color));
   backdrop-filter: var(--modal-panel-backdrop-filter, none);
   border: 0.0625rem solid var(--modal-panel-border-color, var(--dock-border-color));
-  border-radius: var(--modal-panel-radius, 2rem);
-  corner-shape: squircle;
+  border-radius: calc(var(--modal-panel-radius, 2rem) * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: var(--modal-panel-shadow, 0 1rem 3rem rgba(0, 0, 0, 0.4));
   -webkit-app-region: no-drag;
 
@@ -98,8 +98,8 @@
   color: var(--welcome-muted-foreground-color);
   background: transparent;
   border: none;
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 

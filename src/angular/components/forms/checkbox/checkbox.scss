@@ -11,8 +11,8 @@
   margin: 0;
   background: var(--form-control-background-color);
   border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: 0.3rem;
-  corner-shape: squircle;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition:
     background-color 150ms ease-in-out,

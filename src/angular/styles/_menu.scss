@@ -16,8 +16,8 @@
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
 }
 
@@ -41,8 +41,8 @@
 .title-strip-tab-menu__item {
   display: flex;
   align-items: center;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   transition: var(--hover-transition);
 
   &:hover,
@@ -90,8 +90,8 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   // Subdued until the row or the button itself is hovered, so it does not clutter the list.
   opacity: 0;
@@ -136,8 +136,8 @@
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
 }
 
@@ -152,8 +152,8 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 
@@ -179,8 +179,8 @@
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
 }
 
@@ -200,8 +200,8 @@
   gap: 0.5rem;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .lsp-status-menu__item-icon {
@@ -245,8 +245,8 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 

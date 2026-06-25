@@ -54,8 +54,8 @@
       color: inherit;
       background: transparent;
       border: none;
-      border-radius: 0.25rem;
-      corner-shape: squircle;
+      border-radius: calc(0.25rem * var(--border-radius-multiplier));
+      corner-shape: var(--app-corner-shape, squircle);
       cursor: pointer;
       transition: var(--hover-transition);
 
@@ -83,7 +83,7 @@
   gap: 0.375rem;
   max-inline-size: 11.25rem;
   padding: 0.375rem 0.5rem;
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -113,8 +113,8 @@
     color: inherit;
     background: transparent;
     border: none;
-    border-radius: 0.25rem;
-    corner-shape: squircle;
+    border-radius: calc(0.25rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     cursor: pointer;
 
     &:hover {
@@ -272,11 +272,13 @@
   content: '';
   position: absolute;
   box-sizing: content-box;
-  block-size: var(--dock-panel-radius);
-  inline-size: var(--dock-panel-radius);
+  block-size: var(--dock-panel-foot-radius);
+  inline-size: var(--dock-panel-foot-radius);
   margin-inline: -0.125rem;
   background: var(--dock-tab-background-color--active);
-  corner-shape: superellipse(-2.3);
+  // Concave scoops, not convex box corners — kept off the --app-corner-shape gate; they share the
+  // --tab-foot-* knobs (see styles/_variables.scss). Fallback preserves squircle-mode appearance.
+  corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
 }
 
 // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
@@ -295,7 +297,7 @@
   box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 :host(.dock-tab-group--documents) .dock-tab-group__body {
@@ -309,7 +311,7 @@
   box-shadow: inset 0 0.0625rem 0 var(--dock-border-color);
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 :host(.dock-tab-group--documents):has(.dock-tab--active:first-child) .dock-tab-group__tool-strip {
@@ -331,25 +333,25 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top left,
-      transparent var(--dock-panel-radius),
-      #000 var(--dock-panel-radius)
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
     );
-    border-start-start-radius: var(--dock-panel-radius);
+    border-start-start-radius: var(--dock-panel-foot-radius);
     border-block-start: 0.0625rem solid var(--dock-seam-color);
     border-inline-start: 0.0625rem solid var(--dock-seam-color);
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top right,
-      transparent var(--dock-panel-radius),
-      #000 var(--dock-panel-radius)
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
     );
-    border-start-end-radius: var(--dock-panel-radius);
+    border-start-end-radius: var(--dock-panel-foot-radius);
     border-block-start: 0.0625rem solid var(--dock-seam-color);
     border-inline-end: 0.0625rem solid var(--dock-seam-color);
   }
@@ -361,7 +363,7 @@
   border-inline: 0.0625rem solid var(--dock-seam-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 // The tool strip sits between the title and the body, continuing the side seam with a neutral
@@ -376,7 +378,7 @@
   border-block-end: 0.0625rem solid var(--dock-seam-color);
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 :host(.dock-tab-group--tool) .dock-tab-group__tabstrip {
@@ -403,25 +405,25 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at bottom left,
-      transparent var(--dock-panel-radius),
-      #000 var(--dock-panel-radius)
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
     );
-    border-end-start-radius: var(--dock-panel-radius);
+    border-end-start-radius: var(--dock-panel-foot-radius);
     border-block-end: 0.0625rem solid var(--dock-seam-color);
     border-inline-start: 0.0625rem solid var(--dock-seam-color);
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-radius) + 0.0625rem);
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at bottom right,
-      transparent var(--dock-panel-radius),
-      #000 var(--dock-panel-radius)
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
     );
-    border-end-end-radius: var(--dock-panel-radius);
+    border-end-end-radius: var(--dock-panel-foot-radius);
     border-block-end: 0.0625rem solid var(--dock-seam-color);
     border-inline-end: 0.0625rem solid var(--dock-seam-color);
   }

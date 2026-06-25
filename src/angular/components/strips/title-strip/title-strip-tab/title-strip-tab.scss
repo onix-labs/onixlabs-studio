@@ -1,5 +1,8 @@
 :host {
-  --title-strip-tab-border-radius: 10px;
+  --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
+  // The concave counterpart, sizing the active tab's feet. Same base radius as the convex top
+  // corners, scaled by the concave multiplier so the scoops can be tuned independently.
+  --title-strip-tab-foot-radius: calc(10px * var(--concave-border-radius-multiplier));
 
   display: contents;
 
@@ -20,7 +23,7 @@
     border: 0.0625rem solid transparent;
     border-block-end: none;
     border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
-    corner-shape: squircle;
+    corner-shape: var(--app-corner-shape, squircle);
     transition:
       var(--hover-transition),
       transform 200ms cubic-bezier(0, 0, 0.2, 1);
@@ -58,35 +61,37 @@
         // The feet are sized to the curve radius with the 1px border drawn outside, so they must
         // stay content-box despite the global border-box default.
         box-sizing: content-box;
-        block-size: var(--title-strip-tab-border-radius);
-        inline-size: var(--title-strip-tab-border-radius);
+        block-size: var(--title-strip-tab-foot-radius);
+        inline-size: var(--title-strip-tab-foot-radius);
         margin-inline: -0.125rem;
         bottom: 0;
         background: var(--title-strip-tab-background-color--active);
         mask: none;
-        corner-shape: superellipse(-2.3);
+        // Feet are concave scoops, not convex box corners — keep them off the --app-corner-shape gate
+        // (see --tab-foot-* in styles/_variables.scss). Fallback preserves squircle-mode appearance.
+        corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
       }
 
       &::before {
-        left: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+        left: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
         mask: radial-gradient(
           circle at top left,
-          transparent var(--title-strip-tab-border-radius),
-          #000 var(--title-strip-tab-border-radius)
+          transparent var(--title-strip-tab-foot-radius),
+          #000 var(--title-strip-tab-foot-radius)
         );
-        border-start-start-radius: var(--title-strip-tab-border-radius);
+        border-start-start-radius: var(--title-strip-tab-foot-radius);
         border-block-start: 0.0625rem solid var(--title-strip-border-color);
         border-inline-start: 0.0625rem solid var(--title-strip-border-color);
       }
 
       &::after {
-        right: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+        right: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
         mask: radial-gradient(
           circle at top right,
-          transparent var(--title-strip-tab-border-radius),
-          #000 var(--title-strip-tab-border-radius)
+          transparent var(--title-strip-tab-foot-radius),
+          #000 var(--title-strip-tab-foot-radius)
         );
-        border-start-end-radius: var(--title-strip-tab-border-radius);
+        border-start-end-radius: var(--title-strip-tab-foot-radius);
         border-block-start: 0.0625rem solid var(--title-strip-border-color);
         border-inline-end: 0.0625rem solid var(--title-strip-border-color);
       }
@@ -141,8 +146,8 @@
       background: var(--title-strip-tab-close-button-background-color);
       color: var(--title-strip-tab-close-button-foreground-color);
       border: none;
-      border-radius: 0.5rem;
-      corner-shape: squircle;
+      border-radius: calc(0.5rem * var(--border-radius-multiplier));
+      corner-shape: var(--app-corner-shape, squircle);
       transition: var(--hover-transition);
 
       &:hover {

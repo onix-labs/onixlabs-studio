@@ -295,8 +295,8 @@
   color: inherit;
   background: transparent;
   border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: 0.625rem;
-  corner-shape: squircle;
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition:
     var(--hover-transition),
@@ -349,8 +349,8 @@
   padding: 1rem;
   background: var(--body-background-color);
   border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: 0.75rem;
-  corner-shape: squircle;
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .welcome__recent-title {
@@ -383,8 +383,8 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 
@@ -465,5 +465,34 @@
 
   .welcome__orb {
     animation: none;
+  }
+}
+
+// Low-power GPUs (flagged with data-reduced-gpu on <html>, from the same weak-GPU detection that
+// forces round corners) struggle with this scene: six large orbs that are blurred, screen-blended,
+// and animated continuously force a re-blur and backdrop read-back every frame, and the frosted
+// panel adds a real-time backdrop-filter on top. Reduce it to a cheap static glow — stop the drift
+// (so the scene rasterizes once), drop the blend mode and layer promotion, shrink the blur, halve
+// the orb count, and soften the panel's backdrop blur. Capable GPUs keep the full effect untouched.
+:host-context([data-reduced-gpu]) {
+  .welcome__orbs--active {
+    transition: none;
+  }
+
+  .welcome__orb {
+    animation: none;
+    mix-blend-mode: normal;
+    filter: blur(2rem);
+    will-change: auto;
+  }
+
+  .welcome__orb--d,
+  .welcome__orb--e,
+  .welcome__orb--f {
+    display: none;
+  }
+
+  .welcome-modal {
+    --modal-panel-backdrop-filter: blur(0.5rem);
   }
 }

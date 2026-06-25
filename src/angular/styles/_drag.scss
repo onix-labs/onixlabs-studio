@@ -8,7 +8,9 @@
 // The radius is redeclared here because the chip is rendered on <body>, outside the tab component
 // whose :host defines it.
 .tab-chip {
-  --title-strip-tab-border-radius: 10px;
+  --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
+  // Concave counterpart for the chip's feet, mirroring the live tab (see title-strip-tab.scss).
+  --title-strip-tab-foot-radius: calc(10px * var(--concave-border-radius-multiplier));
 
   position: relative;
   // CDK renders the preview as a popover, whose UA style is `overflow: auto`. That would clip the
@@ -29,7 +31,7 @@
   border: 0.0625rem solid var(--title-strip-border-color);
   border-block-end: none;
   border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: grabbing;
 
   // The reverse curves that flare the chip's bottom corners out to meet the rail, mirroring the
@@ -41,35 +43,37 @@
     // Sized to the curve radius with the border outside, so it must stay content-box despite the
     // global border-box default.
     box-sizing: content-box;
-    block-size: var(--title-strip-tab-border-radius);
-    inline-size: var(--title-strip-tab-border-radius);
+    block-size: var(--title-strip-tab-foot-radius);
+    inline-size: var(--title-strip-tab-foot-radius);
     margin-inline: -0.125rem;
     bottom: 0;
     background: var(--title-strip-tab-background-color--active);
     mask: none;
-    corner-shape: superellipse(-2.3);
+    // Concave scoop — kept off the --app-corner-shape gate; shares the --tab-foot-* knobs (see
+    // styles/_variables.scss). Fallback preserves squircle-mode appearance.
+    corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
   }
 
   &::before {
-    left: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    left: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top left,
-      transparent var(--title-strip-tab-border-radius),
-      #000 var(--title-strip-tab-border-radius)
+      transparent var(--title-strip-tab-foot-radius),
+      #000 var(--title-strip-tab-foot-radius)
     );
-    border-start-start-radius: var(--title-strip-tab-border-radius);
+    border-start-start-radius: var(--title-strip-tab-foot-radius);
     border-block-start: 0.0625rem solid var(--title-strip-border-color);
     border-inline-start: 0.0625rem solid var(--title-strip-border-color);
   }
 
   &::after {
-    right: calc(-1 * var(--title-strip-tab-border-radius) + 0.0625rem);
+    right: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
     mask: radial-gradient(
       circle at top right,
-      transparent var(--title-strip-tab-border-radius),
-      #000 var(--title-strip-tab-border-radius)
+      transparent var(--title-strip-tab-foot-radius),
+      #000 var(--title-strip-tab-foot-radius)
     );
-    border-start-end-radius: var(--title-strip-tab-border-radius);
+    border-start-end-radius: var(--title-strip-tab-foot-radius);
     border-block-start: 0.0625rem solid var(--title-strip-border-color);
     border-inline-end: 0.0625rem solid var(--title-strip-border-color);
   }
@@ -100,8 +104,8 @@
     background: var(--title-strip-tab-close-button-background-color);
     color: var(--title-strip-tab-close-button-foreground-color--hover-over-tab);
     border: none;
-    border-radius: 0.5rem;
-    corner-shape: squircle;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
   }
 }
 

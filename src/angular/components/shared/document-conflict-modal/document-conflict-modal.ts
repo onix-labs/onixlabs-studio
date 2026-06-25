@@ -47,8 +47,8 @@ import { FileConflict, FileConflicts } from '../../../services/file-conflicts/fi
         color: var(--body-foreground-color);
         background: var(--body-background-color);
         border: 0.0625rem solid var(--dock-border-color);
-        border-radius: 0.75rem;
-        corner-shape: squircle;
+        border-radius: calc(0.75rem * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
         box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.4);
       }
 
@@ -74,8 +74,8 @@ import { FileConflict, FileConflicts } from '../../../services/file-conflicts/fi
         color: var(--body-foreground-color);
         background: transparent;
         border: 0.0625rem solid var(--dock-border-color);
-        border-radius: 0.5rem;
-        corner-shape: squircle;
+        border-radius: calc(0.5rem * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
         cursor: pointer;
       }
 

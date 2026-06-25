@@ -34,7 +34,7 @@
 .dock-node__pane--leaf {
   background: var(--dock-pane-background-color);
   border-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 // A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to

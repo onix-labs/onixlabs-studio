@@ -76,8 +76,8 @@ import { MarkdownPanels } from '../../../../../services/markdown-panels/markdown
         color: inherit;
         background: transparent;
         border: 0.0625rem solid transparent;
-        border-radius: 0.375rem;
-        corner-shape: squircle;
+        border-radius: calc(0.375rem * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
         cursor: pointer;
         transition: var(--hover-transition);
 

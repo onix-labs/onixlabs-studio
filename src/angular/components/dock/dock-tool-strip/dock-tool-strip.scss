@@ -19,8 +19,8 @@
   color: var(--dock-tab-foreground-color);
   background: transparent;
   border: none;
-  border-radius: 0.25rem;
-  corner-shape: squircle;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 

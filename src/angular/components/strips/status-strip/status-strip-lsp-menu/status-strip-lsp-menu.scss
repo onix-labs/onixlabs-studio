@@ -14,8 +14,8 @@
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 

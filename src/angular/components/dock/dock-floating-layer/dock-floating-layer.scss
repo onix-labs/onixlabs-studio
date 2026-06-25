@@ -17,7 +17,7 @@
   background: var(--dock-background-color);
   border: 0.0625rem solid var(--dock-border-color);
   border-radius: var(--dock-panel-radius);
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.625rem 1.625rem rgb(0 0 0 / 45%);
   overflow: hidden;
 }
@@ -58,8 +58,8 @@
       color: inherit;
       background: transparent;
       border: none;
-      border-radius: 0.25rem;
-      corner-shape: squircle;
+      border-radius: calc(0.25rem * var(--border-radius-multiplier));
+      corner-shape: var(--app-corner-shape, squircle);
       cursor: pointer;
       transition: var(--hover-transition);
 

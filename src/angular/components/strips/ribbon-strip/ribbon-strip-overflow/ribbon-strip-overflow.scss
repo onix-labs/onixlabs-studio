@@ -49,8 +49,8 @@
   color: var(--ribbon-control-foreground-color);
   background: var(--ribbon-group-title-background-color);
   border: 0.0625rem solid var(--ribbon-group-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 
@@ -83,8 +83,8 @@
   padding: 0.5rem;
   background: var(--dropdown-menu-background-color);
   border: 0.0625rem solid var(--dropdown-menu-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.3);
   overflow-x: auto;
 }

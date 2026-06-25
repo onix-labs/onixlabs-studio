@@ -37,6 +37,25 @@ export enum IpcChannel {
   AppConfirmClose = 'app:confirm-close',
 
   /**
+   * Synchronously reports the display startup state: the GPU-derived rendering recommendation (used
+   * to seed the "modern UI features" setting and its hint) and whether GPU hardware acceleration is
+   * currently enabled. Read once at startup, before the first paint.
+   */
+  AppGetDisplayStartup = 'app:get-display-startup',
+
+  /**
+   * Persists the GPU hardware-acceleration preference. Hardware acceleration can only be toggled
+   * before the app is ready, so the change takes effect after the next relaunch.
+   */
+  AppSetHardwareAcceleration = 'app:set-hardware-acceleration',
+
+  /**
+   * Relaunches the application, so a startup-only preference change (such as hardware acceleration)
+   * can take effect.
+   */
+  AppRelaunch = 'app:relaunch',
+
+  /**
    * Requests that a new pseudo-terminal session be spawned.
    */
   TerminalCreate = 'terminal:create',

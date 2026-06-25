@@ -1,7 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
+import { Toggle } from '../../../../forms/toggle/toggle';
 import { AccentColor, ACCENT_COLORS, Theme, ThemeMode } from '../../../../../services/theme/theme';
-import { RibbonAlignment, Settings } from '../../../../../services/settings/settings';
+import {
+  ModernUiFeatures,
+  RibbonAlignment,
+  Settings,
+} from '../../../../../services/settings/settings';
+import { Display } from '../../../../../services/display/display';
 import { Icon } from '../../../../../icons/icon';
 import { AppIcon } from '../../../../shared/icon/app-icon';
 
@@ -23,6 +29,21 @@ interface RibbonAlignmentOption {
    * Gets the icon shown for the option.
    */
   readonly icon: Icon;
+}
+
+/**
+ * Describes a selectable modern-UI-features option in the appearance settings.
+ */
+interface ModernUiFeaturesOption {
+  /**
+   * Gets the mode the option applies.
+   */
+  readonly value: ModernUiFeatures;
+
+  /**
+   * Gets the label shown for the option.
+   */
+  readonly label: string;
 }
 
 /**
@@ -51,7 +72,7 @@ interface ThemeModeOption {
  */
 @Component({
   selector: 'app-appearance-settings',
-  imports: [SettingRow, AppIcon],
+  imports: [SettingRow, AppIcon, Toggle],
   templateUrl: './appearance-settings.html',
   styleUrls: ['../section.scss', './appearance-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -63,9 +84,15 @@ export class AppearanceSettings {
   private readonly theme: Theme = inject(Theme);
 
   /**
-   * Holds the settings service backing the ribbon alignment control.
+   * Holds the settings service backing the ribbon alignment and modern-UI-features controls.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the display service backing the modern-UI-features recommendation and the
+   * hardware-acceleration control.
+   */
+  private readonly display: Display = inject(Display);
 
   /**
    * Gets the currently selected theme mode.
@@ -106,6 +133,37 @@ export class AppearanceSettings {
   ];
 
   /**
+   * Gets the currently selected modern-UI-features mode.
+   */
+  protected readonly modernUiFeatures: Signal<ModernUiFeatures> = this.settings.modernUiFeatures;
+
+  /**
+   * Gets the modern-UI-features options offered by the selector.
+   */
+  protected readonly modernUiFeaturesOptions: readonly ModernUiFeaturesOption[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'on', label: 'On' },
+    { value: 'off', label: 'Off' },
+  ];
+
+  /**
+   * Gets the hint describing the modern-UI-features setting and what the automatic mode recommends
+   * for this system.
+   */
+  protected readonly modernUiFeaturesHint: string = this.buildModernUiFeaturesHint();
+
+  /**
+   * Gets whether GPU hardware acceleration is enabled.
+   */
+  protected readonly hardwareAcceleration: Signal<boolean> =
+    this.display.hardwareAccelerationEnabled;
+
+  /**
+   * Gets whether a hardware-acceleration change is awaiting a relaunch to take effect.
+   */
+  protected readonly restartRequired: Signal<boolean> = this.display.restartRequired;
+
+  /**
    * Selects the given theme mode.
    * @param mode The theme mode to apply.
    */
@@ -127,5 +185,43 @@ export class AppearanceSettings {
    */
   protected selectRibbonAlignment(alignment: RibbonAlignment): void {
     this.settings.setRibbonAlignment(alignment);
+  }
+
+  /**
+   * Selects the given modern-UI-features mode.
+   * @param value The mode to apply.
+   */
+  protected selectModernUiFeatures(value: ModernUiFeatures): void {
+    this.settings.setModernUiFeatures(value);
+  }
+
+  /**
+   * Sets whether GPU hardware acceleration is enabled. The change takes effect after a relaunch.
+   * @param enabled Whether hardware acceleration should be enabled.
+   */
+  protected setHardwareAcceleration(enabled: boolean): void {
+    this.display.setHardwareAcceleration(enabled);
+  }
+
+  /**
+   * Relaunches the application so a pending hardware-acceleration change can take effect.
+   */
+  protected relaunch(): void {
+    this.display.relaunch();
+  }
+
+  /**
+   * Builds the hint for the modern-UI-features setting, naming what the automatic mode recommends for
+   * this system (and the detected GPU, when known).
+   * @returns Returns the hint text.
+   */
+  private buildModernUiFeaturesHint(): string {
+    const recommended: string = this.display.recommendedModernUi === 'on' ? 'On' : 'Off';
+    const gpu: string = this.display.gpuDescription;
+    const detail: string = gpu.length > 0 ? ` (${gpu} detected)` : '';
+    return (
+      'Squircle corners and richer visual effects. Turn off if the interface looks corrupted or ' +
+      `sluggish. Recommended for this system: ${recommended}${detail}.`
+    );
   }
 }

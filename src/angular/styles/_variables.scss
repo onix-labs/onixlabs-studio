@@ -1,4 +1,41 @@
+// Corner-shape feature gate. Every `corner-shape` declaration in the app resolves
+// `var(--app-corner-shape, <its own default>)`, so leaving this variable unset preserves each
+// element's intended squircle/superellipse corner. GPU rasterization of those superellipse corner
+// masks corrupts box borders/edges on some GPUs (notably the Intel UHD 630 under fractional Retina
+// scaling). Setting --app-corner-shape to `round` falls every corner back to a plain rounded
+// rectangle app-wide. Toggle at runtime by adding data-corners="round" to the <html> element.
+//
+// --border-radius-multiplier scales every convex radius in the app (each `border-radius` is authored
+// as `calc(<value> * var(--border-radius-multiplier))`, and the radius tokens below are scaled at
+// definition). --concave-border-radius-multiplier does the same for concave radii — currently the
+// active-tab feet (the scoops that join a tab to its rail), which are sized to their own curve radius
+// rather than a convex box corner. Splitting the two lets the inward scoops be tuned without
+// disturbing the outward box corners. A plain rounded corner reads "fuller" than a squircle at the
+// same radius, so the round-corner fallback tightens the radii to keep the visual weight close. Tune
+// the values below to taste.
+:root[data-corners='round'] {
+  --app-corner-shape: round;
+  --border-radius-multiplier: 0.5;
+  // Defaults to the convex value so behaviour is unchanged until deliberately tuned; raise toward 1
+  // for deeper/larger scoops, lower for shallower ones, independent of the convex corners above.
+  --concave-border-radius-multiplier: 1;
+
+  // Active-tab "feet": the concave scoops that join a tab to its rail (title-strip tabs, the drag
+  // chip, and both dock-tab orientations all share this geometry). They are concave by nature, so
+  // they must NOT follow --app-corner-shape to a convex `round` — each foot reads these two knobs
+  // instead, with squircle-mode fallbacks baked in at the call sites, so this block is the single
+  // place to tune the round-mode feet. --tab-foot-corner-shape sets the scoop depth (less negative =
+  // shallower; a round tab corner often wants a touch shallower than the squircle-era -2.3);
+  // --tab-foot-reach nudges how far each foot reaches toward the rail (raise to close a hairline
+  // gap, lower if the foot overlaps the tab corner).
+  --tab-foot-corner-shape: superellipse(-2.3);
+  --tab-foot-reach: 0.0625rem;
+}
+
 :root {
+  --border-radius-multiplier: 1;
+  --concave-border-radius-multiplier: 1;
+
   --font-sans:
     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell,
     'Noto Sans', 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
@@ -55,7 +92,10 @@
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
-  --dock-panel-radius: 0.5rem;
+  --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));
+  // The concave counterpart, sizing the active dock tab's feet. Same base radius as the convex
+  // corner, scaled by the concave multiplier so the scoops can be tuned independently.
+  --dock-panel-foot-radius: calc(0.5rem * var(--concave-border-radius-multiplier));
 
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;

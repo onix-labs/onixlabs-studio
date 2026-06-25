@@ -9,8 +9,8 @@
     background: transparent;
     color: var(--title-strip-button-foreground-color);
     border: 0.0625rem solid transparent;
-    border-radius: 0.5rem;
-    corner-shape: squircle;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     transition:
       var(--hover-transition),
       border-color 150ms ease-in-out;

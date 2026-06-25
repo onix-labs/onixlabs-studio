@@ -124,8 +124,8 @@
   gap: 0.4rem;
   padding: 0.375rem 0.75rem;
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   background: var(--dock-title-background-color);
   color: var(--dock-tab-foreground-color--active);
   font: inherit;

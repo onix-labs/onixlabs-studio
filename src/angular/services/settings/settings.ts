@@ -48,6 +48,13 @@ export type DefaultDocumentType = 'code' | 'markdown';
 export type RibbonAlignment = 'left' | 'center' | 'right';
 
 /**
+ * Identifies whether the modern UI features (GPU-rasterized squircle corners and the heavier
+ * decorative effects) are used. `auto` follows the GPU-derived recommendation resolved at startup;
+ * `on` and `off` are explicit user overrides.
+ */
+export type ModernUiFeatures = 'auto' | 'on' | 'off';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -175,6 +182,12 @@ export interface AppearanceSettings {
    * Gets the alignment of the ribbon's controls within the ribbon strip.
    */
   readonly ribbonAlignment: RibbonAlignment;
+
+  /**
+   * Gets whether the modern UI features (squircle corners and the heavier decorative effects) are
+   * used, or whether the choice follows the GPU-derived recommendation.
+   */
+  readonly modernUiFeatures: ModernUiFeatures;
 }
 
 /**
@@ -325,6 +338,7 @@ const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
  */
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   ribbonAlignment: 'left',
+  modernUiFeatures: 'auto',
 };
 
 /**
@@ -430,6 +444,14 @@ export class Settings {
    */
   public readonly ribbonAlignment: Signal<RibbonAlignment> = computed(
     (): RibbonAlignment => this.settingsSignal().appearance.ribbonAlignment,
+  );
+
+  /**
+   * Gets whether the modern UI features are used, or whether the choice follows the GPU-derived
+   * recommendation.
+   */
+  public readonly modernUiFeatures: Signal<ModernUiFeatures> = computed(
+    (): ModernUiFeatures => this.settingsSignal().appearance.modernUiFeatures,
   );
 
   /**
@@ -549,6 +571,14 @@ export class Settings {
    */
   public setRibbonAlignment(alignment: RibbonAlignment): void {
     this.updateAppearanceSettings({ ribbonAlignment: alignment });
+  }
+
+  /**
+   * Sets whether the modern UI features are used.
+   * @param value The modern UI features mode to apply.
+   */
+  public setModernUiFeatures(value: ModernUiFeatures): void {
+    this.updateAppearanceSettings({ modernUiFeatures: value });
   }
 
   /**

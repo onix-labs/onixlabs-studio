@@ -29,4 +29,11 @@ describe('AppearanceSettings', () => {
     expect(alignment.querySelectorAll('.segmented__option').length).toBe(3);
     expect(element.querySelectorAll('.swatch').length).toBe(8);
   });
+
+  it('render_whenShown_offersModernUiFeaturesAndHardwareAcceleration', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const modernUi: Element = element.querySelector('[aria-label="Modern UI features"]')!;
+    expect(modernUi.querySelectorAll('.segmented__option').length).toBe(3);
+    expect(element.querySelector('app-toggle')).toBeTruthy();
+  });
 });

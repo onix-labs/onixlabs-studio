@@ -9,8 +9,8 @@
   position: fixed;
   background: rgba(var(--accent-color-rgb), 0.25);
   border: 0.125rem solid var(--accent-color);
-  border-radius: 0.25rem;
-  corner-shape: squircle;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 // The compass is a fixed-size box centred over the hovered group.
@@ -32,8 +32,8 @@
   font-size: 1.375rem;
   background: var(--dock-title-background-color);
   border: 0.0625rem solid var(--accent-color);
-  border-radius: 0.25rem;
-  corner-shape: squircle;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.0625rem 0.1875rem rgb(0 0 0 / 35%);
 
   &--center {
@@ -84,8 +84,8 @@
   font-size: 1.625rem;
   background: var(--dock-title-background-color);
   border: 0.0625rem solid var(--accent-color);
-  border-radius: 0.25rem;
-  corner-shape: squircle;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.0625rem 0.25rem rgb(0 0 0 / 40%);
 
   // The hot edge fills with the accent; its icon flips to the panel colour to stay legible.
@@ -101,8 +101,8 @@
   flex-direction: column;
   background: var(--dock-background-color);
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.25rem;
-  corner-shape: squircle;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.625rem 1.875rem rgb(0 0 0 / 50%);
   opacity: 0.8;
   overflow: hidden;

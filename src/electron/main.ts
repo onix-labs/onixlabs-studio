@@ -21,10 +21,48 @@ import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from './media-protocol';
 import { SecurityManager } from './security-manager';
+import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { TaskRunner } from './task-runner';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
+
+/**
+ * Describes a single GPU device reported by {@link Electron.App.getGPUInfo}.
+ */
+interface GpuDevice {
+  /**
+   * Gets a value indicating whether this device is the one actively driving the renderer. Omitted by
+   * some drivers.
+   */
+  readonly active?: boolean;
+
+  /**
+   * Gets the PCI vendor identifier of the device.
+   */
+  readonly vendorId?: number;
+}
+
+/**
+ * Describes the subset of the `complete` GPU information reported by
+ * {@link Electron.App.getGPUInfo} that the rendering recommendation relies on.
+ */
+interface GpuInfo {
+  /**
+   * Gets the GPU devices present on the system.
+   */
+  readonly gpuDevice?: GpuDevice[];
+
+  /**
+   * Gets the auxiliary GPU attributes, including the OpenGL renderer string used for the hint.
+   */
+  readonly auxAttributes?: {
+    /**
+     * Gets the OpenGL renderer string (for example, `Intel(R) UHD Graphics 630`).
+     */
+    readonly glRenderer?: string;
+  };
+}
 
 class Program {
   /**
@@ -61,6 +99,30 @@ class Program {
   private static readonly CLOSE_CONFIRM_TIMEOUT_MS: number = 30_000;
 
   /**
+   * Holds the PCI vendor identifier for Intel GPUs. The active GPU's vendor decides the corner-shape
+   * policy: Intel integrated GPUs (notably the UHD 630) corrupt the GPU-rasterized squircle corner
+   * masks the UI uses, so the renderer falls back to plain rounded corners on them.
+   */
+  private static readonly INTEL_GPU_VENDOR_ID: number = 0x8086;
+
+  /**
+   * Maps known PCI vendor identifiers to human-readable names, used to describe the active GPU in the
+   * settings hint when no OpenGL renderer string is available.
+   */
+  private static readonly GPU_VENDOR_NAMES: Readonly<Record<number, string>> = {
+    0x8086: 'Intel GPU',
+    0x10de: 'NVIDIA GPU',
+    0x1002: 'AMD GPU',
+    0x106b: 'Apple GPU',
+  };
+
+  /**
+   * Holds how long (ms) to wait for GPU information before giving up and assuming a non-Intel GPU, so
+   * a slow or stalled GPU process can never block window creation.
+   */
+  private static readonly GPU_INFO_TIMEOUT_MS: number = 3_000;
+
+  /**
    * Holds the main application window, or null before it is created or after it is closed.
    */
   private window: BrowserWindow | null = null;
@@ -76,6 +138,23 @@ class Program {
    * window-close and before-quit paths share a single prompt rather than each starting their own.
    */
   private confirming: boolean = false;
+
+  /**
+   * Holds the GPU-derived rendering recommendation, resolved from the active GPU (or the
+   * STUDIO_CORNERS override) at startup, before the window is created, and reported synchronously to
+   * the preload on request. The renderer uses it to seed the "modern UI features" setting and its
+   * hint when that setting is on its automatic mode.
+   */
+  private gpuRendering: { recommendReducedEffects: boolean; description: string } = {
+    recommendReducedEffects: false,
+    description: '',
+  };
+
+  /**
+   * Holds whether GPU hardware acceleration is enabled for this launch, mirroring the persisted
+   * startup preference so the preload can report it to the settings UI.
+   */
+  private hardwareAccelerationEnabled: boolean = true;
 
   /**
    * Holds the resolver for the in-flight close request, or null when none is pending.
@@ -175,13 +254,27 @@ class Program {
    * Initializes the current Program instance.
    */
   private initialize(): void {
-    // DIAGNOSTIC: launch with STUDIO_DISABLE_GPU=1 to disable GPU hardware acceleration, forcing
-    // software (CPU) rasterization. Used to confirm machine-specific GPU rendering artifacts (e.g.
-    // jagged squircle/box-shadow edges on the welcome panel under fractional display scaling on the
-    // Intel UHD 630). Must be called before app.whenReady(). Remove once the cause is confirmed.
-    if (process.env['STUDIO_DISABLE_GPU'] === '1') {
-      //app.disableHardwareAcceleration();
-      //console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
+    // DIAGNOSTIC: two escape hatches for machine-specific GPU rendering artifacts (e.g. corrupted
+    // right/bottom borders and jagged squircle/box-shadow edges on the welcome panel under fractional
+    // display scaling on the Intel UHD 630). Both must be set before app.whenReady().
+    //
+    //   STUDIO_DISABLE_GPU_RASTER=1 — keeps GPU compositing but moves rasterization to the CPU. This
+    //     is the lighter-touch fix: it targets the squircle/border raster artifacts directly while
+    //     retaining hardware-accelerated compositing. Try this first.
+    //   STUDIO_DISABLE_GPU=1 — disables hardware acceleration entirely (full software rendering). The
+    //     blunt instrument; use only to confirm the GPU is the cause.
+    if (process.env['STUDIO_DISABLE_GPU_RASTER'] === '1') {
+      app.commandLine.appendSwitch('disable-gpu-rasterization');
+      console.warn('[diagnostic] GPU rasterization disabled (STUDIO_DISABLE_GPU_RASTER=1)');
+    }
+    // Hardware acceleration can only be toggled before the app is ready. The user preference is read
+    // synchronously from the startup-preferences file (the renderer's settings store is unreachable
+    // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
+    const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
+    this.hardwareAccelerationEnabled = startupPreferences.hardwareAcceleration;
+    if (!startupPreferences.hardwareAcceleration || process.env['STUDIO_DISABLE_GPU'] === '1') {
+      app.disableHardwareAcceleration();
+      console.warn('[startup] GPU hardware acceleration disabled');
     }
 
     // A privileged scheme must be declared before the app is ready, so the media protocol's scheme is
@@ -262,6 +355,31 @@ class Program {
 
     ipcMain.on(IpcChannel.AppConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);
+    });
+
+    ipcMain.on(IpcChannel.AppGetDisplayStartup, (event: IpcMainEvent): void => {
+      // Synchronous: both values were resolved before the window (and thus this preload) was created.
+      event.returnValue = {
+        gpuRendering: this.gpuRendering,
+        hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
+      };
+    });
+
+    ipcMain.handle(
+      IpcChannel.AppSetHardwareAcceleration,
+      (_event: IpcMainInvokeEvent, enabled: unknown): void => {
+        if (typeof enabled !== 'boolean') {
+          return;
+        }
+        StartupPreferencesStore.write({ hardwareAcceleration: enabled });
+      },
+    );
+
+    ipcMain.on(IpcChannel.AppRelaunch, (): void => {
+      // Relaunch then quit through the normal close path, so the renderer's unsaved-work confirmation
+      // still runs before the process exits.
+      app.relaunch();
+      app.quit();
     });
 
     ipcMain.handle(
@@ -364,8 +482,11 @@ class Program {
   /**
    * Handles the app whenReady event.
    */
-  private onReady(): void {
+  private async onReady(): Promise<void> {
     this.registerIpcHandlers();
+    // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
+    // the renderer's preload reads it synchronously (before the first paint).
+    await this.resolveGpuRenderingRecommendation();
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
@@ -373,6 +494,84 @@ class Program {
     // Tear down on will-quit (the final stage) rather than before-quit, so the renderer's save/confirm
     // round-trip runs against a fully-alive subsystem before anything is disposed.
     app.on('will-quit', (): void => this.disposeAll());
+  }
+
+  /**
+   * Resolves the GPU rendering recommendation reported to the renderer. The recommendation follows
+   * the active GPU, since some GPUs (notably the Intel UHD 630) corrupt the GPU-rasterized squircle
+   * corner masks the UI uses; the STUDIO_CORNERS environment variable overrides it (`round` forces a
+   * reduced recommendation, `squircle` forces the full one). Stored on the instance for the
+   * synchronous preload handler to read.
+   */
+  private async resolveGpuRenderingRecommendation(): Promise<void> {
+    const info: GpuInfo | null = await this.getGpuInfoWithTimeout();
+    const description: string = this.describeGpu(info);
+    let recommendReducedEffects: boolean = this.activeGpuIsIntel(info);
+
+    const override: string | undefined = process.env['STUDIO_CORNERS'];
+    if (override === 'round' || override === 'squircle') {
+      recommendReducedEffects = override === 'round';
+      console.warn(`[startup] rendering recommendation forced to '${override}' (STUDIO_CORNERS)`);
+    } else if (recommendReducedEffects) {
+      console.warn(`[startup] weak GPU detected ('${description}'); recommending reduced effects`);
+    }
+
+    this.gpuRendering = { recommendReducedEffects, description };
+  }
+
+  /**
+   * Determines whether the GPU currently driving the renderer is an Intel GPU. Prefers the device
+   * flagged active; when none is flagged (some drivers omit it), falls back to whether any Intel GPU
+   * is present, since Chromium renders on the integrated GPU by default on dual-GPU Macs.
+   * @param info The GPU information, or null when it could not be obtained.
+   * @returns Returns true when the active GPU is an Intel GPU.
+   */
+  private activeGpuIsIntel(info: GpuInfo | null): boolean {
+    const devices: GpuDevice[] = info?.gpuDevice ?? [];
+    if (devices.length === 0) {
+      return false;
+    }
+    const active: GpuDevice | undefined = devices.find(
+      (device: GpuDevice): boolean => device.active === true,
+    );
+    if (active !== undefined) {
+      return active.vendorId === Program.INTEL_GPU_VENDOR_ID;
+    }
+    return devices.some(
+      (device: GpuDevice): boolean => device.vendorId === Program.INTEL_GPU_VENDOR_ID,
+    );
+  }
+
+  /**
+   * Builds a human-readable description of the active GPU for the settings hint, preferring the
+   * OpenGL renderer string and falling back to a vendor name derived from the active device.
+   * @param info The GPU information, or null when it could not be obtained.
+   * @returns Returns the GPU description, or an empty string when it could not be identified.
+   */
+  private describeGpu(info: GpuInfo | null): string {
+    const glRenderer: string | undefined = info?.auxAttributes?.glRenderer;
+    if (typeof glRenderer === 'string' && glRenderer.trim().length > 0) {
+      return glRenderer.trim();
+    }
+    const devices: GpuDevice[] = info?.gpuDevice ?? [];
+    const device: GpuDevice | undefined =
+      devices.find((candidate: GpuDevice): boolean => candidate.active === true) ?? devices[0];
+    return device !== undefined ? (Program.GPU_VENDOR_NAMES[device.vendorId ?? 0] ?? '') : '';
+  }
+
+  /**
+   * Fetches GPU information, racing it against a timeout so a slow or stalled GPU process can never
+   * wedge window creation. Resolves null when the timeout wins or the lookup fails.
+   * @returns Returns the GPU information, or null on timeout or error.
+   */
+  private getGpuInfoWithTimeout(): Promise<GpuInfo | null> {
+    const gpuInfo: Promise<GpuInfo | null> = (app.getGPUInfo('complete') as Promise<GpuInfo>).catch(
+      (): null => null,
+    );
+    const timeout: Promise<null> = new Promise<null>((resolve: (value: null) => void): void => {
+      setTimeout((): void => resolve(null), Program.GPU_INFO_TIMEOUT_MS);
+    });
+    return Promise.race([gpuInfo, timeout]);
   }
 
   /**
