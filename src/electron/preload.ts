@@ -130,8 +130,13 @@ const studioApi: StudioApi = {
   file: {
     read: (path: string): Promise<FileInfo | null> =>
       ipcRenderer.invoke(IpcChannel.FileRead, path) as Promise<FileInfo | null>,
-    write: (path: string, content: string): Promise<FileWriteResult> =>
-      ipcRenderer.invoke(IpcChannel.FileWrite, path, content) as Promise<FileWriteResult>,
+    write: (path: string, content: string, hasBom?: boolean): Promise<FileWriteResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.FileWrite,
+        path,
+        content,
+        hasBom === true,
+      ) as Promise<FileWriteResult>,
     openDialog: (): Promise<FileInfo | null> =>
       ipcRenderer.invoke(IpcChannel.DialogOpenFile) as Promise<FileInfo | null>,
     pickImage: (): Promise<string | null> =>

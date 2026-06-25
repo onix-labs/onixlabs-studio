@@ -18,7 +18,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
-import { CodeStatus } from '../../../services/code-status/code-status';
+import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
 import { Editors, RevealRequest } from '../../../services/editors/editors';
@@ -104,9 +104,22 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
-   * Holds the cursor-position status publisher.
+   * Holds the code editor status publisher (path, cursor, line-ending, encoding).
    */
   private readonly codeStatus: CodeStatus = inject(CodeStatus);
+
+  /**
+   * Holds the editor's cursor position, or null when unknown, projected to the status strip.
+   */
+  private readonly caret: WritableSignal<{ line: number; column: number } | null> = signal<{
+    line: number;
+    column: number;
+  } | null>(null);
+
+  /**
+   * Holds the document's end-of-line sequence, projected to the status strip.
+   */
+  private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
 
   /**
    * Holds the code command registry the ribbon routes editor commands through.
@@ -293,17 +306,37 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         this.registerCommandHandler();
         this.documents.setActiveDocument(this.tabId());
         const position: MonacoApi.Position | null = editor.getPosition();
-        this.codeStatus.setPosition(
+        this.caret.set(
           position === null ? null : { line: position.lineNumber, column: position.column },
         );
+        this.eol.set(this.readEol());
         editor.focus();
       } else {
         if (this.commandHandler !== null) {
           this.codeCommands.unregister(this.commandHandler);
           this.commandHandler = null;
         }
-        this.codeStatus.setPosition(null);
       }
+    });
+
+    // Publish the active editor's context (path, cursor, line-ending, encoding) to the status strip.
+    // Reads the document's path/encoding signals so it refreshes on save and rename, and the local
+    // caret/eol signals fed by the editor's cursor and content listeners. Clears when not active.
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      const caret: { line: number; column: number } | null = this.caret();
+      if (!this.isActive() || document === null || caret === null) {
+        this.codeStatus.clear(this.tabId());
+        return;
+      }
+      const encoding: string = document.encoding();
+      this.codeStatus.publish(this.tabId(), {
+        path: document.filePath(),
+        line: caret.line,
+        column: caret.column,
+        eol: this.eol(),
+        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+      });
     });
 
     // Keep this editor registered against its document, so global Monaco diagnostics resolve to a
@@ -459,6 +492,15 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
+   * Reads the editor model's end-of-line sequence for the status strip.
+   * @returns Returns 'CRLF' when the model uses CRLF, otherwise 'LF'.
+   */
+  private readEol(): EndOfLine {
+    // getEOL returns the model's actual end-of-line string ('\n' or '\r\n').
+    return this.editor?.getModel()?.getEOL() === '\r\n' ? 'CRLF' : 'LF';
+  }
+
+  /**
    * Creates the Monaco editor for the backing document.
    */
   private createEditor(): void {
@@ -478,7 +520,15 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;
 
+    // Seed the status caret and line-ending before any cursor moves, so they are correct on first show.
+    const seed: MonacoApi.Position | null = this.editor.getPosition();
+    this.caret.set(seed === null ? { line: 1, column: 1 } : { line: seed.lineNumber, column: seed.column });
+    this.eol.set(this.readEol());
+
     this.editor.onDidChangeModelContent((): void => {
+      // The end-of-line sequence can change with content (for example a "Change EOL" edit), so refresh
+      // it here; it is cheap and keeps the status strip accurate.
+      this.eol.set(this.readEol());
       if (this.ignoreNextChange) {
         this.ignoreNextChange = false;
         return;
@@ -488,13 +538,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
 
     this.editor.onDidChangeCursorPosition(
       (event: MonacoApi.editor.ICursorPositionChangedEvent): void => {
-        if (!this.isActive()) {
-          return;
-        }
-        this.codeStatus.setPosition({
-          line: event.position.lineNumber,
-          column: event.position.column,
-        });
+        this.caret.set({ line: event.position.lineNumber, column: event.position.column });
       },
     );
 

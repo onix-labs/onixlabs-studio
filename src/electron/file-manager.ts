@@ -13,6 +13,17 @@ import { IpcChannel } from '../shared/ipc-channels';
 import { FileInfo, FileWriteResult, SaveDialogChoice } from '../shared/studio-api';
 
 /**
+ * Specifies the UTF-8 byte-order mark, as a string (U+FEFF). Detected and stripped on read, and
+ * re-added on write, so a file's BOM is preserved across edits.
+ */
+const UTF8_BOM: string = String.fromCharCode(0xfeff);
+
+/**
+ * Specifies the encoding label reported for text files. Only UTF-8 is supported for now.
+ */
+const UTF8_ENCODING: string = 'UTF-8';
+
+/**
  * Specifies the index of the "Save" button in the confirm-save dialog.
  */
 const SAVE_BUTTON_INDEX: number = 0;
@@ -56,8 +67,12 @@ export class FileManager {
     );
     ipcMain.handle(
       IpcChannel.FileWrite,
-      (_event: IpcMainInvokeEvent, filePath: unknown, content: unknown): Promise<FileWriteResult> =>
-        this.write(filePath, content),
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        content: unknown,
+        hasBom: unknown,
+      ): Promise<FileWriteResult> => this.write(filePath, content, hasBom === true),
     );
     ipcMain.handle(IpcChannel.DialogOpenFile, (): Promise<FileInfo | null> => this.openDialog());
     ipcMain.handle(IpcChannel.DialogPickImage, (): Promise<string | null> => this.pickImage());
@@ -93,9 +108,14 @@ export class FileManager {
    * Writes contents to a file after validating the arguments.
    * @param filePath The path to write to.
    * @param content The contents to write.
+   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark.
    * @returns Returns the result describing success or failure.
    */
-  private async write(filePath: unknown, content: unknown): Promise<FileWriteResult> {
+  private async write(
+    filePath: unknown,
+    content: unknown,
+    hasBom: boolean,
+  ): Promise<FileWriteResult> {
     if (typeof filePath !== 'string' || filePath.length === 0) {
       return { success: false, error: 'Invalid file path' };
     }
@@ -103,7 +123,8 @@ export class FileManager {
       return { success: false, error: 'Invalid file content' };
     }
     try {
-      await fs.writeFile(filePath, content, 'utf-8');
+      // Re-add the byte-order mark the file was read with, so a BOM is preserved across edits.
+      await fs.writeFile(filePath, hasBom ? UTF8_BOM + content : content, 'utf-8');
       return { success: true, path: filePath };
     } catch (error: unknown) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -209,12 +230,17 @@ export class FileManager {
    * @returns Returns the file info.
    */
   private async readFileInfo(filePath: string): Promise<FileInfo> {
-    const content: string = await fs.readFile(filePath, 'utf-8');
+    const raw: string = await fs.readFile(filePath, 'utf-8');
+    // A UTF-8 BOM decodes to a leading U+FEFF; strip it from the content but record its presence so
+    // it can be written back, and so the editor never shows the mark as an invisible character.
+    const hasBom: boolean = raw.charCodeAt(0) === 0xfeff;
     return {
       path: filePath,
       name: path.basename(filePath),
       extension: path.extname(filePath),
-      content,
+      content: hasBom ? raw.slice(1) : raw,
+      encoding: UTF8_ENCODING,
+      hasBom,
     };
   }
 }
