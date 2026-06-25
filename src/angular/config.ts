@@ -6,6 +6,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { AgentEditorCapabilities } from './services/agent-editor-capabilities/agent-editor-capabilities';
+import { Display } from './services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from './services/theme/theme';
 
@@ -20,6 +21,11 @@ export const config: ApplicationConfig = {
     // document before the first view renders.
     provideAppInitializer((): void => {
       inject(Theme);
+    }),
+    // Instantiate the Display service at start-up so the resolved modern-UI-features policy is applied
+    // to the document (corners and decorative effects) before the first view renders.
+    provideAppInitializer((): void => {
+      inject(Display);
     }),
     // Instantiate the agent's in-app editor capabilities at start-up so they are registered with the
     // runtime whenever an agent runs.

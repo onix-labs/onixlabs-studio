@@ -48,6 +48,41 @@
   }
 }
 
+// A pending-change banner shown after toggling a startup-only preference (hardware acceleration),
+// pairing the explanatory text with a relaunch action.
+.restart-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+  background: var(--settings-control-background-color);
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.restart-notice__action {
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border: none;
+  border-radius: calc(0.45rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
 // The accent picker: a row of colour swatches, the active one ringed.
 .swatches {
   display: inline-flex;

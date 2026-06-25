@@ -25,6 +25,7 @@ import type {
   FileInfo,
   FileOperationResult,
   FileWriteResult,
+  GpuRenderingInfo,
   OpenSelection,
   SaveDialogChoice,
   StudioApi,
@@ -32,6 +33,18 @@ import type {
   TerminalCreateOptions,
   TerminalCreateResult,
 } from '../shared/studio-api';
+
+/**
+ * Holds the display startup state read synchronously from the main process, before the first paint,
+ * so the renderer can seed its corner/effects policy without a squircle-to-round flash. The main
+ * process resolved these from the active GPU and the persisted startup preferences by the time this
+ * preload runs.
+ */
+const displayStartup: { gpuRendering: GpuRenderingInfo; hardwareAccelerationEnabled: boolean } =
+  ipcRenderer.sendSync(IpcChannel.AppGetDisplayStartup) as {
+    gpuRendering: GpuRenderingInfo;
+    hardwareAccelerationEnabled: boolean;
+  };
 
 /**
  * Specifies the concrete API exposed to the renderer under `window.studio`.
@@ -43,10 +56,13 @@ const studioApi: StudioApi = {
     electron: (): string => process.versions.electron,
   },
   platform: process.platform,
-  // Resolved synchronously at startup so the renderer can set its corner policy before the first
-  // paint (avoiding a squircle-to-round flash). The main process has already decided this from the
-  // active GPU by the time the window's preload runs.
-  forceRoundCorners: ipcRenderer.sendSync(IpcChannel.AppGetForceRoundCorners) === true,
+  display: {
+    gpuRendering: displayStartup.gpuRendering,
+    hardwareAccelerationEnabled: displayStartup.hardwareAccelerationEnabled,
+    setHardwareAcceleration: (enabled: boolean): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.AppSetHardwareAcceleration, enabled) as Promise<void>,
+    relaunch: (): void => ipcRenderer.send(IpcChannel.AppRelaunch),
+  },
   windowControls: {
     minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
     toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),
