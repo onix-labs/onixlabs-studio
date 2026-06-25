@@ -8,6 +8,7 @@ import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { TextField } from '../../../../forms/text-field/text-field';
 import { Toggle } from '../../../../forms/toggle/toggle';
 import {
+  BraceStyle,
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
@@ -34,9 +35,14 @@ type BooleanSettingKey =
 type NumberSettingKey = 'tabSize';
 
 /**
+ * Identifies a dropdown (enumerated) text editor setting that can be overridden per profile.
+ */
+type DropdownSettingKey = 'braceStyle';
+
+/**
  * Identifies any text editor setting that can be overridden per profile.
  */
-type OverridableSettingKey = BooleanSettingKey | NumberSettingKey;
+type OverridableSettingKey = BooleanSettingKey | NumberSettingKey | DropdownSettingKey;
 
 /**
  * Describes a boolean text editor setting offered as a toggle and a per-profile override.
@@ -191,6 +197,15 @@ export class TextEditorSettingsSection {
   ];
 
   /**
+   * Gets the options offered by the brace-style dropdown.
+   */
+  protected readonly braceStyleOptions: readonly DropdownOption[] = [
+    { value: 'kr', label: 'K&R' },
+    { value: 'allman', label: 'Allman' },
+    { value: 'gnu', label: 'GNU' },
+  ];
+
+  /**
    * Gets the language identifiers offered when assigning languages to a profile.
    */
   protected readonly languageOptions: readonly string[] = [
@@ -248,6 +263,14 @@ export class TextEditorSettingsSection {
     this.settings.updateTextEditorSettings({
       cursorSmoothCaretAnimation: value as CursorSmoothCaretAnimation,
     });
+  }
+
+  /**
+   * Sets the global brace placement style.
+   * @param value The selected brace style.
+   */
+  protected onBraceStyleChange(value: string): void {
+    this.settings.updateTextEditorSettings({ braceStyle: value as BraceStyle });
   }
 
   /**
@@ -377,6 +400,27 @@ export class TextEditorSettingsSection {
   ): void {
     this.settings.updateProfile(profile.id, {
       settings: { ...profile.settings, [key]: value },
+    });
+  }
+
+  /**
+   * Resolves the effective brace style for a profile, falling back to the global value when the
+   * profile does not override it.
+   * @param profile The profile to resolve for.
+   * @returns Returns the resolved brace style.
+   */
+  protected resolvedBraceStyle(profile: EditorProfile): BraceStyle {
+    return profile.settings.braceStyle ?? this.global().braceStyle;
+  }
+
+  /**
+   * Sets the overridden brace style for a profile.
+   * @param profile The profile to update.
+   * @param value The selected brace style.
+   */
+  protected onBraceStyleOverrideValue(profile: EditorProfile, value: string): void {
+    this.settings.updateProfile(profile.id, {
+      settings: { ...profile.settings, braceStyle: value as BraceStyle },
     });
   }
 }
