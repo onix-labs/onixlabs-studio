@@ -40,8 +40,8 @@
   color: var(--body-foreground-color);
   background: transparent;
   border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition:
     var(--hover-transition),

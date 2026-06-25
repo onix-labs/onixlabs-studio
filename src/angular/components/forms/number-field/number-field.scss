@@ -10,8 +10,8 @@
   color: inherit;
   background: var(--form-control-background-color);
   border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: 0.4rem;
-  corner-shape: squircle;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   transition: border-color 150ms ease-in-out;
 
   &:hover {

@@ -43,6 +43,10 @@ const studioApi: StudioApi = {
     electron: (): string => process.versions.electron,
   },
   platform: process.platform,
+  // Resolved synchronously at startup so the renderer can set its corner policy before the first
+  // paint (avoiding a squircle-to-round flash). The main process has already decided this from the
+  // active GPU by the time the window's preload runs.
+  forceRoundCorners: ipcRenderer.sendSync(IpcChannel.AppGetForceRoundCorners) === true,
   windowControls: {
     minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
     toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),

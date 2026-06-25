@@ -37,6 +37,13 @@ export enum IpcChannel {
   AppConfirmClose = 'app:confirm-close',
 
   /**
+   * Synchronously reports whether the renderer should force plain rounded corners instead of the
+   * GPU-rasterized squircle corners. The main process decides this from the active GPU (squircle
+   * corner masks corrupt borders on some GPUs, notably the Intel UHD 630). Read once at startup.
+   */
+  AppGetForceRoundCorners = 'app:get-force-round-corners',
+
+  /**
    * Requests that a new pseudo-terminal session be spawned.
    */
   TerminalCreate = 'terminal:create',

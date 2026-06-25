@@ -4,8 +4,8 @@
 
 .accordion {
   border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   overflow: hidden;
 }
 

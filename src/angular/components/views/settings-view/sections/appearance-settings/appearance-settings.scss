@@ -4,8 +4,8 @@
   padding: 0.2rem;
   background: var(--settings-control-background-color);
   border: 0.0625rem solid var(--settings-border-color);
-  border-radius: 0.625rem;
-  corner-shape: squircle;
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .segmented__option {
@@ -18,8 +18,8 @@
   color: var(--settings-muted-foreground-color);
   background: transparent;
   border: none;
-  border-radius: 0.45rem;
-  corner-shape: squircle;
+  border-radius: calc(0.45rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 
@@ -59,8 +59,8 @@
   block-size: 1.5rem;
   padding: 0;
   border: 0.0625rem solid rgba(0, 0, 0, 0.2);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: transform 120ms ease-in-out;
 

@@ -1,4 +1,23 @@
+// Corner-shape feature gate. Every `corner-shape` declaration in the app resolves
+// `var(--app-corner-shape, <its own default>)`, so leaving this variable unset preserves each
+// element's intended squircle/superellipse corner. GPU rasterization of those superellipse corner
+// masks corrupts box borders/edges on some GPUs (notably the Intel UHD 630 under fractional Retina
+// scaling). Setting --app-corner-shape to `round` falls every corner back to a plain rounded
+// rectangle app-wide. Toggle at runtime by adding data-corners="round" to the <html> element.
+//
+// --border-radius-multiplier scales every radius in the app (each `border-radius` is authored as
+// `calc(<value> * var(--border-radius-multiplier))`, and the radius tokens below are scaled at
+// definition). A plain rounded corner reads "fuller" than a squircle at the same radius, so the
+// round-corner fallback tightens the radii to keep the visual weight close. Tune the single value
+// below to taste.
+:root[data-corners='round'] {
+  --app-corner-shape: round;
+  --border-radius-multiplier: 0.5;
+}
+
 :root {
+  --border-radius-multiplier: 1;
+
   --font-sans:
     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell,
     'Noto Sans', 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
@@ -55,7 +74,7 @@
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
-  --dock-panel-radius: 0.5rem;
+  --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));
 
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;

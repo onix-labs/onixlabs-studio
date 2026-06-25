@@ -70,7 +70,7 @@
     var(--form-track-color) var(--ra-fill, 0%),
     var(--form-track-color) 100%
   );
-  border-radius: 0.25rem;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
   cursor: pointer;
 
   &::-webkit-slider-thumb {
@@ -126,8 +126,8 @@
   color: var(--welcome-muted-foreground-color);
   background: transparent;
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: 0.375rem;
-  corner-shape: squircle;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition: var(--hover-transition);
 

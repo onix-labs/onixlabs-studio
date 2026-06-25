@@ -1,5 +1,5 @@
 :host {
-  --title-strip-tab-border-radius: 10px;
+  --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
 
   display: contents;
 
@@ -20,7 +20,7 @@
     border: 0.0625rem solid transparent;
     border-block-end: none;
     border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
-    corner-shape: squircle;
+    corner-shape: var(--app-corner-shape, squircle);
     transition:
       var(--hover-transition),
       transform 200ms cubic-bezier(0, 0, 0.2, 1);
@@ -64,7 +64,7 @@
         bottom: 0;
         background: var(--title-strip-tab-background-color--active);
         mask: none;
-        corner-shape: superellipse(-2.3);
+        corner-shape: var(--app-corner-shape, superellipse(-2.3));
       }
 
       &::before {
@@ -141,8 +141,8 @@
       background: var(--title-strip-tab-close-button-background-color);
       color: var(--title-strip-tab-close-button-foreground-color);
       border: none;
-      border-radius: 0.5rem;
-      corner-shape: squircle;
+      border-radius: calc(0.5rem * var(--border-radius-multiplier));
+      corner-shape: var(--app-corner-shape, squircle);
       transition: var(--hover-transition);
 
       &:hover {

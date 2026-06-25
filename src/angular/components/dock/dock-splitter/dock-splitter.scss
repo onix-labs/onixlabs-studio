@@ -4,7 +4,7 @@
   flex: 0 0 0.25rem;
   align-self: stretch;
   background: var(--dock-splitter-color);
-  border-radius: 0.125rem;
+  border-radius: calc(0.125rem * var(--border-radius-multiplier));
   transition: var(--hover-transition);
   z-index: 5;
 

@@ -8,7 +8,7 @@
 // The radius is redeclared here because the chip is rendered on <body>, outside the tab component
 // whose :host defines it.
 .tab-chip {
-  --title-strip-tab-border-radius: 10px;
+  --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
 
   position: relative;
   // CDK renders the preview as a popover, whose UA style is `overflow: auto`. That would clip the
@@ -29,7 +29,7 @@
   border: 0.0625rem solid var(--title-strip-border-color);
   border-block-end: none;
   border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
-  corner-shape: squircle;
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: grabbing;
 
   // The reverse curves that flare the chip's bottom corners out to meet the rail, mirroring the
@@ -47,7 +47,7 @@
     bottom: 0;
     background: var(--title-strip-tab-background-color--active);
     mask: none;
-    corner-shape: superellipse(-2.3);
+    corner-shape: var(--app-corner-shape, superellipse(-2.3));
   }
 
   &::before {
@@ -100,8 +100,8 @@
     background: var(--title-strip-tab-close-button-background-color);
     color: var(--title-strip-tab-close-button-foreground-color--hover-over-tab);
     border: none;
-    border-radius: 0.5rem;
-    corner-shape: squircle;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
   }
 }
 

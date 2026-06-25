@@ -44,16 +44,16 @@
   inline-size: 2rem;
   color: var(--accent-color);
   background: var(--agent-view-surface-color);
-  border-radius: 0.6rem;
-  corner-shape: squircle;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .agent__bubble {
   margin: 0;
   padding: 0.7rem 0.9rem;
   background: var(--agent-view-surface-color);
-  border-radius: 0.75rem;
-  corner-shape: squircle;
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   line-height: 1.5;
   // Agent output is reference material; let the user select it despite the global selection lock.
   user-select: text;
@@ -84,8 +84,8 @@
   padding: 0.35rem 0.6rem;
   font-size: 0.85rem;
   background: var(--agent-view-surface-color);
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 
   &--error {
     color: var(--warning-color, #e0a030);
@@ -118,8 +118,8 @@
   padding: 0.8rem 1rem;
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--accent-color);
-  border-radius: 0.6rem;
-  corner-shape: squircle;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .agent__permission-text {
@@ -150,8 +150,8 @@
   color: var(--gray-100);
   background: var(--accent-color);
   border: none;
-  border-radius: 0.5rem;
-  corner-shape: squircle;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
 
   &--ghost {
@@ -197,8 +197,8 @@
   color: var(--body-foreground-color);
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: 0.6rem;
-  corner-shape: squircle;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   resize: none;
 
   &:focus-visible {
@@ -221,8 +221,8 @@
   color: var(--gray-100);
   background: var(--accent-color);
   border: none;
-  border-radius: 0.6rem;
-  corner-shape: squircle;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
 
   &:disabled {
@@ -246,7 +246,7 @@
     padding: 0.6rem 0.8rem;
     overflow: auto;
     background: var(--body-background-color);
-    border-radius: 0.5rem;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
   }
 
   code {

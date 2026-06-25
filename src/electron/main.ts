@@ -61,6 +61,19 @@ class Program {
   private static readonly CLOSE_CONFIRM_TIMEOUT_MS: number = 30_000;
 
   /**
+   * Holds the PCI vendor identifier for Intel GPUs. The active GPU's vendor decides the corner-shape
+   * policy: Intel integrated GPUs (notably the UHD 630) corrupt the GPU-rasterized squircle corner
+   * masks the UI uses, so the renderer falls back to plain rounded corners on them.
+   */
+  private static readonly INTEL_GPU_VENDOR_ID: number = 0x8086;
+
+  /**
+   * Holds how long (ms) to wait for GPU information before giving up and assuming a non-Intel GPU, so
+   * a slow or stalled GPU process can never block window creation.
+   */
+  private static readonly GPU_INFO_TIMEOUT_MS: number = 3_000;
+
+  /**
    * Holds the main application window, or null before it is created or after it is closed.
    */
   private window: BrowserWindow | null = null;
@@ -76,6 +89,13 @@ class Program {
    * window-close and before-quit paths share a single prompt rather than each starting their own.
    */
   private confirming: boolean = false;
+
+  /**
+   * Holds whether the renderer should force plain rounded corners instead of the GPU-rasterized
+   * squircle corners. Resolved from the active GPU (or the STUDIO_CORNERS override) at startup,
+   * before the window is created, and reported synchronously to the preload on request.
+   */
+  private forceRoundCorners: boolean = false;
 
   /**
    * Holds the resolver for the in-flight close request, or null when none is pending.
@@ -175,13 +195,22 @@ class Program {
    * Initializes the current Program instance.
    */
   private initialize(): void {
-    // DIAGNOSTIC: launch with STUDIO_DISABLE_GPU=1 to disable GPU hardware acceleration, forcing
-    // software (CPU) rasterization. Used to confirm machine-specific GPU rendering artifacts (e.g.
-    // jagged squircle/box-shadow edges on the welcome panel under fractional display scaling on the
-    // Intel UHD 630). Must be called before app.whenReady(). Remove once the cause is confirmed.
+    // DIAGNOSTIC: two escape hatches for machine-specific GPU rendering artifacts (e.g. corrupted
+    // right/bottom borders and jagged squircle/box-shadow edges on the welcome panel under fractional
+    // display scaling on the Intel UHD 630). Both must be set before app.whenReady().
+    //
+    //   STUDIO_DISABLE_GPU_RASTER=1 — keeps GPU compositing but moves rasterization to the CPU. This
+    //     is the lighter-touch fix: it targets the squircle/border raster artifacts directly while
+    //     retaining hardware-accelerated compositing. Try this first.
+    //   STUDIO_DISABLE_GPU=1 — disables hardware acceleration entirely (full software rendering). The
+    //     blunt instrument; use only to confirm the GPU is the cause.
+    if (process.env['STUDIO_DISABLE_GPU_RASTER'] === '1') {
+      app.commandLine.appendSwitch('disable-gpu-rasterization');
+      console.warn('[diagnostic] GPU rasterization disabled (STUDIO_DISABLE_GPU_RASTER=1)');
+    }
     if (process.env['STUDIO_DISABLE_GPU'] === '1') {
-      //app.disableHardwareAcceleration();
-      //console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
+      app.disableHardwareAcceleration();
+      console.warn('[diagnostic] GPU hardware acceleration disabled (STUDIO_DISABLE_GPU=1)');
     }
 
     // A privileged scheme must be declared before the app is ready, so the media protocol's scheme is
@@ -262,6 +291,11 @@ class Program {
 
     ipcMain.on(IpcChannel.AppConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);
+    });
+
+    ipcMain.on(IpcChannel.AppGetForceRoundCorners, (event: IpcMainEvent): void => {
+      // Synchronous: the policy was resolved before the window (and thus this preload) was created.
+      event.returnValue = this.forceRoundCorners;
     });
 
     ipcMain.handle(
@@ -364,8 +398,11 @@ class Program {
   /**
    * Handles the app whenReady event.
    */
-  private onReady(): void {
+  private async onReady(): Promise<void> {
     this.registerIpcHandlers();
+    // Resolve the corner-shape policy before the window exists, so the value is ready when the
+    // renderer's preload reads it synchronously (before the first paint).
+    await this.resolveCornerShapePolicy();
     this.createWindow();
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
@@ -373,6 +410,73 @@ class Program {
     // Tear down on will-quit (the final stage) rather than before-quit, so the renderer's save/confirm
     // round-trip runs against a fully-alive subsystem before anything is disposed.
     app.on('will-quit', (): void => this.disposeAll());
+  }
+
+  /**
+   * Resolves whether the renderer should force plain rounded corners. The STUDIO_CORNERS environment
+   * variable wins when set (`round` or `squircle`); otherwise the decision follows the active GPU,
+   * since some GPUs (notably the Intel UHD 630) corrupt the GPU-rasterized squircle corner masks the
+   * UI uses. Stored on the instance for the synchronous preload handler to read.
+   */
+  private async resolveCornerShapePolicy(): Promise<void> {
+    const override: string | undefined = process.env['STUDIO_CORNERS'];
+    if (override === 'round' || override === 'squircle') {
+      this.forceRoundCorners = override === 'round';
+      console.warn(`[diagnostic] corner shape forced to '${override}' (STUDIO_CORNERS)`);
+      return;
+    }
+    this.forceRoundCorners = await this.activeGpuIsIntel();
+    if (this.forceRoundCorners) {
+      console.warn('[diagnostic] Intel GPU detected; forcing plain rounded corners');
+    }
+  }
+
+  /**
+   * Determines whether the GPU currently driving the renderer is an Intel GPU. Prefers the device
+   * flagged active; when none is flagged (some drivers omit it), falls back to whether any Intel GPU
+   * is present, since Chromium renders on the integrated GPU by default on dual-GPU Macs. Resolves
+   * false on any error or timeout so detection can never block or crash startup.
+   * @returns Returns true when the active GPU is an Intel GPU.
+   */
+  private async activeGpuIsIntel(): Promise<boolean> {
+    try {
+      const info: { gpuDevice?: { active?: boolean; vendorId?: number }[] } | null =
+        await this.getGpuInfoWithTimeout();
+      const devices: { active?: boolean; vendorId?: number }[] = info?.gpuDevice ?? [];
+      if (devices.length === 0) {
+        return false;
+      }
+      const active: { active?: boolean; vendorId?: number } | undefined = devices.find(
+        (device: { active?: boolean }): boolean => device.active === true,
+      );
+      if (active !== undefined) {
+        return active.vendorId === Program.INTEL_GPU_VENDOR_ID;
+      }
+      return devices.some(
+        (device: { vendorId?: number }): boolean =>
+          device.vendorId === Program.INTEL_GPU_VENDOR_ID,
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fetches basic GPU information, racing it against a timeout so a slow or stalled GPU process can
+   * never wedge window creation. Resolves null when the timeout wins.
+   * @returns Returns the GPU information, or null on timeout.
+   */
+  private getGpuInfoWithTimeout(): Promise<{
+    gpuDevice?: { active?: boolean; vendorId?: number }[];
+  } | null> {
+    const gpuInfo: Promise<{ gpuDevice?: { active?: boolean; vendorId?: number }[] }> =
+      app.getGPUInfo('basic') as Promise<{
+        gpuDevice?: { active?: boolean; vendorId?: number }[];
+      }>;
+    const timeout: Promise<null> = new Promise<null>((resolve: (value: null) => void): void => {
+      setTimeout((): void => resolve(null), Program.GPU_INFO_TIMEOUT_MS);
+    });
+    return Promise.race([gpuInfo, timeout]);
   }
 
   /**

@@ -117,7 +117,7 @@
 .problems-source {
   margin-inline-end: 0.375rem;
   padding-inline: 0.25rem;
-  border-radius: 0.25rem;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
   background: var(--dock-title-background-color--focused);
 }
 

@@ -179,8 +179,8 @@ app-markdown-view .milkdown .ProseMirror {
     padding: 1rem !important;
     border: 1px solid var(--crepe-color-outline) !important;
     border-left-width: 0.25rem !important;
-    border-radius: 1rem !important;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier)) !important;
+    corner-shape: var(--app-corner-shape, squircle);
     background: var(--crepe-color-surface) !important;
 
     // Rendered as a boxed callout (like the GitHub alerts), so the default left accent bar is hidden.
@@ -223,8 +223,8 @@ app-markdown-view .milkdown .ProseMirror {
     width: 100%;
     margin: 1em 0;
     border: 1px solid var(--crepe-color-outline);
-    border-radius: 1rem;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     overflow: hidden;
   }
 
@@ -250,8 +250,8 @@ app-markdown-view .milkdown .ProseMirror {
   }
 
   .milkdown-code-block {
-    border-radius: 1rem;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     overflow: hidden;
 
     .cm-gutters {
@@ -274,7 +274,7 @@ app-markdown-view .milkdown .ProseMirror {
     background: var(--crepe-color-outline) !important;
     background-clip: border-box !important;
     border-radius: 9999px !important;
-    corner-shape: squircle;
+    corner-shape: var(--app-corner-shape, squircle);
     margin: 2em 0 !important;
   }
 
@@ -282,8 +282,8 @@ app-markdown-view .milkdown .ProseMirror {
     display: block;
     max-width: 100%;
     height: auto;
-    border-radius: 1rem;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     // Horizontal alignment is owned by the image-alignment classes on the editor wrapper (default
     // left); see the alignment rules below.
   }
@@ -295,8 +295,8 @@ app-markdown-view .milkdown .ProseMirror {
     padding-block: 0;
     padding-inline: 0.25rem;
     border: 1px solid var(--crepe-color-outline);
-    border-radius: 0.5rem;
-    corner-shape: squircle;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
   }
 
   .html-image-block {
@@ -322,16 +322,16 @@ app-markdown-view .milkdown .ProseMirror {
           display: inline-block;
           max-width: 100%;
           height: auto;
-          border-radius: 0.5em;
-          corner-shape: squircle;
+          border-radius: calc(0.5em * var(--border-radius-multiplier));
+          corner-shape: var(--app-corner-shape, squircle);
         }
       }
 
       &:hover {
         outline: 2px solid var(--crepe-color-primary);
         outline-offset: 4px;
-        border-radius: 4px;
-        corner-shape: squircle;
+        border-radius: calc(4px * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
       }
     }
 
@@ -348,8 +348,8 @@ app-markdown-view .milkdown .ProseMirror {
         caret-color: var(--crepe-color-on-surface);
         background: var(--crepe-color-surface);
         border: 1px solid var(--crepe-color-outline);
-        border-radius: 0.5em;
-        corner-shape: squircle;
+        border-radius: calc(0.5em * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
         resize: vertical;
         outline: none;
         box-sizing: border-box;
@@ -564,8 +564,8 @@ app-markdown-view .milkdown .ProseMirror {
     gap: 0.75rem;
     padding: 1rem;
     margin: 1rem 0;
-    border-radius: 1rem;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     border-width: 1px;
     border-left-width: 0.25rem;
     border-style: solid;
@@ -698,8 +698,8 @@ app-markdown-view .milkdown .ProseMirror {
     width: 0.9em;
     height: 0.9em;
     margin-right: 0.35em;
-    border-radius: 0.2em;
-    corner-shape: squircle;
+    border-radius: calc(0.2em * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     vertical-align: middle;
     background-image:
       linear-gradient(45deg, #ccc 25%, transparent 25%),
@@ -719,7 +719,7 @@ app-markdown-view .milkdown .ProseMirror {
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      corner-shape: squircle;
+      corner-shape: var(--app-corner-shape, squircle);
       background-color: inherit;
     }
   }
@@ -732,8 +732,8 @@ app-markdown-view .milkdown .ProseMirror {
 app-markdown-view .milkdown .ProseMirror {
   .mermaid-block {
     margin: 1em 0;
-    border-radius: 1rem;
-    corner-shape: squircle;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
     overflow: hidden;
 
     &.rendered {
@@ -762,8 +762,8 @@ app-markdown-view .milkdown .ProseMirror {
         color: var(--crepe-color-error);
         padding: 1em;
         background: rgba(239, 68, 68, 0.1);
-        border-radius: 0.25em;
-        corner-shape: squircle;
+        border-radius: calc(0.25em * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
       }
 
       &:hover {
@@ -785,8 +785,8 @@ app-markdown-view .milkdown .ProseMirror {
         caret-color: var(--crepe-color-on-surface);
         background: var(--crepe-color-surface);
         border: 1px solid var(--crepe-color-outline);
-        border-radius: 1rem;
-        corner-shape: squircle;
+        border-radius: calc(1rem * var(--border-radius-multiplier));
+        corner-shape: var(--app-corner-shape, squircle);
         resize: vertical;
         outline: none;
         box-sizing: border-box;
@@ -907,8 +907,8 @@ app-markdown-view .milkdown .ProseMirror .cdk-reorder-shift {
 app-markdown-view .milkdown .ProseMirror .cdk-reorder-dragged {
   background: rgb(var(--accent-color-rgb), 0.12) !important;
   border: 0.0625rem dashed var(--accent-color) !important;
-  border-radius: 1rem;
-  corner-shape: squircle;
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   transition: background 180ms ease;
 }
 

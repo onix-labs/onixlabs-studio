@@ -540,6 +540,14 @@ export interface StudioApi {
   readonly platform: string;
 
   /**
+   * Gets a value indicating whether the renderer should force plain rounded corners in place of the
+   * GPU-rasterized squircle corners. The main process sets this when the active GPU is known to
+   * corrupt squircle corner masks (notably the Intel UHD 630), or when overridden via the
+   * `STUDIO_CORNERS` environment variable. Resolved once at startup, before the first paint.
+   */
+  readonly forceRoundCorners: boolean;
+
+  /**
    * Gets the window control operations for the application window.
    */
   readonly windowControls: WindowControlsApi;
