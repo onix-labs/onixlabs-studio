@@ -18,14 +18,46 @@
   --code-view-splitter: var(--gray-700);
 }
 
+// The outer shell lays the editor-and-terminal area beside the optional agent panel, which always
+// docks to the side. The terminal keeps its own stacked/side-by-side arrangement within the area.
+.code-shell {
+  display: flex;
+  flex-direction: row;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
 .code-layout {
   display: flex;
   flex-direction: column;
-  inline-size: 100%;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
   block-size: 100%;
 
   &--side {
     flex-direction: row;
+  }
+}
+
+.code-shell__splitter {
+  flex: 0 0 0.375rem;
+  background: var(--code-view-splitter);
+  cursor: col-resize;
+
+  &--hidden {
+    display: none;
+  }
+}
+
+.code-shell__agent {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+
+  &--hidden {
+    display: none;
   }
 }
 

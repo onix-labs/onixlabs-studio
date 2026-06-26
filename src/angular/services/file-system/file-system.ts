@@ -41,10 +41,11 @@ export class FileSystem {
    * Writes contents to a file on disk.
    * @param path The absolute path to write to.
    * @param content The contents to write.
+   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark. Defaults to false.
    * @returns Returns the result describing success or failure.
    */
-  public write(path: string, content: string): Promise<FileWriteResult> {
-    return this.api?.write(path, content) ?? Promise.resolve(UNAVAILABLE_WRITE);
+  public write(path: string, content: string, hasBom: boolean = false): Promise<FileWriteResult> {
+    return this.api?.write(path, content, hasBom) ?? Promise.resolve(UNAVAILABLE_WRITE);
   }
 
   /**

@@ -583,7 +583,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         this.focusEditor();
       } else {
         if (this.commandHandler !== null) {
-          this.commands.unregister(this.commandHandler);
+          this.commands.deactivate(this.documentId());
           this.commandHandler = null;
         }
         this.unregisterReviewSession();
@@ -805,7 +805,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     this.closeMermaidEditor();
 
     if (this.commandHandler !== null) {
-      this.commands.unregister(this.commandHandler);
+      this.commands.forget(this.documentId());
       this.commandHandler = null;
     }
     this.unregisterReviewSession();
@@ -875,7 +875,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       replaceDocument: (markdown: string): void => this.replaceDocument(markdown),
     };
 
-    this.commands.register(this.commandHandler);
+    this.commands.register(this.documentId(), this.commandHandler);
   }
 
   /**

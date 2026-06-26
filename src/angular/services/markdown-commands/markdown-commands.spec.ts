@@ -52,13 +52,13 @@ describe('MarkdownCommands', () => {
   });
 
   it('register_whenHandlerRegistered_marksEditorActive', () => {
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.hasActiveEditor()).toBe(true);
   });
 
   it('toggleBold_whenHandlerRegistered_forwardsToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     commands.toggleBold();
     expect(calls.has('toggleBold')).toBe(true);
   });
@@ -69,7 +69,7 @@ describe('MarkdownCommands', () => {
 
   it('clipboardCommands_whenHandlerRegistered_forwardToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     commands.cut();
     commands.cutAsPlaintext();
     commands.copy();
@@ -98,7 +98,7 @@ describe('MarkdownCommands', () => {
 
   it('insertCommands_whenHandlerRegistered_forwardToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     commands.insertMarkdown('![](x)');
     commands.insertInlineMarkdown('[a](b)');
     commands.insertText('🙂');
@@ -118,7 +118,7 @@ describe('MarkdownCommands', () => {
 
   it('historyCommands_whenHandlerRegistered_forwardToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     commands.undo();
     commands.redo();
     expect(calls.has('undo')).toBe(true);
@@ -130,17 +130,29 @@ describe('MarkdownCommands', () => {
     expect((): void => commands.redo()).not.toThrow();
   });
 
-  it('unregister_whenHandlerMatches_clearsActiveEditor', () => {
+  it('deactivate_whenActiveDocument_clearsActiveEditor', () => {
     const handler: MarkdownCommandHandler = recordingHandler(new Set<string>());
-    commands.register(handler);
-    commands.unregister(handler);
+    commands.register('doc-1', handler);
+    commands.deactivate('doc-1');
     expect(commands.hasActiveEditor()).toBe(false);
   });
 
-  it('unregister_whenHandlerDiffers_keepsActiveEditor', () => {
-    commands.register(recordingHandler(new Set<string>()));
-    commands.unregister(recordingHandler(new Set<string>()));
+  it('deactivate_whenDifferentDocument_keepsActiveEditor', () => {
+    commands.register('doc-1', recordingHandler(new Set<string>()));
+    commands.deactivate('doc-2');
     expect(commands.hasActiveEditor()).toBe(true);
+  });
+
+  it('readDocument_readsTheGivenDocumentRegardlessOfWhichIsActive', () => {
+    commands.register('doc-1', recordingHandler(new Set<string>()));
+    commands.register('doc-2', recordingHandler(new Set<string>())); // doc-2 active
+    expect(commands.readDocument('doc-1')).toBe('# Document');
+  });
+
+  it('replaceDocument_whenDocumentForgotten_returnsFalse', () => {
+    commands.register('doc-1', recordingHandler(new Set<string>()));
+    commands.forget('doc-1');
+    expect(commands.replaceDocument('doc-1', '# New')).toBe(false);
   });
 
   it('setHistoryState_whenCalled_updatesCanUndoAndCanRedo', () => {
@@ -151,7 +163,7 @@ describe('MarkdownCommands', () => {
 
   it('register_whenHandlerRegistered_resetsHistoryState', () => {
     commands.setHistoryState(true, true);
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.canUndo()).toBe(false);
     expect(commands.canRedo()).toBe(false);
   });
@@ -164,13 +176,13 @@ describe('MarkdownCommands', () => {
 
   it('goToHeading_whenHandlerRegistered_forwardsToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     commands.goToHeading(12);
     expect(calls.has('goToHeading')).toBe(true);
   });
 
   it('readActiveDocument_whenHandlerRegistered_returnsTheLiveSource', () => {
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.readActiveDocument()).toBe('# Document');
   });
 
@@ -180,7 +192,7 @@ describe('MarkdownCommands', () => {
 
   it('replaceActiveDocument_whenHandlerRegistered_forwardsAndReportsTrue', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('doc-1', recordingHandler(calls));
     expect(commands.replaceActiveDocument('# New')).toBe(true);
     expect(calls.has('replaceDocument')).toBe(true);
   });
@@ -191,7 +203,7 @@ describe('MarkdownCommands', () => {
 
   it('register_whenHandlerRegistered_resetsOutline', () => {
     commands.setOutline([{ id: 'heading-1', level: 1, text: 'Intro', index: 0 }]);
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.outline().length).toBe(0);
   });
 
@@ -202,7 +214,7 @@ describe('MarkdownCommands', () => {
 
   it('register_whenHandlerRegistered_resetsActiveHeadingToZero', () => {
     commands.setActiveHeading(3);
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.activeHeadingIndex()).toBe(0);
   });
 
@@ -213,7 +225,7 @@ describe('MarkdownCommands', () => {
 
   it('register_whenHandlerRegistered_resetsActiveBlockTypeToParagraph', () => {
     commands.setActiveBlockType('heading-2');
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('doc-1', recordingHandler(new Set<string>()));
     expect(commands.activeBlockType()).toBe('paragraph');
   });
 });

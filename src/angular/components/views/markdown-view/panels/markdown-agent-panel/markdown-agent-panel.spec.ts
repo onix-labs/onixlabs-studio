@@ -13,6 +13,7 @@ describe('MarkdownAgentPanel', () => {
 
     fixture = TestBed.createComponent(MarkdownAgentPanel);
     component = fixture.componentInstance;
+    fixture.componentRef.setInput('documentId', 'doc-1');
     fixture.detectChanges();
   });
 

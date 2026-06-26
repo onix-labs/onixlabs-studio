@@ -51,13 +51,13 @@ describe('CodeCommands', () => {
   });
 
   it('register_whenHandlerRegistered_marksEditorActive', () => {
-    commands.register(recordingHandler(new Set<string>()));
+    commands.register('tab-1', recordingHandler(new Set<string>()));
     expect(commands.hasActiveEditor()).toBe(true);
   });
 
   it('formatDocument_whenHandlerRegistered_forwardsToHandler', () => {
     const calls: Set<string> = new Set<string>();
-    commands.register(recordingHandler(calls));
+    commands.register('tab-1', recordingHandler(calls));
     commands.formatDocument();
     expect(calls.has('formatDocument')).toBe(true);
   });
@@ -66,15 +66,44 @@ describe('CodeCommands', () => {
     expect((): void => commands.cut()).not.toThrow();
   });
 
-  it('unregister_whenHandlerMatches_clearsActiveEditor', () => {
-    const handler: CodeCommandHandler = recordingHandler(new Set<string>());
-    commands.register(handler);
-    commands.unregister(handler);
+  it('deactivate_whenActiveTab_clearsActiveEditor', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+    commands.deactivate('tab-1');
     expect(commands.hasActiveEditor()).toBe(false);
   });
 
+  it('readText_readsTheGivenTabsEditorRegardlessOfWhichIsActive', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'one'));
+    commands.register('tab-2', recordingHandler(new Set<string>(), 'two'));
+    // tab-2 registered last and is active, but the agent for tab-1 still reads tab-1.
+    expect(commands.readText('tab-1')).toBe('one');
+    expect(commands.readText('tab-2')).toBe('two');
+  });
+
+  it('replaceText_replacesTheGivenTabsEditor', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'old'));
+    expect(commands.replaceText('tab-1', 'new')).toBe(true);
+    expect(commands.readText('tab-1')).toBe('new');
+  });
+
+  it('replaceText_whenTabNotRegistered_returnsFalse', () => {
+    expect(commands.replaceText('missing', 'x')).toBe(false);
+  });
+
+  it('readText_whenTabDeactivated_stillReadsItsEditor', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'kept'));
+    commands.deactivate('tab-1');
+    expect(commands.readText('tab-1')).toBe('kept');
+  });
+
+  it('readText_whenTabForgotten_returnsNull', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'gone'));
+    commands.forget('tab-1');
+    expect(commands.readText('tab-1')).toBeNull();
+  });
+
   it('readActiveText_whenHandlerRegistered_returnsTheHandlerText', () => {
-    commands.register(recordingHandler(new Set<string>(), 'hello'));
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'hello'));
     expect(commands.readActiveText()).toBe('hello');
   });
 
@@ -83,7 +112,7 @@ describe('CodeCommands', () => {
   });
 
   it('replaceActiveText_whenHandlerRegistered_replacesAndReturnsTrue', () => {
-    commands.register(recordingHandler(new Set<string>(), 'old'));
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'old'));
     expect(commands.replaceActiveText('new')).toBe(true);
     expect(commands.readActiveText()).toBe('new');
   });
@@ -92,18 +121,16 @@ describe('CodeCommands', () => {
     expect(commands.replaceActiveText('x')).toBe(false);
   });
 
-  it('readActiveText_whenHandlerUnregistered_stillReadsTheLastHandler', () => {
-    const handler: CodeCommandHandler = recordingHandler(new Set<string>(), 'sticky');
-    commands.register(handler);
-    commands.unregister(handler);
+  it('readActiveText_whenTabDeactivated_stillReadsTheLastHandler', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'sticky'));
+    commands.deactivate('tab-1');
     expect(commands.hasActiveEditor()).toBe(false);
     expect(commands.readActiveText()).toBe('sticky');
   });
 
   it('readActiveText_whenHandlerForgotten_returnsNull', () => {
-    const handler: CodeCommandHandler = recordingHandler(new Set<string>(), 'gone');
-    commands.register(handler);
-    commands.forget(handler);
+    commands.register('tab-1', recordingHandler(new Set<string>(), 'gone'));
+    commands.forget('tab-1');
     expect(commands.readActiveText()).toBeNull();
   });
 });

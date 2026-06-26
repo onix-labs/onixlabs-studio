@@ -172,8 +172,10 @@ export class Agent implements AgentSessionHandle {
   /**
    * Sends a user message, starting a run. Blank messages and concurrent sends are ignored.
    * @param text The user's message.
+   * @param owningTabId The identifier of the editor tab hosting this agent, so its in-app editor
+   * tools act on that tab's editor; omitted for the standalone agent tab.
    */
-  public send(text: string): void {
+  public send(text: string, owningTabId?: string): void {
     const trimmed: string = text.trim();
     if (trimmed.length === 0 || this.busy()) {
       return;
@@ -185,6 +187,7 @@ export class Agent implements AgentSessionHandle {
       model: this.engine.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       tokenCap: this.settings.aiTokenCap(),
+      owningTabId,
     });
   }
 

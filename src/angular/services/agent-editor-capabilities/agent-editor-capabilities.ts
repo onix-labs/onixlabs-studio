@@ -58,18 +58,31 @@ export class AgentEditorCapabilities {
    * capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(READ_ACTIVE_DOCUMENT, (): ReadResult => this.readActive());
+    this.runtime.registerCapability(READ_ACTIVE_DOCUMENT, (input: unknown): ReadResult =>
+      this.readActive(input),
+    );
     this.runtime.registerCapability(REPLACE_ACTIVE_DOCUMENT, (input: unknown): ReplaceResult =>
       this.replaceActive(input),
     );
   }
 
   /**
-   * Reads the active editor's text, preferring the active markdown editor's live source (including
-   * unsaved edits) over the active code editor.
+   * Reads the editor's text. When the run carries an owning tab id, reads that tab's editor (markdown
+   * or code); otherwise (the standalone agent) falls back to the active markdown editor's live source,
+   * then the active code editor.
+   * @param input The capability input, carrying the owning `tabId`.
    * @returns Returns the {@link ReadResult}.
    */
-  private readActive(): ReadResult {
+  private readActive(input: unknown): ReadResult {
+    const tabId: string | null = this.extractTabId(input);
+    if (tabId !== null) {
+      const markdown: string | null = this.markdownCommands.readDocument(tabId);
+      if (markdown !== null) {
+        return { available: true, text: markdown };
+      }
+      const code: string | null = this.codeCommands.readText(tabId);
+      return code === null ? { available: false, text: '' } : { available: true, text: code };
+    }
     const markdown: string | null = this.markdownCommands.readActiveDocument();
     if (markdown !== null) {
       return { available: true, text: markdown };
@@ -79,8 +92,9 @@ export class AgentEditorCapabilities {
   }
 
   /**
-   * Replaces the active editor's text from a `{ text }` input, preferring the active markdown editor
-   * (the new text is parsed as markdown) over the active code editor.
+   * Replaces the editor's text from a `{ text, tabId }` input. When the run carries an owning tab id,
+   * replaces that tab's editor (markdown text is parsed as markdown); otherwise (the standalone agent)
+   * falls back to the active markdown editor, then the active code editor.
    * @param input The capability input.
    * @returns Returns the {@link ReplaceResult}.
    */
@@ -88,6 +102,13 @@ export class AgentEditorCapabilities {
     const text: string | null = this.extractText(input);
     if (text === null) {
       return { ok: false };
+    }
+    const tabId: string | null = this.extractTabId(input);
+    if (tabId !== null) {
+      if (this.markdownCommands.replaceDocument(tabId, text)) {
+        return { ok: true };
+      }
+      return { ok: this.codeCommands.replaceText(tabId, text) };
     }
     if (this.markdownCommands.replaceActiveDocument(text)) {
       return { ok: true };
@@ -101,10 +122,29 @@ export class AgentEditorCapabilities {
    * @returns Returns the text, or null when the input is malformed.
    */
   private extractText(input: unknown): string | null {
+    return this.extractString(input, 'text');
+  }
+
+  /**
+   * Extracts the owning `tabId` from a capability input, or null when absent (an unscoped run).
+   * @param input The capability input.
+   * @returns Returns the tab id, or null.
+   */
+  private extractTabId(input: unknown): string | null {
+    return this.extractString(input, 'tabId');
+  }
+
+  /**
+   * Extracts a string field from a capability input.
+   * @param input The capability input.
+   * @param key The field to read.
+   * @returns Returns the string value, or null when absent or malformed.
+   */
+  private extractString(input: unknown, key: string): string | null {
     if (input === null || typeof input !== 'object') {
       return null;
     }
-    const value: unknown = (input as Record<string, unknown>)['text'];
+    const value: unknown = (input as Record<string, unknown>)[key];
     return typeof value === 'string' ? value : null;
   }
 }

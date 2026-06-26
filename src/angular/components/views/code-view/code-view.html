@@ -1,20 +1,37 @@
-<div class="code-layout" [class.code-layout--side]="terminalLayout() === 'side-by-side'">
-  <div class="code-layout__editor">
-    <div #editorContainer class="editor-container"></div>
+<div class="code-shell">
+  <div class="code-layout" [class.code-layout--side]="terminalLayout() === 'side-by-side'">
+    <div class="code-layout__editor">
+      <div #editorContainer class="editor-container"></div>
+    </div>
+
+    @if (terminalMounted()) {
+      <div
+        class="code-layout__splitter"
+        [class.code-layout__splitter--hidden]="!terminalVisible()"
+        (mousedown)="onSplitterDown($event)"
+      ></div>
+      <div
+        class="code-layout__terminal"
+        [class.code-layout__terminal--hidden]="!terminalVisible()"
+        [style.flex-basis.px]="terminalSize()"
+      >
+        <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
+      </div>
+    }
   </div>
 
-  @if (terminalMounted()) {
+  @if (agentMounted()) {
     <div
-      class="code-layout__splitter"
-      [class.code-layout__splitter--hidden]="!terminalVisible()"
-      (mousedown)="onSplitterDown($event)"
+      class="code-shell__splitter"
+      [class.code-shell__splitter--hidden]="!agentVisible()"
+      (mousedown)="onAgentSplitterDown($event)"
     ></div>
     <div
-      class="code-layout__terminal"
-      [class.code-layout__terminal--hidden]="!terminalVisible()"
-      [style.flex-basis.px]="terminalSize()"
+      class="code-shell__agent"
+      [class.code-shell__agent--hidden]="!agentVisible()"
+      [style.flex-basis.px]="agentSize()"
     >
-      <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
+      <app-code-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
     </div>
   }
 </div>

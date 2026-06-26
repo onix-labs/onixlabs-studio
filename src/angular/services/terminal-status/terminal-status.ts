@@ -1,11 +1,22 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { StatusBar, StatusSegment } from '../status-bar/status-bar';
+import { StatusBar } from '../status-bar/status-bar';
 import { Icon } from '../../icons/icon';
 
 /**
  * Holds the identifier of the working-directory status segment.
  */
 const CWD_SEGMENT_ID: string = 'terminal-cwd';
+
+/**
+ * Holds the status-bar owner identifier for the terminal's contribution.
+ */
+const STATUS_OWNER: string = 'terminal';
+
+/**
+ * Holds the status-bar priority for the terminal, ordering its trailing working-directory segment
+ * after the code editor's cursor/encoding segments.
+ */
+const STATUS_PRIORITY: number = 20;
 
 /**
  * Publishes the active terminal's working directory to the status strip.
@@ -36,9 +47,15 @@ export class TerminalStatus {
   public constructor() {
     effect((): void => {
       const cwd: string | null = this.cwdSignal();
-      const segments: readonly StatusSegment[] =
-        cwd === null ? [] : [{ id: CWD_SEGMENT_ID, text: cwd, icon: Icon.FOLDER }];
-      this.statusBar.setTrailing(segments);
+      if (cwd === null) {
+        this.statusBar.clearOwner(STATUS_OWNER);
+        return;
+      }
+      this.statusBar.contribute(
+        STATUS_OWNER,
+        { leading: [], trailing: [{ id: CWD_SEGMENT_ID, text: cwd, icon: Icon.FOLDER }] },
+        STATUS_PRIORITY,
+      );
     });
   }
 

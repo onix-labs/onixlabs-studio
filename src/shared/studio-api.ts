@@ -205,9 +205,21 @@ export interface FileInfo {
   readonly extension: string;
 
   /**
-   * Gets the textual contents of the file.
+   * Gets the textual contents of the file, with any leading byte-order mark removed.
    */
   readonly content: string;
+
+  /**
+   * Gets the text encoding the file was read as (currently always "UTF-8"). Absent on file infos
+   * synthesised outside the read path, where the consumer assumes UTF-8.
+   */
+  readonly encoding?: string;
+
+  /**
+   * Gets a value indicating whether the file began with a UTF-8 byte-order mark, so it can be
+   * preserved when the file is written back. Absent (treated as false) on synthesised file infos.
+   */
+  readonly hasBom?: boolean;
 }
 
 /**
@@ -251,9 +263,10 @@ export interface FileApi {
    * Writes contents to a file on disk.
    * @param path The absolute path to write to.
    * @param content The contents to write.
+   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark. Defaults to false.
    * @returns Returns the result describing success or failure.
    */
-  write(path: string, content: string): Promise<FileWriteResult>;
+  write(path: string, content: string, hasBom?: boolean): Promise<FileWriteResult>;
 
   /**
    * Shows an open-file dialog and reads the chosen file.

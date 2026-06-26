@@ -18,6 +18,12 @@ export type CursorBlinkingStyle = 'blink' | 'smooth' | 'phase' | 'expand' | 'sol
 export type CursorSmoothCaretAnimation = 'off' | 'on' | 'explicit';
 
 /**
+ * Identifies the brace placement style the editor formats to: `kr` (K&R, opening brace on the same
+ * line), `allman` (opening brace on its own line), or `gnu` (opening brace on its own line, indented).
+ */
+export type BraceStyle = 'kr' | 'allman' | 'gnu';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -112,6 +118,11 @@ export interface TextEditorSettings {
    * Gets the editor font size, in pixels.
    */
   readonly fontSize: number;
+
+  /**
+   * Gets the brace placement style the editor formats to.
+   */
+  readonly braceStyle: BraceStyle;
 }
 
 /**
@@ -356,6 +367,7 @@ const DEFAULT_TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   tabSize: 2,
   fontFamily: 'JetBrains Mono',
   fontSize: 14,
+  braceStyle: 'kr',
 };
 
 /**
@@ -709,6 +721,7 @@ export class Settings {
       tabSize: profile.settings.tabSize ?? global.tabSize,
       fontFamily: profile.settings.fontFamily ?? global.fontFamily,
       fontSize: profile.settings.fontSize ?? global.fontSize,
+      braceStyle: profile.settings.braceStyle ?? global.braceStyle,
     };
   }
 

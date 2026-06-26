@@ -172,6 +172,12 @@ export interface AiRunRequest {
    * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).
    */
   readonly tokenCap: number;
+
+  /**
+   * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
+   * on that tab's editor; null when the run has no owning editor (the standalone agent tab).
+   */
+  readonly owningTabId: string | null;
 }
 
 /**

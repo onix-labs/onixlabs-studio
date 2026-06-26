@@ -87,7 +87,7 @@ describe('MarkdownRibbon', () => {
   it('undoButton_whenHistoryAvailable_undoes', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
-    commands.register(recordingHandler(inserted));
+    commands.register('doc-1', recordingHandler(inserted));
     commands.setHistoryState(true, false);
     fixture.detectChanges();
 
@@ -106,7 +106,7 @@ describe('MarkdownRibbon', () => {
   it('tableButton_whenClicked_insertsATable', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
-    commands.register(recordingHandler(inserted));
+    commands.register('doc-1', recordingHandler(inserted));
 
     smallButton('Table').click();
 
@@ -116,7 +116,7 @@ describe('MarkdownRibbon', () => {
   it('bulletsButton_whenClicked_insertsABulletedList', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
-    commands.register(recordingHandler(inserted));
+    commands.register('doc-1', recordingHandler(inserted));
 
     smallButton('Bullets').click();
 

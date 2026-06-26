@@ -130,7 +130,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           "Read the active editor document's full text.",
           {},
           async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-            content: [{ type: 'text', text: await readActiveDocument(context.bridge) }],
+            content: [{ type: 'text', text: await readActiveDocument(context) }],
           }),
         ),
         tool(
@@ -140,7 +140,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           async (args: {
             text: string;
           }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-            content: [{ type: 'text', text: await replaceActiveDocument(context.bridge, args.text) }],
+            content: [{ type: 'text', text: await replaceActiveDocument(context, args.text) }],
           }),
         ),
       ],

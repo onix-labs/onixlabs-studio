@@ -1,65 +1,120 @@
 import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
-import { StatusBar, StatusSegment } from '../status-bar/status-bar';
+import { StatusBar } from '../status-bar/status-bar';
 
 /**
- * Holds the identifier of the cursor-position status segment.
+ * Holds the status-bar owner identifier for the code editor's contribution.
  */
-const CURSOR_SEGMENT_ID: string = 'code-cursor';
+const STATUS_OWNER: string = 'code';
 
 /**
- * Describes a one-based cursor position within the editor.
+ * Holds the status-bar priority for the code editor, ordering its segments before the terminal's
+ * trailing working-directory segment.
  */
-export interface CursorPosition {
+const STATUS_PRIORITY: number = 10;
+
+/**
+ * Identifies the end-of-line sequence of the active document.
+ */
+export type EndOfLine = 'LF' | 'CRLF';
+
+/**
+ * Describes the contextual information the active code editor publishes to the status strip.
+ */
+export interface CodeContext {
   /**
-   * Gets the one-based line number.
+   * Gets the absolute file path, or null when the document is unsaved ("New Document").
+   */
+  readonly path: string | null;
+
+  /**
+   * Gets the one-based line number of the cursor.
    */
   readonly line: number;
 
   /**
-   * Gets the one-based column number.
+   * Gets the one-based column number of the cursor.
    */
   readonly column: number;
+
+  /**
+   * Gets the document's end-of-line sequence.
+   */
+  readonly eol: EndOfLine;
+
+  /**
+   * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
+   */
+  readonly encoding: string;
 }
 
 /**
- * Publishes the active code editor's cursor position to the status strip.
+ * Publishes the active code editor's context to the status strip.
  *
- * The active editor pushes its cursor position here; an effect projects it as a leading status
- * segment, clearing it when no code editor is active (the position is null). The leading slot is used
- * so the cursor position never collides with the terminal's trailing working-directory segment.
+ * The active editor pushes its context here; an effect projects the file path as a leading segment
+ * ("New Document" when unsaved) and the cursor position, line-ending and encoding as trailing
+ * segments, clearing the contribution when no code editor is active (the context is null).
  */
 @Service()
 export class CodeStatus {
   /**
-   * Holds the status bar the cursor position is published to.
+   * Holds the status bar the context is published to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
-   * Holds the active editor's cursor position, or null when no code editor is active.
+   * Holds the active editor's context and the tab that published it, or null when no code editor is
+   * active. The tab is tracked so a deactivating editor only clears the strip when it still owns it —
+   * never wiping out the editor that just became active.
    */
-  private readonly positionSignal: WritableSignal<CursorPosition | null> =
-    signal<CursorPosition | null>(null);
+  private readonly contextSignal: WritableSignal<{ tabId: string; context: CodeContext } | null> =
+    signal<{ tabId: string; context: CodeContext } | null>(null);
 
   /**
-   * Initializes the service, projecting the cursor position as a leading status segment.
+   * Initializes the service, projecting the context as leading and trailing status segments.
    */
   public constructor() {
     effect((): void => {
-      const position: CursorPosition | null = this.positionSignal();
-      const segments: readonly StatusSegment[] =
-        position === null
-          ? []
-          : [{ id: CURSOR_SEGMENT_ID, text: `Ln ${position.line}, Col ${position.column}` }];
-      this.statusBar.setLeading(segments);
+      const current: { tabId: string; context: CodeContext } | null = this.contextSignal();
+      if (current === null) {
+        this.statusBar.clearOwner(STATUS_OWNER);
+        return;
+      }
+      const context: CodeContext = current.context;
+      this.statusBar.contribute(
+        STATUS_OWNER,
+        {
+          leading: [
+            { id: 'code-path', text: context.path ?? 'New Document' },
+          ],
+          trailing: [
+            { id: 'code-line', text: `Ln ${context.line}` },
+            { id: 'code-col', text: `Col ${context.column}` },
+            { id: 'code-eol', text: context.eol },
+            { id: 'code-encoding', text: context.encoding },
+          ],
+        },
+        STATUS_PRIORITY,
+      );
     });
   }
 
   /**
-   * Sets the active editor's cursor position.
-   * @param position The cursor position, or null to clear it.
+   * Publishes the given tab's editor context as the active status.
+   * @param tabId The identifier of the publishing tab.
+   * @param context The editor context.
    */
-  public setPosition(position: CursorPosition | null): void {
-    this.positionSignal.set(position);
+  public publish(tabId: string, context: CodeContext): void {
+    this.contextSignal.set({ tabId, context });
+  }
+
+  /**
+   * Clears the status, but only when the given tab is the one currently shown, so a deactivating
+   * editor never wipes out the editor that just became active.
+   * @param tabId The identifier of the deactivating tab.
+   */
+  public clear(tabId: string): void {
+    if (this.contextSignal()?.tabId === tabId) {
+      this.contextSignal.set(null);
+    }
   }
 }

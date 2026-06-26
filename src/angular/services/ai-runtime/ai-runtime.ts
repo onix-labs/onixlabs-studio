@@ -39,6 +39,12 @@ export interface AiRunOptions {
    * Gets the per-request token budget, or 0 for the provider default (no cap).
    */
   readonly tokenCap?: number;
+
+  /**
+   * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
+   * on that tab's editor. Omitted for runs with no owning editor (the standalone agent tab).
+   */
+  readonly owningTabId?: string;
 }
 
 /**
@@ -111,6 +117,7 @@ export class AiRuntime {
       workspaceRoot: options.workspaceRoot ?? null,
       permissionPosture: options.permissionPosture ?? 'prompt',
       tokenCap: options.tokenCap ?? 0,
+      owningTabId: options.owningTabId ?? null,
     });
     return requestId;
   }

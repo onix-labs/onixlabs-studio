@@ -17,8 +17,9 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
+import { CodeAgents } from '../../../services/code-agents/code-agents';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
-import { CodeStatus } from '../../../services/code-status/code-status';
+import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
 import { Editors, RevealRequest } from '../../../services/editors/editors';
@@ -27,6 +28,7 @@ import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
 import { Theme } from '../../../services/theme/theme';
 import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
+import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
@@ -55,11 +57,26 @@ const MAX_TERMINAL_SIZE: number = 1600;
 const DEFAULT_TERMINAL_SIZE: number = 260;
 
 /**
+ * Holds the minimum size, in pixels, of the docked agent pane.
+ */
+const MIN_AGENT_SIZE: number = 240;
+
+/**
+ * Holds the maximum size, in pixels, of the docked agent pane.
+ */
+const MAX_AGENT_SIZE: number = 900;
+
+/**
+ * Holds the initial size, in pixels, of the docked agent pane.
+ */
+const DEFAULT_AGENT_SIZE: number = 360;
+
+/**
  * Represents the code editor view, hosting a Monaco editor bound to the owning tab's document.
  */
 @Component({
   selector: 'app-code-view',
-  imports: [CodeTerminalPanel],
+  imports: [CodeTerminalPanel, CodeAgentPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -104,9 +121,22 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
-   * Holds the cursor-position status publisher.
+   * Holds the code editor status publisher (path, cursor, line-ending, encoding).
    */
   private readonly codeStatus: CodeStatus = inject(CodeStatus);
+
+  /**
+   * Holds the editor's cursor position, or null when unknown, projected to the status strip.
+   */
+  private readonly caret: WritableSignal<{ line: number; column: number } | null> = signal<{
+    line: number;
+    column: number;
+  } | null>(null);
+
+  /**
+   * Holds the document's end-of-line sequence, projected to the status strip.
+   */
+  private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
 
   /**
    * Holds the code command registry the ribbon routes editor commands through.
@@ -117,6 +147,11 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the docked run-terminal panel state.
    */
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+
+  /**
+   * Holds the docked agent-panel state.
+   */
+  private readonly codeAgents: CodeAgents = inject(CodeAgents);
 
   /**
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
@@ -130,12 +165,17 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     signal<number>(DEFAULT_TERMINAL_SIZE);
 
   /**
+   * Holds the size, in pixels, of the docked agent pane.
+   */
+  private readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
+
+  /**
    * Holds the splitter drag origin (pointer coordinate at drag start).
    */
   private dragOrigin: number = 0;
 
   /**
-   * Holds the terminal pane size at the start of a splitter drag.
+   * Holds the pane size at the start of a splitter drag.
    */
   private dragOriginSize: number = 0;
 
@@ -293,17 +333,37 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         this.registerCommandHandler();
         this.documents.setActiveDocument(this.tabId());
         const position: MonacoApi.Position | null = editor.getPosition();
-        this.codeStatus.setPosition(
+        this.caret.set(
           position === null ? null : { line: position.lineNumber, column: position.column },
         );
+        this.eol.set(this.readEol());
         editor.focus();
       } else {
         if (this.commandHandler !== null) {
-          this.codeCommands.unregister(this.commandHandler);
+          this.codeCommands.deactivate(this.tabId());
           this.commandHandler = null;
         }
-        this.codeStatus.setPosition(null);
       }
+    });
+
+    // Publish the active editor's context (path, cursor, line-ending, encoding) to the status strip.
+    // Reads the document's path/encoding signals so it refreshes on save and rename, and the local
+    // caret/eol signals fed by the editor's cursor and content listeners. Clears when not active.
+    effect((): void => {
+      const document: CodeDocument | null = this.document();
+      const caret: { line: number; column: number } | null = this.caret();
+      if (!this.isActive() || document === null || caret === null) {
+        this.codeStatus.clear(this.tabId());
+        return;
+      }
+      const encoding: string = document.encoding();
+      this.codeStatus.publish(this.tabId(), {
+        path: document.filePath(),
+        line: caret.line,
+        column: caret.column,
+        eol: this.eol(),
+        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+      });
     });
 
     // Keep this editor registered against its document, so global Monaco diagnostics resolve to a
@@ -396,6 +456,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.lsp.closeDocument(this.tabId());
       this.documents.remove(this.tabId());
       this.codeTerminals.remove(this.tabId());
+      this.codeAgents.remove(this.tabId());
     }
   }
 
@@ -459,6 +520,65 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
+   * Gets a value indicating whether the docked agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.codeAgents.isMounted(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected agentVisible(): boolean {
+    return this.codeAgents.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets the size, in pixels, of the docked agent pane.
+   * @returns Returns the agent pane size.
+   */
+  protected agentSize(): number {
+    return this.agentSizeSignal();
+  }
+
+  /**
+   * Begins a splitter drag that resizes the docked agent pane. The agent always docks to the right,
+   * so the drag is horizontal: moving the splitter left widens the agent.
+   * @param event The originating pointer event.
+   */
+  protected onAgentSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.dragOrigin = event.clientX;
+    this.dragOriginSize = this.agentSizeSignal();
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = this.dragOrigin - move.clientX;
+      const next: number = Math.min(
+        MAX_AGENT_SIZE,
+        Math.max(MIN_AGENT_SIZE, this.dragOriginSize + delta),
+      );
+      this.agentSizeSignal.set(next);
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /**
+   * Reads the editor model's end-of-line sequence for the status strip.
+   * @returns Returns 'CRLF' when the model uses CRLF, otherwise 'LF'.
+   */
+  private readEol(): EndOfLine {
+    // getEOL returns the model's actual end-of-line string ('\n' or '\r\n').
+    return this.editor?.getModel()?.getEOL() === '\r\n' ? 'CRLF' : 'LF';
+  }
+
+  /**
    * Creates the Monaco editor for the backing document.
    */
   private createEditor(): void {
@@ -478,7 +598,15 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;
 
+    // Seed the status caret and line-ending before any cursor moves, so they are correct on first show.
+    const seed: MonacoApi.Position | null = this.editor.getPosition();
+    this.caret.set(seed === null ? { line: 1, column: 1 } : { line: seed.lineNumber, column: seed.column });
+    this.eol.set(this.readEol());
+
     this.editor.onDidChangeModelContent((): void => {
+      // The end-of-line sequence can change with content (for example a "Change EOL" edit), so refresh
+      // it here; it is cheap and keeps the status strip accurate.
+      this.eol.set(this.readEol());
       if (this.ignoreNextChange) {
         this.ignoreNextChange = false;
         return;
@@ -488,13 +616,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
 
     this.editor.onDidChangeCursorPosition(
       (event: MonacoApi.editor.ICursorPositionChangedEvent): void => {
-        if (!this.isActive()) {
-          return;
-        }
-        this.codeStatus.setPosition({
-          line: event.position.lineNumber,
-          column: event.position.column,
-        });
+        this.caret.set({ line: event.position.lineNumber, column: event.position.column });
       },
     );
 
@@ -519,7 +641,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.changeMargin = null;
     }
     if (this.commandHandler !== null) {
-      this.codeCommands.forget(this.commandHandler);
+      this.codeCommands.forget(this.tabId());
       this.commandHandler = null;
     }
     if (this.modelUri !== null) {
@@ -556,7 +678,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       replaceText: (text: string): void => this.replaceAll(editor, text),
     };
 
-    this.codeCommands.register(this.commandHandler);
+    this.codeCommands.register(this.tabId(), this.commandHandler);
   }
 
   /**

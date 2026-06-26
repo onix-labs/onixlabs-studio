@@ -18,6 +18,11 @@ const UNTITLED_NAME: string = 'Untitled';
 const DEFAULT_LANGUAGE: string = 'plaintext';
 
 /**
+ * Holds the encoding label assumed for a new, unsaved document.
+ */
+const DEFAULT_ENCODING: string = 'UTF-8';
+
+/**
  * Represents the reactive state of a code document backing a code tab.
  */
 export interface CodeDocument {
@@ -56,6 +61,16 @@ export interface CodeDocument {
    * Gets a value indicating whether the content differs from the last-saved content.
    */
   readonly dirty: Signal<boolean>;
+
+  /**
+   * Gets the text encoding label (for example "UTF-8").
+   */
+  readonly encoding: Signal<string>;
+
+  /**
+   * Gets a value indicating whether the file is, or will be saved, with a UTF-8 byte-order mark.
+   */
+  readonly hasBom: Signal<boolean>;
 }
 
 /**
@@ -106,6 +121,16 @@ interface DocumentEntry {
    * Gets the writable last-saved content.
    */
   readonly original: WritableSignal<string>;
+
+  /**
+   * Gets the writable text encoding label.
+   */
+  readonly encoding: WritableSignal<string>;
+
+  /**
+   * Gets the writable byte-order-mark flag.
+   */
+  readonly hasBom: WritableSignal<boolean>;
 
   /**
    * Holds the disposer that stops watching this document's file on disk, or null when not watched.
@@ -315,6 +340,8 @@ export class Documents {
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
+    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(id);
     this.watchEntry(id);
   }
@@ -345,6 +372,8 @@ export class Documents {
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
+    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(tab.id);
     this.watchEntry(tab.id);
     // syncTab renamed the tab to the file name; return the up-to-date tab, not the pre-rename one.
@@ -379,6 +408,8 @@ export class Documents {
     entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
+    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.hasBom.set(fileInfo.hasBom ?? false);
     this.watchEntry(id);
     return id;
   }
@@ -461,7 +492,8 @@ export class Documents {
       return this.saveAs(id);
     }
     const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(filePath, content)).success;
+    const success: boolean = (await this.fileSystem.write(filePath, content, entry.hasBom()))
+      .success;
     if (success) {
       entry.original.set(content);
       this.syncTab(id);
@@ -485,7 +517,8 @@ export class Documents {
       return false;
     }
     const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(targetPath, content)).success;
+    const success: boolean = (await this.fileSystem.write(targetPath, content, entry.hasBom()))
+      .success;
     if (success) {
       entry.filePath.set(targetPath);
       entry.fileName.set(this.basename(targetPath));
@@ -509,6 +542,8 @@ export class Documents {
     const language: WritableSignal<string> = signal<string>(DEFAULT_LANGUAGE);
     const content: WritableSignal<string> = signal<string>('');
     const original: WritableSignal<string> = signal<string>('');
+    const encoding: WritableSignal<string> = signal<string>(DEFAULT_ENCODING);
+    const hasBom: WritableSignal<boolean> = signal<boolean>(false);
     const dirty: Signal<boolean> = computed((): boolean => content() !== original());
     const document: CodeDocument = {
       id,
@@ -518,8 +553,20 @@ export class Documents {
       content: content.asReadonly(),
       savedContent: original.asReadonly(),
       dirty,
+      encoding: encoding.asReadonly(),
+      hasBom: hasBom.asReadonly(),
     };
-    return { document, filePath, fileName, language, content, original, watchDisposer: null };
+    return {
+      document,
+      filePath,
+      fileName,
+      language,
+      content,
+      original,
+      encoding,
+      hasBom,
+      watchDisposer: null,
+    };
   }
 
   /**
