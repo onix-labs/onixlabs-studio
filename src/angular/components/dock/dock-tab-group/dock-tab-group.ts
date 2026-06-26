@@ -7,11 +7,15 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   ElementRef,
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  viewChild,
+  WritableSignal,
 } from '@angular/core';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
@@ -61,6 +65,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     '[class.dock-tab-group--documents]': 'isDocuments()',
     '[class.dock-tab-group--tool]': '!isDocuments()',
     '[class.dock-tab-group--focused]': 'isFocused()',
+    '[class.dock-tab-group--tabs-fill]': 'tabsFill()',
     '(mousedown)': 'focusPanel()',
   },
 })
@@ -111,6 +116,26 @@ export class DockTabGroup {
   private readonly hostElement: ElementRef<HTMLElement> = inject(
     ElementRef,
   ) as ElementRef<HTMLElement>;
+
+  /**
+   * Holds the tab strip element, measured to decide when the tabs should fill the strip.
+   */
+  private readonly tabstrip: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('tabstrip');
+
+  /**
+   * Holds whether the tabs should fill the strip (their natural width is within the fill threshold of
+   * the strip's width), as opposed to staying content-sized with free space at the end.
+   */
+  private readonly tabsFillSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the tabs fill the strip. Tabs stay content-sized until their
+   * natural width comes within ~1rem of the strip's width, then flip to grow and share it (so the last
+   * tab reaches the end edge and the end-corner merge applies). Tool stacks only; a document well's
+   * strip ends with its picker controls.
+   */
+  protected readonly tabsFill: Signal<boolean> = this.tabsFillSignal.asReadonly();
 
   /**
    * Gets the stack this group renders.
@@ -201,11 +226,65 @@ export class DockTabGroup {
    * Registers and unregisters this group with the geometry registry across its lifetime.
    */
   public constructor() {
+    const destroyRef: DestroyRef = inject(DestroyRef);
+
     afterNextRender((): void => {
       const stack: StackNode = this.stack();
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
+
+      // Re-measure whenever the strip is resized (the panel narrows or widens).
+      const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
+      if (strip !== undefined && typeof ResizeObserver !== 'undefined') {
+        const observer: ResizeObserver = new ResizeObserver((): void => this.measureTabsFill());
+        observer.observe(strip);
+        destroyRef.onDestroy((): void => observer.disconnect());
+      }
+      this.measureTabsFill();
     });
-    inject(DestroyRef).onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+
+    destroyRef.onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+
+    // Re-measure after the tab set changes (open/close/reorder/rename), once the DOM has settled.
+    effect((): void => {
+      this.panels();
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame((): void => this.measureTabsFill());
+      }
+    });
+  }
+
+  /**
+   * Measures whether the tabs should fill the strip and updates the flag that flips them from
+   * content-sized to filling (and gates the end-corner merge). The last tab's end position is read
+   * with the tabs forced back to their content size (via the `data-measuring` attribute) so the result
+   * does not depend on whether they are currently filling — otherwise a filled strip would always
+   * re-measure as full and never relax back. The attribute is set and cleared within this synchronous
+   * pass, so it never paints. Only tool stacks qualify; a document well's strip ends with its picker
+   * controls, so its last tab never meets the edge.
+   */
+  private measureTabsFill(): void {
+    const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
+    if (strip === undefined || this.isDocuments()) {
+      this.tabsFillSignal.set(false);
+      return;
+    }
+
+    const tabs: NodeListOf<HTMLElement> = strip.querySelectorAll<HTMLElement>('.dock-tab');
+    const last: HTMLElement | null = tabs.item(tabs.length - 1);
+    if (last === null) {
+      this.tabsFillSignal.set(false);
+      return;
+    }
+
+    strip.setAttribute('data-measuring', '');
+    const stripRight: number = strip.getBoundingClientRect().right;
+    const lastTabRight: number = last.getBoundingClientRect().right;
+    strip.removeAttribute('data-measuring');
+
+    // Fill once the content-sized tabs come within the threshold of the strip's end edge (or already
+    // overflow it, in which case they shrink to fit and reach the end anyway).
+    const FILL_THRESHOLD_PX: number = 16; // ~1rem
+    this.tabsFillSignal.set(stripRight - lastTabRight <= FILL_THRESHOLD_PX);
   }
 
   /**

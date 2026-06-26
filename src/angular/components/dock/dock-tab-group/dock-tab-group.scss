@@ -390,6 +390,49 @@
   border-end-start-radius: 0;
 }
 
+// Hybrid sizing. Tabs are content-sized (structural `flex: 0 0 auto`) until their natural width comes
+// within ~1rem of filling the strip, at which point the component sets `--tabs-fill` and they flip to
+// grow and share the strip's width (and shrink with an ellipsis once they would overflow). This makes
+// the last tab meet the panel's end edge so the end-corner merge below applies; below the threshold
+// nothing here is in effect, so the strip looks exactly as it did before.
+:host(.dock-tab-group--tool.dock-tab-group--tabs-fill) {
+  .dock-tab {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  // Only the label gives way when a filled tab is squeezed; the icon keeps its size.
+  .dock-tab__label {
+    min-inline-size: 0;
+  }
+
+  .dock-tab__icon {
+    flex: none;
+  }
+}
+
+// While the component measures the tabs' natural width it forces them back to their content size
+// (overriding the fill above) so it can read the last tab's true end position regardless of whether
+// the tabs are currently filling. This attribute is set and cleared within one synchronous pass, so
+// it never paints.
+.dock-tab-group__tabstrip[data-measuring] .dock-tab {
+  flex: 0 0 auto !important;
+}
+
+// Mirror of the first-child rule for the end edge, but only while the tabs fill the strip (so the last
+// tab actually reaches the end edge). Square the body's bottom-end corner — which would otherwise curl
+// inward, away from the tab — and drop the tab's outward end foot so its end border continues straight
+// up into the panel's side border. Below the fill threshold the panel keeps its rounded end corner and
+// the tab keeps its concave end foot.
+:host(.dock-tab-group--tool.dock-tab-group--tabs-fill):has(.dock-tab--active:last-child)
+  .dock-tab-group__body {
+  border-end-end-radius: 0;
+}
+
+:host(.dock-tab-group--tool.dock-tab-group--tabs-fill) .dock-tab--active:last-child::after {
+  display: none;
+}
+
 :host(.dock-tab-group--tool) .dock-tab {
   border-block-start: none;
   border-radius: 0 0 var(--dock-panel-radius) var(--dock-panel-radius);
