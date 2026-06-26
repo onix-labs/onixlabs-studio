@@ -93,13 +93,13 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
     [READ_ACTIVE_DOCUMENT]: tool({
       description: "Read the active editor document's full text.",
       inputSchema: z.object({}),
-      execute: (): Promise<string> => readActiveDocument(context.bridge),
+      execute: (): Promise<string> => readActiveDocument(context),
     }),
     [REPLACE_ACTIVE_DOCUMENT]: tool({
       description: "Replace the active editor document's entire text.",
       inputSchema: z.object({ text: z.string().describe('The new full text of the document.') }),
       execute: (args: { text: string }): Promise<string> =>
-        replaceActiveDocument(context.bridge, args.text),
+        replaceActiveDocument(context, args.text),
     }),
   };
 }

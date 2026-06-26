@@ -137,7 +137,7 @@ export class AgentChat {
     if (text.trim().length === 0) {
       return;
     }
-    this.agent.send(text);
+    this.agent.send(text, this.tabId());
     this.draftText.set('');
   }
 

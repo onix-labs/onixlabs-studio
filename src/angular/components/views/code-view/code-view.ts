@@ -340,7 +340,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
         editor.focus();
       } else {
         if (this.commandHandler !== null) {
-          this.codeCommands.unregister(this.commandHandler);
+          this.codeCommands.deactivate(this.tabId());
           this.commandHandler = null;
         }
       }
@@ -641,7 +641,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.changeMargin = null;
     }
     if (this.commandHandler !== null) {
-      this.codeCommands.forget(this.commandHandler);
+      this.codeCommands.forget(this.tabId());
       this.commandHandler = null;
     }
     if (this.modelUri !== null) {
@@ -678,7 +678,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       replaceText: (text: string): void => this.replaceAll(editor, text),
     };
 
-    this.codeCommands.register(this.commandHandler);
+    this.codeCommands.register(this.tabId(), this.commandHandler);
   }
 
   /**

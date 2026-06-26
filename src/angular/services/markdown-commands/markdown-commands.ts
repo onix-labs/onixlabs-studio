@@ -203,7 +203,22 @@ export interface MarkdownCommandHandler {
 @Service()
 export class MarkdownCommands {
   /**
+   * Holds every live markdown editor's command handler, keyed by document id, so the agent — docked
+   * to a specific document — can act on that document's editor even when another is active.
+   */
+  private readonly handlers: Map<string, MarkdownCommandHandler> = new Map<
+    string,
+    MarkdownCommandHandler
+  >();
+
+  /**
+   * Holds the id of the active editor's document, or null when no markdown editor is active.
+   */
+  private activeId: string | null = null;
+
+  /**
    * Holds the active markdown editor's command handler, or null when no markdown editor is active.
+   * Drives the ribbon commands and the mirrored selection/history/outline state.
    */
   private readonly handler: WritableSignal<MarkdownCommandHandler | null> =
     signal<MarkdownCommandHandler | null>(null);
@@ -272,10 +287,14 @@ export class MarkdownCommands {
   public readonly activeHeadingIndex: Signal<number> = this.activeHeadingSignal.asReadonly();
 
   /**
-   * Registers the active markdown editor's command handler, resetting the tracked block type.
+   * Registers a markdown editor's command handler under its document id, marking it the active editor
+   * and resetting the tracked block type.
+   * @param id The owning document identifier.
    * @param handler The handler to register.
    */
-  public register(handler: MarkdownCommandHandler): void {
+  public register(id: string, handler: MarkdownCommandHandler): void {
+    this.handlers.set(id, handler);
+    this.activeId = id;
     this.handler.set(handler);
     this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
     this.canUndoSignal.set(false);
@@ -285,17 +304,38 @@ export class MarkdownCommands {
   }
 
   /**
-   * Unregisters the given command handler, if it is the currently registered one.
-   * @param handler The handler to unregister.
+   * Marks a document's editor inactive (it lost focus), while keeping its handler registered so the
+   * agent can still act on it.
+   * @param id The owning document identifier.
    */
-  public unregister(handler: MarkdownCommandHandler): void {
-    if (this.handler() === handler) {
-      this.handler.set(null);
-      this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
-      this.canUndoSignal.set(false);
-      this.canRedoSignal.set(false);
-      this.outlineSignal.set([]);
+  public deactivate(id: string): void {
+    if (this.activeId === id) {
+      this.clearActive();
     }
+  }
+
+  /**
+   * Forgets a document's editor entirely (its editor was disposed), removing it as an agent target and
+   * clearing the active state when it was the active editor.
+   * @param id The owning document identifier.
+   */
+  public forget(id: string): void {
+    this.handlers.delete(id);
+    if (this.activeId === id) {
+      this.clearActive();
+    }
+  }
+
+  /**
+   * Clears the active editor and its mirrored selection/history/outline state.
+   */
+  private clearActive(): void {
+    this.activeId = null;
+    this.handler.set(null);
+    this.activeBlockTypeSignal.set(DEFAULT_BLOCK_TYPE);
+    this.canUndoSignal.set(false);
+    this.canRedoSignal.set(false);
+    this.outlineSignal.set([]);
   }
 
   /**
@@ -350,6 +390,32 @@ export class MarkdownCommands {
    */
   public readActiveDocument(): string | null {
     return this.handler()?.readDocument() ?? null;
+  }
+
+  /**
+   * Reads a specific document's live markdown source, including unsaved edits, for the agent docked to
+   * that document. Returns null when no markdown editor is registered for the id.
+   * @param id The owning document identifier.
+   * @returns Returns the live markdown source, or null.
+   */
+  public readDocument(id: string): string | null {
+    return this.handlers.get(id)?.readDocument() ?? null;
+  }
+
+  /**
+   * Replaces a specific document's content from the given markdown, for the agent docked to that
+   * document. Returns false when no markdown editor is registered for the id.
+   * @param id The owning document identifier.
+   * @param markdown The new markdown source.
+   * @returns Returns true when a markdown editor was registered for the id and updated.
+   */
+  public replaceDocument(id: string, markdown: string): boolean {
+    const handler: MarkdownCommandHandler | undefined = this.handlers.get(id);
+    if (handler === undefined) {
+      return false;
+    }
+    handler.replaceDocument(markdown);
+    return true;
   }
 
   /**
