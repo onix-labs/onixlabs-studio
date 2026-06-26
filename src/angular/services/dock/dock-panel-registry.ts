@@ -1,10 +1,11 @@
-import { Service, Type } from '@angular/core';
+import { inject, Service, Type } from '@angular/core';
 import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { SolutionPanel } from '../../components/panels/solution-panel/solution-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { Icon } from '../../icons/icon';
+import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
 
 /**
@@ -19,10 +20,18 @@ export class DockPanelRegistry {
   private readonly panels: Map<string, DockPanel> = new Map<string, DockPanel>();
 
   /**
-   * Initialises the registry with the seeded placeholder catalogue.
+   * Initialises the registry from the host-supplied blueprint's panels, or the built-in workspace
+   * catalogue when no blueprint was provided.
    */
   public constructor() {
-    this.seed();
+    const blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
+    if (blueprint !== null) {
+      for (const panel of blueprint.panels) {
+        this.register(panel);
+      }
+    } else {
+      this.seed();
+    }
   }
 
   /**

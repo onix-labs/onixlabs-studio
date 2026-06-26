@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
+import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { Repository } from '../../../../../services/repository/repository';
 import { GitRef, GraphNode } from '../../../../../services/repository/repository-data';
 import { AppIcon } from '../../../../shared/icon/app-icon';
@@ -83,6 +92,12 @@ interface EdgeViewModel {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommitGraph {
+  /**
+   * Gets the dock panel descriptor this panel was projected for. Supplied by the dock outlet; the
+   * graph reads its state from the shared {@link Repository} rather than the descriptor.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
+
   /**
    * Gets the icon set, exposed for the template.
    */

@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { Icon } from '../../../../../icons/icon';
+import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { Repository, WORKING_NODE_ID } from '../../../../../services/repository/repository';
 import { GitBranch } from '../../../../../services/repository/repository-data';
 import { AppIcon } from '../../../../shared/icon/app-icon';
@@ -17,6 +18,12 @@ import { AppIcon } from '../../../../shared/icon/app-icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SourceControlSidebar {
+  /**
+   * Gets the dock panel descriptor this panel was projected for. Supplied by the dock outlet; the
+   * sidebar reads its state from the shared {@link Repository} rather than the descriptor.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
+
   /**
    * Gets the icon set, exposed for the template.
    */

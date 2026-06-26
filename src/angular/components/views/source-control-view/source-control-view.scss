@@ -1,72 +1,9 @@
-// The source-control surface lays three columns side by side — the refs rail, the centre (commit
-// graph above the Monaco diff), and the commit detail — separated by draggable splitters.
+// The source-control view is a dock host: the dock container fills the tab and owns the layout of the
+// Repository rail, History graph, Commit detail, and the diff document well.
 :host {
-  display: flex;
+  display: block;
   inline-size: 100%;
   block-size: 100%;
   overflow: hidden;
   background: var(--body-background-color);
-}
-
-.sc {
-  display: flex;
-  inline-size: 100%;
-  block-size: 100%;
-}
-
-.sc__rail {
-  flex: 0 0 auto;
-  min-inline-size: 0;
-  block-size: 100%;
-  border-inline-end: 0.0625rem solid var(--dock-border-color);
-}
-
-.sc__center {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  block-size: 100%;
-}
-
-.sc__graph {
-  flex: 1 1 auto;
-  min-block-size: 0;
-}
-
-.sc__diff {
-  flex: 0 0 auto;
-  min-block-size: 0;
-  border-block-start: 0.0625rem solid var(--dock-border-color);
-}
-
-.sc__detail {
-  flex: 0 0 auto;
-  min-inline-size: 0;
-  block-size: 100%;
-  border-inline-start: 0.0625rem solid var(--dock-border-color);
-}
-
-// Splitters mirror the dock's chrome: invisible at rest, reaching for the accent when hovered or
-// dragged.
-.sc__splitter {
-  flex: 0 0 0.375rem;
-  background: var(--dock-splitter-color);
-  transition: background 150ms ease-in-out;
-
-  &:hover {
-    background: var(--dock-splitter-color--hover);
-  }
-
-  &:active {
-    background: var(--dock-splitter-color--active);
-  }
-
-  &--vertical {
-    cursor: col-resize;
-  }
-
-  &--horizontal {
-    cursor: row-resize;
-  }
 }

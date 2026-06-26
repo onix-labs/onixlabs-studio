@@ -6,10 +6,19 @@ import {
   input,
   InputSignal,
   OnDestroy,
-  signal,
-  WritableSignal,
 } from '@angular/core';
 import { Icon } from '../../../icons/icon';
+import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
+import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
+import { DockDrag } from '../../../services/dock/dock-drag';
+import { DockFloating } from '../../../services/dock/dock-floating';
+import { DockFocus } from '../../../services/dock/dock-focus';
+import { DockGeometry } from '../../../services/dock/dock-geometry';
+import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+import { DockState } from '../../../services/dock/dock-state';
+import { collectPanelIds } from '../../../services/dock/dock-tree';
+import { DiffOpener } from '../../../services/diffs/diff-opener';
+import { Diffs } from '../../../services/diffs/diffs';
 import { Repository } from '../../../services/repository/repository';
 import { GitBranch } from '../../../services/repository/repository-data';
 import {
@@ -17,10 +26,8 @@ import {
   SourceControlCommands,
 } from '../../../services/source-control-commands/source-control-commands';
 import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
-import { CommitDetail } from './panels/commit-detail/commit-detail';
-import { CommitGraph } from './panels/commit-graph/commit-graph';
-import { DiffView } from './panels/diff-view/diff-view';
-import { SourceControlSidebar } from './panels/source-control-sidebar/source-control-sidebar';
+import { DockContainer } from '../../dock/dock-container/dock-container';
+import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
 
 /**
  * Identifies this view's status-bar contribution.
@@ -33,49 +40,51 @@ const STATUS_OWNER: string = 'source-control';
 const STATUS_PRIORITY: number = 30;
 
 /**
- * Holds the minimum and maximum widths, in pixels, of the side rails.
- */
-const MIN_RAIL: number = 180;
-const MAX_RAIL: number = 520;
-
-/**
- * Holds the minimum and maximum heights, in pixels, of the docked diff pane.
- */
-const MIN_DIFF: number = 120;
-const MAX_DIFF: number = 1200;
-
-/**
- * Names the splitters the layout drags.
- */
-type Splitter = 'sidebar' | 'detail' | 'diff';
-
-/**
- * Hosts the source-control workspace as a top-level tab: a GitKraken-style surface over a single
- * repository. The left rail lists branches, remotes, tags, and stashes; the centre column shows the
- * commit graph above a Monaco diff of the selected file; and the right pane details the selected
- * commit. The view owns its own ribbon (through {@link SourceControlCommands}) and contributes branch
+ * Hosts the source-control workspace as a top-level tab: a GitKraken-style repository surface built
+ * on the same dock framework as the directory (IDE) tab. It provides its own dock services and a
+ * {@link REPOSITORY_DOCK_BLUEPRINT}, so the Repository rail, commit History, and Commit detail dock as
+ * tool panels and changed-file diffs open into the document well — all draggable, floatable, and
+ * resizable. The view owns its ribbon (through {@link SourceControlCommands}) and contributes branch
  * and change status to the status strip while it is the active tab.
  *
- * The repository data is mock scaffolding (see {@link Repository}); the goal is to exercise the
- * layout, ribbon, status bar, and the diff surface end to end.
+ * The repository data is mock scaffolding (see {@link Repository}); the goal is to exercise the dock
+ * reuse, the panels, the ribbon, the status bar, and the Monaco diff surface end to end.
  */
 @Component({
   selector: 'app-source-control-view',
-  imports: [SourceControlSidebar, CommitGraph, CommitDetail, DiffView],
+  imports: [DockContainer],
   templateUrl: './source-control-view.html',
   styleUrl: './source-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [
+    Repository,
+    Diffs,
+    DiffOpener,
+    DockState,
+    DockGeometry,
+    DockFocus,
+    DockPanelRegistry,
+    DockFloating,
+    DockAutoHide,
+    DockDrag,
+    { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
+  ],
 })
 export class SourceControlView implements OnDestroy {
   /**
-   * Gets the icon set, exposed for the template.
+   * Holds the repository model the panels render and the ribbon mutates.
    */
-  protected readonly Icon: typeof Icon = Icon;
+  private readonly repository: Repository = inject(Repository);
 
   /**
-   * Holds the repository model the view renders and the ribbon mutates.
+   * Holds the diff store, swept of closed diffs and toggled between inline/side-by-side by the ribbon.
    */
-  protected readonly repository: Repository = inject(Repository);
+  private readonly diffs: Diffs = inject(Diffs);
+
+  /**
+   * Holds this tab's scoped dock layout, watched to sweep closed diff documents.
+   */
+  private readonly dockState: DockState = inject(DockState);
 
   /**
    * Holds the command registry the ribbon routes its actions through.
@@ -89,40 +98,10 @@ export class SourceControlView implements OnDestroy {
 
   /**
    * Gets a value indicating whether the view belongs to the active tab. The view stays mounted when
-   * inactive so its diff editor and selection survive tab switches, but it owns the ribbon command
-   * handler and status contribution only while active.
+   * inactive so its dock and diff editors survive tab switches, but it owns the ribbon command handler
+   * and status contribution only while active.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
-
-  /**
-   * Holds the width, in pixels, of the left rail.
-   */
-  protected readonly sidebarWidth: WritableSignal<number> = signal<number>(240);
-
-  /**
-   * Holds the width, in pixels, of the right detail pane.
-   */
-  protected readonly detailWidth: WritableSignal<number> = signal<number>(340);
-
-  /**
-   * Holds the height, in pixels, of the docked diff pane.
-   */
-  protected readonly diffHeight: WritableSignal<number> = signal<number>(320);
-
-  /**
-   * Holds a value indicating whether the diff renders inline (unified) rather than side by side.
-   */
-  protected readonly inlineDiff: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds the splitter drag origin (pointer coordinate at drag start).
-   */
-  private dragOrigin: number = 0;
-
-  /**
-   * Holds the pane size at the start of a splitter drag.
-   */
-  private dragOriginSize: number = 0;
 
   /**
    * Holds the command handler registered with the {@link SourceControlCommands} registry while active.
@@ -131,7 +110,7 @@ export class SourceControlView implements OnDestroy {
 
   /**
    * Wires effects that register the ribbon command handler and publish status while the view is
-   * active, and tear both down when it is not.
+   * active, and that sweep diff records for tabs the user has closed.
    */
   public constructor() {
     effect((): void => {
@@ -141,6 +120,14 @@ export class SourceControlView implements OnDestroy {
         this.commands.unregister(this.commandHandler);
         this.commandHandler = null;
       }
+    });
+
+    // Drop diff records once their dock tab is gone, so closed diffs are not retained.
+    effect((): void => {
+      const present: ReadonlySet<string> = new Set<string>(
+        collectPanelIds(this.dockState.layout()),
+      );
+      this.diffs.removeMissing(present);
     });
 
     // Publish branch and change status to the status strip while active, reading the repository
@@ -153,17 +140,10 @@ export class SourceControlView implements OnDestroy {
       const branch: GitBranch | undefined = this.repository.currentBranch();
       const changes: number = this.repository.changeCount();
       const leading: StatusSegment[] = [
-        {
-          id: 'sc-branch',
-          text: branch?.name ?? 'detached HEAD',
-          icon: Icon.SOURCE_CONTROL,
-        },
+        { id: 'sc-branch', text: branch?.name ?? 'detached HEAD', icon: Icon.SOURCE_CONTROL },
       ];
       if (branch !== undefined && (branch.ahead > 0 || branch.behind > 0)) {
-        leading.push({
-          id: 'sc-sync',
-          text: `↑${branch.ahead} ↓${branch.behind}`,
-        });
+        leading.push({ id: 'sc-sync', text: `↑${branch.ahead} ↓${branch.behind}` });
       }
       const trailing: StatusSegment[] = [
         { id: 'sc-changes', text: `${changes} changed`, icon: Icon.PENCIL },
@@ -185,92 +165,8 @@ export class SourceControlView implements OnDestroy {
   }
 
   /**
-   * Gets the width, in pixels, of the left rail.
-   * @returns Returns the rail width.
-   */
-  protected sidebarSize(): number {
-    return this.sidebarWidth();
-  }
-
-  /**
-   * Gets the width, in pixels, of the right detail pane.
-   * @returns Returns the detail width.
-   */
-  protected detailSize(): number {
-    return this.detailWidth();
-  }
-
-  /**
-   * Gets the height, in pixels, of the docked diff pane.
-   * @returns Returns the diff height.
-   */
-  protected diffSize(): number {
-    return this.diffHeight();
-  }
-
-  /**
-   * Begins a splitter drag that resizes one of the layout's panes.
-   * @param event The originating pointer event.
-   * @param splitter The splitter being dragged.
-   */
-  protected onSplitterDown(event: MouseEvent, splitter: Splitter): void {
-    event.preventDefault();
-    const vertical: boolean = splitter === 'diff';
-    this.dragOrigin = vertical ? event.clientY : event.clientX;
-    this.dragOriginSize = this.sizeFor(splitter);
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const position: number = vertical ? move.clientY : move.clientX;
-      // The sidebar grows as the pointer moves right; the detail and diff grow as it moves left/up.
-      const delta: number =
-        splitter === 'sidebar' ? position - this.dragOrigin : this.dragOrigin - position;
-      this.applySize(splitter, this.dragOriginSize + delta);
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
-
-  /**
-   * Reads the current size of the pane a splitter controls.
-   * @param splitter The splitter.
-   * @returns Returns the pane size in pixels.
-   */
-  private sizeFor(splitter: Splitter): number {
-    switch (splitter) {
-      case 'sidebar':
-        return this.sidebarWidth();
-      case 'detail':
-        return this.detailWidth();
-      default:
-        return this.diffHeight();
-    }
-  }
-
-  /**
-   * Clamps and applies a new size to the pane a splitter controls.
-   * @param splitter The splitter.
-   * @param size The proposed size in pixels.
-   */
-  private applySize(splitter: Splitter, size: number): void {
-    if (splitter === 'diff') {
-      this.diffHeight.set(Math.min(MAX_DIFF, Math.max(MIN_DIFF, size)));
-      return;
-    }
-    const clamped: number = Math.min(MAX_RAIL, Math.max(MIN_RAIL, size));
-    if (splitter === 'sidebar') {
-      this.sidebarWidth.set(clamped);
-    } else {
-      this.detailWidth.set(clamped);
-    }
-  }
-
-  /**
-   * Registers the ribbon command handler, mapping each ribbon action onto the repository (or local
-   * view state for the diff toggle).
+   * Registers the ribbon command handler, mapping each ribbon action onto the repository (or the diff
+   * store for the inline-diff toggle).
    */
   private registerCommandHandler(): void {
     if (this.commandHandler !== null) {
@@ -285,7 +181,7 @@ export class SourceControlView implements OnDestroy {
       commit: (): void => this.repository.commit('Update working tree'),
       stash: (): void => this.repository.stash(),
       newBranch: (): void => this.repository.createBranch(),
-      toggleInlineDiff: (): void => this.inlineDiff.update((value: boolean): boolean => !value),
+      toggleInlineDiff: (): void => this.diffs.toggleInline(),
     };
     this.commands.register(this.commandHandler);
   }

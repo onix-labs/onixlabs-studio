@@ -1,0 +1,10 @@
+@if (file(); as change) {
+  <app-diff-view
+    [fileName]="change.path"
+    [status]="change.status"
+    [original]="change.original"
+    [modified]="change.modified"
+    [language]="change.language"
+    [inline]="inline()"
+  />
+}
