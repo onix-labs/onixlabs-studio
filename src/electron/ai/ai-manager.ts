@@ -192,6 +192,7 @@ export class AiManager {
       permissionPosture,
       tokenCap,
       owningTabId: request.owningTabId ?? null,
+      surface: request.surface ?? 'editor',
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {
@@ -315,7 +316,10 @@ export class AiManager {
       (typeof record['workspaceRoot'] === 'string' || record['workspaceRoot'] === null) &&
       (typeof record['owningTabId'] === 'string' ||
         record['owningTabId'] === null ||
-        record['owningTabId'] === undefined)
+        record['owningTabId'] === undefined) &&
+      (record['surface'] === 'editor' ||
+        record['surface'] === 'terminal' ||
+        record['surface'] === undefined)
     );
   }
 }

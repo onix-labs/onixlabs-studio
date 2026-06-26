@@ -9,7 +9,9 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   READ_ACTIVE_DOCUMENT,
+  READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  WRITE_TERMINAL_INPUT,
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
@@ -20,11 +22,16 @@ import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
+  READ_TERMINAL_FQN,
   READ_TOOL_FQN,
   REPLACE_TOOL_FQN,
   STUDIO_PROMPT_APPENDIX,
+  TERMINAL_PROMPT_APPENDIX,
+  WRITE_TERMINAL_FQN,
   readActiveDocument,
+  readTerminalOutput,
   replaceActiveDocument,
+  writeTerminalInput,
 } from './studio-tools';
 import { prettyToolName, summarizeToolInput } from './tool-format';
 
@@ -118,32 +125,70 @@ export class ClaudeAgentProvider implements AgentProvider {
     const { query, tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
     const { z } = await import('zod');
     const hasWorkspace: boolean = context.workspaceRoot !== null;
+    const terminal: boolean = context.surface === 'terminal';
 
-    // Expose Studio's in-app editor capabilities as an in-process MCP server; the tool handlers call
-    // back into the renderer over the run context's bridge.
+    // Expose Studio's in-app capabilities as an in-process MCP server; the tool handlers call back
+    // into the renderer over the run context's bridge. A terminal-surface run registers ONLY the two
+    // terminal tools, so the agent acts solely through its terminal; an editor run registers the
+    // editor tools.
     const studioServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
       name: 'studio',
       version: '0.0.0',
-      tools: [
-        tool(
-          READ_ACTIVE_DOCUMENT,
-          "Read the active editor document's full text.",
-          {},
-          async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-            content: [{ type: 'text', text: await readActiveDocument(context) }],
-          }),
-        ),
-        tool(
-          REPLACE_ACTIVE_DOCUMENT,
-          "Replace the active editor document's entire text.",
-          { text: z.string().describe('The new full text of the document.') },
-          async (args: {
-            text: string;
-          }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-            content: [{ type: 'text', text: await replaceActiveDocument(context, args.text) }],
-          }),
-        ),
-      ],
+      tools: terminal
+        ? [
+            tool(
+              READ_TERMINAL_OUTPUT,
+              'Read the recent output currently shown in the terminal.',
+              {},
+              async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+                content: [{ type: 'text', text: await readTerminalOutput(context) }],
+              }),
+            ),
+            tool(
+              WRITE_TERMINAL_INPUT,
+              'Type text into the terminal, running it as a command by default, and return the resulting output.',
+              {
+                text: z.string().describe('The text to type into the terminal.'),
+                submit: z
+                  .boolean()
+                  .optional()
+                  .describe(
+                    'Whether to run the text as a command (append a newline). Defaults to true.',
+                  ),
+              },
+              async (args: {
+                text: string;
+                submit?: boolean;
+              }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+                content: [
+                  {
+                    type: 'text',
+                    text: await writeTerminalInput(context, args.text, args.submit ?? true),
+                  },
+                ],
+              }),
+            ),
+          ]
+        : [
+            tool(
+              READ_ACTIVE_DOCUMENT,
+              "Read the active editor document's full text.",
+              {},
+              async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+                content: [{ type: 'text', text: await readActiveDocument(context) }],
+              }),
+            ),
+            tool(
+              REPLACE_ACTIVE_DOCUMENT,
+              "Replace the active editor document's entire text.",
+              { text: z.string().describe('The new full text of the document.') },
+              async (args: {
+                text: string;
+              }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
+                content: [{ type: 'text', text: await replaceActiveDocument(context, args.text) }],
+              }),
+            ),
+          ],
     });
 
     // Apply the permission posture: read-only exploration is always allowed; `auto-all` allows every
@@ -156,6 +201,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       toolName: string,
       input: Record<string, unknown>,
     ): Promise<PermissionResult> => {
+      // A terminal-surface run is confined to its terminal: deny every tool that is not one of the two
+      // terminal tools, blocking all built-ins (file system, shell, editor). The write tool then falls
+      // through to the posture logic below so it prompts unless the posture auto-allows.
+      if (terminal && toolName !== READ_TERMINAL_FQN && toolName !== WRITE_TERMINAL_FQN) {
+        return { behavior: 'deny', message: 'This agent can only use the terminal.' };
+      }
       const autoAllowed: boolean =
         READ_ONLY_TOOLS.includes(toolName) ||
         posture === 'auto-all' ||
@@ -176,11 +227,19 @@ export class ClaudeAgentProvider implements AgentProvider {
     const options: Options = {
       model: context.model,
       cwd: context.workspaceRoot ?? homedir(),
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: STUDIO_PROMPT_APPENDIX },
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        append: terminal ? TERMINAL_PROMPT_APPENDIX : STUDIO_PROMPT_APPENDIX,
+      },
       mcpServers: { studio: studioServer },
-      // Auto-allow the in-app editor tools (the user sees and can undo the change) and read-only
+      // For a terminal run, auto-allow only the read tool; the write tool is intentionally omitted so
+      // it flows through canUseTool (prompting unless the posture auto-allows). For an editor run,
+      // auto-allow the in-app editor tools (the user sees and can undo the change) and read-only
       // project exploration; canUseTool gates everything else.
-      allowedTools: [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
+      allowedTools: terminal
+        ? [READ_TERMINAL_FQN]
+        : [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
       canUseTool,
       abortController: controller,
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task

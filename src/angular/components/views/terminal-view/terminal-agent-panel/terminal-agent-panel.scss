@@ -1,0 +1,84 @@
+:host {
+  --terminal-agent-bar-background: var(--gray-200);
+  --terminal-agent-bar-foreground: var(--gray-700);
+  --terminal-agent-bar-border: var(--gray-300);
+  --terminal-agent-body-background: var(--gray-100);
+
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+:host-context([data-theme-mode='dark']) {
+  --terminal-agent-bar-background: var(--gray-800);
+  --terminal-agent-bar-foreground: var(--gray-400);
+  --terminal-agent-bar-border: var(--gray-700);
+  --terminal-agent-body-background: var(--gray-900);
+}
+
+.terminal-agent {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+}
+
+.terminal-agent__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--terminal-agent-bar-background);
+  color: var(--terminal-agent-bar-foreground);
+  border-block-start: 0.0625rem solid var(--terminal-agent-bar-border);
+  border-block-end: 0.0625rem solid var(--terminal-agent-bar-border);
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 1.5rem;
+    inline-size: 1.5rem;
+    font-size: 0.9rem;
+    color: inherit;
+    background: transparent;
+    border: 0.0625rem solid transparent;
+    border-radius: calc(0.375rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    transition: var(--hover-transition);
+
+    &:hover {
+      color: var(--accent-surface-foreground-color);
+      background: var(--accent-surface-background-color);
+      border-color: var(--accent-surface-border-color);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: -0.125rem;
+    }
+  }
+}
+
+.terminal-agent__icon {
+  font-size: 1rem;
+}
+
+.terminal-agent__title {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.terminal-agent__spacer {
+  flex: 1 1 auto;
+}
+
+.terminal-agent__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  background: var(--terminal-agent-body-background);
+
+  app-agent-chat {
+    display: block;
+    block-size: 100%;
+  }
+}

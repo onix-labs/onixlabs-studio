@@ -1,14 +1,16 @@
 import { type AiModelInfo, type AiProviderId } from '../../shared/ai-types';
 import type { AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import type { ToolSet } from 'ai';
 import {
   consumeAgentStream,
   createStudioTools,
+  createTerminalTools,
   describeRunError,
   MAX_STEPS,
   type StreamPart,
 } from './ai-sdk-stream';
 import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODELS } from './models';
-import { STUDIO_PROMPT_APPENDIX } from './studio-tools';
+import { STUDIO_PROMPT_APPENDIX, TERMINAL_PROMPT_APPENDIX } from './studio-tools';
 
 /**
  * The base URL of a local Ollama server's OpenAI-compatible API. Ollama's standard env var is
@@ -79,16 +81,24 @@ export class OllamaProvider implements AgentProvider {
       apiKey: 'ollama',
     });
 
+    // Expose the terminal-only tools (and prompt) for a terminal-surface run, otherwise the editor
+    // tools. The AI SDK has no per-tool prompt hook, so terminal commands run without gating.
+    const terminal: boolean = context.surface === 'terminal';
+    const system: string = terminal ? TERMINAL_PROMPT_APPENDIX : STUDIO_PROMPT_APPENDIX;
+    const tools: ToolSet = terminal
+      ? await createTerminalTools(context)
+      : await createStudioTools(context);
+
     try {
       const stream: AsyncIterable<StreamPart> = streamText({
         model: ollama(context.model),
-        system: STUDIO_PROMPT_APPENDIX,
+        system,
         prompt: context.prompt,
         abortSignal: context.signal,
         stopWhen: stepCountIs(MAX_STEPS),
         // Cap the output tokens when the user set a per-request budget; 0 leaves the model default.
         ...(context.tokenCap > 0 ? { maxOutputTokens: context.tokenCap } : {}),
-        tools: await createStudioTools(context),
+        tools,
       }).fullStream as AsyncIterable<StreamPart>;
 
       await consumeAgentStream(stream, context);

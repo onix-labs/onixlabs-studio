@@ -1,7 +1,49 @@
 :host {
+  --terminal-splitter: var(--gray-300);
+
   display: block;
   block-size: 100%;
   background: var(--body-background-color);
+}
+
+:host-context([data-theme-mode='dark']) {
+  --terminal-splitter: var(--gray-700);
+}
+
+// The shell lays the terminal area beside the optional agent panel, which always docks to the side.
+.terminal-shell {
+  display: flex;
+  flex-direction: row;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.terminal-main {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.terminal-shell__splitter {
+  flex: 0 0 0.375rem;
+  background: var(--terminal-splitter);
+  cursor: col-resize;
+
+  &--hidden {
+    display: none;
+  }
+}
+
+.terminal-shell__agent {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+
+  &--hidden {
+    display: none;
+  }
 }
 
 .terminal {
