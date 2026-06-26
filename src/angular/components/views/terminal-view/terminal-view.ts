@@ -21,12 +21,15 @@ import { TerminalCreateResult } from '../../../../shared/studio-api';
 import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
 import { Studio } from '../../../services/studio/studio';
 import { Tabs } from '../../../services/tabs/tabs';
+import { TerminalAgents } from '../../../services/terminal-agents/terminal-agents';
 import {
   TerminalCommandHandler,
   TerminalCommands,
 } from '../../../services/terminal-commands/terminal-commands';
 import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
+import { Terminals } from '../../../services/terminals/terminals';
 import { AccentColor, Theme } from '../../../services/theme/theme';
+import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
@@ -44,13 +47,28 @@ const CWD_POLL_INTERVAL_MS: number = 1500;
 const SELECTION_ALPHA: number = 0.3;
 
 /**
+ * Holds the minimum size, in pixels, of the docked agent pane.
+ */
+const MIN_AGENT_SIZE: number = 240;
+
+/**
+ * Holds the maximum size, in pixels, of the docked agent pane.
+ */
+const MAX_AGENT_SIZE: number = 900;
+
+/**
+ * Holds the initial size, in pixels, of the docked agent pane.
+ */
+const DEFAULT_AGENT_SIZE: number = 360;
+
+/**
  * Represents the terminal view: an xterm.js instance wired to a main-process node-pty session
  * through the {@link TerminalBridge}. The session is kept alive while the tab is hidden; on
  * re-activation the terminal is re-fitted and focused.
  */
 @Component({
   selector: 'app-terminal-view',
-  imports: [],
+  imports: [TerminalAgentPanel],
   templateUrl: './terminal-view.html',
   styleUrl: './terminal-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -85,6 +103,32 @@ export class TerminalView implements AfterViewInit, OnDestroy {
    * Holds the Studio bridge used to open the working directory in the OS file manager.
    */
   private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the registry this terminal registers its output handle with, so the terminal agent can read
+   * its on-screen output by id.
+   */
+  private readonly terminals: Terminals = inject(Terminals);
+
+  /**
+   * Holds the docked agent-panel state for terminal tabs.
+   */
+  private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
+
+  /**
+   * Holds the size, in pixels, of the docked agent pane.
+   */
+  private readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
+
+  /**
+   * Holds the splitter drag origin (pointer coordinate at drag start).
+   */
+  private dragOrigin: number = 0;
+
+  /**
+   * Holds the pane size at the start of a splitter drag.
+   */
+  private dragOriginSize: number = 0;
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -190,6 +234,17 @@ export class TerminalView implements AfterViewInit, OnDestroy {
         this.commandHandler = null;
       }
     });
+
+    // Refit xterm whenever the docked agent panel opens/closes or is resized, since the terminal's
+    // width changes. The fit is deferred so the layout change has applied to the DOM first.
+    effect((): void => {
+      this.agentVisible();
+      this.agentSize();
+      if (this.xterm === null || this.fitAddon === null) {
+        return;
+      }
+      setTimeout((): void => this.handleResize(), 0);
+    });
   }
 
   /**
@@ -211,6 +266,8 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
     this.stopCwdPolling();
+    this.terminals.unregister(this.terminalId());
+    this.terminalAgents.remove(this.terminalId());
     if (!this.hasExited) {
       void this.bridge.dispose(this.terminalId());
     }
@@ -284,6 +341,9 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     this.resizeObserver = new ResizeObserver((): void => this.handleResize());
     this.resizeObserver.observe(host);
 
+    // Register this terminal's output handle so the terminal agent can read its on-screen text by id.
+    this.terminals.register(id, { readText: (): string => this.getBufferText() });
+
     setTimeout((): void => xterm.focus(), FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.ready.emit();
@@ -302,6 +362,56 @@ export class TerminalView implements AfterViewInit, OnDestroy {
     } catch {
       // Fit can throw when the host has zero size (e.g. while hidden); ignore.
     }
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.terminalAgents.isMounted(this.terminalId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected agentVisible(): boolean {
+    return this.terminalAgents.isVisible(this.terminalId());
+  }
+
+  /**
+   * Gets the size, in pixels, of the docked agent pane.
+   * @returns Returns the agent pane size.
+   */
+  protected agentSize(): number {
+    return this.agentSizeSignal();
+  }
+
+  /**
+   * Begins a splitter drag that resizes the docked agent pane. The agent always docks to the right,
+   * so the drag is horizontal: moving the splitter left widens the agent.
+   * @param event The originating pointer event.
+   */
+  protected onAgentSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.dragOrigin = event.clientX;
+    this.dragOriginSize = this.agentSizeSignal();
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = this.dragOrigin - move.clientX;
+      const next: number = Math.min(
+        MAX_AGENT_SIZE,
+        Math.max(MIN_AGENT_SIZE, this.dragOriginSize + delta),
+      );
+      this.agentSizeSignal.set(next);
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   /**

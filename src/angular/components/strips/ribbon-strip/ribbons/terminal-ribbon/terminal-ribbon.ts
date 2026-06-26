@@ -5,12 +5,15 @@ import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
+import { TerminalAgents } from '../../../../../services/terminal-agents/terminal-agents';
 import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
+import { Tabs } from '../../../../../services/tabs/tabs';
 
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
  * actions and locations commands drive the active terminal through the {@link TerminalCommands}
- * registry; the view toggles and the AI group are static scaffolding.
+ * registry; the AI group's Agent button toggles the active terminal's docked agent panel; the view
+ * toggles are static scaffolding.
  */
 @Component({
   selector: 'app-terminal-ribbon',
@@ -29,6 +32,16 @@ export class TerminalRibbon {
    * Holds the terminal commands registry the ribbon actions are routed through.
    */
   private readonly commands: TerminalCommands = inject(TerminalCommands);
+
+  /**
+   * Holds the tab registry, used to resolve the active terminal tab for the agent toggle.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the docked agent-panel state for terminal tabs.
+   */
+  private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
 
   /**
    * Clears the active terminal's screen.
@@ -98,5 +111,15 @@ export class TerminalRibbon {
    */
   protected onRoot(): void {
     this.commands.root();
+  }
+
+  /**
+   * Toggles the active terminal tab's docked agent panel.
+   */
+  protected onAgent(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.terminalAgents.toggle(id);
+    }
   }
 }

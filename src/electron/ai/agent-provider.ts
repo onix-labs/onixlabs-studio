@@ -1,4 +1,10 @@
-import type { AiEvent, AiModelInfo, AiPermissionPosture, AiProviderId } from '../../shared/ai-types';
+import type {
+  AgentSurface,
+  AiEvent,
+  AiModelInfo,
+  AiPermissionPosture,
+  AiProviderId,
+} from '../../shared/ai-types';
 
 /**
  * Reports whether a provider can currently run, with a reason suitable for display.
@@ -87,6 +93,12 @@ export interface AgentRunContext {
    * tab's editor; null when the run has no owning editor (the standalone agent tab).
    */
   readonly owningTabId: string | null;
+
+  /**
+   * Gets what this run acts on, which selects the tool set the providers expose: the open editor
+   * document (`editor`) or the owning terminal (`terminal`).
+   */
+  readonly surface: AgentSurface;
 
   /**
    * Gets the credential the run authenticates with.

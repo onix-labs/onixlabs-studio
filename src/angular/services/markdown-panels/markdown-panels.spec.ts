@@ -7,6 +7,8 @@ describe('MarkdownPanels', () => {
 
   beforeEach(() => {
     panels = TestBed.inject(MarkdownPanels);
+    // The ribbon's no-argument commands act on the focused document; set one for these tests.
+    panels.setActiveDocument('doc-1');
   });
 
   it('active_whenInitial_isNone', () => {
@@ -34,5 +36,22 @@ describe('MarkdownPanels', () => {
     panels.open('reader');
     panels.close();
     expect(panels.active()).toBe('none');
+  });
+
+  it('activeFor_isPerDocument_soEachTabKeepsItsOwnPanel', () => {
+    panels.toggle('agent'); // opens on doc-1 (the focused document)
+    panels.setActiveDocument('doc-2');
+    panels.toggle('outline'); // opens on doc-2
+
+    expect(panels.activeFor('doc-1')).toBe('agent');
+    expect(panels.activeFor('doc-2')).toBe('outline');
+    // The active() panel follows the focused document.
+    expect(panels.active()).toBe('outline');
+  });
+
+  it('remove_whenCalled_clearsThatDocumentsPanel', () => {
+    panels.toggle('agent');
+    panels.remove('doc-1');
+    expect(panels.activeFor('doc-1')).toBe('none');
   });
 });

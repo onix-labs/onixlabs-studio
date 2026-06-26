@@ -1,7 +1,17 @@
 import type { ToolSet } from 'ai';
-import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../shared/ai-types';
+import {
+  READ_ACTIVE_DOCUMENT,
+  READ_TERMINAL_OUTPUT,
+  REPLACE_ACTIVE_DOCUMENT,
+  WRITE_TERMINAL_INPUT,
+} from '../../shared/ai-types';
 import type { AgentRunContext } from './agent-provider';
-import { readActiveDocument, replaceActiveDocument } from './studio-tools';
+import {
+  readActiveDocument,
+  readTerminalOutput,
+  replaceActiveDocument,
+  writeTerminalInput,
+} from './studio-tools';
 
 /**
  * The maximum number of steps (model turns plus tool round-trips) a single run may take before the
@@ -100,6 +110,39 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
       inputSchema: z.object({ text: z.string().describe('The new full text of the document.') }),
       execute: (args: { text: string }): Promise<string> =>
         replaceActiveDocument(context, args.text),
+    }),
+  };
+}
+
+/**
+ * Builds the terminal-surface tools every AI-SDK-backed provider exposes for a terminal-scoped run,
+ * bridged to the renderer through the run context. The agent acts only through these two tools: it
+ * reads the terminal's recent output and types input/commands into it. The `ai` and `zod` packages are
+ * imported dynamically to match the providers' own dynamic-import (ESM-compatibility) convention.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set keyed by tool name, ready to pass to `streamText`.
+ */
+export async function createTerminalTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [READ_TERMINAL_OUTPUT]: tool({
+      description: 'Read the recent output currently shown in the terminal.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readTerminalOutput(context),
+    }),
+    [WRITE_TERMINAL_INPUT]: tool({
+      description:
+        'Type text into the terminal, running it as a command by default, and return the resulting output.',
+      inputSchema: z.object({
+        text: z.string().describe('The text to type into the terminal.'),
+        submit: z
+          .boolean()
+          .optional()
+          .describe('Whether to run the text as a command (append a newline). Defaults to true.'),
+      }),
+      execute: (args: { text: string; submit?: boolean }): Promise<string> =>
+        writeTerminalInput(context, args.text, args.submit ?? true),
     }),
   };
 }

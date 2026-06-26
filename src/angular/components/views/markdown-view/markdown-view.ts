@@ -324,9 +324,13 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   private readWordRanges: readonly Range[] = [];
 
   /**
-   * Gets the tool panel currently open beside the editor, or `none` when none is open.
+   * Gets the tool panel currently open beside this document's editor, or `none` when none is open.
+   * Read per document so each markdown tab keeps its own open panel (and its live Agent panel)
+   * regardless of which tab is active.
    */
-  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
+  protected readonly activePanel: Signal<MarkdownPanel> = computed(
+    (): MarkdownPanel => this.panels.activeFor(this.documentId()),
+  );
 
   /**
    * Gets which side of the editor the tool panels are shown on.
@@ -580,6 +584,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         this.registerReadSession();
         this.refreshActiveBlockType();
         this.documents.setActiveDocument(this.documentId());
+        this.panels.setActiveDocument(this.documentId());
         this.focusEditor();
       } else {
         if (this.commandHandler !== null) {
@@ -648,6 +653,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     if (this.documents.activeDocumentId() === this.documentId()) {
       this.documents.setActiveDocument(null);
     }
+    this.panels.remove(this.documentId());
     if (this.removeOnDestroy()) {
       this.documents.remove(this.documentId());
     }

@@ -29,6 +29,6 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="AI">
-    <app-ribbon-strip-button [icon]="Icon.AGENT" label="Agent" />
+    <app-ribbon-strip-button [icon]="Icon.AGENT" label="Agent" (action)="onAgent()" />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

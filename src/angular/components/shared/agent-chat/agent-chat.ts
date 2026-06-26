@@ -11,6 +11,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import type { AgentSurface } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
 import { AgentSessions } from '../../../services/agent-sessions/agent-sessions';
 import { Tabs } from '../../../services/tabs/tabs';
@@ -66,6 +67,12 @@ export class AgentChat {
    * Gets a value indicating whether the hosting tab is the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets what this conversation's runs act on, which selects the tool set the providers expose: the
+   * open editor document (`editor`, the default) or the owning terminal (`terminal`).
+   */
+  public readonly surface: InputSignal<AgentSurface> = input<AgentSurface>('editor');
 
   /**
    * Holds the current composer text.
@@ -137,7 +144,7 @@ export class AgentChat {
     if (text.trim().length === 0) {
       return;
     }
-    this.agent.send(text, this.tabId());
+    this.agent.send(text, this.tabId(), this.surface());
     this.draftText.set('');
   }
 

@@ -1,0 +1,15 @@
+<div class="terminal-agent">
+  <div class="terminal-agent__bar">
+    <app-icon class="terminal-agent__icon" [icon]="Icon.AGENT" />
+    <span class="terminal-agent__title">Agent</span>
+    <span class="terminal-agent__spacer"></span>
+    <button type="button" aria-label="Close agent" title="Close agent" (click)="onClose()">
+      <app-icon [icon]="Icon.CLOSE" />
+    </button>
+  </div>
+  <div class="terminal-agent__body">
+    @if (tabId()) {
+      <app-agent-chat [tabId]="tabId()" [isActive]="isActive()" surface="terminal" />
+    }
+  </div>
+</div>

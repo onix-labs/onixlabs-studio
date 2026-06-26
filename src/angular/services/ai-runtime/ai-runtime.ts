@@ -1,5 +1,6 @@
 import { Service } from '@angular/core';
 import type {
+  AgentSurface,
   AiApi,
   AiBridgeRequest,
   AiEvent,
@@ -45,6 +46,12 @@ export interface AiRunOptions {
    * on that tab's editor. Omitted for runs with no owning editor (the standalone agent tab).
    */
   readonly owningTabId?: string;
+
+  /**
+   * Gets what this run acts on, which selects the tool set the providers expose. Defaults to `editor`
+   * when omitted.
+   */
+  readonly surface?: AgentSurface;
 }
 
 /**
@@ -118,6 +125,7 @@ export class AiRuntime {
       permissionPosture: options.permissionPosture ?? 'prompt',
       tokenCap: options.tokenCap ?? 0,
       owningTabId: options.owningTabId ?? null,
+      surface: options.surface ?? 'editor',
     });
     return requestId;
   }

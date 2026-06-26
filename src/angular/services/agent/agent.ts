@@ -1,5 +1,5 @@
 import { computed, DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiEvent, AiRunState } from '../../../shared/ai-types';
+import type { AgentSurface, AiEvent, AiRunState } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AgentSessionHandle } from '../agent-sessions/agent-sessions';
@@ -172,10 +172,12 @@ export class Agent implements AgentSessionHandle {
   /**
    * Sends a user message, starting a run. Blank messages and concurrent sends are ignored.
    * @param text The user's message.
-   * @param owningTabId The identifier of the editor tab hosting this agent, so its in-app editor
-   * tools act on that tab's editor; omitted for the standalone agent tab.
+   * @param owningTabId The identifier of the editor or terminal tab hosting this agent, so its in-app
+   * tools act on that tab; omitted for the standalone agent tab.
+   * @param surface What this run acts on, which selects the tool set the providers expose; omitted
+   * for the editor surface.
    */
-  public send(text: string, owningTabId?: string): void {
+  public send(text: string, owningTabId?: string, surface?: AgentSurface): void {
     const trimmed: string = text.trim();
     if (trimmed.length === 0 || this.busy()) {
       return;
@@ -188,6 +190,7 @@ export class Agent implements AgentSessionHandle {
       permissionPosture: this.settings.aiPermissionPosture(),
       tokenCap: this.settings.aiTokenCap(),
       owningTabId,
+      surface,
     });
   }
 

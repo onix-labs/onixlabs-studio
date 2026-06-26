@@ -125,6 +125,8 @@ describe('MarkdownRibbon', () => {
 
   it('outlineButton_whenClicked_togglesTheOutlinePanel', () => {
     const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
+    // The ribbon toggles the focused document's panel; simulate an active markdown document.
+    panels.setActiveDocument('doc-1');
     expect(panels.active()).toBe('none');
 
     const outline: HTMLButtonElement = Array.from(

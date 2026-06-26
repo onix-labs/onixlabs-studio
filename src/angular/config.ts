@@ -6,6 +6,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { AgentEditorCapabilities } from './services/agent-editor-capabilities/agent-editor-capabilities';
+import { AgentTerminalCapabilities } from './services/agent-terminal-capabilities/agent-terminal-capabilities';
 import { Display } from './services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from './services/theme/theme';
@@ -31,6 +32,11 @@ export const config: ApplicationConfig = {
     // runtime whenever an agent runs.
     provideAppInitializer((): void => {
       inject(AgentEditorCapabilities);
+    }),
+    // Instantiate the agent's in-app terminal capabilities at start-up so they are registered with the
+    // runtime whenever a terminal-surface agent runs.
+    provideAppInitializer((): void => {
+      inject(AgentTerminalCapabilities);
     }),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.

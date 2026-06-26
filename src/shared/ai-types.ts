@@ -13,6 +13,22 @@ export const READ_ACTIVE_DOCUMENT: string = 'read_active_document';
 export const REPLACE_ACTIVE_DOCUMENT: string = 'replace_active_document';
 
 /**
+ * The in-app capability that returns the recent output of the owning terminal.
+ */
+export const READ_TERMINAL_OUTPUT: string = 'read_terminal_output';
+
+/**
+ * The in-app capability that sends input/commands to the owning terminal.
+ */
+export const WRITE_TERMINAL_INPUT: string = 'write_terminal_input';
+
+/**
+ * Identifies what an agent run acts on: the open editor document (`editor`) or the owning terminal
+ * (`terminal`). It selects the tool set the providers expose for the run.
+ */
+export type AgentSurface = 'editor' | 'terminal';
+
+/**
  * Identifies where the agent's Anthropic credentials come from.
  *
  * - `local-login`: the user's local Claude login (`~/.claude`), the same credential Claude Code uses.
@@ -178,6 +194,12 @@ export interface AiRunRequest {
    * on that tab's editor; null when the run has no owning editor (the standalone agent tab).
    */
   readonly owningTabId: string | null;
+
+  /**
+   * Gets what this run acts on, which selects the tool set the providers expose. Defaults to
+   * `editor` when absent.
+   */
+  readonly surface?: AgentSurface;
 }
 
 /**
