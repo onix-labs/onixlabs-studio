@@ -6,10 +6,11 @@ import { CommitGraph } from './panels/commit-graph/commit-graph';
 import { SourceControlSidebar } from './panels/source-control-sidebar/source-control-sidebar';
 
 /**
- * The blueprint specialising a dock instance as a source-control (repository) surface. The "Well-
- * centric" default puts the Repository rail (branches, remotes, tags, stashes) on the left, the diff
- * document well in the centre where changed files open, and the History graph over the Commit detail
- * on the right. Every panel is dockable, so the user can rearrange or float them.
+ * The blueprint specialising a dock instance as a source-control (repository) surface. The default
+ * puts the Repository rail (branches, remotes, tags, stashes) on the far left and the Commit detail
+ * on the far right, with the centre column split between the diff document well on top (where changed
+ * files open) and the History graph below it. Every panel is dockable, so the user can rearrange or
+ * float them.
  */
 export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
   createLayout(): DockNode {
@@ -17,8 +18,8 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['branches']),
-        mkStack('document', []),
-        mkSplit('col', [mkStack('tool', ['history']), mkStack('tool', ['commit'])], [3, 2]),
+        mkSplit('col', [mkStack('document', []), mkStack('tool', ['history'])], [3, 2]),
+        mkStack('tool', ['commit']),
       ],
       [1.2, 3.4, 1.6],
     );
