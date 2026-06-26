@@ -183,6 +183,12 @@ export interface ApplicationSettings {
    * Gets the maximum number of undo steps kept in history. Clamped to 10-1000.
    */
   readonly undoStackSize: number;
+
+  /**
+   * Gets a value indicating whether the title strip shows the quick-action launcher buttons (open,
+   * new code/markdown/terminal/agent) in place of the single welcome button.
+   */
+  readonly showLauncherActions: boolean;
 }
 
 /**
@@ -342,6 +348,7 @@ interface LegacyAppSettings {
 const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
   defaultDocumentType: 'code',
   undoStackSize: 100,
+  showLauncherActions: false,
 };
 
 /**
@@ -481,6 +488,14 @@ export class Settings {
   );
 
   /**
+   * Gets a value indicating whether the title strip shows the quick-action launcher buttons in place
+   * of the single welcome button.
+   */
+  public readonly showLauncherActions: Signal<boolean> = computed(
+    (): boolean => this.settingsSignal().application.showLauncherActions,
+  );
+
+  /**
    * Gets the text editor settings with profiles.
    */
   public readonly textEditor: Signal<TextEditorSettingsWithProfiles> = computed(
@@ -603,6 +618,15 @@ export class Settings {
       Math.min(MAX_UNDO_STACK_SIZE, Math.round(size)),
     );
     this.updateApplicationSettings({ undoStackSize: clamped });
+  }
+
+  /**
+   * Sets whether the title strip shows the quick-action launcher buttons in place of the single
+   * welcome button.
+   * @param value True to show the launcher buttons; false to show the welcome button.
+   */
+  public setShowLauncherActions(value: boolean): void {
+    this.updateApplicationSettings({ showLauncherActions: value });
   }
 
   /**

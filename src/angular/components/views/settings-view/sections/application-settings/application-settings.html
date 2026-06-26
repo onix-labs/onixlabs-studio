@@ -17,3 +17,13 @@
     (valueChange)="onUndoStackSizeChange($event)"
   />
 </app-setting-row>
+
+<app-setting-row
+  label="Title bar quick actions"
+  description="Replace the welcome button in the title bar with buttons for opening files and creating new code, markdown, terminal, and agent tabs."
+>
+  <app-toggle
+    [checked]="showLauncherActions()"
+    (checkedChange)="onShowLauncherActionsChange($event)"
+  />
+</app-setting-row>

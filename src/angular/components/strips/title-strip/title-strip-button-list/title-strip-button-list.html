@@ -2,6 +2,32 @@
   [icon]="Icon.SETTINGS"
   [rotation]="30"
   [disabled]="isSettingsOpen()"
+  label="Settings"
   (action)="openSettings()"
 />
-<app-title-strip-button [icon]="Icon.GRID_DOTS" (action)="openNewTab()" />
+@if (showLauncherActions()) {
+  <app-title-strip-button
+    [icon]="Icon.WELCOME_DIRECTORY"
+    label="Open Directory or File"
+    (action)="openFiles()"
+  />
+  <app-title-strip-button
+    [icon]="Icon.WELCOME_SOURCE_CONTROL"
+    label="Open Repository"
+    (action)="openRepository()"
+  />
+  <app-title-strip-button [icon]="Icon.WELCOME_CODE" label="New Code File" (action)="newCode()" />
+  <app-title-strip-button
+    [icon]="Icon.WELCOME_MARKDOWN"
+    label="New Markdown File"
+    (action)="newMarkdown()"
+  />
+  <app-title-strip-button
+    [icon]="Icon.WELCOME_TERMINAL"
+    label="New Terminal"
+    (action)="newTerminal()"
+  />
+  <app-title-strip-button [icon]="Icon.WELCOME_AGENT" label="New Agent" (action)="newAgent()" />
+} @else {
+  <app-title-strip-button [icon]="Icon.GRID_DOTS" label="Welcome" (action)="openNewTab()" />
+}

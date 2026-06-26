@@ -26,6 +26,11 @@ export class TitleStripButton {
   public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
+   * Gets the accessible label and tooltip for the icon-only button.
+   */
+  public readonly label: InputSignal<string | undefined> = input<string>();
+
+  /**
    * Gets the clockwise rotation of the icon in degrees.
    */
   public readonly rotation: InputSignal<number> = input<number>(0);

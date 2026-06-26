@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { NumberField } from '../../../../forms/number-field/number-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
+import { Toggle } from '../../../../forms/toggle/toggle';
 import { DefaultDocumentType, Settings } from '../../../../../services/settings/settings';
 
 /**
@@ -9,7 +10,7 @@ import { DefaultDocumentType, Settings } from '../../../../../services/settings/
  */
 @Component({
   selector: 'app-application-settings',
-  imports: [SettingRow, Dropdown, NumberField],
+  imports: [SettingRow, Dropdown, NumberField, Toggle],
   templateUrl: './application-settings.html',
   styleUrl: '../section.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,6 +31,11 @@ export class ApplicationSettings {
    * Gets the undo stack size.
    */
   protected readonly undoStackSize: Signal<number> = this.settings.undoStackSize;
+
+  /**
+   * Gets a value indicating whether the title strip shows the quick-action launcher buttons.
+   */
+  protected readonly showLauncherActions: Signal<boolean> = this.settings.showLauncherActions;
 
   /**
    * Gets the options offered by the default document type dropdown.
@@ -53,5 +59,13 @@ export class ApplicationSettings {
    */
   protected onUndoStackSizeChange(value: number): void {
     this.settings.setUndoStackSize(value);
+  }
+
+  /**
+   * Sets whether the title strip shows the quick-action launcher buttons.
+   * @param value True to show the launcher buttons; false to show the welcome button.
+   */
+  protected onShowLauncherActionsChange(value: boolean): void {
+    this.settings.setShowLauncherActions(value);
   }
 }

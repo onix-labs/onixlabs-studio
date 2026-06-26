@@ -1,3 +1,9 @@
-<button type="button" [disabled]="disabled()" (click)="onClick()">
+<button
+  type="button"
+  [disabled]="disabled()"
+  [title]="label()"
+  [attr.aria-label]="label()"
+  (click)="onClick()"
+>
   <app-icon [icon]="icon()" [rotation]="rotation()" />
 </button>

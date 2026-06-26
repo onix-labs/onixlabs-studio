@@ -1,11 +1,15 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { FileOpener } from '../../../../services/file-opener/file-opener';
+import { Settings } from '../../../../services/settings/settings';
 import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { Icon } from '../../../../icons/icon';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
 
 /**
- * Represents the action buttons in the title strip (settings and new-tab).
+ * Represents the action buttons in the title strip: the settings button, followed by either the
+ * single welcome button or the quick-action launcher buttons (open, new code/markdown/terminal/agent)
+ * depending on the {@link Settings.showLauncherActions} preference.
  */
 @Component({
   selector: 'app-title-strip-button-list',
@@ -31,9 +35,24 @@ export class TitleStripButtonList {
   private readonly welcomeModal: WelcomeModal = inject(WelcomeModal);
 
   /**
+   * Holds the opener that routes a chosen file or folder to the right surface.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the settings service the launcher mode is read from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets a value indicating whether the settings tab is currently open.
    */
   protected readonly isSettingsOpen: Signal<boolean> = this.tabsService.isSettingsOpen;
+
+  /**
+   * Gets a value indicating whether the quick-action launcher buttons replace the welcome button.
+   */
+  protected readonly showLauncherActions: Signal<boolean> = this.settings.showLauncherActions;
 
   /**
    * Opens, or re-activates, the singleton settings tab.
@@ -47,5 +66,47 @@ export class TitleStripButtonList {
    */
   protected openNewTab(): void {
     this.welcomeModal.open();
+  }
+
+  /**
+   * Shows the system open dialog and routes the chosen file or folder to the right surface.
+   */
+  protected openFiles(): void {
+    void this.fileOpener.openInteractive();
+  }
+
+  /**
+   * Opens a new source-control (repository) tab.
+   */
+  protected openRepository(): void {
+    this.tabsService.open('source-control');
+  }
+
+  /**
+   * Opens a new code tab.
+   */
+  protected newCode(): void {
+    this.tabsService.open('code');
+  }
+
+  /**
+   * Opens a new markdown tab.
+   */
+  protected newMarkdown(): void {
+    this.tabsService.open('markdown');
+  }
+
+  /**
+   * Opens a new terminal tab.
+   */
+  protected newTerminal(): void {
+    this.tabsService.open('terminal');
+  }
+
+  /**
+   * Opens a new agent tab.
+   */
+  protected newAgent(): void {
+    this.tabsService.open('agent');
   }
 }
