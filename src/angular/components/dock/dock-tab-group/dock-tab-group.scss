@@ -244,6 +244,40 @@
   background: transparent;
 }
 
+// Document wells carry trailing controls (the drag handle and document picker), so the last tab never
+// reaches the panel edge. Rather than overflow — which widens the strip and pushes those controls past
+// the panel's clipped edge — the tabs squash and truncate to make room, while the controls keep their
+// size and stay in view. (Tool stacks have no trailing controls and use the fill/merge behaviour
+// instead.)
+:host(.dock-tab-group--documents) {
+  // Clamp the strip to the panel width so the tabs shrink to fit instead of the strip widening to its
+  // content (a flex item's default min-width is min-content).
+  .dock-tab-group__tabstrip {
+    min-inline-size: 0;
+  }
+
+  // Content-sized when there is room; shrink when space runs tight.
+  .dock-tab {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+
+  // Only the label gives way as a tab is squeezed; the icon and close button keep their size.
+  .dock-tab__label {
+    min-inline-size: 0;
+  }
+
+  .dock-tab__icon,
+  .dock-tab__close {
+    flex: none;
+  }
+
+  // The controls never shrink, so they always stay within the panel rather than being clipped.
+  .dock-tab-group__strip-controls {
+    flex: none;
+  }
+}
+
 :host(.dock-tab-group--documents) .dock-tab,
 :host(.dock-tab-group--tool) .dock-tab {
   position: relative;
