@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
+import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
 import { Workspace, WorkspaceTreeNode } from '../../../services/workspace/workspace';
+import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -45,9 +47,37 @@ export class TreePanel {
   public readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the workspace git status the rows are decorated from.
+   */
+  private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Maps a change status to its badge letter, exposed for the template.
+   */
+  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
+
+  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Gets the git change status of a file row, or null when it is unchanged.
+   * @param path The node's absolute path.
+   * @returns Returns the change status, or null.
+   */
+  protected statusFor(path: string): GitChangeStatus | null {
+    return this.git.statusFor(path);
+  }
+
+  /**
+   * Gets a value indicating whether a directory row contains a change at any depth.
+   * @param path The node's absolute path.
+   * @returns Returns true when the directory has descendant changes.
+   */
+  protected folderChanged(path: string): boolean {
+    return this.git.hasChanges(path);
+  }
 
   /**
    * Handles a click on a tree row: selects the entry, toggles directories, and opens files into the

@@ -28,6 +28,12 @@
         />
         <span class="tree-name">{{ row.node.name }}</span>
 
+        @if (statusFor(row.node.path); as status) {
+          <span class="tree-status">{{ statusLetter(status) }}</span>
+        } @else if (row.node.type === 'directory' && folderChanged(row.node.path)) {
+          <span class="tree-status tree-status--dot" aria-hidden="true">•</span>
+        }
+
         @if (row.node.loading) {
           <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
         }

@@ -25,6 +25,24 @@ export interface GitRef {
 export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
 
 /**
+ * Maps a change status to its single-letter badge (A, M, D, R).
+ * @param status The change status.
+ * @returns Returns the status letter.
+ */
+export function statusLetter(status: GitChangeStatus): string {
+  switch (status) {
+    case 'added':
+      return 'A';
+    case 'deleted':
+      return 'D';
+    case 'renamed':
+      return 'R';
+    default:
+      return 'M';
+  }
+}
+
+/**
  * Identifies the revision context a real file change is diffed against, so its before/after contents
  * can be loaded lazily from the provider. Mock changes embed their contents directly and omit this.
  */

@@ -31,6 +31,7 @@ import { BuildRunner } from '../../../services/tasks/build-runner';
 import { Builds } from '../../../services/tasks/builds';
 import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
 import { Workspace } from '../../../services/workspace/workspace';
+import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { DockContainer } from '../../dock/dock-container/dock-container';
 
@@ -56,6 +57,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     LspClient,
     SolutionModel,
     FileOpener,
+    WorkspaceGit,
     DockState,
     DockGeometry,
     DockFocus,
@@ -119,6 +121,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds this tab's lightweight git status, refreshed when the tab is shown so the explorers'
+   * change decorations stay current.
+   */
+  private readonly workspaceGit: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
    * Holds the (root) docked run-terminal store, swept alongside the documents it shadows.
    */
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
@@ -155,6 +163,14 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.builds.register(this.buildRunner);
       } else {
         this.builds.unregister(this.buildRunner);
+      }
+    });
+
+    // Refresh the explorers' git decorations whenever the tab is shown, catching changes made while
+    // it was in the background.
+    effect((): void => {
+      if (this.isActive()) {
+        void this.workspaceGit.refresh();
       }
     });
 
@@ -216,6 +232,7 @@ export class DirectoryView implements OnInit, OnDestroy {
   public ngOnDestroy(): void {
     this.builds.unregister(this.buildRunner);
     this.activeWorkspace.clearRoot(this.tabId());
+    this.workspaceGit.dispose();
     void this.workspace.closeFolder();
   }
 }

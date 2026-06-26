@@ -10,6 +10,8 @@ import { ProjectModel } from '../../../../shared/project-system';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';
+import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
+import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -59,6 +61,16 @@ export class SolutionPanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds the workspace git status the rows are decorated from.
+   */
+  private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Maps a change status to its badge letter, exposed for the template.
+   */
+  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
+
+  /**
    * Gets the current solution model, or null when there is none (the empty state).
    */
   public readonly model: Signal<ProjectModel | null> = this.solution.model;
@@ -75,6 +87,16 @@ export class SolutionPanel {
    */
   public indentFor(depth: number): number {
     return BASE_INDENT + depth * INDENT_STEP;
+  }
+
+  /**
+   * Gets the git change status of a row that maps to a file, or null when it is unchanged or has no
+   * path (a logical folder).
+   * @param path The row's path, or null.
+   * @returns Returns the change status, or null.
+   */
+  protected statusFor(path: string | null): GitChangeStatus | null {
+    return path === null ? null : this.git.statusFor(path);
   }
 
   /**

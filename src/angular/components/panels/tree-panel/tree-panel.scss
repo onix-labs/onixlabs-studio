@@ -96,6 +96,22 @@
   animation: tree-spin 0.8s linear infinite;
 }
 
+// Git status decoration: a monochrome letter for a changed file (or a dot for a folder that contains
+// changes), kept to greys rather than hue.
+.tree-status {
+  flex: 0 0 auto;
+  margin-inline-start: 0.25rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--form-muted-foreground-color);
+
+  &--dot {
+    font-size: 1rem;
+  }
+}
+
 @keyframes tree-spin {
   to {
     transform: rotate(360deg);

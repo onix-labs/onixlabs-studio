@@ -52,11 +52,13 @@ export class GitManager {
   private readonly windowGetter: () => BrowserWindow | null;
 
   /**
-   * Holds the absolute repository roots git operations are confined to. A root is added when a
-   * repository is opened and removed when it is closed; every other operation is rejected unless its
-   * root is in this set.
+   * Holds the absolute repository roots git operations are confined to, each with an open count.
+   * Several surfaces (a source-control tab and a workspace tab) can open the same root independently,
+   * so it is reference-counted: opened when a surface binds it, released when one unbinds, and removed
+   * only when the last release brings the count to zero. Every operation is rejected unless its root
+   * is present.
    */
-  private readonly roots: Set<string> = new Set<string>();
+  private readonly roots: Map<string, number> = new Map<string, number>();
 
   /**
    * Initialises a new instance of the {@link GitManager} class.
@@ -174,17 +176,28 @@ export class GitManager {
     if (root.length === 0) {
       return null;
     }
-    this.roots.add(root);
+    this.roots.set(root, (this.roots.get(root) ?? 0) + 1);
     return { root, name: path.basename(root) };
   }
 
   /**
-   * Releases an open repository root.
+   * Releases an open repository root, decrementing its open count and removing it once the last
+   * surface using it has released it.
    * @param root The absolute repository root to release.
    */
   private closeRepository(root: unknown): void {
-    if (typeof root === 'string') {
-      this.roots.delete(path.resolve(root));
+    if (typeof root !== 'string') {
+      return;
+    }
+    const resolved: string = path.resolve(root);
+    const count: number | undefined = this.roots.get(resolved);
+    if (count === undefined) {
+      return;
+    }
+    if (count <= 1) {
+      this.roots.delete(resolved);
+    } else {
+      this.roots.set(resolved, count - 1);
     }
   }
 
