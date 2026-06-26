@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { FileOpener } from '../../../../services/file-opener/file-opener';
+import { RepositoryOpener } from '../../../../services/repositories/repository-opener';
 import { Settings } from '../../../../services/settings/settings';
 import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
 import { Tabs } from '../../../../services/tabs/tabs';
@@ -40,6 +41,11 @@ export class TitleStripButtonList {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds the opener that opens a git repository into a source-control tab.
+   */
+  private readonly repositoryOpener: RepositoryOpener = inject(RepositoryOpener);
+
+  /**
    * Holds the settings service the launcher mode is read from.
    */
   private readonly settings: Settings = inject(Settings);
@@ -76,10 +82,10 @@ export class TitleStripButtonList {
   }
 
   /**
-   * Opens a new source-control (repository) tab.
+   * Shows the open-repository dialog and opens the chosen git repository in a source-control tab.
    */
   protected openRepository(): void {
-    this.tabsService.open('source-control');
+    void this.repositoryOpener.openInteractive();
   }
 
   /**

@@ -1,21 +1,16 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { Icon } from '../../icons/icon';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { RepositoryInfo } from '../../../shared/studio-api';
+import { FileDiff, SourceControlProvider } from '../source-control/source-control-provider';
+import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
+import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
   GitBranch,
   GitCommit,
   GitFileChange,
-  GitRef,
   GitRemote,
   GitStash,
   GitTag,
   GraphNode,
-  SEED_BRANCHES,
-  SEED_COMMITS,
-  SEED_REMOTES,
-  SEED_STAGED,
-  SEED_STASHES,
-  SEED_TAGS,
-  SEED_UNSTAGED,
 } from './repository-data';
 
 /**
@@ -23,6 +18,11 @@ import {
  * first real commit so staged and unstaged changes have a selectable row in the history graph.
  */
 export const WORKING_NODE_ID: string = 'working';
+
+/**
+ * The number of commits the history loads for a repository.
+ */
+const LOG_LIMIT: number = 500;
 
 /**
  * The lane colours, cycled by lane index, that tint the commit-graph edges and nodes. Drawn from the
@@ -37,63 +37,93 @@ const LANE_COLORS: readonly string[] = ['#5073b8', '#07b39b', '#ef4e7b', '#f7953
 type LaneSlots = (string | null)[];
 
 /**
- * Represents the in-memory model of a single Git repository surfaced by the source-control view: its
+ * Represents the model of a single opened repository surfaced by the source-control view: its
  * branches, remotes, tags, stashes, and commit history, together with the working-tree changes and
  * the user's current selection (commit and file) that drives the detail and diff panes.
  *
- * The data is mock scaffolding rather than a live Git binding — the goal is to exercise the view, its
- * ribbon, its status bar, and the Monaco diff surface end to end. The mutating verbs the ribbon calls
- * (commit, push, pull, stash, …) move this mock state in believable ways so the wiring is visible.
+ * The data is read from a {@link SourceControlProvider} (git today) bound to the repository's root.
+ * The model is scoped per source-control tab (provided by the view), so several repositories can be
+ * open at once. Mutating operations (stage, commit, push, …) arrive in a later slice; this slice is
+ * read-only.
  */
 @Service()
 export class Repository {
   /**
-   * Holds the repository's display name.
+   * Holds the provider factory used to create a backend for an opened repository root.
    */
-  private readonly repoNameSignal: WritableSignal<string> = signal<string>('onixlabs-studio');
+  private readonly providers: SourceControlProviders = inject(SourceControlProviders);
+
+  /**
+   * Holds the active provider, or null when no repository is bound.
+   */
+  private provider: SourceControlProvider | null = null;
+
+  /**
+   * Holds the bound repository's metadata, or null when none is bound.
+   */
+  private readonly infoSignal: WritableSignal<RepositoryInfo | null> =
+    signal<RepositoryInfo | null>(null);
+
+  /**
+   * Holds a value indicating whether the repository's data is currently loading.
+   */
+  private readonly loadingSignal: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the local branches.
    */
-  private readonly branchesSignal: WritableSignal<readonly GitBranch[]> =
-    signal<readonly GitBranch[]>(SEED_BRANCHES);
+  private readonly branchesSignal: WritableSignal<readonly GitBranch[]> = signal<
+    readonly GitBranch[]
+  >([]);
 
   /**
    * Holds the configured remotes.
    */
-  private readonly remotesSignal: WritableSignal<readonly GitRemote[]> =
-    signal<readonly GitRemote[]>(SEED_REMOTES);
+  private readonly remotesSignal: WritableSignal<readonly GitRemote[]> = signal<
+    readonly GitRemote[]
+  >([]);
 
   /**
    * Holds the tags.
    */
-  private readonly tagsSignal: WritableSignal<readonly GitTag[]> =
-    signal<readonly GitTag[]>(SEED_TAGS);
+  private readonly tagsSignal: WritableSignal<readonly GitTag[]> = signal<readonly GitTag[]>([]);
 
   /**
    * Holds the stashes, newest first.
    */
-  private readonly stashesSignal: WritableSignal<readonly GitStash[]> =
-    signal<readonly GitStash[]>(SEED_STASHES);
+  private readonly stashesSignal: WritableSignal<readonly GitStash[]> = signal<readonly GitStash[]>(
+    [],
+  );
 
   /**
-   * Holds the commit history, newest first. Every parent referenced by a commit appears later in the
-   * list, so the lane-assignment pass can resolve each parent's position.
+   * Holds the commit history, newest first.
    */
-  private readonly commitsSignal: WritableSignal<readonly GitCommit[]> =
-    signal<readonly GitCommit[]>(SEED_COMMITS);
+  private readonly commitsSignal: WritableSignal<readonly GitCommit[]> = signal<
+    readonly GitCommit[]
+  >([]);
 
   /**
    * Holds the staged working-tree changes.
    */
-  private readonly stagedSignal: WritableSignal<readonly GitFileChange[]> =
-    signal<readonly GitFileChange[]>(SEED_STAGED);
+  private readonly stagedSignal: WritableSignal<readonly GitFileChange[]> = signal<
+    readonly GitFileChange[]
+  >([]);
 
   /**
    * Holds the unstaged working-tree changes.
    */
-  private readonly unstagedSignal: WritableSignal<readonly GitFileChange[]> =
-    signal<readonly GitFileChange[]>(SEED_UNSTAGED);
+  private readonly unstagedSignal: WritableSignal<readonly GitFileChange[]> = signal<
+    readonly GitFileChange[]
+  >([]);
+
+  /**
+   * Holds the lazily-loaded files of each commit, keyed by commit hash.
+   */
+  private readonly commitFilesSignal: WritableSignal<
+    ReadonlyMap<string, readonly GitFileChange[]>
+  > = signal<ReadonlyMap<string, readonly GitFileChange[]>>(
+    new Map<string, readonly GitFileChange[]>(),
+  );
 
   /**
    * Holds the identifier of the selected graph node (a commit hash or {@link WORKING_NODE_ID}), or
@@ -110,14 +140,24 @@ export class Repository {
   private readonly selectedFileSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Tracks the running counter used to fabricate commit hashes for mock commits.
+   * Gets the bound repository's metadata, or null when none is bound.
    */
-  private sequence: number = 0;
+  public readonly info: Signal<RepositoryInfo | null> = this.infoSignal.asReadonly();
 
   /**
-   * Gets the repository's display name.
+   * Gets a value indicating whether a repository is bound.
    */
-  public readonly repoName: Signal<string> = this.repoNameSignal.asReadonly();
+  public readonly isBound: Signal<boolean> = computed((): boolean => this.infoSignal() !== null);
+
+  /**
+   * Gets a value indicating whether the repository's data is loading.
+   */
+  public readonly loading: Signal<boolean> = this.loadingSignal.asReadonly();
+
+  /**
+   * Gets the repository's display name, or an empty string when none is bound.
+   */
+  public readonly repoName: Signal<string> = computed((): string => this.infoSignal()?.name ?? '');
 
   /**
    * Gets the local branches.
@@ -160,7 +200,7 @@ export class Repository {
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
 
   /**
-   * Gets the current branch, or undefined when the head is detached.
+   * Gets the current branch, or undefined when the head is detached or no repository is bound.
    */
   public readonly currentBranch: Signal<GitBranch | undefined> = computed(
     (): GitBranch | undefined =>
@@ -176,8 +216,7 @@ export class Repository {
 
   /**
    * Gets the commit-graph rows: the optional working-tree node followed by every commit, each
-   * resolved to a lane, colour, and the edges that connect it to its parents. This is the single
-   * source the {@link GraphNode}-driven graph renders from.
+   * resolved to a lane, colour, and the edges that connect it to its parents.
    */
   public readonly graph: Signal<readonly GraphNode[]> = computed((): readonly GraphNode[] =>
     this.buildGraph(this.commitsSignal(), this.changeCount() > 0),
@@ -195,15 +234,19 @@ export class Repository {
   });
 
   /**
-   * Gets the changed files for the selected node: the selected commit's files, or the merged working
-   * tree (staged then unstaged) when the working node is selected.
+   * Gets the changed files for the selected node: the selected commit's lazily-loaded files, or the
+   * merged working tree (staged then unstaged) when the working node is selected.
    */
   public readonly selectedFiles: Signal<readonly GitFileChange[]> = computed(
     (): readonly GitFileChange[] => {
-      if (this.selectedNodeSignal() === WORKING_NODE_ID) {
+      const id: string | null = this.selectedNodeSignal();
+      if (id === WORKING_NODE_ID) {
         return [...this.stagedSignal(), ...this.unstagedSignal()];
       }
-      return this.selectedCommit()?.files ?? [];
+      if (id === null) {
+        return [];
+      }
+      return this.commitFilesSignal().get(id) ?? [];
     },
   );
 
@@ -230,13 +273,88 @@ export class Repository {
   );
 
   /**
-   * Selects a graph node (a commit hash or {@link WORKING_NODE_ID}), resetting the file selection so
-   * the diff falls back to the node's first file.
+   * Binds the repository to an opened root, creating its provider and loading its data.
+   * @param info The opened repository's metadata.
+   */
+  public bind(info: RepositoryInfo): void {
+    this.provider = this.providers.create(info.root);
+    this.infoSignal.set(info);
+    this.selectedNodeSignal.set(WORKING_NODE_ID);
+    this.selectedFileSignal.set(null);
+    void this.refresh();
+  }
+
+  /**
+   * Releases the repository, freeing its provider and clearing its data.
+   * @returns Returns a promise that resolves once the repository has been released.
+   */
+  public async close(): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    this.provider = null;
+    this.infoSignal.set(null);
+    this.branchesSignal.set([]);
+    this.remotesSignal.set([]);
+    this.tagsSignal.set([]);
+    this.stashesSignal.set([]);
+    this.commitsSignal.set([]);
+    this.stagedSignal.set([]);
+    this.unstagedSignal.set([]);
+    this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
+    await (provider?.close() ?? Promise.resolve());
+  }
+
+  /**
+   * Reloads the repository's status, history, refs, and stashes from the provider.
+   * @returns Returns a promise that resolves once the data has been reloaded.
+   */
+  public async refresh(): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return;
+    }
+    this.loadingSignal.set(true);
+    try {
+      const [status, commits, refs, stashes]: [
+        ParsedStatus,
+        readonly GitCommit[],
+        ParsedRefs,
+        readonly GitStash[],
+      ] = await Promise.all([
+        provider.getStatus(),
+        provider.getCommits(LOG_LIMIT),
+        provider.getRefs(),
+        provider.getStashes(),
+      ]);
+      // Ignore a response that arrived after the repository was closed or rebound.
+      if (this.provider !== provider) {
+        return;
+      }
+      this.stagedSignal.set(status.staged);
+      this.unstagedSignal.set(status.unstaged);
+      this.commitsSignal.set(commits);
+      this.branchesSignal.set(refs.branches);
+      this.remotesSignal.set(refs.remotes);
+      this.tagsSignal.set(refs.tags);
+      this.stashesSignal.set(stashes);
+      this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
+    } finally {
+      if (this.provider === provider) {
+        this.loadingSignal.set(false);
+      }
+    }
+  }
+
+  /**
+   * Selects a graph node (a commit hash or {@link WORKING_NODE_ID}), resetting the file selection and
+   * lazily loading the commit's files the first time it is selected.
    * @param nodeId The identifier of the node to select.
    */
   public selectNode(nodeId: string): void {
     this.selectedNodeSignal.set(nodeId);
     this.selectedFileSignal.set(null);
+    if (nodeId !== WORKING_NODE_ID && !this.commitFilesSignal().has(nodeId)) {
+      void this.loadCommitFiles(nodeId);
+    }
   }
 
   /**
@@ -248,177 +366,39 @@ export class Repository {
   }
 
   /**
-   * Stages every unstaged change, mirroring "stage all".
+   * Loads the two sides of a changed file's diff through the provider.
+   * @param file The changed file.
+   * @returns Returns the diff content (empty when no repository is bound).
    */
-  public stageAll(): void {
-    this.stagedSignal.update((staged: readonly GitFileChange[]): readonly GitFileChange[] => [
-      ...staged,
-      ...this.unstagedSignal(),
-    ]);
-    this.unstagedSignal.set([]);
-  }
-
-  /**
-   * Unstages every staged change, mirroring "unstage all".
-   */
-  public unstageAll(): void {
-    this.unstagedSignal.update((unstaged: readonly GitFileChange[]): readonly GitFileChange[] => [
-      ...this.stagedSignal(),
-      ...unstaged,
-    ]);
-    this.stagedSignal.set([]);
-  }
-
-  /**
-   * Commits the staged changes as a new commit on the current branch, clearing the staging area and
-   * advancing the branch tip. A no-op when nothing is staged.
-   * @param summary The commit summary; a default is used when blank.
-   */
-  public commit(summary: string): void {
-    const staged: readonly GitFileChange[] = this.stagedSignal();
-    if (staged.length === 0) {
-      return;
-    }
-    const branch: GitBranch | undefined = this.currentBranch();
-    const parent: GitCommit | undefined = this.commitsSignal()[0];
-    this.sequence += 1;
-    const hash: string = `${this.sequence.toString(16).padStart(7, '0')}feed00`;
-    const trimmed: string = summary.trim();
-    const newCommit: GitCommit = {
-      hash,
-      shortHash: hash.slice(0, 7),
-      summary: trimmed.length > 0 ? trimmed : 'Update working tree',
-      body: '',
-      author: 'Matthew Layton',
-      email: 'matthew.layton@live.co.uk',
-      relativeDate: 'just now',
-      isoDate: 'now',
-      parents: parent === undefined ? [] : [parent.hash],
-      refs: branch === undefined ? [] : [{ name: branch.name, kind: 'head' }],
-      files: staged,
-    };
-
-    // Move the head ref from the old tip onto the new commit, then prepend the new commit.
-    this.commitsSignal.update((commits: readonly GitCommit[]): readonly GitCommit[] => [
-      newCommit,
-      ...commits.map(
-        (commit: GitCommit): GitCommit =>
-          commit.refs.some((ref: GitRef): boolean => ref.kind === 'head')
-            ? { ...commit, refs: commit.refs.filter((ref: GitRef): boolean => ref.kind !== 'head') }
-            : commit,
-      ),
-    ]);
-    this.stagedSignal.set([]);
-    if (branch !== undefined) {
-      this.updateBranch(branch.name, { tip: hash, ahead: branch.ahead + 1 });
-    }
-    this.selectNode(hash);
-  }
-
-  /**
-   * Pushes the current branch, clearing its ahead count.
-   */
-  public push(): void {
-    const branch: GitBranch | undefined = this.currentBranch();
-    if (branch !== undefined) {
-      this.updateBranch(branch.name, { ahead: 0 });
-    }
-  }
-
-  /**
-   * Pulls the current branch, clearing its behind count.
-   */
-  public pull(): void {
-    const branch: GitBranch | undefined = this.currentBranch();
-    if (branch !== undefined) {
-      this.updateBranch(branch.name, { behind: 0 });
-    }
-  }
-
-  /**
-   * Stashes the working-tree changes, moving them into a new stash and clearing the working tree.
-   */
-  public stash(): void {
-    const files: readonly GitFileChange[] = [...this.stagedSignal(), ...this.unstagedSignal()];
-    if (files.length === 0) {
-      return;
-    }
-    const branch: GitBranch | undefined = this.currentBranch();
-    this.stashesSignal.update((stashes: readonly GitStash[]): readonly GitStash[] => [
-      {
-        index: 0,
-        message: `WIP on ${branch?.name ?? 'HEAD'}`,
-        branch: branch?.name ?? 'HEAD',
-        files,
-      },
-      ...stashes.map((stash: GitStash): GitStash => ({ ...stash, index: stash.index + 1 })),
-    ]);
-    this.stagedSignal.set([]);
-    this.unstagedSignal.set([]);
-    if (this.selectedNodeSignal() === WORKING_NODE_ID) {
-      this.selectNode(this.commitsSignal()[0]?.hash ?? WORKING_NODE_ID);
-    }
-  }
-
-  /**
-   * Creates a new local branch at the current tip and checks it out, mirroring "new branch". The name
-   * is auto-generated so the scaffold needs no prompt.
-   */
-  public createBranch(): void {
-    const tip: GitCommit | undefined = this.commitsSignal()[0];
-    if (tip === undefined) {
-      return;
-    }
-    this.sequence += 1;
-    const name: string = `feature/branch-${this.sequence}`;
-    this.branchesSignal.update((branches: readonly GitBranch[]): readonly GitBranch[] => [
-      ...branches.map((branch: GitBranch): GitBranch => ({ ...branch, current: false })),
-      { name, current: true, ahead: 0, behind: 0, tip: tip.hash },
-    ]);
-  }
-
-  /**
-   * Sets the current branch by name, clearing the head flag from the previous branch. Unknown names
-   * are ignored.
-   * @param name The name of the branch to check out.
-   */
-  public checkout(name: string): void {
-    if (!this.branchesSignal().some((branch: GitBranch): boolean => branch.name === name)) {
-      return;
-    }
-    this.branchesSignal.update((branches: readonly GitBranch[]): readonly GitBranch[] =>
-      branches.map(
-        (branch: GitBranch): GitBranch => ({ ...branch, current: branch.name === name }),
-      ),
+  public loadDiff(file: GitFileChange): Promise<FileDiff> {
+    return (
+      this.provider?.getFileDiff(file) ??
+      Promise.resolve({ original: file.original, modified: file.modified })
     );
   }
 
   /**
-   * Gets the section icon for a ref kind, used by the sidebar and ref badges.
-   * @param kind The ref kind.
-   * @returns Returns the icon for the kind.
+   * Loads a commit's files from the provider and caches them.
+   * @param hash The commit hash.
+   * @returns Returns a promise that resolves once the files have been loaded.
    */
-  public iconForRef(kind: GitRef['kind']): Icon {
-    switch (kind) {
-      case 'tag':
-        return Icon.TAG;
-      case 'remote':
-        return Icon.CLOUD;
-      default:
-        return Icon.SOURCE_CONTROL;
+  private async loadCommitFiles(hash: string): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    const commit: GitCommit | undefined = this.commitsSignal().find(
+      (candidate: GitCommit): boolean => candidate.hash === hash,
+    );
+    if (provider === null || commit === undefined) {
+      return;
     }
-  }
-
-  /**
-   * Applies a partial update to the branch with the given name.
-   * @param name The name of the branch to update.
-   * @param patch The fields to change.
-   */
-  private updateBranch(name: string, patch: Partial<GitBranch>): void {
-    this.branchesSignal.update((branches: readonly GitBranch[]): readonly GitBranch[] =>
-      branches.map(
-        (branch: GitBranch): GitBranch => (branch.name === name ? { ...branch, ...patch } : branch),
-      ),
+    const files: GitFileChange[] = await provider.getCommitFiles(commit);
+    if (this.provider !== provider) {
+      return;
+    }
+    this.commitFilesSignal.update(
+      (
+        current: ReadonlyMap<string, readonly GitFileChange[]>,
+      ): ReadonlyMap<string, readonly GitFileChange[]> =>
+        new Map<string, readonly GitFileChange[]>(current).set(hash, files),
     );
   }
 
@@ -453,8 +433,6 @@ export class Repository {
           if (parentRow === undefined || parentPlace === undefined) {
             return null;
           }
-          // A merge (second-or-later parent) takes its own lane's colour; the first parent continues
-          // this commit's lane, so it keeps this commit's colour.
           return { toRow: parentRow, toLane: parentPlace.lane, color: parentPlace.color };
         })
         .filter(
@@ -521,8 +499,6 @@ export class Repository {
       if (lane === -1) {
         lane = allocate(commit.hash);
       }
-      // Free any other lane that was also waiting for this commit (a branch point), so its lane is
-      // reused below rather than drawn as a phantom parallel line.
       for (let other: number = 0; other < lanes.length; other++) {
         if (other !== lane && lanes[other] === commit.hash) {
           lanes[other] = null;

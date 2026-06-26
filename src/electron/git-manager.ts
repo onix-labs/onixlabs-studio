@@ -1,0 +1,326 @@
+import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import * as path from 'node:path';
+import {
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  IpcMainInvokeEvent,
+  OpenDialogReturnValue,
+} from 'electron';
+import { IpcChannel } from '../shared/ipc-channels';
+import { GitRunResult, RepositoryInfo } from '../shared/studio-api';
+
+/**
+ * Holds the maximum time, in milliseconds, a single git invocation may run before being killed.
+ */
+const GIT_TIMEOUT_MS: number = 20000;
+
+/**
+ * Holds the maximum size, in bytes, of a git invocation's captured output (large logs and blobs).
+ */
+const GIT_MAX_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * Holds the largest commit count {@link GitManager.log} will read, clamping an untrusted limit.
+ */
+const MAX_LOG_LIMIT: number = 2000;
+
+/**
+ * Validates the variable arguments passed to git so the renderer cannot smuggle options. A safe value
+ * is a non-empty string that does not begin with a dash (which git would parse as an option).
+ * @param value The value to validate.
+ * @returns Returns true when the value is safe to pass as a git operand.
+ */
+function isSafeOperand(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && !value.startsWith('-');
+}
+
+/**
+ * Runs the git CLI safely on behalf of the renderer. Every invocation uses `execFile` with array
+ * arguments (never a shell), runs with its working directory set to a repository root the user has
+ * explicitly opened, and has its variable arguments validated so no argument can be parsed as an
+ * option. Output is returned raw for the renderer's source-control provider to parse.
+ *
+ * This is the git implementation behind the renderer's `SourceControlProvider`; a future provider
+ * (for example SVN) would add its own manager alongside this one.
+ */
+export class GitManager {
+  /**
+   * Holds the accessor for the current application window, used to parent the open dialog.
+   */
+  private readonly windowGetter: () => BrowserWindow | null;
+
+  /**
+   * Holds the absolute repository roots git operations are confined to. A root is added when a
+   * repository is opened and removed when it is closed; every other operation is rejected unless its
+   * root is in this set.
+   */
+  private readonly roots: Set<string> = new Set<string>();
+
+  /**
+   * Initialises a new instance of the {@link GitManager} class.
+   * @param windowGetter Returns the current application window, or null when none is open.
+   */
+  public constructor(windowGetter: () => BrowserWindow | null) {
+    this.windowGetter = windowGetter;
+  }
+
+  /**
+   * Registers the source-control IPC handlers.
+   */
+  public register(): void {
+    ipcMain.handle(
+      IpcChannel.SourceControlOpenRepository,
+      (): Promise<RepositoryInfo | null> => this.openRepository(),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlResolveRepository,
+      (_event: IpcMainInvokeEvent, directory: unknown): Promise<RepositoryInfo | null> =>
+        this.resolveRepository(directory),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlCloseRepository,
+      (_event: IpcMainInvokeEvent, root: unknown): void => this.closeRepository(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlStatus,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.status(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlLog,
+      (_event: IpcMainInvokeEvent, root: unknown, limit: unknown): Promise<GitRunResult> =>
+        this.log(root, limit),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlRefs,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.refs(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlStashes,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stashes(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlCommitFiles,
+      (_event: IpcMainInvokeEvent, root: unknown, hash: unknown): Promise<GitRunResult> =>
+        this.commitFiles(root, hash),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlReadBlob,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        revision: unknown,
+        filePath: unknown,
+      ): Promise<GitRunResult> => this.readBlob(root, revision, filePath),
+    );
+  }
+
+  /**
+   * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root,
+   * opening it for subsequent operations.
+   * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
+   */
+  private async openRepository(): Promise<RepositoryInfo | null> {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return null;
+    }
+    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+      properties: ['openDirectory'],
+      title: 'Open Repository',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return this.resolveRepository(result.filePaths[0]);
+  }
+
+  /**
+   * Resolves the git repository root containing a folder and opens it. The folder is trusted only as a
+   * starting point for `git rev-parse`; the resolved top level becomes the confined root.
+   * @param directory The absolute folder path to resolve from.
+   * @returns Returns the repository, or null when the folder is not inside a git repository.
+   */
+  private async resolveRepository(directory: unknown): Promise<RepositoryInfo | null> {
+    if (typeof directory !== 'string' || directory.length === 0) {
+      return null;
+    }
+    const start: string = path.resolve(directory);
+    const result: GitRunResult = await this.run(start, ['rev-parse', '--show-toplevel']);
+    if (!result.success || result.stdout === undefined) {
+      return null;
+    }
+    const root: string = path.resolve(result.stdout.trim());
+    if (root.length === 0) {
+      return null;
+    }
+    this.roots.add(root);
+    return { root, name: path.basename(root) };
+  }
+
+  /**
+   * Releases an open repository root.
+   * @param root The absolute repository root to release.
+   */
+  private closeRepository(root: unknown): void {
+    if (typeof root === 'string') {
+      this.roots.delete(path.resolve(root));
+    }
+  }
+
+  /**
+   * Reads the working-tree status (porcelain v2 with the branch header), null-delimited so paths with
+   * spaces survive intact.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private status(root: unknown): Promise<GitRunResult> {
+    return this.runInRoot(root, ['status', '--porcelain=v2', '--branch', '-z']);
+  }
+
+  /**
+   * Reads the commit history with parents, author, dates, ref decorations, subject, and body. Fields
+   * are separated by US (0x1f) and records by RS (0x1e) so they parse unambiguously.
+   * @param root The repository root.
+   * @param limit The maximum number of commits to read.
+   * @returns Returns the raw command result.
+   */
+  private log(root: unknown, limit: unknown): Promise<GitRunResult> {
+    const count: number =
+      typeof limit === 'number' && Number.isFinite(limit)
+        ? Math.min(MAX_LOG_LIMIT, Math.max(1, Math.floor(limit)))
+        : MAX_LOG_LIMIT;
+    const format: string = '%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%ar%x1f%D%x1f%s%x1f%b%x1e';
+    return this.runInRoot(root, ['log', `--max-count=${count}`, `--format=${format}`]);
+  }
+
+  /**
+   * Reads local branches, remote-tracking branches, and tags with their tips and upstream tracking.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private refs(root: unknown): Promise<GitRunResult> {
+    const format: string =
+      '%(refname)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)';
+    return this.runInRoot(root, [
+      'for-each-ref',
+      `--format=${format}`,
+      'refs/heads',
+      'refs/remotes',
+      'refs/tags',
+    ]);
+  }
+
+  /**
+   * Reads the stash entries.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private stashes(root: unknown): Promise<GitRunResult> {
+    return this.runInRoot(root, ['stash', 'list', '--format=%gd%1f%H%1f%s']);
+  }
+
+  /**
+   * Reads the files changed by a single commit (name-status against its first parent), null-delimited.
+   * @param root The repository root.
+   * @param hash The commit hash to inspect.
+   * @returns Returns the raw command result.
+   */
+  private commitFiles(root: unknown, hash: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(hash)) {
+      return Promise.resolve({ success: false, error: 'Invalid commit hash' });
+    }
+    return this.runInRoot(root, ['diff-tree', '--no-commit-id', '--name-status', '-r', '-z', hash]);
+  }
+
+  /**
+   * Reads the contents of a file at a revision for one side of a diff. An empty revision reads the
+   * working-tree file from disk (confined to the root); otherwise the file is read from the git object
+   * at `revision:path`. A missing blob yields an empty string rather than an error, so an added or
+   * deleted file simply has an empty side.
+   * @param root The repository root.
+   * @param revision The revision to read at, or an empty string for the working tree.
+   * @param filePath The repository-relative file path.
+   * @returns Returns the raw command result.
+   */
+  private async readBlob(
+    root: unknown,
+    revision: unknown,
+    filePath: unknown,
+  ): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return { success: false, error: 'Repository is not open' };
+    }
+    if (typeof filePath !== 'string' || filePath.length === 0 || filePath.startsWith('-')) {
+      return { success: false, error: 'Invalid file path' };
+    }
+    const resolvedRoot: string = path.resolve(root);
+    const absolute: string = path.resolve(resolvedRoot, filePath);
+    if (absolute !== resolvedRoot && !absolute.startsWith(resolvedRoot + path.sep)) {
+      return { success: false, error: 'Path escapes the repository' };
+    }
+
+    // Empty revision means the working tree: read the file from disk. A missing file is an empty side.
+    if (revision === '') {
+      try {
+        const content: string = await readFile(absolute, 'utf8');
+        return { success: true, stdout: content };
+      } catch {
+        return { success: true, stdout: '' };
+      }
+    }
+
+    if (!isSafeOperand(revision)) {
+      return { success: false, error: 'Invalid revision' };
+    }
+    const result: GitRunResult = await this.run(resolvedRoot, ['show', `${revision}:${filePath}`]);
+    // A blob that does not exist at the revision (added or deleted file) is an empty side, not a failure.
+    return result.success ? result : { success: true, stdout: '' };
+  }
+
+  /**
+   * Runs git in an open repository root after validating the root is open.
+   * @param root The repository root, which must be open.
+   * @param args The fully-built git argument vector.
+   * @returns Returns the raw command result.
+   */
+  private runInRoot(root: unknown, args: readonly string[]): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return Promise.resolve({ success: false, error: 'Repository is not open' });
+    }
+    return this.run(path.resolve(root), args);
+  }
+
+  /**
+   * Determines whether a value is an open repository root.
+   * @param root The value to test.
+   * @returns Returns true when the value is a string naming an open root.
+   */
+  private isOpenRoot(root: unknown): root is string {
+    return typeof root === 'string' && this.roots.has(path.resolve(root));
+  }
+
+  /**
+   * Invokes git with array arguments in a working directory, capturing its output.
+   * @param cwd The working directory to run in.
+   * @param args The git argument vector.
+   * @returns Returns the raw command result.
+   */
+  private run(cwd: string, args: readonly string[]): Promise<GitRunResult> {
+    return new Promise<GitRunResult>((resolve: (value: GitRunResult) => void): void => {
+      execFile(
+        'git',
+        [...args],
+        { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER, windowsHide: true },
+        (error: Error | null, stdout: string, stderr: string): void => {
+          if (error !== null) {
+            resolve({ success: false, error: error.message, stderr });
+            return;
+          }
+          resolve({ success: true, stdout, stderr });
+        },
+      );
+    });
+  }
+}

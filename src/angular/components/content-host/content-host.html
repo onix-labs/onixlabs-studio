@@ -25,7 +25,7 @@
         <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
       @case ('source-control') {
-        <app-source-control-view [isActive]="tab.id === activeTabId()" />
+        <app-source-control-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
       }
     }
   </div>

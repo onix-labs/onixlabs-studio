@@ -15,6 +15,7 @@ describe('SourceControlView', () => {
   it('create_whenConstructed_returnsComponent', () => {
     const fixture: ReturnType<typeof TestBed.createComponent<SourceControlView>> =
       TestBed.createComponent(SourceControlView);
+    fixture.componentRef.setInput('tabId', 'tab-1');
     expect(fixture.componentInstance).toBeTruthy();
   });
 });

@@ -22,6 +22,7 @@ import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from './media-protocol';
 import { SecurityManager } from './security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
+import { GitManager } from './git-manager';
 import { TaskRunner } from './task-runner';
 import { TerminalManager } from './terminal-manager';
 import { WorkspaceContext } from './workspace-context';
@@ -184,6 +185,11 @@ class Program {
    * Runs tasks as child processes and streams their output to the renderer.
    */
   private readonly taskRunner: TaskRunner = new TaskRunner((): BrowserWindow | null => this.window);
+
+  /**
+   * Runs git safely on behalf of the renderer's source-control surfaces.
+   */
+  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null => this.window);
 
   /**
    * Watches open documents on disk and notifies the renderer when they change.
@@ -401,6 +407,7 @@ class Program {
     this.fileManager.register();
     this.codeRunner.register();
     this.taskRunner.register();
+    this.gitManager.register();
     this.workspaceManager.register();
     this.fileWatcher.register();
     this.aiManager.register();

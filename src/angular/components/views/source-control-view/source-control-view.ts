@@ -6,7 +6,9 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
 } from '@angular/core';
+import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
 import { Icon } from '../../../icons/icon';
 import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
@@ -19,6 +21,7 @@ import { DockState } from '../../../services/dock/dock-state';
 import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
+import { Repositories } from '../../../services/repositories/repositories';
 import { Repository } from '../../../services/repository/repository';
 import { GitBranch } from '../../../services/repository/repository-data';
 import {
@@ -26,7 +29,9 @@ import {
   SourceControlCommands,
 } from '../../../services/source-control-commands/source-control-commands';
 import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
+import { Tabs } from '../../../services/tabs/tabs';
 import { DockContainer } from '../../dock/dock-container/dock-container';
+import { AppIcon } from '../../shared/icon/app-icon';
 import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
 
 /**
@@ -47,12 +52,13 @@ const STATUS_PRIORITY: number = 30;
  * resizable. The view owns its ribbon (through {@link SourceControlCommands}) and contributes branch
  * and change status to the status strip while it is the active tab.
  *
- * The repository data is mock scaffolding (see {@link Repository}); the goal is to exercise the dock
- * reuse, the panels, the ribbon, the status bar, and the Monaco diff surface end to end.
+ * The tab binds to a git repository the user opens — seeded from the repository stashed for it when
+ * opened from the welcome screen, or opened in place from its empty state. A {@link Repository}
+ * scoped to this tab reads the repository's data through a version-control provider.
  */
 @Component({
   selector: 'app-source-control-view',
-  imports: [DockContainer],
+  imports: [DockContainer, AppIcon],
   templateUrl: './source-control-view.html',
   styleUrl: './source-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,11 +76,21 @@ const STATUS_PRIORITY: number = 30;
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
   ],
 })
-export class SourceControlView implements OnDestroy {
+export class SourceControlView implements OnInit, OnDestroy {
   /**
-   * Holds the repository model the panels render and the ribbon mutates.
+   * Gets the icon set, exposed for the template.
    */
-  private readonly repository: Repository = inject(Repository);
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the git bridge used to open a repository in place from the empty state.
+   */
+  private readonly api: SourceControlApi | undefined = window.studio?.sourceControl;
+
+  /**
+   * Holds the repository model the panels render. Exposed for the template's empty-state guard.
+   */
+  protected readonly repository: Repository = inject(Repository);
 
   /**
    * Holds the diff store, swept of closed diffs and toggled between inline/side-by-side by the ribbon.
@@ -87,6 +103,16 @@ export class SourceControlView implements OnDestroy {
   private readonly dockState: DockState = inject(DockState);
 
   /**
+   * Holds the registry that hands this tab its initial repository.
+   */
+  private readonly repositories: Repositories = inject(Repositories);
+
+  /**
+   * Holds the tab registry, used to name this tab after the repository opened in place.
+   */
+  private readonly tabsService: Tabs = inject(Tabs);
+
+  /**
    * Holds the command registry the ribbon routes its actions through.
    */
   private readonly commands: SourceControlCommands = inject(SourceControlCommands);
@@ -95,6 +121,11 @@ export class SourceControlView implements OnDestroy {
    * Holds the status-bar registry this view contributes branch and change status to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
+
+  /**
+   * Gets the owning tab's id, used to claim this tab's stashed initial repository and rename it.
+   */
+  public readonly tabId: InputSignal<string> = input.required<string>();
 
   /**
    * Gets a value indicating whether the view belongs to the active tab. The view stays mounted when
@@ -131,9 +162,9 @@ export class SourceControlView implements OnDestroy {
     });
 
     // Publish branch and change status to the status strip while active, reading the repository
-    // signals so the segments refresh on checkout, commit, push, and pull. Clears when inactive.
+    // signals so the segments refresh on reload. Clears when inactive or no repository is bound.
     effect((): void => {
-      if (!this.isActive()) {
+      if (!this.isActive() || !this.repository.isBound()) {
         this.statusBar.clearOwner(STATUS_OWNER);
         return;
       }
@@ -154,7 +185,18 @@ export class SourceControlView implements OnDestroy {
   }
 
   /**
-   * Clears the ribbon command handler and status contribution when the view is torn down.
+   * Binds the repository stashed for this tab when it was opened, if any.
+   */
+  public ngOnInit(): void {
+    const initial: RepositoryInfo | undefined = this.repositories.takeInitial(this.tabId());
+    if (initial !== undefined) {
+      this.repository.bind(initial);
+    }
+  }
+
+  /**
+   * Clears the ribbon command handler and status contribution, and releases the repository, when the
+   * view is torn down.
    */
   public ngOnDestroy(): void {
     if (this.commandHandler !== null) {
@@ -162,25 +204,39 @@ export class SourceControlView implements OnDestroy {
       this.commandHandler = null;
     }
     this.statusBar.clearOwner(STATUS_OWNER);
+    void this.repository.close();
   }
 
   /**
-   * Registers the ribbon command handler, mapping each ribbon action onto the repository (or the diff
-   * store for the inline-diff toggle).
+   * Opens a git repository into this (empty) tab from its empty state, binding it in place and naming
+   * the tab after the repository.
+   */
+  protected async openRepositoryHere(): Promise<void> {
+    const info: RepositoryInfo | null = await (this.api?.openRepository() ?? Promise.resolve(null));
+    if (info === null) {
+      return;
+    }
+    this.tabsService.rename(this.tabId(), info.name);
+    this.repository.bind(info);
+  }
+
+  /**
+   * Registers the ribbon command handler. Refresh reloads the repository and the diff-layout toggle
+   * flips the diff store; the mutating actions are wired in a later slice.
    */
   private registerCommandHandler(): void {
     if (this.commandHandler !== null) {
       return;
     }
     this.commandHandler = {
-      refresh: (): void => undefined,
+      refresh: (): void => void this.repository.refresh(),
       fetch: (): void => undefined,
-      pull: (): void => this.repository.pull(),
-      push: (): void => this.repository.push(),
-      stageAll: (): void => this.repository.stageAll(),
-      commit: (): void => this.repository.commit('Update working tree'),
-      stash: (): void => this.repository.stash(),
-      newBranch: (): void => this.repository.createBranch(),
+      pull: (): void => undefined,
+      push: (): void => undefined,
+      stageAll: (): void => undefined,
+      commit: (): void => undefined,
+      stash: (): void => undefined,
+      newBranch: (): void => undefined,
       toggleInlineDiff: (): void => this.diffs.toggleInline(),
     };
     this.commands.register(this.commandHandler);

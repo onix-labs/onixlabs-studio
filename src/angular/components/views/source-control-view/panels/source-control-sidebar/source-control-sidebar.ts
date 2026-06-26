@@ -47,11 +47,10 @@ export class SourceControlSidebar {
   }
 
   /**
-   * Checks out a branch and selects its tip commit.
-   * @param branch The branch to check out.
+   * Navigates to a branch's tip commit. Checking the branch out (a mutation) arrives in a later slice.
+   * @param branch The branch to navigate to.
    */
-  protected checkout(branch: GitBranch): void {
-    this.repository.checkout(branch.name);
+  protected selectBranch(branch: GitBranch): void {
     this.repository.selectNode(branch.tip);
   }
 }

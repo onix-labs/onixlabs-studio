@@ -25,8 +25,10 @@ import type {
   FileInfo,
   FileOperationResult,
   FileWriteResult,
+  GitRunResult,
   GpuRenderingInfo,
   OpenSelection,
+  RepositoryInfo,
   SaveDialogChoice,
   StudioApi,
   TempFileResult,
@@ -212,6 +214,34 @@ const studioApi: StudioApi = {
         ipcRenderer.removeListener(IpcChannel.TaskExit, handler);
       };
     },
+  },
+  sourceControl: {
+    openRepository: (): Promise<RepositoryInfo | null> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlOpenRepository) as Promise<RepositoryInfo | null>,
+    resolveRepository: (directory: string): Promise<RepositoryInfo | null> =>
+      ipcRenderer.invoke(
+        IpcChannel.SourceControlResolveRepository,
+        directory,
+      ) as Promise<RepositoryInfo | null>,
+    closeRepository: (root: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlCloseRepository, root) as Promise<void>,
+    status: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlStatus, root) as Promise<GitRunResult>,
+    log: (root: string, limit: number): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlLog, root, limit) as Promise<GitRunResult>,
+    refs: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlRefs, root) as Promise<GitRunResult>,
+    stashes: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlStashes, root) as Promise<GitRunResult>,
+    commitFiles: (root: string, hash: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlCommitFiles, root, hash) as Promise<GitRunResult>,
+    readBlob: (root: string, revision: string, filePath: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(
+        IpcChannel.SourceControlReadBlob,
+        root,
+        revision,
+        filePath,
+      ) as Promise<GitRunResult>,
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>

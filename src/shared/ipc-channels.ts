@@ -329,4 +329,49 @@ export enum IpcChannel {
    * Notifies the renderer that a task's process has exited.
    */
   TaskExit = 'tasks:exit',
+
+  /**
+   * Shows an open-folder dialog and resolves the chosen folder's git repository root.
+   */
+  SourceControlOpenRepository = 'source-control:open-repository',
+
+  /**
+   * Resolves the git repository root that contains an already-open folder, without a dialog.
+   */
+  SourceControlResolveRepository = 'source-control:resolve-repository',
+
+  /**
+   * Releases an open repository root, removing it from the set git operations are confined to.
+   */
+  SourceControlCloseRepository = 'source-control:close-repository',
+
+  /**
+   * Reads the working-tree status (branch, ahead/behind, and changed files) of a repository.
+   */
+  SourceControlStatus = 'source-control:status',
+
+  /**
+   * Reads the commit history (with parents and decorations) of a repository.
+   */
+  SourceControlLog = 'source-control:log',
+
+  /**
+   * Reads the branches and tags of a repository.
+   */
+  SourceControlRefs = 'source-control:refs',
+
+  /**
+   * Reads the stash entries of a repository.
+   */
+  SourceControlStashes = 'source-control:stashes',
+
+  /**
+   * Reads the files changed by a single commit.
+   */
+  SourceControlCommitFiles = 'source-control:commit-files',
+
+  /**
+   * Reads the contents of a file at a given revision (or the working tree) for a diff.
+   */
+  SourceControlReadBlob = 'source-control:read-blob',
 }

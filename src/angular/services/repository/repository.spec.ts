@@ -1,13 +1,144 @@
 import { TestBed } from '@angular/core/testing';
+import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
+import { FileDiff, SourceControlProvider } from '../source-control/source-control-provider';
+import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
-import { GraphNode } from './repository-data';
+import { GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
+
+/**
+ * Builds a file change with a working-tree target.
+ * @param path The file path.
+ * @returns Returns the file change.
+ */
+function workingFile(path: string): GitFileChange {
+  return {
+    path,
+    status: 'modified',
+    additions: 0,
+    deletions: 0,
+    language: '',
+    original: '',
+    modified: '',
+    target: { kind: 'working', staged: false },
+  };
+}
+
+/**
+ * A canned provider whose data the repository tests load and select against.
+ */
+class FakeProvider implements SourceControlProvider {
+  public constructor(public readonly root: string) {}
+
+  public getStatus(): Promise<ParsedStatus> {
+    return Promise.resolve({
+      branch: 'main',
+      upstream: 'origin/main',
+      ahead: 1,
+      behind: 0,
+      staged: [workingFile('staged.ts')],
+      unstaged: [workingFile('unstaged.ts')],
+    });
+  }
+
+  public getCommits(): Promise<GitCommit[]> {
+    return Promise.resolve([makeCommit('c2', ['c1']), makeCommit('c1', [])]);
+  }
+
+  public getRefs(): Promise<ParsedRefs> {
+    return Promise.resolve({
+      branches: [{ name: 'main', current: true, ahead: 1, behind: 0, tip: 'c2' }],
+      remotes: [],
+      tags: [],
+    });
+  }
+
+  public getStashes(): Promise<GitStash[]> {
+    return Promise.resolve([]);
+  }
+
+  public getCommitFiles(commit: GitCommit): Promise<GitFileChange[]> {
+    return Promise.resolve([
+      {
+        ...workingFile(`${commit.hash}.ts`),
+        target: { kind: 'commit', hash: commit.hash, parent: null },
+      },
+    ]);
+  }
+
+  public getFileDiff(): Promise<FileDiff> {
+    return Promise.resolve({ original: 'before', modified: 'after' });
+  }
+
+  public close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Builds a commit with the given hash and parents.
+ * @param hash The commit hash.
+ * @param parents The parent hashes.
+ * @returns Returns the commit.
+ */
+function makeCommit(hash: string, parents: readonly string[]): GitCommit {
+  return {
+    hash,
+    shortHash: hash,
+    summary: `Commit ${hash}`,
+    body: '',
+    author: 'Test',
+    email: 't@example.com',
+    relativeDate: 'now',
+    isoDate: 'now',
+    parents: [...parents],
+    refs: [],
+    files: [],
+  };
+}
 
 describe('Repository', () => {
   let repository: Repository;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({});
+  beforeEach(async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new FakeProvider(root) },
+        },
+      ],
+    });
     repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo' });
+    await repository.refresh();
+  });
+
+  it('bind_thenRefresh_loadsBranchesCommitsStatusAndName', () => {
+    expect(repository.isBound()).toBe(true);
+    expect(repository.repoName()).toBe('repo');
+    expect(repository.commits().length).toBe(2);
+    expect(repository.currentBranch()?.name).toBe('main');
+    expect(repository.changeCount()).toBe(2);
+  });
+
+  it('selectedFiles_whenWorkingSelected_areStagedThenUnstaged', () => {
+    expect(repository.isWorkingSelected()).toBe(true);
+    expect(repository.selectedFiles().map((file: GitFileChange): string => file.path)).toEqual([
+      'staged.ts',
+      'unstaged.ts',
+    ]);
+  });
+
+  it('selectNode_whenCommitSelected_lazilyLoadsItsFiles', async () => {
+    repository.selectNode('c2');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(repository.selectedCommit()?.hash).toBe('c2');
+    expect(repository.selectedFiles().map((file: GitFileChange): string => file.path)).toEqual([
+      'c2.ts',
+    ]);
   });
 
   it('graph_whenWorkingTreeDirty_prependsWorkingNode', () => {
@@ -15,59 +146,19 @@ describe('Repository', () => {
 
     expect(graph[0].kind).toBe('working');
     expect(graph[0].id).toBe(WORKING_NODE_ID);
-    expect(graph.filter((node: GraphNode): boolean => node.kind === 'commit').length).toBe(
-      repository.commits().length,
-    );
   });
 
-  it('graph_whenFeatureBranchPresent_assignsMoreThanOneLane', () => {
-    const maxLane: number = repository
-      .graph()
-      .reduce((max: number, node: GraphNode): number => Math.max(max, node.lane), 0);
+  it('loadDiff_returnsTheProvidersDiff', async () => {
+    const diff: FileDiff = await repository.loadDiff(workingFile('staged.ts'));
 
-    expect(maxLane).toBeGreaterThan(0);
+    expect(diff).toEqual({ original: 'before', modified: 'after' });
   });
 
-  it('selectedFile_byDefault_isFirstWorkingChange', () => {
-    expect(repository.isWorkingSelected()).toBe(true);
-    expect(repository.selectedFile()?.path).toBe(repository.staged()[0].path);
-  });
+  it('close_clearsTheRepository', async () => {
+    await repository.close();
 
-  it('selectNode_whenCommitSelected_exposesItsFiles', () => {
-    const commitHash: string = repository.commits()[0].hash;
-
-    repository.selectNode(commitHash);
-
-    expect(repository.selectedCommit()?.hash).toBe(commitHash);
-    expect(repository.selectedFiles()).toEqual(repository.commits()[0].files);
-  });
-
-  it('commit_whenChangesStaged_addsCommitAndClearsStaging', () => {
-    repository.stageAll();
-    const before: number = repository.commits().length;
-
-    repository.commit('Test commit');
-
-    expect(repository.commits().length).toBe(before + 1);
-    expect(repository.commits()[0].summary).toBe('Test commit');
-    expect(repository.staged().length).toBe(0);
-    expect(repository.unstaged().length).toBe(0);
-  });
-
-  it('stash_whenWorkingTreeDirty_movesChangesIntoNewStash', () => {
-    const stashesBefore: number = repository.stashes().length;
-
-    repository.stash();
-
-    expect(repository.stashes().length).toBe(stashesBefore + 1);
+    expect(repository.isBound()).toBe(false);
+    expect(repository.commits().length).toBe(0);
     expect(repository.changeCount()).toBe(0);
-  });
-
-  it('push_whenBranchAhead_clearsAheadCount', () => {
-    expect(repository.currentBranch()?.ahead).toBeGreaterThan(0);
-
-    repository.push();
-
-    expect(repository.currentBranch()?.ahead).toBe(0);
   });
 });

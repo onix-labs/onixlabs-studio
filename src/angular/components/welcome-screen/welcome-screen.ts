@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { FileOpener } from '../../services/file-opener/file-opener';
 import { RecentItem, RecentItems } from '../../services/recent-items/recent-items';
+import { RepositoryOpener } from '../../services/repositories/repository-opener';
 import { TabType } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
@@ -44,6 +45,11 @@ export class WelcomeScreen {
    * Holds the opener that routes a chosen file or folder to the right surface.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the opener that opens a git repository into a source-control tab.
+   */
+  private readonly repositoryOpener: RepositoryOpener = inject(RepositoryOpener);
 
   /**
    * Holds the recent-items registry surfaced in the right-hand panel.
@@ -99,6 +105,16 @@ export class WelcomeScreen {
   protected create(type: TabType): void {
     this.tabsService.open(type);
     this.welcomeModal.close();
+  }
+
+  /**
+   * Shows the open-repository dialog and opens the chosen git repository in a source-control tab. The
+   * welcome screen is dismissed only when a repository was opened, so cancelling returns to it.
+   */
+  protected async openRepository(): Promise<void> {
+    if (await this.repositoryOpener.openInteractive()) {
+      this.welcomeModal.close();
+    }
   }
 
   /**

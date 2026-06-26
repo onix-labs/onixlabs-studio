@@ -7,6 +7,8 @@ import { DockState } from '../dock/dock-state';
 import { StackNode } from '../dock/dock-node';
 import { firstStackOfRole } from '../dock/dock-tree';
 import { GitFileChange } from '../repository/repository-data';
+import { Repository } from '../repository/repository';
+import { FileDiff } from '../source-control/source-control-provider';
 import { Diffs } from './diffs';
 
 /**
@@ -39,7 +41,13 @@ export class DiffOpener {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
-   * Opens (or re-activates) the diff for a changed file in the document well.
+   * Holds the repository the diff contents are loaded through.
+   */
+  private readonly repository: Repository = inject(Repository);
+
+  /**
+   * Opens (or re-activates) the diff for a changed file in the document well, loading its before/after
+   * contents lazily through the repository's provider.
    * @param file The file to compare.
    */
   public open(file: GitFileChange): void {
@@ -48,7 +56,8 @@ export class DiffOpener {
       return;
     }
     const id: string = this.diffs.idForPath(file.path);
-    // Keep the store current first, so a panel projected synchronously by tabInto resolves its file.
+    // Store the file first (so a panel projected synchronously by tabInto resolves it), then fill in
+    // its diff contents once the provider has loaded them.
     this.diffs.put(id, file);
     if (this.registry.has(id)) {
       this.dockState.setActive(well.id, id);
@@ -63,6 +72,9 @@ export class DiffOpener {
       this.dockState.tabInto(well.id, id);
     }
     this.dockFocus.focus(well.id);
+    void this.repository.loadDiff(file).then((diff: FileDiff): void => {
+      this.diffs.put(id, { ...file, original: diff.original, modified: diff.modified });
+    });
   }
 
   /**

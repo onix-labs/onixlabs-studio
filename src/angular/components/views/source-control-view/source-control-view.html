@@ -1,1 +1,12 @@
-<app-dock-container />
+@if (repository.isBound()) {
+  <app-dock-container />
+} @else {
+  <div class="sc-empty">
+    <app-icon class="sc-empty__icon" [icon]="Icon.SOURCE_CONTROL" [size]="3" />
+    <h1 class="sc-empty__title">No repository open</h1>
+    <p class="sc-empty__hint">Open a git repository to view its history, branches, and changes.</p>
+    <button type="button" class="sc-empty__button" (click)="openRepositoryHere()">
+      Open Repository…
+    </button>
+  </div>
+}

@@ -7,3 +7,53 @@
   overflow: hidden;
   background: var(--body-background-color);
 }
+
+// Shown when the tab has no repository bound yet.
+.sc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  block-size: 100%;
+  color: var(--welcome-muted-foreground-color);
+}
+
+.sc-empty__icon {
+  color: var(--accent-color);
+}
+
+.sc-empty__title {
+  margin: 0.3rem 0 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.sc-empty__hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.sc-empty__button {
+  margin-block-start: 1rem;
+  padding: 0.5rem 1.1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--welcome-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}

@@ -25,6 +25,39 @@ export interface GitRef {
 export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
 
 /**
+ * Identifies the revision context a real file change is diffed against, so its before/after contents
+ * can be loaded lazily from the provider. Mock changes embed their contents directly and omit this.
+ */
+export type DiffTarget =
+  | {
+      /**
+       * Marks the change as belonging to a commit.
+       */
+      readonly kind: 'commit';
+
+      /**
+       * Gets the commit hash the file changed in.
+       */
+      readonly hash: string;
+
+      /**
+       * Gets the first-parent hash to diff against, or null for a root commit.
+       */
+      readonly parent: string | null;
+    }
+  | {
+      /**
+       * Marks the change as belonging to the working tree.
+       */
+      readonly kind: 'working';
+
+      /**
+       * Gets a value indicating whether the change is staged (index) rather than unstaged (worktree).
+       */
+      readonly staged: boolean;
+    };
+
+/**
  * Describes a single changed file: its path, how it changed, the line tallies, and the before/after
  * content the Monaco diff surface compares.
  */
@@ -68,6 +101,12 @@ export interface GitFileChange {
    * Gets the file's content after the change (the diff's modified side). Empty for a deleted file.
    */
   readonly modified: string;
+
+  /**
+   * Gets the revision context the change is diffed against, when its contents are loaded lazily from
+   * a provider. Omitted for mock changes, which embed {@link original} and {@link modified} directly.
+   */
+  readonly target?: DiffTarget;
 }
 
 /**

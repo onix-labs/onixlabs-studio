@@ -21,7 +21,7 @@
       type="button"
       class="rail__item"
       [class.rail__item--current]="branch.current"
-      (click)="checkout(branch)"
+      (click)="selectBranch(branch)"
     >
       <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
       <span class="rail__item-label">{{ branch.name }}</span>

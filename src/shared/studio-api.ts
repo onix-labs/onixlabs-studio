@@ -591,6 +591,122 @@ export interface DisplayApi {
  * the context bridge. This is the only channel through which the renderer reaches
  * privileged capability.
  */
+/**
+ * Describes an opened version-control repository: its resolved root path and display name.
+ */
+export interface RepositoryInfo {
+  /**
+   * Gets the repository's absolute root path (the git top level).
+   */
+  readonly root: string;
+
+  /**
+   * Gets the repository's display name (its root folder's base name).
+   */
+  readonly name: string;
+}
+
+/**
+ * Describes the outcome of a single git invocation. The command's standard output is returned raw for
+ * the renderer-side provider to parse; failures carry the error (and any standard error) instead.
+ */
+export interface GitRunResult {
+  /**
+   * Gets a value indicating whether the command exited successfully.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the command's standard output, when it succeeded.
+   */
+  readonly stdout?: string;
+
+  /**
+   * Gets the command's standard error, when present.
+   */
+  readonly stderr?: string;
+
+  /**
+   * Gets the error message, when the command failed or the request was rejected.
+   */
+  readonly error?: string;
+}
+
+/**
+ * Defines the version-control operations exposed to the renderer process. The git CLI is invoked in
+ * the main process with array arguments (never a shell), its variable arguments validated, and every
+ * operation confined to a repository root the user has explicitly opened — the renderer is treated as
+ * hostile. Output is returned raw for the renderer's source-control provider to parse and map.
+ */
+export interface SourceControlApi {
+  /**
+   * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root.
+   * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
+   */
+  openRepository(): Promise<RepositoryInfo | null>;
+
+  /**
+   * Resolves the git repository root that contains an already-open folder, without a dialog.
+   * @param directory The absolute folder path to resolve from.
+   * @returns Returns the repository, or null when the folder is not inside a git repository.
+   */
+  resolveRepository(directory: string): Promise<RepositoryInfo | null>;
+
+  /**
+   * Releases an open repository root, removing it from the set git operations are confined to.
+   * @param root The absolute repository root to release.
+   */
+  closeRepository(root: string): Promise<void>;
+
+  /**
+   * Reads the working-tree status of a repository (porcelain v2, with the branch header).
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  status(root: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the commit history of a repository, with parent hashes and ref decorations.
+   * @param root The absolute repository root; must be an open root.
+   * @param limit The maximum number of commits to read.
+   * @returns Returns the raw command result.
+   */
+  log(root: string, limit: number): Promise<GitRunResult>;
+
+  /**
+   * Reads the branches and tags of a repository (local heads, remote-tracking heads, and tags).
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  refs(root: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the stash entries of a repository.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  stashes(root: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the files changed by a single commit (name-status against its first parent).
+   * @param root The absolute repository root; must be an open root.
+   * @param hash The commit hash to inspect.
+   * @returns Returns the raw command result.
+   */
+  commitFiles(root: string, hash: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the contents of a file at a revision for one side of a diff. An empty revision reads the
+   * working-tree file from disk; otherwise the file is read from the git object at `revision:path`.
+   * @param root The absolute repository root; must be an open root.
+   * @param revision The revision to read at (for example `HEAD`, a commit hash, `<hash>^`, or `:` for
+   * the index), or an empty string for the working tree.
+   * @param filePath The repository-relative file path.
+   * @returns Returns the raw command result; a missing file yields an empty string.
+   */
+  readBlob(root: string, revision: string, filePath: string): Promise<GitRunResult>;
+}
+
 export interface StudioApi {
   /**
    * Gets the runtime version information for the host process.
@@ -668,4 +784,9 @@ export interface StudioApi {
    * Gets the task-runner operations for the application.
    */
   readonly tasks: TaskApi;
+
+  /**
+   * Gets the version-control (git) operations for the application.
+   */
+  readonly sourceControl: SourceControlApi;
 }
