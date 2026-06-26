@@ -1,6 +1,10 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RepositoryInfo } from '../../../shared/studio-api';
-import { FileDiff, SourceControlProvider } from '../source-control/source-control-provider';
+import {
+  FileDiff,
+  MutationResult,
+  SourceControlProvider,
+} from '../source-control/source-control-provider';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
@@ -41,10 +45,10 @@ type LaneSlots = (string | null)[];
  * branches, remotes, tags, stashes, and commit history, together with the working-tree changes and
  * the user's current selection (commit and file) that drives the detail and diff panes.
  *
- * The data is read from a {@link SourceControlProvider} (git today) bound to the repository's root.
- * The model is scoped per source-control tab (provided by the view), so several repositories can be
- * open at once. Mutating operations (stage, commit, push, …) arrive in a later slice; this slice is
- * read-only.
+ * The data is read from a {@link SourceControlProvider} (git today) bound to the repository's root,
+ * and local mutations (stage, unstage, commit, stash) are written back through it. The model is
+ * scoped per source-control tab (provided by the view), so several repositories can be open at once.
+ * Network operations (push, pull, fetch) arrive in a later slice.
  */
 @Service()
 export class Repository {
@@ -138,6 +142,11 @@ export class Repository {
    * first file.
    */
   private readonly selectedFileSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the draft commit message bound to the commit panel and used by the commit action.
+   */
+  private readonly commitMessageSignal: WritableSignal<string> = signal<string>('');
 
   /**
    * Gets the bound repository's metadata, or null when none is bound.
@@ -273,6 +282,11 @@ export class Repository {
   );
 
   /**
+   * Gets the draft commit message.
+   */
+  public readonly commitMessage: Signal<string> = this.commitMessageSignal.asReadonly();
+
+  /**
    * Binds the repository to an opened root, creating its provider and loading its data.
    * @param info The opened repository's metadata.
    */
@@ -300,6 +314,7 @@ export class Repository {
     this.stagedSignal.set([]);
     this.unstagedSignal.set([]);
     this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
+    this.commitMessageSignal.set('');
     await (provider?.close() ?? Promise.resolve());
   }
 
@@ -375,6 +390,100 @@ export class Repository {
       this.provider?.getFileDiff(file) ??
       Promise.resolve({ original: file.original, modified: file.modified })
     );
+  }
+
+  /**
+   * Sets the draft commit message.
+   * @param message The new draft message.
+   */
+  public setCommitMessage(message: string): void {
+    this.commitMessageSignal.set(message);
+  }
+
+  /**
+   * Stages a single changed file, then reloads.
+   * @param file The file to stage.
+   * @returns Returns the outcome.
+   */
+  public stage(file: GitFileChange): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.stage([file.path]),
+    );
+  }
+
+  /**
+   * Stages every change, then reloads.
+   * @returns Returns the outcome.
+   */
+  public stageAll(): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.stage([]),
+    );
+  }
+
+  /**
+   * Unstages a single changed file, then reloads.
+   * @param file The file to unstage.
+   * @returns Returns the outcome.
+   */
+  public unstage(file: GitFileChange): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.unstage([file.path]),
+    );
+  }
+
+  /**
+   * Unstages every change, then reloads.
+   * @returns Returns the outcome.
+   */
+  public unstageAll(): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.unstage([]),
+    );
+  }
+
+  /**
+   * Commits the staged changes with the draft message, clearing the draft on success, then reloads.
+   * @returns Returns the outcome.
+   */
+  public async commit(): Promise<MutationResult> {
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.commit(this.commitMessageSignal()),
+    );
+    if (result.success) {
+      this.commitMessageSignal.set('');
+    }
+    return result;
+  }
+
+  /**
+   * Stashes the working-tree changes, then reloads.
+   * @returns Returns the outcome.
+   */
+  public stash(): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.stash(),
+    );
+  }
+
+  /**
+   * Runs a mutating operation against the provider and reloads the repository on success.
+   * @param op Invokes the desired provider mutation.
+   * @returns Returns the outcome (a failure when no repository is bound).
+   */
+  private async mutate(
+    op: (provider: SourceControlProvider) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return { success: false, error: 'No repository open' };
+    }
+    const result: MutationResult = await op(provider);
+    if (result.success) {
+      await this.refresh();
+    }
+    return result;
   }
 
   /**

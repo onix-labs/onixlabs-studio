@@ -374,4 +374,24 @@ export enum IpcChannel {
    * Reads the contents of a file at a given revision (or the working tree) for a diff.
    */
   SourceControlReadBlob = 'source-control:read-blob',
+
+  /**
+   * Stages files (or the whole working tree) into the index.
+   */
+  SourceControlStage = 'source-control:stage',
+
+  /**
+   * Unstages files (or the whole index) back to the working tree.
+   */
+  SourceControlUnstage = 'source-control:unstage',
+
+  /**
+   * Commits the staged changes with a message.
+   */
+  SourceControlCommit = 'source-control:commit',
+
+  /**
+   * Stashes the working-tree changes.
+   */
+  SourceControlStash = 'source-control:stash',
 }

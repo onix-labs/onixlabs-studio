@@ -233,9 +233,9 @@ export class SourceControlView implements OnInit, OnDestroy {
       fetch: (): void => undefined,
       pull: (): void => undefined,
       push: (): void => undefined,
-      stageAll: (): void => undefined,
-      commit: (): void => undefined,
-      stash: (): void => undefined,
+      stageAll: (): void => void this.repository.stageAll(),
+      commit: (): void => void this.repository.commit(),
+      stash: (): void => void this.repository.stash(),
       newBranch: (): void => undefined,
       toggleInlineDiff: (): void => this.diffs.toggleInline(),
     };

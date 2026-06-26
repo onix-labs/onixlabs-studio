@@ -326,7 +326,7 @@ export function parseStashes(output: string): GitStash[] {
     .filter((line: string): boolean => line.trim().length > 0)
     .map((line: string, index: number): GitStash => {
       const [selector, , message]: string[] = line.split(US);
-      const branchMatch: RegExpMatchArray | null = /\bon ([^:]+):/i.exec((message ?? ''));
+      const branchMatch: RegExpMatchArray | null = /\bon ([^:]+):/i.exec(message ?? '');
       return {
         index: parseStashIndex(selector, index),
         message: message ?? '',
@@ -344,7 +344,7 @@ export function parseStashes(output: string): GitStash[] {
  * @returns Returns the stash index.
  */
 function parseStashIndex(selector: string, fallback: number): number {
-  const match: RegExpMatchArray | null = /\{(\d+)\}/.exec((selector ?? ''));
+  const match: RegExpMatchArray | null = /\{(\d+)\}/.exec(selector ?? '');
   return match !== null ? Number.parseInt(match[1], 10) : fallback;
 }
 

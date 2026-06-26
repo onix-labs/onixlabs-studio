@@ -2,6 +2,21 @@ import { GitCommit, GitFileChange, GitStash } from '../repository/repository-dat
 import { ParsedRefs, ParsedStatus } from './git-output';
 
 /**
+ * Describes the outcome of a mutating operation (stage, commit, …).
+ */
+export interface MutationResult {
+  /**
+   * Gets a value indicating whether the operation succeeded.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the error message, when the operation failed.
+   */
+  readonly error?: string;
+}
+
+/**
  * Holds the two sides of a file's diff.
  */
 export interface FileDiff {
@@ -67,6 +82,33 @@ export interface SourceControlProvider {
    * @returns Returns the diff content.
    */
   getFileDiff(file: GitFileChange): Promise<FileDiff>;
+
+  /**
+   * Stages paths into the index, or the whole working tree when no paths are given.
+   * @param paths The repository-relative paths to stage, or an empty array to stage everything.
+   * @returns Returns the outcome.
+   */
+  stage(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
+   * Unstages paths from the index, or the whole index when no paths are given.
+   * @param paths The repository-relative paths to unstage, or an empty array to unstage everything.
+   * @returns Returns the outcome.
+   */
+  unstage(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
+   * Commits the staged changes with a message.
+   * @param message The commit message.
+   * @returns Returns the outcome.
+   */
+  commit(message: string): Promise<MutationResult>;
+
+  /**
+   * Stashes the working-tree changes.
+   * @returns Returns the outcome.
+   */
+  stash(): Promise<MutationResult>;
 
   /**
    * Releases the repository, freeing any backend resources.

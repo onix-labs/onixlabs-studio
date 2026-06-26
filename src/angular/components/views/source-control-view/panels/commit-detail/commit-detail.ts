@@ -50,6 +50,51 @@ export class CommitDetail {
   }
 
   /**
+   * Updates the draft commit message as the user types.
+   * @param event The textarea input event.
+   */
+  protected onMessageInput(event: Event): void {
+    this.repository.setCommitMessage((event.target as HTMLTextAreaElement).value);
+  }
+
+  /**
+   * Stages a changed file.
+   * @param file The file to stage.
+   */
+  protected stage(file: GitFileChange): void {
+    void this.repository.stage(file);
+  }
+
+  /**
+   * Unstages a changed file.
+   * @param file The file to unstage.
+   */
+  protected unstage(file: GitFileChange): void {
+    void this.repository.unstage(file);
+  }
+
+  /**
+   * Stages every change.
+   */
+  protected stageAll(): void {
+    void this.repository.stageAll();
+  }
+
+  /**
+   * Unstages every change.
+   */
+  protected unstageAll(): void {
+    void this.repository.unstageAll();
+  }
+
+  /**
+   * Commits the staged changes with the draft message.
+   */
+  protected commit(): void {
+    void this.repository.commit();
+  }
+
+  /**
    * Gets the single-letter status badge for a change kind (A, M, D, R).
    * @param status The change kind.
    * @returns Returns the status letter.

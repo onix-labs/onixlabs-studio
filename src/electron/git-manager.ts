@@ -114,6 +114,25 @@ export class GitManager {
         filePath: unknown,
       ): Promise<GitRunResult> => this.readBlob(root, revision, filePath),
     );
+    ipcMain.handle(
+      IpcChannel.SourceControlStage,
+      (_event: IpcMainInvokeEvent, root: unknown, paths: unknown): Promise<GitRunResult> =>
+        this.stage(root, paths),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlUnstage,
+      (_event: IpcMainInvokeEvent, root: unknown, paths: unknown): Promise<GitRunResult> =>
+        this.unstage(root, paths),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlCommit,
+      (_event: IpcMainInvokeEvent, root: unknown, message: unknown): Promise<GitRunResult> =>
+        this.commit(root, message),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlStash,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stash(root),
+    );
   }
 
   /**
@@ -277,6 +296,95 @@ export class GitManager {
     const result: GitRunResult = await this.run(resolvedRoot, ['show', `${revision}:${filePath}`]);
     // A blob that does not exist at the revision (added or deleted file) is an empty side, not a failure.
     return result.success ? result : { success: true, stdout: '' };
+  }
+
+  /**
+   * Stages files into the index, or the whole working tree when no paths are given.
+   * @param root The repository root.
+   * @param paths The repository-relative paths to stage, or an empty array to stage everything.
+   * @returns Returns the raw command result.
+   */
+  private stage(root: unknown, paths: unknown): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return Promise.resolve({ success: false, error: 'Repository is not open' });
+    }
+    const confined: string[] | null = this.confinedPaths(path.resolve(root), paths);
+    if (confined === null) {
+      return Promise.resolve({ success: false, error: 'Invalid path' });
+    }
+    const args: string[] = confined.length === 0 ? ['add', '-A'] : ['add', '--', ...confined];
+    return this.run(path.resolve(root), args);
+  }
+
+  /**
+   * Unstages files from the index, or the whole index when no paths are given. The working tree is
+   * left untouched.
+   * @param root The repository root.
+   * @param paths The repository-relative paths to unstage, or an empty array to unstage everything.
+   * @returns Returns the raw command result.
+   */
+  private unstage(root: unknown, paths: unknown): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return Promise.resolve({ success: false, error: 'Repository is not open' });
+    }
+    const confined: string[] | null = this.confinedPaths(path.resolve(root), paths);
+    if (confined === null) {
+      return Promise.resolve({ success: false, error: 'Invalid path' });
+    }
+    const args: string[] =
+      confined.length === 0 ? ['reset', '--quiet'] : ['reset', '--quiet', '--', ...confined];
+    return this.run(path.resolve(root), args);
+  }
+
+  /**
+   * Commits the staged changes with a message. The message is passed as a single argument, so it is
+   * never interpreted as a shell command or git option.
+   * @param root The repository root.
+   * @param message The commit message.
+   * @returns Returns the raw command result.
+   */
+  private commit(root: unknown, message: unknown): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return Promise.resolve({ success: false, error: 'Repository is not open' });
+    }
+    if (typeof message !== 'string' || message.trim().length === 0) {
+      return Promise.resolve({ success: false, error: 'A commit message is required' });
+    }
+    return this.run(path.resolve(root), ['commit', '-m', message]);
+  }
+
+  /**
+   * Stashes the tracked working-tree changes.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private stash(root: unknown): Promise<GitRunResult> {
+    return this.runInRoot(root, ['stash', 'push']);
+  }
+
+  /**
+   * Validates an array of repository-relative paths, rejecting non-strings, option-like values, and
+   * any path that escapes the repository root.
+   * @param resolvedRoot The resolved repository root.
+   * @param paths The candidate paths.
+   * @returns Returns the validated paths, or null when any path is invalid.
+   */
+  private confinedPaths(resolvedRoot: string, paths: unknown): string[] | null {
+    if (!Array.isArray(paths)) {
+      return null;
+    }
+    const confined: string[] = [];
+    for (const candidate of paths) {
+      if (typeof candidate !== 'string' || candidate.length === 0 || candidate.startsWith('-')) {
+        return null;
+      }
+      const absolute: string = path.resolve(resolvedRoot, candidate);
+      if (absolute !== resolvedRoot && !absolute.startsWith(resolvedRoot + path.sep)) {
+        return null;
+      }
+      confined.push(candidate);
+    }
+    return confined;
   }
 
   /**

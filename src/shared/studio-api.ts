@@ -705,6 +705,37 @@ export interface SourceControlApi {
    * @returns Returns the raw command result; a missing file yields an empty string.
    */
   readBlob(root: string, revision: string, filePath: string): Promise<GitRunResult>;
+
+  /**
+   * Stages files into the index, or the whole working tree when no paths are given.
+   * @param root The absolute repository root; must be an open root.
+   * @param paths The repository-relative paths to stage, or an empty array to stage everything.
+   * @returns Returns the raw command result.
+   */
+  stage(root: string, paths: readonly string[]): Promise<GitRunResult>;
+
+  /**
+   * Unstages files from the index, or the whole index when no paths are given.
+   * @param root The absolute repository root; must be an open root.
+   * @param paths The repository-relative paths to unstage, or an empty array to unstage everything.
+   * @returns Returns the raw command result.
+   */
+  unstage(root: string, paths: readonly string[]): Promise<GitRunResult>;
+
+  /**
+   * Commits the staged changes with a message.
+   * @param root The absolute repository root; must be an open root.
+   * @param message The commit message.
+   * @returns Returns the raw command result.
+   */
+  commit(root: string, message: string): Promise<GitRunResult>;
+
+  /**
+   * Stashes the working-tree changes.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  stash(root: string): Promise<GitRunResult>;
 }
 
 export interface StudioApi {

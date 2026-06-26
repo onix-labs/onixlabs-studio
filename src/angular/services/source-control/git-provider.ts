@@ -9,7 +9,7 @@ import {
   parseStashes,
   parseStatus,
 } from './git-output';
-import { FileDiff, SourceControlProvider } from './source-control-provider';
+import { FileDiff, MutationResult, SourceControlProvider } from './source-control-provider';
 
 /**
  * Holds the default number of commits the history loads.
@@ -128,11 +128,68 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Stages paths (or the whole working tree).
+   * @param paths The repository-relative paths to stage, or an empty array for everything.
+   * @returns Returns the outcome.
+   */
+  public stage(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> => api.stage(this.root, paths),
+    );
+  }
+
+  /**
+   * Unstages paths (or the whole index).
+   * @param paths The repository-relative paths to unstage, or an empty array for everything.
+   * @returns Returns the outcome.
+   */
+  public unstage(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> => api.unstage(this.root, paths),
+    );
+  }
+
+  /**
+   * Commits the staged changes.
+   * @param message The commit message.
+   * @returns Returns the outcome.
+   */
+  public commit(message: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> => api.commit(this.root, message),
+    );
+  }
+
+  /**
+   * Stashes the working-tree changes.
+   * @returns Returns the outcome.
+   */
+  public stash(): Promise<MutationResult> {
+    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.stash(this.root));
+  }
+
+  /**
    * Releases the repository in the main process.
    * @returns Returns a promise that resolves once the repository has been released.
    */
   public async close(): Promise<void> {
     await (this.api?.closeRepository(this.root) ?? Promise.resolve());
+  }
+
+  /**
+   * Runs a mutating git bridge call, mapping its result to a {@link MutationResult}. Reports failure
+   * when the bridge is absent.
+   * @param call Invokes the desired bridge method.
+   * @returns Returns the outcome.
+   */
+  private async mutate(
+    call: (api: SourceControlApi) => Promise<GitRunResult>,
+  ): Promise<MutationResult> {
+    if (this.api === undefined) {
+      return { success: false, error: 'Source control is unavailable' };
+    }
+    const result: GitRunResult = await call(this.api);
+    return { success: result.success, error: result.error };
   }
 
   /**

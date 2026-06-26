@@ -242,6 +242,14 @@ const studioApi: StudioApi = {
         revision,
         filePath,
       ) as Promise<GitRunResult>,
+    stage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlStage, root, paths) as Promise<GitRunResult>,
+    unstage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlUnstage, root, paths) as Promise<GitRunResult>,
+    commit: (root: string, message: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlCommit, root, message) as Promise<GitRunResult>,
+    stash: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlStash, root) as Promise<GitRunResult>,
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>

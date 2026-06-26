@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
-import { FileDiff, SourceControlProvider } from '../source-control/source-control-provider';
+import {
+  FileDiff,
+  MutationResult,
+  SourceControlProvider,
+} from '../source-control/source-control-provider';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
 import { GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
@@ -69,6 +73,28 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ original: 'before', modified: 'after' });
   }
 
+  public readonly calls: string[] = [];
+
+  public stage(paths: readonly string[]): Promise<MutationResult> {
+    this.calls.push(`stage:${paths.join(',')}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public unstage(paths: readonly string[]): Promise<MutationResult> {
+    this.calls.push(`unstage:${paths.join(',')}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public commit(message: string): Promise<MutationResult> {
+    this.calls.push(`commit:${message}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public stash(): Promise<MutationResult> {
+    this.calls.push('stash');
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }
@@ -98,6 +124,7 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
 
 describe('Repository', () => {
   let repository: Repository;
+  let provider: FakeProvider;
 
   beforeEach(async () => {
     TestBed.configureTestingModule({
@@ -105,7 +132,12 @@ describe('Repository', () => {
         Repository,
         {
           provide: SourceControlProviders,
-          useValue: { create: (root: string): SourceControlProvider => new FakeProvider(root) },
+          useValue: {
+            create: (root: string): SourceControlProvider => {
+              provider = new FakeProvider(root);
+              return provider;
+            },
+          },
         },
       ],
     });
@@ -152,6 +184,22 @@ describe('Repository', () => {
     const diff: FileDiff = await repository.loadDiff(workingFile('staged.ts'));
 
     expect(diff).toEqual({ original: 'before', modified: 'after' });
+  });
+
+  it('stageAll_callsTheProviderWithNoPaths', async () => {
+    await repository.stageAll();
+
+    expect(provider.calls).toContain('stage:');
+  });
+
+  it('commit_usesTheDraftMessageThenClearsItOnSuccess', async () => {
+    repository.setCommitMessage('Add feature');
+
+    const result: MutationResult = await repository.commit();
+
+    expect(result.success).toBe(true);
+    expect(provider.calls).toContain('commit:Add feature');
+    expect(repository.commitMessage()).toBe('');
   });
 
   it('close_clearsTheRepository', async () => {

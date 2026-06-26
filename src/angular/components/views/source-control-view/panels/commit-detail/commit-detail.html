@@ -25,47 +25,130 @@
       }
     </dl>
   </header>
+
+  <div class="detail__files">
+    <header class="detail__files-header">
+      <span>Changed files</span>
+      <span class="detail__files-count">{{ repository.selectedFiles().length }}</span>
+    </header>
+    @for (file of repository.selectedFiles(); track file.path) {
+      <div
+        class="detail__file"
+        [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
+      >
+        <button type="button" class="detail__file-main" (click)="selectFile(file)">
+          <span class="detail__status" [class]="'detail__status--' + file.status">
+            {{ statusLetter(file.status) }}
+          </span>
+          <span class="detail__file-name">
+            {{ fileName(file.path) }}
+            @if (fileDir(file.path); as dir) {
+              <span class="detail__file-dir">{{ dir }}</span>
+            }
+          </span>
+        </button>
+      </div>
+    } @empty {
+      <p class="detail__empty">No file changes.</p>
+    }
+  </div>
 } @else if (repository.isWorkingSelected()) {
-  <header class="detail__header">
-    <h2 class="detail__summary">Uncommitted changes</h2>
-    <p class="detail__body">
-      {{ repository.staged().length }} staged · {{ repository.unstaged().length }} unstaged
-    </p>
-  </header>
+  <div class="detail__commit-box">
+    <textarea
+      class="detail__message"
+      rows="3"
+      placeholder="Commit message"
+      [value]="repository.commitMessage()"
+      (input)="onMessageInput($event)"
+    ></textarea>
+    <button
+      type="button"
+      class="detail__commit-button"
+      [disabled]="
+        repository.staged().length === 0 || repository.commitMessage().trim().length === 0
+      "
+      (click)="commit()"
+    >
+      <app-icon [icon]="Icon.GIT_COMMIT" />
+      Commit {{ repository.staged().length }} file{{ repository.staged().length === 1 ? '' : 's' }}
+    </button>
+  </div>
+
+  <div class="detail__files">
+    @if (repository.staged().length > 0) {
+      <header class="detail__files-header">
+        <span>Staged</span>
+        <button type="button" class="detail__group-action" (click)="unstageAll()">
+          Unstage all
+        </button>
+      </header>
+      @for (file of repository.staged(); track file.path) {
+        <div
+          class="detail__file"
+          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
+        >
+          <button type="button" class="detail__file-main" (click)="selectFile(file)">
+            <span class="detail__status" [class]="'detail__status--' + file.status">
+              {{ statusLetter(file.status) }}
+            </span>
+            <span class="detail__file-name">
+              {{ fileName(file.path) }}
+              @if (fileDir(file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+          </button>
+          <button
+            type="button"
+            class="detail__file-action"
+            aria-label="Unstage file"
+            (click)="unstage(file)"
+          >
+            <app-icon [icon]="Icon.DIVIDER" />
+          </button>
+        </div>
+      }
+    }
+
+    @if (repository.unstaged().length > 0) {
+      <header class="detail__files-header">
+        <span>Changes</span>
+        <button type="button" class="detail__group-action" (click)="stageAll()">Stage all</button>
+      </header>
+      @for (file of repository.unstaged(); track file.path) {
+        <div
+          class="detail__file"
+          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
+        >
+          <button type="button" class="detail__file-main" (click)="selectFile(file)">
+            <span class="detail__status" [class]="'detail__status--' + file.status">
+              {{ statusLetter(file.status) }}
+            </span>
+            <span class="detail__file-name">
+              {{ fileName(file.path) }}
+              @if (fileDir(file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+          </button>
+          <button
+            type="button"
+            class="detail__file-action"
+            aria-label="Stage file"
+            (click)="stage(file)"
+          >
+            <app-icon [icon]="Icon.PLUS" />
+          </button>
+        </div>
+      }
+    }
+
+    @if (repository.changeCount() === 0) {
+      <p class="detail__empty">No uncommitted changes.</p>
+    }
+  </div>
 } @else {
   <header class="detail__header">
     <h2 class="detail__summary detail__summary--muted">No selection</h2>
   </header>
 }
-
-<div class="detail__files">
-  <header class="detail__files-header">
-    <span>Changed files</span>
-    <span class="detail__files-count">{{ repository.selectedFiles().length }}</span>
-  </header>
-
-  @for (file of repository.selectedFiles(); track file.path) {
-    <button
-      type="button"
-      class="detail__file"
-      [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
-      (click)="selectFile(file)"
-    >
-      <span class="detail__status" [class]="'detail__status--' + file.status">
-        {{ statusLetter(file.status) }}
-      </span>
-      <span class="detail__file-name">
-        {{ fileName(file.path) }}
-        @if (fileDir(file.path); as dir) {
-          <span class="detail__file-dir">{{ dir }}</span>
-        }
-      </span>
-      <span class="detail__tally">
-        <span class="detail__add">+{{ file.additions }}</span>
-        <span class="detail__del">−{{ file.deletions }}</span>
-      </span>
-    </button>
-  } @empty {
-    <p class="detail__empty">No file changes.</p>
-  }
-</div>
