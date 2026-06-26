@@ -1,0 +1,85 @@
+<button
+  type="button"
+  class="rail__working"
+  [class.rail__working--active]="repository.selectedNodeId() === workingNodeId"
+  (click)="selectWorking()"
+>
+  <app-icon [icon]="Icon.PENCIL" />
+  <span class="rail__working-label">Uncommitted changes</span>
+  @if (repository.changeCount() > 0) {
+    <span class="rail__count">{{ repository.changeCount() }}</span>
+  }
+</button>
+
+<section class="rail__section">
+  <header class="rail__section-header">
+    <app-icon [icon]="Icon.SOURCE_CONTROL" />
+    <span>Branches</span>
+  </header>
+  @for (branch of repository.branches(); track branch.name) {
+    <button
+      type="button"
+      class="rail__item"
+      [class.rail__item--current]="branch.current"
+      (click)="checkout(branch)"
+    >
+      <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
+      <span class="rail__item-label">{{ branch.name }}</span>
+      @if (branch.ahead > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
+      }
+      @if (branch.behind > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
+      }
+    </button>
+  }
+</section>
+
+<section class="rail__section">
+  <header class="rail__section-header">
+    <app-icon [icon]="Icon.CLOUD" />
+    <span>Remotes</span>
+  </header>
+  @for (remote of repository.remotes(); track remote.name) {
+    <div class="rail__item rail__item--static">
+      <app-icon class="rail__item-icon" [icon]="Icon.CLOUD" />
+      <span class="rail__item-label">{{ remote.name }}</span>
+    </div>
+    @for (branch of remote.branches; track branch) {
+      <div class="rail__item rail__item--static rail__item--nested">
+        <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
+        <span class="rail__item-label">{{ branch }}</span>
+      </div>
+    }
+  }
+</section>
+
+<section class="rail__section">
+  <header class="rail__section-header">
+    <app-icon [icon]="Icon.TAG" />
+    <span>Tags</span>
+  </header>
+  @for (tag of repository.tags(); track tag.name) {
+    <button type="button" class="rail__item" (click)="repository.selectNode(tag.commit)">
+      <app-icon class="rail__item-icon" [icon]="Icon.TAG" />
+      <span class="rail__item-label">{{ tag.name }}</span>
+    </button>
+  } @empty {
+    <p class="rail__empty">No tags</p>
+  }
+</section>
+
+<section class="rail__section">
+  <header class="rail__section-header">
+    <app-icon [icon]="Icon.STASH" />
+    <span>Stashes</span>
+  </header>
+  @for (stash of repository.stashes(); track stash.index) {
+    <div class="rail__item rail__item--static">
+      <app-icon class="rail__item-icon" [icon]="Icon.STASH" />
+      <span class="rail__item-label">{{ stash.message }}</span>
+    </div>
+  } @empty {
+    <p class="rail__empty">No stashes</p>
+  }
+</section>

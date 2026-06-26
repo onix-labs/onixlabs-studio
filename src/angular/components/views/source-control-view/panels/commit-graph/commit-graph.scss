@@ -1,0 +1,155 @@
+:host {
+  display: block;
+  block-size: 100%;
+  overflow: auto;
+  background: var(--body-background-color);
+  color: var(--body-foreground-color);
+}
+
+.graph {
+  position: relative;
+  inline-size: 100%;
+  min-inline-size: max-content;
+}
+
+.graph__lanes {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  pointer-events: none;
+}
+
+// The working-tree dot reads as a hollow ring; CSS supplies the body-surface fill so the lane line
+// behind it is masked (an SVG `fill` attribute cannot resolve a CSS custom property).
+.graph__dot--working {
+  fill: var(--body-background-color);
+}
+
+.graph__row {
+  position: absolute;
+  inset-inline-end: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.85rem;
+  border: 0;
+  border-inline-start: 0.0625rem solid var(--dock-border-color);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 120ms ease-in-out;
+
+  &:hover {
+    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  }
+
+  &--selected {
+    background: var(--accent-surface-background-color);
+
+    &:hover {
+      background: var(--accent-surface-background-color);
+    }
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.graph__working {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--accent-surface-foreground-color);
+  font-weight: 500;
+}
+
+.graph__count {
+  min-inline-size: 1.25rem;
+  margin-inline-start: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--form-on-accent-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.graph__refs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.3rem;
+}
+
+.graph__ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-inline-size: 11rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &--head {
+    color: var(--form-on-accent-color);
+    background: var(--accent-color);
+  }
+
+  &--branch {
+    color: var(--accent-surface-foreground-color);
+    background: var(--accent-surface-background-color);
+    border: 0.0625rem solid var(--accent-surface-border-color);
+  }
+
+  &--remote {
+    color: var(--form-muted-foreground-color);
+    background: color-mix(in srgb, var(--form-muted-foreground-color) 14%, transparent);
+  }
+
+  &--tag {
+    color: var(--change-margin-unsaved);
+    background: color-mix(in srgb, var(--change-margin-unsaved) 16%, transparent);
+  }
+}
+
+.graph__summary {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.graph__meta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.72rem;
+}
+
+.graph__author {
+  max-inline-size: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph__date {
+  font-variant-numeric: tabular-nums;
+}
+
+.graph__hash {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--form-muted-foreground-color);
+}

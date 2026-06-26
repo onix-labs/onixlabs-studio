@@ -1,0 +1,186 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  background: var(--body-background-color);
+  color: var(--body-foreground-color);
+}
+
+.detail__header {
+  flex: 0 0 auto;
+  padding: 0.85rem;
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+}
+
+.detail__summary {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+
+  &--muted {
+    color: var(--form-muted-foreground-color);
+    font-weight: 500;
+  }
+}
+
+.detail__body {
+  margin: 0.5rem 0 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.detail__meta {
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.detail__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+
+  dt {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--accent-color);
+  }
+
+  dd {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.detail__hash {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.detail__files {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.detail__files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail__files-count {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
+}
+
+.detail__file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    outline: none;
+  }
+
+  &--selected {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+}
+
+// Status letter, colour-keyed using the change-margin palette.
+.detail__status {
+  flex: 0 0 auto;
+  inline-size: 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+
+  &--added {
+    color: var(--change-margin-saved);
+  }
+
+  &--modified {
+    color: var(--change-margin-unsaved);
+  }
+
+  &--deleted {
+    color: var(--change-margin-deleted);
+  }
+
+  &--renamed {
+    color: var(--accent-color);
+  }
+}
+
+.detail__file-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.detail__file-dir {
+  margin-inline-start: 0.4rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+}
+
+.detail__tally {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__add {
+  color: var(--change-margin-saved);
+}
+
+.detail__del {
+  color: var(--change-margin-deleted);
+}
+
+.detail__empty {
+  margin: 0;
+  padding: 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-style: italic;
+}

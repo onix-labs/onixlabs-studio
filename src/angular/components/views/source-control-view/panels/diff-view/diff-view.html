@@ -1,0 +1,23 @@
+<header class="diff__header">
+  @if (fileName(); as name) {
+    <app-icon class="diff__header-icon" [icon]="Icon.GIT_DIFF" />
+    <span class="diff__header-path">{{ name }}</span>
+    @if (status(); as changeStatus) {
+      <span class="diff__badge" [class]="'diff__badge--' + changeStatus">{{ changeStatus }}</span>
+    }
+  } @else {
+    <app-icon class="diff__header-icon" [icon]="Icon.GIT_DIFF" />
+    <span class="diff__header-path diff__header-path--muted">No file selected</span>
+  }
+</header>
+
+<div class="diff__body">
+  <div class="diff__editor" #editorContainer></div>
+
+  @if (!fileName()) {
+    <div class="diff__empty">
+      <app-icon [icon]="Icon.GIT_DIFF" [size]="2.5" />
+      <p class="diff__empty-text">Select a changed file to compare its versions.</p>
+    </div>
+  }
+</div>
