@@ -8,7 +8,6 @@
     padding-inline-start: 1rem;
     color: var(--status-strip-foreground-color);
     background-color: var(--status-strip-background-color);
-    border-block-start: 0.0625rem solid var(--title-strip-border-color);
   }
 }
 
@@ -22,4 +21,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  // Use the font's tabular figures so digits keep a stable width as values change (e.g. the Ln/Col
+  // cursor position), stopping segments from jittering. Only digit glyphs are affected.
+  font-variant-numeric: tabular-nums;
 }

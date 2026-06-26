@@ -1,8 +1,9 @@
 :host {
+  // The bar and body share a single surface color so the whole panel reads as one piece, matching the
+  // markdown tool panels.
   --terminal-agent-bar-background: var(--gray-200);
   --terminal-agent-bar-foreground: var(--gray-700);
-  --terminal-agent-bar-border: var(--gray-300);
-  --terminal-agent-body-background: var(--gray-100);
+  --terminal-agent-body-background: var(--gray-200);
 
   display: block;
   inline-size: 100%;
@@ -10,10 +11,9 @@
 }
 
 :host-context([data-theme-mode='dark']) {
-  --terminal-agent-bar-background: var(--gray-800);
+  --terminal-agent-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
   --terminal-agent-bar-foreground: var(--gray-400);
-  --terminal-agent-bar-border: var(--gray-700);
-  --terminal-agent-body-background: var(--gray-900);
+  --terminal-agent-body-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
 }
 
 .terminal-agent {
@@ -29,8 +29,6 @@
   padding: 0.25rem 0.5rem;
   background: var(--terminal-agent-bar-background);
   color: var(--terminal-agent-bar-foreground);
-  border-block-start: 0.0625rem solid var(--terminal-agent-bar-border);
-  border-block-end: 0.0625rem solid var(--terminal-agent-bar-border);
 
   button {
     display: flex;

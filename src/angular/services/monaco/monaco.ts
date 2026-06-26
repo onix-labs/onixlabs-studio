@@ -622,7 +622,7 @@ export class Monaco {
         'editor.selectionBackground': gray800,
         'editor.lineHighlightBackground': '#00000000',
         'editor.lineHighlightBorder': '#ffffff20',
-        'editorCursor.foreground': '#ffffff',
+        'editorCursor.foreground': gray100,
       },
     });
     monaco.editor.defineTheme('onix-dark-filled', {
@@ -634,7 +634,7 @@ export class Monaco {
         'editor.selectionBackground': gray800,
         'editor.lineHighlightBackground': '#ffffff10',
         'editor.lineHighlightBorder': '#00000000',
-        'editorCursor.foreground': '#ffffff',
+        'editorCursor.foreground': gray100,
       },
     });
     monaco.editor.defineTheme('onix-light-outline', {
@@ -646,7 +646,7 @@ export class Monaco {
         'editor.selectionBackground': gray200,
         'editor.lineHighlightBackground': '#00000000',
         'editor.lineHighlightBorder': '#00000020',
-        'editorCursor.foreground': '#ffffff',
+        'editorCursor.foreground': gray900,
       },
     });
     monaco.editor.defineTheme('onix-light-filled', {
@@ -658,7 +658,7 @@ export class Monaco {
         'editor.selectionBackground': gray200,
         'editor.lineHighlightBackground': '#00000008',
         'editor.lineHighlightBorder': '#00000000',
-        'editorCursor.foreground': '#ffffff',
+        'editorCursor.foreground': gray900,
       },
     });
   }
