@@ -7,6 +7,8 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  signal,
+  WritableSignal,
 } from '@angular/core';
 import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
 import { Icon } from '../../../icons/icon';
@@ -32,6 +34,7 @@ import { StatusBar, StatusSegment } from '../../../services/status-bar/status-ba
 import { Tabs } from '../../../services/tabs/tabs';
 import { DockContainer } from '../../dock/dock-container/dock-container';
 import { AppIcon } from '../../shared/icon/app-icon';
+import { Modal } from '../../shared/modal/modal';
 import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
 
 /**
@@ -58,7 +61,7 @@ const STATUS_PRIORITY: number = 30;
  */
 @Component({
   selector: 'app-source-control-view',
-  imports: [DockContainer, AppIcon],
+  imports: [DockContainer, AppIcon, Modal],
   templateUrl: './source-control-view.html',
   styleUrl: './source-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -135,6 +138,16 @@ export class SourceControlView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether the new-branch modal is open.
+   */
+  protected readonly newBranchOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name typed into the new-branch modal.
+   */
+  protected readonly newBranchName: WritableSignal<string> = signal<string>('');
+
+  /**
    * Holds the command handler registered with the {@link SourceControlCommands} registry while active.
    */
   private commandHandler: SourceControlCommandHandler | null = null;
@@ -208,6 +221,41 @@ export class SourceControlView implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens the new-branch modal with an empty name.
+   */
+  protected openNewBranch(): void {
+    this.newBranchName.set('');
+    this.newBranchOpen.set(true);
+  }
+
+  /**
+   * Closes the new-branch modal.
+   */
+  protected closeNewBranch(): void {
+    this.newBranchOpen.set(false);
+  }
+
+  /**
+   * Updates the typed branch name.
+   * @param event The input event.
+   */
+  protected onNewBranchInput(event: Event): void {
+    this.newBranchName.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Creates the branch named in the modal and closes it. A blank name is ignored.
+   */
+  protected confirmNewBranch(): void {
+    const name: string = this.newBranchName().trim();
+    if (name.length === 0) {
+      return;
+    }
+    void this.repository.createBranch(name);
+    this.newBranchOpen.set(false);
+  }
+
+  /**
    * Opens a git repository into this (empty) tab from its empty state, binding it in place and naming
    * the tab after the repository.
    */
@@ -236,7 +284,7 @@ export class SourceControlView implements OnInit, OnDestroy {
       stageAll: (): void => void this.repository.stageAll(),
       commit: (): void => void this.repository.commit(),
       stash: (): void => void this.repository.stash(),
-      newBranch: (): void => undefined,
+      newBranch: (): void => this.openNewBranch(),
       toggleInlineDiff: (): void => this.diffs.toggleInline(),
     };
     this.commands.register(this.commandHandler);

@@ -10,3 +10,32 @@
     </button>
   </div>
 }
+
+<app-modal
+  [open]="newBranchOpen()"
+  [dismissable]="true"
+  [width]="28"
+  ariaLabel="New branch"
+  (dismiss)="closeNewBranch()"
+>
+  <h2 class="sc-modal__title">New branch</h2>
+  <input
+    class="sc-modal__input"
+    type="text"
+    placeholder="branch-name"
+    [value]="newBranchName()"
+    (input)="onNewBranchInput($event)"
+    (keydown.enter)="confirmNewBranch()"
+  />
+  <div class="sc-modal__actions">
+    <button type="button" class="sc-modal__button" (click)="closeNewBranch()">Cancel</button>
+    <button
+      type="button"
+      class="sc-modal__button sc-modal__button--primary"
+      [disabled]="newBranchName().trim().length === 0"
+      (click)="confirmNewBranch()"
+    >
+      Create
+    </button>
+  </div>
+</app-modal>

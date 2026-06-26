@@ -468,6 +468,32 @@ export class Repository {
   }
 
   /**
+   * Checks out an existing branch, then reloads and selects the working tree.
+   * @param branch The branch name.
+   * @returns Returns the outcome.
+   */
+  public async checkout(branch: string): Promise<MutationResult> {
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.checkout(branch),
+    );
+    if (result.success) {
+      this.selectNode(WORKING_NODE_ID);
+    }
+    return result;
+  }
+
+  /**
+   * Creates a branch at the current head and checks it out, then reloads.
+   * @param name The new branch name.
+   * @returns Returns the outcome.
+   */
+  public createBranch(name: string): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.createBranch(name),
+    );
+  }
+
+  /**
    * Runs a mutating operation against the provider and reloads the repository on success.
    * @param op Invokes the desired provider mutation.
    * @returns Returns the outcome (a failure when no repository is bound).

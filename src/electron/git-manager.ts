@@ -135,6 +135,16 @@ export class GitManager {
       IpcChannel.SourceControlStash,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stash(root),
     );
+    ipcMain.handle(
+      IpcChannel.SourceControlCheckout,
+      (_event: IpcMainInvokeEvent, root: unknown, branch: unknown): Promise<GitRunResult> =>
+        this.checkout(root, branch),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlCreateBranch,
+      (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
+        this.createBranch(root, name),
+    );
   }
 
   /**
@@ -373,6 +383,33 @@ export class GitManager {
    */
   private stash(root: unknown): Promise<GitRunResult> {
     return this.runInRoot(root, ['stash', 'push']);
+  }
+
+  /**
+   * Checks out an existing branch.
+   * @param root The repository root.
+   * @param branch The branch name.
+   * @returns Returns the raw command result.
+   */
+  private checkout(root: unknown, branch: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(branch)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    return this.runInRoot(root, ['checkout', branch]);
+  }
+
+  /**
+   * Creates a branch at the current head and checks it out. Git validates the branch name and rejects
+   * an invalid one.
+   * @param root The repository root.
+   * @param name The new branch name.
+   * @returns Returns the raw command result.
+   */
+  private createBranch(root: unknown, name: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(name)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    return this.runInRoot(root, ['checkout', '-b', name]);
   }
 
   /**

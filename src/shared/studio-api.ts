@@ -736,6 +736,22 @@ export interface SourceControlApi {
    * @returns Returns the raw command result.
    */
   stash(root: string): Promise<GitRunResult>;
+
+  /**
+   * Checks out an existing branch.
+   * @param root The absolute repository root; must be an open root.
+   * @param branch The branch name to check out.
+   * @returns Returns the raw command result.
+   */
+  checkout(root: string, branch: string): Promise<GitRunResult>;
+
+  /**
+   * Creates a branch at the current head and checks it out.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The new branch name.
+   * @returns Returns the raw command result.
+   */
+  createBranch(root: string, name: string): Promise<GitRunResult>;
 }
 
 export interface StudioApi {

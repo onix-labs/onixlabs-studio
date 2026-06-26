@@ -169,6 +169,28 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Checks out an existing branch.
+   * @param branch The branch name.
+   * @returns Returns the outcome.
+   */
+  public checkout(branch: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> => api.checkout(this.root, branch),
+    );
+  }
+
+  /**
+   * Creates a branch at the current head and checks it out.
+   * @param name The new branch name.
+   * @returns Returns the outcome.
+   */
+  public createBranch(name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> => api.createBranch(this.root, name),
+    );
+  }
+
+  /**
    * Releases the repository in the main process.
    * @returns Returns a promise that resolves once the repository has been released.
    */

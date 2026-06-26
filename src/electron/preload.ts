@@ -250,6 +250,10 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.SourceControlCommit, root, message) as Promise<GitRunResult>,
     stash: (root: string): Promise<GitRunResult> =>
       ipcRenderer.invoke(IpcChannel.SourceControlStash, root) as Promise<GitRunResult>,
+    checkout: (root: string, branch: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlCheckout, root, branch) as Promise<GitRunResult>,
+    createBranch: (root: string, name: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlCreateBranch, root, name) as Promise<GitRunResult>,
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>

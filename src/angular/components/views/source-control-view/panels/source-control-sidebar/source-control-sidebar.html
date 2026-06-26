@@ -17,21 +17,28 @@
     <span>Branches</span>
   </header>
   @for (branch of repository.branches(); track branch.name) {
-    <button
-      type="button"
-      class="rail__item"
-      [class.rail__item--current]="branch.current"
-      (click)="selectBranch(branch)"
-    >
-      <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
-      <span class="rail__item-label">{{ branch.name }}</span>
-      @if (branch.ahead > 0) {
-        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
+    <div class="rail__item" [class.rail__item--current]="branch.current">
+      <button type="button" class="rail__item-main" (click)="selectBranch(branch)">
+        <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
+        <span class="rail__item-label">{{ branch.name }}</span>
+        @if (branch.ahead > 0) {
+          <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
+        }
+        @if (branch.behind > 0) {
+          <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
+        }
+      </button>
+      @if (!branch.current) {
+        <button
+          type="button"
+          class="rail__item-action"
+          aria-label="Check out branch"
+          (click)="checkout(branch)"
+        >
+          <app-icon [icon]="Icon.CHECK" />
+        </button>
       }
-      @if (branch.behind > 0) {
-        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
-      }
-    </button>
+    </div>
   }
 </section>
 

@@ -394,4 +394,14 @@ export enum IpcChannel {
    * Stashes the working-tree changes.
    */
   SourceControlStash = 'source-control:stash',
+
+  /**
+   * Checks out an existing branch.
+   */
+  SourceControlCheckout = 'source-control:checkout',
+
+  /**
+   * Creates a new branch at the current head and checks it out.
+   */
+  SourceControlCreateBranch = 'source-control:create-branch',
 }

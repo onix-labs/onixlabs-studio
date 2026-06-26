@@ -95,6 +95,16 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public checkout(branch: string): Promise<MutationResult> {
+    this.calls.push(`checkout:${branch}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public createBranch(name: string): Promise<MutationResult> {
+    this.calls.push(`createBranch:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }

@@ -111,6 +111,20 @@ export interface SourceControlProvider {
   stash(): Promise<MutationResult>;
 
   /**
+   * Checks out an existing branch.
+   * @param branch The branch name.
+   * @returns Returns the outcome.
+   */
+  checkout(branch: string): Promise<MutationResult>;
+
+  /**
+   * Creates a branch at the current head and checks it out.
+   * @param name The new branch name.
+   * @returns Returns the outcome.
+   */
+  createBranch(name: string): Promise<MutationResult>;
+
+  /**
    * Releases the repository, freeing any backend resources.
    * @returns Returns a promise that resolves once the repository has been released.
    */

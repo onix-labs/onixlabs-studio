@@ -104,6 +104,53 @@
   }
 }
 
+// The clickable portion of a branch row, beside its hover-revealed checkout action.
+.rail__item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rail__item-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease-in-out,
+    var(--hover-transition);
+
+  .rail__item:hover &,
+  .rail__item:focus-within & {
+    opacity: 1;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
 .rail__item-icon {
   color: var(--form-muted-foreground-color);
   flex: 0 0 auto;
