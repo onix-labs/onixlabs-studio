@@ -20,6 +20,7 @@ import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
+import { DockTabContext } from '../../../services/dock/dock-tab-context';
 import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
@@ -70,6 +71,7 @@ const STATUS_PRIORITY: number = 30;
     Repository,
     Diffs,
     DiffOpener,
+    DockTabContext,
     DockState,
     DockGeometry,
     DockFocus,
@@ -127,6 +129,11 @@ export class SourceControlView implements OnInit, OnDestroy {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds this tab's dock context, carrying its id and repository root to the docked terminal panel.
+   */
+  private readonly dockTabContext: DockTabContext = inject(DockTabContext);
+
+  /**
    * Holds the status-bar registry this view contributes branch and change status to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
@@ -180,6 +187,12 @@ export class SourceControlView implements OnInit, OnDestroy {
       this.diffs.removeMissing(present);
     });
 
+    // Publish the bound repository's root to the dock context so the docked terminal roots its shell
+    // there.
+    effect((): void => {
+      this.dockTabContext.setRoot(this.repository.info()?.root ?? null);
+    });
+
     // Publish branch and change status to the status strip while active, reading the repository
     // signals so the segments refresh on reload. Clears when inactive or no repository is bound.
     effect((): void => {
@@ -207,6 +220,7 @@ export class SourceControlView implements OnInit, OnDestroy {
    * Binds the repository stashed for this tab when it was opened, if any.
    */
   public ngOnInit(): void {
+    this.dockTabContext.setTabId(this.tabId());
     const initial: RepositoryInfo | undefined = this.repositories.takeInitial(this.tabId());
     if (initial !== undefined) {
       this.repository.bind(initial);

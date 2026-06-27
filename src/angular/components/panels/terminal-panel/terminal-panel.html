@@ -1,0 +1,5 @@
+@if (root(); as root) {
+  <app-terminal-view [terminalId]="terminalId()" [cwd]="root" />
+} @else {
+  <div class="terminal-panel__empty">Open a folder to use the terminal.</div>
+}

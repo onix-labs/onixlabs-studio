@@ -24,6 +24,7 @@ import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { StackNode } from '../../../services/dock/dock-node';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
+import { DockTabContext } from '../../../services/dock/dock-tab-context';
 import { collectPanelIds, findStackOfPanel } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
@@ -71,6 +72,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     Repository,
     Diffs,
     DiffOpener,
+    DockTabContext,
     DockState,
     DockGeometry,
     DockFocus,
@@ -191,6 +193,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
+   * Holds this tab's dock context, carrying its id and rooted folder to the docked terminal panel.
+   */
+  private readonly dockTabContext: DockTabContext = inject(DockTabContext);
+
+  /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
    * {@link Repository}; undefined when running outside Electron.
    */
@@ -266,7 +273,9 @@ export class DirectoryView implements OnInit, OnDestroy {
     });
 
     effect((): void => {
-      this.activeWorkspace.setRoot(this.tabId(), this.workspace.root()?.path ?? null);
+      const root: string | null = this.workspace.root()?.path ?? null;
+      this.activeWorkspace.setRoot(this.tabId(), root);
+      this.dockTabContext.setRoot(root);
     });
 
     // Show the Solution Explorer only while this tab's root has a recognised project system, docking it
@@ -311,6 +320,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.documents.setOwningTab(this.tabId());
+    this.dockTabContext.setTabId(this.tabId());
     const initial: DirectoryListing | undefined = this.workspaces.takeInitial(this.tabId());
     if (initial !== undefined) {
       this.workspace.openListing(initial);

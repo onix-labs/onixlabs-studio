@@ -1,7 +1,7 @@
 # Source Control Integration — status & handoff
 
 Working notes for the git/VCS integration on branch **`feature/git-integration`**.
-Last updated after slice 6 (ribbon cross-view + unified tab dedup + workspace commit panel).
+Last updated after slice 7 (docked agent + terminal panels).
 
 ## Direction
 
@@ -22,11 +22,12 @@ decorations + a few ops). The git CLI runs only in the **main process**, via
 | `bc6c59b` | 4 — branch ops | checkout (hover action) + create branch (modal) |
 | _(pending)_ | 5 — network | `fetch`/`pull`/`push` end-to-end; non-interactive env + 120s timeout for network ops; push auto-sets upstream; SC ribbon Fetch/Pull/Push wired |
 | _(pending)_ | 6 — ribbon cross-view | unified per-type tab dedup (`Tab.resourceKey`); directory ribbon Source Control group (big "Source Control" + small Commit/Push/Pull); SC ribbon "Open as Workspace"; workspace commit panel reuses `CommitDetail` |
+| _(pending)_ | 7 — docked panels | agent panel on SC tabs; interactive terminal panel on both tabs (new docked `TerminalPanel` reusing `TerminalView`), rooted at the folder/repo via `DockTabContext` |
 
 (These sit on top of the earlier source-control **scaffold** + **dock rehost** commits:
 `4a50a53`, `a770ead`, `9482b35`.)
 
-> Slices 5 & 6 are implemented and green in the working tree but **not yet committed**
+> Slices 5–7 are implemented and green in the working tree but **not yet committed**
 > (build, electron `tsc`, `eslint .`, and `ng test` all pass — 3 known unrelated failures).
 
 ## Architecture map
@@ -72,15 +73,27 @@ exposed as `window.studio.sourceControl` in `src/electron/preload.ts`, wired in
   hold, released in `ngOnDestroy`), and reveals the reused `CommitDetail` as a `commit` dock panel.
   Push/pull go through the scoped `Repository`, then `WorkspaceGit.refresh()` updates decorations.
 
+**Docked panels (slice 7)**:
+- **Agent on SC tabs** — `repository-dock-blueprint.ts` adds the reusable `'agent'` panel
+  (`AgentPanel`→`AgentChat`, own per-conversation `Agent`) in its own right-column stack. (Its
+  `Agent` resolves the root `Workspace` in an SC tab, so its file tooling is unscoped for now.)
+- **Terminal on both tabs** — new docked `components/panels/terminal-panel/` wraps the existing
+  `TerminalView` (which gained an optional `cwd` input → `bridge.create`). A per-tab
+  `services/dock/dock-tab-context.ts` (`DockTabContext`, provided by both views) carries the tab id
+  (→ globally-unique `term-${tabId}` session) and rooted folder (→ `cwd`); the panel renders only
+  once the root is known. The terminal is tabbed with Output/Error List (`defaultLayout()`, workspace)
+  and with History (`REPOSITORY_DOCK_BLUEPRINT`, SC); the SC agent shares the right column with Commit
+  in its own stack. `TerminalView.ngOnDestroy` disposes the PTY on tab close. **Note:** tool stacks
+  render only their active panel, so switching to a sibling tab (e.g. Output) destroys the terminal and
+  resets its shell session; the session is re-created on return. Persisting it would need a docked
+  mounted-but-hidden pattern (a future enhancement).
+
 ## Remaining work
 
-1. **Panels** — agent panel on SC tabs + **terminal panel on both** tabs. Both are dock
-   hosts, so these are new blueprint panels reusing the code tab's docked agent/terminal
-   infra.
-2. **Discard changes (follow-up)** — per-file revert in the commit panel's Changes
+1. **Discard changes (follow-up)** — per-file revert in the commit panel's Changes
    group; **needs a confirm dialog** (destructive). Handle tracked (`git restore
    --staged --worktree`) vs untracked (delete) cases.
-3. **Auth (follow-up)** — in-app credential entry is a later epic. Today network ops lean
+2. **Auth (follow-up)** — in-app credential entry is a later epic. Today network ops lean
    entirely on the user's git credential helper + ssh-agent and **fail fast** when none is
    available (`GIT_TERMINAL_PROMPT=0`, non-interactive `GIT_SSH_COMMAND`); failures surface
    via `GitRunResult.stderr` but are not yet shown in a rich error UI.
@@ -115,10 +128,10 @@ bash make-git-test-repo.sh [target-dir]   # default /tmp/onix-git-test ; wipes +
 ## Return prompt (paste to resume)
 
 > Resume the git integration on branch `feature/git-integration`. Read
-> `docs/source-control-integration.md` first. Six slices are done (read-only, local
-> mutations, workspace decorations, branch ops, **network fetch/pull/push**, and
-> **ribbon cross-view + unified tab dedup + workspace commit panel** — slices 5 & 6
-> may still be uncommitted in the working tree). Next up is **agent/terminal panels**
-> on the SC/workspace dock hosts, then **discard changes** (per-file revert with a
-> destructive confirm dialog). Keep the build, electron `tsc`, `eslint .`, and
-> `ng test` green (3 known unrelated failures). Then reconcile GitHub tickets #96–99.
+> `docs/source-control-integration.md` first. Seven slices are done (read-only, local
+> mutations, workspace decorations, branch ops, **network fetch/pull/push**, **ribbon
+> cross-view + unified tab dedup + workspace commit panel**, and **docked agent +
+> terminal panels** — slices 5–7 may still be uncommitted in the working tree). Next up
+> is **discard changes** (per-file revert with a destructive confirm dialog), then
+> reconcile GitHub tickets #96–99. Keep the build, electron `tsc`, `eslint .`, and
+> `ng test` green (3 known unrelated failures).

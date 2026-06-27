@@ -3,6 +3,7 @@ import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../components/panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
 import { SolutionPanel } from '../../components/panels/solution-panel/solution-panel';
+import { TerminalPanel } from '../../components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
 import { Icon } from '../../icons/icon';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
@@ -79,5 +80,6 @@ export class DockPanelRegistry {
     tool('agent', 'Agent', Icon.AGENT, AgentPanel);
     tool('output', 'Output', Icon.OUTPUT, OutputPanel);
     tool('errors', 'Error List', Icon.PROBLEMS, ProblemsPanel);
+    tool('terminal', 'Terminal', Icon.TERMINAL, TerminalPanel);
   }
 }

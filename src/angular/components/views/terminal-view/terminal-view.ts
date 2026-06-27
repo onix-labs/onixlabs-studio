@@ -136,6 +136,12 @@ export class TerminalView implements AfterViewInit, OnDestroy {
   public readonly terminalId: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the working directory the terminal's shell starts in, or undefined to use the default (the
+   * user's home directory). Read once when the session is created.
+   */
+  public readonly cwd: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
    * Gets a value indicating whether the view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
@@ -309,6 +315,7 @@ export class TerminalView implements AfterViewInit, OnDestroy {
       id,
       cols: xterm.cols,
       rows: xterm.rows,
+      cwd: this.cwd(),
     });
     if (!result.success) {
       xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);

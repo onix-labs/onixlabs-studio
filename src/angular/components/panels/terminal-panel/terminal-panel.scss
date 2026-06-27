@@ -1,0 +1,24 @@
+// Fills the Terminal dock panel body with the interactive terminal. The background tracks the
+// resolved theme (the xterm theme paints the same colour, so the gutter around the canvas matches).
+:host {
+  display: block;
+  block-size: 100%;
+  background: var(--dock-tab-background-color--active);
+}
+
+app-terminal-view {
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+}
+
+.terminal-panel__empty {
+  box-sizing: border-box;
+  block-size: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: var(--gray-500);
+  font-size: 0.85rem;
+}

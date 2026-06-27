@@ -1,3 +1,5 @@
+import { AgentPanel } from '../../panels/agent-panel/agent-panel';
+import { TerminalPanel } from '../../panels/terminal-panel/terminal-panel';
 import { Icon } from '../../../icons/icon';
 import { DockBlueprint } from '../../../services/dock/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '../../../services/dock/dock-node';
@@ -6,11 +8,11 @@ import { CommitGraph } from './panels/commit-graph/commit-graph';
 import { SourceControlSidebar } from './panels/source-control-sidebar/source-control-sidebar';
 
 /**
- * The blueprint specialising a dock instance as a source-control (repository) surface. The default
- * puts the Repository rail (branches, remotes, tags, stashes) on the far left and the Commit detail
- * on the far right, with the centre column split between the diff document well on top (where changed
- * files open) and the History graph below it. Every panel is dockable, so the user can rearrange or
- * float them.
+ * The blueprint specialising a dock instance as a source-control (repository) surface. The Repository
+ * rail (branches, remotes, tags, stashes) sits on the far left; the centre column holds the diff
+ * document well on top with the History graph and a terminal tabbed together beneath it; the right
+ * column stacks the Commit detail over an agent conversation. Every panel is dockable, so the user can
+ * rearrange or float them.
  */
 export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
   createLayout(): DockNode {
@@ -18,8 +20,8 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['branches']),
-        mkSplit('col', [mkStack('document', []), mkStack('tool', ['history'])], [3, 2]),
-        mkStack('tool', ['commit']),
+        mkSplit('col', [mkStack('document', []), mkStack('tool', ['history', 'terminal'])], [3, 2]),
+        mkSplit('col', [mkStack('tool', ['commit']), mkStack('tool', ['agent'])], [1, 1]),
       ],
       [1.2, 3.4, 1.6],
     );
@@ -40,5 +42,7 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       component: CommitGraph,
     },
     { id: 'commit', title: 'Commit', icon: Icon.LIST_ALL, role: 'tool', component: CommitDetail },
+    { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: AgentPanel },
+    { id: 'terminal', title: 'Terminal', icon: Icon.TERMINAL, role: 'tool', component: TerminalPanel },
   ],
 };
