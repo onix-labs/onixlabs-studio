@@ -1,0 +1,7 @@
+// An explanatory hint shown beneath a section's settings (for example, when a change applies only
+// after a restart).
+.settings-section__hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+}

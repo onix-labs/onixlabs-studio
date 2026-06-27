@@ -117,16 +117,21 @@ export type ControlDef =
   | { readonly kind: 'custom'; readonly component: string };
 
 /**
- * Describes a single setting: its stable key, the display text, the control used to edit it, and its
- * default value. The default is the actual value (never an index), so reordering a control's options
- * can never corrupt persisted state.
+ * Identifies which service owns a setting's value. A setting owned by `settings` lives in the Settings
+ * store; other owners (the Theme, Display, LSP and Security services) own their own state, and the
+ * renderer binds to them through the {@link import('./setting-bindings').SettingBindings} resolver.
  */
-export interface SettingDef {
-  /**
-   * Gets the stable, namespaced lookup key (for example `application.undoStackSize`).
-   */
-  readonly key: SettingsKey;
+export type SettingOwner = 'settings' | 'theme' | 'display' | 'lsp' | 'security';
 
+/**
+ * Identifies an owner other than the Settings service.
+ */
+export type ForeignOwner = Exclude<SettingOwner, 'settings'>;
+
+/**
+ * Holds the display and control fields shared by every setting definition.
+ */
+interface BaseSettingDef {
   /**
    * Gets the label shown for the setting.
    */
@@ -141,12 +146,52 @@ export interface SettingDef {
    * Gets the control used to render and edit the setting.
    */
   readonly control: ControlDef;
+}
+
+/**
+ * Describes a setting owned by the Settings store. Its key is checked against {@link SettingsValues},
+ * and it carries the default applied when no override is persisted.
+ */
+export interface SettingsOwnedDef extends BaseSettingDef {
+  /**
+   * Gets the owner of the value (the Settings store).
+   */
+  readonly owner?: 'settings';
+
+  /**
+   * Gets the stable, namespaced lookup key (for example `application.undoStackSize`).
+   */
+  readonly key: SettingsKey;
 
   /**
    * Gets the default value applied when no user override is persisted.
    */
   readonly default: unknown;
 }
+
+/**
+ * Describes a setting owned by another service (Theme, Display, LSP or Security). Its value lives in
+ * that service, so it has no Settings-store default; the renderer reads and writes it through the
+ * binding resolver.
+ */
+export interface ForeignSettingDef extends BaseSettingDef {
+  /**
+   * Gets the owner of the value.
+   */
+  readonly owner: ForeignOwner;
+
+  /**
+   * Gets the stable, namespaced lookup key (for example `security.imagePolicy`).
+   */
+  readonly key: string;
+}
+
+/**
+ * Describes a single setting: its stable key, the display text, the control used to edit it, and the
+ * service that owns its value. Defaults are the actual value (never an index), so reordering a
+ * control's options can never corrupt persisted state.
+ */
+export type SettingDef = SettingsOwnedDef | ForeignSettingDef;
 
 /**
  * Describes a settings section: a titled group of settings.
@@ -166,6 +211,20 @@ export interface SectionDef {
    * Gets the settings in the section, in display order.
    */
   readonly settings: readonly SettingDef[];
+
+  /**
+   * Gets the optional hint shown beneath the section's settings.
+   */
+  readonly footer?: string;
+}
+
+/**
+ * Determines whether a setting is owned by the Settings store.
+ * @param def The setting definition.
+ * @returns Returns true when the setting is Settings-owned.
+ */
+export function isSettingsOwned(def: SettingDef): def is SettingsOwnedDef {
+  return def.owner === undefined || def.owner === 'settings';
 }
 
 /**
@@ -506,32 +565,173 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
     ],
   },
+  {
+    id: 'language-servers',
+    label: 'Language Servers',
+    settings: [
+      {
+        key: 'lsp.server.typescript.enabled',
+        owner: 'lsp',
+        title: 'TypeScript / JavaScript',
+        description:
+          'Diagnostics, completion, hover, and go-to-definition for TypeScript and JavaScript.',
+        control: { kind: 'toggle' },
+      },
+      {
+        key: 'lsp.server.typescript.args',
+        owner: 'lsp',
+        title: 'TypeScript / JavaScript arguments',
+        description:
+          'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+      },
+      {
+        key: 'lsp.server.java.enabled',
+        owner: 'lsp',
+        title: 'Java',
+        description:
+          'Eclipse JDT Language Server. Requires a Java 21+ runtime; downloaded on first use.',
+        control: { kind: 'toggle' },
+      },
+      {
+        key: 'lsp.server.java.args',
+        owner: 'lsp',
+        title: 'Java arguments',
+        description:
+          'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+      },
+      {
+        key: 'lsp.server.python.enabled',
+        owner: 'lsp',
+        title: 'Python',
+        description: 'Pyright. Diagnostics, completion, hover, and go-to-definition for Python.',
+        control: { kind: 'toggle' },
+      },
+      {
+        key: 'lsp.server.python.args',
+        owner: 'lsp',
+        title: 'Python arguments',
+        description:
+          'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+      },
+      {
+        key: 'lsp.server.csharp.enabled',
+        owner: 'lsp',
+        title: 'C#',
+        description:
+          'Roslyn language server. Requires the .NET 10+ SDK; downloaded on first use. Build the project for full results.',
+        control: { kind: 'toggle' },
+      },
+      {
+        key: 'lsp.server.csharp.args',
+        owner: 'lsp',
+        title: 'C# arguments',
+        description:
+          'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+      },
+      {
+        key: 'lsp.server.clangd.enabled',
+        owner: 'lsp',
+        title: 'C / C++',
+        description:
+          'clangd. Requires LLVM or Xcode Command Line Tools. A compile_commands.json gives full results.',
+        control: { kind: 'toggle' },
+      },
+      {
+        key: 'lsp.server.clangd.args',
+        owner: 'lsp',
+        title: 'C / C++ arguments',
+        description:
+          'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+      },
+      {
+        key: 'lsp.path.typescriptServer',
+        owner: 'lsp',
+        title: 'TypeScript server path',
+        description:
+          'Path to a custom typescript-language-server CLI module (its JavaScript entry point). Leave empty to use the server bundled with Studio.',
+        control: { kind: 'text', placeholder: 'Bundled' },
+      },
+      {
+        key: 'lsp.path.java',
+        owner: 'lsp',
+        title: 'Java runtime',
+        description:
+          'Path to the Java 21+ executable used to run the Java language server. Leave empty to detect it from JAVA_HOME or the PATH.',
+        control: { kind: 'text', placeholder: 'Auto-detect' },
+      },
+      {
+        key: 'lsp.path.dotnet',
+        owner: 'lsp',
+        title: '.NET SDK',
+        description:
+          'Path to the dotnet executable used to install and run the C# language server. Leave empty to detect it from DOTNET_ROOT or the PATH.',
+        control: { kind: 'text', placeholder: 'Auto-detect' },
+      },
+      {
+        key: 'lsp.path.clangd',
+        owner: 'lsp',
+        title: 'clangd',
+        description:
+          'Path to the clangd executable used for C and C++. Leave empty to detect it from the PATH, Xcode Command Line Tools, or LLVM.',
+        control: { kind: 'text', placeholder: 'Auto-detect' },
+      },
+    ],
+    footer:
+      'Changes apply to language servers started afterwards. Reopen a file or restart Studio to apply them.',
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    settings: [
+      {
+        key: 'security.imagePolicy',
+        owner: 'security',
+        title: 'Remote images',
+        description:
+          'Which image sources content (such as markdown) may load. Restricting this reduces exposure to remote tracking and untrusted content.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'local', label: 'Local only (safest)' },
+            { value: 'https', label: 'HTTPS only (safe)' },
+            { value: 'all', label: 'HTTP and HTTPS (less safe)' },
+          ],
+        },
+      },
+    ],
+    footer: 'Changes to the content-security policy take effect the next time Studio starts.',
+  },
 ];
 
 /**
- * Holds a flattened lookup of every setting definition by key.
+ * Holds a flattened lookup of every setting definition by key (across all owners).
  */
-export const SETTINGS_BY_KEY: ReadonlyMap<SettingsKey, SettingDef> = new Map(
-  SETTINGS_REGISTRY.flatMap((section: SectionDef): readonly [SettingsKey, SettingDef][] =>
-    section.settings.map((setting: SettingDef): [SettingsKey, SettingDef] => [setting.key, setting]),
+export const SETTINGS_BY_KEY: ReadonlyMap<string, SettingDef> = new Map(
+  SETTINGS_REGISTRY.flatMap((section: SectionDef): readonly [string, SettingDef][] =>
+    section.settings.map((setting: SettingDef): [string, SettingDef] => [setting.key, setting]),
   ),
 );
 
 /**
- * Holds the default value for every setting key.
+ * Holds the default value for every Settings-owned setting key. Foreign-owned settings (Theme,
+ * Display, LSP, Security) are excluded — their values live in their own services.
  */
 export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
-  [...SETTINGS_BY_KEY].map(([key, setting]: [SettingsKey, SettingDef]): [SettingsKey, unknown] => [
-    key,
-    setting.default,
-  ]),
+  [...SETTINGS_BY_KEY.values()]
+    .filter(isSettingsOwned)
+    .map((setting: SettingsOwnedDef): [SettingsKey, unknown] => [setting.key, setting.default]),
 ) as unknown as SettingsValues;
 
 /**
- * Returns the settings in a section, in display order, or an empty list when the section is unknown.
+ * Returns the section with the given id, or undefined when it is unknown.
  * @param id The section identifier.
- * @returns Returns the section's settings.
+ * @returns Returns the section definition, or undefined.
  */
-export function sectionSettings(id: string): readonly SettingDef[] {
-  return SETTINGS_REGISTRY.find((section: SectionDef): boolean => section.id === id)?.settings ?? [];
+export function findSection(id: string): SectionDef | undefined {
+  return SETTINGS_REGISTRY.find((section: SectionDef): boolean => section.id === id);
 }

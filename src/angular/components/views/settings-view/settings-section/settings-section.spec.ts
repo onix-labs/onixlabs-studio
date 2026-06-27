@@ -51,4 +51,24 @@ describe('SettingsSection', () => {
     const element: HTMLElement = await render('does-not-exist');
     expect(element.querySelectorAll('app-setting-row').length).toBe(0);
   });
+
+  it('render_whenSectionHasCustomSettings_skipsThem', async () => {
+    // The Text Editor section has 12 global scalar settings plus a custom "profiles" entry, which is
+    // rendered by a bespoke host rather than this component.
+    const element: HTMLElement = await render('text-editor');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+  });
+
+  it('render_whenForeignOwnedSection_rendersItsRows', async () => {
+    const element: HTMLElement = await render('language-servers');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(14);
+  });
+
+  it('render_whenSectionHasFooter_rendersTheHint', async () => {
+    const element: HTMLElement = await render('security');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
+    expect(element.querySelector('.settings-section__hint')?.textContent).toContain(
+      'content-security policy',
+    );
+  });
 });

@@ -1,11 +1,16 @@
 @switch (kind()) {
   @case ('toggle') {
-    <app-toggle [checked]="$any(current())" (checkedChange)="onChange($event)" />
+    <app-toggle
+      [checked]="$any(current())"
+      [disabled]="disabled()"
+      (checkedChange)="onChange($event)"
+    />
   }
   @case ('text') {
     <app-text-field
       [value]="$any(current())"
       [placeholder]="placeholder()"
+      [disabled]="disabled()"
       (valueChange)="onChange($event)"
     />
   }
@@ -15,6 +20,7 @@
       [max]="max()"
       [step]="step()"
       [value]="$any(current())"
+      [disabled]="disabled()"
       (valueChange)="onChange($event)"
     />
   }
@@ -22,6 +28,7 @@
     <app-dropdown
       [options]="options()"
       [value]="$any(current())"
+      [disabled]="disabled()"
       (valueChange)="onChange($event)"
     />
   }

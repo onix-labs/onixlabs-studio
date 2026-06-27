@@ -10,8 +10,6 @@ import {
 } from '@angular/core';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
-import { LanguageServersSettings } from './sections/language-servers-settings/language-servers-settings';
-import { SecuritySettingsSection } from './sections/security-settings/security-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { Icon } from '../../../icons/icon';
@@ -59,8 +57,6 @@ interface SettingsNavSection {
     AppearanceSettings,
     TextEditorSettingsSection,
     AiSettingsSection,
-    LanguageServersSettings,
-    SecuritySettingsSection,
     SettingsSection,
     AppIcon,
   ],

@@ -31,6 +31,13 @@ export class Security {
   public readonly isAvailable: boolean = this.api !== undefined;
 
   /**
+   * Initialises the service, loading the active policy from the main process.
+   */
+  public constructor() {
+    void this.refresh();
+  }
+
+  /**
    * Refreshes and returns the active image-source policy.
    * @returns Returns the resolved {@link ImageSourcePolicy}.
    */

@@ -3,3 +3,7 @@
     <app-setting-control [key]="setting.key" />
   </app-setting-row>
 }
+
+@if (footer(); as hint) {
+  <p class="settings-section__hint">{{ hint }}</p>
+}

@@ -12,21 +12,24 @@ import { Dropdown } from '../../../forms/dropdown/dropdown';
 import { NumberField } from '../../../forms/number-field/number-field';
 import { TextField } from '../../../forms/text-field/text-field';
 import { Toggle } from '../../../forms/toggle/toggle';
-import { Settings } from '../../../../services/settings/settings';
+import {
+  SettingBinding,
+  SettingBindings,
+} from '../../../../services/settings/setting-bindings';
 import {
   ChoiceOption,
   ControlDef,
   SETTINGS_BY_KEY,
-  SettingsKey,
+  SettingDef,
 } from '../../../../services/settings/settings-registry';
 
 /**
  * Renders and edits a single setting, selecting the form control from the setting's registry control
- * definition and binding it to the Settings service by key.
+ * definition and binding it to the owning service through the {@link SettingBindings} resolver.
  *
- * This is the data-driven half of the settings UI: it is intentionally key-dynamic, so it works
- * against the loosely-typed renderer accessors (`reactive`/`assign`) on the Settings service rather
- * than the statically-typed `get`/`set`.
+ * This is the data-driven half of the settings UI: it is intentionally key-dynamic and owner-agnostic,
+ * so it renders settings owned by the Settings store as well as by other services (LSP, Security, and
+ * in future Theme and Display).
  */
 @Component({
   selector: 'app-setting-control',
@@ -36,9 +39,9 @@ import {
 })
 export class SettingControl {
   /**
-   * Holds the settings service the control is bound to.
+   * Holds the binding resolver the control reads and writes through.
    */
-  private readonly settings: Settings = inject(Settings);
+  private readonly bindings: SettingBindings = inject(SettingBindings);
 
   /**
    * Gets the key of the setting rendered by this control.
@@ -46,10 +49,17 @@ export class SettingControl {
   public readonly key: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the registry definition for the current setting.
+   */
+  protected readonly definition: Signal<SettingDef | undefined> = computed(
+    (): SettingDef | undefined => SETTINGS_BY_KEY.get(this.key()),
+  );
+
+  /**
    * Gets the control definition for the current setting.
    */
   protected readonly control: Signal<ControlDef | undefined> = computed(
-    (): ControlDef | undefined => SETTINGS_BY_KEY.get(this.key() as SettingsKey)?.control,
+    (): ControlDef | undefined => this.definition()?.control,
   );
 
   /**
@@ -60,10 +70,22 @@ export class SettingControl {
   );
 
   /**
+   * Gets the binding for the current setting, resolved from its owner.
+   */
+  private readonly binding: Signal<SettingBinding> = computed((): SettingBinding =>
+    this.bindings.resolve(this.key(), this.definition()?.owner),
+  );
+
+  /**
    * Gets the current value of the setting.
    */
-  protected readonly current: Signal<unknown> = computed((): unknown =>
-    this.settings.reactive(this.key() as SettingsKey)(),
+  protected readonly current: Signal<unknown> = computed((): unknown => this.binding().value());
+
+  /**
+   * Gets whether the control is disabled (for example when the owning bridge is unavailable).
+   */
+  protected readonly disabled: Signal<boolean> = computed(
+    (): boolean => this.binding().disabled?.() ?? false,
   );
 
   /**
@@ -109,10 +131,10 @@ export class SettingControl {
   });
 
   /**
-   * Writes a new value for the current setting through the service.
+   * Writes a new value for the current setting through its binding.
    * @param value The value picked or entered in the control.
    */
   protected onChange(value: unknown): void {
-    this.settings.assign(this.key() as SettingsKey, value);
+    this.binding().set(value);
   }
 }

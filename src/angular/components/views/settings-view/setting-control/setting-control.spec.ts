@@ -69,6 +69,19 @@ describe('SettingControl', () => {
     ).toBeNull();
   });
 
+  it('render_whenSecurityOwnedSetting_rendersADropdownWithAnOptionPerChoice', async () => {
+    const element: HTMLElement = await render('security.imagePolicy');
+    expect(element.querySelector('app-dropdown')).toBeTruthy();
+    expect(element.querySelectorAll('option').length).toBe(3);
+  });
+
+  it('render_whenLspOwnedToggle_reflectsTheEnabledState', async () => {
+    const element: HTMLElement = await render('lsp.server.typescript.enabled');
+    const checkbox: HTMLInputElement =
+      element.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(true);
+  });
+
   it('render_whenValueSet_reflectsTheCurrentValue', async () => {
     settings.setShowLauncherActions(true);
     const element: HTMLElement = await render('application.showLauncherActions');
