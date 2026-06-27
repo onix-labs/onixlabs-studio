@@ -82,9 +82,22 @@ describe('FileOpener', () => {
     expect(workspaces.takeInitial(tabs.tabs()[0].id)).toBe(ROOT_LISTING);
   });
 
-  it('openInteractive_whenSecondDirectoryChosen_opensAnotherWorkspaceTab', async () => {
+  it('openInteractive_whenSameDirectoryChosenAgain_focusesTheExistingTab', async () => {
     nextSelection = { kind: 'directory', directory: ROOT_LISTING };
     await opener.openInteractive();
+    const firstId: string = tabs.tabs()[0].id;
+    await opener.openInteractive();
+    expect(tabs.tabs()).toHaveLength(1);
+    expect(tabs.activeTabId()).toBe(firstId);
+  });
+
+  it('openInteractive_whenDifferentDirectoryChosen_opensAnotherWorkspaceTab', async () => {
+    nextSelection = { kind: 'directory', directory: ROOT_LISTING };
+    await opener.openInteractive();
+    nextSelection = {
+      kind: 'directory',
+      directory: { path: '/other', name: 'other', entries: [] },
+    };
     await opener.openInteractive();
     expect(tabs.tabs()).toHaveLength(2);
   });

@@ -62,7 +62,12 @@ export class RepositoryOpener {
    * @param info The opened repository's metadata.
    */
   private open(info: RepositoryInfo): void {
-    const tab: Tab = this.tabs.open('source-control');
+    const existing: Tab | undefined = this.tabs.findByResource('source-control', info.root);
+    if (existing !== undefined) {
+      this.tabs.activate(existing.id);
+      return;
+    }
+    const tab: Tab = this.tabs.open('source-control', info.root);
     this.tabs.rename(tab.id, info.name);
     this.repositories.setInitial(tab.id, info);
   }

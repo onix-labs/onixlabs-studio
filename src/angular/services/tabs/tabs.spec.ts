@@ -182,4 +182,41 @@ describe('Tabs', () => {
 
     expect((): void => service.setAttention('does-not-exist', true)).not.toThrow();
   });
+
+  it('open_withResourceKey_storesTheKeyOnTheTab', () => {
+    const tab: Tab = service.open('directory', '/ws');
+
+    expect(tab.resourceKey).toBe('/ws');
+  });
+
+  it('open_whenResourceAlreadyOpenForType_activatesTheExistingTab', () => {
+    const first: Tab = service.open('directory', '/ws');
+    const second: Tab = service.open('directory', '/ws');
+
+    expect(second.id).toBe(first.id);
+    expect(service.tabs()).toHaveLength(1);
+    expect(service.activeTabId()).toBe(first.id);
+  });
+
+  it('open_whenSameResourceDifferentType_opensASeparateTab', () => {
+    service.open('directory', '/ws');
+    service.open('source-control', '/ws');
+
+    expect(service.tabs()).toHaveLength(2);
+  });
+
+  it('open_whenDifferentResource_opensAnotherTab', () => {
+    service.open('directory', '/ws');
+    service.open('directory', '/other');
+
+    expect(service.tabs()).toHaveLength(2);
+  });
+
+  it('findByResource_returnsTheMatchingTabOrUndefined', () => {
+    const tab: Tab = service.open('directory', '/ws');
+
+    expect(service.findByResource('directory', '/ws')?.id).toBe(tab.id);
+    expect(service.findByResource('directory', '/missing')).toBeUndefined();
+    expect(service.findByResource('source-control', '/ws')).toBeUndefined();
+  });
 });

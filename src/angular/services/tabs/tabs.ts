@@ -49,12 +49,14 @@ export class Tabs {
   );
 
   /**
-   * Opens a new tab of the given type and activates it. The settings tab is a singleton: opening
-   * it while one already exists activates the existing tab instead of creating another.
+   * Opens a new tab of the given type and activates it. A tab may be tied to a resource (a directory,
+   * repository, or file): opening a resource that already has a tab of the same type activates the
+   * existing tab instead of creating a duplicate. The settings tab is a singleton on the same basis.
    * @param type The type of tab to open.
+   * @param resourceKey The identity of the resource the tab represents, when it is backed by one.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public open(type: TabType): Tab {
+  public open(type: TabType, resourceKey?: string): Tab {
     if (type === 'settings') {
       const existing: Tab | undefined = this.tabList().find(
         (tab: Tab): boolean => tab.type === 'settings',
@@ -63,15 +65,34 @@ export class Tabs {
         this.activeId.set(existing.id);
         return existing;
       }
+    } else if (resourceKey !== undefined) {
+      const existing: Tab | undefined = this.findByResource(type, resourceKey);
+      if (existing !== undefined) {
+        this.activeId.set(existing.id);
+        return existing;
+      }
     }
 
-    const tab: Tab = this.createTab(type);
+    const tab: Tab = this.createTab(type, resourceKey);
     const current: readonly Tab[] = this.tabList();
 
     // The settings tab is pinned to the front; every other tab opens at the end.
     this.tabList.set(type === 'settings' ? [tab, ...current] : [...current, tab]);
     this.activeId.set(tab.id);
     return tab;
+  }
+
+  /**
+   * Finds the open tab of a given type that represents a resource, if any. Used by the open flows to
+   * keep a resource single-instance per tab type.
+   * @param type The tab type to match.
+   * @param resourceKey The resource identity to match.
+   * @returns Returns the matching tab, or undefined when none is open.
+   */
+  public findByResource(type: TabType, resourceKey: string): Tab | undefined {
+    return this.tabList().find(
+      (tab: Tab): boolean => tab.type === type && tab.resourceKey === resourceKey,
+    );
   }
 
   /**
@@ -186,11 +207,18 @@ export class Tabs {
   /**
    * Creates a new tab of the given type with a unique identifier and default presentation.
    * @param type The type of tab to create.
+   * @param resourceKey The identity of the resource the tab represents, when it is backed by one.
    * @returns Returns the newly created tab.
    */
-  private createTab(type: TabType): Tab {
+  private createTab(type: TabType, resourceKey?: string): Tab {
     this.sequence += 1;
     const metadata: TabTypeMetadata = TAB_TYPE_METADATA[type];
-    return { id: `tab-${this.sequence}`, type, title: metadata.label, icon: metadata.icon };
+    return {
+      id: `tab-${this.sequence}`,
+      type,
+      title: metadata.label,
+      icon: metadata.icon,
+      resourceKey,
+    };
   }
 }

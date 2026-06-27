@@ -95,6 +95,22 @@ export class FileOpener {
   }
 
   /**
+   * Opens an arbitrary folder by path as a workspace tab, reusing the existing tab when the folder is
+   * already open. Used to open a repository's root as a workspace from the source-control tab.
+   * @param path The absolute directory path to open.
+   * @returns Returns true when the folder was opened (or already open), or false when unreadable.
+   */
+  public async openDirectoryPath(path: string): Promise<boolean> {
+    const listing: DirectoryListing | null = await this.workspace.readDirectoryListing(path);
+    if (listing === null) {
+      return false;
+    }
+    this.openDirectory(listing);
+    this.output.appendLine(`Opened folder ${listing.path}`);
+    return true;
+  }
+
+  /**
    * Routes an open selection to the workspace or an editor tab.
    * @param selection The selection to route, or null when the dialog was cancelled.
    * @returns Returns true when something was opened; otherwise, false.
@@ -126,7 +142,12 @@ export class FileOpener {
    * @param listing The root directory listing to display.
    */
   private openDirectory(listing: DirectoryListing): void {
-    const tab: Tab = this.tabs.open('directory');
+    const existing: Tab | undefined = this.tabs.findByResource('directory', listing.path);
+    if (existing !== undefined) {
+      this.tabs.activate(existing.id);
+      return;
+    }
+    const tab: Tab = this.tabs.open('directory', listing.path);
     this.tabs.rename(tab.id, listing.name);
     this.workspaces.setInitial(tab.id, listing);
   }

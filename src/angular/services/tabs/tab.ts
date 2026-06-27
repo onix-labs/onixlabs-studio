@@ -47,6 +47,14 @@ export interface Tab {
    * changed on disk and needs a keep/reload decision). Surfaced as an accent dot on the tab.
    */
   readonly attention?: boolean;
+
+  /**
+   * Gets the identity of the resource the tab represents (for example a directory path, repository
+   * root, or file path), used to keep a resource single-instance per tab type: opening a resource
+   * that already has a tab of the same type activates that tab instead of creating a duplicate.
+   * Undefined for tabs that are not backed by a single resource (a blank editor, a terminal).
+   */
+  readonly resourceKey?: string;
 }
 
 /**
