@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, InputSignal, Signal } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockTabContext } from '../../../services/dock/dock-tab-context';
+import { Icon } from '../../../icons/icon';
+import { AppIcon } from '../../shared/icon/app-icon';
 import { TerminalView } from '../../views/terminal-view/terminal-view';
 
 /**
@@ -11,12 +13,17 @@ import { TerminalView } from '../../views/terminal-view/terminal-view';
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [TerminalView],
+  imports: [TerminalView, AppIcon],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TerminalPanel {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet; the panel reads its
    * tab context from {@link DockTabContext} rather than the descriptor.
