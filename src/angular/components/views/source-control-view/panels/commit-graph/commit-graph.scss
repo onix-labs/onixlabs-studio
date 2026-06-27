@@ -2,7 +2,7 @@
   display: block;
   block-size: 100%;
   overflow: auto;
-  background: var(--body-background-color);
+  background: var(--dock-tab-background-color--active);
   color: var(--body-foreground-color);
 }
 
@@ -19,10 +19,10 @@
   pointer-events: none;
 }
 
-// The working-tree dot reads as a hollow ring; CSS supplies the body-surface fill so the lane line
+// The working-tree dot reads as a hollow ring; CSS supplies the panel-surface fill so the lane line
 // behind it is masked (an SVG `fill` attribute cannot resolve a CSS custom property).
 .graph__dot--working {
-  fill: var(--body-background-color);
+  fill: var(--dock-tab-background-color--active);
 }
 
 .graph__row {
