@@ -49,6 +49,12 @@ describe('SettingControl', () => {
     expect(element.querySelectorAll('.segmented__option').length).toBe(3);
   });
 
+  it('render_whenColorControl_rendersColorSwatches', async () => {
+    const element: HTMLElement = await render('appearance.accent');
+    expect(element.querySelector('app-color-swatches')).toBeTruthy();
+    expect(element.querySelectorAll('.swatch').length).toBe(8);
+  });
+
   it('render_whenNumberControl_rendersANumberFieldWithTheRegistryRange', async () => {
     const element: HTMLElement = await render('application.undoStackSize');
     const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="number"]')!;

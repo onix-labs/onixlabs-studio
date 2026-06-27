@@ -1,0 +1,32 @@
+// The colour picker: a row of swatches, the active one ringed.
+.swatches {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.swatch {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 0.0625rem solid rgba(0, 0, 0, 0.2);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: transform 120ms ease-in-out;
+
+  &:hover {
+    transform: scale(1.1);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.1875rem;
+  }
+
+  // The selected swatch is ringed in the theme foreground so the mark reads on any accent.
+  &--selected {
+    box-shadow:
+      0 0 0 0.125rem var(--settings-background-color),
+      0 0 0 0.25rem var(--body-foreground-color);
+  }
+}

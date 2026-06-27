@@ -2,6 +2,7 @@ import { computed, inject, Injector, Service, signal, Signal } from '@angular/co
 import type { ImageSourcePolicy } from '../../../shared/security-types';
 import { LspSettings } from '../lsp/lsp-settings';
 import { Security } from '../security/security';
+import { AccentColor, Theme, ThemeMode } from '../theme/theme';
 import { Settings } from './settings';
 import { SettingOwner, SettingsKey } from './settings-registry';
 
@@ -57,6 +58,8 @@ export class SettingBindings {
    */
   public resolve(key: string, owner: SettingOwner | undefined): SettingBinding {
     switch (owner) {
+      case 'theme':
+        return this.themeBinding(key);
       case 'security':
         return this.securityBinding();
       case 'lsp':
@@ -64,6 +67,25 @@ export class SettingBindings {
       default:
         return this.settingsBinding(key);
     }
+  }
+
+  /**
+   * Builds a binding backed by the Theme service (the theme mode or accent colour).
+   * @param key The setting key.
+   * @returns Returns the binding.
+   */
+  private themeBinding(key: string): SettingBinding {
+    const theme: Theme = this.injector.get(Theme);
+    if (key === 'appearance.accent') {
+      return {
+        value: theme.accent,
+        set: (value: unknown): void => theme.setAccent(value as AccentColor),
+      };
+    }
+    return {
+      value: theme.mode,
+      set: (value: unknown): void => theme.setMode(value as ThemeMode),
+    };
   }
 
   /**

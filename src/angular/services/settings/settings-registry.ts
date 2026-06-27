@@ -1,4 +1,6 @@
 import { Icon } from '../../icons/icon';
+import { ACCENT_COLORS } from '../theme/theme';
+import type { AccentColor } from '../theme/theme';
 import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
 import type {
   BraceStyle,
@@ -94,6 +96,27 @@ export interface ChoiceOption {
 }
 
 /**
+ * Defines a selectable swatch in a colour control. The {@link value} is the semantic value persisted
+ * and read by consumers; {@link color} is the CSS colour the swatch displays.
+ */
+export interface ColorSwatch {
+  /**
+   * Gets the value applied when the swatch is selected.
+   */
+  readonly value: string;
+
+  /**
+   * Gets the CSS colour the swatch displays (for example a custom-property reference).
+   */
+  readonly color: string;
+
+  /**
+   * Gets the accessible label for the swatch.
+   */
+  readonly label: string;
+}
+
+/**
  * Describes the control used to render and edit a setting. The {@link ControlDef.kind} discriminates
  * the shape: each kind carries only the metadata that kind needs.
  *
@@ -113,7 +136,7 @@ export type ControlDef =
     }
   | { readonly kind: 'select'; readonly options: readonly ChoiceOption[] }
   | { readonly kind: 'buttonGroup'; readonly options: readonly ChoiceOption[] }
-  | { readonly kind: 'color'; readonly swatches?: readonly string[] }
+  | { readonly kind: 'color'; readonly swatches: readonly ColorSwatch[] }
   | { readonly kind: 'custom'; readonly component: string };
 
 /**
@@ -237,6 +260,36 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'appearance',
     label: 'Appearance',
     settings: [
+      {
+        key: 'appearance.accent',
+        owner: 'theme',
+        title: 'Accent',
+        description: 'The colour used for highlights and focus.',
+        control: {
+          kind: 'color',
+          swatches: ACCENT_COLORS.map(
+            (color: AccentColor): ColorSwatch => ({
+              value: color,
+              color: `var(--accent-${color})`,
+              label: color,
+            }),
+          ),
+        },
+      },
+      {
+        key: 'appearance.themeMode',
+        owner: 'theme',
+        title: 'Theme',
+        description: 'Light, dark, or follow the operating system.',
+        control: {
+          kind: 'buttonGroup',
+          options: [
+            { value: 'light', label: 'Light', icon: Icon.THEME_LIGHT },
+            { value: 'dark', label: 'Dark', icon: Icon.THEME_DARK },
+            { value: 'system', label: 'System', icon: Icon.THEME_SYSTEM },
+          ],
+        },
+      },
       {
         key: 'appearance.ribbonAlignment',
         title: 'Ribbon Alignment',

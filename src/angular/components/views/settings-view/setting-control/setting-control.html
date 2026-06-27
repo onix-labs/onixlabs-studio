@@ -39,4 +39,11 @@
       (valueChange)="onChange($event)"
     />
   }
+  @case ('color') {
+    <app-color-swatches
+      [options]="swatches()"
+      [value]="$any(current())"
+      (valueChange)="onChange($event)"
+    />
+  }
 }

@@ -21,19 +21,24 @@ describe('AppearanceSettings', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_whenShown_offersEveryThemeModeAccentAndAlignment', () => {
+  it('render_whenShown_rendersTheAccentSwatchesFromTheRegistry', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const theme: Element = element.querySelector('[aria-label="Theme"]')!;
-    const alignment: Element = element.querySelector('[aria-label="Ribbon alignment"]')!;
-    expect(theme.querySelectorAll('.segmented__option').length).toBe(3);
-    expect(alignment.querySelectorAll('.segmented__option').length).toBe(3);
     expect(element.querySelectorAll('.swatch').length).toBe(8);
   });
 
-  it('render_whenShown_offersModernUiFeaturesAndHardwareAcceleration', () => {
+  it('render_whenShown_rendersTheThemeRibbonAndModernUiSegments', () => {
+    // Theme (3) + ribbon alignment (3) + modern UI features (3) = 9 segmented options.
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const modernUi: Element = element.querySelector('[aria-label="Modern UI features"]')!;
-    expect(modernUi.querySelectorAll('.segmented__option').length).toBe(3);
+    expect(element.querySelectorAll('.segmented__option').length).toBe(9);
+  });
+
+  it('render_whenShown_rendersTheBespokeHardwareAccelerationToggle', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('app-toggle')).toBeTruthy();
+  });
+
+  it('render_whenNoChangePending_hidesTheRestartNotice', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.restart-notice')).toBeNull();
   });
 });

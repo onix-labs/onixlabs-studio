@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   Signal,
 } from '@angular/core';
 import { SettingControl } from '../setting-control/setting-control';
 import { SettingRow } from '../../../forms/setting-row/setting-row';
+import { SettingDescriptions } from '../../../../services/settings/setting-descriptions';
 import { findSection, SettingDef } from '../../../../services/settings/settings-registry';
 
 /**
@@ -26,6 +28,11 @@ import { findSection, SettingDef } from '../../../../services/settings/settings-
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsSection {
+  /**
+   * Holds the dynamic-description resolver.
+   */
+  private readonly descriptions: SettingDescriptions = inject(SettingDescriptions);
+
   /**
    * Gets the identifier of the section to render.
    */
@@ -48,4 +55,14 @@ export class SettingsSection {
   protected readonly footer: Signal<string | undefined> = computed(
     (): string | undefined => findSection(this.sectionId())?.footer,
   );
+
+  /**
+   * Returns the description shown for a setting, preferring a dynamic description when one is
+   * available and falling back to the registry's static text.
+   * @param setting The setting definition.
+   * @returns Returns the description to render.
+   */
+  protected describe(setting: SettingDef): string {
+    return this.descriptions.resolve(setting.key) ?? setting.description;
+  }
 }

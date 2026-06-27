@@ -8,6 +8,7 @@ import {
   Signal,
 } from '@angular/core';
 import { ButtonGroup } from '../../../forms/button-group/button-group';
+import { ColorSwatches } from '../../../forms/color-swatches/color-swatches';
 import { Dropdown } from '../../../forms/dropdown/dropdown';
 import { NumberField } from '../../../forms/number-field/number-field';
 import { TextField } from '../../../forms/text-field/text-field';
@@ -18,6 +19,7 @@ import {
 } from '../../../../services/settings/setting-bindings';
 import {
   ChoiceOption,
+  ColorSwatch,
   ControlDef,
   SETTINGS_BY_KEY,
   SettingDef,
@@ -33,7 +35,7 @@ import {
  */
 @Component({
   selector: 'app-setting-control',
-  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup],
+  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup, ColorSwatches],
   templateUrl: './setting-control.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -95,6 +97,16 @@ export class SettingControl {
     (): readonly ChoiceOption[] => {
       const control: ControlDef | undefined = this.control();
       return control?.kind === 'select' || control?.kind === 'buttonGroup' ? control.options : [];
+    },
+  );
+
+  /**
+   * Gets the swatches offered by a colour control, or an empty list for other controls.
+   */
+  protected readonly swatches: Signal<readonly ColorSwatch[]> = computed(
+    (): readonly ColorSwatch[] => {
+      const control: ControlDef | undefined = this.control();
+      return control?.kind === 'color' ? control.swatches : [];
     },
   );
 

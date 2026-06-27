@@ -1,5 +1,5 @@
 @for (setting of settings(); track setting.key) {
-  <app-setting-row [label]="setting.title" [description]="setting.description">
+  <app-setting-row [label]="setting.title" [description]="describe(setting)">
     <app-setting-control [key]="setting.key" />
   </app-setting-row>
 }

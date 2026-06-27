@@ -71,4 +71,15 @@ describe('SettingsSection', () => {
       'content-security policy',
     );
   });
+
+  it('render_whenAppearanceSection_rendersThemeOwnedRowsAndSwatches', async () => {
+    const element: HTMLElement = await render('appearance');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(4);
+    expect(element.querySelectorAll('.swatch').length).toBe(8);
+  });
+
+  it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {
+    const element: HTMLElement = await render('appearance');
+    expect(element.textContent).toContain('Recommended for this system');
+  });
 });
