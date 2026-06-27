@@ -27,6 +27,24 @@ const GIT_MAX_BUFFER: number = 64 * 1024 * 1024;
 const MAX_LOG_LIMIT: number = 2000;
 
 /**
+ * Holds the maximum time, in milliseconds, a network git invocation (fetch/pull/push) may run. These
+ * contact a remote, so they are given a longer budget than the local-operation default.
+ */
+const GIT_NETWORK_TIMEOUT_MS: number = 120000;
+
+/**
+ * Holds the environment overlay applied to network git invocations so they never block on an
+ * interactive prompt. With no usable credentials git fails fast (and we surface its stderr) rather
+ * than hanging until the timeout: `GIT_TERMINAL_PROMPT=0` stops terminal username/password prompts,
+ * and a non-interactive `GIT_SSH_COMMAND` stops ssh from prompting. Credentials still come from the
+ * user's configured git credential helper and ssh-agent; this only disables interactive fallback.
+ */
+const GIT_NETWORK_ENV: NodeJS.ProcessEnv = {
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
+};
+
+/**
  * Validates the variable arguments passed to git so the renderer cannot smuggle options. A safe value
  * is a non-empty string that does not begin with a dash (which git would parse as an option).
  * @param value The value to validate.
@@ -144,6 +162,23 @@ export class GitManager {
       IpcChannel.SourceControlCreateBranch,
       (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
         this.createBranch(root, name),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlFetch,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.fetch(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlPull,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.pull(root),
+    );
+    ipcMain.handle(
+      IpcChannel.SourceControlPush,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        remote: unknown,
+        branch: unknown,
+      ): Promise<GitRunResult> => this.push(root, remote, branch),
     );
   }
 
@@ -413,6 +448,43 @@ export class GitManager {
   }
 
   /**
+   * Fetches every remote, pruning remote-tracking branches that have been deleted upstream.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private fetch(root: unknown): Promise<GitRunResult> {
+    return this.runNetwork(root, ['fetch', '--all', '--prune']);
+  }
+
+  /**
+   * Pulls the current branch from its configured upstream. A merge conflict or a non-fast-forward
+   * leaves git's message in stderr for the renderer to surface.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private pull(root: unknown): Promise<GitRunResult> {
+    return this.runNetwork(root, ['pull']);
+  }
+
+  /**
+   * Pushes the current branch. When a remote and branch are given (a branch with no upstream yet) the
+   * upstream is set on the push; otherwise the configured upstream is used.
+   * @param root The repository root.
+   * @param remote The remote to set the upstream to, or undefined to push to the existing upstream.
+   * @param branch The branch to set the upstream to, or undefined to push to the existing upstream.
+   * @returns Returns the raw command result.
+   */
+  private push(root: unknown, remote: unknown, branch: unknown): Promise<GitRunResult> {
+    if (remote === undefined && branch === undefined) {
+      return this.runNetwork(root, ['push']);
+    }
+    if (!isSafeOperand(remote) || !isSafeOperand(branch)) {
+      return Promise.resolve({ success: false, error: 'Invalid push upstream' });
+    }
+    return this.runNetwork(root, ['push', '--set-upstream', remote, branch]);
+  }
+
+  /**
    * Validates an array of repository-relative paths, rejecting non-strings, option-like values, and
    * any path that escapes the repository root.
    * @param resolvedRoot The resolved repository root.
@@ -451,6 +523,23 @@ export class GitManager {
   }
 
   /**
+   * Runs a network git operation (fetch/pull/push) in an open root with a non-interactive environment
+   * and a longer timeout, so it never blocks on a credential prompt and has time to reach the remote.
+   * @param root The repository root, which must be open.
+   * @param args The fully-built git argument vector.
+   * @returns Returns the raw command result.
+   */
+  private runNetwork(root: unknown, args: readonly string[]): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return Promise.resolve({ success: false, error: 'Repository is not open' });
+    }
+    return this.run(path.resolve(root), args, {
+      env: { ...process.env, ...GIT_NETWORK_ENV },
+      timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+    });
+  }
+
+  /**
    * Determines whether a value is an open repository root.
    * @param root The value to test.
    * @returns Returns true when the value is a string naming an open root.
@@ -460,17 +549,29 @@ export class GitManager {
   }
 
   /**
-   * Invokes git with array arguments in a working directory, capturing its output.
+   * Invokes git with array arguments in a working directory, capturing its output. The optional
+   * environment overlay and timeout let network operations run non-interactively with a longer budget.
    * @param cwd The working directory to run in.
    * @param args The git argument vector.
+   * @param options The optional environment and timeout overrides.
    * @returns Returns the raw command result.
    */
-  private run(cwd: string, args: readonly string[]): Promise<GitRunResult> {
+  private run(
+    cwd: string,
+    args: readonly string[],
+    options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number },
+  ): Promise<GitRunResult> {
     return new Promise<GitRunResult>((resolve: (value: GitRunResult) => void): void => {
       execFile(
         'git',
         [...args],
-        { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER, windowsHide: true },
+        {
+          cwd,
+          timeout: options?.timeoutMs ?? GIT_TIMEOUT_MS,
+          maxBuffer: GIT_MAX_BUFFER,
+          windowsHide: true,
+          ...(options?.env !== undefined ? { env: options.env } : {}),
+        },
         (error: Error | null, stdout: string, stderr: string): void => {
           if (error !== null) {
             resolve({ success: false, error: error.message, stderr });

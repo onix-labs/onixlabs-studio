@@ -494,6 +494,43 @@ export class Repository {
   }
 
   /**
+   * Fetches all remotes, then reloads so ahead/behind and remote refs update.
+   * @returns Returns the outcome.
+   */
+  public fetch(): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.fetch(),
+    );
+  }
+
+  /**
+   * Pulls the current branch from its upstream, then reloads.
+   * @returns Returns the outcome.
+   */
+  public pull(): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
+    );
+  }
+
+  /**
+   * Pushes the current branch, then reloads. A branch with no upstream is pushed with its upstream
+   * set to the first configured remote (defaulting to `origin`), so a freshly-created branch publishes
+   * without a separate step.
+   * @returns Returns the outcome.
+   */
+  public push(): Promise<MutationResult> {
+    const branch: GitBranch | undefined = this.currentBranch();
+    const setUpstream: { readonly remote: string; readonly branch: string } | undefined =
+      branch !== undefined && branch.upstream === undefined
+        ? { remote: this.remotesSignal()[0]?.name ?? 'origin', branch: branch.name }
+        : undefined;
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.push(setUpstream),
+    );
+  }
+
+  /**
    * Runs a mutating operation against the provider and reloads the repository on success.
    * @param op Invokes the desired provider mutation.
    * @returns Returns the outcome (a failure when no repository is bound).

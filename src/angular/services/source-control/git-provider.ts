@@ -191,6 +191,38 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Fetches all remotes, pruning deleted remote-tracking branches.
+   * @returns Returns the outcome.
+   */
+  public fetch(): Promise<MutationResult> {
+    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.fetch(this.root));
+  }
+
+  /**
+   * Pulls the current branch from its upstream.
+   * @returns Returns the outcome.
+   */
+  public pull(): Promise<MutationResult> {
+    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.pull(this.root));
+  }
+
+  /**
+   * Pushes the current branch, setting the upstream on the push when one is given.
+   * @param setUpstream The remote and branch to set the upstream to, or undefined to use the existing
+   * upstream.
+   * @returns Returns the outcome.
+   */
+  public push(setUpstream?: {
+    readonly remote: string;
+    readonly branch: string;
+  }): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlApi): Promise<GitRunResult> =>
+        api.push(this.root, setUpstream?.remote, setUpstream?.branch),
+    );
+  }
+
+  /**
    * Releases the repository in the main process.
    * @returns Returns a promise that resolves once the repository has been released.
    */

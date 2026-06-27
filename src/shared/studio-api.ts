@@ -752,6 +752,30 @@ export interface SourceControlApi {
    * @returns Returns the raw command result.
    */
   createBranch(root: string, name: string): Promise<GitRunResult>;
+
+  /**
+   * Fetches all remotes, pruning deleted remote-tracking branches.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  fetch(root: string): Promise<GitRunResult>;
+
+  /**
+   * Pulls the current branch from its upstream.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  pull(root: string): Promise<GitRunResult>;
+
+  /**
+   * Pushes the current branch to its upstream. When a remote and branch are given, the upstream is
+   * set on the push (used for a branch that has none yet); otherwise the configured upstream is used.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to set the upstream to, or undefined to push to the existing upstream.
+   * @param branch The branch to set the upstream to, or undefined to push to the existing upstream.
+   * @returns Returns the raw command result.
+   */
+  push(root: string, remote?: string, branch?: string): Promise<GitRunResult>;
 }
 
 export interface StudioApi {

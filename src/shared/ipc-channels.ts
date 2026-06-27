@@ -404,4 +404,19 @@ export enum IpcChannel {
    * Creates a new branch at the current head and checks it out.
    */
   SourceControlCreateBranch = 'source-control:create-branch',
+
+  /**
+   * Fetches all remotes, pruning deleted remote-tracking branches.
+   */
+  SourceControlFetch = 'source-control:fetch',
+
+  /**
+   * Pulls the current branch from its upstream.
+   */
+  SourceControlPull = 'source-control:pull',
+
+  /**
+   * Pushes the current branch to its upstream, setting it on the first push.
+   */
+  SourceControlPush = 'source-control:push',
 }

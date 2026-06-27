@@ -278,9 +278,9 @@ export class SourceControlView implements OnInit, OnDestroy {
     }
     this.commandHandler = {
       refresh: (): void => void this.repository.refresh(),
-      fetch: (): void => undefined,
-      pull: (): void => undefined,
-      push: (): void => undefined,
+      fetch: (): void => void this.repository.fetch(),
+      pull: (): void => void this.repository.pull(),
+      push: (): void => void this.repository.push(),
       stageAll: (): void => void this.repository.stageAll(),
       commit: (): void => void this.repository.commit(),
       stash: (): void => void this.repository.stash(),

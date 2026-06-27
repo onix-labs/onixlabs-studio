@@ -125,6 +125,27 @@ export interface SourceControlProvider {
   createBranch(name: string): Promise<MutationResult>;
 
   /**
+   * Fetches all remotes, pruning deleted remote-tracking branches.
+   * @returns Returns the outcome.
+   */
+  fetch(): Promise<MutationResult>;
+
+  /**
+   * Pulls the current branch from its upstream.
+   * @returns Returns the outcome.
+   */
+  pull(): Promise<MutationResult>;
+
+  /**
+   * Pushes the current branch to its upstream. When an upstream is given (a branch that has none yet)
+   * it is set on the push; otherwise the configured upstream is used.
+   * @param setUpstream The remote and branch to set the upstream to, or undefined to use the existing
+   * upstream.
+   * @returns Returns the outcome.
+   */
+  push(setUpstream?: { readonly remote: string; readonly branch: string }): Promise<MutationResult>;
+
+  /**
    * Releases the repository, freeing any backend resources.
    * @returns Returns a promise that resolves once the repository has been released.
    */

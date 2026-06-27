@@ -254,6 +254,12 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.SourceControlCheckout, root, branch) as Promise<GitRunResult>,
     createBranch: (root: string, name: string): Promise<GitRunResult> =>
       ipcRenderer.invoke(IpcChannel.SourceControlCreateBranch, root, name) as Promise<GitRunResult>,
+    fetch: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlFetch, root) as Promise<GitRunResult>,
+    pull: (root: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlPull, root) as Promise<GitRunResult>,
+    push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
+      ipcRenderer.invoke(IpcChannel.SourceControlPush, root, remote, branch) as Promise<GitRunResult>,
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>

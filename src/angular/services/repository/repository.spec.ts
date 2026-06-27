@@ -48,10 +48,20 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve([makeCommit('c2', ['c1']), makeCommit('c1', [])]);
   }
 
+  /**
+   * Holds the current branch's upstream returned by {@link getRefs}; undefined means no upstream.
+   */
+  public upstream: string | undefined = undefined;
+
+  /**
+   * Holds the remotes returned by {@link getRefs}.
+   */
+  public remoteNames: readonly string[] = [];
+
   public getRefs(): Promise<ParsedRefs> {
     return Promise.resolve({
-      branches: [{ name: 'main', current: true, ahead: 1, behind: 0, tip: 'c2' }],
-      remotes: [],
+      branches: [{ name: 'main', current: true, upstream: this.upstream, ahead: 1, behind: 0, tip: 'c2' }],
+      remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
     });
   }
@@ -102,6 +112,21 @@ class FakeProvider implements SourceControlProvider {
 
   public createBranch(name: string): Promise<MutationResult> {
     this.calls.push(`createBranch:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public fetch(): Promise<MutationResult> {
+    this.calls.push('fetch');
+    return Promise.resolve({ success: true });
+  }
+
+  public pull(): Promise<MutationResult> {
+    this.calls.push('pull');
+    return Promise.resolve({ success: true });
+  }
+
+  public push(setUpstream?: { readonly remote: string; readonly branch: string }): Promise<MutationResult> {
+    this.calls.push(`push:${setUpstream?.remote ?? ''}/${setUpstream?.branch ?? ''}`);
     return Promise.resolve({ success: true });
   }
 
@@ -218,5 +243,34 @@ describe('Repository', () => {
     expect(repository.isBound()).toBe(false);
     expect(repository.commits().length).toBe(0);
     expect(repository.changeCount()).toBe(0);
+  });
+
+  it('push_whenCurrentBranchHasUpstream_pushesWithoutSettingUpstream', async () => {
+    provider.upstream = 'origin/main';
+    await repository.refresh();
+
+    await repository.push();
+
+    expect(provider.calls).toContain('push:/');
+  });
+
+  it('push_whenCurrentBranchHasNoUpstream_setsUpstreamToTheFirstRemote', async () => {
+    provider.upstream = undefined;
+    provider.remoteNames = ['upstream', 'origin'];
+    await repository.refresh();
+
+    await repository.push();
+
+    expect(provider.calls).toContain('push:upstream/main');
+  });
+
+  it('push_whenNoUpstreamAndNoRemotes_defaultsTheUpstreamToOrigin', async () => {
+    provider.upstream = undefined;
+    provider.remoteNames = [];
+    await repository.refresh();
+
+    await repository.push();
+
+    expect(provider.calls).toContain('push:origin/main');
   });
 });
