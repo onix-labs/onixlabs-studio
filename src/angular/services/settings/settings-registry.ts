@@ -169,6 +169,12 @@ interface BaseSettingDef {
    * Gets the control used to render and edit the setting.
    */
   readonly control: ControlDef;
+
+  /**
+   * Gets a value indicating whether this setting can be overridden by a per-language editor profile.
+   * Used to drive the profile override editor from the registry.
+   */
+  readonly profileOverridable?: boolean;
 }
 
 /**
@@ -383,6 +389,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Line numbers',
         description: 'Show line numbers in the gutter.',
         control: { kind: 'toggle' },
+        profileOverridable: true,
         default: true,
       },
       {
@@ -390,6 +397,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Minimap',
         description: 'Show the minimap.',
         control: { kind: 'toggle' },
+        profileOverridable: true,
         default: true,
       },
       {
@@ -410,6 +418,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Word wrap',
         description: 'Wrap long lines.',
         control: { kind: 'toggle' },
+        profileOverridable: true,
         default: false,
       },
       {
@@ -417,6 +426,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Sticky scroll',
         description: 'Pin scope context to the top while scrolling.',
         control: { kind: 'toggle' },
+        profileOverridable: true,
         default: true,
       },
       {
@@ -454,6 +464,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Insert spaces',
         description: 'Insert spaces instead of tabs when indenting.',
         control: { kind: 'toggle' },
+        profileOverridable: true,
         default: true,
       },
       {
@@ -461,6 +472,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Tab size',
         description: 'The number of spaces a single indentation level occupies.',
         control: { kind: 'number', min: 1, max: 8, step: 1, unit: 'spaces' },
+        profileOverridable: true,
         default: 2,
       },
       {
@@ -489,6 +501,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
             { value: 'gnu', label: 'GNU (own line, indented)' },
           ],
         },
+        profileOverridable: true,
         default: 'kr',
       },
       {

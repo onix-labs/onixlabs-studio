@@ -29,7 +29,8 @@
           <app-settings-section sectionId="workspaces" />
         }
         @case ('text-editor') {
-          <app-text-editor-settings />
+          <app-settings-section sectionId="text-editor" />
+          <app-editor-profiles />
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
