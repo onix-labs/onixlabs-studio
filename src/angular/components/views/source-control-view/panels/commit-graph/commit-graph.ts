@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -114,6 +116,31 @@ export class CommitGraph {
   protected readonly repository: Repository = inject(Repository);
 
   /**
+   * Holds the host element, used as the scroll container when revealing the selected row.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Wires the graph so the selected commit stays visible: whenever the selection changes — including
+   * when a tag or branch is clicked in the Repository rail — its row is scrolled into view. Selecting a
+   * row that is already visible (such as clicking it directly) leaves the scroll position untouched.
+   */
+  public constructor() {
+    effect((): void => {
+      const selectedId: string | null = this.repository.selectedNodeId();
+      if (selectedId === null) {
+        return;
+      }
+      const node: GraphNode | undefined = this.nodes().find(
+        (candidate: GraphNode): boolean => candidate.id === selectedId,
+      );
+      if (node !== undefined) {
+        this.scrollRowIntoView(node.row);
+      }
+    });
+  }
+
+  /**
    * Gets the ordered graph nodes (working node, then commits).
    */
   protected readonly nodes: Signal<readonly GraphNode[]> = this.repository.graph;
@@ -187,6 +214,24 @@ export class CommitGraph {
    */
   protected select(node: GraphNode): void {
     this.repository.selectNode(node.id);
+  }
+
+  /**
+   * Scrolls the graph so a row is visible, centring it only when it currently falls outside the
+   * viewport. A no-op until the host has been laid out.
+   * @param row The zero-based row to reveal.
+   */
+  private scrollRowIntoView(row: number): void {
+    const container: HTMLElement = this.host.nativeElement;
+    const viewport: number = container.clientHeight;
+    if (viewport === 0) {
+      return;
+    }
+    const top: number = row * ROW_HEIGHT;
+    const bottom: number = top + ROW_HEIGHT;
+    if (top < container.scrollTop || bottom > container.scrollTop + viewport) {
+      container.scrollTop = Math.max(0, top - (viewport - ROW_HEIGHT) / 2);
+    }
   }
 
   /**
