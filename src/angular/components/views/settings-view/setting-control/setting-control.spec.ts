@@ -43,6 +43,12 @@ describe('SettingControl', () => {
     expect(element.querySelectorAll('option').length).toBe(2);
   });
 
+  it('render_whenButtonGroupControl_rendersAButtonGroupWithAnOptionPerChoice', async () => {
+    const element: HTMLElement = await render('appearance.ribbonAlignment');
+    expect(element.querySelector('app-button-group')).toBeTruthy();
+    expect(element.querySelectorAll('.segmented__option').length).toBe(3);
+  });
+
   it('render_whenNumberControl_rendersANumberFieldWithTheRegistryRange', async () => {
     const element: HTMLElement = await render('application.undoStackSize');
     const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="number"]')!;
@@ -81,6 +87,16 @@ describe('SettingControl', () => {
     checkbox.dispatchEvent(new Event('change'));
 
     expect(settings.get('application.showLauncherActions')).toBe(true);
+  });
+
+  it('onChange_whenButtonGroupOptionPicked_writesTheValueThroughTheService', async () => {
+    const element: HTMLElement = await render('appearance.ribbonAlignment');
+
+    const buttons: NodeListOf<HTMLButtonElement> =
+      element.querySelectorAll<HTMLButtonElement>('.segmented__option');
+    buttons[2].click();
+
+    expect(settings.get('appearance.ribbonAlignment')).toBe('right');
   });
 
   it('onChange_whenSelectionPicked_writesTheValueThroughTheService', async () => {

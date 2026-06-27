@@ -1,3 +1,4 @@
+import { Icon } from '../../icons/icon';
 import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
 import type {
   BraceStyle,
@@ -85,6 +86,11 @@ export interface ChoiceOption {
    * Gets the label shown for the option.
    */
   readonly label: string;
+
+  /**
+   * Gets the optional icon shown before the label (button groups only).
+   */
+  readonly icon?: Icon;
 }
 
 /**
@@ -179,9 +185,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: {
           kind: 'buttonGroup',
           options: [
-            { value: 'left', label: 'Left' },
-            { value: 'center', label: 'Center' },
-            { value: 'right', label: 'Right' },
+            { value: 'left', label: 'Left', icon: Icon.ALIGN_LEFT },
+            { value: 'center', label: 'Center', icon: Icon.ALIGN_CENTER },
+            { value: 'right', label: 'Right', icon: Icon.ALIGN_RIGHT },
           ],
         },
         default: 'left',

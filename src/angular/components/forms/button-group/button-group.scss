@@ -1,0 +1,49 @@
+// A segmented control: mutually exclusive options joined into a single inset track.
+.segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  background: var(--settings-control-background-color);
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.segmented__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: calc(0.45rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  i {
+    font-size: 1rem;
+  }
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  // The selected pill sits on the accent fill, so its text is a fixed light tone rather than the
+  // theme foreground (which would be dark in light mode).
+  &--selected {
+    color: var(--gray-100);
+    background: var(--accent-color);
+
+    &:hover {
+      color: var(--gray-100);
+    }
+  }
+}

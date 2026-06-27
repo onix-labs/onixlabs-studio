@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ButtonGroup } from '../../../../forms/button-group/button-group';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { Toggle } from '../../../../forms/toggle/toggle';
 import { AccentColor, ACCENT_COLORS, Theme, ThemeMode } from '../../../../../services/theme/theme';
@@ -9,7 +10,6 @@ import {
 } from '../../../../../services/settings/settings';
 import { Display } from '../../../../../services/display/display';
 import { Icon } from '../../../../../icons/icon';
-import { AppIcon } from '../../../../shared/icon/app-icon';
 
 /**
  * Describes a selectable ribbon-alignment option in the appearance settings.
@@ -72,7 +72,7 @@ interface ThemeModeOption {
  */
 @Component({
   selector: 'app-appearance-settings',
-  imports: [SettingRow, AppIcon, Toggle],
+  imports: [SettingRow, ButtonGroup, Toggle],
   templateUrl: './appearance-settings.html',
   styleUrls: ['../section.scss', './appearance-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -167,8 +167,8 @@ export class AppearanceSettings {
    * Selects the given theme mode.
    * @param mode The theme mode to apply.
    */
-  protected selectMode(mode: ThemeMode): void {
-    this.theme.setMode(mode);
+  protected selectMode(mode: string): void {
+    this.theme.setMode(mode as ThemeMode);
   }
 
   /**
@@ -183,16 +183,16 @@ export class AppearanceSettings {
    * Selects the given ribbon alignment.
    * @param alignment The ribbon alignment to apply.
    */
-  protected selectRibbonAlignment(alignment: RibbonAlignment): void {
-    this.settings.setRibbonAlignment(alignment);
+  protected selectRibbonAlignment(alignment: string): void {
+    this.settings.setRibbonAlignment(alignment as RibbonAlignment);
   }
 
   /**
    * Selects the given modern-UI-features mode.
    * @param value The mode to apply.
    */
-  protected selectModernUiFeatures(value: ModernUiFeatures): void {
-    this.settings.setModernUiFeatures(value);
+  protected selectModernUiFeatures(value: string): void {
+    this.settings.setModernUiFeatures(value as ModernUiFeatures);
   }
 
   /**

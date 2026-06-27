@@ -7,12 +7,14 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { Dropdown, DropdownOption } from '../../../forms/dropdown/dropdown';
+import { ButtonGroup } from '../../../forms/button-group/button-group';
+import { Dropdown } from '../../../forms/dropdown/dropdown';
 import { NumberField } from '../../../forms/number-field/number-field';
 import { TextField } from '../../../forms/text-field/text-field';
 import { Toggle } from '../../../forms/toggle/toggle';
 import { Settings } from '../../../../services/settings/settings';
 import {
+  ChoiceOption,
   ControlDef,
   SETTINGS_BY_KEY,
   SettingsKey,
@@ -28,7 +30,7 @@ import {
  */
 @Component({
   selector: 'app-setting-control',
-  imports: [Toggle, TextField, NumberField, Dropdown],
+  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup],
   templateUrl: './setting-control.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -67,8 +69,8 @@ export class SettingControl {
   /**
    * Gets the options offered by a choice control, or an empty list for other controls.
    */
-  protected readonly options: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => {
+  protected readonly options: Signal<readonly ChoiceOption[]> = computed(
+    (): readonly ChoiceOption[] => {
       const control: ControlDef | undefined = this.control();
       return control?.kind === 'select' || control?.kind === 'buttonGroup' ? control.options : [];
     },

@@ -25,4 +25,11 @@
       (valueChange)="onChange($event)"
     />
   }
+  @case ('buttonGroup') {
+    <app-button-group
+      [options]="options()"
+      [value]="$any(current())"
+      (valueChange)="onChange($event)"
+    />
+  }
 }

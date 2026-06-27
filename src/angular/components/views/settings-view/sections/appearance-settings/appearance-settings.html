@@ -17,59 +17,33 @@
 </app-setting-row>
 
 <app-setting-row label="Theme" description="Light, dark, or follow the operating system.">
-  <div class="segmented" role="radiogroup" aria-label="Theme">
-    @for (option of modeOptions; track option.value) {
-      <button
-        type="button"
-        class="segmented__option"
-        role="radio"
-        [class.segmented__option--selected]="mode() === option.value"
-        [attr.aria-checked]="mode() === option.value"
-        (click)="selectMode(option.value)"
-      >
-        <app-icon [icon]="option.icon" />
-        <span>{{ option.label }}</span>
-      </button>
-    }
-  </div>
+  <app-button-group
+    ariaLabel="Theme"
+    [options]="modeOptions"
+    [value]="mode()"
+    (valueChange)="selectMode($event)"
+  />
 </app-setting-row>
 
 <app-setting-row
   label="Ribbon Alignment"
   description="How the ribbon's controls are aligned within the ribbon strip."
 >
-  <div class="segmented" role="radiogroup" aria-label="Ribbon alignment">
-    @for (option of ribbonAlignmentOptions; track option.value) {
-      <button
-        type="button"
-        class="segmented__option"
-        role="radio"
-        [class.segmented__option--selected]="ribbonAlignment() === option.value"
-        [attr.aria-checked]="ribbonAlignment() === option.value"
-        (click)="selectRibbonAlignment(option.value)"
-      >
-        <app-icon [icon]="option.icon" />
-        <span>{{ option.label }}</span>
-      </button>
-    }
-  </div>
+  <app-button-group
+    ariaLabel="Ribbon alignment"
+    [options]="ribbonAlignmentOptions"
+    [value]="ribbonAlignment()"
+    (valueChange)="selectRibbonAlignment($event)"
+  />
 </app-setting-row>
 
 <app-setting-row label="Modern UI Features" [description]="modernUiFeaturesHint">
-  <div class="segmented" role="radiogroup" aria-label="Modern UI features">
-    @for (option of modernUiFeaturesOptions; track option.value) {
-      <button
-        type="button"
-        class="segmented__option"
-        role="radio"
-        [class.segmented__option--selected]="modernUiFeatures() === option.value"
-        [attr.aria-checked]="modernUiFeatures() === option.value"
-        (click)="selectModernUiFeatures(option.value)"
-      >
-        <span>{{ option.label }}</span>
-      </button>
-    }
-  </div>
+  <app-button-group
+    ariaLabel="Modern UI features"
+    [options]="modernUiFeaturesOptions"
+    [value]="modernUiFeatures()"
+    (valueChange)="selectModernUiFeatures($event)"
+  />
 </app-setting-row>
 
 <app-setting-row
