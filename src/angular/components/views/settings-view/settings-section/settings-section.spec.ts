@@ -1,0 +1,54 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { SettingsSection } from './settings-section';
+
+describe('SettingsSection', () => {
+  let fixture: ComponentFixture<SettingsSection>;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    await TestBed.configureTestingModule({
+      imports: [SettingsSection],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(SettingsSection);
+  });
+
+  /**
+   * Renders the section identified by the given id.
+   * @param id The section identifier to render.
+   */
+  async function render(id: string): Promise<HTMLElement> {
+    fixture.componentRef.setInput('sectionId', id);
+    await fixture.whenStable();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('should create', async () => {
+    await render('application');
+    expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('render_whenSectionHasSettings_rendersARowAndControlPerSetting', async () => {
+    const element: HTMLElement = await render('application');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(3);
+    expect(element.querySelectorAll('app-setting-control').length).toBe(3);
+  });
+
+  it('render_whenSectionHasSettings_labelsEachRowFromTheRegistry', async () => {
+    const element: HTMLElement = await render('application');
+    expect(element.textContent).toContain('Default document type');
+    expect(element.textContent).toContain('Undo history');
+    expect(element.textContent).toContain('Title bar quick actions');
+  });
+
+  it('render_whenMarkdownSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('markdown');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+  });
+
+  it('render_whenSectionUnknown_rendersNothing', async () => {
+    const element: HTMLElement = await render('does-not-exist');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(0);
+  });
+});

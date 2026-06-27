@@ -9,13 +9,11 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
-import { ApplicationSettings } from './sections/application-settings/application-settings';
 import { AppearanceSettings } from './sections/appearance-settings/appearance-settings';
 import { LanguageServersSettings } from './sections/language-servers-settings/language-servers-settings';
-import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
 import { SecuritySettingsSection } from './sections/security-settings/security-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
-import { WorkspacesSettings } from './sections/workspaces-settings/workspaces-settings';
+import { SettingsSection } from './settings-section/settings-section';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -35,7 +33,7 @@ type SettingsSectionId =
 /**
  * Describes a selectable section in the settings navigation.
  */
-interface SettingsSection {
+interface SettingsNavSection {
   /**
    * Gets the identifier of the section.
    */
@@ -59,13 +57,11 @@ interface SettingsSection {
   selector: 'app-settings-view',
   imports: [
     AppearanceSettings,
-    ApplicationSettings,
     TextEditorSettingsSection,
-    MarkdownSettings,
     AiSettingsSection,
     LanguageServersSettings,
     SecuritySettingsSection,
-    WorkspacesSettings,
+    SettingsSection,
     AppIcon,
   ],
   templateUrl: './settings-view.html',
@@ -87,7 +83,7 @@ export class SettingsView {
   /**
    * Gets the sections offered by the settings navigation, in display order.
    */
-  protected readonly sections: readonly SettingsSection[] = [
+  protected readonly sections: readonly SettingsNavSection[] = [
     { id: 'appearance', label: 'Appearance', icon: Icon.PALETTE },
     { id: 'application', label: 'Application', icon: Icon.APPLICATION },
     { id: 'workspaces', label: 'Workspaces', icon: Icon.DIRECTORY },
@@ -108,7 +104,7 @@ export class SettingsView {
    */
   protected readonly selectedSectionLabel: Signal<string> = computed(
     (): string =>
-      this.sections.find((section: SettingsSection): boolean => section.id === this.section())
+      this.sections.find((section: SettingsNavSection): boolean => section.id === this.section())
         ?.label ?? '',
   );
 

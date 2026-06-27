@@ -1,5 +1,13 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
+import {
+  AiModels,
+  SETTINGS_BY_KEY,
+  SETTINGS_DEFAULTS,
+  SettingDef,
+  SettingsKey,
+  SettingsValues,
+} from './settings-registry';
 import { SettingsStore } from '../settings-store/settings-store';
 
 /**
@@ -268,7 +276,7 @@ export interface AiSettings {
    * Gets the selected model per provider, keyed by provider id. A missing entry means "use the
    * provider's default model".
    */
-  readonly models: Readonly<Partial<Record<AiProviderId, string>>>;
+  readonly models: AiModels;
 
   /**
    * Gets how much the agent may do without asking the user first.
@@ -334,7 +342,8 @@ export interface AppSettings {
 type LegacyTextEditorSettings = Partial<TextEditorSettings>;
 
 /**
- * Defines the legacy persisted settings shape accepted by the migration path.
+ * Defines the legacy persisted settings shape (nested section objects) accepted by the migration path.
+ * The current format is a flat map keyed by the dotted setting keys.
  */
 interface LegacyAppSettings {
   /**
@@ -369,69 +378,10 @@ interface LegacyAppSettings {
 }
 
 /**
- * Holds the default application settings.
+ * Defines the persisted, sparse override map: only keys the user has changed from their default are
+ * stored. Any absent key falls back to the registry default.
  */
-const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
-  defaultDocumentType: 'code',
-  undoStackSize: 100,
-  showLauncherActions: false,
-};
-
-/**
- * Holds the default appearance settings.
- */
-const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
-  ribbonAlignment: 'left',
-  modernUiFeatures: 'auto',
-};
-
-/**
- * Holds the default global text editor settings.
- */
-const DEFAULT_TEXT_EDITOR_SETTINGS: TextEditorSettings = {
-  showLineNumbers: true,
-  showMinimap: true,
-  currentLineHighlight: 'outline',
-  wordWrap: false,
-  stickyScroll: true,
-  cursorBlinking: 'blink',
-  cursorSmoothCaretAnimation: 'off',
-  insertSpaces: true,
-  tabSize: 2,
-  fontFamily: 'JetBrains Mono',
-  fontSize: 14,
-  braceStyle: 'kr',
-};
-
-/**
- * Holds the default markdown editor settings.
- */
-const DEFAULT_MARKDOWN_EDITOR_SETTINGS: MarkdownEditorSettings = {
-  fontFamily: 'System Default',
-  monospaceFontFamily: 'JetBrains Mono',
-  fontSize: 16,
-  marginSize: 'medium',
-  imageSizing: 'fixed',
-  imageAlignment: 'left',
-  panelPosition: 'right',
-};
-
-/**
- * Holds the default AI agent settings.
- */
-const DEFAULT_AI_SETTINGS: AiSettings = {
-  provider: 'claude',
-  models: {},
-  permissionPosture: 'prompt',
-  tokenCap: 0,
-};
-
-/**
- * Holds the default workspace settings.
- */
-const DEFAULT_WORKSPACES_SETTINGS: WorkspacesSettings = {
-  fileExplorerExpandAll: 'loaded-only',
-};
+type SettingsOverrides = Partial<Record<SettingsKey, unknown>>;
 
 /**
  * Holds the settings-store key under which the settings are persisted.
@@ -439,26 +389,17 @@ const DEFAULT_WORKSPACES_SETTINGS: WorkspacesSettings = {
 const SETTINGS_KEY: string = 'settings';
 
 /**
- * Holds the minimum allowed undo stack size.
- */
-const MIN_UNDO_STACK_SIZE: number = 10;
-
-/**
- * Holds the maximum allowed undo stack size.
- */
-const MAX_UNDO_STACK_SIZE: number = 1000;
-
-/**
- * Holds the maximum allowed per-request token cap.
- */
-const MAX_TOKEN_CAP: number = 1_000_000;
-
-/**
- * Represents the source of truth for application, text editor and markdown editor settings.
+ * Represents the source of truth for application, editor, markdown, AI and workspace settings.
  *
- * State is restored from the {@link SettingsStore} on construction (merging persisted values with
- * defaults, and migrating the legacy text-editor format), exposed as signals, and auto-persisted by
+ * State is a sparse map of user overrides keyed by the registry's stable setting keys; any unset key
+ * resolves to the registry default. The map is restored from the {@link SettingsStore} on construction
+ * (migrating the legacy nested format forward), exposed through typed accessors, and auto-persisted by
  * an effect whenever it changes.
+ *
+ * New scalar settings are added by a single entry in the settings registry — the generic
+ * {@link Settings.get} / {@link Settings.set} accessors and the generic renderer pick them up with no
+ * further wiring. The named accessors below are thin, backwards-compatible wrappers retained so
+ * existing consumers keep working.
  */
 @Service()
 export class Settings {
@@ -468,141 +409,243 @@ export class Settings {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
-   * Holds the current settings state.
+   * Holds the current sparse override map.
    */
-  private readonly settingsSignal: WritableSignal<AppSettings> = signal<AppSettings>(this.load());
+  private readonly overrides: WritableSignal<SettingsOverrides> = signal<SettingsOverrides>(
+    this.load(),
+  );
 
   /**
-   * Gets the complete settings.
+   * Holds the memoised per-key reactive value signals.
    */
-  public readonly settings: Signal<AppSettings> = this.settingsSignal.asReadonly();
+  private readonly valueSignals: Map<SettingsKey, Signal<unknown>> = new Map<
+    SettingsKey,
+    Signal<unknown>
+  >();
+
+  /**
+   * Gets the complete settings, assembled from the registry-backed overrides.
+   */
+  public readonly settings: Signal<AppSettings> = computed(
+    (): AppSettings => ({
+      application: this.application(),
+      appearance: this.appearance(),
+      textEditor: this.textEditor(),
+      markdownEditor: this.markdownEditor(),
+      ai: this.ai(),
+      workspaces: this.workspaces(),
+    }),
+  );
 
   /**
    * Gets the application-level settings.
    */
   public readonly application: Signal<ApplicationSettings> = computed(
-    (): ApplicationSettings => this.settingsSignal().application,
+    (): ApplicationSettings => ({
+      defaultDocumentType: this.read('application.defaultDocumentType'),
+      undoStackSize: this.read('application.undoStackSize'),
+      showLauncherActions: this.read('application.showLauncherActions'),
+    }),
   );
 
   /**
    * Gets the appearance settings.
    */
   public readonly appearance: Signal<AppearanceSettings> = computed(
-    (): AppearanceSettings => this.settingsSignal().appearance,
+    (): AppearanceSettings => ({
+      ribbonAlignment: this.read('appearance.ribbonAlignment'),
+      modernUiFeatures: this.read('appearance.modernUiFeatures'),
+    }),
   );
 
   /**
    * Gets the alignment of the ribbon's controls within the ribbon strip.
    */
-  public readonly ribbonAlignment: Signal<RibbonAlignment> = computed(
-    (): RibbonAlignment => this.settingsSignal().appearance.ribbonAlignment,
-  );
+  public readonly ribbonAlignment: Signal<RibbonAlignment> = this.value('appearance.ribbonAlignment');
 
   /**
    * Gets whether the modern UI features are used, or whether the choice follows the GPU-derived
    * recommendation.
    */
-  public readonly modernUiFeatures: Signal<ModernUiFeatures> = computed(
-    (): ModernUiFeatures => this.settingsSignal().appearance.modernUiFeatures,
-  );
+  public readonly modernUiFeatures: Signal<ModernUiFeatures> = this.value('appearance.modernUiFeatures');
 
   /**
    * Gets the default document type for new documents.
    */
-  public readonly defaultDocumentType: Signal<DefaultDocumentType> = computed(
-    (): DefaultDocumentType => this.settingsSignal().application.defaultDocumentType,
+  public readonly defaultDocumentType: Signal<DefaultDocumentType> = this.value(
+    'application.defaultDocumentType',
   );
 
   /**
    * Gets the undo stack size.
    */
-  public readonly undoStackSize: Signal<number> = computed(
-    (): number => this.settingsSignal().application.undoStackSize,
-  );
+  public readonly undoStackSize: Signal<number> = this.value('application.undoStackSize');
 
   /**
    * Gets a value indicating whether the title strip shows the quick-action launcher buttons in place
    * of the single welcome button.
    */
-  public readonly showLauncherActions: Signal<boolean> = computed(
-    (): boolean => this.settingsSignal().application.showLauncherActions,
-  );
+  public readonly showLauncherActions: Signal<boolean> = this.value('application.showLauncherActions');
 
   /**
    * Gets the text editor settings with profiles.
    */
   public readonly textEditor: Signal<TextEditorSettingsWithProfiles> = computed(
-    (): TextEditorSettingsWithProfiles => this.settingsSignal().textEditor,
+    (): TextEditorSettingsWithProfiles => ({
+      global: this.globalTextEditor(),
+      profiles: this.profiles(),
+    }),
   );
 
   /**
    * Gets the global text editor settings.
    */
   public readonly globalTextEditor: Signal<TextEditorSettings> = computed(
-    (): TextEditorSettings => this.settingsSignal().textEditor.global,
+    (): TextEditorSettings => ({
+      showLineNumbers: this.read('textEditor.global.showLineNumbers'),
+      showMinimap: this.read('textEditor.global.showMinimap'),
+      currentLineHighlight: this.read('textEditor.global.currentLineHighlight'),
+      wordWrap: this.read('textEditor.global.wordWrap'),
+      stickyScroll: this.read('textEditor.global.stickyScroll'),
+      cursorBlinking: this.read('textEditor.global.cursorBlinking'),
+      cursorSmoothCaretAnimation: this.read('textEditor.global.cursorSmoothCaretAnimation'),
+      insertSpaces: this.read('textEditor.global.insertSpaces'),
+      tabSize: this.read('textEditor.global.tabSize'),
+      fontFamily: this.read('textEditor.global.fontFamily'),
+      fontSize: this.read('textEditor.global.fontSize'),
+      braceStyle: this.read('textEditor.global.braceStyle'),
+    }),
   );
 
   /**
    * Gets the editor profiles.
    */
-  public readonly profiles: Signal<readonly EditorProfile[]> = computed(
-    (): readonly EditorProfile[] => this.settingsSignal().textEditor.profiles,
-  );
+  public readonly profiles: Signal<readonly EditorProfile[]> = this.value('textEditor.profiles');
 
   /**
    * Gets the markdown editor settings.
    */
   public readonly markdownEditor: Signal<MarkdownEditorSettings> = computed(
-    (): MarkdownEditorSettings => this.settingsSignal().markdownEditor,
+    (): MarkdownEditorSettings => ({
+      fontFamily: this.read('markdownEditor.fontFamily'),
+      monospaceFontFamily: this.read('markdownEditor.monospaceFontFamily'),
+      fontSize: this.read('markdownEditor.fontSize'),
+      marginSize: this.read('markdownEditor.marginSize'),
+      imageSizing: this.read('markdownEditor.imageSizing'),
+      imageAlignment: this.read('markdownEditor.imageAlignment'),
+      panelPosition: this.read('markdownEditor.panelPosition'),
+    }),
   );
 
   /**
    * Gets the workspace settings.
    */
   public readonly workspaces: Signal<WorkspacesSettings> = computed(
-    (): WorkspacesSettings => this.settingsSignal().workspaces,
+    (): WorkspacesSettings => ({
+      fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
+    }),
   );
 
   /**
    * Gets how the File Explorer's "Expand All" behaves.
    */
-  public readonly fileExplorerExpandAll: Signal<FileExplorerExpandAll> = computed(
-    (): FileExplorerExpandAll => this.settingsSignal().workspaces.fileExplorerExpandAll,
+  public readonly fileExplorerExpandAll: Signal<FileExplorerExpandAll> = this.value(
+    'workspaces.fileExplorerExpandAll',
   );
 
   /**
    * Gets the AI agent settings.
    */
-  public readonly ai: Signal<AiSettings> = computed((): AiSettings => this.settingsSignal().ai);
+  public readonly ai: Signal<AiSettings> = computed(
+    (): AiSettings => ({
+      provider: this.read('ai.provider'),
+      models: this.read('ai.models'),
+      permissionPosture: this.read('ai.permissionPosture'),
+      tokenCap: this.read('ai.tokenCap'),
+    }),
+  );
 
   /**
    * Gets the selected AI provider.
    */
-  public readonly aiProvider: Signal<AiProviderId> = computed(
-    (): AiProviderId => this.settingsSignal().ai.provider,
-  );
+  public readonly aiProvider: Signal<AiProviderId> = this.value('ai.provider');
 
   /**
    * Gets the agent permission posture.
    */
-  public readonly aiPermissionPosture: Signal<AiPermissionPosture> = computed(
-    (): AiPermissionPosture => this.settingsSignal().ai.permissionPosture,
+  public readonly aiPermissionPosture: Signal<AiPermissionPosture> = this.value(
+    'ai.permissionPosture',
   );
 
   /**
    * Gets the per-request token cap (0 for no cap).
    */
-  public readonly aiTokenCap: Signal<number> = computed(
-    (): number => this.settingsSignal().ai.tokenCap,
-  );
+  public readonly aiTokenCap: Signal<number> = this.value('ai.tokenCap');
 
   /**
-   * Initialises the service, persisting settings to the store whenever they change.
+   * Initialises the service, persisting the override map to the store whenever it changes.
    */
   public constructor() {
     effect((): void => {
-      this.store.set<AppSettings>(SETTINGS_KEY, this.settingsSignal());
+      this.store.set<SettingsOverrides>(SETTINGS_KEY, this.overrides());
     });
+  }
+
+  /**
+   * Reads the current value of a setting, resolving the registry default when no override is set.
+   * @param key The setting key.
+   * @returns Returns the current value.
+   */
+  public get<K extends SettingsKey>(key: K): SettingsValues[K] {
+    return this.read(key);
+  }
+
+  /**
+   * Returns a reactive signal for a setting's value, memoised per key.
+   * @param key The setting key.
+   * @returns Returns the value signal.
+   */
+  public value<K extends SettingsKey>(key: K): Signal<SettingsValues[K]> {
+    const existing: Signal<unknown> | undefined = this.valueSignals.get(key);
+    if (existing !== undefined) {
+      return existing as Signal<SettingsValues[K]>;
+    }
+
+    const created: Signal<unknown> = computed((): unknown => this.read(key));
+    this.valueSignals.set(key, created);
+    return created as Signal<SettingsValues[K]>;
+  }
+
+  /**
+   * Sets a setting's value, validating it against the registry control (numeric values are rounded and
+   * clamped to the configured range).
+   * @param key The setting key.
+   * @param value The value to set.
+   */
+  public set<K extends SettingsKey>(key: K, value: SettingsValues[K]): void {
+    const validated: unknown = this.validate(key, value);
+    this.overrides.update(
+      (current: SettingsOverrides): SettingsOverrides => ({ ...current, [key]: validated }),
+    );
+  }
+
+  /**
+   * Returns a reactive value signal typed loosely, for the generic renderer which is key-dynamic.
+   * @param key The setting key.
+   * @returns Returns the value signal.
+   */
+  public reactive(key: SettingsKey): Signal<unknown> {
+    return this.value(key);
+  }
+
+  /**
+   * Sets a setting's value from the generic renderer, which is key-dynamic and so cannot supply a
+   * statically-typed value.
+   * @param key The setting key.
+   * @param value The value to set.
+   */
+  public assign(key: SettingsKey, value: unknown): void {
+    this.set(key, value as SettingsValues[SettingsKey]);
   }
 
   /**
@@ -610,12 +653,7 @@ export class Settings {
    * @param updates The partial application settings to apply.
    */
   public updateApplicationSettings(updates: Partial<ApplicationSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        application: { ...current.application, ...updates },
-      }),
-    );
+    this.assignSection('application', updates);
   }
 
   /**
@@ -623,7 +661,7 @@ export class Settings {
    * @param type The default document type.
    */
   public setDefaultDocumentType(type: DefaultDocumentType): void {
-    this.updateApplicationSettings({ defaultDocumentType: type });
+    this.set('application.defaultDocumentType', type);
   }
 
   /**
@@ -631,12 +669,7 @@ export class Settings {
    * @param updates The partial appearance settings to apply.
    */
   public updateAppearanceSettings(updates: Partial<AppearanceSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        appearance: { ...current.appearance, ...updates },
-      }),
-    );
+    this.assignSection('appearance', updates);
   }
 
   /**
@@ -644,7 +677,7 @@ export class Settings {
    * @param alignment The ribbon alignment to apply.
    */
   public setRibbonAlignment(alignment: RibbonAlignment): void {
-    this.updateAppearanceSettings({ ribbonAlignment: alignment });
+    this.set('appearance.ribbonAlignment', alignment);
   }
 
   /**
@@ -652,19 +685,15 @@ export class Settings {
    * @param value The modern UI features mode to apply.
    */
   public setModernUiFeatures(value: ModernUiFeatures): void {
-    this.updateAppearanceSettings({ modernUiFeatures: value });
+    this.set('appearance.modernUiFeatures', value);
   }
 
   /**
-   * Sets the undo stack size, clamping it to the valid range (10-1000) and rounding to an integer.
+   * Sets the undo stack size. The value is rounded and clamped to the registry range (10-1000).
    * @param size The requested undo stack size.
    */
   public setUndoStackSize(size: number): void {
-    const clamped: number = Math.max(
-      MIN_UNDO_STACK_SIZE,
-      Math.min(MAX_UNDO_STACK_SIZE, Math.round(size)),
-    );
-    this.updateApplicationSettings({ undoStackSize: clamped });
+    this.set('application.undoStackSize', size);
   }
 
   /**
@@ -673,7 +702,7 @@ export class Settings {
    * @param value True to show the launcher buttons; false to show the welcome button.
    */
   public setShowLauncherActions(value: boolean): void {
-    this.updateApplicationSettings({ showLauncherActions: value });
+    this.set('application.showLauncherActions', value);
   }
 
   /**
@@ -681,15 +710,7 @@ export class Settings {
    * @param updates The partial text editor settings to apply.
    */
   public updateTextEditorSettings(updates: Partial<TextEditorSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        textEditor: {
-          ...current.textEditor,
-          global: { ...current.textEditor.global, ...updates },
-        },
-      }),
-    );
+    this.assignSection('textEditor.global', updates);
   }
 
   /**
@@ -711,16 +732,7 @@ export class Settings {
       settings,
     };
 
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        textEditor: {
-          ...current.textEditor,
-          profiles: [...current.textEditor.profiles, profile],
-        },
-      }),
-    );
-
+    this.set('textEditor.profiles', [...this.read('textEditor.profiles'), profile]);
     return profile;
   }
 
@@ -730,17 +742,12 @@ export class Settings {
    * @param updates The updates to apply to the profile.
    */
   public updateProfile(id: string, updates: Partial<Omit<EditorProfile, 'id'>>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        textEditor: {
-          ...current.textEditor,
-          profiles: current.textEditor.profiles.map(
-            (profile: EditorProfile): EditorProfile =>
-              profile.id === id ? { ...profile, ...updates } : profile,
-          ),
-        },
-      }),
+    this.set(
+      'textEditor.profiles',
+      this.read('textEditor.profiles').map(
+        (profile: EditorProfile): EditorProfile =>
+          profile.id === id ? { ...profile, ...updates } : profile,
+      ),
     );
   }
 
@@ -749,16 +756,9 @@ export class Settings {
    * @param id The identifier of the profile to delete.
    */
   public deleteProfile(id: string): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        textEditor: {
-          ...current.textEditor,
-          profiles: current.textEditor.profiles.filter(
-            (profile: EditorProfile): boolean => profile.id !== id,
-          ),
-        },
-      }),
+    this.set(
+      'textEditor.profiles',
+      this.read('textEditor.profiles').filter((profile: EditorProfile): boolean => profile.id !== id),
     );
   }
 
@@ -769,9 +769,8 @@ export class Settings {
    * @returns Returns the resolved settings for the language.
    */
   public resolveSettingsForLanguage(language: string): TextEditorSettings {
-    const current: AppSettings = this.settingsSignal();
-    const global: TextEditorSettings = current.textEditor.global;
-    const profile: EditorProfile | undefined = current.textEditor.profiles.find(
+    const global: TextEditorSettings = this.globalTextEditor();
+    const profile: EditorProfile | undefined = this.profiles().find(
       (candidate: EditorProfile): boolean => candidate.languages.includes(language),
     );
 
@@ -801,12 +800,7 @@ export class Settings {
    * @param updates The partial markdown editor settings to apply.
    */
   public updateMarkdownEditorSettings(updates: Partial<MarkdownEditorSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        markdownEditor: { ...current.markdownEditor, ...updates },
-      }),
-    );
+    this.assignSection('markdownEditor', updates);
   }
 
   /**
@@ -814,12 +808,7 @@ export class Settings {
    * @param updates The partial workspace settings to apply.
    */
   public updateWorkspacesSettings(updates: Partial<WorkspacesSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        workspaces: { ...current.workspaces, ...updates },
-      }),
-    );
+    this.assignSection('workspaces', updates);
   }
 
   /**
@@ -827,7 +816,7 @@ export class Settings {
    * @param behavior The expand-all behavior to apply.
    */
   public setFileExplorerExpandAll(behavior: FileExplorerExpandAll): void {
-    this.updateWorkspacesSettings({ fileExplorerExpandAll: behavior });
+    this.set('workspaces.fileExplorerExpandAll', behavior);
   }
 
   /**
@@ -837,7 +826,7 @@ export class Settings {
    * @returns Returns the selected model id, or an empty string.
    */
   public aiModelFor(provider: AiProviderId): string {
-    return this.settingsSignal().ai.models[provider] ?? '';
+    return this.read('ai.models')[provider] ?? '';
   }
 
   /**
@@ -845,12 +834,7 @@ export class Settings {
    * @param updates The partial AI settings to apply.
    */
   public updateAiSettings(updates: Partial<AiSettings>): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        ai: { ...current.ai, ...updates },
-      }),
-    );
+    this.assignSection('ai', updates);
   }
 
   /**
@@ -858,7 +842,7 @@ export class Settings {
    * @param provider The provider id.
    */
   public setAiProvider(provider: AiProviderId): void {
-    this.updateAiSettings({ provider });
+    this.set('ai.provider', provider);
   }
 
   /**
@@ -867,12 +851,7 @@ export class Settings {
    * @param model The model id.
    */
   public setAiModel(provider: AiProviderId, model: string): void {
-    this.settingsSignal.update(
-      (current: AppSettings): AppSettings => ({
-        ...current,
-        ai: { ...current.ai, models: { ...current.ai.models, [provider]: model } },
-      }),
-    );
+    this.set('ai.models', { ...this.read('ai.models'), [provider]: model });
   }
 
   /**
@@ -880,24 +859,80 @@ export class Settings {
    * @param posture The permission posture.
    */
   public setAiPermissionPosture(posture: AiPermissionPosture): void {
-    this.updateAiSettings({ permissionPosture: posture });
+    this.set('ai.permissionPosture', posture);
   }
 
   /**
-   * Sets the per-request token cap, clamping it to a non-negative integer (0 means no cap).
+   * Sets the per-request token cap. The value is rounded and clamped to the registry range (0 means no
+   * cap).
    * @param cap The requested token cap.
    */
   public setAiTokenCap(cap: number): void {
-    const clamped: number = Math.max(0, Math.min(MAX_TOKEN_CAP, Math.round(cap)));
-    this.updateAiSettings({ tokenCap: clamped });
+    this.set('ai.tokenCap', cap);
   }
 
   /**
-   * Loads the settings from the store, merging persisted values with defaults.
-   * @returns Returns the restored, fully populated settings.
+   * Reads the current value of a setting, resolving the registry default when no override is set.
+   * @param key The setting key.
+   * @returns Returns the current value.
    */
-  private load(): AppSettings {
-    return this.mergeWithDefaults(this.store.get<LegacyAppSettings>(SETTINGS_KEY, {}));
+  private read<K extends SettingsKey>(key: K): SettingsValues[K] {
+    const current: SettingsOverrides = this.overrides();
+    return (key in current ? current[key] : SETTINGS_DEFAULTS[key]) as SettingsValues[K];
+  }
+
+  /**
+   * Applies a partial update of a section's fields by mapping each field to its dotted setting key.
+   * @param prefix The section key prefix (for example `application` or `textEditor.global`).
+   * @param updates The partial fields to apply.
+   */
+  private assignSection(prefix: string, updates: Record<string, unknown>): void {
+    for (const [field, value] of Object.entries(updates)) {
+      if (value !== undefined) {
+        this.assign(`${prefix}.${field}` as SettingsKey, value);
+      }
+    }
+  }
+
+  /**
+   * Validates a value against the registry control: numeric values are rounded and clamped to the
+   * control's configured range; all other values pass through unchanged.
+   * @param key The setting key.
+   * @param value The value to validate.
+   * @returns Returns the validated value.
+   */
+  private validate(key: SettingsKey, value: unknown): unknown {
+    const def: SettingDef | undefined = SETTINGS_BY_KEY.get(key);
+    if (def?.control.kind !== 'number' || typeof value !== 'number') {
+      return value;
+    }
+
+    let result: number = Math.round(value);
+    if (def.control.min !== undefined) {
+      result = Math.max(def.control.min, result);
+    }
+    if (def.control.max !== undefined) {
+      result = Math.min(def.control.max, result);
+    }
+    return result;
+  }
+
+  /**
+   * Loads the override map from the store, migrating the legacy nested format forward when present.
+   * @returns Returns the restored sparse override map.
+   */
+  private load(): SettingsOverrides {
+    const raw: unknown = this.store.get<unknown>(SETTINGS_KEY, null);
+    if (raw === null || typeof raw !== 'object') {
+      return {};
+    }
+
+    const record: Record<string, unknown> = raw as Record<string, unknown>;
+    if (Object.keys(record).some((key: string): boolean => key.includes('.'))) {
+      return { ...record };
+    }
+
+    return this.migrateLegacy(record);
   }
 
   /**
@@ -912,36 +947,42 @@ export class Settings {
   }
 
   /**
-   * Merges persisted settings with defaults, migrating the legacy text-editor format when present.
-   * @param partial The persisted settings, which may be in a legacy format.
-   * @returns Returns the fully populated settings.
+   * Migrates the legacy nested settings shape into the flat override map, preserving only values the
+   * user had set.
+   * @param legacy The persisted legacy settings.
+   * @returns Returns the migrated sparse override map.
    */
-  private mergeWithDefaults(partial: LegacyAppSettings): AppSettings {
-    let textEditor: TextEditorSettingsWithProfiles;
+  private migrateLegacy(legacy: LegacyAppSettings): SettingsOverrides {
+    const overrides: Record<string, unknown> = {};
 
-    if (this.isProfileAwareFormat(partial.textEditor)) {
-      textEditor = {
-        global: { ...DEFAULT_TEXT_EDITOR_SETTINGS, ...partial.textEditor.global },
-        profiles: partial.textEditor.profiles ?? [],
-      };
-    } else {
-      textEditor = {
-        global: { ...DEFAULT_TEXT_EDITOR_SETTINGS, ...partial.textEditor },
-        profiles: [],
-      };
+    function put(key: string, value: unknown): void {
+      if (value !== undefined) {
+        overrides[key] = value;
+      }
     }
 
-    return {
-      application: { ...DEFAULT_APPLICATION_SETTINGS, ...partial.application },
-      appearance: { ...DEFAULT_APPEARANCE_SETTINGS, ...partial.appearance },
-      textEditor,
-      markdownEditor: { ...DEFAULT_MARKDOWN_EDITOR_SETTINGS, ...partial.markdownEditor },
-      ai: {
-        ...DEFAULT_AI_SETTINGS,
-        ...partial.ai,
-        models: { ...(partial.ai?.models ?? {}) },
-      },
-      workspaces: { ...DEFAULT_WORKSPACES_SETTINGS, ...partial.workspaces },
-    };
+    function putAll(prefix: string, source: object | undefined): void {
+      for (const [field, value] of Object.entries(source ?? {})) {
+        put(`${prefix}.${field}`, value);
+      }
+    }
+
+    putAll('application', legacy.application);
+    putAll('appearance', legacy.appearance);
+
+    const textEditor: LegacyTextEditorSettings | TextEditorSettingsWithProfiles | undefined =
+      legacy.textEditor;
+    if (this.isProfileAwareFormat(textEditor)) {
+      putAll('textEditor.global', textEditor.global);
+      put('textEditor.profiles', textEditor.profiles);
+    } else {
+      putAll('textEditor.global', textEditor);
+    }
+
+    putAll('markdownEditor', legacy.markdownEditor);
+    putAll('ai', legacy.ai);
+    putAll('workspaces', legacy.workspaces);
+
+    return overrides;
   }
 }

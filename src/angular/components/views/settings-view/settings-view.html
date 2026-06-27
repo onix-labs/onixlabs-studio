@@ -23,16 +23,16 @@
           <app-appearance-settings />
         }
         @case ('application') {
-          <app-application-settings />
+          <app-settings-section sectionId="application" />
         }
         @case ('workspaces') {
-          <app-workspaces-settings />
+          <app-settings-section sectionId="workspaces" />
         }
         @case ('text-editor') {
           <app-text-editor-settings />
         }
         @case ('markdown') {
-          <app-markdown-settings />
+          <app-settings-section sectionId="markdown" />
         }
         @case ('ai') {
           <app-ai-settings />

@@ -1,7 +1,7 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { AppSettings, EditorProfile, Settings, TextEditorSettings } from './settings';
+import { EditorProfile, Settings, TextEditorSettings } from './settings';
 
 describe('Settings', () => {
   beforeEach(() => {
@@ -100,14 +100,18 @@ describe('Settings', () => {
     expect(resolved).toEqual(service.globalTextEditor());
   });
 
-  it('settings_whenChanged_persistsToTheStore', () => {
+  it('settings_whenChanged_persistsChangedKeyToTheStore', () => {
     const service: Settings = TestBed.inject(Settings);
 
     service.setDefaultDocumentType('markdown');
     TestBed.inject(ApplicationRef).tick();
 
-    const stored: AppSettings = JSON.parse(localStorage.getItem('settings') ?? '{}') as AppSettings;
-    expect(stored.application.defaultDocumentType).toBe('markdown');
+    // Persistence is a sparse, flat map keyed by the registry setting keys: only changed keys are
+    // stored, and each falls back to its registry default when absent.
+    const stored: Record<string, unknown> = JSON.parse(
+      localStorage.getItem('settings') ?? '{}',
+    ) as Record<string, unknown>;
+    expect(stored['application.defaultDocumentType']).toBe('markdown');
   });
 
   it('settings_whenPersistedValuesExist_areRestoredOnCreation', () => {
