@@ -73,7 +73,16 @@ export class DockPanelRegistry {
       component: Type<unknown>,
     ): void => this.register({ id, title, icon, role: 'tool', component });
 
-    tool('files', 'File Explorer', Icon.FILE_EXPLORER, TreePanel);
+    // The File Explorer renders its own tool strip (search and tree actions) just like the Solution
+    // Explorer, so it opts out of the shared default strip.
+    this.register({
+      id: 'files',
+      title: 'File Explorer',
+      icon: Icon.FILE_EXPLORER,
+      role: 'tool',
+      component: TreePanel,
+      ownsToolStrip: true,
+    });
     // The Solution Explorer is catalogued but not in the seeded layout: the directory view adds it to
     // the layout only when the open root has a recognised project system, and removes it otherwise. It
     // renders its own tool strip (search and tree actions), so it opts out of the shared default strip.

@@ -1,0 +1,53 @@
+<div class="explorer-toolbar">
+  <input
+    class="explorer-toolbar__search"
+    type="text"
+    [value]="query()"
+    (input)="onSearch($event)"
+    [placeholder]="searchPlaceholder()"
+    [attr.aria-label]="searchPlaceholder()"
+  />
+  <div class="explorer-toolbar__actions">
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="Expand All"
+      aria-label="Expand All"
+      (click)="expandAll.emit()"
+    >
+      <app-icon [icon]="Icon.PLUS_SQUARE" />
+    </button>
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="Collapse All"
+      aria-label="Collapse All"
+      (click)="collapseAll.emit()"
+    >
+      <app-icon [icon]="Icon.MINUS_SQUARE" />
+    </button>
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="More Actions"
+      aria-label="More Actions"
+      [cdkMenuTriggerFor]="moreMenu"
+      [cdkMenuPosition]="moreMenuPosition"
+    >
+      <app-icon [icon]="Icon.DOTS_THREE" />
+    </button>
+  </div>
+</div>
+
+<ng-template #moreMenu>
+  <div class="dock-panel-menu" cdkMenu>
+    <button
+      type="button"
+      class="dock-panel-menu__item dock-panel-menu__item--muted"
+      cdkMenuItem
+      cdkMenuItemDisabled
+    >
+      <span>No actions yet</span>
+    </button>
+  </div>
+</ng-template>

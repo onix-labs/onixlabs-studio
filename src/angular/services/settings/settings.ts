@@ -61,6 +61,12 @@ export type RibbonAlignment = 'left' | 'center' | 'right';
 export type ModernUiFeatures = 'auto' | 'on' | 'off';
 
 /**
+ * Identifies how the File Explorer's "Expand All" behaves: `loaded-only` expands every directory whose
+ * contents are already loaded; `entire-tree` reads and expands the whole tree from disk.
+ */
+export type FileExplorerExpandAll = 'loaded-only' | 'entire-tree';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -276,6 +282,16 @@ export interface AiSettings {
 }
 
 /**
+ * Defines the workspace-level settings (the File Explorer and directory tree).
+ */
+export interface WorkspacesSettings {
+  /**
+   * Gets how the File Explorer's "Expand All" behaves.
+   */
+  readonly fileExplorerExpandAll: FileExplorerExpandAll;
+}
+
+/**
  * Defines the complete set of application settings owned by this service. Theme mode and accent are
  * intentionally excluded; they are owned by the Theme service.
  */
@@ -304,6 +320,11 @@ export interface AppSettings {
    * Gets the AI agent settings.
    */
   readonly ai: AiSettings;
+
+  /**
+   * Gets the workspace settings.
+   */
+  readonly workspaces: WorkspacesSettings;
 }
 
 /**
@@ -340,6 +361,11 @@ interface LegacyAppSettings {
    * Gets the persisted AI agent settings, if any.
    */
   readonly ai?: Partial<AiSettings>;
+
+  /**
+   * Gets the persisted workspace settings, if any.
+   */
+  readonly workspaces?: Partial<WorkspacesSettings>;
 }
 
 /**
@@ -398,6 +424,13 @@ const DEFAULT_AI_SETTINGS: AiSettings = {
   models: {},
   permissionPosture: 'prompt',
   tokenCap: 0,
+};
+
+/**
+ * Holds the default workspace settings.
+ */
+const DEFAULT_WORKSPACES_SETTINGS: WorkspacesSettings = {
+  fileExplorerExpandAll: 'loaded-only',
 };
 
 /**
@@ -521,6 +554,20 @@ export class Settings {
    */
   public readonly markdownEditor: Signal<MarkdownEditorSettings> = computed(
     (): MarkdownEditorSettings => this.settingsSignal().markdownEditor,
+  );
+
+  /**
+   * Gets the workspace settings.
+   */
+  public readonly workspaces: Signal<WorkspacesSettings> = computed(
+    (): WorkspacesSettings => this.settingsSignal().workspaces,
+  );
+
+  /**
+   * Gets how the File Explorer's "Expand All" behaves.
+   */
+  public readonly fileExplorerExpandAll: Signal<FileExplorerExpandAll> = computed(
+    (): FileExplorerExpandAll => this.settingsSignal().workspaces.fileExplorerExpandAll,
   );
 
   /**
@@ -763,6 +810,27 @@ export class Settings {
   }
 
   /**
+   * Updates the workspace settings.
+   * @param updates The partial workspace settings to apply.
+   */
+  public updateWorkspacesSettings(updates: Partial<WorkspacesSettings>): void {
+    this.settingsSignal.update(
+      (current: AppSettings): AppSettings => ({
+        ...current,
+        workspaces: { ...current.workspaces, ...updates },
+      }),
+    );
+  }
+
+  /**
+   * Sets how the File Explorer's "Expand All" behaves.
+   * @param behavior The expand-all behavior to apply.
+   */
+  public setFileExplorerExpandAll(behavior: FileExplorerExpandAll): void {
+    this.updateWorkspacesSettings({ fileExplorerExpandAll: behavior });
+  }
+
+  /**
    * Gets the model selected for a provider, or an empty string when none is selected (use the
    * provider's default).
    * @param provider The provider id.
@@ -873,6 +941,7 @@ export class Settings {
         ...partial.ai,
         models: { ...(partial.ai?.models ?? {}) },
       },
+      workspaces: { ...DEFAULT_WORKSPACES_SETTINGS, ...partial.workspaces },
     };
   }
 }

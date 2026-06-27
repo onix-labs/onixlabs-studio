@@ -1,5 +1,3 @@
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -16,6 +14,8 @@ import { SolutionModel, SolutionRow } from '../../../services/project/solution-m
 import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
+import { ExplorerToolbar } from '../../shared/explorer-toolbar/explorer-toolbar';
+import { HighlightedText } from '../../shared/highlighted-text/highlighted-text';
 import { AppIcon } from '../../shared/icon/app-icon';
 import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
 
@@ -28,7 +28,7 @@ import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [AppIcon, TreeView, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,13 +76,6 @@ export class SolutionPanel {
   protected readonly query: Signal<string> = this.solution.query;
 
   /**
-   * Gets the more-actions menu position, anchoring the menu's right edge below the button.
-   */
-  protected readonly moreMenuPosition: readonly ConnectedPosition[] = [
-    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
-  ];
-
-  /**
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
@@ -108,10 +101,10 @@ export class SolutionPanel {
 
   /**
    * Updates the search query from the toolbar's search box.
-   * @param event The input event raised by the search box.
+   * @param value The new search query.
    */
-  protected onSearch(event: Event): void {
-    this.solution.setQuery((event.target as HTMLInputElement).value);
+  protected onSearch(value: string): void {
+    this.solution.setQuery(value);
   }
 
   /**
@@ -126,38 +119,6 @@ export class SolutionPanel {
    */
   protected collapseAll(): void {
     this.solution.collapseAll();
-  }
-
-  /**
-   * Splits a row label into runs around the search query so the matched text can be highlighted. Returns
-   * the whole label as a single unmatched run when the query is empty.
-   * @param label The row label.
-   * @returns Returns the label's runs, each flagged whether it matches the query.
-   */
-  protected segments(label: string): readonly { readonly text: string; readonly match: boolean }[] {
-    const query: string = this.solution.query().trim();
-    if (query.length === 0) {
-      return [{ text: label, match: false }];
-    }
-    const needle: string = query.toLowerCase();
-    const haystack: string = label.toLowerCase();
-    const runs: { text: string; match: boolean }[] = [];
-    let index: number = 0;
-    for (
-      let at: number = haystack.indexOf(needle);
-      at !== -1;
-      at = haystack.indexOf(needle, index)
-    ) {
-      if (at > index) {
-        runs.push({ text: label.slice(index, at), match: false });
-      }
-      runs.push({ text: label.slice(at, at + needle.length), match: true });
-      index = at + needle.length;
-    }
-    if (index < label.length) {
-      runs.push({ text: label.slice(index), match: false });
-    }
-    return runs;
   }
 
   /**

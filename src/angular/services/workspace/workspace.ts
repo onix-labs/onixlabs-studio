@@ -1,4 +1,4 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import {
   DirectoryEntry,
   DirectoryEntryType,
@@ -6,6 +6,7 @@ import {
   OpenSelection,
   WorkspaceApi,
 } from '../../../shared/studio-api';
+import { Settings } from '../settings/settings';
 
 /**
  * Represents a node in the renderer's lazy directory tree. Directories load their children on first
@@ -56,6 +57,13 @@ export interface WorkspaceTreeRow {
    * Gets the node's depth beneath the workspace root (root children are depth 0).
    */
   readonly depth: number;
+
+  /**
+   * Gets whether the row renders as expanded (a directory with a down caret). In normal browsing this
+   * mirrors the node's own state; while filtering it is forced true for a directory kept because a
+   * descendant matched, so the match shows.
+   */
+  readonly expanded: boolean;
 }
 
 /**
@@ -70,6 +78,11 @@ export class Workspace {
    * Holds the workspace bridge, or undefined when running outside Electron.
    */
   private readonly api: WorkspaceApi | undefined = window.studio?.workspace;
+
+  /**
+   * Holds the settings service, consulted for how "Expand All" should behave.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the open root listing, or null when no folder is open.
@@ -88,6 +101,12 @@ export class Workspace {
    * Holds the absolute path of the selected entry, or null when nothing is selected.
    */
   private readonly selection: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the active search query. While non-empty the tree is filtered to the loaded entries whose
+   * name contains it (and their ancestors), with the matching branches force-expanded.
+   */
+  private readonly searchQuery: WritableSignal<string> = signal<string>('');
 
   /**
    * Gets a value indicating whether a real workspace bridge is available (running in Electron).
@@ -117,10 +136,21 @@ export class Workspace {
   public readonly selectedPath: Signal<string | null> = this.selection.asReadonly();
 
   /**
-   * Gets the visible tree flattened into depth-tagged rows for rendering.
+   * Gets the active search query, exposed so the panel can highlight the matched text.
+   */
+  public readonly query: Signal<string> = this.searchQuery.asReadonly();
+
+  /**
+   * Gets the visible tree flattened into depth-tagged rows for rendering. While a search query is
+   * active the rows are filtered to the matches (and their ancestors), with matching branches expanded.
    */
   public readonly rows: Signal<readonly WorkspaceTreeRow[]> = computed(
-    (): readonly WorkspaceTreeRow[] => this.flatten(this.treeNodes(), 0),
+    (): readonly WorkspaceTreeRow[] => {
+      const query: string = this.searchQuery().trim().toLowerCase();
+      return query.length > 0
+        ? this.filteredRows(this.treeNodes(), 0, query)
+        : this.flatten(this.treeNodes(), 0);
+    },
   );
 
   /**
@@ -185,6 +215,7 @@ export class Workspace {
     this.rootListing.set(null);
     this.treeNodes.set([]);
     this.selection.set(null);
+    this.searchQuery.set('');
   }
 
   /**
@@ -193,6 +224,38 @@ export class Workspace {
    */
   public select(path: string): void {
     this.selection.set(path);
+  }
+
+  /**
+   * Sets the search query that filters the tree, or clears it when empty.
+   * @param value The query text.
+   */
+  public setQuery(value: string): void {
+    this.searchQuery.set(value);
+  }
+
+  /**
+   * Expands the tree's directories. Honouring the workspace setting, this either expands only the
+   * directories whose contents are already loaded, or reads and expands the entire tree from disk.
+   * @returns Returns a promise that resolves once expansion completes.
+   */
+  public async expandAll(): Promise<void> {
+    if (this.settings.fileExplorerExpandAll() === 'entire-tree') {
+      await this.expandEntireTree();
+    } else {
+      this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+        this.expandLoaded(nodes),
+      );
+    }
+  }
+
+  /**
+   * Collapses every directory in the tree.
+   */
+  public collapseAll(): void {
+    this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+      this.collapse(nodes),
+    );
   }
 
   /**
@@ -250,6 +313,7 @@ export class Workspace {
       listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry)),
     );
     this.selection.set(null);
+    this.searchQuery.set('');
   }
 
   /**
@@ -332,11 +396,112 @@ export class Workspace {
   private flatten(nodes: readonly WorkspaceTreeNode[], depth: number): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
     for (const node of nodes) {
-      rows.push({ node, depth });
-      if (node.type === 'directory' && node.expanded && node.children !== null) {
+      const expanded: boolean = node.type === 'directory' && node.expanded;
+      rows.push({ node, depth, expanded });
+      if (expanded && node.children !== null) {
         rows.push(...this.flatten(node.children, depth + 1));
       }
     }
     return rows;
+  }
+
+  /**
+   * Flattens the tree into the rows that match a search query: a loaded entry is kept when its own name
+   * matches or (for a directory) any descendant does, and a kept directory is force-expanded so its
+   * matches show. Only loaded entries are searched (unexpanded directories are matched by their own
+   * name alone).
+   * @param nodes The nodes to filter.
+   * @param depth The depth of these nodes beneath the root.
+   * @param query The lower-cased search query.
+   * @returns Returns the filtered rows in render order.
+   */
+  private filteredRows(
+    nodes: readonly WorkspaceTreeNode[],
+    depth: number,
+    query: string,
+  ): readonly WorkspaceTreeRow[] {
+    const rows: WorkspaceTreeRow[] = [];
+    for (const node of nodes) {
+      const selfMatch: boolean = node.name.toLowerCase().includes(query);
+      if (node.type === 'directory') {
+        const childRows: readonly WorkspaceTreeRow[] =
+          node.children !== null ? this.filteredRows(node.children, depth + 1, query) : [];
+        if (selfMatch || childRows.length > 0) {
+          rows.push({ node, depth, expanded: childRows.length > 0 });
+          rows.push(...childRows);
+        }
+      } else if (selfMatch) {
+        rows.push({ node, depth, expanded: false });
+      }
+    }
+    return rows;
+  }
+
+  /**
+   * Expands every directory whose children are already loaded, recursively, leaving unloaded
+   * directories untouched.
+   * @param nodes The nodes to expand.
+   * @returns Returns the new node list with loaded directories expanded.
+   */
+  private expandLoaded(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
+    return nodes.map(
+      (node: WorkspaceTreeNode): WorkspaceTreeNode =>
+        node.type === 'directory' && node.children !== null
+          ? { ...node, expanded: true, children: this.expandLoaded(node.children) }
+          : node,
+    );
+  }
+
+  /**
+   * Collapses every directory, recursing through loaded children so nested expansion state is cleared
+   * too.
+   * @param nodes The nodes to collapse.
+   * @returns Returns the new node list with every directory collapsed.
+   */
+  private collapse(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
+    return nodes.map(
+      (node: WorkspaceTreeNode): WorkspaceTreeNode =>
+        node.type === 'directory'
+          ? {
+              ...node,
+              expanded: false,
+              children: node.children !== null ? this.collapse(node.children) : null,
+            }
+          : node,
+    );
+  }
+
+  /**
+   * Reads and expands the entire tree from disk, loading each directory's children where they have not
+   * been loaded yet. The result is applied in one update once the whole walk completes; it is discarded
+   * when the open root changed while the walk was in flight.
+   * @returns Returns a promise that resolves once the tree has been expanded.
+   */
+  private async expandEntireTree(): Promise<void> {
+    const root: string | undefined = this.rootListing()?.path;
+    const expandNode: (node: WorkspaceTreeNode) => Promise<WorkspaceTreeNode> = async (
+      node: WorkspaceTreeNode,
+    ): Promise<WorkspaceTreeNode> => {
+      if (node.type !== 'directory') {
+        return node;
+      }
+      let children: readonly WorkspaceTreeNode[];
+      if (node.children !== null) {
+        children = node.children;
+      } else {
+        const listing: DirectoryListing | null = await (this.api?.readDirectory(node.path) ??
+          Promise.resolve(null));
+        children =
+          listing === null
+            ? []
+            : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
+      }
+      const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
+      return { ...node, expanded: true, loading: false, children: expanded };
+    };
+    const nodes: readonly WorkspaceTreeNode[] = await Promise.all(this.treeNodes().map(expandNode));
+    if (this.rootListing()?.path === root) {
+      this.treeNodes.set(nodes);
+    }
   }
 }

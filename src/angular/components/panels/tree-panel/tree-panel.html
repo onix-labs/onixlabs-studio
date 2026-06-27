@@ -1,4 +1,12 @@
 @if (workspace.hasWorkspace()) {
+  <app-explorer-toolbar
+    [query]="query()"
+    searchPlaceholder="Search files"
+    (queryChange)="onSearch($event)"
+    (expandAll)="expandAll()"
+    (collapseAll)="collapseAll()"
+  />
+
   <app-tree-view
     [rows]="rows()"
     [selectedId]="workspace.selectedPath()"
@@ -12,7 +20,7 @@
         [icon]="iconFor(node)"
       />
       <span class="tree-name" [class.bold]="node.type === 'directory' && node.expanded">
-        {{ node.name }}
+        <app-highlighted-text [text]="node.name" [query]="query()" />
       </span>
 
       @if (statusFor(node.path); as status) {

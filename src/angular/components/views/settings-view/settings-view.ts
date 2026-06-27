@@ -15,6 +15,7 @@ import { LanguageServersSettings } from './sections/language-servers-settings/la
 import { MarkdownSettings } from './sections/markdown-settings/markdown-settings';
 import { SecuritySettingsSection } from './sections/security-settings/security-settings';
 import { TextEditorSettingsSection } from './sections/text-editor-settings/text-editor-settings';
+import { WorkspacesSettings } from './sections/workspaces-settings/workspaces-settings';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
 
@@ -28,7 +29,8 @@ type SettingsSectionId =
   | 'markdown'
   | 'ai'
   | 'language-servers'
-  | 'security';
+  | 'security'
+  | 'workspaces';
 
 /**
  * Describes a selectable section in the settings navigation.
@@ -63,6 +65,7 @@ interface SettingsSection {
     AiSettingsSection,
     LanguageServersSettings,
     SecuritySettingsSection,
+    WorkspacesSettings,
     AppIcon,
   ],
   templateUrl: './settings-view.html',
@@ -87,6 +90,7 @@ export class SettingsView {
   protected readonly sections: readonly SettingsSection[] = [
     { id: 'appearance', label: 'Appearance', icon: Icon.PALETTE },
     { id: 'application', label: 'Application', icon: Icon.APPLICATION },
+    { id: 'workspaces', label: 'Workspaces', icon: Icon.DIRECTORY },
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
     { id: 'ai', label: 'AI', icon: Icon.AGENT },

@@ -1,0 +1,7 @@
+@for (segment of segments(); track $index) {
+  @if (segment.match) {
+    <mark class="tree-name__match">{{ segment.text }}</mark>
+  } @else {
+    {{ segment.text }}
+  }
+}

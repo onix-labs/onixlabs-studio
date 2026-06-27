@@ -10,9 +10,15 @@ import {
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
-import { Workspace, WorkspaceTreeNode, WorkspaceTreeRow } from '../../../services/workspace/workspace';
+import {
+  Workspace,
+  WorkspaceTreeNode,
+  WorkspaceTreeRow,
+} from '../../../services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
+import { ExplorerToolbar } from '../../shared/explorer-toolbar/explorer-toolbar';
+import { HighlightedText } from '../../shared/highlighted-text/highlighted-text';
 import { AppIcon } from '../../shared/icon/app-icon';
 import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
 
@@ -24,7 +30,7 @@ import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [AppIcon, TreeView],
+  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,11 +76,16 @@ export class TreePanel {
         id: row.node.path,
         depth: row.depth,
         expandable: row.node.type === 'directory',
-        expanded: row.node.expanded,
+        expanded: row.expanded,
         data: row.node,
       }),
     ),
   );
+
+  /**
+   * Gets the active search query, bound to the toolbar's search box.
+   */
+  protected readonly query: Signal<string> = this.workspace.query;
 
   /**
    * Unwraps a tree row's workspace node payload.
@@ -83,6 +94,28 @@ export class TreePanel {
    */
   protected nodeOf(row: TreeRow): WorkspaceTreeNode {
     return row.data as WorkspaceTreeNode;
+  }
+
+  /**
+   * Updates the search query from the toolbar's search box.
+   * @param value The new search query.
+   */
+  protected onSearch(value: string): void {
+    this.workspace.setQuery(value);
+  }
+
+  /**
+   * Expands the tree according to the workspace's Expand All setting.
+   */
+  protected expandAll(): void {
+    void this.workspace.expandAll();
+  }
+
+  /**
+   * Collapses every directory in the tree.
+   */
+  protected collapseAll(): void {
+    this.workspace.collapseAll();
   }
 
   /**
