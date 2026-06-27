@@ -61,7 +61,7 @@ export interface SolutionRow {
   readonly expanded: boolean;
 
   /**
-   * Holds whether the row shows a loading spinner (only the solution root, while contents load).
+   * Holds whether the row shows a loading spinner (a project, while its own contents load).
    */
   readonly loading: boolean;
 
@@ -73,9 +73,9 @@ export interface SolutionRow {
 
 /**
  * Holds and drives this tab's Solution Explorer. When a .NET workspace opens, it fetches the logical
- * project model for the root and eagerly evaluates every project's contents up front, so the tree —
- * shown under a single solution root node — is fully populated and expansion never waits. The root node
- * carries the only loading spinner, shown until every project's contents have loaded. Exposes the
+ * project model for the root and shows the full structure — solution folders and projects — straight
+ * away, while eagerly evaluating every project's contents up front so expansion never waits. Each
+ * project carries its own loading spinner, shown until that project's contents have loaded. Exposes the
  * model's presence (which the directory view uses to show or hide the panel) and a flattened row list
  * the panel renders. Provided per directory tab. Outside Electron the bridge is absent and the model
  * stays null.
@@ -113,9 +113,12 @@ export class SolutionModel {
   >(new Map<string, ProjectItems>());
 
   /**
-   * Holds whether the solution's contents are still loading, so the root node shows a spinner.
+   * Holds the paths of the projects whose contents are still loading, so each shows its own spinner
+   * until its contents arrive.
    */
-  private readonly loadingContents: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly loadingProjects: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
 
   /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
@@ -136,11 +139,10 @@ export class SolutionModel {
     if (model === null) {
       return [];
     }
-    const loading: boolean = this.loadingContents();
     const expanded: boolean = this.expandedKeys().has(ROOT_KEY);
-    // The root cannot be expanded while its contents are still loading.
+    // The root shows its full structure immediately; spinners live on the individual projects.
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', !loading, expanded, loading, null),
+      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, false, null),
     ];
     if (expanded) {
       this.appendNodes(model.tree, 1, '', rows);
@@ -200,31 +202,32 @@ export class SolutionModel {
   }
 
   /**
-   * Replaces the model and resets the tree state, expanding the solution root and its folders so the
-   * structure shows while leaving projects collapsed (their contents are loaded but hidden until
-   * opened).
+   * Replaces the model and resets the tree state, revealing the solution root and its folders straight
+   * away so the full structure shows, and marking every project as loading so each carries its own
+   * spinner until its contents arrive. Projects stay collapsed (their contents are hidden until opened).
    * @param model The new model, or null to clear.
    */
   private reset(model: ProjectModel | null): void {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
-    const loading: boolean = model !== null && model.projects.length > 0;
-    this.loadingContents.set(loading);
-    // Pre-expand the solution folders, but leave the root collapsed until loading finishes so its
-    // structure is revealed only once it is ready.
+    // Reveal the structure immediately; each project shows its own spinner while it loads.
+    const loading: Set<string> = new Set<string>();
     const expanded: Set<string> = new Set<string>();
     if (model !== null) {
-      this.collectFolderKeys(model.tree, '', expanded);
-      if (!loading) {
-        expanded.add(ROOT_KEY);
+      for (const project of model.projects) {
+        loading.add(project.path);
       }
+      this.collectFolderKeys(model.tree, '', expanded);
+      expanded.add(ROOT_KEY);
     }
+    this.loadingProjects.set(loading);
     this.expandedKeys.set(expanded);
   }
 
   /**
-   * Eagerly evaluates every project's contents, a bounded number at a time, populating the cache as
-   * each completes and clearing the loading state once all are done. Applies nothing once superseded.
+   * Eagerly evaluates every project's contents, a bounded number at a time, populating the cache and
+   * clearing each project's spinner as it completes — whether or not it yielded contents, so a spinner
+   * never spins forever. Applies nothing once superseded.
    * @param model The model whose projects are loaded.
    * @param generation The load generation this work belongs to.
    * @returns Returns a promise that resolves once loading completes.
@@ -232,25 +235,41 @@ export class SolutionModel {
   private async loadAllContents(model: ProjectModel, generation: number): Promise<void> {
     const queue: ProjectEntry[] = [...model.projects];
     const worker: () => Promise<void> = async (): Promise<void> => {
-      for (let next: ProjectEntry | undefined = queue.shift(); next !== undefined; next = queue.shift()) {
+      for (
+        let next: ProjectEntry | undefined = queue.shift();
+        next !== undefined;
+        next = queue.shift()
+      ) {
         const items: ProjectItems | null = (await this.api?.loadItems(next.path)) ?? null;
-        if (generation === this.generation && items !== null) {
-          const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
+        if (generation !== this.generation) {
+          return;
+        }
+        if (items !== null) {
+          const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
+            this.itemsByProject(),
+          );
           cache.set(items.projectPath, items);
           this.itemsByProject.set(cache);
         }
+        this.clearLoading(next.path);
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(LOAD_CONCURRENCY, queue.length) }, (): Promise<void> => worker()),
+      Array.from(
+        { length: Math.min(LOAD_CONCURRENCY, queue.length) },
+        (): Promise<void> => worker(),
+      ),
     );
-    if (generation === this.generation) {
-      this.loadingContents.set(false);
-      // Reveal the structure now that it is ready.
-      const expanded: Set<string> = new Set<string>(this.expandedKeys());
-      expanded.add(ROOT_KEY);
-      this.expandedKeys.set(expanded);
-    }
+  }
+
+  /**
+   * Clears a project's loading state, removing its spinner.
+   * @param path The path of the project that finished loading.
+   */
+  private clearLoading(path: string): void {
+    const loading: Set<string> = new Set<string>(this.loadingProjects());
+    loading.delete(path);
+    this.loadingProjects.set(loading);
   }
 
   /**
@@ -288,8 +307,8 @@ export class SolutionModel {
   }
 
   /**
-   * Appends the rows for a run of solution nodes (folders and projects), recursing into the expanded
-   * ones.
+   * Appends the rows for a run of solution nodes (folders and projects), in ascending name order,
+   * recursing into the expanded ones.
    * @param nodes The nodes to append.
    * @param depth The nodes' depth.
    * @param parentKey The key prefix of the nodes' parent.
@@ -301,7 +320,7 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
   ): void {
-    for (const node of nodes) {
+    for (const node of this.ordered(nodes)) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const expanded: boolean = this.expandedKeys().has(key);
@@ -312,13 +331,33 @@ export class SolutionModel {
       } else {
         const key: string = `project:${node.path}`;
         const expanded: boolean = this.expandedKeys().has(key);
-        rows.push(this.row(key, depth, node.name, 'project', true, expanded, false, node.path));
+        const loading: boolean = this.loadingProjects().has(node.path);
+        // A loading project hides its caret and cannot be expanded until its contents arrive.
+        rows.push(
+          this.row(key, depth, node.name, 'project', !loading, expanded, loading, node.path),
+        );
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {
           this.appendItems(items.tree, depth + 1, key, rows);
         }
       }
     }
+  }
+
+  /**
+   * Orders a run of solution nodes for display: solution folders first, then projects, with each group
+   * sorted by name, ascending. The comparison is ordinal (by code unit) rather than locale-aware so that
+   * the dot separator (which sorts below every letter) keeps a project directly above its more-qualified
+   * siblings — for example `Foo.Bar`, then `Foo.Bar.UnitTests`, then `Foo.Bar.UnitTests.Data`.
+   * @param nodes The nodes to order.
+   * @returns Returns the nodes ordered folders-first, each group sorted by ascending name.
+   */
+  private ordered(nodes: readonly ProjectNode[]): readonly ProjectNode[] {
+    const byName: (a: ProjectNode, b: ProjectNode) => number = (a, b): number =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    const folders: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'folder');
+    const projects: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'project');
+    return [...folders.sort(byName), ...projects.sort(byName)];
   }
 
   /**

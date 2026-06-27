@@ -87,6 +87,13 @@ app-tree-view {
     color: var(--accent-color);
     opacity: 1;
   }
+
+  // A project still loading its contents is dimmed to a muted grey until it is ready, overriding the
+  // accent colour above (defined after it so it wins at equal specificity).
+  &.tree-icon--loading {
+    color: var(--form-muted-foreground-color);
+    opacity: 0.55;
+  }
 }
 
 .tree-name {

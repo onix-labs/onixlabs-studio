@@ -122,11 +122,15 @@ export class SolutionPanel {
   }
 
   /**
-   * Handles a click on a row: toggles an expandable row, or opens a file.
+   * Handles a click on a row: toggles an expandable row, or opens a file. A still-loading project is
+   * inert until its contents arrive.
    * @param treeRow The tree row that was clicked.
    */
   public onRowClick(treeRow: TreeRow): void {
     const row: SolutionRow = this.rowOf(treeRow);
+    if (row.loading) {
+      return;
+    }
     if (row.expandable) {
       this.solution.toggle(row);
     } else if (row.path !== null) {
