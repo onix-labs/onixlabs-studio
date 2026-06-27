@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   input,
   InputSignal,
@@ -14,26 +15,18 @@ import { GitChangeStatus, statusLetter } from '../../../services/repository/repo
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
-
-/**
- * Specifies the base left padding of a tree row, in pixels.
- */
-const BASE_INDENT: number = 8;
-
-/**
- * Specifies the additional left padding added per depth level, in pixels.
- */
-const INDENT_STEP: number = 14;
+import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
 
 /**
  * Renders the logical solution model (solution folders, projects, and each project's files) as the body
- * of the Solution Explorer dock panel — distinct from the File Explorer's filesystem tree. The model
- * and its expansion/loading state come from the tab-scoped {@link SolutionModel}; a project's files load
- * on first expansion. Clicking an expandable row toggles it; clicking a file opens it.
+ * of the Solution Explorer dock panel, through the shared {@link TreeView} — distinct from the File
+ * Explorer's filesystem tree. The model and its expansion/loading state come from the tab-scoped
+ * {@link SolutionModel}; a project's files load on first expansion. Clicking an expandable row toggles
+ * it; clicking a file opens it.
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [AppIcon],
+  imports: [AppIcon, TreeView],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,17 +69,27 @@ export class SolutionPanel {
   public readonly model: Signal<ProjectModel | null> = this.solution.model;
 
   /**
-   * Gets the flattened, visible rows of the solution tree.
+   * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
-  public readonly rows: Signal<readonly SolutionRow[]> = this.solution.rows;
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
+    this.solution.rows().map(
+      (row: SolutionRow): TreeRow => ({
+        id: row.key,
+        depth: row.depth,
+        expandable: row.expandable,
+        expanded: row.expanded,
+        data: row,
+      }),
+    ),
+  );
 
   /**
-   * Computes the left padding for a row at the given depth.
-   * @param depth The row's depth in the tree.
-   * @returns Returns the left padding in pixels.
+   * Unwraps a tree row's solution-row payload.
+   * @param row The tree row.
+   * @returns Returns the solution row.
    */
-  public indentFor(depth: number): number {
-    return BASE_INDENT + depth * INDENT_STEP;
+  protected rowOf(row: TreeRow): SolutionRow {
+    return row.data as SolutionRow;
   }
 
   /**
@@ -120,9 +123,10 @@ export class SolutionPanel {
 
   /**
    * Handles a click on a row: toggles an expandable row, or opens a file.
-   * @param row The row that was clicked.
+   * @param treeRow The tree row that was clicked.
    */
-  public onRowClick(row: SolutionRow): void {
+  public onRowClick(treeRow: TreeRow): void {
+    const row: SolutionRow = this.rowOf(treeRow);
     if (row.expandable) {
       this.solution.toggle(row);
     } else if (row.path !== null) {

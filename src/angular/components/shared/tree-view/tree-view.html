@@ -1,0 +1,24 @@
+<div class="tree-list" role="tree">
+  @for (row of rows(); track row.id) {
+    <button
+      type="button"
+      class="tree-row"
+      role="treeitem"
+      [class.active]="selectedId() !== null && row.id === selectedId()"
+      [style.padding-left.px]="indentFor(row.depth)"
+      [attr.aria-expanded]="row.expandable ? row.expanded : null"
+      [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
+      (click)="rowClick.emit(row)"
+    >
+      @if (row.expandable) {
+        <app-icon
+          class="tree-chevron"
+          [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
+        />
+      } @else {
+        <span class="tree-spacer"></span>
+      }
+      <ng-container [ngTemplateOutlet]="content() ?? null" [ngTemplateOutletContext]="{ $implicit: row }" />
+    </button>
+  }
+</div>
