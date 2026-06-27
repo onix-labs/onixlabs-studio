@@ -45,16 +45,34 @@
   container-type: inline-size;
 }
 
-// The drag handle that resizes the panel; its width is bound via flex-basis on the panel.
+// The drag handle that resizes the panel. The splitter takes no layout space (the panel sits flush
+// against the editor); its grip is drawn as an overlay over the panel's leading edge — the right edge
+// of the editor when the panel docks right, mirrored to the left when it docks left.
 .markdown-layout__splitter {
-  flex: 0 0 0.375rem;
-  background: var(--markdown-splitter-background);
+  position: relative;
+  flex: 0 0 0;
+  z-index: 5;
   cursor: col-resize;
-  transition: background 150ms ease-in-out;
 
-  &:hover {
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: 0.375rem;
+    background: var(--markdown-splitter-background);
+    transition: background 150ms ease-in-out;
+  }
+
+  &:hover::before {
     background: var(--accent-surface-border-color);
   }
+}
+
+// When the panel docks on the left, mirror the grip so it overlays the panel's (right) leading edge.
+:host(.panels-left) .markdown-layout__splitter::before {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
 }
 
 // A tool panel (Outline, Review, Agent, Reader) docked beside the editor. Its width comes from the
