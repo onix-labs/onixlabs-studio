@@ -1,7 +1,7 @@
 :host {
-  --code-terminal-bar-background: var(--gray-200);
+  // The title bar matches the resize grip (defined on the code-view host) so they read as one surface.
+  --code-terminal-bar-background: var(--code-view-grip, var(--gray-200));
   --code-terminal-bar-foreground: var(--gray-700);
-  --code-terminal-bar-border: var(--gray-300);
   --code-terminal-body-background: var(--gray-100);
 
   display: block;
@@ -10,9 +10,11 @@
 }
 
 :host-context([data-theme-mode='dark']) {
-  --code-terminal-bar-background: var(--gray-800);
+  --code-terminal-bar-background: var(
+    --code-view-grip,
+    color-mix(in srgb, var(--gray-900), var(--gray-800))
+  );
   --code-terminal-bar-foreground: var(--gray-400);
-  --code-terminal-bar-border: var(--gray-700);
   --code-terminal-body-background: var(--gray-900);
 }
 
@@ -29,8 +31,6 @@
   padding: 0.25rem 0.5rem;
   background: var(--code-terminal-bar-background);
   color: var(--code-terminal-bar-foreground);
-  border-block-start: 0.0625rem solid var(--code-terminal-bar-border);
-  border-block-end: 0.0625rem solid var(--code-terminal-bar-border);
 
   button {
     display: flex;
