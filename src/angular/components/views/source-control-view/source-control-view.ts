@@ -23,6 +23,7 @@ import { DockState } from '../../../services/dock/dock-state';
 import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
+import { FileOpener } from '../../../services/file-opener/file-opener';
 import { Repositories } from '../../../services/repositories/repositories';
 import { Repository } from '../../../services/repository/repository';
 import { GitBranch } from '../../../services/repository/repository-data';
@@ -119,6 +120,11 @@ export class SourceControlView implements OnInit, OnDestroy {
    * Holds the command registry the ribbon routes its actions through.
    */
   private readonly commands: SourceControlCommands = inject(SourceControlCommands);
+
+  /**
+   * Holds the (root) file opener used to open the repository's root as a workspace tab.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
    * Holds the status-bar registry this view contributes branch and change status to.
@@ -269,6 +275,18 @@ export class SourceControlView implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens this repository's root as a workspace (a new directory tab), reusing the existing tab when
+   * the folder is already open. A no-op when no repository is bound.
+   */
+  private openAsWorkspace(): void {
+    const info: RepositoryInfo | null = this.repository.info();
+    if (info === null) {
+      return;
+    }
+    void this.fileOpener.openDirectoryPath(info.root);
+  }
+
+  /**
    * Registers the ribbon command handler. Refresh reloads the repository and the diff-layout toggle
    * flips the diff store; the mutating actions are wired in a later slice.
    */
@@ -286,6 +304,7 @@ export class SourceControlView implements OnInit, OnDestroy {
       stash: (): void => void this.repository.stash(),
       newBranch: (): void => this.openNewBranch(),
       toggleInlineDiff: (): void => this.diffs.toggleInline(),
+      openAsWorkspace: (): void => this.openAsWorkspace(),
     };
     this.commands.register(this.commandHandler);
   }

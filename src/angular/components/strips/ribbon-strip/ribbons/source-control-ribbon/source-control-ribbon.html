@@ -26,4 +26,12 @@
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-button [icon]="Icon.GIT_DIFF" label="Diff Layout" (action)="onToggleDiff()" />
   </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Workspace">
+    <app-ribbon-strip-button
+      [icon]="Icon.DIRECTORY"
+      label="Open as Workspace"
+      (action)="onOpenAsWorkspace()"
+    />
+  </app-ribbon-strip-group>
 </app-ribbon-overflow>

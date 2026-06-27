@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
+import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '../../../../../services/tasks/builds';
 import { Icon } from '../../../../../icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
@@ -46,6 +47,19 @@ export class DirectoryRibbon {
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
    */
   private readonly builds: Builds = inject(Builds);
+
+  /**
+   * Holds the source-control seam the Source Control group dispatches through to the active workspace.
+   */
+  private readonly sourceControl: WorkspaceSourceControlCommands = inject(
+    WorkspaceSourceControlCommands,
+  );
+
+  /**
+   * Gets whether the active workspace's open folder is a git repository, enabling the Source Control
+   * group's actions.
+   */
+  protected readonly hasRepository: Signal<boolean> = this.sourceControl.hasRepository;
 
   /**
    * Gets whether the active workspace can run a build task.
@@ -148,5 +162,33 @@ export class DirectoryRibbon {
    */
   protected onStop(): void {
     this.builds.cancel();
+  }
+
+  /**
+   * Opens the active workspace's repository in the full source-control view.
+   */
+  protected onOpenSourceControl(): void {
+    this.sourceControl.openInSourceControl();
+  }
+
+  /**
+   * Reveals the active workspace's commit panel.
+   */
+  protected onCommit(): void {
+    this.sourceControl.commit();
+  }
+
+  /**
+   * Pushes the active workspace's current branch.
+   */
+  protected onPush(): void {
+    this.sourceControl.push();
+  }
+
+  /**
+   * Pulls the active workspace's current branch.
+   */
+  protected onPull(): void {
+    this.sourceControl.pull();
   }
 }

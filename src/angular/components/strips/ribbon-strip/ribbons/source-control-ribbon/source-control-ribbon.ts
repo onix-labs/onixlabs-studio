@@ -90,4 +90,11 @@ export class SourceControlRibbon {
   protected onToggleDiff(): void {
     this.commands.toggleInlineDiff();
   }
+
+  /**
+   * Opens the repository's root as a workspace (a new directory tab).
+   */
+  protected onOpenAsWorkspace(): void {
+    this.commands.openAsWorkspace();
+  }
 }

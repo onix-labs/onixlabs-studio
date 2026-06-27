@@ -48,6 +48,11 @@ export interface SourceControlCommandHandler {
    * Toggles the diff between side-by-side and inline rendering.
    */
   toggleInlineDiff(): void;
+
+  /**
+   * Opens the repository's root as a workspace (a new directory tab).
+   */
+  openAsWorkspace(): void;
 }
 
 /**
@@ -151,5 +156,12 @@ export class SourceControlCommands {
    */
   public toggleInlineDiff(): void {
     this.handler()?.toggleInlineDiff();
+  }
+
+  /**
+   * Invokes the open-as-workspace command on the active repository.
+   */
+  public openAsWorkspace(): void {
+    this.handler()?.openAsWorkspace();
   }
 }

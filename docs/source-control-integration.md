@@ -1,7 +1,7 @@
 # Source Control Integration — status & handoff
 
 Working notes for the git/VCS integration on branch **`feature/git-integration`**.
-Last updated after slice 4 (branch ops).
+Last updated after slice 6 (ribbon cross-view + unified tab dedup + workspace commit panel).
 
 ## Direction
 
@@ -20,14 +20,20 @@ decorations + a few ops). The git CLI runs only in the **main process**, via
 | `b0aa3dc` | 2 — local mutations | stage/unstage (all + per-file), commit (composer), stash; ribbon wired |
 | `8b24543` | 3 — workspace git | refcounted repo roots; `WorkspaceGit`; M/A/D decorations in File + Solution explorers |
 | `bc6c59b` | 4 — branch ops | checkout (hover action) + create branch (modal) |
+| _(pending)_ | 5 — network | `fetch`/`pull`/`push` end-to-end; non-interactive env + 120s timeout for network ops; push auto-sets upstream; SC ribbon Fetch/Pull/Push wired |
+| _(pending)_ | 6 — ribbon cross-view | unified per-type tab dedup (`Tab.resourceKey`); directory ribbon Source Control group (big "Source Control" + small Commit/Push/Pull); SC ribbon "Open as Workspace"; workspace commit panel reuses `CommitDetail` |
 
 (These sit on top of the earlier source-control **scaffold** + **dock rehost** commits:
 `4a50a53`, `a770ead`, `9482b35`.)
 
+> Slices 5 & 6 are implemented and green in the working tree but **not yet committed**
+> (build, electron `tsc`, `eslint .`, and `ng test` all pass — 3 known unrelated failures).
+
 ## Architecture map
 
 **Main process** — `src/electron/git-manager.ts` (`GitManager`): `execFile git`,
-`isSafeOperand`/`confinedPaths` guards, **refcounted** opened-roots `Map`. Channels
+`isSafeOperand`/`confinedPaths` guards, **refcounted** opened-roots `Map`. Network ops go
+through `runNetwork` (non-interactive `GIT_NETWORK_ENV` + 120s timeout). Channels
 in `src/shared/ipc-channels.ts` (`source-control:*`), bridge types in
 `src/shared/studio-api.ts` (`SourceControlApi`/`RepositoryInfo`/`GitRunResult`),
 exposed as `window.studio.sourceControl` in `src/electron/preload.ts`, wired in
@@ -50,21 +56,34 @@ exposed as `window.studio.sourceControl` in `src/electron/preload.ts`, wired in
 `diff-document-panel`). Decorations added to `components/panels/tree-panel` and
 `components/panels/solution-panel`.
 
-## Remaining work (~2 meaty + 2 small)
+**Cross-view & dedup (slice 6)**:
+- **Tab dedup** — `services/tabs/tab.ts` adds `resourceKey`; `Tabs.open(type, key?)` +
+  `findByResource(type, key)` keep a resource single-instance per tab type. The directory,
+  source-control, and code/markdown open flows (`file-opener`, `repositories/repository-opener`,
+  `documents.openFileInfo`) all consult it and **focus** an existing tab instead of duplicating.
+- **Ribbon round-trip** — `services/workspace-source-control-commands/` is the directory-ribbon
+  twin of `SourceControlCommands`. The active `DirectoryView` registers a handler exposing
+  open-in-source-control / commit / push / pull. The directory ribbon's Source Control group is
+  big "Source Control" (→ `RepositoryOpener.openFolder`) + small Commit/Push/Pull; the SC ribbon's
+  "Open as Workspace" calls `FileOpener.openDirectoryPath` (new) via `Workspace.readDirectoryListing`
+  (new) and `SourceControlCommandHandler.openAsWorkspace`.
+- **Workspace commit panel** — `DirectoryView` now provides scoped `Repository` + `Diffs` +
+  `DiffOpener`, **lazily binds** the repository on first source-control action (own refcounted
+  hold, released in `ngOnDestroy`), and reveals the reused `CommitDetail` as a `commit` dock panel.
+  Push/pull go through the scoped `Repository`, then `WorkspaceGit.refresh()` updates decorations.
 
-1. **Network (slice 5, meaty, riskiest)** — `fetch` / `pull` / `push`. Auth/credentials,
-   remotes, and conflict/failure handling. Backend ops + provider + Repository +
-   ribbon wiring (Pull/Push/Fetch are currently **no-ops** in
-   `source-control-view.ts` `registerCommandHandler`).
-2. **Panels (slice 6, smaller)** — agent panel on SC tabs + **terminal panel on both**
-   tabs. Both are dock hosts, so these are new blueprint panels reusing the code tab's
-   docked agent/terminal infra.
-3. **Discard changes (follow-up)** — per-file revert in the commit panel's Changes
+## Remaining work
+
+1. **Panels** — agent panel on SC tabs + **terminal panel on both** tabs. Both are dock
+   hosts, so these are new blueprint panels reusing the code tab's docked agent/terminal
+   infra.
+2. **Discard changes (follow-up)** — per-file revert in the commit panel's Changes
    group; **needs a confirm dialog** (destructive). Handle tracked (`git restore
    --staged --worktree`) vs untracked (delete) cases.
-4. **Workspace ribbon git ops (follow-up)** — branch/commit/push/pull surfaced in the
-   **directory tab's** ribbon. **Gated on the user's ribbon ideas** (he has some);
-   overlaps with the network slice.
+3. **Auth (follow-up)** — in-app credential entry is a later epic. Today network ops lean
+   entirely on the user's git credential helper + ssh-agent and **fail fast** when none is
+   available (`GIT_TERMINAL_PROMPT=0`, non-interactive `GIT_SSH_COMMAND`); failures surface
+   via `GitRunResult.stderr` but are not yet shown in a rich error UI.
 
 Then **polish/housekeeping**: reconcile GitHub tickets **#96–99** (they predate the
 GitKraken tab, have **no milestone**; re-scope #97 toward the provider abstraction),
@@ -96,12 +115,10 @@ bash make-git-test-repo.sh [target-dir]   # default /tmp/onix-git-test ; wipes +
 ## Return prompt (paste to resume)
 
 > Resume the git integration on branch `feature/git-integration`. Read
-> `docs/source-control-integration.md` first. Four slices are committed
-> (read-only, local mutations, workspace decorations, branch ops). Next up is
-> **slice 5 — network (fetch/pull/push)**: add the ops to `GitManager` (+ channels,
-> preload, `SourceControlApi`), the provider, and `Repository`, then wire the
-> ribbon's Fetch/Pull/Push (currently no-ops in `source-control-view.ts`). Mind
-> auth/credentials and surface failures via `GitRunResult`. Keep the build, electron
-> `tsc`, eslint, and `ng test` green (3 known unrelated failures). Before building,
-> ask me whether to do network first or the agent/terminal panels, and whether I
-> have ribbon ideas to fold in.
+> `docs/source-control-integration.md` first. Six slices are done (read-only, local
+> mutations, workspace decorations, branch ops, **network fetch/pull/push**, and
+> **ribbon cross-view + unified tab dedup + workspace commit panel** — slices 5 & 6
+> may still be uncommitted in the working tree). Next up is **agent/terminal panels**
+> on the SC/workspace dock hosts, then **discard changes** (per-file revert with a
+> destructive confirm dialog). Keep the build, electron `tsc`, `eslint .`, and
+> `ng test` green (3 known unrelated failures). Then reconcile GitHub tickets #96–99.
