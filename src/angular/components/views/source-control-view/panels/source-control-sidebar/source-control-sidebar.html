@@ -1,0 +1,53 @@
+<button
+  type="button"
+  class="rail__working"
+  [class.rail__working--active]="repository.selectedNodeId() === workingNodeId"
+  (click)="selectWorking()"
+>
+  <app-icon [icon]="Icon.PENCIL" />
+  <span class="rail__working-label">Uncommitted changes</span>
+  @if (repository.changeCount() > 0) {
+    <span class="rail__count">{{ repository.changeCount() }}</span>
+  }
+</button>
+
+<app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
+  <ng-template let-row>
+    @let node = nodeOf(row);
+    <app-icon
+      class="tree-icon"
+      [class.tree-icon--folder]="node.kind === 'section'"
+      [icon]="node.icon"
+    />
+    <span
+      class="tree-name"
+      [class.rail__section-name]="node.kind === 'section'"
+      [class.rail__muted]="node.muted"
+    >
+      {{ node.label }}
+    </span>
+
+    @if (node.branch; as branch) {
+      @if (branch.ahead > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
+      }
+      @if (branch.behind > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
+      }
+      @if (!branch.current) {
+        <button
+          type="button"
+          class="tree-row-action rail__item-action"
+          aria-label="Check out branch"
+          (click)="checkout(branch); $event.stopPropagation()"
+        >
+          <app-icon [icon]="Icon.CHECK" />
+        </button>
+      }
+    }
+
+    @if (node.status; as status) {
+      <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+    }
+  </ng-template>
+</app-tree-view>

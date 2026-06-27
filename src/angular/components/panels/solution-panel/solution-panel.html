@@ -1,38 +1,24 @@
 @if (model(); as solution) {
-  <div class="tree-list" role="tree">
-    @for (row of rows(); track row.key) {
-      <button
-        type="button"
-        class="tree-row"
-        role="treeitem"
-        [class.bold]="row.kind === 'solution'"
-        [style.padding-left.px]="indentFor(row.depth)"
-        [attr.aria-expanded]="row.expandable ? row.expanded : null"
-        (click)="onRowClick(row)"
-      >
-        @if (row.expandable) {
-          <app-icon
-            class="tree-chevron"
-            [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
-          />
-        } @else {
-          <span class="tree-spacer"></span>
-        }
+  <app-tree-view [rows]="rows()" (rowClick)="onRowClick($event)">
+    <ng-template let-row>
+      @let r = rowOf(row);
+      <app-icon
+        class="tree-icon"
+        [class.tree-icon--folder]="r.kind === 'folder' || r.kind === 'item-folder'"
+        [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
+        [icon]="iconFor(r)"
+      />
+      <span class="tree-name" [class.bold]="r.kind === 'solution'">{{ r.label }}</span>
 
-        <app-icon
-          class="tree-icon"
-          [class.tree-icon--folder]="row.kind === 'folder' || row.kind === 'item-folder'"
-          [class.tree-icon--project]="row.kind === 'project' || row.kind === 'solution'"
-          [icon]="iconFor(row)"
-        />
-        <span class="tree-name">{{ row.label }}</span>
+      @if (statusFor(r.path); as status) {
+        <span class="tree-status">{{ statusLetter(status) }}</span>
+      }
 
-        @if (row.loading) {
-          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
-        }
-      </button>
-    }
-  </div>
+      @if (r.loading) {
+        <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+      }
+    </ng-template>
+  </app-tree-view>
 } @else {
   <div class="tree-empty">
     <p>No solution or projects detected in this folder.</p>

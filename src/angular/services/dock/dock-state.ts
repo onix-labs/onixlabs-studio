@@ -1,4 +1,5 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
 import {
   defaultLayout,
@@ -22,9 +23,15 @@ import {
 @Service()
 export class DockState {
   /**
-   * Holds the current layout tree.
+   * Holds the host-supplied blueprint specialising this dock, or null when none was provided (the
+   * workspace default).
    */
-  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(defaultLayout());
+  private readonly blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
+
+  /**
+   * Holds the current layout tree, seeded from the blueprint's layout (or the workspace default).
+   */
+  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.createLayout());
 
   /**
    * Gets the current layout tree.
@@ -150,6 +157,15 @@ export class DockState {
    * Restores the seeded default layout, discarding the current arrangement.
    */
   public reset(): void {
-    this.tree.set(defaultLayout());
+    this.tree.set(this.createLayout());
+  }
+
+  /**
+   * Builds a fresh layout tree from the blueprint, or the built-in workspace default when no
+   * blueprint was provided.
+   * @returns Returns a fresh layout tree.
+   */
+  private createLayout(): DockNode {
+    return this.blueprint !== null ? this.blueprint.createLayout() : defaultLayout();
   }
 }

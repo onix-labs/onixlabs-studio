@@ -1,28 +1,30 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
-import { Workspace, WorkspaceTreeNode } from '../../../services/workspace/workspace';
+import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
+import { Workspace, WorkspaceTreeNode, WorkspaceTreeRow } from '../../../services/workspace/workspace';
+import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
+import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
 
 /**
- * Specifies the base left padding of a tree row, in pixels.
- */
-const BASE_INDENT: number = 8;
-
-/**
- * Specifies the additional left padding added per depth level, in pixels.
- */
-const INDENT_STEP: number = 14;
-
-/**
- * Renders the workspace directory tree as the body of the File Explorer dock panel. The dock
- * chrome supplies the panel's title bar, so this component renders only the lazy tree (or the
- * "open a folder" empty state) and delegates all state to the {@link Workspace} service.
+ * Renders the workspace directory tree as the body of the File Explorer dock panel, through the shared
+ * {@link TreeView}. The dock chrome supplies the panel's title bar, so this component maps the
+ * {@link Workspace}'s lazy tree into tree rows, projects each row's icon/name/git decoration, and
+ * delegates clicks back to the workspace (toggling directories, opening files).
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [AppIcon],
+  imports: [AppIcon, TreeView],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,31 +47,75 @@ export class TreePanel {
   public readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the workspace git status the rows are decorated from.
+   */
+  private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Maps a change status to its badge letter, exposed for the template.
+   */
+  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
+
+  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}.
+   */
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
+    this.workspace.rows().map(
+      (row: WorkspaceTreeRow): TreeRow => ({
+        id: row.node.path,
+        depth: row.depth,
+        expandable: row.node.type === 'directory',
+        expanded: row.node.expanded,
+        data: row.node,
+      }),
+    ),
+  );
+
+  /**
+   * Unwraps a tree row's workspace node payload.
+   * @param row The tree row.
+   * @returns Returns the workspace node.
+   */
+  protected nodeOf(row: TreeRow): WorkspaceTreeNode {
+    return row.data as WorkspaceTreeNode;
+  }
+
+  /**
+   * Gets the git change status of a file row, or null when it is unchanged.
+   * @param path The node's absolute path.
+   * @returns Returns the change status, or null.
+   */
+  protected statusFor(path: string): GitChangeStatus | null {
+    return this.git.statusFor(path);
+  }
+
+  /**
+   * Gets a value indicating whether a directory row contains a change at any depth.
+   * @param path The node's absolute path.
+   * @returns Returns true when the directory has descendant changes.
+   */
+  protected folderChanged(path: string): boolean {
+    return this.git.hasChanges(path);
+  }
+
+  /**
    * Handles a click on a tree row: selects the entry, toggles directories, and opens files into the
    * right editor tab (reusing an existing tab when the file is already open).
-   * @param node The node whose row was clicked.
+   * @param row The tree row that was clicked.
    */
-  public onRowClick(node: WorkspaceTreeNode): void {
+  public onRowClick(row: TreeRow): void {
+    const node: WorkspaceTreeNode = this.nodeOf(row);
     this.workspace.select(node.path);
     if (node.type === 'directory') {
       void this.workspace.toggleDirectory(node.path);
     } else {
       void this.fileOpener.openPath(node.path);
     }
-  }
-
-  /**
-   * Computes the left padding for a row at the given depth.
-   * @param depth The row's depth beneath the root.
-   * @returns Returns the left padding in pixels.
-   */
-  public indentFor(depth: number): number {
-    return BASE_INDENT + depth * INDENT_STEP;
   }
 
   /**

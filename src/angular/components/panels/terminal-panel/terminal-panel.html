@@ -1,0 +1,13 @@
+@if (root(); as root) {
+  <app-terminal-view [terminalId]="terminalId()" [cwd]="root" />
+  <footer class="terminal-panel__status">
+    <span class="terminal-panel__status-item">
+      <app-icon [icon]="Icon.TERMINAL" />
+      bash
+    </span>
+    <span class="terminal-panel__status-item terminal-panel__status-item--push">UTF-8</span>
+    <span class="terminal-panel__status-item">LF</span>
+  </footer>
+} @else {
+  <div class="terminal-panel__empty">Open a folder to use the terminal.</div>
+}

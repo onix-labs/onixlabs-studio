@@ -155,6 +155,16 @@ export class Workspace {
   }
 
   /**
+   * Reads a directory's listing by path, without showing a dialog or opening it as this workspace.
+   * Used to open an arbitrary folder (for example a repository's root) as a new workspace tab.
+   * @param path The absolute directory path to read.
+   * @returns Returns the listing, or null when invalid or running outside Electron.
+   */
+  public readDirectoryListing(path: string): Promise<DirectoryListing | null> {
+    return this.api?.readDirectory(path) ?? Promise.resolve(null);
+  }
+
+  /**
    * Opens an already-obtained directory listing as the workspace, seeding the tree from it without
    * showing a dialog. Used when a folder was chosen through the combined open dialog.
    * @param listing The root directory listing to display.

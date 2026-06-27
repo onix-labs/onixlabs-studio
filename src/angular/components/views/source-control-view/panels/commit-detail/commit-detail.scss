@@ -1,0 +1,294 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+  color: var(--body-foreground-color);
+}
+
+.detail__header {
+  flex: 0 0 auto;
+  padding: 0.85rem;
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+}
+
+.detail__summary {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+
+  &--muted {
+    color: var(--form-muted-foreground-color);
+    font-weight: 500;
+  }
+}
+
+.detail__body {
+  margin: 0.5rem 0 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.detail__meta {
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.detail__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+
+  dt {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--accent-color);
+  }
+
+  dd {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.detail__hash {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.detail__files {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.detail__files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail__files-count {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
+}
+
+.detail__file {
+  display: flex;
+  align-items: center;
+  inline-size: 100%;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &:hover {
+    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  }
+
+  &--selected {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+
+  // The action button is revealed on row hover.
+  &:hover .detail__file-action,
+  &:focus-within .detail__file-action {
+    opacity: 1;
+  }
+}
+
+.detail__file-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.detail__file-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  margin-inline-end: 0.25rem;
+  background: transparent;
+  border: 0;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms ease-in-out,
+    var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    opacity: 1;
+    outline: none;
+  }
+}
+
+// Commit composer shown above the working-tree changes.
+.detail__commit-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+}
+
+.detail__message {
+  inline-size: 100%;
+  resize: vertical;
+  padding: 0.5rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--body-foreground-color);
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-surface-border-color);
+  }
+}
+
+.detail__commit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--form-on-accent-color);
+  background: var(--accent-color);
+  border: 0.0625rem solid var(--accent-surface-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:not(:disabled):hover {
+    background: color-mix(in srgb, var(--accent-color), white 10%);
+  }
+}
+
+.detail__group-action {
+  padding: 0;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-surface-foreground-color);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// Status letter, colour-keyed using the change-margin palette.
+.detail__status {
+  flex: 0 0 auto;
+  inline-size: 1.1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+
+  &--added {
+    color: var(--change-margin-saved);
+  }
+
+  &--modified {
+    color: var(--change-margin-unsaved);
+  }
+
+  &--deleted {
+    color: var(--change-margin-deleted);
+  }
+
+  &--renamed {
+    color: var(--accent-color);
+  }
+}
+
+.detail__file-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.detail__file-dir {
+  margin-inline-start: 0.4rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+}
+
+.detail__tally {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__add {
+  color: var(--change-margin-saved);
+}
+
+.detail__del {
+  color: var(--change-margin-deleted);
+}
+
+.detail__empty {
+  margin: 0;
+  padding: 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-style: italic;
+}

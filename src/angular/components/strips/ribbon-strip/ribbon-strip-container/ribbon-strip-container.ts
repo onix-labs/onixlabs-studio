@@ -5,6 +5,7 @@ import { AgentRibbon } from '../ribbons/agent-ribbon/agent-ribbon';
 import { CodeRibbon } from '../ribbons/code-ribbon/code-ribbon';
 import { DirectoryRibbon } from '../ribbons/directory-ribbon/directory-ribbon';
 import { MarkdownRibbon } from '../ribbons/markdown-ribbon/markdown-ribbon';
+import { SourceControlRibbon } from '../ribbons/source-control-ribbon/source-control-ribbon';
 import { TerminalRibbon } from '../ribbons/terminal-ribbon/terminal-ribbon';
 
 /**
@@ -13,7 +14,7 @@ import { TerminalRibbon } from '../ribbons/terminal-ribbon/terminal-ribbon';
  */
 @Component({
   selector: 'app-ribbon-strip-container',
-  imports: [DirectoryRibbon, CodeRibbon, MarkdownRibbon, TerminalRibbon, AgentRibbon],
+  imports: [DirectoryRibbon, CodeRibbon, MarkdownRibbon, TerminalRibbon, AgentRibbon, SourceControlRibbon],
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

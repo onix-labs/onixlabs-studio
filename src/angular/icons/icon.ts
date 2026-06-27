@@ -356,6 +356,41 @@ export class Icon {
   public static readonly SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');
 
   /**
+   * Gets the git-merge icon shown on merge commits and the ribbon's Merge action.
+   */
+  public static readonly GIT_MERGE: Icon = new Icon('ph-duotone ph-git-merge');
+
+  /**
+   * Gets the git-diff icon shown on the diff surface and the ribbon's compare action.
+   */
+  public static readonly GIT_DIFF: Icon = new Icon('ph-duotone ph-git-diff');
+
+  /**
+   * Gets the pull-request icon shown on the ribbon's Pull Request action.
+   */
+  public static readonly GIT_PULL_REQUEST: Icon = new Icon('ph-duotone ph-git-pull-request');
+
+  /**
+   * Gets the tag icon shown on the source-control tags section and tag refs.
+   */
+  public static readonly TAG: Icon = new Icon('ph-duotone ph-tag');
+
+  /**
+   * Gets the stash icon shown on the source-control stashes section and the ribbon's Stash action.
+   */
+  public static readonly STASH: Icon = new Icon('ph-duotone ph-archive');
+
+  /**
+   * Gets the remote (cloud) icon shown on the source-control remotes section.
+   */
+  public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');
+
+  /**
+   * Gets the working-changes (pencil) icon shown on the source-control uncommitted-changes node.
+   */
+  public static readonly PENCIL: Icon = new Icon('ph-duotone ph-pencil-simple');
+
+  /**
    * Gets the upward-arrow (push) icon.
    */
   public static readonly ARROW_UP: Icon = new Icon('ph ph-arrow-up');

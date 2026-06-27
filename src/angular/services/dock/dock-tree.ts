@@ -495,9 +495,9 @@ export function setSizes(tree: DockNode, splitId: string, sizes: readonly number
 
 /**
  * Builds the seeded default layout: the file explorer pinned full-height on the left, the agent
- * full-height on the right, and the document well in the centre with the output and error list along
- * the bottom of the editor area. The well starts empty; documents open into it. This is the layout
- * {@link DockState} starts with and resets to.
+ * full-height on the right, and the document well in the centre with the output, error list, and a
+ * terminal tabbed together along the bottom of the editor area. The well starts empty; documents open
+ * into it. This is the layout {@link DockState} starts with and resets to.
  * @returns Returns a fresh default layout tree.
  */
 export function defaultLayout(): DockNode {
@@ -505,7 +505,9 @@ export function defaultLayout(): DockNode {
     'row',
     [
       mkStack('tool', ['files']),
-      mkSplit('col', [mkStack('document', []), mkStack('tool', ['output', 'errors'])], [4, 1.5]),
+      mkSplit('col', [mkStack('document', []), mkStack('tool', ['output', 'errors', 'terminal'])], [
+        4, 1.5,
+      ]),
       mkStack('tool', ['agent']),
     ],
     [1.4, 4, 1.6],

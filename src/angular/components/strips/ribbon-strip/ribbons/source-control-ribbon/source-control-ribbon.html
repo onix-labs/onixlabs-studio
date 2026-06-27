@@ -1,0 +1,37 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Repository">
+    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
+    <app-ribbon-strip-button [icon]="Icon.CLOUD" label="Fetch" (action)="onFetch()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Sync">
+    <app-ribbon-strip-button [icon]="Icon.ARROW_DOWN" label="Pull" (action)="onPull()" />
+    <app-ribbon-strip-button [icon]="Icon.ARROW_UP" label="Push" (action)="onPush()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Changes">
+    <app-ribbon-strip-button [icon]="Icon.PLUS" label="Stage All" (action)="onStageAll()" />
+    <app-ribbon-strip-button [icon]="Icon.GIT_COMMIT" label="Commit" (action)="onCommit()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Branch">
+    <app-ribbon-strip-button
+      [icon]="Icon.SOURCE_CONTROL"
+      label="New Branch"
+      (action)="onNewBranch()"
+    />
+    <app-ribbon-strip-button [icon]="Icon.STASH" label="Stash" (action)="onStash()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button [icon]="Icon.GIT_DIFF" label="Diff Layout" (action)="onToggleDiff()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Workspace">
+    <app-ribbon-strip-button
+      [icon]="Icon.DIRECTORY"
+      label="Open as Workspace"
+      (action)="onOpenAsWorkspace()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

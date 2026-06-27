@@ -358,12 +358,12 @@ export class Documents {
    * @returns Returns the opened, or re-activated, tab.
    */
   public openFileInfo(fileInfo: FileInfo, type: TabType): Tab {
-    const existing: Tab | undefined = this.findTabByPath(fileInfo.path);
+    const existing: Tab | undefined = this.tabs.findByResource(type, fileInfo.path);
     if (existing !== undefined) {
       this.tabs.activate(existing.id);
       return existing;
     }
-    const tab: Tab = this.tabs.open(type);
+    const tab: Tab = this.tabs.open(type, fileInfo.path);
     const entry: DocumentEntry = this.createEntry(tab.id);
     this.entries.set(tab.id, entry);
     this.markEntriesChanged();
@@ -657,20 +657,6 @@ export class Documents {
    * @param filePath The path to extract from.
    * @returns Returns the final path segment.
    */
-  /**
-   * Finds the open tab whose document is backed by the given file path.
-   * @param filePath The absolute file path to match.
-   * @returns Returns the matching tab, or undefined when the file is not open.
-   */
-  private findTabByPath(filePath: string): Tab | undefined {
-    for (const [id, entry] of this.entries) {
-      if (entry.filePath() === filePath) {
-        return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id);
-      }
-    }
-    return undefined;
-  }
-
   private basename(filePath: string): string {
     const segments: string[] = filePath.split(/[\\/]/);
     return segments[segments.length - 1];

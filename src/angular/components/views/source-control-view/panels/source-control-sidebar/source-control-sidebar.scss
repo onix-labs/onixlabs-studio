@@ -1,0 +1,140 @@
+// The source-control view's left rail: a pinned uncommitted-changes entry above the repository tree.
+// The tree rows themselves are the shared TreeView look (see the global `_tree.scss`); this file styles
+// the pinned entry and the rail-specific bits projected into each row (section labels, branch deltas,
+// the hover checkout action, status badges). Colours come from the shipped dock/accent tokens so the
+// rail tracks the active theme and accent.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+  color: var(--body-foreground-color);
+  font-size: 0.8rem;
+}
+
+// The uncommitted-changes entry: full width with a bottom accent-border divider and a little more
+// height, pinned above the scrolling tree.
+.rail__working {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  inline-size: 100%;
+  padding: 0.6rem;
+  border: 0;
+  border-block-end: 0.0625rem solid var(--accent-color);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  &:focus-visible {
+    background: var(--dock-title-background-color--focused);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+
+  &--active {
+    background: color-mix(in srgb, var(--accent-color) 22%, transparent);
+    color: var(--accent-surface-foreground-color);
+  }
+}
+
+.rail__working-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail__count {
+  margin-inline-start: auto;
+  min-inline-size: 1.25rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--form-on-accent-color);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+// A section-header row's label: uppercase, muted, and tracked, like the original rail headings.
+.tree-name.rail__section-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--form-muted-foreground-color);
+}
+
+// An empty-section placeholder row's label.
+.tree-name.rail__muted {
+  color: var(--form-muted-foreground-color);
+  font-style: italic;
+}
+
+// A branch row's ahead/behind delta.
+.rail__delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-inline-start: 0.35rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// The hover-revealed checkout action on a non-current branch row. Reveal-on-hover lives in the global
+// tree styles (`.tree-row-action`); this is its visual treatment.
+.rail__item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  margin-inline-start: 0.25rem;
+  border: 0;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: transparent;
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// A pull-request or action status badge, pushed to the trailing edge of the row.
+.rail__status {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  padding-inline-start: 0.35rem;
+
+  &--succeeded {
+    color: var(--accent-green);
+  }
+
+  &--failed {
+    color: var(--accent-pink);
+  }
+
+  &--running {
+    color: var(--accent-orange);
+  }
+
+  &--available {
+    color: var(--form-muted-foreground-color);
+  }
+}

@@ -1,39 +1,31 @@
 @if (workspace.hasWorkspace()) {
-  <div class="tree-list" role="tree">
-    @for (row of workspace.rows(); track row.node.path) {
-      <button
-        type="button"
-        class="tree-row"
-        role="treeitem"
-        [class.active]="row.node.path === workspace.selectedPath()"
-        [class.bold]="row.node.type === 'directory' && row.node.expanded"
-        [style.padding-left.px]="indentFor(row.depth)"
-        [attr.aria-expanded]="row.node.type === 'directory' ? row.node.expanded : null"
-        [attr.aria-selected]="row.node.path === workspace.selectedPath()"
-        (click)="onRowClick(row.node)"
-      >
-        @if (row.node.type === 'directory') {
-          <app-icon
-            class="tree-chevron"
-            [icon]="row.node.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
-          />
-        } @else {
-          <span class="tree-spacer"></span>
-        }
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="workspace.selectedPath()"
+    (rowClick)="onRowClick($event)"
+  >
+    <ng-template let-row>
+      @let node = nodeOf(row);
+      <app-icon
+        class="tree-icon"
+        [class.tree-icon--folder]="node.type === 'directory'"
+        [icon]="iconFor(node)"
+      />
+      <span class="tree-name" [class.bold]="node.type === 'directory' && node.expanded">
+        {{ node.name }}
+      </span>
 
-        <app-icon
-          class="tree-icon"
-          [class.tree-icon--folder]="row.node.type === 'directory'"
-          [icon]="iconFor(row.node)"
-        />
-        <span class="tree-name">{{ row.node.name }}</span>
+      @if (statusFor(node.path); as status) {
+        <span class="tree-status">{{ statusLetter(status) }}</span>
+      } @else if (node.type === 'directory' && folderChanged(node.path)) {
+        <span class="tree-status tree-status--dot" aria-hidden="true">•</span>
+      }
 
-        @if (row.node.loading) {
-          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
-        }
-      </button>
-    }
-  </div>
+      @if (node.loading) {
+        <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+      }
+    </ng-template>
+  </app-tree-view>
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>
