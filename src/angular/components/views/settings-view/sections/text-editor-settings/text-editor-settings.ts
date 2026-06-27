@@ -5,13 +5,10 @@ import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { LanguageSelect } from '../../../../forms/language-select/language-select';
 import { NumberField } from '../../../../forms/number-field/number-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
-import { TextField } from '../../../../forms/text-field/text-field';
 import { Toggle } from '../../../../forms/toggle/toggle';
+import { SettingsSection } from '../../settings-section/settings-section';
 import {
   BraceStyle,
-  CurrentLineHighlightStyle,
-  CursorBlinkingStyle,
-  CursorSmoothCaretAnimation,
   EditorProfile,
   Settings,
   TextEditorSettings,
@@ -105,10 +102,10 @@ interface NumberSetting {
     Toggle,
     Checkbox,
     Dropdown,
-    TextField,
     NumberField,
     Accordion,
     LanguageSelect,
+    SettingsSection,
     AppIcon,
   ],
   templateUrl: './text-editor-settings.html',
@@ -169,35 +166,7 @@ export class TextEditorSettingsSection {
   ];
 
   /**
-   * Gets the options offered by the current-line-highlight dropdown.
-   */
-  protected readonly highlightOptions: readonly DropdownOption[] = [
-    { value: 'outline', label: 'Outline' },
-    { value: 'filled', label: 'Filled' },
-  ];
-
-  /**
-   * Gets the options offered by the cursor-blinking dropdown.
-   */
-  protected readonly cursorBlinkingOptions: readonly DropdownOption[] = [
-    { value: 'blink', label: 'Blink' },
-    { value: 'smooth', label: 'Smooth' },
-    { value: 'phase', label: 'Phase' },
-    { value: 'expand', label: 'Expand' },
-    { value: 'solid', label: 'Solid (no blink)' },
-  ];
-
-  /**
-   * Gets the options offered by the smooth-caret-animation dropdown.
-   */
-  protected readonly cursorSmoothCaretAnimationOptions: readonly DropdownOption[] = [
-    { value: 'off', label: 'Off' },
-    { value: 'on', label: 'On' },
-    { value: 'explicit', label: 'Explicit (only on jumps)' },
-  ];
-
-  /**
-   * Gets the options offered by the brace-style dropdown.
+   * Gets the options offered by the brace-style dropdown (the per-profile override).
    */
   protected readonly braceStyleOptions: readonly DropdownOption[] = [
     { value: 'kr', label: 'K&R' },
@@ -225,78 +194,6 @@ export class TextEditorSettingsSection {
     'yaml',
     'shell',
   ];
-
-  /**
-   * Sets a boolean global text editor setting.
-   * @param key The setting to set.
-   * @param value The new value.
-   */
-  protected onGlobalToggle(key: BooleanSettingKey, value: boolean): void {
-    this.settings.updateTextEditorSettings({ [key]: value });
-  }
-
-  /**
-   * Sets the global current-line-highlight style.
-   * @param value The selected highlight style.
-   */
-  protected onHighlightChange(value: string): void {
-    this.settings.updateTextEditorSettings({
-      currentLineHighlight: value as CurrentLineHighlightStyle,
-    });
-  }
-
-  /**
-   * Sets the global cursor blinking style.
-   * @param value The selected blinking style.
-   */
-  protected onCursorBlinkingChange(value: string): void {
-    this.settings.updateTextEditorSettings({
-      cursorBlinking: value as CursorBlinkingStyle,
-    });
-  }
-
-  /**
-   * Sets the global smooth caret animation mode.
-   * @param value The selected animation mode.
-   */
-  protected onCursorSmoothCaretAnimationChange(value: string): void {
-    this.settings.updateTextEditorSettings({
-      cursorSmoothCaretAnimation: value as CursorSmoothCaretAnimation,
-    });
-  }
-
-  /**
-   * Sets the global brace placement style.
-   * @param value The selected brace style.
-   */
-  protected onBraceStyleChange(value: string): void {
-    this.settings.updateTextEditorSettings({ braceStyle: value as BraceStyle });
-  }
-
-  /**
-   * Sets the global editor font family.
-   * @param value The entered font family.
-   */
-  protected onFontFamilyChange(value: string): void {
-    this.settings.updateTextEditorSettings({ fontFamily: value });
-  }
-
-  /**
-   * Sets the global editor font size.
-   * @param value The entered font size.
-   */
-  protected onFontSizeChange(value: number): void {
-    this.settings.updateTextEditorSettings({ fontSize: value });
-  }
-
-  /**
-   * Sets a numeric global text editor setting.
-   * @param key The setting to set.
-   * @param value The new value.
-   */
-  protected onGlobalNumberChange(key: NumberSettingKey, value: number): void {
-    this.settings.updateTextEditorSettings({ [key]: value });
-  }
 
   /**
    * Creates a new, empty editor profile.
