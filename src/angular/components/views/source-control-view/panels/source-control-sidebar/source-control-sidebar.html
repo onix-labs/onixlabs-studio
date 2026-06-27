@@ -11,82 +11,43 @@
   }
 </button>
 
-<section class="rail__section">
-  <header class="rail__section-header">
-    <app-icon [icon]="Icon.SOURCE_CONTROL" />
-    <span>Branches</span>
-  </header>
-  @for (branch of repository.branches(); track branch.name) {
-    <div class="rail__item" [class.rail__item--current]="branch.current">
-      <button type="button" class="rail__item-main" (click)="selectBranch(branch)">
-        <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
-        <span class="rail__item-label">{{ branch.name }}</span>
-        @if (branch.ahead > 0) {
-          <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
-        }
-        @if (branch.behind > 0) {
-          <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
-        }
-      </button>
+<app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
+  <ng-template let-row>
+    @let node = nodeOf(row);
+    <app-icon
+      class="tree-icon"
+      [class.tree-icon--folder]="node.kind === 'section'"
+      [icon]="node.icon"
+    />
+    <span
+      class="tree-name"
+      [class.rail__section-name]="node.kind === 'section'"
+      [class.rail__muted]="node.muted"
+    >
+      {{ node.label }}
+    </span>
+
+    @if (node.branch; as branch) {
+      @if (branch.ahead > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
+      }
+      @if (branch.behind > 0) {
+        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
+      }
       @if (!branch.current) {
         <button
           type="button"
-          class="rail__item-action"
+          class="tree-row-action rail__item-action"
           aria-label="Check out branch"
-          (click)="checkout(branch)"
+          (click)="checkout(branch); $event.stopPropagation()"
         >
           <app-icon [icon]="Icon.CHECK" />
         </button>
       }
-    </div>
-  }
-</section>
-
-<section class="rail__section">
-  <header class="rail__section-header">
-    <app-icon [icon]="Icon.CLOUD" />
-    <span>Remotes</span>
-  </header>
-  @for (remote of repository.remotes(); track remote.name) {
-    <div class="rail__item rail__item--static">
-      <app-icon class="rail__item-icon" [icon]="Icon.CLOUD" />
-      <span class="rail__item-label">{{ remote.name }}</span>
-    </div>
-    @for (branch of remote.branches; track branch) {
-      <div class="rail__item rail__item--static rail__item--nested">
-        <app-icon class="rail__item-icon" [icon]="Icon.SOURCE_CONTROL" />
-        <span class="rail__item-label">{{ branch }}</span>
-      </div>
     }
-  }
-</section>
 
-<section class="rail__section">
-  <header class="rail__section-header">
-    <app-icon [icon]="Icon.TAG" />
-    <span>Tags</span>
-  </header>
-  @for (tag of repository.tags(); track tag.name) {
-    <button type="button" class="rail__item" (click)="repository.selectNode(tag.commit)">
-      <app-icon class="rail__item-icon" [icon]="Icon.TAG" />
-      <span class="rail__item-label">{{ tag.name }}</span>
-    </button>
-  } @empty {
-    <p class="rail__empty">No tags</p>
-  }
-</section>
-
-<section class="rail__section">
-  <header class="rail__section-header">
-    <app-icon [icon]="Icon.STASH" />
-    <span>Stashes</span>
-  </header>
-  @for (stash of repository.stashes(); track stash.index) {
-    <div class="rail__item rail__item--static">
-      <app-icon class="rail__item-icon" [icon]="Icon.STASH" />
-      <span class="rail__item-label">{{ stash.message }}</span>
-    </div>
-  } @empty {
-    <p class="rail__empty">No stashes</p>
-  }
-</section>
+    @if (node.status; as status) {
+      <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+    }
+  </ng-template>
+</app-tree-view>

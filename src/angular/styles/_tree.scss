@@ -6,7 +6,7 @@
 
 app-tree-view {
   display: block;
-  block-size: 100%;
+  flex: 1 1 auto;
   min-block-size: 0;
 }
 
@@ -45,6 +45,23 @@ app-tree-view {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
   }
+}
+
+// A trailing per-row control (e.g. a checkout button) projected into a row's content. Hidden until the
+// row is hovered or something inside it takes focus, so the action only appears when it is reachable.
+// This lives globally because the row is the TreeView component's element while the action is the
+// consumer's projected content, so the hover relationship crosses an encapsulation boundary.
+.tree-row-action {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition:
+    opacity 120ms ease-in-out,
+    var(--hover-transition);
+}
+
+.tree-row:hover .tree-row-action,
+.tree-row:focus-within .tree-row-action {
+  opacity: 1;
 }
 
 .tree-chevron {

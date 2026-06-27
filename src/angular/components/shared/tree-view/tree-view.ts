@@ -105,4 +105,14 @@ export class TreeView {
   protected indentFor(depth: number): number {
     return BASE_INDENT + depth * INDENT_STEP;
   }
+
+  /**
+   * Activates a row from the keyboard (Enter or Space), suppressing the default scroll on Space.
+   * @param event The keyboard event.
+   * @param row The row to activate.
+   */
+  protected activate(event: Event, row: TreeRow): void {
+    event.preventDefault();
+    this.rowClick.emit(row);
+  }
 }

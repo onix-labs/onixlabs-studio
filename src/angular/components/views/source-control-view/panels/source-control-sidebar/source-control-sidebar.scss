@@ -1,53 +1,49 @@
+// The source-control view's left rail: a pinned uncommitted-changes entry above the repository tree.
+// The tree rows themselves are the shared TreeView look (see the global `_tree.scss`); this file styles
+// the pinned entry and the rail-specific bits projected into each row (section labels, branch deltas,
+// the hover checkout action, status badges). Colours come from the shipped dock/accent tokens so the
+// rail tracks the active theme and accent.
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
-  overflow-y: auto;
-  padding: 0.5rem;
+  min-block-size: 0;
   background: var(--body-background-color);
   color: var(--body-foreground-color);
   font-size: 0.8rem;
 }
 
-// Shared row chrome for the working entry and every list item.
-%row {
+// The uncommitted-changes entry: full width with a bottom accent-border divider and a little more
+// height, pinned above the scrolling tree.
+.rail__working {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  flex: 0 0 auto;
   inline-size: 100%;
-  padding: 0.35rem 0.5rem;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
+  padding: 0.6rem;
+  border: 0;
+  border-block-end: 0.0625rem solid var(--accent-color);
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: start;
-}
-
-%row-interactive {
-  cursor: pointer;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
-.rail__working {
-  @extend %row;
-  @extend %row-interactive;
-  margin-block-end: 0.6rem;
   font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  &:focus-visible {
+    background: var(--dock-title-background-color--focused);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
 
   &--active {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
+    background: color-mix(in srgb, var(--accent-color) 22%, transparent);
     color: var(--accent-surface-foreground-color);
   }
 }
@@ -70,78 +66,47 @@
   text-align: center;
 }
 
-.rail__section {
-  margin-block-end: 0.75rem;
-}
-
-.rail__section-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
-  color: var(--form-muted-foreground-color);
+// A section-header row's label: uppercase, muted, and tracked, like the original rail headings.
+.tree-name.rail__section-name {
   font-size: 0.68rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--form-muted-foreground-color);
 }
 
-.rail__item {
-  @extend %row;
-
-  &:not(.rail__item--static) {
-    @extend %row-interactive;
-  }
-
-  &--current {
-    font-weight: 600;
-    color: var(--accent-surface-foreground-color);
-  }
-
-  &--nested {
-    padding-inline-start: 1.5rem;
-    color: var(--form-muted-foreground-color);
-  }
+// An empty-section placeholder row's label.
+.tree-name.rail__muted {
+  color: var(--form-muted-foreground-color);
+  font-style: italic;
 }
 
-// The clickable portion of a branch row, beside its hover-revealed checkout action.
-.rail__item-main {
-  display: flex;
+// A branch row's ahead/behind delta.
+.rail__delta {
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
+  gap: 0.1rem;
+  margin-inline-start: 0.35rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
 }
 
+// The hover-revealed checkout action on a non-current branch row. Reveal-on-hover lives in the global
+// tree styles (`.tree-row-action`); this is its visual treatment.
 .rail__item-action {
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   inline-size: 1.5rem;
   block-size: 1.5rem;
-  background: transparent;
+  margin-inline-start: 0.25rem;
   border: 0;
   border-radius: calc(0.3rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
+  background: transparent;
   color: var(--form-muted-foreground-color);
   cursor: pointer;
-  opacity: 0;
-  transition:
-    opacity 120ms ease-in-out,
-    var(--hover-transition);
-
-  .rail__item:hover &,
-  .rail__item:focus-within & {
-    opacity: 1;
-  }
 
   &:hover,
   &:focus-visible {
@@ -151,34 +116,25 @@
   }
 }
 
-.rail__item-icon {
-  color: var(--form-muted-foreground-color);
+// A pull-request or action status badge, pushed to the trailing edge of the row.
+.rail__status {
   flex: 0 0 auto;
-
-  .rail__item--current & {
-    color: var(--accent-color);
-  }
-}
-
-.rail__item-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rail__delta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
   margin-inline-start: auto;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-}
+  padding-inline-start: 0.35rem;
 
-.rail__empty {
-  margin: 0;
-  padding: 0.2rem 0.5rem;
-  color: var(--form-muted-foreground-color);
-  font-style: italic;
+  &--succeeded {
+    color: var(--accent-green);
+  }
+
+  &--failed {
+    color: var(--accent-pink);
+  }
+
+  &--running {
+    color: var(--accent-orange);
+  }
+
+  &--available {
+    color: var(--form-muted-foreground-color);
+  }
 }
