@@ -354,7 +354,7 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Binds the scoped repository (lazily, on first use) then reveals the reused commit panel in this
-   * tab's dock.
+   * tab's dock, tabbed into the agent panel's group (falling back to the file explorer's group).
    * @returns Returns a promise that resolves once the panel has been revealed (or the bind failed).
    */
   private async revealCommit(): Promise<void> {
@@ -372,9 +372,11 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.commitRegistered = true;
     }
     if (!collectPanelIds(this.dockState.layout()).includes('commit')) {
-      const filesStack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'files');
-      if (filesStack !== null) {
-        this.dockState.tabInto(filesStack.id, 'commit');
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'agent') ??
+        findStackOfPanel(this.dockState.layout(), 'files');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, 'commit');
       }
     }
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'commit');

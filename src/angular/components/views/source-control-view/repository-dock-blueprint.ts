@@ -11,8 +11,8 @@ import { SourceControlSidebar } from './panels/source-control-sidebar/source-con
  * The blueprint specialising a dock instance as a source-control (repository) surface. The Repository
  * rail (branches, remotes, tags, stashes) sits on the far left; the centre column holds the diff
  * document well on top with the History graph and a terminal tabbed together beneath it; the right
- * column stacks the Commit detail over an agent conversation. Every panel is dockable, so the user can
- * rearrange or float them.
+ * column tabs the Commit detail together with an agent conversation. Every panel is dockable, so the
+ * user can rearrange or float them.
  */
 export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
   createLayout(): DockNode {
@@ -21,7 +21,7 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       [
         mkStack('tool', ['branches']),
         mkSplit('col', [mkStack('document', []), mkStack('tool', ['history', 'terminal'])], [3, 2]),
-        mkSplit('col', [mkStack('tool', ['commit']), mkStack('tool', ['agent'])], [1, 1]),
+        mkStack('tool', ['commit', 'agent']),
       ],
       [1.2, 3.4, 1.6],
     );
