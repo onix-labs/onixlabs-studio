@@ -109,7 +109,9 @@ export class DotnetProjectSystem implements ProjectSystem {
     if (files.length === 0) {
       return null;
     }
-    const tree: readonly ProjectNode[] = files.map((file: string): ProjectNode => this.toNode(file));
+    const tree: readonly ProjectNode[] = files.map(
+      (file: string): ProjectNode => this.toNode(file),
+    );
     return { kind: this.kind, root, solution: null, projects: this.flatten(tree), tree };
   }
 
@@ -190,7 +192,9 @@ export class DotnetProjectSystem implements ProjectSystem {
         { maxBuffer: ITEM_QUERY_BUFFER },
       );
       const parsed: { Properties?: { TargetFramework?: string; TargetFrameworks?: string } } =
-        JSON.parse(stdout) as { Properties?: { TargetFramework?: string; TargetFrameworks?: string } };
+        JSON.parse(stdout) as {
+          Properties?: { TargetFramework?: string; TargetFrameworks?: string };
+        };
       const single: string = parsed.Properties?.TargetFramework?.trim() ?? '';
       if (single.length > 0) {
         return single;
@@ -225,8 +229,9 @@ export class DotnetProjectSystem implements ProjectSystem {
       const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
         maxBuffer: ITEM_QUERY_BUFFER,
       });
-      const parsed: { Items?: Record<string, { Identity?: string; Link?: string }[]> } =
-        JSON.parse(stdout) as { Items?: Record<string, { Identity?: string; Link?: string }[]> };
+      const parsed: { Items?: Record<string, { Identity?: string; Link?: string }[]> } = JSON.parse(
+        stdout,
+      ) as { Items?: Record<string, { Identity?: string; Link?: string }[]> };
       const items: { identity: string; link: string }[] = [];
       for (const type of ITEM_TYPES) {
         for (const item of parsed.Items?.[type] ?? []) {
@@ -254,15 +259,23 @@ export class DotnetProjectSystem implements ProjectSystem {
     items: readonly { identity: string; link: string }[],
   ): readonly ProjectItemNode[] {
     const directory: string = path.dirname(projectPath);
-    const root: ItemFolder = { folders: new Map<string, ItemFolder>(), files: new Map<string, string>() };
+    const root: ItemFolder = {
+      folders: new Map<string, ItemFolder>(),
+      files: new Map<string, string>(),
+    };
     const seen: Set<string> = new Set<string>();
     for (const item of items) {
-      const logical: string = (item.link.length > 0 ? item.link : item.identity).replace(/\\/g, '/');
+      const logical: string = (item.link.length > 0 ? item.link : item.identity).replace(
+        /\\/g,
+        '/',
+      );
       if (seen.has(logical)) {
         continue;
       }
       seen.add(logical);
-      const segments: string[] = logical.split('/').filter((segment: string): boolean => segment.length > 0);
+      const segments: string[] = logical
+        .split('/')
+        .filter((segment: string): boolean => segment.length > 0);
       // A path that climbs out of the project (a linked file with no Link metadata) is shown at the root.
       const placement: string[] = logical.startsWith('../') ? segments.slice(-1) : segments;
       const absolute: string = path.resolve(directory, item.identity.replace(/\\/g, '/'));
@@ -310,7 +323,13 @@ export class DotnetProjectSystem implements ProjectSystem {
       );
     const files: ProjectItemNode[] = [...folder.files.entries()]
       .sort((a: [string, string], b: [string, string]): number => a[0].localeCompare(b[0]))
-      .map(([name, filePath]: [string, string]): ProjectItemNode => ({ type: 'file', name, path: filePath }));
+      .map(
+        ([name, filePath]: [string, string]): ProjectItemNode => ({
+          type: 'file',
+          name,
+          path: filePath,
+        }),
+      );
     return [...folders, ...files];
   }
 
@@ -357,47 +376,88 @@ export class DotnetProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Parses the XML `.slnx` solution format into a tree, preserving its solution folders.
+   * Parses the XML `.slnx` solution format into a tree, preserving its solution folders. Folders are
+   * declared as flat elements whose hierarchy is encoded in a slash-delimited `Name` path (for example
+   * `/Core/Abstractions/`), so each name is split into segments and nested under shared parents, and a
+   * folder's projects are attached to its deepest segment.
    * @param content The file content.
    * @param directory The solution's directory, project paths are resolved against.
    * @returns Returns the tree of folders and projects.
    */
   private parseSlnx(content: string, directory: string): readonly ProjectNode[] {
     const root: { children: ProjectNode[] } = { children: [] };
-    const stack: { children: ProjectNode[] }[] = [root];
-    // Walk the Folder/Project tags in order, maintaining a stack of the open folders so a project is
-    // attached to the folder it sits in. The format is simple, well-formed XML, so a tag scan suffices.
-    const tags: RegExpMatchArray[] = [...content.matchAll(/<(\/?)(Folder|Project)\b([^>]*?)(\/?)>/g)];
+    const byPath: Map<string, { children: ProjectNode[] }> = new Map<
+      string,
+      { children: ProjectNode[] }
+    >();
+    // Walk the Folder/Project tags in order, tracking the open folder's path so a project is attached to
+    // the folder it sits in. The format is simple, well-formed XML, so a tag scan suffices.
+    const open: string[] = [];
+    const tags: RegExpMatchArray[] = [
+      ...content.matchAll(/<(\/?)(Folder|Project)\b([^>]*?)(\/?)>/g),
+    ];
     for (const tag of tags) {
       const closing: boolean = tag[1] === '/';
       const element: string = tag[2];
       const attributes: string = tag[3];
       const selfClosing: boolean = tag[4] === '/';
-      const parent: { children: ProjectNode[] } = stack[stack.length - 1];
       if (element === 'Project') {
         const relative: string | null = this.attribute(attributes, 'Path');
         if (relative !== null) {
+          const parent: { children: ProjectNode[] } =
+            open.length > 0 ? this.ensureFolder(root, byPath, open[open.length - 1]) : root;
           parent.children.push(this.toNode(this.resolve(directory, relative)));
         }
         continue;
       }
       if (closing) {
-        if (stack.length > 1) {
-          stack.pop();
-        }
+        open.pop();
         continue;
       }
-      const folder: ProjectNode & { type: 'folder'; children: ProjectNode[] } = {
-        type: 'folder',
-        name: this.folderName(this.attribute(attributes, 'Name') ?? ''),
-        children: [],
-      };
-      parent.children.push(folder);
+      const name: string = this.attribute(attributes, 'Name') ?? '';
+      this.ensureFolder(root, byPath, name);
       if (!selfClosing) {
-        stack.push(folder);
+        open.push(name);
       }
     }
     return root.children;
+  }
+
+  /**
+   * Resolves the folder a slash-delimited `.slnx` folder path names, creating the nested folder chain on
+   * the way down and reusing any segment already created by an earlier declaration, so folders shared
+   * across declarations (an empty parent and its later-populated children) become one node.
+   * @param root The synthetic tree root the top-level folders hang from.
+   * @param byPath The folders created so far, keyed by their normalised cumulative path.
+   * @param name The raw folder path (for example `/Core/Abstractions/`).
+   * @returns Returns the deepest folder named by the path, or the root when the path is empty.
+   */
+  private ensureFolder(
+    root: { children: ProjectNode[] },
+    byPath: Map<string, { children: ProjectNode[] }>,
+    name: string,
+  ): { children: ProjectNode[] } {
+    const segments: string[] = name
+      .split('/')
+      .filter((segment: string): boolean => segment.length > 0);
+    let parent: { children: ProjectNode[] } = root;
+    let cumulative: string = '';
+    for (const segment of segments) {
+      cumulative += `/${segment}`;
+      let node: { children: ProjectNode[] } | undefined = byPath.get(cumulative);
+      if (node === undefined) {
+        const folder: ProjectNode & { type: 'folder'; children: ProjectNode[] } = {
+          type: 'folder',
+          name: segment,
+          children: [],
+        };
+        parent.children.push(folder);
+        node = folder;
+        byPath.set(cumulative, node);
+      }
+      parent = node;
+    }
+    return parent;
   }
 
   /**
@@ -429,15 +489,6 @@ export class DotnetProjectSystem implements ProjectSystem {
   private attribute(attributes: string, name: string): string | null {
     const match: RegExpExecArray | null = new RegExp(`${name}="([^"]*)"`).exec(attributes);
     return match === null ? null : match[1];
-  }
-
-  /**
-   * Normalises a solution-folder name (the `.slnx` format wraps names in slashes, e.g. `/Core/`).
-   * @param name The raw folder name.
-   * @returns Returns the trimmed name.
-   */
-  private folderName(name: string): string {
-    return name.replace(/^\/+|\/+$/g, '');
   }
 
   /**
