@@ -168,6 +168,17 @@
   }
 }
 
+// A non-actionable placeholder row (e.g. an empty menu's "No actions yet"): muted and inert.
+.dock-panel-menu__item--muted {
+  color: var(--form-muted-foreground-color);
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    background: transparent;
+  }
+}
+
 // The status strip's language-server drop-up. It reuses the popup-menu surface but lists servers
 // (not actions), so each row pairs the server's name and live state with a restart button rather
 // than being a single activatable menu item.

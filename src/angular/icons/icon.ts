@@ -761,6 +761,21 @@ export class Icon {
   public static readonly CARET_RIGHT_FILL: Icon = new Icon('ph-fill ph-caret-right');
 
   /**
+   * Gets the bold plus-square glyph used to expand every node in a tree.
+   */
+  public static readonly PLUS_SQUARE: Icon = new Icon('ph-bold ph-plus-square');
+
+  /**
+   * Gets the bold minus-square glyph used to collapse every node in a tree.
+   */
+  public static readonly MINUS_SQUARE: Icon = new Icon('ph-bold ph-minus-square');
+
+  /**
+   * Gets the bold three-dots glyph used to open an overflow menu of further actions.
+   */
+  public static readonly DOTS_THREE: Icon = new Icon('ph-bold ph-dots-three');
+
+  /**
    * Initialises a new instance of the {@link Icon} class.
    * @param classList The CSS class list that renders the icon.
    */

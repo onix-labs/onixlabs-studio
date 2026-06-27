@@ -61,7 +61,8 @@ export interface SolutionRow {
   readonly expanded: boolean;
 
   /**
-   * Holds whether the row shows a loading spinner (a project, while its own contents load).
+   * Holds whether the row shows a loading spinner: a project while its own contents load, and a folder
+   * or the solution root while any project beneath it is still loading.
    */
   readonly loading: boolean;
 
@@ -121,6 +122,12 @@ export class SolutionModel {
   >(new Set<string>());
 
   /**
+   * Holds the active search query. While non-empty the tree is filtered to the rows whose label
+   * contains it (and their ancestors), with the matching branches force-expanded.
+   */
+  private readonly searchQuery: WritableSignal<string> = signal<string>('');
+
+  /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
    * does not apply its results.
    */
@@ -132,6 +139,11 @@ export class SolutionModel {
   public readonly model: Signal<ProjectModel | null> = this.current.asReadonly();
 
   /**
+   * Gets the active search query, exposed so the panel can highlight the matched text.
+   */
+  public readonly query: Signal<string> = this.searchQuery.asReadonly();
+
+  /**
    * Gets the flattened, visible rows of the solution tree.
    */
   public readonly rows: Signal<readonly SolutionRow[]> = computed((): readonly SolutionRow[] => {
@@ -139,13 +151,22 @@ export class SolutionModel {
     if (model === null) {
       return [];
     }
-    const expanded: boolean = this.expandedKeys().has(ROOT_KEY);
-    // The root shows its full structure immediately; spinners live on the individual projects.
+    // While searching, the root is force-expanded so the matches it nests show.
+    const query: string = this.searchQuery().trim().toLowerCase();
+    const filtering: boolean = query.length > 0;
+    const expanded: boolean = filtering || this.expandedKeys().has(ROOT_KEY);
+    // The root shows its full structure immediately, and spins while any project anywhere beneath it is
+    // still loading (each project and the folders above it carry the same aggregate spinner).
+    const loading: boolean = this.loadingProjects().size > 0;
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, false, null),
+      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, loading, null),
     ];
     if (expanded) {
-      this.appendNodes(model.tree, 1, '', rows);
+      if (filtering) {
+        this.appendNodesFiltered(model.tree, 1, '', rows, query);
+      } else {
+        this.appendNodes(model.tree, 1, '', rows);
+      }
     }
     return rows;
   });
@@ -176,6 +197,32 @@ export class SolutionModel {
       next.add(row.key);
     }
     this.expandedKeys.set(next);
+  }
+
+  /**
+   * Sets the search query that filters the tree, or clears it when empty.
+   * @param value The query text.
+   */
+  public setQuery(value: string): void {
+    this.searchQuery.set(value);
+  }
+
+  /**
+   * Expands every node in the tree, so the whole structure is revealed.
+   */
+  public expandAll(): void {
+    const model: ProjectModel | null = this.current();
+    if (model !== null) {
+      this.expandedKeys.set(this.allExpandableKeys(model));
+    }
+  }
+
+  /**
+   * Collapses every node in the tree, leaving only the solution root expanded so its top-level items
+   * stay visible.
+   */
+  public collapseAll(): void {
+    this.expandedKeys.set(new Set<string>([ROOT_KEY]));
   }
 
   /**
@@ -210,6 +257,7 @@ export class SolutionModel {
   private reset(model: ProjectModel | null): void {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
+    this.searchQuery.set('');
     // Reveal the structure immediately; each project shows its own spinner while it loads.
     const loading: Set<string> = new Set<string>();
     const expanded: Set<string> = new Set<string>();
@@ -324,7 +372,9 @@ export class SolutionModel {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const expanded: boolean = this.expandedKeys().has(key);
-        rows.push(this.row(key, depth, node.name, 'folder', true, expanded, false, null));
+        // The folder spins while any project beneath it is still loading.
+        const loading: boolean = this.nodesLoading(node.children);
+        rows.push(this.row(key, depth, node.name, 'folder', true, expanded, loading, null));
         if (expanded) {
           this.appendNodes(node.children, depth + 1, key, rows);
         }
@@ -361,6 +411,20 @@ export class SolutionModel {
   }
 
   /**
+   * Determines whether any project beneath a run of nodes is still loading, so a folder (and the root)
+   * can carry the aggregate spinner until all of its projects have finished.
+   * @param nodes The nodes to scan.
+   * @returns Returns true when at least one descendant project is still loading.
+   */
+  private nodesLoading(nodes: readonly ProjectNode[]): boolean {
+    return nodes.some((node: ProjectNode): boolean =>
+      node.type === 'project'
+        ? this.loadingProjects().has(node.path)
+        : this.nodesLoading(node.children),
+    );
+  }
+
+  /**
    * Appends the rows for a run of project-item nodes (folders and files), recursing into the expanded
    * folders.
    * @param nodes The item nodes to append.
@@ -388,6 +452,161 @@ export class SolutionModel {
         );
       }
     }
+  }
+
+  /**
+   * Appends the filtered rows for a run of solution nodes: a node is kept when its own name matches the
+   * query or any of its descendants do, and a kept folder or project is force-expanded so its matching
+   * descendants show. Ordering matches the unfiltered tree (folders first, each ascending).
+   * @param nodes The nodes to append.
+   * @param depth The nodes' depth.
+   * @param parentKey The key prefix of the nodes' parent.
+   * @param rows The list the rows are appended to.
+   * @param query The lower-cased search query.
+   * @returns Returns true when any row was appended (the run held a match).
+   */
+  private appendNodesFiltered(
+    nodes: readonly ProjectNode[],
+    depth: number,
+    parentKey: string,
+    rows: SolutionRow[],
+    query: string,
+  ): boolean {
+    let matched: boolean = false;
+    for (const node of this.ordered(nodes)) {
+      if (node.type === 'folder') {
+        const key: string = `${parentKey}/${node.name}`;
+        const childRows: SolutionRow[] = [];
+        const childMatched: boolean = this.appendNodesFiltered(
+          node.children,
+          depth + 1,
+          key,
+          childRows,
+          query,
+        );
+        if (this.matches(node.name, query) || childMatched) {
+          const loading: boolean = this.nodesLoading(node.children);
+          rows.push(this.row(key, depth, node.name, 'folder', true, childMatched, loading, null));
+          rows.push(...childRows);
+          matched = true;
+        }
+      } else {
+        const key: string = `project:${node.path}`;
+        const loading: boolean = this.loadingProjects().has(node.path);
+        const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
+        const childRows: SolutionRow[] = [];
+        const childMatched: boolean =
+          items !== undefined &&
+          this.appendItemsFiltered(items.tree, depth + 1, key, childRows, query);
+        if (this.matches(node.name, query) || childMatched) {
+          rows.push(
+            this.row(key, depth, node.name, 'project', !loading, childMatched, loading, node.path),
+          );
+          rows.push(...childRows);
+          matched = true;
+        }
+      }
+    }
+    return matched;
+  }
+
+  /**
+   * Appends the filtered rows for a run of project-item nodes: a file is kept when its name matches, and
+   * a folder is kept (and force-expanded) when its name matches or any descendant does.
+   * @param nodes The item nodes to append.
+   * @param depth The nodes' depth.
+   * @param parentKey The key prefix of the nodes' parent.
+   * @param rows The list the rows are appended to.
+   * @param query The lower-cased search query.
+   * @returns Returns true when any row was appended (the run held a match).
+   */
+  private appendItemsFiltered(
+    nodes: readonly ProjectItemNode[],
+    depth: number,
+    parentKey: string,
+    rows: SolutionRow[],
+    query: string,
+  ): boolean {
+    let matched: boolean = false;
+    for (const node of nodes) {
+      if (node.type === 'folder') {
+        const key: string = `${parentKey}/${node.name}`;
+        const childRows: SolutionRow[] = [];
+        const childMatched: boolean = this.appendItemsFiltered(
+          node.children,
+          depth + 1,
+          key,
+          childRows,
+          query,
+        );
+        if (this.matches(node.name, query) || childMatched) {
+          rows.push(
+            this.row(key, depth, node.name, 'item-folder', true, childMatched, false, null),
+          );
+          rows.push(...childRows);
+          matched = true;
+        }
+      } else if (this.matches(node.name, query)) {
+        rows.push(
+          this.row(`file:${node.path}`, depth, node.name, 'file', false, false, false, node.path),
+        );
+        matched = true;
+      }
+    }
+    return matched;
+  }
+
+  /**
+   * Determines whether a label matches the search query (a case-insensitive substring).
+   * @param label The row label.
+   * @param query The lower-cased search query.
+   * @returns Returns true when the label contains the query.
+   */
+  private matches(label: string, query: string): boolean {
+    return label.toLowerCase().includes(query);
+  }
+
+  /**
+   * Collects the keys of every expandable row in the tree — the root, every solution folder and project,
+   * and every loaded project's item folders — so expanding all reveals the whole structure.
+   * @param model The model to walk.
+   * @returns Returns the set of every expandable key.
+   */
+  private allExpandableKeys(model: ProjectModel): Set<string> {
+    const keys: Set<string> = new Set<string>([ROOT_KEY]);
+    const walkItems: (nodes: readonly ProjectItemNode[], parentKey: string) => void = (
+      nodes: readonly ProjectItemNode[],
+      parentKey: string,
+    ): void => {
+      for (const node of nodes) {
+        if (node.type === 'folder') {
+          const key: string = `${parentKey}/${node.name}`;
+          keys.add(key);
+          walkItems(node.children, key);
+        }
+      }
+    };
+    const walkNodes: (nodes: readonly ProjectNode[], parentKey: string) => void = (
+      nodes: readonly ProjectNode[],
+      parentKey: string,
+    ): void => {
+      for (const node of nodes) {
+        if (node.type === 'folder') {
+          const key: string = `${parentKey}/${node.name}`;
+          keys.add(key);
+          walkNodes(node.children, key);
+        } else {
+          const key: string = `project:${node.path}`;
+          keys.add(key);
+          const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
+          if (items !== undefined) {
+            walkItems(items.tree, key);
+          }
+        }
+      }
+    };
+    walkNodes(model.tree, '');
+    return keys;
   }
 
   /**

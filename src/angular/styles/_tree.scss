@@ -114,6 +114,13 @@ app-tree-view {
   }
 }
 
+// The matched run of a row label while a tree is being searched (the Solution Explorer's filter).
+.tree-name__match {
+  background: color-mix(in srgb, var(--accent-color) 35%, transparent);
+  color: inherit;
+  border-radius: 0.125rem;
+}
+
 // Spinner shown while a directory's or project's children load.
 .tree-loading {
   flex: 0 0 auto;

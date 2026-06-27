@@ -1,4 +1,45 @@
 @if (model(); as solution) {
+  <div class="solution-toolbar">
+    <input
+      class="solution-toolbar__search"
+      type="text"
+      [value]="query()"
+      (input)="onSearch($event)"
+      placeholder="Search solution"
+      aria-label="Search solution"
+    />
+    <div class="solution-toolbar__actions">
+      <button
+        type="button"
+        class="solution-toolbar__button"
+        title="Expand All"
+        aria-label="Expand All"
+        (click)="expandAll()"
+      >
+        <app-icon [icon]="Icon.PLUS_SQUARE" />
+      </button>
+      <button
+        type="button"
+        class="solution-toolbar__button"
+        title="Collapse All"
+        aria-label="Collapse All"
+        (click)="collapseAll()"
+      >
+        <app-icon [icon]="Icon.MINUS_SQUARE" />
+      </button>
+      <button
+        type="button"
+        class="solution-toolbar__button"
+        title="More Actions"
+        aria-label="More Actions"
+        [cdkMenuTriggerFor]="moreMenu"
+        [cdkMenuPosition]="moreMenuPosition"
+      >
+        <app-icon [icon]="Icon.DOTS_THREE" />
+      </button>
+    </div>
+  </div>
+
   <app-tree-view [rows]="rows()" (rowClick)="onRowClick($event)">
     <ng-template let-row>
       @let r = rowOf(row);
@@ -9,7 +50,15 @@
         [class.tree-icon--loading]="r.loading"
         [icon]="iconFor(r)"
       />
-      <span class="tree-name" [class.bold]="r.kind === 'solution'">{{ r.label }}</span>
+      <span class="tree-name" [class.bold]="r.kind === 'solution'">
+        @for (segment of segments(r.label); track $index) {
+          @if (segment.match) {
+            <mark class="tree-name__match">{{ segment.text }}</mark>
+          } @else {
+            {{ segment.text }}
+          }
+        }
+      </span>
 
       @if (statusFor(r.path); as status) {
         <span class="tree-status">{{ statusLetter(status) }}</span>
@@ -20,6 +69,19 @@
       }
     </ng-template>
   </app-tree-view>
+
+  <ng-template #moreMenu>
+    <div class="dock-panel-menu" cdkMenu>
+      <button
+        type="button"
+        class="dock-panel-menu__item dock-panel-menu__item--muted"
+        cdkMenuItem
+        cdkMenuItemDisabled
+      >
+        <span>No actions yet</span>
+      </button>
+    </div>
+  </ng-template>
 } @else {
   <div class="tree-empty">
     <p>No solution or projects detected in this folder.</p>
