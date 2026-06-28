@@ -20,7 +20,7 @@
 
       @switch (selectedSection()) {
         @case ('appearance') {
-          <app-appearance-settings />
+          <app-settings-section sectionId="appearance" />
         }
         @case ('application') {
           <app-settings-section sectionId="application" />
@@ -46,5 +46,14 @@
         }
       }
     </section>
+
+    @if (restartRequired()) {
+      <div class="settings__restart" role="status">
+        <span>Some settings require a restart to take effect.</span>
+        <button type="button" class="settings__restart-action" (click)="relaunch()">
+          Relaunch now
+        </button>
+      </div>
+    }
   </div>
 </div>

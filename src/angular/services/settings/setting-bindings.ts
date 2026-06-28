@@ -1,5 +1,6 @@
 import { computed, inject, Injector, Service, signal, Signal } from '@angular/core';
 import type { ImageSourcePolicy } from '../../../shared/security-types';
+import { Display } from '../display/display';
 import { LspSettings } from '../lsp/lsp-settings';
 import { Security } from '../security/security';
 import { AccentColor, Theme, ThemeMode } from '../theme/theme';
@@ -28,14 +29,21 @@ export interface SettingBinding {
    * outside Electron), or undefined when always enabled.
    */
   readonly disabled?: Signal<boolean>;
+
+  /**
+   * Gets whether a change to this setting is awaiting an application restart to take effect, for
+   * restart-gated settings. Undefined when the setting does not require a restart. The settings view
+   * aggregates these into a single restart banner.
+   */
+  readonly restartPending?: Signal<boolean>;
 }
 
 /**
  * Resolves a {@link SettingBinding} for a setting key, routing to the service that owns the value.
  *
- * Settings-owned keys bind to the Settings store; foreign owners (Security, LSP — and, in future,
- * Theme and Display) bind to their own services. This is what lets the generic renderer drive
- * settings that do not live in the Settings store, without the renderer knowing about those services.
+ * Settings-owned keys bind to the Settings store; foreign owners (Theme, Display, Security, LSP) bind
+ * to their own services. This is what lets the generic renderer drive settings that do not live in the
+ * Settings store, without the renderer knowing about those services.
  */
 @Service()
 export class SettingBindings {
@@ -60,6 +68,8 @@ export class SettingBindings {
     switch (owner) {
       case 'theme':
         return this.themeBinding(key);
+      case 'display':
+        return this.displayBinding();
       case 'security':
         return this.securityBinding();
       case 'lsp':
@@ -67,6 +77,22 @@ export class SettingBindings {
       default:
         return this.settingsBinding(key);
     }
+  }
+
+  /**
+   * Builds a binding backed by the Display service (the hardware-acceleration preference). The value
+   * is owned by the main process (it sets the GPU flag at launch), so a change reports as pending a
+   * restart until the application relaunches.
+   * @returns Returns the binding.
+   */
+  private displayBinding(): SettingBinding {
+    const display: Display = this.injector.get(Display);
+    return {
+      value: display.hardwareAccelerationEnabled,
+      set: (value: unknown): void => display.setHardwareAcceleration(value as boolean),
+      disabled: signal(!display.isAvailable).asReadonly(),
+      restartPending: display.restartRequired,
+    };
   }
 
   /**

@@ -33,6 +33,12 @@ export class Display {
   private readonly api: DisplayApi | undefined = window.studio?.display;
 
   /**
+   * Gets whether the display bridge is available (true when running inside Electron). Hardware
+   * acceleration can only be changed when it is.
+   */
+  public readonly isAvailable: boolean = this.api !== undefined;
+
+  /**
    * Holds whether the active GPU is flagged as likely to render the heavier effects poorly. Used to
    * resolve the automatic mode and to label the recommendation in the settings hint.
    */

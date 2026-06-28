@@ -73,9 +73,11 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenAppearanceSection_rendersThemeOwnedRowsAndSwatches', async () => {
+    // Accent, theme, ribbon alignment, modern UI features, hardware acceleration.
     const element: HTMLElement = await render('appearance');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(4);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
     expect(element.querySelectorAll('.swatch').length).toBe(8);
+    expect(element.querySelector('app-toggle')).toBeTruthy();
   });
 
   it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {

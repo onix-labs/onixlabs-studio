@@ -175,6 +175,13 @@ interface BaseSettingDef {
    * Used to drive the profile override editor from the registry.
    */
   readonly profileOverridable?: boolean;
+
+  /**
+   * Gets a value indicating whether changing this setting requires an application restart to take
+   * effect. The settings view aggregates these into a single "restart required" banner; the setting's
+   * binding reports when a change is actually pending (see `SettingBinding.restartPending`).
+   */
+  readonly requiresRestart?: boolean;
 }
 
 /**
@@ -323,6 +330,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'auto',
+      },
+      {
+        key: 'display.hardwareAcceleration',
+        owner: 'display',
+        title: 'Hardware Acceleration',
+        description:
+          'Use the GPU to render the interface. Turning this off can fix rendering glitches on some graphics hardware, but may reduce smoothness. Changing it restarts the application.',
+        control: { kind: 'toggle' },
+        requiresRestart: true,
       },
     ],
   },

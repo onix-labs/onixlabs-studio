@@ -68,11 +68,54 @@
   }
 }
 
-// The right pane shows the selected section's controls.
+// The right pane shows the selected section's controls, with the restart banner pinned beneath them.
 .settings__content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-inline-size: 0;
+  overflow: hidden;
+}
+
+.settings__section {
+  flex: 1;
+  min-block-size: 0;
   overflow: auto;
+}
+
+// A single banner shown when any restart-gated setting has a pending change, with a relaunch action.
+.settings__restart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-block-start: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+  background: var(--settings-control-background-color);
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.settings__restart-action {
+  margin-inline-start: auto;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border: none;
+  border-radius: calc(0.45rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
 }
 
 .settings__section-title {
