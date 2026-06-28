@@ -10,18 +10,16 @@ import {
 import type {
   AiAuthStatus,
   AiModelInfo,
-  AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
   AiVerifyResult,
 } from '../../../../../../shared/ai-types';
 import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
 import { AiAuth } from '../../../../../services/ai-auth/ai-auth';
-import { Settings } from '../../../../../services/settings/settings';
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
-import { NumberField } from '../../../../forms/number-field/number-field';
 import { PasswordField } from '../../../../forms/password-field/password-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
+import { SettingControl } from '../../setting-control/setting-control';
 import { Icon } from '../../../../../icons/icon';
 import { AppIcon } from '../../../../shared/icon/app-icon';
 
@@ -34,7 +32,7 @@ import { AppIcon } from '../../../../shared/icon/app-icon';
  */
 @Component({
   selector: 'app-ai-settings',
-  imports: [SettingRow, Dropdown, NumberField, PasswordField, AppIcon],
+  imports: [SettingRow, Dropdown, PasswordField, AppIcon, SettingControl],
   templateUrl: './ai-settings.html',
   styleUrls: ['../section.scss', './ai-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,11 +42,6 @@ export class AiSettingsSection {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the settings service backing the persisted AI configuration.
-   */
-  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the engine service, the shared source of provider/model selection.
@@ -102,16 +95,6 @@ export class AiSettingsSection {
   protected readonly model: Signal<string> = this.engine.model;
 
   /**
-   * Gets the permission posture.
-   */
-  protected readonly posture: Signal<AiPermissionPosture> = this.settings.aiPermissionPosture;
-
-  /**
-   * Gets the per-request token cap (0 means no cap).
-   */
-  protected readonly tokenCap: Signal<number> = this.settings.aiTokenCap;
-
-  /**
    * Gets the API-key draft.
    */
   protected readonly apiKey: Signal<string> = this.apiKeyDraft.asReadonly();
@@ -152,15 +135,6 @@ export class AiSettingsSection {
   );
 
   /**
-   * Gets the permission-posture options for the posture dropdown.
-   */
-  protected readonly postureOptions: readonly DropdownOption[] = [
-    { value: 'prompt', label: 'Ask every time' },
-    { value: 'auto-edits', label: 'Auto-allow file edits' },
-    { value: 'auto-all', label: 'Auto-allow everything' },
-  ];
-
-  /**
    * Initialises the section, refreshing the authentication status.
    */
   public constructor() {
@@ -181,22 +155,6 @@ export class AiSettingsSection {
    */
   protected onModelChange(id: string): void {
     this.engine.setModel(id);
-  }
-
-  /**
-   * Sets the permission posture.
-   * @param posture The posture id.
-   */
-  protected onPostureChange(posture: string): void {
-    this.settings.setAiPermissionPosture(posture as AiPermissionPosture);
-  }
-
-  /**
-   * Sets the per-request token cap.
-   * @param cap The token cap.
-   */
-  protected onTokenCapChange(cap: number): void {
-    this.settings.setAiTokenCap(cap);
   }
 
   /**

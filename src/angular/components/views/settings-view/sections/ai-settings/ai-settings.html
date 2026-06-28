@@ -75,21 +75,12 @@
   label="Permission posture"
   description="How much the agent may do before asking you."
 >
-  <app-dropdown
-    [options]="postureOptions"
-    [value]="posture()"
-    (valueChange)="onPostureChange($event)"
-  />
+  <app-setting-control key="ai.permissionPosture" />
 </app-setting-row>
 
 <app-setting-row
   label="Per-request token cap"
   description="Token budget per turn. 0 means no cap (the provider default)."
 >
-  <app-number-field
-    [min]="0"
-    [step]="1000"
-    [value]="tokenCap()"
-    (valueChange)="onTokenCapChange($event)"
-  />
+  <app-setting-control key="ai.tokenCap" />
 </app-setting-row>

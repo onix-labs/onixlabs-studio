@@ -635,7 +635,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'ai.permissionPosture',
         title: 'Permission posture',
         description: 'How much the agent may do without asking first.',
-        control: { kind: 'custom', component: 'ai-permission-posture' },
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'prompt', label: 'Ask every time' },
+            { value: 'auto-edits', label: 'Auto-allow file edits' },
+            { value: 'auto-all', label: 'Auto-allow everything' },
+          ],
+        },
         default: 'prompt',
       },
       {
