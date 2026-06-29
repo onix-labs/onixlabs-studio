@@ -121,7 +121,7 @@ export class TerminalView implements OnDestroy {
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
    */
-  public readonly terminalId: InputSignal<string> = input.required<string>();
+  public readonly tabId: InputSignal<string> = input.required<string>();
 
   /**
    * Gets the working directory the terminal's shell starts in, or undefined to use the default.
@@ -186,7 +186,7 @@ export class TerminalView implements OnDestroy {
       this.commandHandler = null;
     }
     this.stopCwdPolling();
-    this.terminalAgents.remove(this.terminalId());
+    this.terminalAgents.remove(this.tabId());
   }
 
   /**
@@ -202,7 +202,7 @@ export class TerminalView implements OnDestroy {
    * @param title The new terminal title.
    */
   protected onTitleChange(title: string): void {
-    this.tabsService.rename(this.terminalId(), title);
+    this.tabsService.rename(this.tabId(), title);
   }
 
   /**
@@ -217,7 +217,7 @@ export class TerminalView implements OnDestroy {
    * @returns Returns true when the panel has been shown at least once.
    */
   protected agentMounted(): boolean {
-    return this.terminalAgents.isMounted(this.terminalId());
+    return this.terminalAgents.isMounted(this.tabId());
   }
 
   /**
@@ -225,7 +225,7 @@ export class TerminalView implements OnDestroy {
    * @returns Returns true when the panel is shown.
    */
   protected agentVisible(): boolean {
-    return this.terminalAgents.isVisible(this.terminalId());
+    return this.terminalAgents.isVisible(this.tabId());
   }
 
   /**

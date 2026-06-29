@@ -11,7 +11,6 @@ import { DirectoryView } from '../views/directory-view/directory-view';
 import { MarkdownView } from '../views/markdown-view/markdown-view';
 import { SettingsView } from '../views/settings-view/settings-view';
 import { SourceControlView } from '../views/source-control-view/source-control-view';
-import { TerminalView } from '@features/terminal/angular/terminal-view/terminal-view';
 
 /**
  * Represents the content area that hosts the view for every open tab.
@@ -27,7 +26,6 @@ import { TerminalView } from '@features/terminal/angular/terminal-view/terminal-
     DirectoryView,
     CodeView,
     MarkdownView,
-    TerminalView,
     AgentView,
     SourceControlView,
     DocumentConflictModal,

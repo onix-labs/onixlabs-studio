@@ -23,9 +23,6 @@
             (contentChange)="onMarkdownChange(tab.id, $event)"
           />
         }
-        @case ('terminal') {
-          <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />
-        }
         @case ('agent') {
           <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
         }

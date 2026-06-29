@@ -12,7 +12,7 @@ describe('TerminalView', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(TerminalView);
-    fixture.componentRef.setInput('terminalId', 'tab-1');
+    fixture.componentRef.setInput('tabId', 'tab-1');
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

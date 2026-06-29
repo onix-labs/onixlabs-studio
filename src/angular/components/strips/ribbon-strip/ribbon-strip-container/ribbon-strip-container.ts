@@ -8,7 +8,6 @@ import { CodeRibbon } from '../ribbons/code-ribbon/code-ribbon';
 import { DirectoryRibbon } from '../ribbons/directory-ribbon/directory-ribbon';
 import { MarkdownRibbon } from '../ribbons/markdown-ribbon/markdown-ribbon';
 import { SourceControlRibbon } from '../ribbons/source-control-ribbon/source-control-ribbon';
-import { TerminalRibbon } from '@features/terminal/angular/terminal-ribbon/terminal-ribbon';
 
 /**
  * Represents the contextual ribbon strip, whose content depends on the active tab type. The
@@ -21,7 +20,6 @@ import { TerminalRibbon } from '@features/terminal/angular/terminal-ribbon/termi
     DirectoryRibbon,
     CodeRibbon,
     MarkdownRibbon,
-    TerminalRibbon,
     AgentRibbon,
     SourceControlRibbon,
   ],
