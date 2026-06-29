@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AiModelInfo, AiProviderInfo } from '../../../../../../shared/ai-types';
+import type { AiModelInfo, AiProviderInfo } from '@shared/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Icon } from '@shared/angular/icons/icon';
@@ -20,9 +20,17 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
  */
 @Component({
   selector: 'app-agent-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripButtonSmall, RibbonStripCheck, RibbonStripField],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripColumn,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripCheck,
+    RibbonStripField,
+  ],
   templateUrl: './agent-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrl: './agent-ribbon.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentRibbon {

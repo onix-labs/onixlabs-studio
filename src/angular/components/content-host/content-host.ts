@@ -5,7 +5,6 @@ import { Documents } from '../../services/documents/documents';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';
-import { AgentView } from '../views/agent-view/agent-view';
 import { CodeView } from '../views/code-view/code-view';
 import { DirectoryView } from '../views/directory-view/directory-view';
 import { MarkdownView } from '../views/markdown-view/markdown-view';
@@ -26,7 +25,6 @@ import { SourceControlView } from '../views/source-control-view/source-control-v
     DirectoryView,
     CodeView,
     MarkdownView,
-    AgentView,
     SourceControlView,
     DocumentConflictModal,
   ],

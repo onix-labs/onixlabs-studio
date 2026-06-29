@@ -23,9 +23,6 @@
             (contentChange)="onMarkdownChange(tab.id, $event)"
           />
         }
-        @case ('agent') {
-          <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
-        }
         @case ('source-control') {
           <app-source-control-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
         }

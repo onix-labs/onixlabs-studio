@@ -9,6 +9,7 @@ import { AgentEditorCapabilities } from './services/agent-editor-capabilities/ag
 import { Display } from './services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';
+import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
 
 /**
@@ -36,6 +37,8 @@ export const config: ApplicationConfig = {
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.
     provideTerminalFeature(),
+    // Stand up the agent feature: register its chat view + ribbon with the shell.
+    provideAgentFeature(),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {

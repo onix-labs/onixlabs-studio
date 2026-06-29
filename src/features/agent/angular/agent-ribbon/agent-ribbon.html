@@ -1,7 +1,12 @@
 <app-ribbon-overflow>
   <app-ribbon-strip-group title="Session">
     <app-ribbon-strip-button [icon]="Icon.PLUS" label="New Chat" (action)="newChat()" />
-    <app-ribbon-strip-button [icon]="Icon.STOP" label="Stop" [disabled]="!isRunning()" (action)="stop()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.STOP"
+      label="Stop"
+      [disabled]="!isRunning()"
+      (action)="stop()"
+    />
     <app-ribbon-strip-button [icon]="Icon.COMPACT" label="Compact" [disabled]="true" />
   </app-ribbon-strip-group>
 
@@ -25,13 +30,22 @@
   <app-ribbon-strip-group title="Context">
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small [icon]="Icon.ATTACH" label="Attach File" [disabled]="true" />
-      <app-ribbon-strip-button-small [icon]="Icon.FOLDER_PLUS" label="Add Folder" [disabled]="true" />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.FOLDER_PLUS"
+        label="Add Folder"
+        [disabled]="true"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Options">
     <app-ribbon-strip-column>
-      <app-ribbon-strip-field label="Mode" [options]="['Chat', 'Agent']" value="Agent" [disabled]="true" />
+      <app-ribbon-strip-field
+        label="Mode"
+        [options]="['Chat', 'Agent']"
+        value="Agent"
+        [disabled]="true"
+      />
       <app-ribbon-strip-check label="Auto-scroll" [checked]="true" [disabled]="true" />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

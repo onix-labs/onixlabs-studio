@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { AgentRibbon } from '../ribbons/agent-ribbon/agent-ribbon';
 import { CodeRibbon } from '../ribbons/code-ribbon/code-ribbon';
 import { DirectoryRibbon } from '../ribbons/directory-ribbon/directory-ribbon';
 import { MarkdownRibbon } from '../ribbons/markdown-ribbon/markdown-ribbon';
@@ -15,14 +14,7 @@ import { SourceControlRibbon } from '../ribbons/source-control-ribbon/source-con
  */
 @Component({
   selector: 'app-ribbon-strip-container',
-  imports: [
-    NgComponentOutlet,
-    DirectoryRibbon,
-    CodeRibbon,
-    MarkdownRibbon,
-    AgentRibbon,
-    SourceControlRibbon,
-  ],
+  imports: [NgComponentOutlet, DirectoryRibbon, CodeRibbon, MarkdownRibbon, SourceControlRibbon],
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
