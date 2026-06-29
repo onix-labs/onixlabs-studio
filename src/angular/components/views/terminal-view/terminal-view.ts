@@ -18,7 +18,7 @@ import {
 import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
 import { TerminalCreateResult } from '../../../../shared/studio-api';
-import { TerminalBridge } from '../../../services/terminal-bridge/terminal-bridge';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Studio } from '../../../services/studio/studio';
 import { Tabs } from '../../../services/tabs/tabs';
 import { TerminalAgents } from '../../../services/terminal-agents/terminal-agents';
@@ -27,7 +27,7 @@ import {
   TerminalCommands,
 } from '../../../services/terminal-commands/terminal-commands';
 import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
-import { Terminals } from '../../../services/terminals/terminals';
+import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '../../../services/theme/theme';
 import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 

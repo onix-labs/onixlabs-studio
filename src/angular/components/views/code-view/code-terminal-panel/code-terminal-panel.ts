@@ -11,7 +11,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { CodeTerminals } from '../../../../services/code-terminals/code-terminals';
-import { TerminalBridge } from '../../../../services/terminal-bridge/terminal-bridge';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { TerminalCommands } from '../../../../services/terminal-commands/terminal-commands';
 import { Icon } from '../../../../icons/icon';
 import { AppIcon } from '../../../shared/icon/app-icon';

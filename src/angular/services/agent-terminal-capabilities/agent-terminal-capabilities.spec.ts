@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 
 import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '../../../shared/ai-types';
 import { AiCapability, AiRuntime } from '../ai-runtime/ai-runtime';
-import { TerminalBridge } from '../terminal-bridge/terminal-bridge';
-import { Terminals } from '../terminals/terminals';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AgentTerminalCapabilities } from './agent-terminal-capabilities';
 
 /**

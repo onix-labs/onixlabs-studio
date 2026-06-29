@@ -1,9 +1,5 @@
 import { Service } from '@angular/core';
-import {
-  TerminalApi,
-  TerminalCreateOptions,
-  TerminalCreateResult,
-} from '../../../shared/studio-api';
+import { TerminalApi, TerminalCreateOptions, TerminalCreateResult } from '@shared/studio-api';
 
 /**
  * Holds the result returned when a terminal operation is attempted outside Electron.

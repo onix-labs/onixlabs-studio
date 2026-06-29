@@ -1,8 +1,8 @@
 import { inject, Service } from '@angular/core';
 import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '../../../shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
-import { TerminalBridge } from '../terminal-bridge/terminal-bridge';
-import { Terminals } from '../terminals/terminals';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { Terminals } from '@shared/angular/services/terminals/terminals';
 
 /**
  * Holds the maximum number of output lines a read returns, so a long-running session does not flood
