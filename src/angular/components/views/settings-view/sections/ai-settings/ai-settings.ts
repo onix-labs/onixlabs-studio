@@ -16,9 +16,9 @@ import type {
 } from '../../../../../../shared/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AiAuth } from '@shared/angular/services/ai-auth/ai-auth';
-import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
-import { PasswordField } from '../../../../forms/password-field/password-field';
-import { SettingRow } from '../../../../forms/setting-row/setting-row';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { SettingControl } from '../../setting-control/setting-control';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';

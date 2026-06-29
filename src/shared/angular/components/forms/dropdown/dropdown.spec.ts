@@ -52,7 +52,9 @@ describe('Dropdown', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector('select')!;
+    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector(
+      'select',
+    )!;
     expect(select.value).toBe('markdown');
   });
 
@@ -61,7 +63,9 @@ describe('Dropdown', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector('select')!;
+    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector(
+      'select',
+    )!;
 
     // The parent ignores the pick (value input unchanged); the select must snap back to it.
     select.value = 'markdown';
@@ -90,7 +94,9 @@ describe('Dropdown', () => {
     fixture.componentRef.setInput('ariaLabel', 'Document type');
     fixture.detectChanges();
 
-    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector('select')!;
+    const select: HTMLSelectElement = (fixture.nativeElement as HTMLElement).querySelector(
+      'select',
+    )!;
     expect(select.getAttribute('aria-label')).toBe('Document type');
   });
 });

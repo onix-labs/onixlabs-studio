@@ -7,12 +7,12 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { ButtonGroup } from '../../../forms/button-group/button-group';
-import { ColorSwatches } from '../../../forms/color-swatches/color-swatches';
-import { Dropdown } from '../../../forms/dropdown/dropdown';
-import { NumberField } from '../../../forms/number-field/number-field';
-import { TextField } from '../../../forms/text-field/text-field';
-import { Toggle } from '../../../forms/toggle/toggle';
+import { ButtonGroup } from '@shared/angular/components/forms/button-group/button-group';
+import { ColorSwatches } from '@shared/angular/components/forms/color-swatches/color-swatches';
+import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
+import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import {
   SettingBinding,
   SettingBindings,

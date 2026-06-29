@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
-import { Accordion } from '../../../forms/accordion/accordion';
-import { Checkbox } from '../../../forms/checkbox/checkbox';
-import { Dropdown } from '../../../forms/dropdown/dropdown';
-import { LanguageSelect } from '../../../forms/language-select/language-select';
-import { NumberField } from '../../../forms/number-field/number-field';
-import { SettingRow } from '../../../forms/setting-row/setting-row';
-import { Toggle } from '../../../forms/toggle/toggle';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
+import { LanguageSelect } from '@shared/angular/components/forms/language-select/language-select';
+import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { EditorProfile, Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import {
   ChoiceOption,

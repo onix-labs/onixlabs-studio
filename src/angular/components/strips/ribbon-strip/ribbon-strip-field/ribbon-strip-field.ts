@@ -8,7 +8,7 @@ import {
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
-import { Dropdown, DropdownOption } from '../../../forms/dropdown/dropdown';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 /**
  * Represents a labelled select (dropdown) field in the ribbon, backed by the shared

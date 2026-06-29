@@ -6,7 +6,7 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { Checkbox } from '../../../forms/checkbox/checkbox';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 
 /**
  * Represents a labelled checkbox option in the ribbon.
