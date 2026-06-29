@@ -8,14 +8,13 @@ import {
   InputSignal,
   signal,
   Signal,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { CodeTerminals } from '../../../../services/code-terminals/code-terminals';
-import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
-import { TerminalCommands } from '../../../../services/terminal-commands/terminal-commands';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TerminalView } from '../../terminal-view/terminal-view';
+import { Terminal } from '@shared/angular/components/terminal/terminal';
 
 /**
  * Holds the prefix used to derive a code tab's run-terminal identifier from its tab id.
@@ -28,7 +27,7 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [TerminalView, AppIcon],
+  imports: [Terminal, AppIcon],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,14 +44,9 @@ export class CodeTerminalPanel {
   private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
 
   /**
-   * Holds the terminal bridge used to write queued run commands.
+   * Holds the embedded terminal pane this panel drives, or undefined before the view initialises.
    */
-  private readonly bridge: TerminalBridge = inject(TerminalBridge);
-
-  /**
-   * Holds the terminal command registry the toolbar routes through.
-   */
-  private readonly commands: TerminalCommands = inject(TerminalCommands);
+  private readonly pane: Signal<Terminal | undefined> = viewChild<Terminal>(Terminal);
 
   /**
    * Gets the identifier of the owning code tab. Always supplied by the host; the empty default lets
@@ -112,21 +106,21 @@ export class CodeTerminalPanel {
    * Cuts the terminal buffer to the clipboard.
    */
   protected onCut(): void {
-    this.commands.cut();
+    this.pane()?.cut();
   }
 
   /**
    * Copies the terminal selection to the clipboard.
    */
   protected onCopy(): void {
-    this.commands.copy();
+    this.pane()?.copy();
   }
 
   /**
    * Clears the terminal screen.
    */
   protected onClear(): void {
-    this.commands.clear();
+    this.pane()?.clear();
   }
 
   /**
@@ -142,7 +136,7 @@ export class CodeTerminalPanel {
   private flushPending(): void {
     const command: string | null = this.codeTerminals.takePending(this.tabId());
     if (command !== null) {
-      void this.bridge.write(this.runTerminalId(), `${command}\r`);
+      this.pane()?.runCommand(command);
     }
   }
 }
