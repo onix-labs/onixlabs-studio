@@ -98,7 +98,9 @@ export class RibbonStripOverflow {
   /**
    * Gets whether any groups are currently overflowed.
    */
-  protected readonly hasOverflow: Signal<boolean> = computed((): boolean => this.overflowCount() > 0);
+  protected readonly hasOverflow: Signal<boolean> = computed(
+    (): boolean => this.overflowCount() > 0,
+  );
 
   /**
    * Holds the pending reflow animation-frame handle, or null when none is scheduled.

@@ -57,7 +57,8 @@ export class RibbonStripField {
    * Gets the string options projected onto the dropdown's value/label shape (the two are identical).
    */
   protected readonly dropdownOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => this.options().map((option: string) => ({ value: option, label: option })),
+    (): readonly DropdownOption[] =>
+      this.options().map((option: string) => ({ value: option, label: option })),
   );
 
   /**

@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
-import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { TerminalAgents } from '../../../../../services/terminal-agents/terminal-agents';
 import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
 import { Tabs } from '@shared/angular/services/tabs/tabs';

@@ -8,18 +8,18 @@ import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
-import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
-import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
-import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import {
   RibbonStripMenuButton,
   RibbonMenuItem,
-} from '../../ribbon-strip-menu-button/ribbon-strip-menu-button';
-import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 
 /**
  * Identifies the Monaco plain-text language, used as the syntax field's fallback when the active

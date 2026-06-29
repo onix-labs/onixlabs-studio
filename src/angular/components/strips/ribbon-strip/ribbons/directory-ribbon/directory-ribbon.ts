@@ -3,13 +3,13 @@ import { CodeCommands } from '../../../../../services/code-commands/code-command
 import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '../../../../../services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
-import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
-import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
-import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 
 /**
  * Represents the contextual ribbon shown when a directory tab is active. The Edit group routes edit

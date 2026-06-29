@@ -17,17 +17,17 @@ import {
   MarkdownPanels,
 } from '../../../../../services/markdown-panels/markdown-panels';
 import { Icon } from '@shared/angular/icons/icon';
-import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '../../ribbon-strip-field/ribbon-strip-field';
-import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import {
   RibbonStripMenuButton,
   RibbonMenuItem,
-} from '../../ribbon-strip-menu-button/ribbon-strip-menu-button';
-import { RibbonStripRow } from '../../ribbon-strip-row/ribbon-strip-row';
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { CollapseInsert, MarkdownCollapseModal } from './insert-modals/markdown-collapse-modal';
 import { MarkdownEmojiModal } from './insert-modals/markdown-emoji-modal';
 import { FootnoteInsert, MarkdownFootnoteModal } from './insert-modals/markdown-footnote-modal';

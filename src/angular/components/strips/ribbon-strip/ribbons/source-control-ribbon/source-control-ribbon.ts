@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { SourceControlCommands } from '../../../../../services/source-control-commands/source-control-commands';
-import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
-import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 
 /**
  * Represents the contextual ribbon shown when a source-control tab is active. Every action is routed
