@@ -7,7 +7,7 @@ import {
   ProjectModel,
   ProjectNode,
 } from '../../../shared/project-system';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
  * The kind of a Solution Explorer row, which decides its icon and click behaviour.

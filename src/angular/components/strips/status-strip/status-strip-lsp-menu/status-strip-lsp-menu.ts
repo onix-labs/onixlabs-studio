@@ -3,7 +3,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { LspServer, LspServerState, LspStatus } from '../../../../services/lsp/lsp-status';
-import { ActiveWorkspace } from '../../../../services/workspace/active-workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**

@@ -11,7 +11,7 @@ import { Documents } from '../documents/documents';
 import { Output } from '../output/output';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Workspaces } from '../workspaces/workspaces';
 
 /**

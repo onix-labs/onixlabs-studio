@@ -4,7 +4,7 @@ import { TaskApi } from '../../../shared/task-types';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
 import { Documents } from '../documents/documents';
 import { Output } from '../output/output';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildGroup, BuildHandler, BuildTask } from './builds';
 import { MatchedProblem, parseProblems } from './problem-matcher';
 

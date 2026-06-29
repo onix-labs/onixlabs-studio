@@ -5,7 +5,7 @@ import {
   DirectoryListing,
   OpenSelection,
   WorkspaceApi,
-} from '../../../shared/studio-api';
+} from '@shared/studio-api';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**

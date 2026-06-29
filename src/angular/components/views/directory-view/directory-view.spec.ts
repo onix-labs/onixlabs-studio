@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DirectoryListing } from '../../../../shared/studio-api';
-import { Workspace } from '../../../services/workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 
 import { DirectoryView } from './directory-view';

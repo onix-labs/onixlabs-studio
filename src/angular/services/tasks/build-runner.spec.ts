@@ -9,7 +9,7 @@ import {
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
 import { Documents } from '../documents/documents';
 import { Output } from '../output/output';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildRunner } from './build-runner';
 import { BuildTask } from './builds';
 

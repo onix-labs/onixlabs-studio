@@ -11,7 +11,7 @@ import {
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
 import { Monaco } from '../monaco/monaco';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
 import { LspSettings } from './lsp-settings';
 import { LspServer, LspStatus } from './lsp-status';

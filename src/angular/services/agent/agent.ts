@@ -4,7 +4,7 @@ import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AgentSessionHandle } from '../agent-sessions/agent-sessions';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
  * Identifies the kind of transcript item.

@@ -11,7 +11,7 @@ import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
 import { Editors } from '../editors/editors';
 import { Monaco } from '../monaco/monaco';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { LspSettings } from './lsp-settings';

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { DirectoryListing, OpenSelection, WorkspaceApi } from '../../../shared/studio-api';
+import { DirectoryListing, OpenSelection, WorkspaceApi } from '@shared/studio-api';
 import { Workspace } from './workspace';
 
 /**

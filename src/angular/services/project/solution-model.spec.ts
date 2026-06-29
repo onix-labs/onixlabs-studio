@@ -2,7 +2,7 @@ import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ProjectItems, ProjectModel } from '../../../shared/project-system';
 import { DirectoryListing, ProjectApi } from '../../../shared/studio-api';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
 /**

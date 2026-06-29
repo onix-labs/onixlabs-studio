@@ -1,7 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LspServer, LspStatus } from '../../../../services/lsp/lsp-status';
-import { ActiveWorkspace } from '../../../../services/workspace/active-workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { StatusStripLspMenu } from './status-strip-lsp-menu';
 
 describe('StatusStripLspMenu', () => {

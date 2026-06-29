@@ -39,8 +39,8 @@ import {
 } from '../../../services/workspace-source-control-commands/workspace-source-control-commands';
 import { BuildRunner } from '../../../services/tasks/build-runner';
 import { Builds } from '../../../services/tasks/builds';
-import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
-import { Workspace } from '../../../services/workspace/workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { CommitDetail } from '../source-control-view/panels/commit-detail/commit-detail';

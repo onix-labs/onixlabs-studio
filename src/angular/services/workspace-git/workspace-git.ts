@@ -4,7 +4,7 @@ import { GitChangeStatus } from '../repository/repository-data';
 import { ParsedStatus } from '../source-control/git-output';
 import { SourceControlProvider } from '../source-control/source-control-provider';
 import { SourceControlProviders } from '../source-control/source-control-providers';
-import { Workspace } from '../workspace/workspace';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
  * Normalises a filesystem path for use as a status-map key: forward slashes and no trailing slash, so
