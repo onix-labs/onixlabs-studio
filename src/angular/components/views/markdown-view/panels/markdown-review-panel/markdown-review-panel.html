@@ -35,7 +35,9 @@
           <li class="rv-card">
             <button type="button" class="rv-card-head" (click)="onReveal(issue)">
               <span class="rv-dot" [class]="'kind-' + issue.kind" aria-hidden="true"></span>
-              <span class="rv-kind" [class]="'kind-' + issue.kind">{{ kindLabel(issue.kind) }}</span>
+              <span class="rv-kind" [class]="'kind-' + issue.kind">{{
+                kindLabel(issue.kind)
+              }}</span>
               <span class="rv-rule">{{ issue.ruleName }}</span>
             </button>
 

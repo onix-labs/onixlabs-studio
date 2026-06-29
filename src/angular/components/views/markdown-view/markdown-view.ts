@@ -1,32 +1,27 @@
 import {
-  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
-  ElementRef,
   inject,
   input,
   InputSignal,
   NgZone,
-  OnChanges,
   OnDestroy,
   OnInit,
   output,
   OutputEmitterRef,
   signal,
   Signal,
-  SimpleChanges,
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { Crepe } from '@milkdown/crepe';
+import type { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { Slice, type Node as ProseMirrorNode, type NodeType } from '@milkdown/kit/prose/model';
-import { AllSelection, type Selection, TextSelection } from '@milkdown/kit/prose/state';
+import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import type { ListenerManager } from '@milkdown/plugin-listener';
 import {
   createCodeBlockCommand,
   insertHrCommand,
@@ -44,24 +39,14 @@ import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
 import type { Parser } from '@milkdown/transformer';
-import { blockReorderPlugin } from '@shared/angular/milkdown/block-reorder-plugin';
-import { colorPreviewPlugin } from '@shared/angular/milkdown/color-preview-plugin';
-import { emojiPlugin } from '@shared/angular/milkdown/emoji-plugin';
-import { footnotePlugin } from '@shared/angular/milkdown/footnote-plugin';
 import {
-  githubAlertPlugin,
   wrapInCautionAlertCommand,
   wrapInImportantAlertCommand,
   wrapInNoteAlertCommand,
   wrapInTipAlertCommand,
   wrapInWarningAlertCommand,
 } from '@shared/angular/milkdown/github-alert-plugin';
-import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
-import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
-import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
-import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
-import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
-import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
+import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Documents } from '../../../services/documents/documents';
 import {
   MarkdownBlockType,
@@ -69,17 +54,8 @@ import {
   MarkdownCommands,
   OutlineHeading,
 } from '../../../services/markdown-commands/markdown-commands';
-import {
-  ImageAlignment,
-  ImageSizing,
-  MarginSize,
-  PanelPosition,
-  Settings,
-} from '@shared/angular/services/settings/settings';
-import {
-  MarkdownPanel,
-  MarkdownPanels,
-} from '../../../services/markdown-panels/markdown-panels';
+import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
+import { MarkdownPanel, MarkdownPanels } from '../../../services/markdown-panels/markdown-panels';
 import { Review } from '../../../services/markdown-review/markdown-review';
 import { ReviewIssue, ReviewSession } from '../../../services/markdown-review/review-types';
 import { Reader } from '../../../services/markdown-reader/markdown-reader';
@@ -171,26 +147,6 @@ const MAX_PANEL_SIZE: number = 720;
 const DEFAULT_PANEL_SIZE: number = 320;
 
 /**
- * Minimum number of rows for the HTML image editor textarea.
- */
-const HTML_IMAGE_EDITOR_MIN_ROWS: number = 3;
-
-/**
- * Minimum number of rows for the mermaid editor textarea.
- */
-const MERMAID_EDITOR_MIN_ROWS: number = 5;
-
-/**
- * Number of extra rows added beyond a textarea's content line count.
- */
-const TEXTAREA_EXTRA_ROWS: number = 1;
-
-/**
- * Initial value for the mermaid diagram ID counter.
- */
-const INITIAL_MERMAID_ID: number = 0;
-
-/**
  * Sentinel returned by {@link String.indexOf} when no match is found.
  */
 const NOT_FOUND: number = -1;
@@ -249,12 +205,21 @@ const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
 const MARKDOWN_LANGUAGE: string = 'markdown';
 
 /**
- * Represents the markdown editor view, hosting a Milkdown Crepe WYSIWYG editor with the application's
- * custom plugins, theming and ribbon command integration.
+ * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
+ * document, with optional Outline/Review/Agent/Reader tool panels beside it. It owns the markdown-tab
+ * concerns the bare pane does not — the backing document and save target, the ribbon command handler,
+ * the outline scroll-spy, the review and read sessions, and the docked tool panels and their splitter
+ * — driving the pane through its imperative API.
  */
 @Component({
   selector: 'app-markdown-view',
-  imports: [MarkdownOutlinePanel, MarkdownReviewPanel, MarkdownAgentPanel, MarkdownReaderPanel],
+  imports: [
+    MarkdownEditor,
+    MarkdownOutlinePanel,
+    MarkdownReviewPanel,
+    MarkdownAgentPanel,
+    MarkdownReaderPanel,
+  ],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -262,12 +227,7 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
     '[class.panels-left]': 'panelPosition() === "left"',
   },
 })
-export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy {
-  /**
-   * Holds the service resolving markdown editor styles from settings.
-   */
-  private readonly milkdown: Milkdown = inject(Milkdown);
-
+export class MarkdownView implements OnInit, OnDestroy {
   /**
    * Holds the documents service owning the tab's content, file association and dirty state.
    */
@@ -294,6 +254,22 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   private readonly review: Review = inject(Review);
 
   /**
+   * Holds the reader service the editor publishes its read model and highlight seam to while active.
+   */
+  private readonly reader: Reader = inject(Reader);
+
+  /**
+   * Holds the Angular zone, used to publish to the command registry from outside change detection.
+   */
+  private readonly zone: NgZone = inject(NgZone);
+
+  /**
+   * Holds the shared markdown-editor pane this view drives, or undefined before the view initialises.
+   */
+  private readonly pane: Signal<MarkdownEditor | undefined> =
+    viewChild<MarkdownEditor>(MarkdownEditor);
+
+  /**
    * Holds the review session registered with the {@link Review} service while active, or null.
    */
   private reviewSession: ReviewSession | null = null;
@@ -302,11 +278,6 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
    */
   private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
-
-  /**
-   * Holds the reader service the editor publishes its read model and highlight seam to while active.
-   */
-  private readonly reader: Reader = inject(Reader);
 
   /**
    * Holds the read session registered with the {@link Reader} service while active, or null.
@@ -355,49 +326,6 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   private panelDragOriginSize: number = 0;
 
   /**
-   * Begins a splitter drag that resizes the open tool panel. The drag direction is mirrored when the
-   * panel is docked on the left so dragging towards the editor always shrinks the panel.
-   * @param event The originating pointer event.
-   */
-  protected onPanelSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    this.panelDragOrigin = event.clientX;
-    this.panelDragOriginSize = this.panelSize();
-    const sign: number = this.panelPosition() === 'left' ? -1 : 1;
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const delta: number = (this.panelDragOrigin - move.clientX) * sign;
-      this.panelSize.set(
-        Math.min(MAX_PANEL_SIZE, Math.max(MIN_PANEL_SIZE, this.panelDragOriginSize + delta)),
-      );
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
-
-  /**
-   * Holds the Angular zone, used to create the editor outside change detection.
-   */
-  private readonly zone: NgZone = inject(NgZone);
-
-  /**
-   * Holds a reference to the editor container element Crepe mounts into.
-   */
-  private readonly editorContainer: Signal<ElementRef<HTMLDivElement>> =
-    viewChild.required<ElementRef<HTMLDivElement>>('editorContainer');
-
-  /**
-   * Holds a reference to the editor wrapper element, used to capture clicks in the empty area below
-   * the content so they focus the editor.
-   */
-  private readonly editorWrapper: Signal<ElementRef<HTMLDivElement>> =
-    viewChild.required<ElementRef<HTMLDivElement>>('editorWrapper');
-
-  /**
    * Gets the identifier of the backing document, used to register the document and target saves at
    * it. For a standalone markdown tab this is the tab id; in a workspace's document well it is the
    * well document id.
@@ -433,99 +361,9 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   public readonly contentChange: OutputEmitterRef<string> = output<string>();
 
   /**
-   * Gets the document margin size, bound to a max-width class on the wrapper.
-   */
-  protected readonly marginClass: Signal<MarginSize> = this.milkdown.marginSize;
-
-  /**
-   * Gets the image sizing behaviour, bound to a class that constrains rendered images.
-   */
-  protected readonly imageSizing: Signal<ImageSizing> = this.milkdown.imageSizing;
-
-  /**
-   * Gets the image alignment, bound to a class that horizontally aligns rendered images.
-   */
-  protected readonly imageAlignment: Signal<ImageAlignment> = this.milkdown.imageAlignment;
-
-  /**
-   * Holds the Crepe editor instance, or null before creation and after destruction.
-   */
-  private crepe: Crepe | null = null;
-
-  /**
-   * Holds the disposer that stops the local-image source resolver, or null when no editor is mounted.
-   */
-  private disposeImageResolver: (() => void) | null = null;
-
-  /**
-   * Holds a value indicating whether the next content input change should be ignored because it
-   * originated from the user's own edit (which was just emitted).
-   */
-  private ignoreNextChange: boolean = false;
-
-  /**
-   * Holds a value indicating whether the first `markdownUpdated` event has been received. Milkdown
-   * fires it after parsing the initial content (which may normalise it), so the first is ignored.
-   */
-  private hasReceivedFirstUpdate: boolean = false;
-
-  /**
-   * Holds a value indicating whether the editor is ready for interaction.
-   */
-  private readonly isEditorReady: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds the command handler registered with the {@link MarkdownCommands} registry while active.
-   */
-  private commandHandler: MarkdownCommandHandler | null = null;
-
-  /**
-   * Holds the bound HTML image click handler, retained for event-listener cleanup.
-   */
-  private readonly boundHtmlImageClickHandler: (event: Event) => void =
-    this.handleHtmlImageClick.bind(this);
-
-  /**
-   * Holds the bound mermaid diagram click handler, retained for event-listener cleanup.
-   */
-  private readonly boundMermaidClickHandler: (event: Event) => void =
-    this.handleMermaidClick.bind(this);
-
-  /**
-   * Holds the bound backdrop mousedown handler, retained for event-listener cleanup.
-   */
-  private readonly boundBackdropMousedownHandler: (event: Event) => void =
-    this.handleBackdropMousedown.bind(this);
-
-  /**
-   * Holds the bound keydown handler backing the editor's save shortcut, retained for cleanup.
-   */
-  private readonly boundKeydownHandler: (event: KeyboardEvent) => void =
-    this.handleKeydown.bind(this);
-
-  /**
-   * Holds the bound capture-phase handler for the progressive Select All chord, retained for cleanup.
-   * Capture phase so it runs before ProseMirror's own Mod-a binding.
-   */
-  private readonly boundSelectAllHandler: (event: KeyboardEvent) => void =
-    this.handleSelectAll.bind(this);
-
-  /**
-   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
-   * event-listener cleanup.
-   */
-  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
-
-  /**
    * Holds the editor's scroll container, to which the scroll-spy listener is attached.
    */
   private scrollContainer: HTMLElement | null = null;
-
-  /**
-   * Holds the editor view, used to derive the outline from the document model and to map the reading
-   * line's screen coordinate to a document position for the scroll-spy. Null before creation.
-   */
-  private editorView: EditorView | null = null;
 
   /**
    * Holds the document position of each heading node, in document order, captured when the outline is
@@ -535,46 +373,29 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   private headingPositions: readonly number[] = [];
 
   /**
-   * Holds the currently-editing HTML image block element, or null.
+   * Holds a value indicating whether the pane's editor instance has been created.
    */
-  private currentHtmlImageBlock: HTMLElement | null = null;
+  private readonly paneReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the active HTML image editor textarea, or null.
+   * Holds the command handler registered with the {@link MarkdownCommands} registry while active.
    */
-  private htmlImageEditor: HTMLTextAreaElement | null = null;
+  private commandHandler: MarkdownCommandHandler | null = null;
 
   /**
-   * Holds the currently-editing mermaid diagram block element, or null.
+   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
+   * event-listener cleanup.
    */
-  private currentMermaidBlock: HTMLElement | null = null;
+  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
 
   /**
-   * Holds the active mermaid editor textarea, or null.
-   */
-  private mermaidEditor: HTMLTextAreaElement | null = null;
-
-  /**
-   * Holds a counter used to generate unique mermaid diagram IDs while editing.
-   */
-  private mermaidIdCounter: number = INITIAL_MERMAID_ID;
-
-  /**
-   * Initialises the view, wiring effects that re-apply editor styles on settings changes and
-   * register or release the ribbon command handler as the view's active state changes.
+   * Initialises the view, wiring the effect that registers or releases the ribbon command handler and
+   * review/read sessions as the view's active state changes.
    */
   public constructor() {
     effect((): void => {
-      this.settings.markdownEditor();
-      if (this.isEditorReady()) {
-        this.applyEditorStyles();
-      }
-    });
-
-    effect((): void => {
       const active: boolean = this.isActive();
-      const ready: boolean = this.isEditorReady();
-      if (!ready || this.crepe === null) {
+      if (!this.paneReady()) {
         return;
       }
 
@@ -585,7 +406,6 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
         this.refreshActiveBlockType();
         this.documents.setActiveDocument(this.documentId());
         this.panels.setActiveDocument(this.documentId());
-        this.focusEditor();
       } else {
         if (this.commandHandler !== null) {
           this.commands.deactivate(this.documentId());
@@ -608,48 +428,19 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Creates the editor once the view's elements are available and starts the outline scroll-spy.
-   */
-  public ngAfterViewInit(): void {
-    void this.createEditor();
-    this.scrollContainer =
-      this.editorContainer().nativeElement.closest<HTMLElement>('.editor-scroll');
-    this.scrollContainer?.addEventListener('scroll', this.boundScrollHandler, { passive: true });
-  }
-
-  /**
-   * Handles input property changes, recreating the editor on external content updates and toggling
-   * the read-only state.
-   * @param changes The set of changed input properties.
-   */
-  public ngOnChanges(changes: SimpleChanges): void {
-    if (this.crepe === null || !this.isEditorReady()) {
-      return;
-    }
-
-    const contentChange: SimpleChanges[string] | undefined = changes['content'];
-    if (contentChange !== undefined && !contentChange.firstChange) {
-      if (this.ignoreNextChange) {
-        this.ignoreNextChange = false;
-      } else if (this.crepe.getMarkdown() !== this.content()) {
-        void this.destroyEditor().then((): Promise<void> => this.createEditor());
-      }
-    }
-
-    const readOnlyChange: SimpleChanges[string] | undefined = changes['readOnly'];
-    if (readOnlyChange !== undefined && !readOnlyChange.firstChange) {
-      this.crepe.setReadonly(this.readOnly());
-    }
-  }
-
-  /**
-   * Destroys the editor when the component is torn down, clearing the active-document focus and
-   * releasing the backing document when this view owns its lifecycle (a standalone tab).
+   * Clears the active-document focus, releases the ribbon command handler and review/read sessions,
+   * detaches the scroll-spy, and releases the backing document when this view owns its lifecycle (a
+   * standalone tab). The pane destroys the Crepe editor itself.
    */
   public ngOnDestroy(): void {
     this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
     this.scrollContainer = null;
-    void this.destroyEditor();
+    if (this.commandHandler !== null) {
+      this.commands.forget(this.documentId());
+      this.commandHandler = null;
+    }
+    this.unregisterReviewSession();
+    this.unregisterReadSession();
     if (this.documents.activeDocumentId() === this.documentId()) {
       this.documents.setActiveDocument(null);
     }
@@ -662,10 +453,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   /**
    * Gets the absolute directory of the backing document's file, against which a relative image source
    * resolves. Returns an empty string when the document has no path yet (an unsaved tab), in which case
-   * relative images cannot be located until the document is saved.
+   * relative images cannot be located until the document is saved. Bound to the pane's base directory.
    * @returns Returns the document's directory, or an empty string.
    */
-  private documentDirectory(): string {
+  protected documentDirectory(): string {
     const filePath: string | null = this.documents.get(this.documentId())?.filePath() ?? null;
     if (filePath === null) {
       return '';
@@ -675,223 +466,123 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   }
 
   /**
-   * Creates the Crepe editor, registers the application's plugins, and wires its listeners. Runs
-   * outside the Angular zone so the editor's own DOM churn does not trigger change detection.
+   * Begins a splitter drag that resizes the open tool panel. The drag direction is mirrored when the
+   * panel is docked on the left so dragging towards the editor always shrinks the panel.
+   * @param event The originating pointer event.
    */
-  private async createEditor(): Promise<void> {
-    const container: HTMLDivElement = this.editorContainer().nativeElement;
-    const imageSizing: ImageSizing = this.milkdown.imageSizing();
+  protected onPanelSplitterDown(event: MouseEvent): void {
+    event.preventDefault();
+    this.panelDragOrigin = event.clientX;
+    this.panelDragOriginSize = this.panelSize();
+    const sign: number = this.panelPosition() === 'left' ? -1 : 1;
 
-    await this.zone.runOutsideAngular(async (): Promise<void> => {
-      const crepe: Crepe = new Crepe({
-        root: container,
-        defaultValue: this.content(),
-        features: {
-          [Crepe.Feature.BlockEdit]: true,
-          [Crepe.Feature.CodeMirror]: true,
-          [Crepe.Feature.Cursor]: true,
-          [Crepe.Feature.ImageBlock]: imageSizing === 'sizable',
-          [Crepe.Feature.Latex]: true,
-          [Crepe.Feature.LinkTooltip]: true,
-          [Crepe.Feature.ListItem]: true,
-          [Crepe.Feature.Placeholder]: true,
-          [Crepe.Feature.Table]: true,
-          // The app provides a fixed formatting ribbon, so Crepe's inline toolbar is redundant.
-          [Crepe.Feature.Toolbar]: false,
-        },
-        featureConfigs: {
-          [Crepe.Feature.Placeholder]: { text: 'Start writing...' },
-          [Crepe.Feature.CodeMirror]: { previewOnlyByDefault: true },
-          // Embed a pasted or dropped image as a self-contained data URL so it persists across a save
-          // and reopen; Crepe's default blob URL is discarded when the editor is torn down.
-          [Crepe.Feature.ImageBlock]: {
-            onUpload: (file: File): Promise<string> => fileToDataUrl(file),
-          },
-        },
-      });
-
-      crepe.editor.use(pasteCleanPlugin);
-      crepe.editor.use(subscriptSuperscriptPlugin);
-      crepe.editor.use(htmlImagePlugin);
-      crepe.editor.use(githubAlertPlugin);
-      crepe.editor.use(colorPreviewPlugin);
-      crepe.editor.use(mermaidPlugin);
-      crepe.editor.use(footnotePlugin);
-      crepe.editor.use(emojiPlugin);
-      crepe.editor.use(blockReorderPlugin);
-
-      crepe.on((api: ListenerManager): void => {
-        api.markdownUpdated((ctx: Ctx, markdown: string): void => {
-          // The very first update fires while the editor is still being created (the initial content
-          // load); doing work here breaks that init, so skip it. The initial outline is instead
-          // published on a deferred tick by refreshOutlineSoon once creation has settled.
-          if (!this.hasReceivedFirstUpdate) {
-            this.hasReceivedFirstUpdate = true;
-            return;
-          }
-          this.zone.run((): void => {
-            this.ignoreNextChange = true;
-            this.contentChange.emit(markdown);
-          });
-          if (this.isActive()) {
-            this.publishHistoryState(ctx.get(editorViewCtx));
-            this.refreshOutline();
-            this.zone.run((): void => this.review.notifySourceChanged());
-            this.publishReadModel();
-          }
-        });
-
-        api.selectionUpdated((ctx: Ctx, selection: Selection): void => {
-          if (!this.isActive()) {
-            return;
-          }
-          const blockType: MarkdownBlockType = this.resolveActiveBlockType(selection);
-          this.zone.run((): void => {
-            this.commands.setActiveBlockType(blockType);
-          });
-          this.publishHistoryState(ctx.get(editorViewCtx));
-        });
-      });
-
-      this.crepe = crepe;
-      await crepe.create();
-
-      // Capture the editor view so the outline can be derived from the document model and the
-      // scroll-spy can map screen coordinates to document positions (see updateActiveHeading).
-      crepe.editor.action((ctx: Ctx): void => {
-        this.editorView = ctx.get(editorViewCtx);
-      });
-
-      if (this.readOnly()) {
-        crepe.setReadonly(true);
-      }
-
-      this.applyEditorStyles();
-
-      // Rewrite local image sources to the media scheme so they load through the main process; remote,
-      // data and blob sources are left untouched.
-      this.disposeImageResolver = installImageResolver(container, (): string =>
-        this.documentDirectory(),
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const delta: number = (this.panelDragOrigin - move.clientX) * sign;
+      this.panelSize.set(
+        Math.min(MAX_PANEL_SIZE, Math.max(MIN_PANEL_SIZE, this.panelDragOriginSize + delta)),
       );
-
-      container.addEventListener('click', this.boundHtmlImageClickHandler);
-      container.addEventListener('click', this.boundMermaidClickHandler);
-      container.addEventListener('keydown', this.boundKeydownHandler);
-      container.addEventListener('keydown', this.boundSelectAllHandler, { capture: true });
-      this.editorWrapper().nativeElement.addEventListener(
-        'mousedown',
-        this.boundBackdropMousedownHandler,
-      );
-
-      this.zone.run((): void => {
-        this.isEditorReady.set(true);
-      });
-    });
+    };
+    const onUp: () => void = (): void => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   /**
-   * Destroys the Crepe editor, removing listeners and releasing the command handler.
+   * Wires the editor-dependent feature state once the pane's editor exists (and again after it is
+   * recreated for external content): attaches the outline scroll-spy and, on a recreate while active,
+   * refreshes the outline and read model for the new document.
    */
-  private async destroyEditor(): Promise<void> {
-    this.disposeImageResolver?.();
-    this.disposeImageResolver = null;
-
-    const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
-    if (container !== undefined) {
-      container.removeEventListener('click', this.boundHtmlImageClickHandler);
-      container.removeEventListener('click', this.boundMermaidClickHandler);
-      container.removeEventListener('keydown', this.boundKeydownHandler);
-      container.removeEventListener('keydown', this.boundSelectAllHandler, { capture: true });
+  protected onReady(): void {
+    const scroller: HTMLElement | null = this.pane()?.getScrollContainer() ?? null;
+    if (scroller !== null && scroller !== this.scrollContainer) {
+      this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
+      this.scrollContainer = scroller;
+      scroller.addEventListener('scroll', this.boundScrollHandler, { passive: true });
     }
 
-    const wrapper: HTMLDivElement | undefined = this.editorWrapper()?.nativeElement;
-    wrapper?.removeEventListener('mousedown', this.boundBackdropMousedownHandler);
-
-    this.closeHtmlImageEditor();
-    this.closeMermaidEditor();
-
-    if (this.commandHandler !== null) {
-      this.commands.forget(this.documentId());
-      this.commandHandler = null;
+    const wasReady: boolean = this.paneReady();
+    this.paneReady.set(true);
+    // First creation is handled by the activation effect (triggered by paneReady). A recreate leaves
+    // paneReady already true, so refresh the derived state for the new document here.
+    if (wasReady && this.isActive()) {
+      this.refreshActiveBlockType();
+      this.review.notifySourceChanged();
+      this.publishReadModel();
     }
-    this.unregisterReviewSession();
-    this.unregisterReadSession();
-
-    if (this.crepe !== null) {
-      await this.crepe.destroy();
-      this.crepe = null;
-      this.isEditorReady.set(false);
-    }
-
-    this.editorView = null;
-    this.headingPositions = [];
-    this.hasReceivedFirstUpdate = false;
   }
 
   /**
-   * Applies the resolved markdown CSS custom properties to the `.milkdown` element so the editor
-   * honours the configured fonts and base size.
+   * Re-emits the user's edit to the host and, while active, refreshes the history state, outline,
+   * review source, and read model.
+   * @param markdown The editor's new serialised markdown.
    */
-  private applyEditorStyles(): void {
-    const milkdownElement: HTMLElement | null | undefined =
-      this.editorContainer()?.nativeElement.querySelector<HTMLElement>('.milkdown');
-    if (milkdownElement === null || milkdownElement === undefined) {
+  protected onContentChange(markdown: string): void {
+    this.contentChange.emit(markdown);
+    if (this.isActive()) {
+      this.publishHistoryState();
+      this.refreshOutline();
+      this.review.notifySourceChanged();
+      this.publishReadModel();
+    }
+  }
+
+  /**
+   * Reflects a selection change in the ribbon's active block type and history state, while active.
+   * @param selection The editor's current selection.
+   */
+  protected onSelectionChange(selection: Selection): void {
+    if (!this.isActive()) {
       return;
     }
-    const properties: Record<string, string> = this.milkdown.getCssCustomProperties();
-    for (const [name, value] of Object.entries(properties)) {
-      milkdownElement.style.setProperty(name, value);
-    }
+    const blockType: MarkdownBlockType = this.resolveActiveBlockType(selection);
+    this.commands.setActiveBlockType(blockType);
+    this.publishHistoryState();
   }
 
   /**
-   * Registers the ribbon command handler for this editor, mapping each command to a Crepe action.
+   * Saves the backing document when the pane requests it (the editor's Cmd/Ctrl+S shortcut).
+   */
+  protected onSaveRequested(): void {
+    void this.documents.save(this.documentId());
+  }
+
+  /**
+   * Registers the ribbon command handler for this editor, mapping each command to a pane action.
    */
   private registerCommandHandler(): void {
-    const crepe: Crepe | null = this.crepe;
-    if (crepe === null) {
-      return;
-    }
-
     this.commandHandler = {
       cut: (): void => this.clipboardCommand('cut'),
-      cutAsPlaintext: (): void => this.cutPlaintext(crepe),
+      cutAsPlaintext: (): void => this.cutPlaintext(),
       copy: (): void => this.clipboardCommand('copy'),
-      copyAsPlaintext: (): void => this.copyPlaintext(crepe),
-      paste: (): void => this.pasteMarkdown(crepe),
-      pasteAsPlaintext: (): void => this.pastePlaintext(crepe),
-      pasteAsCode: (): void => this.pasteCode(crepe),
-      undo: (): void => this.run(crepe, callCommand(undoCommand.key)),
-      redo: (): void => this.run(crepe, callCommand(redoCommand.key)),
-      toggleBold: (): void => this.run(crepe, callCommand(toggleStrongCommand.key)),
-      toggleItalic: (): void => this.run(crepe, callCommand(toggleEmphasisCommand.key)),
-      toggleStrikethrough: (): void => this.run(crepe, callCommand(toggleStrikethroughCommand.key)),
-      toggleInlineCode: (): void => this.run(crepe, callCommand(toggleInlineCodeCommand.key)),
-      toggleBulletList: (): void => this.run(crepe, callCommand(wrapInBulletListCommand.key)),
-      toggleOrderedList: (): void => this.run(crepe, callCommand(wrapInOrderedListCommand.key)),
-      insertTable: (): void => this.run(crepe, callCommand(insertTableCommand.key)),
-      insertHorizontalRule: (): void => this.run(crepe, callCommand(insertHrCommand.key)),
-      insertMarkdown: (markdown: string): void => this.insertParsedBlock(crepe, markdown),
-      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(crepe, markdown),
-      insertText: (text: string): void => this.insertRawText(crepe, text),
-      appendMarkdown: (markdown: string): void => this.appendParsedBlock(crepe, markdown),
-      setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(crepe, blockType),
+      copyAsPlaintext: (): void => this.copyPlaintext(),
+      paste: (): void => this.pasteMarkdown(),
+      pasteAsPlaintext: (): void => this.pastePlaintext(),
+      pasteAsCode: (): void => this.pasteCode(),
+      undo: (): void => this.pane()?.run(callCommand(undoCommand.key)),
+      redo: (): void => this.pane()?.run(callCommand(redoCommand.key)),
+      toggleBold: (): void => this.pane()?.run(callCommand(toggleStrongCommand.key)),
+      toggleItalic: (): void => this.pane()?.run(callCommand(toggleEmphasisCommand.key)),
+      toggleStrikethrough: (): void =>
+        this.pane()?.run(callCommand(toggleStrikethroughCommand.key)),
+      toggleInlineCode: (): void => this.pane()?.run(callCommand(toggleInlineCodeCommand.key)),
+      toggleBulletList: (): void => this.pane()?.run(callCommand(wrapInBulletListCommand.key)),
+      toggleOrderedList: (): void => this.pane()?.run(callCommand(wrapInOrderedListCommand.key)),
+      insertTable: (): void => this.pane()?.run(callCommand(insertTableCommand.key)),
+      insertHorizontalRule: (): void => this.pane()?.run(callCommand(insertHrCommand.key)),
+      insertMarkdown: (markdown: string): void => this.insertParsedBlock(markdown),
+      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(markdown),
+      insertText: (text: string): void => this.insertRawText(text),
+      appendMarkdown: (markdown: string): void => this.appendParsedBlock(markdown),
+      setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
       goToHeading: (index: number): void => this.scrollToHeading(index),
-      readDocument: (): string => crepe.getMarkdown(),
-      replaceDocument: (markdown: string): void => this.replaceDocument(markdown),
+      readDocument: (): string => this.pane()?.getMarkdown() ?? '',
+      replaceDocument: (markdown: string): void => this.pane()?.replaceAll(markdown),
     };
 
     this.commands.register(this.documentId(), this.commandHandler);
-  }
-
-  /**
-   * Focuses the editor, then runs a Crepe editor action.
-   * @param crepe The editor instance.
-   * @param action The action to run.
-   */
-  private run(crepe: Crepe, action: (ctx: Ctx) => unknown): void {
-    this.focusEditor();
-    crepe.editor.action(action);
   }
 
   /**
@@ -900,16 +591,19 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param command The clipboard command to execute.
    */
   private clipboardCommand(command: 'cut' | 'copy'): void {
-    this.focusEditor();
+    this.pane()?.focusEditor();
     document.execCommand(command);
   }
 
   /**
    * Copies the current selection to the clipboard as unformatted plain text, discarding markdown
    * syntax. Blocks are joined with newlines so multi-paragraph selections survive as readable text.
-   * @param crepe The editor instance.
    */
-  private copyPlaintext(crepe: Crepe): void {
+  private copyPlaintext(): void {
+    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
+    if (crepe === null) {
+      return;
+    }
     crepe.editor.action((ctx: Ctx): void => {
       const view: EditorView = ctx.get(editorViewCtx);
       const selection: Selection = view.state.selection;
@@ -921,9 +615,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Cuts the current selection to the clipboard as unformatted plain text, then deletes it.
-   * @param crepe The editor instance.
    */
-  private cutPlaintext(crepe: Crepe): void {
+  private cutPlaintext(): void {
+    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
+    if (crepe === null) {
+      return;
+    }
     crepe.editor.action((ctx: Ctx): void => {
       const view: EditorView = ctx.get(editorViewCtx);
       const selection: Selection = view.state.selection;
@@ -954,11 +651,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   /**
    * Pastes the clipboard contents at the selection, parsing them as markdown so formatting is
    * preserved.
-   * @param crepe The editor instance.
    */
-  private pasteMarkdown(crepe: Crepe): void {
+  private pasteMarkdown(): void {
     this.withClipboardText((text: string): void => {
-      crepe.editor.action((ctx: Ctx): void => {
+      this.pane()?.run((ctx: Ctx): void => {
         const parser: Parser = ctx.get(parserCtx);
         const doc: ProseMirrorNode = parser(text);
         const view: EditorView = ctx.get(editorViewCtx);
@@ -971,11 +667,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Pastes the clipboard contents at the selection as unformatted plain text.
-   * @param crepe The editor instance.
    */
-  private pastePlaintext(crepe: Crepe): void {
+  private pastePlaintext(): void {
     this.withClipboardText((text: string): void => {
-      crepe.editor.action((ctx: Ctx): void => {
+      this.pane()?.run((ctx: Ctx): void => {
         const view: EditorView = ctx.get(editorViewCtx);
         view.dispatch(view.state.tr.insertText(text).scrollIntoView());
         view.focus();
@@ -985,11 +680,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Pastes the clipboard contents at the selection as a code block.
-   * @param crepe The editor instance.
    */
-  private pasteCode(crepe: Crepe): void {
+  private pasteCode(): void {
     this.withClipboardText((text: string): void => {
-      crepe.editor.action((ctx: Ctx): void => {
+      this.pane()?.run((ctx: Ctx): void => {
         const view: EditorView = ctx.get(editorViewCtx);
         const codeBlockType: NodeType | undefined = view.state.schema.nodes['code_block'];
         if (codeBlockType === undefined) {
@@ -1004,11 +698,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Parses markdown and inserts it as block-level content at the cursor, replacing any selection.
-   * @param crepe The editor instance.
    * @param markdown The markdown to parse and insert.
    */
-  private insertParsedBlock(crepe: Crepe, markdown: string): void {
-    this.run(crepe, (ctx: Ctx): void => {
+  private insertParsedBlock(markdown: string): void {
+    this.pane()?.run((ctx: Ctx): void => {
       const parser: Parser = ctx.get(parserCtx);
       const doc: ProseMirrorNode = parser(markdown);
       const view: EditorView = ctx.get(editorViewCtx);
@@ -1021,11 +714,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Parses markdown and inserts its inline content at the cursor, replacing any selection. The parsed
    * document's first block holds the inline content (such as a link), which is spliced into the
    * current block rather than inserted as a new paragraph.
-   * @param crepe The editor instance.
    * @param markdown The inline markdown to parse and insert.
    */
-  private insertParsedInline(crepe: Crepe, markdown: string): void {
-    this.run(crepe, (ctx: Ctx): void => {
+  private insertParsedInline(markdown: string): void {
+    this.pane()?.run((ctx: Ctx): void => {
       const parser: Parser = ctx.get(parserCtx);
       const doc: ProseMirrorNode = parser(markdown);
       const view: EditorView = ctx.get(editorViewCtx);
@@ -1038,11 +730,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Inserts raw text at the cursor, replacing any selection.
-   * @param crepe The editor instance.
    * @param text The text to insert.
    */
-  private insertRawText(crepe: Crepe, text: string): void {
-    this.run(crepe, (ctx: Ctx): void => {
+  private insertRawText(text: string): void {
+    this.pane()?.run((ctx: Ctx): void => {
       const view: EditorView = ctx.get(editorViewCtx);
       view.dispatch(view.state.tr.insertText(text).scrollIntoView());
       view.focus();
@@ -1053,11 +744,10 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * Parses markdown and appends it as block-level content at the end of the document, leaving the
    * selection where it was. Used for content that lives apart from the cursor, such as a footnote
    * definition.
-   * @param crepe The editor instance.
    * @param markdown The markdown to parse and append.
    */
-  private appendParsedBlock(crepe: Crepe, markdown: string): void {
-    this.run(crepe, (ctx: Ctx): void => {
+  private appendParsedBlock(markdown: string): void {
+    this.pane()?.run((ctx: Ctx): void => {
       const parser: Parser = ctx.get(parserCtx);
       const doc: ProseMirrorNode = parser(markdown);
       const view: EditorView = ctx.get(editorViewCtx);
@@ -1069,53 +759,55 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
 
   /**
    * Applies a block type to the current block by dispatching the matching Crepe command.
-   * @param crepe The editor instance.
    * @param blockType The block type to apply.
    */
-  private applyBlockType(crepe: Crepe, blockType: MarkdownBlockType): void {
-    this.focusEditor();
+  private applyBlockType(blockType: MarkdownBlockType): void {
+    const pane: MarkdownEditor | undefined = this.pane();
+    if (pane === undefined) {
+      return;
+    }
     switch (blockType) {
       case 'paragraph':
-        crepe.editor.action(callCommand(turnIntoTextCommand.key));
+        pane.run(callCommand(turnIntoTextCommand.key));
         break;
       case 'blockquote':
-        crepe.editor.action(callCommand(wrapInBlockquoteCommand.key));
+        pane.run(callCommand(wrapInBlockquoteCommand.key));
         break;
       case 'code-block':
-        crepe.editor.action(callCommand(createCodeBlockCommand.key));
+        pane.run(callCommand(createCodeBlockCommand.key));
         break;
       case 'heading-1':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_1));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_1));
         break;
       case 'heading-2':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_2));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_2));
         break;
       case 'heading-3':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_3));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_3));
         break;
       case 'heading-4':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_4));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_4));
         break;
       case 'heading-5':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_5));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_5));
         break;
       case 'heading-6':
-        crepe.editor.action(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_6));
+        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_6));
         break;
       case 'alert-note':
-        crepe.editor.action(callCommand(wrapInNoteAlertCommand.key));
+        pane.run(callCommand(wrapInNoteAlertCommand.key));
         break;
       case 'alert-tip':
-        crepe.editor.action(callCommand(wrapInTipAlertCommand.key));
+        pane.run(callCommand(wrapInTipAlertCommand.key));
         break;
       case 'alert-important':
-        crepe.editor.action(callCommand(wrapInImportantAlertCommand.key));
+        pane.run(callCommand(wrapInImportantAlertCommand.key));
         break;
       case 'alert-warning':
-        crepe.editor.action(callCommand(wrapInWarningAlertCommand.key));
+        pane.run(callCommand(wrapInWarningAlertCommand.key));
         break;
       case 'alert-caution':
-        crepe.editor.action(callCommand(wrapInCautionAlertCommand.key));
+        pane.run(callCommand(wrapInCautionAlertCommand.key));
         break;
     }
   }
@@ -1125,18 +817,15 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * reflects the cursor even when no selection-change event has fired (for example on activation).
    */
   private refreshActiveBlockType(): void {
-    const crepe: Crepe | null = this.crepe;
-    if (crepe === null || !this.isActive()) {
+    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
+    if (view === null || !this.isActive()) {
       return;
     }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const blockType: MarkdownBlockType = this.resolveActiveBlockType(view.state.selection);
-      this.zone.run((): void => {
-        this.commands.setActiveBlockType(blockType);
-      });
-      this.publishHistoryState(view);
+    const blockType: MarkdownBlockType = this.resolveActiveBlockType(view.state.selection);
+    this.zone.run((): void => {
+      this.commands.setActiveBlockType(blockType);
     });
+    this.publishHistoryState();
     // Refresh the outline from the rendered DOM (deferred), so activating a tab whose content has not
     // changed still populates the Outline panel.
     this.refreshOutline();
@@ -1145,9 +834,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
   /**
    * Publishes whether the editor currently has undoable and redoable edits to the command registry, so
    * the ribbon can enable or disable its Undo and Redo controls.
-   * @param view The editor view to read the history depth from.
    */
-  private publishHistoryState(view: EditorView): void {
+  private publishHistoryState(): void {
+    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
+    if (view === null) {
+      return;
+    }
     let canUndo: boolean = false;
     let canRedo: boolean = false;
     try {
@@ -1175,7 +867,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     // Deferred a tick so the document reflects the latest content. Reading the document is a pure read
     // that never touches the editor's plugins, so it cannot interfere with an in-flight transaction.
     setTimeout((): void => {
-      const view: EditorView | null = this.editorView;
+      const view: EditorView | null = this.pane()?.getEditorView() ?? null;
       if (!this.isActive() || view === null) {
         return;
       }
@@ -1211,7 +903,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * animation frame, which can be suspended) so the marker never appears frozen.
    */
   private updateActiveHeading(): void {
-    const view: EditorView | null = this.editorView;
+    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
     if (!this.isActive() || this.scrollContainer === null || view === null) {
       return;
     }
@@ -1247,7 +939,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param index The heading's zero-based ordinal among the document's headings.
    */
   private scrollToHeading(index: number): void {
-    const view: EditorView | null = this.editorView;
+    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
     const scroller: HTMLElement | null = this.scrollContainer;
     const pos: number | undefined = this.headingPositions[index];
     if (view === null || scroller === null || pos === undefined) {
@@ -1272,7 +964,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       return;
     }
     this.reviewSession = {
-      getSource: (): string => this.crepe?.getMarkdown() ?? '',
+      getSource: (): string => this.pane()?.getMarkdown() ?? '',
       applyEdit: (start: number, end: number, replacement: string): void =>
         this.applyReviewEdit(start, end, replacement),
       reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
@@ -1300,41 +992,12 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param replacement The replacement text.
    */
   private applyReviewEdit(start: number, end: number, replacement: string): void {
-    const crepe: Crepe | null = this.crepe;
-    if (crepe === null) {
+    const pane: MarkdownEditor | undefined = this.pane();
+    if (pane === undefined) {
       return;
     }
-    const source: string = crepe.getMarkdown();
-    this.replaceDocumentContent(crepe, source.slice(0, start) + replacement + source.slice(end));
-  }
-
-  /**
-   * Replaces the editor's entire content by parsing the given markdown and swapping the document in a
-   * single, undoable transaction. Backs the agent's replace-document capability and the review
-   * suggestion apply.
-   * @param markdown The new markdown source.
-   */
-  private replaceDocument(markdown: string): void {
-    if (this.crepe !== null) {
-      this.replaceDocumentContent(this.crepe, markdown);
-    }
-  }
-
-  /**
-   * Parses markdown and replaces the whole document with it in one undoable transaction.
-   * @param crepe The editor instance.
-   * @param markdown The new markdown source.
-   */
-  private replaceDocumentContent(crepe: Crepe, markdown: string): void {
-    this.run(crepe, (ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      view.dispatch(
-        view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content).scrollIntoView(),
-      );
-      view.focus();
-    });
+    const source: string = pane.getMarkdown();
+    pane.replaceAll(source.slice(0, start) + replacement + source.slice(end));
   }
 
   /**
@@ -1344,10 +1007,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @param issue The issue to reveal.
    */
   private revealReviewIssue(issue: ReviewIssue): void {
-    const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
-    const root: HTMLElement | null | undefined =
-      container?.querySelector<HTMLElement>('.ProseMirror');
-    if (root === null || root === undefined || issue.word.length === 0) {
+    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
+    if (root === null || issue.word.length === 0) {
       return;
     }
 
@@ -1383,7 +1044,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     if (range === null) {
       return;
     }
-    this.scrollRangeIntoView(range, container);
+    this.scrollRangeIntoView(range);
     this.flashReviewRange(range);
   }
 
@@ -1392,18 +1053,16 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    * @returns Returns the source length, or zero when no editor is mounted.
    */
   private reviewSourceLength(): number {
-    return this.crepe?.getMarkdown().length ?? 0;
+    return this.pane()?.getMarkdown().length ?? 0;
   }
 
   /**
    * Scrolls the editor's scroll container so the given range is centred in view.
    * @param range The range to reveal.
-   * @param container The editor container the range lives in.
    */
-  private scrollRangeIntoView(range: Range, container: HTMLDivElement | undefined): void {
-    const scroller: HTMLElement | null | undefined =
-      container?.closest<HTMLElement>('.editor-scroll');
-    if (scroller === null || scroller === undefined) {
+  private scrollRangeIntoView(range: Range): void {
+    const scroller: HTMLElement | null = this.scrollContainer;
+    if (scroller === null) {
       return;
     }
     const rect: DOMRect = range.getBoundingClientRect();
@@ -1544,8 +1203,7 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
     if (this.readSession === null) {
       return;
     }
-    const root: HTMLElement | null =
-      this.editorContainer()?.nativeElement.querySelector<HTMLElement>('.ProseMirror') ?? null;
+    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
     const model: ReadModel = buildReadModel(root);
     this.readWords = model.document.words;
     this.readWordRanges = model.ranges;
@@ -1627,9 +1285,8 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
    */
   private revealReadWord(wordIndex: number): void {
     const range: Range | undefined = this.readWordRanges[wordIndex];
-    const scroller: HTMLElement | null | undefined =
-      this.editorContainer()?.nativeElement.closest<HTMLElement>('.editor-scroll');
-    if (range === undefined || scroller === null || scroller === undefined) {
+    const scroller: HTMLElement | null = this.scrollContainer;
+    if (range === undefined || scroller === null) {
       return;
     }
     const rect: DOMRect = range.getBoundingClientRect();
@@ -1672,341 +1329,5 @@ export class MarkdownView implements OnInit, AfterViewInit, OnChanges, OnDestroy
       }
     }
     return 'paragraph';
-  }
-
-  /**
-   * Handles keydown events within the editor, saving the document on Cmd/Ctrl+S and suppressing the
-   * browser's own save action.
-   * @param event The keydown event.
-   */
-  private handleKeydown(event: KeyboardEvent): void {
-    const isSaveChord: boolean =
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 's';
-    if (!isSaveChord) {
-      return;
-    }
-    event.preventDefault();
-    void this.documents.save(this.documentId());
-  }
-
-  /**
-   * Handles the Select All chord (Cmd/Ctrl+A) progressively: the first press selects the current
-   * block's content; a second press, when the block is already fully selected, selects the whole
-   * document. Runs in the capture phase and stops the event so it pre-empts ProseMirror's own Mod-a
-   * binding (which always selects the whole document).
-   * @param event The keydown event.
-   */
-  private handleSelectAll(event: KeyboardEvent): void {
-    const isSelectAllChord: boolean =
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'a';
-    const view: EditorView | null = this.editorView;
-    if (!isSelectAllChord || view === null) {
-      return;
-    }
-    if (!view.hasFocus()) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-
-    const selection: Selection = view.state.selection;
-    const blockStart: number = selection.$from.start();
-    const blockEnd: number = selection.$from.end();
-    const coversBlock: boolean = selection.from <= blockStart && selection.to >= blockEnd;
-    const next: Selection = coversBlock
-      ? new AllSelection(view.state.doc)
-      : TextSelection.create(view.state.doc, blockStart, blockEnd);
-    view.dispatch(view.state.tr.setSelection(next));
-  }
-
-  /**
-   * Focuses the editor's ProseMirror view, if present.
-   */
-  private focusEditor(): void {
-    const prosemirror: HTMLElement | null | undefined =
-      this.editorContainer()?.nativeElement.querySelector<HTMLElement>('.ProseMirror');
-    prosemirror?.focus();
-  }
-
-  /**
-   * Focuses the editor at the end of the document when the empty backdrop below the content is
-   * clicked. Clicks within or above the content are left to ProseMirror.
-   * @param event The mousedown event.
-   */
-  private handleBackdropMousedown(event: Event): void {
-    const mouseEvent: MouseEvent = event as MouseEvent;
-    const container: HTMLDivElement | undefined = this.editorContainer()?.nativeElement;
-    const wrapper: HTMLDivElement | undefined = this.editorWrapper()?.nativeElement;
-    if (container === undefined || this.crepe === null) {
-      return;
-    }
-
-    const target: HTMLElement = mouseEvent.target as HTMLElement;
-    const isBackdrop: boolean =
-      target === wrapper || target === container || target.classList.contains('milkdown');
-    if (!isBackdrop) {
-      return;
-    }
-
-    const prosemirror: HTMLElement | null = container.querySelector<HTMLElement>('.ProseMirror');
-    if (prosemirror === null || mouseEvent.clientY <= prosemirror.getBoundingClientRect().bottom) {
-      return;
-    }
-
-    mouseEvent.preventDefault();
-    this.focusAtEnd();
-  }
-
-  /**
-   * Moves the selection to the end of the document and focuses the editor.
-   */
-  private focusAtEnd(): void {
-    const crepe: Crepe | null = this.crepe;
-    if (crepe === null) {
-      return;
-    }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const selection: Selection = TextSelection.atEnd(view.state.doc);
-      view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Handles clicks on rendered HTML image blocks, switching the block into a raw-HTML editor.
-   * @param event The click event.
-   */
-  private handleHtmlImageClick(event: Event): void {
-    const target: HTMLElement = event.target as HTMLElement;
-    const block: HTMLElement | null = target.closest<HTMLElement>('.html-image-block.rendered');
-    if (block === null || this.currentHtmlImageBlock === block) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.closeHtmlImageEditor();
-
-    const rawHtml: string = block.getAttribute('data-value') ?? '';
-    this.currentHtmlImageBlock = block;
-
-    const content: HTMLElement | null = block.querySelector<HTMLElement>('.html-image-content');
-    if (content !== null) {
-      content.style.display = 'none';
-    }
-
-    const textarea: HTMLTextAreaElement = this.createBlockEditor(
-      'html-image-editor',
-      rawHtml,
-      HTML_IMAGE_EDITOR_MIN_ROWS,
-      block,
-      (): void => this.saveHtmlImageEdit(),
-      (): void => this.closeHtmlImageEditor(),
-    );
-    this.htmlImageEditor = textarea;
-  }
-
-  /**
-   * Saves the edited HTML image markup, re-rendering the block and syncing the document.
-   */
-  private saveHtmlImageEdit(): void {
-    const block: HTMLElement | null = this.currentHtmlImageBlock;
-    const editor: HTMLTextAreaElement | null = this.htmlImageEditor;
-    if (block === null || editor === null) {
-      this.closeHtmlImageEditor();
-      return;
-    }
-
-    const value: string = editor.value;
-    block.setAttribute('data-value', value);
-    const content: HTMLElement | null = block.querySelector<HTMLElement>('.html-image-content');
-    if (content !== null) {
-      content.innerHTML = value;
-    }
-
-    this.emitCurrentMarkdown();
-    this.closeHtmlImageEditor();
-  }
-
-  /**
-   * Closes the HTML image editor, restoring the rendered block.
-   */
-  private closeHtmlImageEditor(): void {
-    this.closeBlockEditor(this.currentHtmlImageBlock, this.htmlImageEditor, '.html-image-content');
-    this.htmlImageEditor = null;
-    this.currentHtmlImageBlock = null;
-  }
-
-  /**
-   * Handles clicks on rendered mermaid diagram blocks, switching the block into a raw-code editor.
-   * @param event The click event.
-   */
-  private handleMermaidClick(event: Event): void {
-    const target: HTMLElement = event.target as HTMLElement;
-    const block: HTMLElement | null = target.closest<HTMLElement>('.mermaid-block.rendered');
-    if (block === null || this.currentMermaidBlock === block) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.closeMermaidEditor();
-
-    const rawCode: string = block.getAttribute('data-value') ?? '';
-    this.currentMermaidBlock = block;
-
-    const content: HTMLElement | null = block.querySelector<HTMLElement>('.mermaid-content');
-    if (content !== null) {
-      content.style.display = 'none';
-    }
-
-    const textarea: HTMLTextAreaElement = this.createBlockEditor(
-      'mermaid-editor',
-      rawCode,
-      MERMAID_EDITOR_MIN_ROWS,
-      block,
-      (): void => this.saveMermaidEdit(),
-      (): void => this.closeMermaidEditor(),
-    );
-    this.mermaidEditor = textarea;
-  }
-
-  /**
-   * Saves the edited mermaid code, re-rendering the diagram and syncing the document.
-   */
-  private saveMermaidEdit(): void {
-    const block: HTMLElement | null = this.currentMermaidBlock;
-    const editor: HTMLTextAreaElement | null = this.mermaidEditor;
-    if (block === null || editor === null) {
-      this.closeMermaidEditor();
-      return;
-    }
-
-    const value: string = editor.value;
-    block.setAttribute('data-value', value);
-    const content: HTMLElement | null = block.querySelector<HTMLElement>('.mermaid-content');
-    if (content !== null) {
-      const diagramId: string = `mermaid-edit-${++this.mermaidIdCounter}`;
-      content.innerHTML = '<div class="mermaid-loading">Rendering...</div>';
-      void renderMermaidDiagram(value, diagramId).then((svg: string): void => {
-        content.innerHTML = svg;
-      });
-    }
-
-    this.emitCurrentMarkdown();
-    this.closeMermaidEditor();
-  }
-
-  /**
-   * Closes the mermaid editor, restoring the rendered diagram.
-   */
-  private closeMermaidEditor(): void {
-    this.closeBlockEditor(this.currentMermaidBlock, this.mermaidEditor, '.mermaid-content');
-    this.mermaidEditor = null;
-    this.currentMermaidBlock = null;
-  }
-
-  /**
-   * Creates a textarea editor inside an atom block, breaking it out of ProseMirror's contenteditable
-   * control and wiring blur-to-save and Escape-to-cancel.
-   * @param className The CSS class applied to the textarea.
-   * @param value The initial value.
-   * @param minRows The minimum number of visible rows.
-   * @param block The block element the editor is mounted into.
-   * @param onSave Invoked when the editor loses focus.
-   * @param onCancel Invoked when Escape is pressed.
-   * @returns Returns the created textarea.
-   */
-  private createBlockEditor(
-    className: string,
-    value: string,
-    minRows: number,
-    block: HTMLElement,
-    onSave: () => void,
-    onCancel: () => void,
-  ): HTMLTextAreaElement {
-    const textarea: HTMLTextAreaElement = document.createElement('textarea');
-    textarea.className = className;
-    textarea.value = value;
-    textarea.rows = Math.max(minRows, value.split('\n').length + TEXTAREA_EXTRA_ROWS);
-
-    block.setAttribute('contenteditable', 'false');
-    block.appendChild(textarea);
-    block.classList.remove('rendered');
-    block.classList.add('editing');
-
-    const stopPropagation: (event: Event) => void = (event: Event): void => event.stopPropagation();
-    for (const type of [
-      'keydown',
-      'keypress',
-      'keyup',
-      'input',
-      'paste',
-      'cut',
-      'copy',
-      'mousedown',
-      'mouseup',
-      'click',
-    ]) {
-      textarea.addEventListener(type, stopPropagation);
-    }
-
-    textarea.addEventListener('blur', onSave);
-    textarea.addEventListener('keydown', (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onCancel();
-      }
-    });
-
-    setTimeout((): void => {
-      textarea.focus();
-      textarea.select();
-    }, NEXT_TICK_DELAY);
-
-    return textarea;
-  }
-
-  /**
-   * Removes a block editor textarea and restores the rendered content of its block.
-   * @param block The block element being edited, or null.
-   * @param editor The editor textarea, or null.
-   * @param contentSelector The selector for the block's rendered-content element.
-   */
-  private closeBlockEditor(
-    block: HTMLElement | null,
-    editor: HTMLTextAreaElement | null,
-    contentSelector: string,
-  ): void {
-    if (block === null || editor === null) {
-      return;
-    }
-    editor.remove();
-    const content: HTMLElement | null = block.querySelector<HTMLElement>(contentSelector);
-    if (content !== null) {
-      content.style.display = '';
-    }
-    block.removeAttribute('contenteditable');
-    block.classList.remove('editing');
-    block.classList.add('rendered');
-  }
-
-  /**
-   * Serialises the current document and emits it, suppressing the resulting input change.
-   */
-  private emitCurrentMarkdown(): void {
-    if (this.crepe === null) {
-      return;
-    }
-    const markdown: string = this.crepe.getMarkdown();
-    this.ignoreNextChange = true;
-    this.contentChange.emit(markdown);
   }
 }

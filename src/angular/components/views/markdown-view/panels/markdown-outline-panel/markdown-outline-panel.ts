@@ -181,7 +181,9 @@ export class MarkdownOutlinePanel {
   /**
    * Gets the total pixel height of the outline (one row per heading), sizing the connector overlay.
    */
-  protected readonly height: Signal<number> = computed((): number => this.rows().length * ROW_HEIGHT);
+  protected readonly height: Signal<number> = computed(
+    (): number => this.rows().length * ROW_HEIGHT,
+  );
 
   /**
    * Gets the SVG path describing the stepped, rounded connector line.

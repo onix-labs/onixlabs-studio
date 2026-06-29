@@ -2,7 +2,12 @@
   @if (canRead()) {
     <div class="ra-body">
       <div class="ra-transport">
-        <button type="button" class="ra-skip" aria-label="Previous paragraph" (click)="onSkipBack()">
+        <button
+          type="button"
+          class="ra-skip"
+          aria-label="Previous paragraph"
+          (click)="onSkipBack()"
+        >
           <app-icon [icon]="Icon.SKIP_BACK" />
         </button>
         <button
@@ -13,12 +18,7 @@
         >
           <app-icon [icon]="isPlaying() ? Icon.PAUSE : Icon.PLAY_FILL" />
         </button>
-        <button
-          type="button"
-          class="ra-skip"
-          aria-label="Next paragraph"
-          (click)="onSkipForward()"
-        >
+        <button type="button" class="ra-skip" aria-label="Next paragraph" (click)="onSkipForward()">
           <app-icon [icon]="Icon.SKIP_FORWARD" />
         </button>
       </div>
