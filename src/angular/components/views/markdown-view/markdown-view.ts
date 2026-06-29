@@ -44,10 +44,10 @@ import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
 import type { Parser } from '@milkdown/transformer';
-import { blockReorderPlugin } from '../../../milkdown/block-reorder-plugin';
-import { colorPreviewPlugin } from '../../../milkdown/color-preview-plugin';
-import { emojiPlugin } from '../../../milkdown/emoji-plugin';
-import { footnotePlugin } from '../../../milkdown/footnote-plugin';
+import { blockReorderPlugin } from '@shared/angular/milkdown/block-reorder-plugin';
+import { colorPreviewPlugin } from '@shared/angular/milkdown/color-preview-plugin';
+import { emojiPlugin } from '@shared/angular/milkdown/emoji-plugin';
+import { footnotePlugin } from '@shared/angular/milkdown/footnote-plugin';
 import {
   githubAlertPlugin,
   wrapInCautionAlertCommand,
@@ -55,13 +55,13 @@ import {
   wrapInNoteAlertCommand,
   wrapInTipAlertCommand,
   wrapInWarningAlertCommand,
-} from '../../../milkdown/github-alert-plugin';
-import { htmlImagePlugin } from '../../../milkdown/html-image-plugin';
-import { fileToDataUrl, installImageResolver } from '../../../milkdown/media-source';
-import { mermaidPlugin, renderMermaidDiagram } from '../../../milkdown/mermaid-plugin';
-import { pasteCleanPlugin } from '../../../milkdown/paste-clean-plugin';
-import { subscriptSuperscriptPlugin } from '../../../milkdown/subscript-superscript-plugin';
-import { Milkdown } from '../../../services/milkdown/milkdown';
+} from '@shared/angular/milkdown/github-alert-plugin';
+import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
+import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
+import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
+import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
+import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
+import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Documents } from '../../../services/documents/documents';
 import {
   MarkdownBlockType,
