@@ -63,6 +63,42 @@ The **bespoke 2-pane layout** (a fixed editor↔side-pane splitter, distinct fro
 currently hand-rolled three times — `code-view`, `markdown-view`, `terminal-view`. It is
 componentised once into `shared` (e.g. `<app-split-pane>`) and consumed by all three.
 
+### 3.1 Shared capability components (single-element wrappers) — the load-bearing contract
+
+The kitchen's capability components are **thin wrappers around exactly one engine each** — no
+splitter, no side panels, no ribbon, no embedded agent:
+
+| Wrapper | Wraps | Backing plumbing (also `shared`) |
+|---|---|---|
+| `<app-terminal>` | xterm (DOM terminal; node-pty is its electron-side backend over the bridge) | pty api contract + electron terminal-manager + `terminals`/`terminal-bridge` |
+| `<app-text-editor>` | Monaco | monaco service |
+| `<app-markdown-editor>` | Milkdown/ProseMirror | milkdown service |
+| `<app-agent>` | the agent chat UI | agent / ai-runtime / ai-auth / agent-sessions + ai bridge |
+
+Because the **shared** wrapper depends on its plumbing, that plumbing is shared too: e.g.
+"spawn-and-render-a-pty" is a shared capability, so the terminal *feature* owns little-to-no
+unique `electron`/`api` — it composes the shared capability.
+
+**Feature views are leaves** that compose the shared panel layout with these wrappers; the
+side panels are thin hosts that drop a wrapper into a layout slot:
+
+```
+terminal-view = layout{ main: <app-terminal>,       side: <app-agent> }
+code-view     = layout{ main: <app-text-editor>,    sides: <app-terminal>, <app-agent> }
+markdown-view = layout{ main: <app-markdown-editor>, sides: outline/review/reader, <app-agent> }
+```
+
+Today's `terminal-view`/`code-view`/`markdown-view` **conflate** the engine pane with the
+splitter and the side panels. The migration **decomposes** them: the engine pane is extracted
+into its shared wrapper; the splitter becomes the shared panel layout; what remains is the leaf
+view's composition. This is the sanctioned "componentise", not a free-for-all rewrite.
+
+**Ordering consequence (resolves the shared-first vs slice-first question):** since a leaf view
+is a pure composition of shared wrappers + layout, the wrappers and layout must land in `shared`
+first. Then each leaf view imports only `@shared` — no transitional back-edges. The apparent
+"terminal pulls in the whole agent subsystem" was an artifact of the conflation; the wrapper
+boundary removes it.
+
 ## 4. The four coupling seams (and how each is resolved)
 
 These are the only places where "delete the folder" currently leaks. Each gets one fix.

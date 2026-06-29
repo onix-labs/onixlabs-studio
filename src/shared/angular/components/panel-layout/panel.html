@@ -1,0 +1,7 @@
+<div
+  class="panel__splitter"
+  role="separator"
+  [attr.aria-orientation]="splitterOrientation()"
+  (mousedown)="onSplitterDown($event)"
+></div>
+<div class="panel__content"><ng-content /></div>
