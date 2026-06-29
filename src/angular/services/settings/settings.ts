@@ -8,7 +8,7 @@ import {
   SettingsKey,
   SettingsValues,
 } from './settings-registry';
-import { SettingsStore } from '../settings-store/settings-store';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
  * Identifies the highlight style applied to the current line in the text editor.

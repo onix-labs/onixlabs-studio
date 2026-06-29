@@ -26,7 +26,7 @@ import { Editors, RevealRequest } from '../../../services/editors/editors';
 import { LspClient } from '../../../services/lsp/lsp-client';
 import { Monaco } from '../../../services/monaco/monaco';
 import { Settings, TextEditorSettings } from '../../../services/settings/settings';
-import { Theme } from '../../../services/theme/theme';
+import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '../../../services/workspace/active-workspace';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';

@@ -1,6 +1,6 @@
 import { Icon } from '../../icons/icon';
-import { ACCENT_COLORS } from '../theme/theme';
-import type { AccentColor } from '../theme/theme';
+import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
+import type { AccentColor } from '@shared/angular/services/theme/theme';
 import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
 import type {
   BraceStyle,

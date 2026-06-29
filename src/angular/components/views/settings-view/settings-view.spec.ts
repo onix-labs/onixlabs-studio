@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Theme } from '../../../services/theme/theme';
+import { Theme } from '@shared/angular/services/theme/theme';
 import { SettingsView } from './settings-view';
 
 describe('SettingsView', () => {

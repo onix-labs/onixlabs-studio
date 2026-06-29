@@ -3,7 +3,7 @@ import type { ImageSourcePolicy } from '../../../shared/security-types';
 import { Display } from '../display/display';
 import { LspSettings } from '../lsp/lsp-settings';
 import { Security } from '../security/security';
-import { AccentColor, Theme, ThemeMode } from '../theme/theme';
+import { AccentColor, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
 import { Settings } from './settings';
 import { SettingOwner, SettingsKey } from './settings-registry';
 

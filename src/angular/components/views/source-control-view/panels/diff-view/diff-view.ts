@@ -16,7 +16,7 @@ import { Icon } from '../../../../../icons/icon';
 import { Monaco } from '../../../../../services/monaco/monaco';
 import { GitChangeStatus } from '../../../../../services/repository/repository-data';
 import { Settings } from '../../../../../services/settings/settings';
-import { Theme } from '../../../../../services/theme/theme';
+import { Theme } from '@shared/angular/services/theme/theme';
 import { AppIcon } from '../../../../shared/icon/app-icon';
 
 /**

@@ -9,7 +9,7 @@ import { AgentEditorCapabilities } from './services/agent-editor-capabilities/ag
 import { AgentTerminalCapabilities } from './services/agent-terminal-capabilities/agent-terminal-capabilities';
 import { Display } from './services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
-import { Theme } from './services/theme/theme';
+import { Theme } from '@shared/angular/services/theme/theme';
 
 /**
  * Defines the application-wide Angular providers.

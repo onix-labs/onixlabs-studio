@@ -15,7 +15,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { Output } from '../../../services/output/output';
-import { AccentColor, Theme } from '../../../services/theme/theme';
+import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
 
 /**
  * Holds the opacity applied to the accent colour when used as the selection background.

@@ -28,7 +28,7 @@ import {
 } from '../../../services/terminal-commands/terminal-commands';
 import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
-import { AccentColor, Theme } from '../../../services/theme/theme';
+import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
 import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
 /**

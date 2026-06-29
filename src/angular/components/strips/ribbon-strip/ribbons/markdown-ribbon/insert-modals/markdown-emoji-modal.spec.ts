@@ -1,7 +1,7 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { SettingsStore } from '../../../../../../services/settings-store/settings-store';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { MarkdownEmojiModal } from './markdown-emoji-modal';
 
 @Component({

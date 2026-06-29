@@ -13,7 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { gemoji } from 'gemoji';
-import { SettingsStore } from '../../../../../../services/settings-store/settings-store';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { Modal } from '../../../../../shared/modal/modal';
 
 /**
