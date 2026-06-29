@@ -1,8 +1,8 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { TabType } from '../../../../services/tabs/tab';
-import { Tabs } from '../../../../services/tabs/tabs';
+import { TabType } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentRibbon } from '../ribbons/agent-ribbon/agent-ribbon';
 import { CodeRibbon } from '../ribbons/code-ribbon/code-ribbon';
 import { DirectoryRibbon } from '../ribbons/directory-ribbon/directory-ribbon';

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Tabs } from '../../services/tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
 import { WelcomeScreen } from './welcome-screen';
 

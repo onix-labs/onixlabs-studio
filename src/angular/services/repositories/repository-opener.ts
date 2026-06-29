@@ -1,7 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { RepositoryInfo, SourceControlApi } from '../../../shared/studio-api';
-import { Tab } from '../tabs/tab';
-import { Tabs } from '../tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Repositories } from './repositories';
 
 /**

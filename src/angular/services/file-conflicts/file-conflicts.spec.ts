@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
-import { Tab } from '../tabs/tab';
-import { Tabs } from '../tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { FileConflict, FileConflicts } from './file-conflicts';
 
 describe('FileConflicts', () => {

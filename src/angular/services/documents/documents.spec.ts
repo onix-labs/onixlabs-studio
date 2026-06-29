@@ -3,8 +3,8 @@ import { TestBed } from '@angular/core/testing';
 
 import { FileInfo } from '../../../shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
-import { Tab } from '../tabs/tab';
-import { Tabs } from '../tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { CodeDocument, Documents } from './documents';
 
 /**

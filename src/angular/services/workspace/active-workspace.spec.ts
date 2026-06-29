@@ -1,6 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Tabs } from '../tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ActiveWorkspace } from './active-workspace';
 
 describe('ActiveWorkspace', () => {

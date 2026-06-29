@@ -3,8 +3,8 @@ import { DirectoryListing, OpenSelection, WorkspaceApi } from '../../../shared/s
 import { StackNode } from '../dock/dock-node';
 import { DockState } from '../dock/dock-state';
 import { firstStackOfRole } from '../dock/dock-tree';
-import { Tab } from '../tabs/tab';
-import { Tabs } from '../tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspaces } from '../workspaces/workspaces';
 import { FileOpener } from './file-opener';
 

@@ -19,7 +19,7 @@ import {
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
-import { Tab } from '../../../../services/tabs/tab';
+import { Tab } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

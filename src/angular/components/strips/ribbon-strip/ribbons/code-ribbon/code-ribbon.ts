@@ -6,7 +6,7 @@ import { CodeTerminals } from '../../../../../services/code-terminals/code-termi
 import { CodeDocument, Documents } from '../../../../../services/documents/documents';
 import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '../../../../../services/settings/settings';
-import { Tabs } from '../../../../../services/tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';

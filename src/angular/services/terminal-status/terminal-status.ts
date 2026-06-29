@@ -1,5 +1,5 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { StatusBar } from '../status-bar/status-bar';
+import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**

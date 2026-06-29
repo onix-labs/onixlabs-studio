@@ -1,5 +1,5 @@
 import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
-import { Studio } from '../studio/studio';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Represents the window-lock state, controlling whether the frameless window may be moved by

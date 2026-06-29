@@ -1,5 +1,5 @@
 import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
-import { StatusBar } from '../status-bar/status-bar';
+import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 
 /**
  * Holds the status-bar owner identifier for the code editor's contribution.

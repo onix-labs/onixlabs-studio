@@ -13,8 +13,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Documents } from '../../../../services/documents/documents';
-import { Tab } from '../../../../services/tabs/tab';
-import { Tabs } from '../../../../services/tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
 
 /**

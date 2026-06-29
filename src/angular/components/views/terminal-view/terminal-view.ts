@@ -14,8 +14,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
-import { Studio } from '../../../services/studio/studio';
-import { Tabs } from '../../../services/tabs/tabs';
+import { Studio } from '@shared/angular/services/studio/studio';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalAgents } from '../../../services/terminal-agents/terminal-agents';
 import {
   TerminalCommandHandler,

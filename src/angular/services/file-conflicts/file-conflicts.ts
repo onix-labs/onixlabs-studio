@@ -8,7 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import { Tabs } from '../tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
  * Describes a document whose file changed on disk while it had unsaved edits, awaiting the user's

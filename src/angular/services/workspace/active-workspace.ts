@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { Tabs } from '../tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
  * Tracks the workspace root of each top-level tab and projects the active tab's root, so global

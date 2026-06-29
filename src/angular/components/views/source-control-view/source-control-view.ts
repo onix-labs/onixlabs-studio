@@ -32,8 +32,8 @@ import {
   SourceControlCommandHandler,
   SourceControlCommands,
 } from '../../../services/source-control-commands/source-control-commands';
-import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
-import { Tabs } from '../../../services/tabs/tabs';
+import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DockContainer } from '../../dock/dock-container/dock-container';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '../../shared/modal/modal';

@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Tab } from '../../../../services/tabs/tab';
-import { Tabs } from '../../../../services/tabs/tabs';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTabList } from './title-strip-tab-list';
 
 describe('TitleStripTabList', () => {

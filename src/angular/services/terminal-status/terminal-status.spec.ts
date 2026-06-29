@@ -1,7 +1,7 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { StatusBar } from '../status-bar/status-bar';
+import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 import { TerminalStatus } from './terminal-status';
 

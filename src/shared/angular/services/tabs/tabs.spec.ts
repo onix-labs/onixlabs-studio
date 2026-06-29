@@ -152,9 +152,9 @@ describe('Tabs', () => {
 
     service.setAttention(tab.id, true);
 
-    expect(service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention).toBe(
-      true,
-    );
+    expect(
+      service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention,
+    ).toBe(true);
   });
 
   it('setAttention_whenClearedAgain_unflagsTheTab', () => {

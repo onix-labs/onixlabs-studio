@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { Tabs } from '../../services/tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '../content-host/content-host';
 import { RibbonStripContainer } from '../strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '../strips/status-strip/status-strip-container/status-strip-container';

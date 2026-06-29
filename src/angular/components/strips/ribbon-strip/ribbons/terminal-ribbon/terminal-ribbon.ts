@@ -7,7 +7,7 @@ import { RibbonStripGroup } from '../../ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '../../ribbon-strip-overflow/ribbon-strip-overflow';
 import { TerminalAgents } from '../../../../../services/terminal-agents/terminal-agents';
 import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
-import { Tabs } from '../../../../../services/tabs/tabs';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,

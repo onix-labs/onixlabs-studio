@@ -66,14 +66,16 @@ export class StatusBar {
    * Gets the merged leading (start-aligned) status segments, ordered by owner priority.
    */
   public readonly leading: Signal<readonly StatusSegment[]> = computed(
-    (): readonly StatusSegment[] => this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.leading),
+    (): readonly StatusSegment[] =>
+      this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.leading),
   );
 
   /**
    * Gets the merged trailing (end-aligned) status segments, ordered by owner priority.
    */
   public readonly trailing: Signal<readonly StatusSegment[]> = computed(
-    (): readonly StatusSegment[] => this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.trailing),
+    (): readonly StatusSegment[] =>
+      this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.trailing),
   );
 
   /**
@@ -83,11 +85,13 @@ export class StatusBar {
    * @param priority The priority that orders this owner against others (lower renders first).
    */
   public contribute(ownerId: string, contribution: StatusContribution, priority: number): void {
-    this.owners.update((current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
-      const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
-      next.set(ownerId, { ...contribution, priority });
-      return next;
-    });
+    this.owners.update(
+      (current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
+        const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
+        next.set(ownerId, { ...contribution, priority });
+        return next;
+      },
+    );
   }
 
   /**
@@ -95,14 +99,16 @@ export class StatusBar {
    * @param ownerId The identifier of the owner to clear.
    */
   public clearOwner(ownerId: string): void {
-    this.owners.update((current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
-      if (!current.has(ownerId)) {
-        return current;
-      }
-      const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
-      next.delete(ownerId);
-      return next;
-    });
+    this.owners.update(
+      (current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
+        if (!current.has(ownerId)) {
+          return current;
+        }
+        const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
+        next.delete(ownerId);
+        return next;
+      },
+    );
   }
 
   /**

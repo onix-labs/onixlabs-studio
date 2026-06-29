@@ -1,5 +1,5 @@
 import { Service } from '@angular/core';
-import { StudioApi } from '../../../shared/studio-api';
+import { StudioApi } from '@shared/studio-api';
 
 /**
  * Represents the renderer-side wrapper around the Electron Studio bridge exposed on window.studio.

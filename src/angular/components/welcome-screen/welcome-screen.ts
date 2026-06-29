@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { FileOpener } from '../../services/file-opener/file-opener';
 import { RecentItem, RecentItems } from '../../services/recent-items/recent-items';
 import { RepositoryOpener } from '../../services/repositories/repository-opener';
-import { TabType } from '../../services/tabs/tab';
-import { Tabs } from '../../services/tabs/tabs';
+import { TabType } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
