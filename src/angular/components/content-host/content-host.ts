@@ -1,4 +1,6 @@
+import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Documents } from '../../services/documents/documents';
 import { Tab } from '../../services/tabs/tab';
 import { Tabs } from '../../services/tabs/tabs';
@@ -20,6 +22,7 @@ import { TerminalView } from '../views/terminal-view/terminal-view';
 @Component({
   selector: 'app-content-host',
   imports: [
+    NgComponentOutlet,
     SettingsView,
     DirectoryView,
     CodeView,
@@ -34,6 +37,13 @@ import { TerminalView } from '../views/terminal-view/terminal-view';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContentHost {
+  /**
+   * Holds the registry of feature views, consulted first so a migrated feature's view is mounted
+   * from its own descriptor. Tab types with no registered feature fall back to the static switch
+   * until they are migrated.
+   */
+  protected readonly registry: FeatureRegistry = inject(FeatureRegistry);
+
   /**
    * Holds the tab registry whose views are rendered.
    */

@@ -17,5 +17,8 @@
     "sourceMap": true,
     "declaration": false
   },
-  "include": ["**/*.ts", "../shared/**/*.ts"]
+  "include": ["**/*.ts", "../shared/**/*.ts"],
+  /* Exclude src/shared/angular: it is renderer (Angular) code that must not be compiled by this
+     node-only config; the main and preload processes only consume the shared api types. */
+  "exclude": ["../shared/angular/**"]
 }

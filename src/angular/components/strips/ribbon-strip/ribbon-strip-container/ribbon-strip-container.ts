@@ -1,4 +1,6 @@
+import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { TabType } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
 import { AgentRibbon } from '../ribbons/agent-ribbon/agent-ribbon';
@@ -14,12 +16,27 @@ import { TerminalRibbon } from '../ribbons/terminal-ribbon/terminal-ribbon';
  */
 @Component({
   selector: 'app-ribbon-strip-container',
-  imports: [DirectoryRibbon, CodeRibbon, MarkdownRibbon, TerminalRibbon, AgentRibbon, SourceControlRibbon],
+  imports: [
+    NgComponentOutlet,
+    DirectoryRibbon,
+    CodeRibbon,
+    MarkdownRibbon,
+    TerminalRibbon,
+    AgentRibbon,
+    SourceControlRibbon,
+  ],
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RibbonStripContainer {
+  /**
+   * Holds the registry of feature ribbons, consulted first so a migrated feature's ribbon is shown
+   * from its own descriptor. Tab types with no registered ribbon fall back to the static switch
+   * until they are migrated.
+   */
+  protected readonly registry: FeatureRegistry = inject(FeatureRegistry);
+
   /**
    * Holds the tab registry used to resolve the active tab type.
    */

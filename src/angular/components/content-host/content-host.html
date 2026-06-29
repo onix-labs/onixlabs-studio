@@ -1,31 +1,37 @@
 @for (tab of tabs(); track tab.id) {
   <div class="tab-view" [class.tab-view--hidden]="tab.id !== activeTabId()">
-    @switch (tab.type) {
-      @case ('settings') {
-        <app-settings-view [isActive]="tab.id === activeTabId()" />
-      }
-      @case ('directory') {
-        <app-directory-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
-      }
-      @case ('code') {
-        <app-code-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
-      }
-      @case ('markdown') {
-        <app-markdown-view
-          [documentId]="tab.id"
-          [content]="markdownContent(tab.id)"
-          [isActive]="tab.id === activeTabId()"
-          (contentChange)="onMarkdownChange(tab.id, $event)"
-        />
-      }
-      @case ('terminal') {
-        <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />
-      }
-      @case ('agent') {
-        <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
-      }
-      @case ('source-control') {
-        <app-source-control-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
+    @if (registry.viewFor(tab.type); as view) {
+      <ng-container
+        *ngComponentOutlet="view; inputs: { tabId: tab.id, isActive: tab.id === activeTabId() }"
+      />
+    } @else {
+      @switch (tab.type) {
+        @case ('settings') {
+          <app-settings-view [isActive]="tab.id === activeTabId()" />
+        }
+        @case ('directory') {
+          <app-directory-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
+        }
+        @case ('code') {
+          <app-code-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
+        }
+        @case ('markdown') {
+          <app-markdown-view
+            [documentId]="tab.id"
+            [content]="markdownContent(tab.id)"
+            [isActive]="tab.id === activeTabId()"
+            (contentChange)="onMarkdownChange(tab.id, $event)"
+          />
+        }
+        @case ('terminal') {
+          <app-terminal-view [terminalId]="tab.id" [isActive]="tab.id === activeTabId()" />
+        }
+        @case ('agent') {
+          <app-agent-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
+        }
+        @case ('source-control') {
+          <app-source-control-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
+        }
       }
     }
   </div>
