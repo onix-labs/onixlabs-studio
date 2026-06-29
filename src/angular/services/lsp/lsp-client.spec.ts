@@ -10,7 +10,7 @@ import {
 } from '../../../shared/lsp-types';
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
-import { Monaco } from '../monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';

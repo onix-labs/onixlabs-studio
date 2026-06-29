@@ -22,9 +22,9 @@ import { CodeCommandHandler, CodeCommands } from '../../../services/code-command
 import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../services/documents/documents';
-import { Editors, RevealRequest } from '../../../services/editors/editors';
+import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '../../../services/lsp/lsp-client';
-import { Monaco } from '../../../services/monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';

@@ -6,8 +6,8 @@ import {
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '../../../shared/lsp-types';
-import { Editors } from '../editors/editors';
-import { Monaco } from '../monaco/monaco';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 
 /**
  * References the language-server document an editor model maps to: which session owns it and the

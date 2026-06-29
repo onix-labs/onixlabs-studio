@@ -1,6 +1,6 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { Monaco } from '../monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import {
   ChangeMarginColors,
   ChangeMarginController,

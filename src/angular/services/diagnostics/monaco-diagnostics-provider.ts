@@ -1,7 +1,7 @@
 import type * as MonacoApi from 'monaco-editor';
-import { EditorLocation, Editors } from '../editors/editors';
+import { EditorLocation, Editors } from '@shared/angular/services/editors/editors';
 import { LSP_MARKER_OWNER } from '../lsp/lsp-marker-owner';
-import { Monaco } from '../monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Diagnostic, DiagnosticSeverity, DiagnosticsProvider } from './diagnostics';
 
 /**

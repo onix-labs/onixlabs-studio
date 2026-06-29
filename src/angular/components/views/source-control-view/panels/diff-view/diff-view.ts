@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Icon } from '@shared/angular/icons/icon';
-import { Monaco } from '../../../../../services/monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { GitChangeStatus } from '../../../../../services/repository/repository-data';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';

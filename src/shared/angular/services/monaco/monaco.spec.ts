@@ -88,12 +88,16 @@ describe('buildHeuristicSemanticTokens', () => {
   const FUNCTION: number = 1;
 
   it('whenPascalCaseIdentifier_emitsTypeToken', () => {
-    const tokens: readonly DecodedToken[] = decodeTokens(buildHeuristicSemanticTokens('Customer value', [[]]));
+    const tokens: readonly DecodedToken[] = decodeTokens(
+      buildHeuristicSemanticTokens('Customer value', [[]]),
+    );
     expect(tokens).toEqual([{ deltaLine: 0, deltaChar: 0, length: 8, type: TYPE }]);
   });
 
   it('whenIdentifierFollowedByParen_emitsFunctionToken', () => {
-    const tokens: readonly DecodedToken[] = decodeTokens(buildHeuristicSemanticTokens('compute()', [[]]));
+    const tokens: readonly DecodedToken[] = decodeTokens(
+      buildHeuristicSemanticTokens('compute()', [[]]),
+    );
     expect(tokens).toEqual([{ deltaLine: 0, deltaChar: 0, length: 7, type: FUNCTION }]);
   });
 
@@ -115,7 +119,9 @@ describe('buildHeuristicSemanticTokens', () => {
   });
 
   it('whenTokensSpanLines_deltaEncodesPositions', () => {
-    const tokens: readonly DecodedToken[] = decodeTokens(buildHeuristicSemanticTokens('Alpha\nBeta', [[], []]));
+    const tokens: readonly DecodedToken[] = decodeTokens(
+      buildHeuristicSemanticTokens('Alpha\nBeta', [[], []]),
+    );
     expect(tokens).toEqual([
       { deltaLine: 0, deltaChar: 0, length: 5, type: TYPE },
       { deltaLine: 1, deltaChar: 0, length: 4, type: TYPE },

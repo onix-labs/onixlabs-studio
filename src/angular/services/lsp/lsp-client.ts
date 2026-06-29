@@ -9,8 +9,8 @@ import {
 } from '../../../shared/lsp-types';
 import { DirectoryListing } from '../../../shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
-import { Editors } from '../editors/editors';
-import { Monaco } from '../monaco/monaco';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';

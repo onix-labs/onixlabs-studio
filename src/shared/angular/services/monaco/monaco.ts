@@ -1,6 +1,10 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { CurrentLineHighlightStyle, Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import {
+  CurrentLineHighlightStyle,
+  Settings,
+  TextEditorSettings,
+} from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 
 declare global {

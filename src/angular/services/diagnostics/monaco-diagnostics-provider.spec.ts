@@ -1,5 +1,5 @@
-import { Editors } from '../editors/editors';
-import { Monaco } from '../monaco/monaco';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Diagnostic } from './diagnostics';
 import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
 

@@ -1,7 +1,7 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Documents } from '../documents/documents';
-import { Editors } from '../editors/editors';
-import { Monaco } from '../monaco/monaco';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
 
 /**

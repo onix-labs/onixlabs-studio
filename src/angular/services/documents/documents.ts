@@ -3,7 +3,7 @@ import { FileInfo, SaveDialogChoice } from '../../../shared/studio-api';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
-import { Monaco } from '../monaco/monaco';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
