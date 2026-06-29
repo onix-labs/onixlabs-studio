@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { LspSettings as LspSettingsData } from '../../../shared/lsp-types';
+import { LspSettings as LspSettingsData } from '@shared/lsp-types';
 import { LspSettings } from './lsp-settings';
 
 describe('LspSettings', () => {

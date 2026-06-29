@@ -1,5 +1,5 @@
 import { computed, inject, Service, Signal } from '@angular/core';
-import { Display } from '../display/display';
+import { Display } from '@shared/angular/services/display/display';
 import { SettingBindings } from './setting-bindings';
 import { SETTINGS_BY_KEY, SettingDef } from '@shared/angular/services/settings/settings-registry';
 

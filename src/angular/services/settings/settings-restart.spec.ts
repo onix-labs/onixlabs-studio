@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { Display } from '../display/display';
+import { Display } from '@shared/angular/services/display/display';
 import { SettingsRestart } from './settings-restart';
 
 describe('SettingsRestart', () => {

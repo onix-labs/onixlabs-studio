@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import { Display } from '../display/display';
+import { Display } from '@shared/angular/services/display/display';
 
 /**
  * Resolves dynamic descriptions for settings whose help text depends on runtime state, keyed by

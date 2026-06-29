@@ -14,7 +14,7 @@ import { Monaco } from '../monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
-import { LspSettings } from './lsp-settings';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspStatus } from './lsp-status';
 
 /**

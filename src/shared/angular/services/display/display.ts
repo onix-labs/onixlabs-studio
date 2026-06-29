@@ -1,5 +1,5 @@
 import { DOCUMENT, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { DisplayApi } from '../../../shared/studio-api';
+import type { DisplayApi } from '@shared/studio-api';
 import { ModernUiFeatures, Settings } from '@shared/angular/services/settings/settings';
 
 /**

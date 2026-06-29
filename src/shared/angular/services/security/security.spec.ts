@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { ImageSourcePolicy, SecurityApi } from '../../../shared/security-types';
+import type { ImageSourcePolicy, SecurityApi } from '@shared/security-types';
 import { Security } from './security';
 
 describe('Security', () => {

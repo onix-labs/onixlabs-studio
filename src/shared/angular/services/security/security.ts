@@ -1,5 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { ImageSourcePolicy, SecurityApi } from '../../../shared/security-types';
+import type { ImageSourcePolicy, SecurityApi } from '@shared/security-types';
 
 /**
  * Renderer-side wrapper around the security bridge exposed on `window.studio.security`.

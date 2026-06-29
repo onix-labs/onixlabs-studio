@@ -1,5 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import { LspApi, LspSettings as LspSettingsData } from '../../../shared/lsp-types';
+import { LspApi, LspSettings as LspSettingsData } from '@shared/lsp-types';
 
 /**
  * Holds the settings used before any have been loaded from the main process.

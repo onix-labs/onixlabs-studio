@@ -13,7 +13,7 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Monaco } from '../monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
-import { LspSettings } from './lsp-settings';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspServer, LspStatus } from './lsp-status';
 
 /**

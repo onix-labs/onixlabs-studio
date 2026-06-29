@@ -1,8 +1,8 @@
 import { computed, inject, Injector, Service, signal, Signal } from '@angular/core';
 import type { ImageSourcePolicy } from '../../../shared/security-types';
-import { Display } from '../display/display';
-import { LspSettings } from '../lsp/lsp-settings';
-import { Security } from '../security/security';
+import { Display } from '@shared/angular/services/display/display';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Security } from '@shared/angular/services/security/security';
 import { AccentColor, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingOwner, SettingsKey } from '@shared/angular/services/settings/settings-registry';
