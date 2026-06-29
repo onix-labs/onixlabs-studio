@@ -1,6 +1,13 @@
 <div class="terminal-shell">
   <div class="terminal-main">
-    <div #container class="terminal"></div>
+    <app-terminal
+      [terminalId]="terminalId()"
+      [cwd]="cwd()"
+      [isActive]="isActive()"
+      (ready)="onPaneReady()"
+      (titleChange)="onTitleChange($event)"
+      (exited)="onExited()"
+    />
   </div>
 
   @if (agentMounted()) {

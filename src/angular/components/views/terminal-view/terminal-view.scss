@@ -2,10 +2,6 @@
   // The resize splitter rests at the agent panel's own surface color so it reads as part of the panel.
   --terminal-splitter: var(--gray-200);
 
-  // The surface behind the terminal. It matches the xterm theme background (built from the same gray
-  // primitives in buildTheme), so the padding around the canvas reads as part of the terminal.
-  --terminal-surface: var(--gray-100);
-
   display: block;
   block-size: 100%;
   background: var(--body-background-color);
@@ -13,7 +9,6 @@
 
 :host-context([data-theme-mode='dark']) {
   --terminal-splitter: color-mix(in srgb, var(--gray-900), var(--gray-800));
-  --terminal-surface: var(--gray-900);
 }
 
 // The shell lays the terminal area beside the optional agent panel, which always docks to the side.
@@ -32,8 +27,6 @@
   min-block-size: 0;
   block-size: 100%;
   box-sizing: border-box;
-  padding: 0.5rem;
-  background: var(--terminal-surface);
 }
 
 // The agent panel's resize grip. The splitter takes no layout space (the agent sits flush against the
@@ -71,22 +64,5 @@
 
   &--hidden {
     display: none;
-  }
-}
-
-// The xterm host fills the remaining space inside the padded column. `min-block-size: 0` lets it
-// shrink so the fit addon sizes the terminal to fit without overflowing the bottom padding, and the
-// transparent viewport lets the surface colour show through so the canvas and padding read as one.
-.terminal {
-  flex: 1;
-  min-block-size: 0;
-  inline-size: 100%;
-
-  ::ng-deep .xterm {
-    block-size: 100%;
-  }
-
-  ::ng-deep .xterm-viewport {
-    background-color: transparent !important;
   }
 }

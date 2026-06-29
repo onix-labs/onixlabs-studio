@@ -1,0 +1,36 @@
+// The pane owns its full presentation: a padded surface whose colour matches the xterm theme
+// background (built from the same gray primitives in buildTheme), so the padding around the canvas
+// reads as part of the terminal. Consumers just drop <app-terminal> into a slot.
+:host {
+  --terminal-surface: var(--gray-100);
+
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  background: var(--terminal-surface);
+}
+
+:host-context([data-theme-mode='dark']) {
+  --terminal-surface: var(--gray-900);
+}
+
+// The xterm host fills the remaining space inside the padded column. `min-block-size: 0` lets it
+// shrink so the fit addon sizes the terminal to fit without overflowing the bottom padding, and the
+// transparent viewport lets the surface colour show through so the canvas and padding read as one.
+.terminal {
+  flex: 1;
+  min-block-size: 0;
+  inline-size: 100%;
+
+  ::ng-deep .xterm {
+    block-size: 100%;
+  }
+
+  ::ng-deep .xterm-viewport {
+    background-color: transparent !important;
+  }
+}
