@@ -12,8 +12,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AgentSurface } from '../../../../shared/ai-types';
-import { Agent, AgentItem } from '../../../services/agent/agent';
-import { AgentSessions } from '../../../services/agent-sessions/agent-sessions';
+import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';

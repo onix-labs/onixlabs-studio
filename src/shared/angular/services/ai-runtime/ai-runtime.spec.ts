@@ -10,7 +10,7 @@ import type {
   AiProviderInfo,
   AiRunRequest,
   AiVerifyResult,
-} from '../../../shared/ai-types';
+} from '@shared/ai-types';
 import { AiRuntime } from './ai-runtime';
 
 /**
@@ -59,7 +59,8 @@ describe('AiRuntime', () => {
       getAuthStatus: (): Promise<AiAuthStatus> => Promise.resolve(status),
       setApiKey: (): Promise<AiAuthStatus> => Promise.resolve(status),
       clearApiKey: (): Promise<AiAuthStatus> => Promise.resolve(status),
-      verifyAuthentication: (): Promise<AiVerifyResult> => Promise.resolve({ ok: true, detail: 'ok' }),
+      verifyAuthentication: (): Promise<AiVerifyResult> =>
+        Promise.resolve({ ok: true, detail: 'ok' }),
       listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
       run: (request: AiRunRequest): Promise<void> => {
         runCalls.push(request);

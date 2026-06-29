@@ -1,5 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiApi, AiAuthStatus, AiVerifyResult } from '../../../shared/ai-types';
+import type { AiApi, AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
 
 /**
  * The status reported when the agent bridge is unavailable (outside Electron — served as a plain web

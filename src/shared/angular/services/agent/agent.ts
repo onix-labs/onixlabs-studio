@@ -1,5 +1,13 @@
-import { computed, DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AgentSurface, AiEvent, AiRunState } from '../../../shared/ai-types';
+import {
+  computed,
+  DestroyRef,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
+import type { AgentSurface, AiEvent, AiRunState } from '@shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AgentSessionHandle } from '../agent-sessions/agent-sessions';
@@ -154,7 +162,8 @@ export class Agent implements AgentSessionHandle {
    */
   public readonly awaitingDecision: Signal<boolean> = computed((): boolean =>
     this.log().some(
-      (item: AgentItem): boolean => item.kind === 'permission' && item.permissionState === 'pending',
+      (item: AgentItem): boolean =>
+        item.kind === 'permission' && item.permissionState === 'pending',
     ),
   );
 
@@ -222,10 +231,13 @@ export class Agent implements AgentSessionHandle {
       return;
     }
     this.runtime.respondPermission(item.permissionId, granted);
-    this.update(item.id, (existing: AgentItem): AgentItem => ({
-      ...existing,
-      permissionState: granted ? 'allowed' : 'denied',
-    }));
+    this.update(
+      item.id,
+      (existing: AgentItem): AgentItem => ({
+        ...existing,
+        permissionState: granted ? 'allowed' : 'denied',
+      }),
+    );
   }
 
   /**
@@ -288,7 +300,8 @@ export class Agent implements AgentSessionHandle {
     this.busy.set(false);
     this.activeRequestId = null;
     if (state === 'error') {
-      const reason: string = detail.trim().length > 0 ? detail : 'The agent run ended with an error.';
+      const reason: string =
+        detail.trim().length > 0 ? detail : 'The agent run ended with an error.';
       this.push({ kind: 'assistant', text: `_${reason}_` });
     } else if (state === 'aborted') {
       this.push({ kind: 'assistant', text: '_Stopped._' });
@@ -317,10 +330,13 @@ export class Agent implements AgentSessionHandle {
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
     if (last?.kind === kind) {
-      this.update(last.id, (existing: AgentItem): AgentItem => ({
-        ...existing,
-        text: existing.text + delta,
-      }));
+      this.update(
+        last.id,
+        (existing: AgentItem): AgentItem => ({
+          ...existing,
+          text: existing.text + delta,
+        }),
+      );
     } else {
       this.push({ kind, text: delta });
     }
@@ -333,10 +349,11 @@ export class Agent implements AgentSessionHandle {
    */
   private endTool(toolId: string, ok: boolean): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map((item: AgentItem): AgentItem =>
-        item.kind === 'tool' && item.toolId === toolId
-          ? { ...item, toolState: ok ? 'ok' : 'error' }
-          : item,
+      items.map(
+        (item: AgentItem): AgentItem =>
+          item.kind === 'tool' && item.toolId === toolId
+            ? { ...item, toolState: ok ? 'ok' : 'error' }
+            : item,
       ),
     );
   }

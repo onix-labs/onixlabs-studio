@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiApi, AiAuthStatus, AiProviderInfo, AiVerifyResult } from '../../../shared/ai-types';
+import type { AiApi, AiAuthStatus, AiProviderInfo, AiVerifyResult } from '@shared/ai-types';
 import { AiAuth } from './ai-auth';
 
 /**

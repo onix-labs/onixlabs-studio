@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '../../../shared/ai-types';
+import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Settings } from '@shared/angular/services/settings/settings';
 

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Agent, AgentItem } from '../../../services/agent/agent';
+import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentChat } from './agent-chat';
 
 describe('AgentChat', () => {

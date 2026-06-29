@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
-import { AiCapability, AiRuntime } from '../ai-runtime/ai-runtime';
+import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { CodeCommandHandler, CodeCommands } from '../code-commands/code-commands';
 import {
   MarkdownCommandHandler,

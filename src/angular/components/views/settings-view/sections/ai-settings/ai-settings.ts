@@ -14,8 +14,8 @@ import type {
   AiProviderInfo,
   AiVerifyResult,
 } from '../../../../../../shared/ai-types';
-import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
-import { AiAuth } from '../../../../../services/ai-auth/ai-auth';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { AiAuth } from '@shared/angular/services/ai-auth/ai-auth';
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { PasswordField } from '../../../../forms/password-field/password-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';

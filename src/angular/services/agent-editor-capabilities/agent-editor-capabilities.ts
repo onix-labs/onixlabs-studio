@@ -2,7 +2,7 @@ import { inject, Service } from '@angular/core';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
 import { CodeCommands } from '../code-commands/code-commands';
 import { MarkdownCommands } from '../markdown-commands/markdown-commands';
-import { AiRuntime } from '../ai-runtime/ai-runtime';
+import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 
 /**
  * The result of the read-active-document capability.

@@ -7,7 +7,7 @@ import type {
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
-} from '../../../shared/ai-types';
+} from '@shared/ai-types';
 
 /**
  * A renderer-side in-app capability the agent can invoke through the bridge. Receives the request's

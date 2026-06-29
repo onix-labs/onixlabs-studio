@@ -1,11 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type {
-  AiEvent,
-  AiPermissionPosture,
-  AiProviderId,
-  AiProviderInfo,
-} from '../../../shared/ai-types';
+import type { AiEvent, AiPermissionPosture, AiProviderId, AiProviderInfo } from '@shared/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -189,7 +184,12 @@ describe('Agent', () => {
   it('status_whenErrorWithDetail_showsTheReason', () => {
     agent.send('hi');
 
-    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'Ollama is not running.' });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Ollama is not running.',
+    });
 
     expect(agent.isRunning()).toBe(false);
     expect(lastItem()?.kind).toBe('assistant');

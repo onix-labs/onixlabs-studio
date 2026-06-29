@@ -1,6 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '../../../shared/ai-types';
-import { AiRuntime } from '../ai-runtime/ai-runtime';
+import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 
