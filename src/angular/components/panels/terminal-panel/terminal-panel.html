@@ -1,5 +1,5 @@
 @if (root(); as root) {
-  <app-terminal-view [terminalId]="terminalId()" [cwd]="root" />
+  <app-terminal [terminalId]="terminalId()" [cwd]="root" />
   <footer class="terminal-panel__status">
     <span class="terminal-panel__status-item">
       <app-icon [icon]="Icon.TERMINAL" />

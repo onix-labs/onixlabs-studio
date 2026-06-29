@@ -1,19 +1,27 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, InputSignal, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockTabContext } from '../../../services/dock/dock-tab-context';
 import { Icon } from '../../../icons/icon';
 import { AppIcon } from '../../shared/icon/app-icon';
-import { TerminalView } from '../../views/terminal-view/terminal-view';
+import { Terminal } from '@shared/angular/components/terminal/terminal';
 
 /**
- * Hosts an interactive terminal as a dockable IDE panel for a workspace or repository tab. It reuses
- * the shared {@link TerminalView}, keying the PTY session by the owning tab and rooting the shell at
+ * Hosts an interactive terminal as a dockable IDE panel for a workspace or repository tab. It embeds
+ * the shared {@link Terminal} pane, keying the PTY session by the owning tab and rooting the shell at
  * the tab's folder (or repository root). The session is created once the root is known, so a tab with
  * no folder open shows a prompt instead of spawning a shell in the wrong directory.
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [TerminalView, AppIcon],
+  imports: [Terminal, AppIcon],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
