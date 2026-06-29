@@ -16,12 +16,12 @@ import {
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { TerminalAgents } from '../../../services/terminal-agents/terminal-agents';
+import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import {
   TerminalCommandHandler,
   TerminalCommands,
-} from '../../../services/terminal-commands/terminal-commands';
-import { TerminalStatus } from '../../../services/terminal-status/terminal-status';
+} from '@features/terminal/angular/terminal-commands/terminal-commands';
+import { TerminalStatus } from '@features/terminal/angular/terminal-status/terminal-status';
 import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
 /**

@@ -5,8 +5,8 @@ import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
-import { TerminalAgents } from '../../../../../services/terminal-agents/terminal-agents';
-import { TerminalCommands } from '../../../../../services/terminal-commands/terminal-commands';
+import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
+import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -17,9 +17,15 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
  */
 @Component({
   selector: 'app-terminal-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripColumn, RibbonStripButton, RibbonStripCheck],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripColumn,
+    RibbonStripButton,
+    RibbonStripCheck,
+  ],
   templateUrl: './terminal-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrl: './terminal-ribbon.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TerminalRibbon {

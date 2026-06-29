@@ -9,6 +9,7 @@
   "include": [
     "src/angular/**/*.d.ts",
     "src/angular/**/*.spec.ts",
-    "src/shared/**/*.spec.ts"
+    "src/shared/**/*.spec.ts",
+    "src/features/**/*.spec.ts"
   ]
 }

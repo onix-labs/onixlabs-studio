@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '../../../shared/ai-types';
+import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '@shared/ai-types';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
@@ -74,8 +74,9 @@ export class AgentTerminalCapabilities {
    * terminal capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(READ_TERMINAL_OUTPUT, (input: unknown): ReadResult =>
-      this.readOutput(input),
+    this.runtime.registerCapability(
+      READ_TERMINAL_OUTPUT,
+      (input: unknown): ReadResult => this.readOutput(input),
     );
     this.runtime.registerCapability(
       WRITE_TERMINAL_INPUT,

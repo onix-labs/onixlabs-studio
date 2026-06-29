@@ -6,7 +6,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { AgentEditorCapabilities } from './services/agent-editor-capabilities/agent-editor-capabilities';
-import { AgentTerminalCapabilities } from './services/agent-terminal-capabilities/agent-terminal-capabilities';
+import { AgentTerminalCapabilities } from '@features/terminal/angular/agent-terminal-capabilities/agent-terminal-capabilities';
 import { Display } from './services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
-import { TerminalAgents } from '../../../../services/terminal-agents/terminal-agents';
+import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
