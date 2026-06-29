@@ -11,7 +11,7 @@ import {
   WindowOpenHandlerResponse,
 } from 'electron';
 import * as path from 'node:path';
-import { IpcChannel } from '../shared/ipc-channels';
+import { IpcChannel } from '@shared/ipc-channels';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from './code-runner';
 import { FileManager } from './file-manager';

@@ -7,7 +7,7 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { ProjectModel } from '../../../../shared/project-system';
+import { ProjectModel } from '@shared/project-system';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';

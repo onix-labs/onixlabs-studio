@@ -9,7 +9,7 @@ import type {
   AiRunRequest,
   AiVerifyResult,
 } from '../shared/ai-types';
-import { IpcChannel } from '../shared/ipc-channels';
+import { IpcChannel } from '@shared/ipc-channels';
 import type { ProjectItems, ProjectModel } from '../shared/project-system';
 import type {
   LspExit,
