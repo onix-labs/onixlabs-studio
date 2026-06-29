@@ -77,6 +77,12 @@ export class SettingsView {
   protected readonly restartRequired: Signal<boolean> = this.restart.restartRequired;
 
   /**
+   * Gets the identifier of the settings tab. Part of the feature-view input contract; the settings
+   * view is a singleton and does not key state on it.
+   */
+  public readonly tabId: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
    * Gets a value indicating whether the view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);

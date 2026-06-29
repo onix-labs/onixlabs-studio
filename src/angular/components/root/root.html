@@ -1,12 +1,12 @@
 @if (hasTabs()) {
   <app-title-strip-container class="title-strip" />
-  @if (!isSettingsActive()) {
+  @if (activeChrome().ribbon) {
     <app-ribbon-strip-container class="ribbon-strip" />
   }
   <main class="content">
     <app-content-host />
   </main>
-  @if (!isSettingsActive()) {
+  @if (activeChrome().status) {
     <app-status-strip-container class="status-strip" />
   }
 }

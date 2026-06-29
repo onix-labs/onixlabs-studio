@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '../content-host/content-host';
 import { RibbonStripContainer } from '../strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
@@ -12,7 +13,13 @@ import { WelcomeScreen } from '../welcome-screen/welcome-screen';
  */
 @Component({
   selector: 'app-root',
-  imports: [RibbonStripContainer, StatusStripContainer, TitleStripContainer, ContentHost, WelcomeScreen],
+  imports: [
+    RibbonStripContainer,
+    StatusStripContainer,
+    TitleStripContainer,
+    ContentHost,
+    WelcomeScreen,
+  ],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -24,6 +31,11 @@ export class Root {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
+   * Holds the feature registry, consulted for the active feature's chrome policy.
+   */
+  private readonly registry: FeatureRegistry = inject(FeatureRegistry);
+
+  /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content
    * host are replaced by the welcome screen.
    */
@@ -32,10 +44,11 @@ export class Root {
   );
 
   /**
-   * Gets a value indicating whether the active tab is the settings tab, which is shown full-bleed
-   * without the ribbon and status strips.
+   * Gets the chrome policy of the active tab's feature: which strips the shell shows while it is
+   * active. A full-bleed feature (such as settings) opts out of the ribbon and/or status strip
+   * through its descriptor, so the shell hides them with no hard-coded knowledge of the feature.
    */
-  protected readonly isSettingsActive: Signal<boolean> = computed(
-    (): boolean => this.tabsService.activeTab()?.type === 'settings',
+  protected readonly activeChrome: Signal<FeatureChrome> = computed(
+    (): FeatureChrome => this.registry.chromeFor(this.tabsService.activeTab()?.type),
   );
 }

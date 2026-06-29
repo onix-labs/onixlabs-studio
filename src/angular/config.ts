@@ -10,6 +10,7 @@ import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
+import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
 
 /**
@@ -39,6 +40,8 @@ export const config: ApplicationConfig = {
     provideTerminalFeature(),
     // Stand up the agent feature: register its chat view + ribbon with the shell.
     provideAgentFeature(),
+    // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
+    provideSettingsFeature(),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {

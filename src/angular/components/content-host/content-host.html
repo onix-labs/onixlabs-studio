@@ -6,9 +6,6 @@
       />
     } @else {
       @switch (tab.type) {
-        @case ('settings') {
-          <app-settings-view [isActive]="tab.id === activeTabId()" />
-        }
         @case ('directory') {
           <app-directory-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
         }
