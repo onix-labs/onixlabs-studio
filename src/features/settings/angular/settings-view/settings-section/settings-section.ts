@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { SettingControl } from '../setting-control/setting-control';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
-import { SettingDescriptions } from '../../../../services/settings/setting-descriptions';
+import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 import { findSection, SettingDef } from '@shared/angular/services/settings/settings-registry';
 
 /**

@@ -6,7 +6,11 @@ import { LanguageSelect } from '@shared/angular/components/forms/language-select
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
-import { EditorProfile, Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import {
+  EditorProfile,
+  Settings,
+  TextEditorSettings,
+} from '@shared/angular/services/settings/settings';
 import {
   ChoiceOption,
   findSection,
@@ -25,7 +29,16 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
  */
 @Component({
   selector: 'app-editor-profiles',
-  imports: [SettingRow, Toggle, Checkbox, Dropdown, NumberField, Accordion, LanguageSelect, AppIcon],
+  imports: [
+    SettingRow,
+    Toggle,
+    Checkbox,
+    Dropdown,
+    NumberField,
+    Accordion,
+    LanguageSelect,
+    AppIcon,
+  ],
   templateUrl: './editor-profiles.html',
   styleUrls: ['../sections/section.scss', './editor-profiles.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

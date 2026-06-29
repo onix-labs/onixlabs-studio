@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { SettingDescriptions } from './setting-descriptions';
+import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 
 describe('SettingDescriptions', () => {
   let descriptions: SettingDescriptions;

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { SettingBinding, SettingBindings } from './setting-bindings';
+import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 describe('SettingBindings', () => {

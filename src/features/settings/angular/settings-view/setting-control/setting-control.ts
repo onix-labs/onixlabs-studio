@@ -13,10 +13,7 @@ import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
-import {
-  SettingBinding,
-  SettingBindings,
-} from '../../../../services/settings/setting-bindings';
+import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import {
   ChoiceOption,
   ColorSwatch,
@@ -74,8 +71,8 @@ export class SettingControl {
   /**
    * Gets the binding for the current setting, resolved from its owner.
    */
-  private readonly binding: Signal<SettingBinding> = computed((): SettingBinding =>
-    this.bindings.resolve(this.key(), this.definition()?.owner),
+  private readonly binding: Signal<SettingBinding> = computed(
+    (): SettingBinding => this.bindings.resolve(this.key(), this.definition()?.owner),
   );
 
   /**

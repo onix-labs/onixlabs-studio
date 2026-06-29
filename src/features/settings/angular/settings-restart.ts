@@ -1,6 +1,6 @@
 import { computed, inject, Service, Signal } from '@angular/core';
 import { Display } from '@shared/angular/services/display/display';
-import { SettingBindings } from './setting-bindings';
+import { SettingBindings } from '@features/settings/angular/setting-bindings';
 import { SETTINGS_BY_KEY, SettingDef } from '@shared/angular/services/settings/settings-registry';
 
 /**
@@ -34,8 +34,9 @@ export class SettingsRestart {
       (definition: SettingDef): Signal<boolean> | undefined =>
         this.bindings.resolve(definition.key, definition.owner).restartPending,
     )
-    .filter((candidate: Signal<boolean> | undefined): candidate is Signal<boolean> =>
-      candidate !== undefined,
+    .filter(
+      (candidate: Signal<boolean> | undefined): candidate is Signal<boolean> =>
+        candidate !== undefined,
     );
 
   /**

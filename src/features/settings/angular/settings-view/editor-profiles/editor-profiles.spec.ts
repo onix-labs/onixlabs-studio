@@ -60,7 +60,9 @@ describe('EditorProfiles', () => {
     const checks: NodeListOf<HTMLInputElement> =
       element.querySelectorAll<HTMLInputElement>('.override__check input');
     expect(checks.length).toBe(7);
-    expect(Array.from(checks).every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
+    expect(Array.from(checks).every((check: HTMLInputElement): boolean => !check.checked)).toBe(
+      true,
+    );
   });
 
   it('onOverrideToggle_whenEnabled_recordsTheOverrideOnTheProfile', async () => {

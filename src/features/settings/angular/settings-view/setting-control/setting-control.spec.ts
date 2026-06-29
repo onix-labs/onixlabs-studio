@@ -57,7 +57,8 @@ describe('SettingControl', () => {
 
   it('render_whenNumberControl_rendersANumberFieldWithTheRegistryRange', async () => {
     const element: HTMLElement = await render('application.undoStackSize');
-    const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const input: HTMLInputElement =
+      element.querySelector<HTMLInputElement>('input[type="number"]')!;
     expect(input.min).toBe('10');
     expect(input.max).toBe('1000');
   });
@@ -131,7 +132,8 @@ describe('SettingControl', () => {
   it('onChange_whenNumberOutOfRange_clampsViaTheRegistry', async () => {
     const element: HTMLElement = await render('application.undoStackSize');
 
-    const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const input: HTMLInputElement =
+      element.querySelector<HTMLInputElement>('input[type="number"]')!;
     input.value = '5000';
     input.dispatchEvent(new Event('change'));
 

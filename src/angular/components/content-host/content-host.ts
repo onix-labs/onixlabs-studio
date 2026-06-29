@@ -8,7 +8,7 @@ import { DocumentConflictModal } from '../shared/document-conflict-modal/documen
 import { CodeView } from '../views/code-view/code-view';
 import { DirectoryView } from '../views/directory-view/directory-view';
 import { MarkdownView } from '../views/markdown-view/markdown-view';
-import { SettingsView } from '../views/settings-view/settings-view';
+import { SettingsView } from '@features/settings/angular/settings-view/settings-view';
 import { SourceControlView } from '../views/source-control-view/source-control-view';
 
 /**
