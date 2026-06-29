@@ -4,7 +4,7 @@ import { ProjectModel } from '../../../../shared/project-system';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { SolutionPanel } from './solution-panel';
 
 /**

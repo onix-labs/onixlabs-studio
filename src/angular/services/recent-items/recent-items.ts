@@ -1,5 +1,5 @@
 import { Service, Signal, signal, WritableSignal } from '@angular/core';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Describes an entry shown in the welcome screen's recent-items list.

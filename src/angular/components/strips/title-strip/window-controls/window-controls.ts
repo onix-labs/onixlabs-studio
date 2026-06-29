@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Studio } from '../../../../services/studio/studio';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents the custom window controls (minimize, maximize, close) shown on platforms without

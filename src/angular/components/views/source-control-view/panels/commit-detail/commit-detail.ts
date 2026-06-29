@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { DiffOpener } from '../../../../../services/diffs/diff-opener';
 import { Repository } from '../../../../../services/repository/repository';
 import { GitChangeStatus, GitFileChange } from '../../../../../services/repository/repository-data';
-import { AppIcon } from '../../../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Renders the source-control view's right pane: metadata for the selected commit (or a summary of the

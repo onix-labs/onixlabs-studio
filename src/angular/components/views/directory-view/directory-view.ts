@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { ProjectModel } from '../../../../shared/project-system';
 import { DirectoryListing, RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { CodeTerminals } from '../../../services/code-terminals/code-terminals';
 import { Diagnostics } from '../../../services/diagnostics/diagnostics';
 import { DiffOpener } from '../../../services/diffs/diff-opener';

@@ -11,7 +11,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { DockDrag } from '../../../services/dock/dock-drag';
@@ -35,7 +35,7 @@ import {
 import { StatusBar, StatusSegment } from '../../../services/status-bar/status-bar';
 import { Tabs } from '../../../services/tabs/tabs';
 import { DockContainer } from '../../dock/dock-container/dock-container';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '../../shared/modal/modal';
 import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
 

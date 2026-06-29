@@ -1,4 +1,4 @@
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
 import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';

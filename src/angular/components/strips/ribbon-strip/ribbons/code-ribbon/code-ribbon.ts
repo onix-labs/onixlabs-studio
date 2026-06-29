@@ -7,7 +7,7 @@ import { CodeDocument, Documents } from '../../../../../services/documents/docum
 import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
 import { Settings } from '../../../../../services/settings/settings';
 import { Tabs } from '../../../../../services/tabs/tabs';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';

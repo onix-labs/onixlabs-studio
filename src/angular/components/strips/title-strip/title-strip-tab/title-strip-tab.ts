@@ -20,8 +20,8 @@ import {
   Signal,
 } from '@angular/core';
 import { Tab } from '../../../../services/tabs/tab';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents a single tab in the title strip.

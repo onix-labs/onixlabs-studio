@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
-import { Icon } from '../../../../../icons/icon';
-import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Review, ReviewFilter } from '../../../../../services/markdown-review/markdown-review';
 import {
   ReviewCounts,

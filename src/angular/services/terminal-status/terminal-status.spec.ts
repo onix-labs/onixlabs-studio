@@ -2,7 +2,7 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { StatusBar } from '../status-bar/status-bar';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { TerminalStatus } from './terminal-status';
 
 describe('TerminalStatus', () => {

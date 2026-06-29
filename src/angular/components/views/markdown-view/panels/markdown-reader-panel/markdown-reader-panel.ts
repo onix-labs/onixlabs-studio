@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { Icon } from '../../../../../icons/icon';
-import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { Reader } from '../../../../../services/markdown-reader/markdown-reader';
 import { HighlightMode, VoiceOption } from '../../../../../services/markdown-reader/reader-types';

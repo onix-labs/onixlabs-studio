@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { RibbonStripButton } from './ribbon-strip-button';
-import { Icon } from '../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 describe('RibbonStripButton', () => {
   let component: RibbonStripButton;

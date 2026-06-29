@@ -1,5 +1,5 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Defines a single segment of contextual information shown in the status strip.

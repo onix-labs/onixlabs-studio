@@ -6,7 +6,7 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Maps the named colours the {@link AppIcon} accepts as keywords to their CSS custom property.

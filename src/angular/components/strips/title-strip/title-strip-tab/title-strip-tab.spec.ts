@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Tab } from '../../../../services/tabs/tab';
-import { Icon } from '../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { TitleStripTab } from './title-strip-tab';
 
 describe('TitleStripTab', () => {

@@ -13,8 +13,8 @@ import {
 import { CodeTerminals } from '../../../../services/code-terminals/code-terminals';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { TerminalCommands } from '../../../../services/terminal-commands/terminal-commands';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TerminalView } from '../../terminal-view/terminal-view';
 
 /**

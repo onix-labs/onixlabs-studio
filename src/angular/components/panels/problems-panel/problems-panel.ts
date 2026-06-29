@@ -7,8 +7,8 @@ import {
 } from '../../../services/diagnostics/diagnostics';
 import { Editors } from '../../../services/editors/editors';
 import { FileOpener } from '../../../services/file-opener/file-opener';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Maps each severity to its icon.

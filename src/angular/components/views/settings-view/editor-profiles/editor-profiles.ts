@@ -12,8 +12,8 @@ import {
   findSection,
   SettingDef,
 } from '../../../../services/settings/settings-registry';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents the per-language editor profiles: an override editor whose rows are driven by the same

@@ -5,7 +5,7 @@ import { ProblemsPanel } from '../../components/panels/problems-panel/problems-p
 import { SolutionPanel } from '../../components/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '../../components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
 

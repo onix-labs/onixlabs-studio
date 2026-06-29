@@ -12,8 +12,8 @@ import {
 import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { Repository } from '../../../../../services/repository/repository';
 import { GitRef, GraphNode } from '../../../../../services/repository/repository-data';
-import { AppIcon } from '../../../../shared/icon/app-icon';
-import { Icon } from '../../../../../icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Holds the fixed height, in pixels, of a single graph row.

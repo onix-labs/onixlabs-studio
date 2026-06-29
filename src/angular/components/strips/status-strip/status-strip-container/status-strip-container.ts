@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { StatusBar, StatusSegment } from '../../../../services/status-bar/status-bar';
 import { Tab } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 
 /**

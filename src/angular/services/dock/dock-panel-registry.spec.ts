@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
 import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 

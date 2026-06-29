@@ -6,8 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../../shared/icon/app-icon';
-import { Icon } from '../../../../icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Represents a small command button in the ribbon, rendering an icon beside a label. Three small

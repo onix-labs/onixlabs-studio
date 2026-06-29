@@ -3,8 +3,8 @@ import { CompassState, DockDrag, GuideKey } from '../../../services/dock/dock-dr
 import { DockSide } from '../../../services/dock/dock-node';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { edgeGuideRect, Rect } from '../../../services/dock/dock-legality';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Renders the dock drag overlay: the directional compass over the hovered group, the four

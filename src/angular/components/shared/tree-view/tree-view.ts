@@ -10,8 +10,8 @@ import {
   Signal,
   TemplateRef,
 } from '@angular/core';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.

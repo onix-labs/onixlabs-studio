@@ -6,8 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { AppIcon } from '../../shared/icon/app-icon';
-import { Icon } from '../../../icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Defines a selectable option in a {@link ButtonGroup}.

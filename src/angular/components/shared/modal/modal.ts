@@ -8,8 +8,8 @@ import {
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents a reusable modal: a full-bleed backdrop centring a panel over the application content.

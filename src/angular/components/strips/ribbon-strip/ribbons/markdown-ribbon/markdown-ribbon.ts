@@ -16,7 +16,7 @@ import {
   MarkdownPanel,
   MarkdownPanels,
 } from '../../../../../services/markdown-panels/markdown-panels';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';

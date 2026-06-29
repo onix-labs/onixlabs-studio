@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Icon } from '../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 // Test the alert pattern regex
 const ALERT_PATTERN: RegExp = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$/i;

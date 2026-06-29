@@ -6,8 +6,8 @@ import {
   model,
   ModelSignal,
 } from '@angular/core';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents an expandable panel with a heading button and a collapsible body.

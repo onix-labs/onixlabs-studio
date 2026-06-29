@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { AgentChat } from '../../../../shared/agent-chat/agent-chat';
 import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
 

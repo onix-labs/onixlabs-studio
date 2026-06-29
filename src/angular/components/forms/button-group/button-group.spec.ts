@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ButtonGroup, ButtonGroupOption } from './button-group';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 const OPTIONS: readonly ButtonGroupOption[] = [
   { value: 'left', label: 'Left', icon: Icon.ALIGN_LEFT },

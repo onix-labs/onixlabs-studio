@@ -20,8 +20,8 @@ import { Dropdown, DropdownOption } from '../../../../forms/dropdown/dropdown';
 import { PasswordField } from '../../../../forms/password-field/password-field';
 import { SettingRow } from '../../../../forms/setting-row/setting-row';
 import { SettingControl } from '../../setting-control/setting-control';
-import { Icon } from '../../../../../icons/icon';
-import { AppIcon } from '../../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Represents the AI section of the settings view: provider and per-provider model selection, the

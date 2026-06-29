@@ -12,12 +12,12 @@ import {
   viewChild,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '../../../../../services/monaco/monaco';
 import { GitChangeStatus } from '../../../../../services/repository/repository-data';
 import { Settings } from '../../../../../services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
-import { AppIcon } from '../../../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Hosts a Monaco diff editor that compares a changed file's before/after content side by side (or

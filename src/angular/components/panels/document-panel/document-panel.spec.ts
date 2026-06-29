@@ -5,7 +5,7 @@ import { DockState } from '../../../services/dock/dock-state';
 import { firstStackOfRole } from '../../../services/dock/dock-tree';
 import { Documents } from '../../../services/documents/documents';
 import { FileInfo } from '../../../../shared/studio-api';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 import { DocumentPanel } from './document-panel';
 

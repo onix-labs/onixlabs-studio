@@ -13,8 +13,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { RibbonAlignment, Settings } from '../../../../services/settings/settings';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Pixel tolerance applied when comparing the row's content width to its visible width, so sub-pixel

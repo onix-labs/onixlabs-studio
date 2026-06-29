@@ -1,6 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { DirectoryListing, FileInfo, OpenSelection } from '../../../shared/studio-api';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
 import { DockPanelRegistry } from '../dock/dock-panel-registry';
 import { DockFocus } from '../dock/dock-focus';

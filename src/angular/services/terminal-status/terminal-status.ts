@@ -1,6 +1,6 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { StatusBar } from '../status-bar/status-bar';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Holds the identifier of the working-directory status segment.

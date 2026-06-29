@@ -13,8 +13,8 @@ import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '../../../services/settings/settings-restart';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Identifies a section in the settings navigation.

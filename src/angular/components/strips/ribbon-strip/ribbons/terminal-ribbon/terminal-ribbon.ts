@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';

@@ -16,10 +16,10 @@ import {
   WorkspaceTreeRow,
 } from '../../../services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '../../shared/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '../../shared/highlighted-text/highlighted-text';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
 
 /**

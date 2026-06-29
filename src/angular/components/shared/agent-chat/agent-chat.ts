@@ -15,8 +15,8 @@ import type { AgentSurface } from '../../../../shared/ai-types';
 import { Agent, AgentItem } from '../../../services/agent/agent';
 import { AgentSessions } from '../../../services/agent-sessions/agent-sessions';
 import { Tabs } from '../../../services/tabs/tabs';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MarkdownPipe } from './markdown-pipe';
 
 /**

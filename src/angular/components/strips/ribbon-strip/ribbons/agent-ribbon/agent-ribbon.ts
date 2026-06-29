@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import type { AiModelInfo, AiProviderInfo } from '../../../../../../shared/ai-types';
 import { AgentEngine } from '../../../../../services/agent-engine/agent-engine';
 import { AgentSessions } from '../../../../../services/agent-sessions/agent-sessions';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '../../ribbon-strip-check/ribbon-strip-check';

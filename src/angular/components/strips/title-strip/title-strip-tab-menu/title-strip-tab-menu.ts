@@ -1,11 +1,11 @@
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { Icon } from '../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { Documents } from '../../../../services/documents/documents';
 import { Tab, TabType } from '../../../../services/tabs/tab';
 import { Tabs } from '../../../../services/tabs/tabs';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Pairs a category heading with the open tabs that fall under it, for the grouped tab menu.

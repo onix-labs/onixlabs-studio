@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, mkSplit, mkStack } from './dock-node';
 import { DockPanelRegistry } from './dock-panel-registry';

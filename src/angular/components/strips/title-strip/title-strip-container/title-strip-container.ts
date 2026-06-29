@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { WindowLock } from '../../../../services/window-lock/window-lock';
-import { Icon } from '../../../../icons/icon';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TitleStripButtonList } from '../title-strip-button-list/title-strip-button-list';
 import { TitleStripTabList } from '../title-strip-tab-list/title-strip-tab-list';
 import { TitleStripTabMenu } from '../title-strip-tab-menu/title-strip-tab-menu';

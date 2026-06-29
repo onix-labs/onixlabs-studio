@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
 import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '../../../../../services/tasks/builds';
-import { Icon } from '../../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '../../ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '../../ribbon-strip-column/ribbon-strip-column';

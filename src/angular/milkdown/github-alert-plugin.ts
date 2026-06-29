@@ -25,7 +25,7 @@ import type { MarkdownNode, ParserState, SerializerState, NodeSchema } from '@mi
 import type { Root, RootContent, Blockquote, Paragraph, Text } from 'mdast';
 import type { Parent } from 'unist';
 import { visit } from 'unist-util-visit';
-import { Icon } from '../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import {
   type Command,
   type EditorState,

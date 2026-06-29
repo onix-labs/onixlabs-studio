@@ -1,4 +1,4 @@
-import { Icon } from '../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Specifies the kinds of top-level tab the application supports.

@@ -1,10 +1,10 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { Icon } from '../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { LspServer, LspServerState, LspStatus } from '../../../../services/lsp/lsp-status';
 import { ActiveWorkspace } from '../../../../services/workspace/active-workspace';
-import { AppIcon } from '../../../shared/icon/app-icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
  * Summarises the language servers of the active workspace for the status strip's trigger button.

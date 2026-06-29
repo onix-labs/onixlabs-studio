@@ -9,8 +9,8 @@ import {
 } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockTabContext } from '../../../services/dock/dock-tab-context';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 
 /**

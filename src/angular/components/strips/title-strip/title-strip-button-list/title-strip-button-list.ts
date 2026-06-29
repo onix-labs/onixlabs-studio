@@ -4,7 +4,7 @@ import { RepositoryOpener } from '../../../../services/repositories/repository-o
 import { Settings } from '../../../../services/settings/settings';
 import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
 import { Tabs } from '../../../../services/tabs/tabs';
-import { Icon } from '../../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
 
 /**

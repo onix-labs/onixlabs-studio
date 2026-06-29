@@ -17,8 +17,8 @@ import { Rect } from '../../../services/dock/dock-legality';
 import { DockSide, StackNode } from '../../../services/dock/dock-node';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
-import { Icon } from '../../../icons/icon';
-import { AppIcon } from '../../shared/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**

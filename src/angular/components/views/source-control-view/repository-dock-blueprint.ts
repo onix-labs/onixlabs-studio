@@ -1,6 +1,6 @@
 import { AgentPanel } from '../../panels/agent-panel/agent-panel';
 import { TerminalPanel } from '../../panels/terminal-panel/terminal-panel';
-import { Icon } from '../../../icons/icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '../../../services/dock/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '../../../services/dock/dock-node';
 import { CommitDetail } from './panels/commit-detail/commit-detail';
