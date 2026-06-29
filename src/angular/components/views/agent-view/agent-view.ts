@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
-import { AgentChat } from '../../shared/agent-chat/agent-chat';
+import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 
 /**
  * Hosts the agent conversation as a top-level tab. The chat shell lives in {@link AgentChat}, which

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import { CodeAgents } from '../../../../services/code-agents/code-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { AgentChat } from '../../../shared/agent-chat/agent-chat';
+import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 
 /**
  * Represents the docked agent panel for a code tab: a small toolbar over the shared {@link AgentChat}

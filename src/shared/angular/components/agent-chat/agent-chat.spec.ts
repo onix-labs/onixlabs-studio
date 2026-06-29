@@ -25,7 +25,9 @@ describe('AgentChat', () => {
     await TestBed.configureTestingModule({
       imports: [AgentChat],
     })
-      .overrideComponent(AgentChat, { set: { providers: [{ provide: Agent, useValue: agentStub }] } })
+      .overrideComponent(AgentChat, {
+        set: { providers: [{ provide: Agent, useValue: agentStub }] },
+      })
       .compileComponents();
 
     fixture = TestBed.createComponent(AgentChat);

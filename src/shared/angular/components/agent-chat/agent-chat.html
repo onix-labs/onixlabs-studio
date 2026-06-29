@@ -37,14 +37,17 @@
         @case ('permission') {
           <div class="agent__permission">
             <p class="agent__permission-text">
-              Allow <strong>{{ item.permissionName }}</strong>?
+              Allow <strong>{{ item.permissionName }}</strong
+              >?
               @if (item.permissionDetail) {
                 <span class="agent__permission-detail">{{ item.permissionDetail }}</span>
               }
             </p>
             @if (item.permissionState === 'pending') {
               <div class="agent__permission-actions">
-                <button type="button" class="agent__btn" (click)="respond(item, true)">Allow</button>
+                <button type="button" class="agent__btn" (click)="respond(item, true)">
+                  Allow
+                </button>
                 <button
                   type="button"
                   class="agent__btn agent__btn--ghost"
