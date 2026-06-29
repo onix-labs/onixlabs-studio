@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { EditorProfile, Settings } from '../../../../services/settings/settings';
+import { EditorProfile, Settings } from '@shared/angular/services/settings/settings';
 import { EditorProfiles } from './editor-profiles';
 
 describe('EditorProfiles', () => {

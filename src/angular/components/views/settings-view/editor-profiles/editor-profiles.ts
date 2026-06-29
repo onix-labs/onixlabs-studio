@@ -6,12 +6,12 @@ import { LanguageSelect } from '../../../forms/language-select/language-select';
 import { NumberField } from '../../../forms/number-field/number-field';
 import { SettingRow } from '../../../forms/setting-row/setting-row';
 import { Toggle } from '../../../forms/toggle/toggle';
-import { EditorProfile, Settings, TextEditorSettings } from '../../../../services/settings/settings';
+import { EditorProfile, Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import {
   ChoiceOption,
   findSection,
   SettingDef,
-} from '../../../../services/settings/settings-registry';
+} from '@shared/angular/services/settings/settings-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

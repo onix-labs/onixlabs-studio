@@ -8,7 +8,7 @@ import type {
 } from '../../../shared/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
-import { Settings } from '../settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Agent, AgentItem } from './agent';
 
 /**

@@ -75,7 +75,7 @@ import {
   MarginSize,
   PanelPosition,
   Settings,
-} from '../../../services/settings/settings';
+} from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanel,
   MarkdownPanels,

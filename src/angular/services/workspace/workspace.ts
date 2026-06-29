@@ -6,7 +6,7 @@ import {
   OpenSelection,
   WorkspaceApi,
 } from '../../../shared/studio-api';
-import { Settings } from '../settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Represents a node in the renderer's lazy directory tree. Directories load their children on first

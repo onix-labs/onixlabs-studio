@@ -1,5 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
+import type { AiPermissionPosture, AiProviderId } from '@shared/ai-types';
 import {
   AiModels,
   SETTINGS_BY_KEY,
@@ -461,13 +461,17 @@ export class Settings {
   /**
    * Gets the alignment of the ribbon's controls within the ribbon strip.
    */
-  public readonly ribbonAlignment: Signal<RibbonAlignment> = this.value('appearance.ribbonAlignment');
+  public readonly ribbonAlignment: Signal<RibbonAlignment> = this.value(
+    'appearance.ribbonAlignment',
+  );
 
   /**
    * Gets whether the modern UI features are used, or whether the choice follows the GPU-derived
    * recommendation.
    */
-  public readonly modernUiFeatures: Signal<ModernUiFeatures> = this.value('appearance.modernUiFeatures');
+  public readonly modernUiFeatures: Signal<ModernUiFeatures> = this.value(
+    'appearance.modernUiFeatures',
+  );
 
   /**
    * Gets the default document type for new documents.
@@ -485,7 +489,9 @@ export class Settings {
    * Gets a value indicating whether the title strip shows the quick-action launcher buttons in place
    * of the single welcome button.
    */
-  public readonly showLauncherActions: Signal<boolean> = this.value('application.showLauncherActions');
+  public readonly showLauncherActions: Signal<boolean> = this.value(
+    'application.showLauncherActions',
+  );
 
   /**
    * Gets the text editor settings with profiles.
@@ -573,9 +579,8 @@ export class Settings {
   /**
    * Gets the agent permission posture.
    */
-  public readonly aiPermissionPosture: Signal<AiPermissionPosture> = this.value(
-    'ai.permissionPosture',
-  );
+  public readonly aiPermissionPosture: Signal<AiPermissionPosture> =
+    this.value('ai.permissionPosture');
 
   /**
    * Gets the per-request token cap (0 for no cap).
@@ -758,7 +763,9 @@ export class Settings {
   public deleteProfile(id: string): void {
     this.set(
       'textEditor.profiles',
-      this.read('textEditor.profiles').filter((profile: EditorProfile): boolean => profile.id !== id),
+      this.read('textEditor.profiles').filter(
+        (profile: EditorProfile): boolean => profile.id !== id,
+      ),
     );
   }
 

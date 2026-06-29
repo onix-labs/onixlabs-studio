@@ -4,8 +4,8 @@ import { Display } from '../display/display';
 import { LspSettings } from '../lsp/lsp-settings';
 import { Security } from '../security/security';
 import { AccentColor, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
-import { Settings } from './settings';
-import { SettingOwner, SettingsKey } from './settings-registry';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { SettingOwner, SettingsKey } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Represents a reactive read/write binding for a single setting, abstracting which service owns the

@@ -5,7 +5,7 @@ import { CodeRunner } from '../../../../../services/code-runner/code-runner';
 import { CodeTerminals } from '../../../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '../../../../../services/documents/documents';
 import { LanguageInfo, Monaco } from '../../../../../services/monaco/monaco';
-import { Settings } from '../../../../../services/settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '../../ribbon-strip-button/ribbon-strip-button';

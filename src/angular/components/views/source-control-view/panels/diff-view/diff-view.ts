@@ -15,7 +15,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '../../../../../services/monaco/monaco';
 import { GitChangeStatus } from '../../../../../services/repository/repository-data';
-import { Settings } from '../../../../../services/settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

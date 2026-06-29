@@ -1,7 +1,7 @@
 import { computed, inject, Service, Signal } from '@angular/core';
 import { Display } from '../display/display';
 import { SettingBindings } from './setting-bindings';
-import { SETTINGS_BY_KEY, SettingDef } from './settings-registry';
+import { SETTINGS_BY_KEY, SettingDef } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Aggregates the restart-pending state across every restart-gated setting (those flagged

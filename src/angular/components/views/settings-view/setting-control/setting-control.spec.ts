@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { SettingControl } from './setting-control';
-import { Settings } from '../../../../services/settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 describe('SettingControl', () => {
   let fixture: ComponentFixture<SettingControl>;

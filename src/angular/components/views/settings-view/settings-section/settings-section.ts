@@ -10,7 +10,7 @@ import {
 import { SettingControl } from '../setting-control/setting-control';
 import { SettingRow } from '../../../forms/setting-row/setting-row';
 import { SettingDescriptions } from '../../../../services/settings/setting-descriptions';
-import { findSection, SettingDef } from '../../../../services/settings/settings-registry';
+import { findSection, SettingDef } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Renders a settings section entirely from the registry: every setting in the section becomes a

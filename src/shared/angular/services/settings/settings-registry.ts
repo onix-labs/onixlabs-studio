@@ -1,7 +1,7 @@
 import { Icon } from '@shared/angular/icons/icon';
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
-import type { AiPermissionPosture, AiProviderId } from '../../../shared/ai-types';
+import type { AiPermissionPosture, AiProviderId } from '@shared/ai-types';
 import type {
   BraceStyle,
   CurrentLineHighlightStyle,
@@ -627,7 +627,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'ai.models',
         title: 'Models',
-        description: "The selected model per provider. A missing entry uses the provider's default.",
+        description:
+          "The selected model per provider. A missing entry uses the provider's default.",
         control: { kind: 'custom', component: 'ai-model-map' },
         default: {},
       },

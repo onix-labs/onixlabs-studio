@@ -23,7 +23,7 @@ import {
   ControlDef,
   SETTINGS_BY_KEY,
   SettingDef,
-} from '../../../../services/settings/settings-registry';
+} from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Renders and edits a single setting, selecting the form control from the setting's registry control

@@ -12,7 +12,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { RibbonAlignment, Settings } from '../../../../services/settings/settings';
+import { RibbonAlignment, Settings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

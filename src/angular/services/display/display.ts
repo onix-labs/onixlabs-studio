@@ -1,6 +1,6 @@
 import { DOCUMENT, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { DisplayApi } from '../../../shared/studio-api';
-import { ModernUiFeatures, Settings } from '../settings/settings';
+import { ModernUiFeatures, Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Represents the owner of the document's GPU-rendering display policy.

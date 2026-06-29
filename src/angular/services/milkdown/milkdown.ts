@@ -5,7 +5,7 @@ import {
   MarginSize,
   MarkdownEditorSettings,
   Settings,
-} from '../settings/settings';
+} from '@shared/angular/services/settings/settings';
 
 /**
  * Holds the system default sans-serif font stack applied when the markdown body font is unset.
