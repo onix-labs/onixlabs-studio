@@ -1,9 +1,7 @@
 import {
-  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   effect,
-  ElementRef,
   inject,
   input,
   InputSignal,
@@ -14,7 +12,11 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type * as MonacoApi from 'monaco-editor';
+import {
+  TextEditor,
+  TextEditorCursor,
+  TextEditorEol,
+} from '@shared/angular/components/text-editor/text-editor';
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeAgents } from '../../../services/code-agents/code-agents';
@@ -24,17 +26,10 @@ import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/
 import { CodeDocument, Documents } from '../../../services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '../../../services/lsp/lsp-client';
-import { Monaco } from '@shared/angular/services/monaco/monaco';
-import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
-
-/**
- * Identifies the source label passed to Monaco when triggering editor actions from the ribbon.
- */
-const COMMAND_SOURCE: string = 'ribbon';
 
 /**
  * Holds the display name given to a new, unsaved code document (matching the markdown editor).
@@ -72,28 +67,22 @@ const MAX_AGENT_SIZE: number = 900;
 const DEFAULT_AGENT_SIZE: number = 360;
 
 /**
- * Represents the code editor view, hosting a Monaco editor bound to the owning tab's document.
+ * Represents the code editor view: the shared {@link TextEditor} pane bound to the owning tab's
+ * document, with optional docked run-terminal and agent panels beside it. It owns the code-tab
+ * concerns the bare pane does not — the backing document and save state, the change-margin save
+ * gutter, the model-URI registration, language-server sync, the ribbon command handler, the status
+ * segment, and the docked panels and their splitters — driving the pane through its imperative API.
  */
 @Component({
   selector: 'app-code-view',
-  imports: [CodeTerminalPanel, CodeAgentPanel],
+  imports: [TextEditor, CodeTerminalPanel, CodeAgentPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView implements OnInit, AfterViewInit, OnDestroy {
+export class CodeView implements OnInit, OnDestroy {
   /**
-   * Holds the Monaco service used to load the editor and resolve options and themes.
-   */
-  private readonly monaco: Monaco = inject(Monaco);
-
-  /**
-   * Holds the settings service supplying editor preferences.
-   */
-  private readonly settings: Settings = inject(Settings);
-
-  /**
-   * Holds the theme service supplying the resolved light/dark mode.
+   * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
   private readonly theme: Theme = inject(Theme);
 
@@ -126,19 +115,6 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private readonly codeStatus: CodeStatus = inject(CodeStatus);
 
   /**
-   * Holds the editor's cursor position, or null when unknown, projected to the status strip.
-   */
-  private readonly caret: WritableSignal<{ line: number; column: number } | null> = signal<{
-    line: number;
-    column: number;
-  } | null>(null);
-
-  /**
-   * Holds the document's end-of-line sequence, projected to the status strip.
-   */
-  private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
-
-  /**
    * Holds the code command registry the ribbon routes editor commands through.
    */
   private readonly codeCommands: CodeCommands = inject(CodeCommands);
@@ -157,6 +133,24 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
    */
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
+
+  /**
+   * Holds the shared text-editor pane this view drives, or undefined before the view initialises.
+   */
+  private readonly editorPane: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
+
+  /**
+   * Holds the editor's cursor position, or null when unknown, projected to the status strip.
+   */
+  private readonly caret: WritableSignal<{ line: number; column: number } | null> = signal<{
+    line: number;
+    column: number;
+  } | null>(null);
+
+  /**
+   * Holds the document's end-of-line sequence, projected to the status strip.
+   */
+  private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
 
   /**
    * Holds the size, in pixels, of the docked terminal pane.
@@ -178,12 +172,6 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
    * Holds the pane size at the start of a splitter drag.
    */
   private dragOriginSize: number = 0;
-
-  /**
-   * Holds a reference to the element Monaco mounts into.
-   */
-  private readonly editorContainer: Signal<ElementRef<HTMLDivElement>> =
-    viewChild.required<ElementRef<HTMLDivElement>>('editorContainer');
 
   /**
    * Gets the identifier of the owning tab, used to resolve the backing document.
@@ -212,25 +200,14 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   );
 
   /**
-   * Holds the Monaco editor instance, or null before creation and after disposal.
-   */
-  private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
-
-  /**
-   * Holds the string form of the editor's model URI while registered, or null when not registered.
+   * Holds the string form of the pane's model URI while registered, or null when not registered.
    */
   private modelUri: string | null = null;
 
   /**
-   * Holds a value indicating whether the editor is ready for interaction.
+   * Holds a value indicating whether the pane's editor instance has been created.
    */
-  private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds a value indicating whether the next model-content change should be ignored because it
-   * originated from an external content update applied to the editor.
-   */
-  private ignoreNextChange: boolean = false;
+  private readonly paneReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the command handler registered with the {@link CodeCommands} registry while active.
@@ -244,111 +221,49 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   private changeMargin: ChangeMarginController | null = null;
 
   /**
-   * Initialises the view, wiring effects for live settings/theme, external content updates, language
-   * changes, and activation.
+   * Initialises the view, wiring the feature effects that compose against the editor pane.
    */
   public constructor() {
+    // Keep the change-margin's overview-ruler colours current for the active theme (the gutter bars
+    // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
-      this.settings.textEditor();
       this.theme.resolvedMode();
-      const document: CodeDocument | null = this.document();
-      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-      if (!this.editorReady() || editor === null || document === null) {
+      if (!this.paneReady()) {
         return;
       }
-      const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(
-        document.language(),
-      );
-      editor.updateOptions({
-        lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
-        minimap: { enabled: resolved.showMinimap },
-        renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
-        wordWrap: resolved.wordWrap ? 'on' : 'off',
-        stickyScroll: { enabled: resolved.stickyScroll },
-        cursorBlinking: resolved.cursorBlinking,
-        cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
-        tabSize: resolved.tabSize,
-        insertSpaces: resolved.insertSpaces,
-        detectIndentation: false,
-        fontFamily: `"${resolved.fontFamily}", monospace`,
-        fontSize: resolved.fontSize,
-      });
-      this.monaco
-        .getMonaco()
-        ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
-      // Re-resolve the change-margin overview-ruler colours for the active theme (the gutter bars
-      // themselves follow CSS automatically).
       this.changeMargin?.setColors(this.changeMargins.resolveColors());
     });
 
-    effect((): void => {
-      const document: CodeDocument | null = this.document();
-      const content: string = document?.content() ?? '';
-      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-      if (!this.editorReady() || editor === null) {
-        return;
-      }
-      if (editor.getValue() !== content) {
-        this.ignoreNextChange = true;
-        editor.setValue(content);
-      }
-    });
-
-    // Keep the change-margin's saved baseline current: every line in sync with it shows a saved (green)
-    // bar and every line that differs an unsaved (yellow) bar. Re-runs when the last-saved content
-    // changes (save, reload) and when the file path appears (first save of a new document), at which
-    // point its lines flip from entirely unsaved to baselined.
+    // Keep the change-margin's saved baseline current: every line in sync with it shows a saved
+    // (green) bar and every line that differs an unsaved (yellow) bar. Re-runs when the last-saved
+    // content changes (save, reload) and when the file path appears (first save of a new document).
     effect((): void => {
       const document: CodeDocument | null = this.document();
       const savedContent: string = document?.savedContent() ?? '';
       const hasSavedVersion: boolean = (document?.filePath() ?? null) !== null;
-      if (!this.editorReady()) {
+      if (!this.paneReady()) {
         return;
       }
       this.changeMargin?.setBaseline(savedContent, hasSavedVersion);
     });
 
-    effect((): void => {
-      const document: CodeDocument | null = this.document();
-      const language: string = document?.language() ?? 'plaintext';
-      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-      const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
-      if (!this.editorReady() || editor === null || monaco === undefined) {
-        return;
-      }
-      const model: MonacoApi.editor.ITextModel | null = editor.getModel();
-      if (model !== null && model.getLanguageId() !== language) {
-        monaco.editor.setModelLanguage(model, language);
-      }
-    });
-
+    // Register/deactivate the ribbon command handler with activation, and mark the active document.
     effect((): void => {
       const active: boolean = this.isActive();
-      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-      if (!this.editorReady() || editor === null) {
-        return;
-      }
-      if (active) {
-        editor.layout();
-        this.registerCommandHandler();
-        this.documents.setActiveDocument(this.tabId());
-        const position: MonacoApi.Position | null = editor.getPosition();
-        this.caret.set(
-          position === null ? null : { line: position.lineNumber, column: position.column },
-        );
-        this.eol.set(this.readEol());
-        editor.focus();
-      } else {
-        if (this.commandHandler !== null) {
-          this.codeCommands.deactivate(this.tabId());
-          this.commandHandler = null;
+      if (active && this.paneReady()) {
+        if (this.commandHandler === null) {
+          this.registerCommandHandler();
         }
+        this.documents.setActiveDocument(this.tabId());
+      } else if (this.commandHandler !== null) {
+        this.codeCommands.deactivate(this.tabId());
+        this.commandHandler = null;
       }
     });
 
     // Publish the active editor's context (path, cursor, line-ending, encoding) to the status strip.
     // Reads the document's path/encoding signals so it refreshes on save and rename, and the local
-    // caret/eol signals fed by the editor's cursor and content listeners. Clears when not active.
+    // caret/eol signals fed by the pane's cursor and content outputs. Clears when not active.
     effect((): void => {
       const document: CodeDocument | null = this.document();
       const caret: { line: number; column: number } | null = this.caret();
@@ -370,7 +285,7 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     // file and a reveal can target it; re-runs when the file path or name changes (save/rename).
     effect((): void => {
       const document: CodeDocument | null = this.document();
-      if (!this.editorReady() || this.modelUri === null || document === null) {
+      if (!this.paneReady() || this.modelUri === null || document === null) {
         return;
       }
       this.editors.register(this.modelUri, {
@@ -405,16 +320,14 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
     // Honour reveal requests aimed at this view's document, jumping the editor to the line.
     effect((): void => {
       const request: RevealRequest | null = this.editors.revealRequest();
-      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-      if (request === null || !this.editorReady() || editor === null) {
+      const pane: TextEditor | undefined = this.editorPane();
+      if (request === null || !this.paneReady() || pane === undefined) {
         return;
       }
       if (request.documentId !== this.tabId()) {
         return;
       }
-      editor.revealLineInCenter(request.line);
-      editor.setPosition({ lineNumber: request.line, column: request.column });
-      editor.focus();
+      pane.reveal(request.line, request.column);
     });
   }
 
@@ -426,26 +339,23 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * Loads Monaco if needed and creates the editor once the view's element is available.
-   */
-  public ngAfterViewInit(): void {
-    void this.initEditor();
-  }
-
-  /**
-   * Awaits the Monaco load, then creates the editor.
-   * @returns Returns a promise that resolves once the editor has been created.
-   */
-  private async initEditor(): Promise<void> {
-    await this.monaco.ensureLoaded();
-    this.createEditor();
-  }
-
-  /**
-   * Disposes the editor and releases the document when the view is torn down.
+   * Detaches the change-margin, releases the command handler, and unregisters the editor when the
+   * view is torn down, then releases the document when this view owns its lifecycle. The pane disposes
+   * the Monaco editor itself.
    */
   public ngOnDestroy(): void {
-    this.disposeEditor();
+    if (this.changeMargin !== null) {
+      this.changeMargins.detach(this.changeMargin);
+      this.changeMargin = null;
+    }
+    if (this.commandHandler !== null) {
+      this.codeCommands.forget(this.tabId());
+      this.commandHandler = null;
+    }
+    if (this.modelUri !== null) {
+      this.editors.unregister(this.modelUri);
+      this.modelUri = null;
+    }
     if (this.documents.activeDocumentId() === this.tabId()) {
       this.documents.setActiveDocument(null);
     }
@@ -458,6 +368,62 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
       this.codeTerminals.remove(this.tabId());
       this.codeAgents.remove(this.tabId());
     }
+  }
+
+  /**
+   * Gets the backing document, exposed for the template's content/language bindings.
+   * @returns Returns the document, or null before initialisation.
+   */
+  protected doc(): CodeDocument | null {
+    return this.document();
+  }
+
+  /**
+   * Wires the editor-instance features once the pane's editor exists: attaches the change-margin
+   * gutter and captures the model URI for registration.
+   */
+  protected onEditorReady(): void {
+    const pane: TextEditor | undefined = this.editorPane();
+    const document: CodeDocument | null = this.document();
+    if (pane === undefined || document === null) {
+      return;
+    }
+    this.modelUri = pane.getModelUri();
+    const editor: ReturnType<TextEditor['getEditor']> = pane.getEditor();
+    if (editor !== null) {
+      // Seed the change margin with the document's saved baseline before the baseline/colour effects
+      // run on paneReady becoming true. A document with no file path has no saved version yet.
+      this.changeMargin = this.changeMargins.attach(
+        editor,
+        document.savedContent(),
+        document.filePath() !== null,
+      );
+    }
+    this.paneReady.set(true);
+  }
+
+  /**
+   * Writes a user edit through to the backing document.
+   * @param text The editor's new text.
+   */
+  protected onContentChange(text: string): void {
+    this.documents.setContent(this.tabId(), text);
+  }
+
+  /**
+   * Records the caret position reported by the pane, for the status strip.
+   * @param cursor The caret position.
+   */
+  protected onCursorChange(cursor: TextEditorCursor): void {
+    this.caret.set({ line: cursor.line, column: cursor.column });
+  }
+
+  /**
+   * Records the end-of-line sequence reported by the pane, for the status strip.
+   * @param eol The end-of-line sequence.
+   */
+  protected onEolChange(eol: TextEditorEol): void {
+    this.eol.set(eol);
   }
 
   /**
@@ -570,155 +536,28 @@ export class CodeView implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * Reads the editor model's end-of-line sequence for the status strip.
-   * @returns Returns 'CRLF' when the model uses CRLF, otherwise 'LF'.
-   */
-  private readEol(): EndOfLine {
-    // getEOL returns the model's actual end-of-line string ('\n' or '\r\n').
-    return this.editor?.getModel()?.getEOL() === '\r\n' ? 'CRLF' : 'LF';
-  }
-
-  /**
-   * Creates the Monaco editor for the backing document.
-   */
-  private createEditor(): void {
-    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
-    const document: CodeDocument | null = this.document();
-    if (monaco === undefined || document === null) {
-      return;
-    }
-
-    const language: string = document.language();
-    this.editor = monaco.editor.create(this.editorContainer().nativeElement, {
-      ...this.monaco.getEditorOptions(language),
-      value: document.content(),
-      language,
-    });
-
-    const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
-    this.modelUri = model !== null ? model.uri.toString() : null;
-
-    // Seed the status caret and line-ending before any cursor moves, so they are correct on first show.
-    const seed: MonacoApi.Position | null = this.editor.getPosition();
-    this.caret.set(seed === null ? { line: 1, column: 1 } : { line: seed.lineNumber, column: seed.column });
-    this.eol.set(this.readEol());
-
-    this.editor.onDidChangeModelContent((): void => {
-      // The end-of-line sequence can change with content (for example a "Change EOL" edit), so refresh
-      // it here; it is cheap and keeps the status strip accurate.
-      this.eol.set(this.readEol());
-      if (this.ignoreNextChange) {
-        this.ignoreNextChange = false;
-        return;
-      }
-      this.documents.setContent(this.tabId(), this.editor?.getValue() ?? '');
-    });
-
-    this.editor.onDidChangeCursorPosition(
-      (event: MonacoApi.editor.ICursorPositionChangedEvent): void => {
-        this.caret.set({ line: event.position.lineNumber, column: event.position.column });
-      },
-    );
-
-    // Seed the change margin with the document's saved baseline, before the effects that drive its
-    // baseline and theme colours run on editorReady becoming true. A document with no file path has no
-    // saved version yet, so its lines start as unsaved.
-    this.changeMargin = this.changeMargins.attach(
-      this.editor,
-      document.savedContent(),
-      document.filePath() !== null,
-    );
-
-    this.editorReady.set(true);
-  }
-
-  /**
-   * Disposes the Monaco editor and releases the command handler.
-   */
-  private disposeEditor(): void {
-    if (this.changeMargin !== null) {
-      this.changeMargins.detach(this.changeMargin);
-      this.changeMargin = null;
-    }
-    if (this.commandHandler !== null) {
-      this.codeCommands.forget(this.tabId());
-      this.commandHandler = null;
-    }
-    if (this.modelUri !== null) {
-      this.editors.unregister(this.modelUri);
-      this.modelUri = null;
-    }
-    if (this.editor !== null) {
-      this.editor.dispose();
-      this.editor = null;
-    }
-    this.editorReady.set(false);
-  }
-
-  /**
-   * Registers the ribbon command handler, mapping each command to a Monaco editor action.
+   * Registers the ribbon command handler, mapping each command to the pane's editor API.
    */
   private registerCommandHandler(): void {
-    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-    if (editor === null) {
+    const pane: TextEditor | undefined = this.editorPane();
+    if (pane === undefined) {
       return;
     }
 
     this.commandHandler = {
-      cut: (): void => this.trigger(editor, 'editor.action.clipboardCutAction'),
-      copy: (): void => this.trigger(editor, 'editor.action.clipboardCopyAction'),
-      paste: (): void => this.paste(editor),
-      undo: (): void => this.trigger(editor, 'undo'),
-      redo: (): void => this.trigger(editor, 'redo'),
-      find: (): void => this.trigger(editor, 'actions.find'),
-      formatDocument: (): void => this.trigger(editor, 'editor.action.formatDocument'),
+      cut: (): void => pane.trigger('editor.action.clipboardCutAction'),
+      copy: (): void => pane.trigger('editor.action.clipboardCopyAction'),
+      paste: (): void => pane.paste(),
+      undo: (): void => pane.trigger('undo'),
+      redo: (): void => pane.trigger('redo'),
+      find: (): void => pane.trigger('actions.find'),
+      formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),
-      getText: (): string => editor.getValue(),
-      replaceText: (text: string): void => this.replaceAll(editor, text),
+      getText: (): string => pane.getValue(),
+      replaceText: (text: string): void => pane.replaceAll(text),
     };
 
     this.codeCommands.register(this.tabId(), this.commandHandler);
-  }
-
-  /**
-   * Replaces the editor's full contents as a single undoable edit (used by the agent's in-app edit
-   * capability).
-   * @param editor The editor instance.
-   * @param text The new text.
-   */
-  private replaceAll(editor: MonacoApi.editor.IStandaloneCodeEditor, text: string): void {
-    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
-    if (model === null) {
-      return;
-    }
-    editor.executeEdits('agent', [{ range: model.getFullModelRange(), text }]);
-  }
-
-  /**
-   * Focuses the editor and triggers a built-in Monaco action.
-   * @param editor The editor instance.
-   * @param action The Monaco action identifier.
-   */
-  private trigger(editor: MonacoApi.editor.IStandaloneCodeEditor, action: string): void {
-    editor.focus();
-    editor.trigger(COMMAND_SOURCE, action, null);
-  }
-
-  /**
-   * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
-   * @param editor The editor instance.
-   */
-  private paste(editor: MonacoApi.editor.IStandaloneCodeEditor): void {
-    editor.focus();
-    void navigator.clipboard
-      .readText()
-      .then((text: string): void => {
-        const selection: MonacoApi.Selection | null = editor.getSelection();
-        if (selection !== null) {
-          editor.executeEdits(COMMAND_SOURCE, [{ range: selection, text, forceMoveMarkers: true }]);
-        }
-      })
-      .catch((): void => undefined);
   }
 }

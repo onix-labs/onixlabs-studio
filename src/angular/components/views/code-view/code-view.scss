@@ -88,11 +88,6 @@
   min-block-size: 0;
 }
 
-.editor-container {
-  inline-size: 100%;
-  block-size: 100%;
-}
-
 // The terminal's resize grip. The splitter takes no layout space; its grip overlays the terminal
 // pane's leading edge — the top edge when the terminal is stacked below, the left edge when it sits
 // side by side.
