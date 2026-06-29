@@ -1,0 +1,14 @@
+:host {
+  display: block;
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// The Monaco host fills the pane. Monaco lays its own canvas/DOM out within it.
+.text-editor {
+  inline-size: 100%;
+  block-size: 100%;
+}

@@ -1,0 +1,408 @@
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  InputSignal,
+  OnDestroy,
+  output,
+  OutputEmitterRef,
+  signal,
+  Signal,
+  viewChild,
+  WritableSignal,
+} from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import { Theme } from '@shared/angular/services/theme/theme';
+
+/**
+ * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
+ */
+const COMMAND_SOURCE: string = 'app-text-editor';
+
+/**
+ * Describes a caret position reported to the host, as one-based line and column numbers.
+ */
+export interface TextEditorCursor {
+  /**
+   * Gets the one-based line number of the caret.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the one-based column number of the caret.
+   */
+  readonly column: number;
+}
+
+/**
+ * Identifies an editor model's end-of-line sequence.
+ */
+export type TextEditorEol = 'CRLF' | 'LF';
+
+/**
+ * Represents the shared text-editor pane: a single Monaco {@link MonacoApi.editor.IStandaloneCodeEditor}
+ * instance bound to a content/language pair. It owns the editor instance and only the instance — its
+ * creation and disposal, live settings/theme application, content and language synchronisation, and
+ * caret/content/end-of-line reporting. It has no document model, no save state, no language-server
+ * wiring, no change-margin gutter, no ribbon, and no panels: a composing feature view drives those by
+ * binding the inputs, listening to the outputs, and reaching the instance through {@link getEditor}.
+ */
+@Component({
+  selector: 'app-text-editor',
+  templateUrl: './text-editor.html',
+  styleUrl: './text-editor.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class TextEditor implements AfterViewInit, OnDestroy {
+  /**
+   * Holds the Monaco service used to load the engine and resolve options and themes.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the settings service supplying editor preferences.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the theme service supplying the resolved light/dark mode.
+   */
+  private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds a reference to the element Monaco mounts into.
+   */
+  private readonly host: Signal<ElementRef<HTMLDivElement>> =
+    viewChild.required<ElementRef<HTMLDivElement>>('host');
+
+  /**
+   * Gets the editor's content. Setting it externally (for example after a reload) replaces the editor
+   * text without raising {@link contentChange}.
+   */
+  public readonly content: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets the editor's language identifier (for example `typescript`).
+   */
+  public readonly language: InputSignal<string> = input<string>('plaintext');
+
+  /**
+   * Gets a value indicating whether the pane belongs to the active tab. The active pane is laid out
+   * and focused.
+   */
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Emits once the Monaco editor instance has been created and its listeners are wired.
+   */
+  public readonly ready: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Emits the editor's text whenever the user edits it (not when {@link content} is set externally).
+   */
+  public readonly contentChange: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Emits the caret position whenever it moves, and once when the editor is created.
+   */
+  public readonly cursorChange: OutputEmitterRef<TextEditorCursor> = output<TextEditorCursor>();
+
+  /**
+   * Emits the model's end-of-line sequence when it changes, and once when the editor is created.
+   */
+  public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
+
+  /**
+   * Holds the Monaco editor instance, or null before creation and after disposal.
+   */
+  private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
+
+  /**
+   * Holds the string form of the editor's model URI, or null before creation and after disposal.
+   */
+  private modelUri: string | null = null;
+
+  /**
+   * Holds a value indicating whether the editor is ready for interaction.
+   */
+  private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds a value indicating whether the next model-content change should be ignored because it
+   * originated from an external content update applied to the editor.
+   */
+  private ignoreNextChange: boolean = false;
+
+  /**
+   * Initialises the pane, wiring effects for live settings/theme, external content updates, language
+   * changes, and activation.
+   */
+  public constructor() {
+    // Live settings/theme: re-resolve the editor options and theme for the current language.
+    effect((): void => {
+      this.settings.textEditor();
+      this.theme.resolvedMode();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null) {
+        return;
+      }
+      const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(
+        this.language(),
+      );
+      editor.updateOptions({
+        lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
+        minimap: { enabled: resolved.showMinimap },
+        renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
+        wordWrap: resolved.wordWrap ? 'on' : 'off',
+        stickyScroll: { enabled: resolved.stickyScroll },
+        cursorBlinking: resolved.cursorBlinking,
+        cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
+        tabSize: resolved.tabSize,
+        insertSpaces: resolved.insertSpaces,
+        detectIndentation: false,
+        fontFamily: `"${resolved.fontFamily}", monospace`,
+        fontSize: resolved.fontSize,
+      });
+      this.monaco
+        .getMonaco()
+        ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
+    });
+
+    // External content: replace the editor text when the bound content differs, without echoing it
+    // back through contentChange.
+    effect((): void => {
+      const content: string = this.content();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null) {
+        return;
+      }
+      if (editor.getValue() !== content) {
+        this.ignoreNextChange = true;
+        editor.setValue(content);
+      }
+    });
+
+    // Language: retarget the model's language when the bound language changes.
+    effect((): void => {
+      const language: string = this.language();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+      if (!this.editorReady() || editor === null || monaco === undefined) {
+        return;
+      }
+      const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+      if (model !== null && model.getLanguageId() !== language) {
+        monaco.editor.setModelLanguage(model, language);
+      }
+    });
+
+    // Activation: lay out and focus the editor when this pane becomes active.
+    effect((): void => {
+      const active: boolean = this.isActive();
+      const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+      if (!this.editorReady() || editor === null || !active) {
+        return;
+      }
+      editor.layout();
+      editor.focus();
+    });
+  }
+
+  /**
+   * Loads Monaco if needed and creates the editor once the view's element is available.
+   */
+  public ngAfterViewInit(): void {
+    void this.initEditor();
+  }
+
+  /**
+   * Disposes the editor when the pane is torn down.
+   */
+  public ngOnDestroy(): void {
+    if (this.editor !== null) {
+      this.editor.dispose();
+      this.editor = null;
+    }
+    this.modelUri = null;
+    this.editorReady.set(false);
+  }
+
+  /**
+   * Gets the underlying Monaco editor instance, or null before creation and after disposal. The host
+   * uses it to attach editor-instance features (such as a change-margin gutter).
+   * @returns Returns the editor instance, or null.
+   */
+  public getEditor(): MonacoApi.editor.IStandaloneCodeEditor | null {
+    return this.editor;
+  }
+
+  /**
+   * Gets the editor's text model, or null before creation and after disposal.
+   * @returns Returns the model, or null.
+   */
+  public getModel(): MonacoApi.editor.ITextModel | null {
+    return this.editor?.getModel() ?? null;
+  }
+
+  /**
+   * Gets the string form of the editor's model URI, or null before creation and after disposal. The
+   * host uses it to register the editor with the model-URI registry.
+   * @returns Returns the model URI, or null.
+   */
+  public getModelUri(): string | null {
+    return this.modelUri;
+  }
+
+  /**
+   * Gets the editor's current text.
+   * @returns Returns the text, or the empty string before creation.
+   */
+  public getValue(): string {
+    return this.editor?.getValue() ?? '';
+  }
+
+  /**
+   * Focuses the editor.
+   */
+  public focus(): void {
+    this.editor?.focus();
+  }
+
+  /**
+   * Re-lays out the editor to its container size. Called by the host after layout changes (such as a
+   * docked panel opening or resizing).
+   */
+  public layout(): void {
+    this.editor?.layout();
+  }
+
+  /**
+   * Reveals and moves the caret to a position, then focuses the editor.
+   * @param line The one-based line number.
+   * @param column The one-based column number.
+   */
+  public reveal(line: number, column: number): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column });
+    editor.focus();
+  }
+
+  /**
+   * Focuses the editor and triggers a built-in Monaco action (for example `editor.action.formatDocument`).
+   * @param action The Monaco action identifier.
+   */
+  public trigger(action: string): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+    editor.focus();
+    editor.trigger(COMMAND_SOURCE, action, null);
+  }
+
+  /**
+   * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
+   */
+  public paste(): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+    editor.focus();
+    void navigator.clipboard
+      .readText()
+      .then((text: string): void => {
+        const selection: MonacoApi.Selection | null = editor.getSelection();
+        if (selection !== null) {
+          editor.executeEdits(COMMAND_SOURCE, [{ range: selection, text, forceMoveMarkers: true }]);
+        }
+      })
+      .catch((): void => undefined);
+  }
+
+  /**
+   * Replaces the editor's full contents as a single undoable edit.
+   * @param text The new text.
+   */
+  public replaceAll(text: string): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    if (editor === null || model === null) {
+      return;
+    }
+    editor.executeEdits(COMMAND_SOURCE, [{ range: model.getFullModelRange(), text }]);
+  }
+
+  /**
+   * Awaits the Monaco load, then creates the editor.
+   * @returns Returns a promise that resolves once the editor has been created.
+   */
+  private async initEditor(): Promise<void> {
+    await this.monaco.ensureLoaded();
+    this.createEditor();
+  }
+
+  /**
+   * Creates the Monaco editor for the bound content and language.
+   */
+  private createEditor(): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+
+    const language: string = this.language();
+    this.editor = monaco.editor.create(this.host().nativeElement, {
+      ...this.monaco.getEditorOptions(language),
+      value: this.content(),
+      language,
+    });
+
+    const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
+    this.modelUri = model !== null ? model.uri.toString() : null;
+
+    // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
+    const seed: MonacoApi.Position | null = this.editor.getPosition();
+    this.cursorChange.emit(
+      seed === null ? { line: 1, column: 1 } : { line: seed.lineNumber, column: seed.column },
+    );
+    this.eolChange.emit(this.readEol());
+
+    this.editor.onDidChangeModelContent((): void => {
+      // The end-of-line sequence can change with content (for example a "Change EOL" edit).
+      this.eolChange.emit(this.readEol());
+      if (this.ignoreNextChange) {
+        this.ignoreNextChange = false;
+        return;
+      }
+      this.contentChange.emit(this.editor?.getValue() ?? '');
+    });
+
+    this.editor.onDidChangeCursorPosition(
+      (event: MonacoApi.editor.ICursorPositionChangedEvent): void => {
+        this.cursorChange.emit({ line: event.position.lineNumber, column: event.position.column });
+      },
+    );
+
+    this.editorReady.set(true);
+    this.ready.emit();
+  }
+
+  /**
+   * Reads the editor model's end-of-line sequence.
+   * @returns Returns 'CRLF' when the model uses CRLF, otherwise 'LF'.
+   */
+  private readEol(): TextEditorEol {
+    return this.editor?.getModel()?.getEOL() === '\r\n' ? 'CRLF' : 'LF';
+  }
+}
