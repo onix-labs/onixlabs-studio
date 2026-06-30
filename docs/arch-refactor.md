@@ -252,3 +252,94 @@ panel contributions and the most cross-feature glue.)
 
 **Done when:** `src/` contains only `features/` and `shared/`; `shared` names no feature;
 each feature folder is independently deletable; the app builds and runs throughout.
+
+## 10. Progress log (status)
+
+Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
+`prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**:
+solution-model, solution-panel ×3, markdown-view's `create` smoke, status-strip-lsp-menu —
+none introduced by this refactor). Commit refs below are on this branch.
+
+### Done
+
+- **Keystone — path aliases** (§6): `@shared/*`→`./src/shared/*`, `@features/*`→`./src/features/*`
+  in `tsconfig.json` `paths`; proven across ng build + preload esbuild + main esbuild (the
+  electron **main is now esbuild-bundled**, was tsc-emit, so aliases resolve at runtime).
+- **Registry seam** (§4 seam 1): `@shared/angular/services/feature-registry` — `FeatureRegistry`
+  (signal map keyed by tab-type string), `FeatureDescriptor` (view + optional ribbon + chrome),
+  `provideFeature()`. `content-host` + `ribbon-strip-container` + **root chrome gating** are now
+  fully registry-driven — the shell names no feature type anywhere (seam 1 **closed**).
+- **Kitchen relocated to `@shared`** (bottom-up, all mechanical): icon system, tabs/studio/
+  status-bar, settings core (`settings` + `settings-registry`), workspace, agent core (agent/
+  agent-engine/ai-runtime/ai-auth/agent-sessions), `<app-agent>` (agent-chat), form atoms (12),
+  ribbon framework controls (10), Display/Security/lsp-settings.
+- **Features stood up** (registry-driven, each independently deletable = folder + one `config.ts`
+  line): **`terminal`**, **`agent`**, **`settings`** under `src/features/<f>/angular`.
+- **Shared capability wrappers — the §3.1 contract, each wraps EXACTLY ONE engine:**
+  - **`<app-terminal>`** = xterm. (`shared/angular/components/terminal`.)
+  - **`<app-text-editor>`** = Monaco. (`shared/angular/components/text-editor`.) Commits:
+    `9ea1fc0` move Monaco+Editors→shared (engine backing) · `2ddf692` build the wrapper ·
+    `7611fa7` rewire `code-view` into a leaf composing it.
+  - **`<app-markdown-editor>`** = Milkdown/Crepe. (`shared/angular/components/markdown-editor`.)
+    Commits: `c7c0e9d` move Milkdown plugins (9) + media-source + service→shared · `5f9615f`
+    build the wrapper · `0585715` rewire `markdown-view` into a leaf composing it.
+
+### The wrapper→leaf pattern (proven, reuse for the rest)
+
+Wrapper owns ONLY the engine: instance create/dispose, live theme/settings, content I/O, and
+change/selection reporting — NO ribbon/panels/splitter/document-model/save/LSP. It exposes an
+**imperative API** (`getEditor()`/`getModel()` for Monaco; `getCrepe()`/`getEditorView()`/
+`getScrollContainer()` for Milkdown — richer because outline/review/reader need the live view +
+DOM) and outputs **`ready`** + `contentChange` (+ Monaco `cursorChange`/`eolChange`; Milkdown
+`selectionChange`/`saveRequested`). The **leaf** (feature view) binds inputs, listens to outputs,
+and does ALL feature glue on the `ready` emit — `code-view` attaches change-margins + registers
+with `Editors` + syncs LSP; `markdown-view` attaches the outline scroll-spy + review/read sessions
++ ribbon command handler. Content round-trips via `[content]` in / `(contentChange)` out, with an
+internal `ignoreNextChange` guard preventing the echo. No feature→feature or feature→shell
+back-edges introduced. Monaco's `Editors` registry kept shared so LSP/diagnostics stay
+feature→shared, not feature→feature.
+
+Milkdown diverges from Monaco (don't assume a clean mirror): Crepe has **no `setMarkdown`** (external
+content = recreate the editor, or a parser→`replaceWith` transaction), async out-of-zone create, a
+**spurious first `markdownUpdated`** (swallowed via `hasReceivedFirstUpdate`), the custom-node
+(HTML-image/mermaid) editors travel with the wrapper, and it has **no status outputs**.
+
+### Validation
+
+Unit specs can't boot Monaco or Crepe (jsdom lacks the layout APIs), so each wrapper has a thin
+null-safe spec and is **smoke-tested in the real Electron app via CDP**. Both passed end-to-end:
+Monaco (renders, typing→dirty tab, status Ln/Col/EOL, change-margin gutter); Milkdown (renders,
+`# ` input rule→`<h1>`, typing→`contentChange`→dirty doc, Outline panel populates via
+`getEditorView()`, tool-panel + splitter dock beside the pane).
+
+How to re-run a CDP smoke test (macOS, no playwright/puppeteer in repo):
+1. `npm run build:electron` then `ng serve --host 127.0.0.1 --port 4200`.
+2. `ELECTRON_START_URL=http://127.0.0.1:4200 nohup ./node_modules/.bin/electron . --remote-debugging-port=9222 >log 2>&1 & disown`
+   — launch the electron **binary directly + `disown`**; `npx`-wrapped nohup dies when the shell
+   call returns. Rebuild node-pty for the electron version first if the terminal is involved
+   (`npm run rebuild`).
+3. Drive over CDP with Node 24's global `WebSocket`/`fetch` (no deps). `window.ng.getComponent(el)`
+   reads component instances + private fields in the dev (unminified) build. Note Milkdown's
+   `markdownUpdated` is **debounced ~600ms** — wait before asserting dirty state.
+
+### Next (in roughly this order)
+
+1. **Stand up `code` + `markdown` tab features** — their wrappers now exist, so the views can move
+   to `src/features/<f>/angular` by the proven terminal/agent/settings template (gate-check cone →
+   relocate + repoint → `<f>.feature.ts` + `provide<F>Feature` → one `config.ts` line → delete any
+   `@case`).
+2. **`<app-diff-editor>`** — the source-control diff view (`createDiffEditor`, two read-only models)
+   is a *separate* variant that shares the Monaco service + theme plumbing but not the component.
+3. **Promote `Documents` + `change-margins` to shared** (text-document services used by both code
+   and markdown — else a markdown→code edge).
+4. **Generic `Bridge` + `shared/electron` carve** (§5) — terminal pty backing (`terminal-manager`
+   electron + pty channels) is still in `src/electron` + the god IPC trio; carve into
+   `shared/electron` + `shared/api` as a focused step.
+5. **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (2 copies now —
+   `styleUrl` can't use aliases, so each migrated ribbon inlined it).
+
+`welcome` remains special (shell-slotted, not a tab; injects `RepositoryOpener` → a feature→feature
+edge) — deferred until a shell "start-view" slot or an accepted root straggler import.
+
+Note: detailed working notes live in the assistant's local project memory (not in this repo, so not
+available cross-machine); this section is the portable source of truth.
