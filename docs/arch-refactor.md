@@ -341,5 +341,73 @@ How to re-run a CDP smoke test (macOS, no playwright/puppeteer in repo):
 `welcome` remains special (shell-slotted, not a tab; injects `RepositoryOpener` → a feature→feature
 edge) — deferred until a shell "start-view" slot or an accepted root straggler import.
 
-Note: detailed working notes live in the assistant's local project memory (not in this repo, so not
-available cross-machine); this section is the portable source of truth.
+Note: this section is the portable source of truth — the detailed working notes below (§11) capture
+the procedural knowledge that is NOT derivable from reading the code.
+
+## 11. Working notes (hard-won — read before the next move)
+
+### The mechanical relocation recipe (used for every kitchen move and feature stand-up)
+
+Moving a dir/service to `@shared` (or a feature to `src/features/<f>`) is behaviour-preserving
+relocation, not a rewrite. Steps, in order:
+
+1. `git mv <src-dir> <dest-dir>` (move the whole directory together so its internal `./sibling`
+   imports survive).
+2. **Fix the moved files' own up-paths** — a relocated file's own `from '../../../shared/X'` (api
+   types) silently retargets wrong after a depth change. After every move:
+   `find <dest> -name '*.ts' -exec sed -E -i '' "s#from '(\.\./)+shared/#from '@shared/#g" {} +`
+3. **Repoint importers** with a sibling-safe pattern that catches BOTH `../X/X` and `services/X/X`
+   forms: `grep -rlE "from '[^']*/<dir>/<base>'" src | while IFS= read -r f; do sed -E -i '' ... ; done`.
+   This does NOT catch same-dir `./X` imports — repoint those explicitly when splitting a directory.
+4. `prettier --write` the moved/edited files (relocations often surface pre-existing format drift;
+   there is one root `.prettierrc`, no path-dependent config).
+5. Green-check: `ng build` + `eslint src` + `prettier --check` + `CI=true ng test --watch=false`
+   (baseline 6 fails — see §10).
+
+Feature stand-up adds: gate-check the dependency cone → move any foreign kitchen deps to `@shared`
+first → sever cross-feature embeds → relocate to `src/features/<f>/angular` → write `<f>.feature.ts`
+(`FeatureDescriptor` [+ `chrome`] + `provide<F>Feature` via `makeEnvironmentProviders`) → add ONE
+line to `src/angular/config.ts` → delete the feature's `@case` from `content-host` +
+`ribbon-strip-container`. Splittable into relocate-then-flip commits.
+
+### Build / toolchain gotchas
+
+- **No `baseUrl`** (TS5090) — alias targets in `tsconfig.json paths` must be relative (`./src/...`).
+- **tsc does NOT rewrite path aliases in emit.** The electron **main is esbuild-bundled** (like
+  preload) — `--packages=external --tsconfig=tsconfig.json` — so `@shared`/`@features` resolve at
+  runtime; `tsc --noEmit` is kept for type-checking only. If you ever revert main to tsc-emit, main/
+  feature-electron must use relative imports. esbuild and the Angular builder both read tsconfig `paths`.
+- **`styleUrl` paths can't use aliases** (Angular) — when a component moves, either fix the relative
+  scss depth or inline the rule. The shared ribbon-row scss is currently **inlined in two migrated
+  ribbons** for this reason (consolidate into the shared ribbon framework later — §10 next-step 5).
+- **Two "shared" notions collide:** `src/shared/*` (api types, electron) vs the old
+  `src/angular/components/shared/*` (atoms). Disambiguate on every move.
+- **`FeatureViewInputs` / NG0303:** any view mounted by the registry via `ngComponentOutlet` MUST
+  declare `tabId` + `isActive` inputs, or Angular throws NG0303 at mount. (This is why, e.g.,
+  `settings-view` gained a `tabId` input it doesn't otherwise use.)
+
+### Angular / lint conventions (match the surrounding code)
+
+- Standalone, **zoneless**, signal inputs/outputs/queries (`input()`, `input.required()`,
+  `output()`, `viewChild()`/`viewChild.required()`, `model()`); `@Service()` decorator for DI
+  singletons; `ChangeDetectionStrategy.OnPush`. Because it is zoneless, `NgZone.run`/
+  `runOutsideAngular` are effectively identity — signal writes drive change detection. Some ported
+  code still calls `zone.run` defensively; preserve it on relocation rather than stripping it.
+- Strict ESLint: `@typescript-eslint/typedef` (explicit types on members/locals) +
+  `explicit-member-accessibility` (every member `public`/`protected`/`private`). Verbose JSDoc on
+  every member is the house style — mirror it.
+- Barrels re-exporting types need `export type { ... }` (isolatedModules / TS1205).
+
+### Shell (the Bash tool runs zsh — both of these cost a wasted run)
+
+- **`path` is a reserved zsh var tied to `$PATH`.** `for path in …` clobbers `$PATH` and every
+  external command dies "command not found". Never loop with `path`/`fpath`/`cdpath`/`manpath`; use
+  `p`/`f`/`svc`.
+- **zsh does not word-split unquoted `$var`.** `files=$(grep -rl …); for f in $files` runs ONCE with
+  the whole blob. Iterate via `grep … | while IFS= read -r f; do …; done`.
+
+### Where to look first
+
+The commit messages on this branch are detailed and atomic — `git log -p` for any of the §10
+wrapper commits shows the exact before/after reasoning. Start a continuation by reading §10's "Next"
+list, then this section's relocation recipe.
