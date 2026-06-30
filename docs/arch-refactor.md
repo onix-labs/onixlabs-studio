@@ -256,9 +256,31 @@ each feature folder is independently deletable; the app builds and runs througho
 ## 10. Progress log (status)
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
-`prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**:
-solution-model, solution-panel ×3, markdown-view's `create` smoke, status-strip-lsp-menu —
-none introduced by this refactor). Commit refs below are on this branch.
+`prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
+none introduced by this refactor — they predate it, sit in code/specs the refactor does not
+touch on its boundaries, and are all test-side or pre-existing component drift). Don't chase
+them as regressions; the exact cause of each (verified by running the suite):
+
+- **`solution-model.spec` › `rootNode_whileContentsLoad_isCollapsedNonExpandableWithSpinner_thenExpands`**
+  — `AssertionError: expected ['MySolution','Group','A','B'] to deeply equal ['MySolution']`. The
+  test expects the root to start collapsed (spinner, children not yet visible) during an async load
+  phase, but the model populates children synchronously, so all nodes are already visible. Test ↔
+  model timing-contract mismatch.
+- **`solution-panel.spec` › `render_whenModelPresent_showsARowPerVisibleNode`, `onRowClick_anExpandableRow_togglesIt`, `onRowClick_aFileRow_opensIt`** (×3)
+  — `TypeError: ctx_r1.query is not a function`. The panel template calls a `query(...)` the
+  component no longer exposes (component/template drift); all three fail on the same missing method.
+- **`markdown-view.spec` › `create_whenConstructed_returnsComponent`** — the assertion itself passes
+  (component constructs), but fixture teardown runs `ngOnDestroy`, which reads the **required**
+  `documentId` input the spec never sets → `NG0950: Input "documentId" is required but no value is
+  available yet`, so cleanup throws and the test is marked failed. The original (pre-split)
+  `markdown-view` failed identically — its `ngOnDestroy` also read `documentId()`. Trivially fixable
+  by `setInput('documentId', …)` in the spec.
+- **`status-strip-lsp-menu.spec` › `render_labelsTheCategoryAndReflectsTheStartingState`** —
+  `AssertionError: expected "…lsp-status-menu__trigger" to contain "lsp-status-menu__trigger--starting"`.
+  The test expects the trigger to carry the `--starting` modifier, but the rendered state has no
+  language server in the "starting" phase, so the class is absent. Test fixture/state mismatch.
+
+Commit refs below are on this branch.
 
 ### Done
 
