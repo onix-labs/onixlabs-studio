@@ -1,4 +1,5 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
+import type { Bridge } from '@shared/api/bridge';
 import type {
   AiAuthStatus,
   AiBridgeReply,
@@ -259,7 +260,12 @@ const studioApi: StudioApi = {
     pull: (root: string): Promise<GitRunResult> =>
       ipcRenderer.invoke(IpcChannel.SourceControlPull, root) as Promise<GitRunResult>,
     push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlPush, root, remote, branch) as Promise<GitRunResult>,
+      ipcRenderer.invoke(
+        IpcChannel.SourceControlPush,
+        root,
+        remote,
+        branch,
+      ) as Promise<GitRunResult>,
   },
   workspace: {
     open: (): Promise<OpenSelection | null> =>
@@ -387,3 +393,29 @@ const studioApi: StudioApi = {
 };
 
 contextBridge.exposeInMainWorld('studio', studioApi);
+
+/**
+ * Specifies the generic renderer↔main transport exposed to the renderer under `window.bridge`. Unlike
+ * `window.studio`, it names no feature: it forwards raw channel names to the underlying `ipcRenderer`,
+ * stripping the Electron event from main→renderer messages so listeners receive only the payload. Each
+ * feature's typed client service wraps this, replacing its slice of the old `window.studio`.
+ */
+const bridge: Bridge = {
+  invoke: <T>(channel: string, ...args: unknown[]): Promise<T> =>
+    ipcRenderer.invoke(channel, ...args) as Promise<T>,
+  send: (channel: string, ...args: unknown[]): void => {
+    ipcRenderer.send(channel, ...args);
+  },
+  on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+    const handler: (event: IpcRendererEvent, ...args: unknown[]) => void = (
+      _event: IpcRendererEvent,
+      ...args: unknown[]
+    ): void => listener(...args);
+    ipcRenderer.on(channel, handler);
+    return (): void => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+};
+
+contextBridge.exposeInMainWorld('bridge', bridge);
