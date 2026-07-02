@@ -12,7 +12,13 @@
 </header>
 
 <div class="diff__body">
-  <div class="diff__editor" #editorContainer></div>
+  <app-diff-editor
+    class="diff__editor"
+    [original]="original()"
+    [modified]="modified()"
+    [language]="language()"
+    [inline]="inline()"
+  />
 
   @if (!fileName()) {
     <div class="diff__empty">
