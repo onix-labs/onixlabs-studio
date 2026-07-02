@@ -296,7 +296,8 @@ Commit refs below are on this branch.
   agent-engine/ai-runtime/ai-auth/agent-sessions), `<app-agent>` (agent-chat), form atoms (12),
   ribbon framework controls (10), Display/Security/lsp-settings.
 - **Features stood up** (registry-driven, each independently deletable = folder + one `config.ts`
-  line): **`terminal`**, **`agent`**, **`settings`** under `src/features/<f>/angular`.
+  line): **`terminal`**, **`agent`**, **`settings`**, **`markdown`**, **`code`** under
+  `src/features/<f>/angular`.
 - **Shared capability wrappers — the §3.1 contract, each wraps EXACTLY ONE engine:**
   - **`<app-terminal>`** = xterm. (`shared/angular/components/terminal`.)
   - **`<app-text-editor>`** = Monaco. (`shared/angular/components/text-editor`.) Commits:
@@ -379,7 +380,7 @@ command seams; **neither editor feature owns the other's bridge commands**. So t
 `@features/markdown/markdown-commands` is by design (not a rule-1 violation). It stays app-level glue
 for now and ultimately lands outside both editor features (resolve with the code phase).
 
-### Code feature — cross-cutting infra promoted to @shared (DONE); stand-up REMAINING
+### Code feature — cross-cutting infra promoted to @shared (DONE); stand-up (DONE)
 
 The `code` gate-check (using the sibling-safe + inbound-embed lens) found the cone far more
 entangled than markdown, almost entirely with the **workspace (directory)** feature, via editor
@@ -405,28 +406,30 @@ siblings; `code-agents` / `code-status` / `code-runner` / `change-margin` (all t
 external consumers**. The deferred workspace/bridge couplings are resolved — they route through the
 shared registries. `content-host.spec` already stubs the `code` type.
 
-**REMAINING — stand up `@features/code` (the pick-up point), mirroring the markdown 3-commit template:**
-1. **`code-document` inner core** over `<app-text-editor>`: give it a `:host` that fills its flex slot
-   and passes size to the editor **from the start** (the markdown zero-height bug — `daf9a66` — must
-   not recur). Self-own content via the shared `Documents` (drop any shell/well content round-trip).
-   `code-view` composes it. `code-view` already takes `tabId` + `removeOnDestroy` (it's dual-use
-   today), so the split is a straight mirror of markdown; make `code-view` tab-only.
-2. **Lean `code-document-panel`** well leaf (toolstrip: name/dirty/save; status strip backed by
-   `code-status` — Ln/Col, language, EOL) + add it as the `code` descriptor's `documentPanel`.
-   `document-panel` already registry-mounts by type with the `@else <app-code-view>` fallback, so this
-   just makes the fallback dead for `code`.
-3. **Relocate** `code-view` (+ `code-terminal-panel`, `code-agent-panel`), `code-ribbon`, `code-agents`,
-   `code-status`, `code-runner`, `change-margin` → `src/features/code/angular`; internal cross-refs use
-   the `@features/code/angular/…` alias; **inline `../ribbon-row.scss`** into `code-ribbon.scss` (as
-   terminal/markdown did — `code-ribbon` currently has `styleUrl: '../ribbon-row.scss'` and no own scss);
-   write `code.feature.ts` (`{ type:'code', view: CodeView, ribbon: CodeRibbon, documentPanel: CodeDocumentPanel }`)
-   + `provideCodeFeature()`; add one `config.ts` line; delete the `code` `@case` from `content-host` +
-   `ribbon-strip-container` and the `@else` `<app-code-view>` + import from `document-panel`. Then
-   **CDP-smoke** it (§10 Validation): a code tab renders Monaco with content, and a code doc in the
-   workspace well mounts the lean panel.
-   - Watch: the code cone has an **electron footprint** (`src/electron/code-runner.ts`, the LSP server
-     registry) — leave it for the §5 electron carve; the renderer stand-up doesn't need it.
-   - `change-margins` is code-only → code-feature-owned (not shared, despite the old §10 note).
+**DONE — `@features/code` stood up, mirroring the markdown 3-commit template** (4 commits, baseline
+green throughout = 6 fail / 953 pass):
+1. `f451905` — **`<app-code-document>` inner core** (`CodeDocumentEditor`) over `<app-text-editor>`:
+   resolves the backing document, seeds content/language, records edits back via `Documents`, tracks
+   the active doc, exposes `document()` + `getPane()`. Its `:host` fills BOTH slot shapes (`100%` sizing
+   **and** `flex`) — code-view's slot is a definite-height block, not markdown's flex container, so
+   `flex:1` alone would zero-collapse. `0801da8` — rewire `code-view` as a tab-only leaf composing it.
+2. `92e21a4` — **lean `<app-code-document-panel>`** well leaf (toolstrip name/dirty/save; inline
+   status strip Ln/Col + language + EOL). Status renders inline, NOT via `CodeStatus` (that publishes
+   to the shell status bar owned by the enclosing workspace tab). Built but not registered here.
+3. `a15e474` — **relocate** the whole cone → `src/features/code/angular` (code-view + its two
+   subpanels, code-document, code-document-panel, code-ribbon, and services code-agents/code-status/
+   code-runner/change-margin); intra-cone cross-dir imports → `@features/code/angular` alias; inline
+   `ribbon-row.scss` → `code-ribbon.scss`; write `code.feature.ts`
+   (`{ type:'code', view, ribbon, documentPanel }`) + `provideCodeFeature()`; one `config.ts` line;
+   delete the `code` `@case` from `content-host` + `ribbon-strip-container` and the now-dead
+   `@else <app-code-view>` fallback + import from `document-panel`.
+   - The code **electron footprint** (`src/electron/code-runner.ts`, LSP server registry) stays in
+     `src/electron` for the §5 electron carve; `change-margin` is code-feature-owned (not shared).
+   - **CDP-smoke passed** (§10 Validation): the registry mounts `code-view → code-document →
+     text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 through the chain);
+     edit → `contentChange` → `Documents` dirty → tab dirty dot; status strip
+     `New Document · Ln 2 · Col 1 · LF · UTF-8` (cursor/EOL re-emit through the core);
+     `FeatureRegistry.documentPanelFor('code')` → `CodeDocumentPanel` (well leaf wired, fallback dead).
 
 ### Then (unchanged, in roughly this order)
 
@@ -435,8 +438,9 @@ shared registries. `content-host.spec` already stubs the `code` type.
 - **Generic `Bridge` + `shared/electron` carve** (§5) — terminal pty backing (`terminal-manager`
   electron + pty channels) is still in `src/electron` + the god IPC trio; carve into
   `shared/electron` + `shared/api` as a focused step.
-- **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3+ copies now —
-  terminal, markdown, and code once it lands; `styleUrl` can't use aliases, so each inlines).
+- **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3 inlined copies now
+  — terminal, markdown, code; plus the original still shared by the unmigrated directory +
+  source-control ribbons; `styleUrl` can't use aliases, so each migrated ribbon inlines).
 - **`repository` (source-control) then `workspace` (directory) last** — the workspace directory-view /
   directory-ribbon still hold the most glue, but with the registries + tasks now shared, their edges
   are feature→shared. `welcome` stays special (shell-slotted, not a tab; injects `RepositoryOpener` →
