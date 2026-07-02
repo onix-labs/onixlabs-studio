@@ -26,7 +26,7 @@ import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
 import { DockTabContext } from '../../../services/dock/dock-tab-context';
 import { collectPanelIds, findStackOfPanel } from '../../../services/dock/dock-tree';
-import { Documents } from '../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '../../../services/lsp/lsp-client';
 import { SolutionModel } from '../../../services/project/solution-model';

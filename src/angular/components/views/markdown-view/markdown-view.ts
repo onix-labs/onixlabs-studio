@@ -47,7 +47,7 @@ import {
   wrapInWarningAlertCommand,
 } from '@shared/angular/milkdown/github-alert-plugin';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { Documents } from '../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import {
   MarkdownBlockType,
   MarkdownCommandHandler,

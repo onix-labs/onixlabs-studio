@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { FileInfo, SaveDialogChoice } from '../../../shared/studio-api';
+import { FileInfo, SaveDialogChoice } from '@shared/studio-api';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';

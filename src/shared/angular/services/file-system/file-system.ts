@@ -1,5 +1,5 @@
 import { Service } from '@angular/core';
-import { FileApi, FileInfo, FileWriteResult, SaveDialogChoice } from '../../../shared/studio-api';
+import { FileApi, FileInfo, FileWriteResult, SaveDialogChoice } from '@shared/studio-api';
 
 /**
  * Holds the result returned when a write is attempted outside Electron.

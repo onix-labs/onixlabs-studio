@@ -23,7 +23,7 @@ import { CodeAgents } from '../../../services/code-agents/code-agents';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
 import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
-import { CodeDocument, Documents } from '../../../services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '../../../services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Documents } from '../../../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { CodeRibbon } from './code-ribbon';

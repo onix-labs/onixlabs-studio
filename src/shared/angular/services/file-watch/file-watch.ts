@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import type { FileApi, FileInfo } from '../../../shared/studio-api';
+import type { FileApi, FileInfo } from '@shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
 
 /**

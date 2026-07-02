@@ -1,7 +1,7 @@
 import { inject, Service } from '@angular/core';
 import type { AppApi, SaveDialogChoice } from '../../../shared/studio-api';
-import { Documents } from '../documents/documents';
-import { FileSystem } from '../file-system/file-system';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 
 /**
  * Answers the main process's request to close the window. When the window is closing, it walks the

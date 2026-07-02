@@ -3,7 +3,7 @@ import { DockPanel } from '../../../services/dock/dock-panel';
 import { StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
 import { firstStackOfRole } from '../../../services/dock/dock-tree';
-import { Documents } from '../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { FileInfo } from '../../../../shared/studio-api';
 import { Icon } from '@shared/angular/icons/icon';
 

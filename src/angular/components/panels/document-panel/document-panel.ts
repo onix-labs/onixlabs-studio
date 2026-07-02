@@ -10,7 +10,7 @@ import {
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { DockState } from '../../../services/dock/dock-state';
 import { findStackOfPanel } from '../../../services/dock/dock-tree';
-import { Documents } from '../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { CodeView } from '../../views/code-view/code-view';
 import { MarkdownView } from '../../views/markdown-view/markdown-view';
 

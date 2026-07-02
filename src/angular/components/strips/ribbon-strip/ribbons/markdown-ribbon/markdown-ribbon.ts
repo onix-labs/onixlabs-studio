@@ -11,7 +11,7 @@ import {
   MarkdownBlockType,
   MarkdownCommands,
 } from '../../../../../services/markdown-commands/markdown-commands';
-import { Documents } from '../../../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import {
   MarkdownPanel,
   MarkdownPanels,

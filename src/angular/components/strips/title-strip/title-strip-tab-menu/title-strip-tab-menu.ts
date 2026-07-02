@@ -2,7 +2,7 @@ import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { Documents } from '../../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';

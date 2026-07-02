@@ -1,7 +1,7 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { Documents } from '../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';

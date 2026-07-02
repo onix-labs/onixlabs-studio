@@ -7,7 +7,7 @@ import {
   TaskRunResult,
 } from '../../../shared/task-types';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
-import { Documents } from '../documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildRunner } from './build-runner';

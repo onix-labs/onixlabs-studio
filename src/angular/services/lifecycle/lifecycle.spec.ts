@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 
 import type { AppApi, SaveDialogChoice } from '../../../shared/studio-api';
-import { Documents, UnsavedDocument } from '../documents/documents';
-import { FileSystem } from '../file-system/file-system';
+import { Documents, UnsavedDocument } from '@shared/angular/services/documents/documents';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Lifecycle } from './lifecycle';
 
 describe('Lifecycle', () => {

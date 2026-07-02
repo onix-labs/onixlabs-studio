@@ -7,7 +7,7 @@ import { DockFocus } from '../dock/dock-focus';
 import { DockState } from '../dock/dock-state';
 import { firstStackOfRole } from '../dock/dock-tree';
 import { StackNode } from '../dock/dock-node';
-import { Documents } from '../documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '../output/output';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';

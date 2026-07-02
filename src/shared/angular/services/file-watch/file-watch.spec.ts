@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { FileApi, FileInfo } from '../../../shared/studio-api';
+import { FileApi, FileInfo } from '@shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from './file-watch';
 
@@ -53,7 +53,9 @@ describe('FileWatch', () => {
       providers: [
         {
           provide: FileSystem,
-          useValue: { read: (): Promise<FileInfo> => Promise.resolve(REREAD) } as unknown as FileSystem,
+          useValue: {
+            read: (): Promise<FileInfo> => Promise.resolve(REREAD),
+          } as unknown as FileSystem,
         },
       ],
     });

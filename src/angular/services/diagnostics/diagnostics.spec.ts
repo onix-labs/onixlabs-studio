@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Documents } from '../documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from './diagnostics';
 

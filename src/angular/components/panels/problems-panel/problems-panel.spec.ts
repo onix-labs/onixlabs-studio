@@ -5,7 +5,7 @@ import {
   Diagnostics,
   DiagnosticsProvider,
 } from '../../../services/diagnostics/diagnostics';
-import { Documents } from '../../../services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
 
 import { ProblemsPanel } from './problems-panel';

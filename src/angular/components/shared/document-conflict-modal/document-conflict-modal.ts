@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
-import { FileConflict, FileConflicts } from '../../../services/file-conflicts/file-conflicts';
+import {
+  FileConflict,
+  FileConflicts,
+} from '@shared/angular/services/file-conflicts/file-conflicts';
 
 /**
  * A tab-scoped keep/reload prompt shown when the file behind the active tab's document changed on

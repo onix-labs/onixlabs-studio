@@ -25,7 +25,10 @@ describe('FileConflicts', () => {
   it('raise_whenTabActive_exposesItAsTheActiveConflict', () => {
     const tab: Tab = tabs.open('code');
 
-    conflicts.raise(conflictFor(tab.id), { keep: (): void => undefined, reload: (): void => undefined });
+    conflicts.raise(conflictFor(tab.id), {
+      keep: (): void => undefined,
+      reload: (): void => undefined,
+    });
 
     expect(conflicts.activeConflict()?.documentId).toBe(tab.id);
   });

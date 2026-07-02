@@ -1,7 +1,7 @@
 import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { FileInfo } from '../../../shared/studio-api';
+import { FileInfo } from '@shared/studio-api';
 import { FileSystem } from '../file-system/file-system';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -155,8 +155,8 @@ describe('Documents', () => {
 
   it('get_whenDocumentCreatedAfterFirstRead_reflectsTheNewDocument', () => {
     const tab: Tab = tabs.open('code');
-    const resolved: Signal<CodeDocument | undefined> = computed(
-      (): CodeDocument | undefined => documents.get(tab.id),
+    const resolved: Signal<CodeDocument | undefined> = computed((): CodeDocument | undefined =>
+      documents.get(tab.id),
     );
     // The ribbon reads the active document before the code view has materialised it; the lookup must
     // re-run once the entry is created, not cache the absent document.
@@ -168,8 +168,8 @@ describe('Documents', () => {
   it('get_whenDocumentRemoved_reflectsTheRemoval', () => {
     const tab: Tab = tabs.open('code');
     documents.ensure(tab.id);
-    const resolved: Signal<CodeDocument | undefined> = computed(
-      (): CodeDocument | undefined => documents.get(tab.id),
+    const resolved: Signal<CodeDocument | undefined> = computed((): CodeDocument | undefined =>
+      documents.get(tab.id),
     );
     expect(resolved()).not.toBeUndefined();
     documents.remove(tab.id);
