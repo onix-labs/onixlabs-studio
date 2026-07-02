@@ -39,21 +39,21 @@ shared infra, so they are modelled as features for uniformity.
 
 **`shared` (kitchen) holds reusable capability components + framework.** Notably:
 
-| Shared building block | Today | Consumers |
-|---|---|---|
-| Dock container/panel system | `components/dock/**`, `services/dock/**` | workspace, repository |
-| Terminal component (xterm host) | `views/terminal-view` | terminal, workspace, repository, code-editor |
-| Code editor component (Monaco host) | `views/code-view` | code-editor, workspace, repository |
-| Markdown editor component (Milkdown host) | `views/markdown-view` + `milkdown/**` | markdown-editor, workspace |
-| Agent chat UI | `components/shared/agent-chat` | agent + all 4 docked-agent hosts |
-| Ribbon framework | `components/strips/ribbon-strip/*` (not `ribbons/`) | shell |
-| Title / status strips, status-bar | `components/strips/{title,status}-strip`, `services/status-bar` | shell |
-| Atoms | `components/forms/**`, `components/shared/**`, `icons/`, `styles/` | everywhere |
-| **Bespoke 2-pane splitter** | duplicated in code/markdown/terminal views | → componentise into `shared` |
-| IPC transport | `preload.ts` (→ generic, §5) | everything |
-| Cross-cutting services | `Tabs`, `Theme`, `Display`, `Lifecycle`, `Tasks`, `Output`, `Editors`, `Documents`, `Monaco`, `Terminals`, `agent`/`ai-runtime`/`ai-auth` core | everywhere |
+| Shared building block                     | Today                                                                                                                                          | Consumers                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Dock container/panel system               | `components/dock/**`, `services/dock/**`                                                                                                       | workspace, repository                        |
+| Terminal component (xterm host)           | `views/terminal-view`                                                                                                                          | terminal, workspace, repository, code-editor |
+| Code editor component (Monaco host)       | `views/code-view`                                                                                                                              | code-editor, workspace, repository           |
+| Markdown editor component (Milkdown host) | `views/markdown-view` + `milkdown/**`                                                                                                          | markdown-editor, workspace                   |
+| Agent chat UI                             | `components/shared/agent-chat`                                                                                                                 | agent + all 4 docked-agent hosts             |
+| Ribbon framework                          | `components/strips/ribbon-strip/*` (not `ribbons/`)                                                                                            | shell                                        |
+| Title / status strips, status-bar         | `components/strips/{title,status}-strip`, `services/status-bar`                                                                                | shell                                        |
+| Atoms                                     | `components/forms/**`, `components/shared/**`, `icons/`, `styles/`                                                                             | everywhere                                   |
+| **Bespoke 2-pane splitter**               | duplicated in code/markdown/terminal views                                                                                                     | → componentise into `shared`                 |
+| IPC transport                             | `preload.ts` (→ generic, §5)                                                                                                                   | everything                                   |
+| Cross-cutting services                    | `Tabs`, `Theme`, `Display`, `Lifecycle`, `Tasks`, `Output`, `Editors`, `Documents`, `Monaco`, `Terminals`, `agent`/`ai-runtime`/`ai-auth` core | everywhere                                   |
 
-**A feature (recipe) holds the assembly:** a view that *composes* shared components, plus
+**A feature (recipe) holds the assembly:** a view that _composes_ shared components, plus
 its ribbon contribution (`ribbons/<x>-ribbon`), its `*-commands`, `*-status`, `*-panels`,
 and per-host glue. Per investigation, feature-owned services include: `diffs` (repository),
 the per-host docked-agent panel state (`code-agents`, `terminal-agents`, markdown agent
@@ -68,15 +68,15 @@ componentised once into `shared` (e.g. `<app-split-pane>`) and consumed by all t
 The kitchen's capability components are **thin wrappers around exactly one engine each** — no
 splitter, no side panels, no ribbon, no embedded agent:
 
-| Wrapper | Wraps | Backing plumbing (also `shared`) |
-|---|---|---|
-| `<app-terminal>` | xterm (DOM terminal; node-pty is its electron-side backend over the bridge) | pty api contract + electron terminal-manager + `terminals`/`terminal-bridge` |
-| `<app-text-editor>` | Monaco | monaco service |
-| `<app-markdown-editor>` | Milkdown/ProseMirror | milkdown service |
-| `<app-agent>` | the agent chat UI | agent / ai-runtime / ai-auth / agent-sessions + ai bridge |
+| Wrapper                 | Wraps                                                                       | Backing plumbing (also `shared`)                                             |
+| ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `<app-terminal>`        | xterm (DOM terminal; node-pty is its electron-side backend over the bridge) | pty api contract + electron terminal-manager + `terminals`/`terminal-bridge` |
+| `<app-text-editor>`     | Monaco                                                                      | monaco service                                                               |
+| `<app-markdown-editor>` | Milkdown/ProseMirror                                                        | milkdown service                                                             |
+| `<app-agent>`           | the agent chat UI                                                           | agent / ai-runtime / ai-auth / agent-sessions + ai bridge                    |
 
 Because the **shared** wrapper depends on its plumbing, that plumbing is shared too: e.g.
-"spawn-and-render-a-pty" is a shared capability, so the terminal *feature* owns little-to-no
+"spawn-and-render-a-pty" is a shared capability, so the terminal _feature_ owns little-to-no
 unique `electron`/`api` — it composes the shared capability.
 
 **Feature views are leaves** that compose the shared panel layout with these wrappers; the
@@ -112,12 +112,12 @@ These are the only places where "delete the folder" currently leaks. Each gets o
    ```ts
    // shared/angular — the runtime seam
    interface FeatureDescriptor {
-     readonly id: string;                  // also the tab type, e.g. 'terminal'
-     readonly view: Type<unknown>;         // mounted in content-host
-     readonly ribbon?: Type<unknown>;      // contextual ribbon, optional
-     readonly chrome?: { ribbon: boolean; status: boolean };  // settings = full-bleed
-     readonly providers?: Provider[];      // feature-scoped providers (incl. eager glue)
-     register?(host: FeatureHost): void;   // optional imperative wiring (dock panels, commands)
+     readonly id: string; // also the tab type, e.g. 'terminal'
+     readonly view: Type<unknown>; // mounted in content-host
+     readonly ribbon?: Type<unknown>; // contextual ribbon, optional
+     readonly chrome?: { ribbon: boolean; status: boolean }; // settings = full-bleed
+     readonly providers?: Provider[]; // feature-scoped providers (incl. eager glue)
+     register?(host: FeatureHost): void; // optional imperative wiring (dock panels, commands)
    }
    const FEATURE = new InjectionToken<FeatureDescriptor>('FEATURE');
    ```
@@ -151,7 +151,7 @@ feature-aware literal and become a **dumb pub/sub transport**:
 interface Bridge {
   invoke<T>(channel: string, ...args: unknown[]): Promise<T>;
   send(channel: string, ...args: unknown[]): void;
-  on(channel: string, listener: (...args: unknown[]) => void): () => void;  // returns unsubscribe
+  on(channel: string, listener: (...args: unknown[]) => void): () => void; // returns unsubscribe
 }
 // exposed as window.bridge by shared/electron/preload.ts — imports zero feature code
 ```
@@ -165,7 +165,7 @@ Each feature then owns its own IPC slice:
 
 **Security is preserved.** The renderer is still treated as hostile: every handler keeps its
 existing argument validation, an `invoke` to an unregistered channel rejects, and `send`
-(main→renderer) is driven by main. The generic transport changes *who names the channel*, not
+(main→renderer) is driven by main. The generic transport changes _who names the channel_, not
 the validation guarantees. This actually **reduces** coupling — the preload ends up importing
 nothing feature-specific, which is exactly why it can live in `shared` cleanly.
 
@@ -229,15 +229,17 @@ Agreed approach: prove the entire pattern on **one feature end-to-end**, then ro
 rest by the proven template. The app is runnable after every step.
 
 **Step 1 — scaffolding (no feature moved yet):**
+
 - Add path aliases (§6) and the build/config changes (§7), app still green on old layout.
 - Create `src/shared/{angular,electron,api}` and move the **obviously-shared infra** the
   pilot depends on (atoms, the generic `Bridge`/preload, the `FEATURE` registry token +
   registry-driven `content-host`/ribbon/chrome, the `terminal-view` component, the
   componentised 2-pane splitter).
 - Existing features keep working through the registry with one descriptor each (a thin
-  shim) so nothing breaks while only their *location* is still old.
+  shim) so nothing breaks while only their _location_ is still old.
 
 **Step 2 — pilot: `terminal` (chosen).** Exercises all three layers at once:
+
 - `api` — pty channel constants + typed contract.
 - `electron` — `terminal-manager` handler.
 - `angular` — terminal view host (consumes shared `terminal-view` + shared split-pane),
@@ -272,7 +274,7 @@ them as regressions; the exact cause of each (verified by running the suite):
 - **`markdown-view.spec` › `create_whenConstructed_returnsComponent`** — the assertion itself passes
   (component constructs), but fixture teardown runs `ngOnDestroy`, which reads the **required**
   `documentId` input the spec never sets → `NG0950: Input "documentId" is required but no value is
-  available yet`, so cleanup throws and the test is marked failed. The original (pre-split)
+available yet`, so cleanup throws and the test is marked failed. The original (pre-split)
   `markdown-view` failed identically — its `ngOnDestroy` also read `documentId()`. Trivially fixable
   by `setInput('documentId', …)` in the spec.
 - **`status-strip-lsp-menu.spec` › `render_labelsTheCategoryAndReflectsTheStartingState`** —
@@ -317,10 +319,11 @@ DOM) and outputs **`ready`** + `contentChange` (+ Monaco `cursorChange`/`eolChan
 `selectionChange`/`saveRequested`). The **leaf** (feature view) binds inputs, listens to outputs,
 and does ALL feature glue on the `ready` emit — `code-view` attaches change-margins + registers
 with `Editors` + syncs LSP; `markdown-view` attaches the outline scroll-spy + review/read sessions
-+ ribbon command handler. Content round-trips via `[content]` in / `(contentChange)` out, with an
-internal `ignoreNextChange` guard preventing the echo. No feature→feature or feature→shell
-back-edges introduced. Monaco's `Editors` registry kept shared so LSP/diagnostics stay
-feature→shared, not feature→feature.
+
+- ribbon command handler. Content round-trips via `[content]` in / `(contentChange)` out, with an
+  internal `ignoreNextChange` guard preventing the echo. No feature→feature or feature→shell
+  back-edges introduced. Monaco's `Editors` registry kept shared so LSP/diagnostics stay
+  feature→shared, not feature→feature.
 
 Milkdown diverges from Monaco (don't assume a clean mirror): Crepe has **no `setMarkdown`** (external
 content = recreate the editor, or a parser→`replaceWith` transaction), async out-of-zone create, a
@@ -336,6 +339,7 @@ Monaco (renders, typing→dirty tab, status Ln/Col/EOL, change-margin gutter); M
 `getEditorView()`, tool-panel + splitter dock beside the pane).
 
 How to re-run a CDP smoke test (macOS, no playwright/puppeteer in repo):
+
 1. `npm run build:electron` then `ng serve --host 127.0.0.1 --port 4200`.
 2. `ELECTRON_START_URL=http://127.0.0.1:4200 nohup ./node_modules/.bin/electron . --remote-debugging-port=9222 >log 2>&1 & disown`
    — launch the electron **binary directly + `disown`**; `npx`-wrapped nohup dies when the shell
@@ -356,14 +360,15 @@ welcome). Commits: `af65614` (documents→shared) · `6dd8d36` (inner core) · `
 registry seam) · `df6e671` (relocate + register).
 
 **A "view" is a tab-only leaf; the document well is a DIFFERENT leaf.** Discovered: the workspace
-document well (`document-panel`) was reusing the full feature *views* (`<app-code-view>`/
+document well (`document-panel`) was reusing the full feature _views_ (`<app-code-view>`/
 `<app-markdown-view>`) to show open documents — an inbound feature→feature edge the outbound-import
 gate-check missed. Corrected model (user's): a **view** is the holistic tab surface (tab + ribbon +
 editor + optional panels + status, the shell supplying ribbon/status/tab); the **well** must NOT
 import a view. Instead:
+
 - **Shared inner core** (`markdown-document`, feature-owned): wraps the shared `<app-markdown-editor>`
-  + owns the document binding (seed from `Documents`, write edits back, save, language/lifecycle,
-  active-doc). The content round-trip is gone from the shell — the core self-owns it via `Documents`.
+  - owns the document binding (seed from `Documents`, write edits back, save, language/lifecycle,
+    active-doc). The content round-trip is gone from the shell — the core self-owns it via `Documents`.
 - **Tab leaf** (`markdown-view`): core + tool panels + ribbon command handler + sessions. Its id input
   is **`tabId`** (the `FeatureViewInputs` contract the registry mounts by), not `documentId`.
 - **Well leaf** (`markdown-document-panel`, lean): core + a compact toolstrip (name/dirty/save) + a
@@ -408,6 +413,7 @@ shared registries. `content-host.spec` already stubs the `code` type.
 
 **DONE — `@features/code` stood up, mirroring the markdown 3-commit template** (4 commits, baseline
 green throughout = 6 fail / 953 pass):
+
 1. `f451905` — **`<app-code-document>` inner core** (`CodeDocumentEditor`) over `<app-text-editor>`:
    resolves the backing document, seeds content/language, records edits back via `Documents`, tracks
    the active doc, exposes `document()` + `getPane()`. Its `:host` fills BOTH slot shapes (`100%` sizing
@@ -426,7 +432,7 @@ green throughout = 6 fail / 953 pass):
    - The code **electron footprint** (`src/electron/code-runner.ts`, LSP server registry) stays in
      `src/electron` for the §5 electron carve; `change-margin` is code-feature-owned (not shared).
    - **CDP-smoke passed** (§10 Validation): the registry mounts `code-view → code-document →
-     text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 through the chain);
+text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 through the chain);
      edit → `contentChange` → `Documents` dirty → tab dirty dot; status strip
      `New Document · Ln 2 · Col 1 · LF · UTF-8` (cursor/EOL re-emit through the core);
      `FeatureRegistry.documentPanelFor('code')` → `CodeDocumentPanel` (well leaf wired, fallback dead).
@@ -447,8 +453,9 @@ green throughout = 6 fail / 953 pass):
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + terminal pilot DONE; the other
-  ~10 IPC domains REMAIN.** The enabler and the pattern, proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 3 slices DONE (terminal,
+  file/dialog, workspace/project); ~7 IPC domains REMAIN.** The enabler and the pattern, proven
+  end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -467,13 +474,42 @@ green throughout = 6 fail / 953 pass):
     `build:main`/`build:preload` resolve `@shared/...` via tsconfig paths, so main-side aliases work.
   - **CDP smoke passed:** terminal tab spawns a pty over `window.bridge`, input writes reach it, output
     round-trips to xterm (`echo` result rendered); `window.studio.terminal` is gone.
-  - **REMAINING (per-domain, same template):** migrate `file`/`dialog`, `workspace`, `sourceControl`
-    (git), `ai`, `lsp`, `project`, `run`/`tasks`, `security`, `shell`, `display`/`window`/`app` off
-    `window.studio` onto `window.bridge` + a `shared/api` (or feature `api`) channel slice, moving each
-    handler to `shared/electron` (or `features/<f>/electron`). Each shrinks the god trio; the trio is
-    deleted when the last domain migrates. Also relocate `main.ts`/`preload.ts` themselves into
-    `shared/electron` (§7: `dist-electron/shared/electron/…`, updating `package.json main`,
-    `build:main`/`build:preload` outfiles, and the `__dirname`-relative `INDEX_HTML`/`preload` paths).
+  - `refactor(file)` — the **file/dialog** slice (shared plumbing: documents' file cone is shared
+    kitchen). `src/shared/api/file-channels.ts` (`FileChannel` enum: `file:read/write/watch/unwatch/
+changed` + `dialog:open-file/pick-image/save-file/confirm-save`, plus `FileInfo`/`FileWriteResult`/
+    `SaveDialogChoice`); `FileSystem` + `FileWatch` clients on `window.bridge` (`FileSystem` gained
+    `pickImage` so `markdown-image-modal` stops touching `window.studio`); `file-manager` +
+    `file-watcher` → `src/shared/electron/`. `FileInfo` is the first **cross-slice type** — `OpenSelection`
+    (workspace) and several renderer services import it from `file-channels`. Deleted from the god trio:
+    9 `IpcChannel` members, `FileApi` + 3 types + field, preload literal. **CDP smoke:** `file:read`
+    returns `package.json`, `file:write`+read-back round-trips over `window.bridge`; `window.studio.file` gone.
+  - `refactor(workspace)` — the **workspace/project** slice. `workspace-channels.ts` (`WorkspaceChannel`
+    9 members + `DirectoryEntry`/`DirectoryEntryType`/`DirectoryListing`/`FileOperationResult`/
+    `OpenSelection`) and `project-channels.ts` (`ProjectChannel` model/items; payloads stay in the neutral
+    `project-system`). `Workspace` + `SolutionModel` clients on `window.bridge`. **Split-if-too-big call:**
+    `workspace-manager` **stays in `src/electron`** (repointed to the new enums) because its cone —
+    `workspace-context` + `project-system/` — is shared with `lsp-manager` and `main`; that shared-electron-
+    infra move rides the §7 electron-tree relocation, not this slice. create/rename/delete have no renderer
+    caller, so the client wraps only the 5 used ops (handlers stay). Deleted from the god trio: 11
+    `IpcChannel` members, `WorkspaceApi` + `ProjectApi` + 5 types + 2 fields, preload literals. Repointed
+    every moved-type consumer (directory-view, workspaces, file-opener, build-runner, lsp-client + specs)
+    and rewrote 4 `WorkspaceApi`/`ProjectApi` fakes as `Bridge` mocks. **CDP smoke:** workspace/project
+    handlers registered (confinement returns `null` over `window.bridge`), boots clean, studio.workspace/
+    project gone. **Regression caught by the suite:** `build-runner.spec` injects the real (now bridge-backed)
+    `Workspace` — its `window.studio.workspace` mock had to become a `window.bridge` mock.
+  - **`Bridge`-mock spec recipe (reuse for the rest):** replace `window.studio.<domain>` fakes with a
+    `window.bridge` object routing by channel (`invoke<T>(channel, ...args)` → `switch`/`if`), `send`/`on`
+    stubs; compare `channel === (SomeChannel.X as string)` — the bare enum-vs-string comparison trips
+    `@typescript-eslint/no-unsafe-enum-comparison`, the `as string` cast satisfies it. Set
+    `(window as unknown as { bridge: Bridge }).bridge = …` in `beforeEach`, `delete` it in `afterEach`.
+  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `lsp`, `run`/`tasks`,
+    `security`, `shell`, `display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
+    (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
+    Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
+    `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
+    updating `package.json main`, `build:main`/`build:preload` outfiles, and the `__dirname`-relative
+    `INDEX_HTML`/`preload` paths) — and with them the shared electron cone (`workspace-context`,
+    `project-system/`) that the workspace slice deferred.
 - **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3 inlined copies now
   — terminal, markdown, code; plus the original still shared by the unmigrated directory +
   source-control ribbons; `styleUrl` can't use aliases, so each migrated ribbon inlines).
@@ -559,8 +595,8 @@ A grep like `grep -rlE "services/<x>/<x>"` finds importers written as `.../servi
 `agent-editor-capabilities` → `../markdown-commands` (a **bridge**), and `directory-*` → `../code-*`
 (workspace). Always also grep the sibling form: `from '[^']*/<x>/<x>'`.
 
-Likewise, the cone has **inbound** edges, not just outbound: a component elsewhere may *embed the
-feature's view/component*. Grep the selector (`app-<x>-view`) and the class import, not only the
+Likewise, the cone has **inbound** edges, not just outbound: a component elsewhere may _embed the
+feature's view/component_. Grep the selector (`app-<x>-view`) and the class import, not only the
 feature's own imports — that is how the document-well reuse of the views was missed at first.
 
 Two couplings recur and are the crux of the editor features: **editor command registries**
