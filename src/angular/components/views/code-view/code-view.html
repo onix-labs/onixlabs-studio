@@ -1,12 +1,11 @@
 <div class="code-shell">
   <div class="code-layout" [class.code-layout--side]="terminalLayout() === 'side-by-side'">
     <div class="code-layout__editor">
-      <app-text-editor
-        [content]="doc()?.content() ?? ''"
-        [language]="doc()?.language() ?? 'plaintext'"
+      <app-code-document
+        [documentId]="tabId()"
+        [removeOnDestroy]="removeOnDestroy()"
         [isActive]="isActive()"
-        (ready)="onEditorReady()"
-        (contentChange)="onContentChange($event)"
+        (ready)="onReady()"
         (cursorChange)="onCursorChange($event)"
         (eolChange)="onEolChange($event)"
       />

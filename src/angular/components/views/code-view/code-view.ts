@@ -6,7 +6,6 @@ import {
   input,
   InputSignal,
   OnDestroy,
-  OnInit,
   signal,
   Signal,
   viewChild,
@@ -17,6 +16,7 @@ import {
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
+import { CodeDocumentEditor } from '../code-document/code-document';
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeAgents } from '../../../services/code-agents/code-agents';
@@ -36,11 +36,6 @@ import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
-
-/**
- * Holds the display name given to a new, unsaved code document (matching the markdown editor).
- */
-const NEW_DOCUMENT_NAME: string = 'New Document';
 
 /**
  * Holds the minimum size, in pixels, of the docked terminal pane.
@@ -73,27 +68,28 @@ const MAX_AGENT_SIZE: number = 900;
 const DEFAULT_AGENT_SIZE: number = 360;
 
 /**
- * Represents the code editor view: the shared {@link TextEditor} pane bound to the owning tab's
- * document, with optional docked run-terminal and agent panels beside it. It owns the code-tab
- * concerns the bare pane does not — the backing document and save state, the change-margin save
- * gutter, the model-URI registration, language-server sync, the ribbon command handler, the status
- * segment, and the docked panels and their splitters — driving the pane through its imperative API.
+ * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
+ * text-editor pane wired to its backing document), with optional docked run-terminal and agent panels
+ * beside it. It owns the code-tab concerns the core does not — the change-margin save gutter, the
+ * model-URI registration, language-server sync, the ribbon command handler, the status segment, and
+ * the docked panels and their splitters — reading the core's document and driving its pane through its
+ * imperative API.
  */
 @Component({
   selector: 'app-code-view',
-  imports: [TextEditor, CodeTerminalPanel, CodeAgentPanel],
+  imports: [CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView implements OnInit, OnDestroy {
+export class CodeView implements OnDestroy {
   /**
    * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
   private readonly theme: Theme = inject(Theme);
 
   /**
-   * Holds the documents service owning the tab's content and file association.
+   * Holds the documents service the ribbon's save commands target.
    */
   private readonly documents: Documents = inject(Documents);
 
@@ -141,9 +137,11 @@ export class CodeView implements OnInit, OnDestroy {
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
 
   /**
-   * Holds the shared text-editor pane this view drives, or undefined before the view initialises.
+   * Holds the document-bound code editor core this view drives, or undefined before the view
+   * initialises.
    */
-  private readonly editorPane: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
+  private readonly documentCore: Signal<CodeDocumentEditor | undefined> =
+    viewChild<CodeDocumentEditor>(CodeDocumentEditor);
 
   /**
    * Holds the editor's cursor position, or null when unknown, projected to the status strip.
@@ -199,13 +197,6 @@ export class CodeView implements OnInit, OnDestroy {
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
 
   /**
-   * Holds the backing document, or null before initialisation.
-   */
-  private readonly document: WritableSignal<CodeDocument | null> = signal<CodeDocument | null>(
-    null,
-  );
-
-  /**
    * Holds the string form of the pane's model URI while registered, or null when not registered.
    */
   private modelUri: string | null = null;
@@ -227,7 +218,8 @@ export class CodeView implements OnInit, OnDestroy {
   private changeMargin: ChangeMarginController | null = null;
 
   /**
-   * Initialises the view, wiring the feature effects that compose against the editor pane.
+   * Initialises the view, wiring the feature effects that compose against the editor core's document
+   * and pane.
    */
   public constructor() {
     // Keep the change-margin's overview-ruler colours current for the active theme (the gutter bars
@@ -244,7 +236,7 @@ export class CodeView implements OnInit, OnDestroy {
     // (green) bar and every line that differs an unsaved (yellow) bar. Re-runs when the last-saved
     // content changes (save, reload) and when the file path appears (first save of a new document).
     effect((): void => {
-      const document: CodeDocument | null = this.document();
+      const document: CodeDocument | null = this.doc();
       const savedContent: string = document?.savedContent() ?? '';
       const hasSavedVersion: boolean = (document?.filePath() ?? null) !== null;
       if (!this.paneReady()) {
@@ -253,14 +245,14 @@ export class CodeView implements OnInit, OnDestroy {
       this.changeMargin?.setBaseline(savedContent, hasSavedVersion);
     });
 
-    // Register/deactivate the ribbon command handler with activation, and mark the active document.
+    // Register/deactivate the ribbon command handler with activation. The core marks the active
+    // document itself.
     effect((): void => {
       const active: boolean = this.isActive();
       if (active && this.paneReady()) {
         if (this.commandHandler === null) {
           this.registerCommandHandler();
         }
-        this.documents.setActiveDocument(this.tabId());
       } else if (this.commandHandler !== null) {
         this.editorCommands.deactivate(this.tabId());
         this.commandHandler = null;
@@ -271,7 +263,7 @@ export class CodeView implements OnInit, OnDestroy {
     // Reads the document's path/encoding signals so it refreshes on save and rename, and the local
     // caret/eol signals fed by the pane's cursor and content outputs. Clears when not active.
     effect((): void => {
-      const document: CodeDocument | null = this.document();
+      const document: CodeDocument | null = this.doc();
       const caret: { line: number; column: number } | null = this.caret();
       if (!this.isActive() || document === null || caret === null) {
         this.codeStatus.clear(this.tabId());
@@ -290,7 +282,7 @@ export class CodeView implements OnInit, OnDestroy {
     // Keep this editor registered against its document, so global Monaco diagnostics resolve to a
     // file and a reveal can target it; re-runs when the file path or name changes (save/rename).
     effect((): void => {
-      const document: CodeDocument | null = this.document();
+      const document: CodeDocument | null = this.doc();
       if (!this.paneReady() || this.modelUri === null || document === null) {
         return;
       }
@@ -305,7 +297,7 @@ export class CodeView implements OnInit, OnDestroy {
     // workspace receives live language-server diagnostics; re-runs on edits, save-as, and language
     // changes. Documents outside a workspace, untitled, or without a server are ignored by the client.
     effect((): void => {
-      const document: CodeDocument | null = this.document();
+      const document: CodeDocument | null = this.doc();
       if (document === null) {
         return;
       }
@@ -326,7 +318,7 @@ export class CodeView implements OnInit, OnDestroy {
     // Honour reveal requests aimed at this view's document, jumping the editor to the line.
     effect((): void => {
       const request: RevealRequest | null = this.editors.revealRequest();
-      const pane: TextEditor | undefined = this.editorPane();
+      const pane: TextEditor | undefined = this.pane();
       if (request === null || !this.paneReady() || pane === undefined) {
         return;
       }
@@ -338,16 +330,9 @@ export class CodeView implements OnInit, OnDestroy {
   }
 
   /**
-   * Resolves the backing document for the owning tab.
-   */
-  public ngOnInit(): void {
-    this.document.set(this.documents.ensure(this.tabId(), NEW_DOCUMENT_NAME));
-  }
-
-  /**
    * Detaches the change-margin, releases the command handler, and unregisters the editor when the
-   * view is torn down, then releases the document when this view owns its lifecycle. The pane disposes
-   * the Monaco editor itself.
+   * view is torn down, then releases the feature-owned state when this view owns its lifecycle. The
+   * document core releases the backing document and the pane disposes the Monaco editor themselves.
    */
   public ngOnDestroy(): void {
     if (this.changeMargin !== null) {
@@ -362,35 +347,24 @@ export class CodeView implements OnInit, OnDestroy {
       this.editors.unregister(this.modelUri);
       this.modelUri = null;
     }
-    if (this.documents.activeDocumentId() === this.tabId()) {
-      this.documents.setActiveDocument(null);
-    }
-    // Only release the document and run terminal when this view owns their lifecycle (standalone
-    // tabs). In the dock well a destroy is a re-parent, not a close, so the workspace handles it.
+    // Only release the language-server, workspace root, run terminal and agent when this view owns
+    // their lifecycle (standalone tabs). In the dock well a destroy is a re-parent, not a close, so
+    // the workspace handles it.
     if (this.removeOnDestroy()) {
       this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
-      this.documents.remove(this.tabId());
       this.editorTerminals.remove(this.tabId());
       this.codeAgents.remove(this.tabId());
     }
   }
 
   /**
-   * Gets the backing document, exposed for the template's content/language bindings.
-   * @returns Returns the document, or null before initialisation.
-   */
-  protected doc(): CodeDocument | null {
-    return this.document();
-  }
-
-  /**
-   * Wires the editor-instance features once the pane's editor exists: attaches the change-margin
+   * Wires the editor-instance features once the core's pane editor exists: attaches the change-margin
    * gutter and captures the model URI for registration.
    */
-  protected onEditorReady(): void {
-    const pane: TextEditor | undefined = this.editorPane();
-    const document: CodeDocument | null = this.document();
+  protected onReady(): void {
+    const pane: TextEditor | undefined = this.pane();
+    const document: CodeDocument | null = this.doc();
     if (pane === undefined || document === null) {
       return;
     }
@@ -406,14 +380,6 @@ export class CodeView implements OnInit, OnDestroy {
       );
     }
     this.paneReady.set(true);
-  }
-
-  /**
-   * Writes a user edit through to the backing document.
-   * @param text The editor's new text.
-   */
-  protected onContentChange(text: string): void {
-    this.documents.setContent(this.tabId(), text);
   }
 
   /**
@@ -542,10 +508,27 @@ export class CodeView implements OnInit, OnDestroy {
   }
 
   /**
+   * Gets the backing document from the editor core, for the view's feature effects.
+   * @returns Returns the document, or null before the core initialises.
+   */
+  private doc(): CodeDocument | null {
+    return this.documentCore()?.document() ?? null;
+  }
+
+  /**
+   * Gets the shared text-editor pane through the document core, so this view can drive it through its
+   * imperative API.
+   * @returns Returns the pane, or undefined before the view initialises.
+   */
+  private pane(): TextEditor | undefined {
+    return this.documentCore()?.getPane();
+  }
+
+  /**
    * Registers the ribbon command handler, mapping each command to the pane's editor API.
    */
   private registerCommandHandler(): void {
-    const pane: TextEditor | undefined = this.editorPane();
+    const pane: TextEditor | undefined = this.pane();
     if (pane === undefined) {
       return;
     }
