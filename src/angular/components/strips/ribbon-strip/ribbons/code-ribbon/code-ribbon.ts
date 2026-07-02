@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { CodeAgents } from '../../../../../services/code-agents/code-agents';
 import { CodeCommands } from '../../../../../services/code-commands/code-commands';
 import { CodeRunner } from '../../../../../services/code-runner/code-runner';
-import { CodeTerminals } from '../../../../../services/code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -93,7 +93,7 @@ export class CodeRibbon {
   /**
    * Holds the docked-terminal panel state backing the Terminal toggle.
    */
-  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
    * Holds the docked agent-panel state backing the Agent toggle.
@@ -316,7 +316,7 @@ export class CodeRibbon {
   protected onTerminal(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
-      this.codeTerminals.toggle(id);
+      this.editorTerminals.toggle(id);
     }
   }
 

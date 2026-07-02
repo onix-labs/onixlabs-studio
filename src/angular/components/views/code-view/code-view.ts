@@ -22,7 +22,10 @@ import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeAgents } from '../../../services/code-agents/code-agents';
 import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
 import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
-import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
+import {
+  EditorTerminals,
+  TerminalLayout,
+} from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -122,7 +125,7 @@ export class CodeView implements OnInit, OnDestroy {
   /**
    * Holds the docked run-terminal panel state.
    */
-  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
    * Holds the docked agent-panel state.
@@ -365,7 +368,7 @@ export class CodeView implements OnInit, OnDestroy {
       this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
       this.documents.remove(this.tabId());
-      this.codeTerminals.remove(this.tabId());
+      this.editorTerminals.remove(this.tabId());
       this.codeAgents.remove(this.tabId());
     }
   }
@@ -431,7 +434,7 @@ export class CodeView implements OnInit, OnDestroy {
    * @returns Returns true when the panel has been shown at least once.
    */
   protected terminalMounted(): boolean {
-    return this.codeTerminals.isMounted(this.tabId());
+    return this.editorTerminals.isMounted(this.tabId());
   }
 
   /**
@@ -439,7 +442,7 @@ export class CodeView implements OnInit, OnDestroy {
    * @returns Returns true when the panel is shown.
    */
   protected terminalVisible(): boolean {
-    return this.codeTerminals.isVisible(this.tabId());
+    return this.editorTerminals.isVisible(this.tabId());
   }
 
   /**
@@ -447,7 +450,7 @@ export class CodeView implements OnInit, OnDestroy {
    * @returns Returns the layout.
    */
   protected terminalLayout(): TerminalLayout {
-    return this.codeTerminals.layout(this.tabId());
+    return this.editorTerminals.layout(this.tabId());
   }
 
   /**

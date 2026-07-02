@@ -49,7 +49,7 @@ const DEFAULT_STATE: PanelState = {
  * stays mounted once first shown so its terminal session is preserved while hidden.
  */
 @Service()
-export class CodeTerminals {
+export class EditorTerminals {
   /**
    * Holds the panel state for every code tab, keyed by tab identifier.
    */

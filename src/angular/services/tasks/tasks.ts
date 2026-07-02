@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import { CodeTerminals } from '../code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Task, TaskContext, TaskProvider } from './task';
 
 /**
@@ -16,7 +16,7 @@ export class Tasks {
   /**
    * Holds the docked-terminal state that `terminal` tasks are queued into.
    */
-  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
    * Holds the registered providers, keyed by identifier.
@@ -66,7 +66,7 @@ export class Tasks {
     }
     const command: string | null = await task.resolve();
     if (command !== null) {
-      this.codeTerminals.queueCommand(task.terminalTabId, command);
+      this.editorTerminals.queueCommand(task.terminalTabId, command);
     }
   }
 }

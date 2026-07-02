@@ -1,15 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 
-import { CodeTerminals } from '../code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeRunner } from './code-runner';
 
 describe('CodeRunner', () => {
   let runner: CodeRunner;
-  let codeTerminals: CodeTerminals;
+  let editorTerminals: EditorTerminals;
 
   beforeEach(() => {
     runner = TestBed.inject(CodeRunner);
-    codeTerminals = TestBed.inject(CodeTerminals);
+    editorTerminals = TestBed.inject(EditorTerminals);
   });
 
   it('canRun_whenLanguageHasRunner_returnsTrue', () => {
@@ -24,6 +24,6 @@ describe('CodeRunner', () => {
 
   it('run_whenOutsideElectron_doesNotQueueACommand', async () => {
     await runner.run('tab-1', 'javascript', 'console.log(1)');
-    expect(codeTerminals.isVisible('tab-1')).toBe(false);
+    expect(editorTerminals.isVisible('tab-1')).toBe(false);
   });
 });

@@ -11,7 +11,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { CodeTerminals } from '../../../../services/code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
@@ -41,7 +41,7 @@ export class CodeTerminalPanel {
   /**
    * Holds the docked-terminal panel state.
    */
-  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
    * Holds the embedded terminal pane this panel drives, or undefined before the view initialises.
@@ -80,7 +80,7 @@ export class CodeTerminalPanel {
       if (tabId === '') {
         return;
       }
-      const pending: string | null = this.codeTerminals.pending(tabId);
+      const pending: string | null = this.editorTerminals.pending(tabId);
       if (this.ready() && pending !== null) {
         // Clear and write outside the reactive context to avoid writing signals during the effect.
         queueMicrotask((): void => this.flushPending());
@@ -99,7 +99,7 @@ export class CodeTerminalPanel {
    * Toggles the editor/terminal layout between stacked and side-by-side.
    */
   protected onLayout(): void {
-    this.codeTerminals.toggleLayout(this.tabId());
+    this.editorTerminals.toggleLayout(this.tabId());
   }
 
   /**
@@ -127,14 +127,14 @@ export class CodeTerminalPanel {
    * Hides the terminal panel, leaving its session mounted so it can be reopened.
    */
   protected onClose(): void {
-    this.codeTerminals.hide(this.tabId());
+    this.editorTerminals.hide(this.tabId());
   }
 
   /**
    * Writes the tab's pending run command to the terminal, then clears it.
    */
   private flushPending(): void {
-    const command: string | null = this.codeTerminals.takePending(this.tabId());
+    const command: string | null = this.editorTerminals.takePending(this.tabId());
     if (command !== null) {
       this.pane()?.runCommand(command);
     }

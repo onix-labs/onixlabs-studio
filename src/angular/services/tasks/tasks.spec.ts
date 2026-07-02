@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { CodeTerminals } from '../code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Task, TaskProvider } from './task';
 import { Tasks } from './tasks';
 
@@ -35,7 +35,7 @@ describe('Tasks', () => {
 
   it('run_terminalTarget_queuesTheResolvedCommand', async () => {
     const tasks: Tasks = TestBed.inject(Tasks);
-    const codeTerminals: CodeTerminals = TestBed.inject(CodeTerminals);
+    const editorTerminals: EditorTerminals = TestBed.inject(EditorTerminals);
     await tasks.run(
       makeTask({
         terminalTabId: 'tab-9',
@@ -43,12 +43,12 @@ describe('Tasks', () => {
       }),
     );
 
-    expect(codeTerminals.pending('tab-9')).toBe('node main.js');
+    expect(editorTerminals.pending('tab-9')).toBe('node main.js');
   });
 
   it('run_whenResolveReturnsNull_doesNothing', async () => {
     const tasks: Tasks = TestBed.inject(Tasks);
-    const codeTerminals: CodeTerminals = TestBed.inject(CodeTerminals);
+    const editorTerminals: EditorTerminals = TestBed.inject(EditorTerminals);
     await tasks.run(
       makeTask({
         terminalTabId: 'tab-9',
@@ -56,14 +56,14 @@ describe('Tasks', () => {
       }),
     );
 
-    expect(codeTerminals.pending('tab-9')).toBeNull();
+    expect(editorTerminals.pending('tab-9')).toBeNull();
   });
 
   it('run_outputTarget_isANoOp', async () => {
     const tasks: Tasks = TestBed.inject(Tasks);
-    const codeTerminals: CodeTerminals = TestBed.inject(CodeTerminals);
+    const editorTerminals: EditorTerminals = TestBed.inject(EditorTerminals);
     await tasks.run(makeTask({ target: 'output', terminalTabId: undefined }));
 
-    expect(codeTerminals.pending('tab-1')).toBeNull();
+    expect(editorTerminals.pending('tab-1')).toBeNull();
   });
 });

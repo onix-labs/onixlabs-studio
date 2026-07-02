@@ -12,7 +12,7 @@ import {
 import { ProjectModel } from '../../../../shared/project-system';
 import { DirectoryListing, RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
 import { Icon } from '@shared/angular/icons/icon';
-import { CodeTerminals } from '../../../services/code-terminals/code-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
@@ -144,7 +144,7 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Holds the (root) docked run-terminal store, swept alongside the documents it shadows.
    */
-  private readonly codeTerminals: CodeTerminals = inject(CodeTerminals);
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
    * Holds this tab's scoped build runner, registered as the active build handler while the tab is
@@ -233,7 +233,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         collectPanelIds(this.dockState.layout()),
       );
       for (const id of this.documents.removeMissing(present)) {
-        this.codeTerminals.remove(id);
+        this.editorTerminals.remove(id);
       }
     });
 
