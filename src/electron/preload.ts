@@ -11,7 +11,6 @@ import type {
   AiVerifyResult,
 } from '../shared/ai-types';
 import { IpcChannel } from '@shared/ipc-channels';
-import type { ProjectItems, ProjectModel } from '../shared/project-system';
 import type {
   LspExit,
   LspMessage,
@@ -22,11 +21,8 @@ import type {
 import type { ImageSourcePolicy } from '../shared/security-types';
 import type { TaskOutputStream, TaskRunRequest, TaskRunResult } from '../shared/task-types';
 import type {
-  DirectoryListing,
-  FileOperationResult,
   GitRunResult,
   GpuRenderingInfo,
-  OpenSelection,
   RepositoryInfo,
   StudioApi,
   TempFileResult,
@@ -186,47 +182,6 @@ const studioApi: StudioApi = {
         remote,
         branch,
       ) as Promise<GitRunResult>,
-  },
-  workspace: {
-    open: (): Promise<OpenSelection | null> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceOpen) as Promise<OpenSelection | null>,
-    openFile: (path: string): Promise<OpenSelection | null> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceOpenFile, path) as Promise<OpenSelection | null>,
-    openFolder: (): Promise<DirectoryListing | null> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceOpenFolder) as Promise<DirectoryListing | null>,
-    closeFolder: (root: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceCloseFolder, root) as Promise<void>,
-    readDirectory: (path: string): Promise<DirectoryListing | null> =>
-      ipcRenderer.invoke(
-        IpcChannel.WorkspaceReadDirectory,
-        path,
-      ) as Promise<DirectoryListing | null>,
-    createFile: (directoryPath: string, name: string): Promise<FileOperationResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.WorkspaceCreateFile,
-        directoryPath,
-        name,
-      ) as Promise<FileOperationResult>,
-    createFolder: (directoryPath: string, name: string): Promise<FileOperationResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.WorkspaceCreateFolder,
-        directoryPath,
-        name,
-      ) as Promise<FileOperationResult>,
-    rename: (targetPath: string, newName: string): Promise<FileOperationResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.WorkspaceRename,
-        targetPath,
-        newName,
-      ) as Promise<FileOperationResult>,
-    delete: (targetPath: string): Promise<FileOperationResult> =>
-      ipcRenderer.invoke(IpcChannel.WorkspaceDelete, targetPath) as Promise<FileOperationResult>,
-  },
-  project: {
-    loadModel: (root: string): Promise<ProjectModel | null> =>
-      ipcRenderer.invoke(IpcChannel.ProjectModelLoad, root) as Promise<ProjectModel | null>,
-    loadItems: (projectPath: string): Promise<ProjectItems | null> =>
-      ipcRenderer.invoke(IpcChannel.ProjectItemsLoad, projectPath) as Promise<ProjectItems | null>,
   },
   ai: {
     getAuthStatus: (): Promise<AiAuthStatus> =>

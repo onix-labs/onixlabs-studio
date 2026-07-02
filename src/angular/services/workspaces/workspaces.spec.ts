@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { DirectoryListing } from '../../../shared/studio-api';
+import { DirectoryListing } from '@shared/api/workspace-channels';
 
 import { Workspaces } from './workspaces';
 

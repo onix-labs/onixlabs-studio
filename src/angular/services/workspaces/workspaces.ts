@@ -1,5 +1,5 @@
 import { Service } from '@angular/core';
-import { DirectoryListing } from '../../../shared/studio-api';
+import { DirectoryListing } from '@shared/api/workspace-channels';
 
 /**
  * Bridges opening a directory to the workspace instance that hosts it. Each directory tab is its own

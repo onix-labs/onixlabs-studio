@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { DirectoryListing, OpenSelection, WorkspaceApi } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { DirectoryListing, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Workspace } from './workspace';
 
 /**
@@ -24,21 +25,24 @@ const SRC_LISTING: DirectoryListing = {
 };
 
 /**
- * Builds a fake workspace bridge backed by the canned listings above.
+ * Builds a fake transport that routes the workspace channels to the canned listings above.
  */
-function fakeBridge(): WorkspaceApi {
+function fakeBridge(): Bridge {
   return {
-    open: (): Promise<OpenSelection | null> =>
-      Promise.resolve({ kind: 'directory', directory: ROOT_LISTING }),
-    openFile: (): Promise<OpenSelection | null> => Promise.resolve(null),
-    openFolder: (): Promise<DirectoryListing | null> => Promise.resolve(ROOT_LISTING),
-    closeFolder: (): Promise<void> => Promise.resolve(),
-    readDirectory: (path: string): Promise<DirectoryListing | null> =>
-      Promise.resolve(path === '/ws/src' ? SRC_LISTING : null),
-    createFile: () => Promise.resolve({ success: true }),
-    createFolder: () => Promise.resolve({ success: true }),
-    rename: () => Promise.resolve({ success: true }),
-    delete: () => Promise.resolve({ success: true }),
+    invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+      switch (channel) {
+        case WorkspaceChannel.Open as string:
+          return Promise.resolve({ kind: 'directory', directory: ROOT_LISTING } as T);
+        case WorkspaceChannel.OpenFolder as string:
+          return Promise.resolve(ROOT_LISTING as T);
+        case WorkspaceChannel.ReadDirectory as string:
+          return Promise.resolve((args[0] === '/ws/src' ? SRC_LISTING : null) as T);
+        default:
+          return Promise.resolve(null as T);
+      }
+    },
+    send: (): void => undefined,
+    on: (): (() => void) => (): void => undefined,
   };
 }
 
@@ -46,15 +50,13 @@ describe('Workspace', () => {
   let service: Workspace;
 
   beforeEach(() => {
-    (window as unknown as { studio: { workspace: WorkspaceApi } }).studio = {
-      workspace: fakeBridge(),
-    };
+    (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({});
     service = TestBed.inject(Workspace);
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('hasWorkspace_whenNoFolderOpen_returnsFalse', () => {

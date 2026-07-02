@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { OpenSelection } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { TaskApi, TaskOutputStream, TaskRunRequest, TaskRunResult } from '@shared/task-types';
 import {
   Diagnostic,
@@ -82,18 +83,25 @@ describe('BuildRunner', () => {
   beforeEach(() => {
     api = new FakeTaskApi();
     diagnostics = new FakeDiagnostics();
-    const workspaceApi: unknown = {
-      openFile: (path: string): Promise<OpenSelection | null> =>
-        Promise.resolve(
-          path.endsWith('package.json')
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (WorkspaceChannel.OpenFile as string)) {
+          const path: string = args[0] as string;
+          const selection: OpenSelection | null = path.endsWith('package.json')
             ? {
                 kind: 'file',
                 file: { path, name: 'package.json', extension: '.json', content: PACKAGE_JSON },
               }
-            : null,
-        ),
+            : null;
+          return Promise.resolve(selection as T);
+        }
+        return Promise.resolve(null as T);
+      },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (window as unknown as { studio: unknown }).studio = { tasks: api, workspace: workspaceApi };
+    (window as unknown as { studio: unknown }).studio = { tasks: api };
+    (window as unknown as { bridge: Bridge }).bridge = bridge;
     TestBed.configureTestingModule({
       providers: [
         BuildRunner,
@@ -107,6 +115,7 @@ describe('BuildRunner', () => {
 
   afterEach(() => {
     delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   /**

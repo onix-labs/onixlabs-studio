@@ -1,34 +1,40 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Bridge } from '@shared/api/bridge';
+import { ProjectChannel } from '@shared/api/project-channels';
+import { DirectoryListing } from '@shared/api/workspace-channels';
 import { ProjectItems, ProjectModel } from '../../../shared/project-system';
-import { DirectoryListing, ProjectApi } from '../../../shared/studio-api';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
 /**
- * A fake project bridge whose model and per-project contents the test controls, and which can defer all
- * contents requests so the root's loading state is observable mid-flight.
+ * A fake transport whose project model and per-project contents the test controls, and which can defer
+ * all contents requests so the root's loading state is observable mid-flight. Routes the project
+ * channels; other channels resolve to null.
  */
-class FakeProject implements ProjectApi {
+class FakeProject implements Bridge {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
   public deferItems: boolean = false;
   private resolvers: (() => void)[] = [];
 
-  public loadModel(): Promise<ProjectModel | null> {
-    return Promise.resolve(this.model);
+  public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+    if (channel === (ProjectChannel.ModelLoad as string)) {
+      return Promise.resolve(this.model as T);
+    }
+    if (channel === (ProjectChannel.ItemsLoad as string)) {
+      return this.loadItems(args[0] as string) as Promise<T>;
+    }
+    return Promise.resolve(null as T);
   }
 
-  public loadItems(projectPath: string): Promise<ProjectItems | null> {
-    this.itemRequests.push(projectPath);
-    const value: ProjectItems | null = this.itemsByPath.get(projectPath) ?? null;
-    if (this.deferItems) {
-      return new Promise<ProjectItems | null>((resolve: (items: ProjectItems | null) => void): void => {
-        this.resolvers.push((): void => resolve(value));
-      });
-    }
-    return Promise.resolve(value);
+  public send(): void {
+    return undefined;
+  }
+
+  public on(): () => void {
+    return (): void => undefined;
   }
 
   public resolveAll(): void {
@@ -37,6 +43,19 @@ class FakeProject implements ProjectApi {
     for (const resolve of resolvers) {
       resolve();
     }
+  }
+
+  private loadItems(projectPath: string): Promise<ProjectItems | null> {
+    this.itemRequests.push(projectPath);
+    const value: ProjectItems | null = this.itemsByPath.get(projectPath) ?? null;
+    if (this.deferItems) {
+      return new Promise<ProjectItems | null>(
+        (resolve: (items: ProjectItems | null) => void): void => {
+          this.resolvers.push((): void => resolve(value));
+        },
+      );
+    }
+    return Promise.resolve(value);
   }
 }
 
@@ -54,7 +73,11 @@ function sampleModel(): ProjectModel {
       { name: 'B', path: '/root/B/B.csproj' },
     ],
     tree: [
-      { type: 'folder', name: 'Group', children: [{ type: 'project', name: 'A', path: '/root/A/A.csproj' }] },
+      {
+        type: 'folder',
+        name: 'Group',
+        children: [{ type: 'project', name: 'A', path: '/root/A/A.csproj' }],
+      },
       { type: 'project', name: 'B', path: '/root/B/B.csproj' },
     ],
   };
@@ -68,7 +91,11 @@ function sampleItems(): ProjectItems {
   return {
     projectPath: '/root/A/A.csproj',
     tree: [
-      { type: 'folder', name: 'Sub', children: [{ type: 'file', name: 'f.cs', path: '/root/A/Sub/f.cs' }] },
+      {
+        type: 'folder',
+        name: 'Sub',
+        children: [{ type: 'file', name: 'f.cs', path: '/root/A/Sub/f.cs' }],
+      },
       { type: 'file', name: 'g.cs', path: '/root/A/g.cs' },
     ],
   };
@@ -141,11 +168,11 @@ describe('SolutionModel', () => {
   beforeEach(() => {
     project = new FakeProject();
     root = signal<DirectoryListing | null>(null);
-    (window as unknown as { studio: unknown }).studio = { project };
+    (window as unknown as { bridge: Bridge }).bridge = project;
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('rootOpens_withModel_nestsTheStructureUnderASolutionRootNamedAfterTheSolution', async () => {
@@ -162,7 +189,13 @@ describe('SolutionModel', () => {
   });
 
   it('rootOpens_withoutSolution_namesTheRootAfterTheFolder', async () => {
-    project.model = { kind: 'dotnet', root: '/path/to/MyApp', solution: null, projects: [], tree: [] };
+    project.model = {
+      kind: 'dotnet',
+      root: '/path/to/MyApp',
+      solution: null,
+      projects: [],
+      tree: [],
+    };
     const model: SolutionModel = build();
     root.set({ path: '/path/to/MyApp', name: 'MyApp', entries: [] });
     await settle();

@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { DirectoryListing, OpenSelection, WorkspaceApi } from '../../../shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '../dock/dock-node';
 import { DockState } from '../dock/dock-state';
 import { firstStackOfRole } from '../dock/dock-tree';
@@ -23,19 +24,21 @@ const ROOT_LISTING: DirectoryListing = {
 let nextSelection: OpenSelection | null;
 
 /**
- * Builds a fake workspace bridge whose open/openFile resolve with {@link nextSelection}.
+ * Builds a fake transport whose open/open-file channels resolve with {@link nextSelection}.
  */
-function fakeBridge(): WorkspaceApi {
+function fakeBridge(): Bridge {
   return {
-    open: (): Promise<OpenSelection | null> => Promise.resolve(nextSelection),
-    openFile: (): Promise<OpenSelection | null> => Promise.resolve(nextSelection),
-    openFolder: (): Promise<DirectoryListing | null> => Promise.resolve(null),
-    closeFolder: (): Promise<void> => Promise.resolve(),
-    readDirectory: (): Promise<DirectoryListing | null> => Promise.resolve(null),
-    createFile: () => Promise.resolve({ success: true }),
-    createFolder: () => Promise.resolve({ success: true }),
-    rename: () => Promise.resolve({ success: true }),
-    delete: () => Promise.resolve({ success: true }),
+    invoke: <T>(channel: string): Promise<T> => {
+      if (
+        channel === (WorkspaceChannel.Open as string) ||
+        channel === (WorkspaceChannel.OpenFile as string)
+      ) {
+        return Promise.resolve(nextSelection as T);
+      }
+      return Promise.resolve(null as T);
+    },
+    send: (): void => undefined,
+    on: (): (() => void) => (): void => undefined,
   };
 }
 
@@ -55,9 +58,7 @@ describe('FileOpener', () => {
 
   beforeEach(() => {
     nextSelection = null;
-    (window as unknown as { studio: { workspace: WorkspaceApi } }).studio = {
-      workspace: fakeBridge(),
-    };
+    (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({});
     opener = TestBed.inject(FileOpener);
     tabs = TestBed.inject(Tabs);
@@ -66,7 +67,7 @@ describe('FileOpener', () => {
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('openInteractive_whenCancelled_opensNothing', async () => {

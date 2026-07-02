@@ -1,5 +1,5 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/studio-api';
+import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { TaskApi } from '@shared/task-types';
 import {
   Diagnostic,

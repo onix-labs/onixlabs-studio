@@ -8,15 +8,16 @@ import {
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
-import { IpcChannel } from '../shared/ipc-channels';
 import { ProjectItems, ProjectModel } from '../shared/project-system';
 import { FileInfo } from '@shared/api/file-channels';
+import { ProjectChannel } from '@shared/api/project-channels';
 import {
   DirectoryEntry,
   DirectoryListing,
   FileOperationResult,
   OpenSelection,
-} from '../shared/studio-api';
+  WorkspaceChannel,
+} from '@shared/api/workspace-channels';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
 import { WorkspaceContext } from './workspace-context';
@@ -73,18 +74,18 @@ export class WorkspaceManager {
    * Registers the workspace IPC handlers.
    */
   public register(): void {
-    ipcMain.handle(IpcChannel.WorkspaceOpen, (): Promise<OpenSelection | null> => this.open());
+    ipcMain.handle(WorkspaceChannel.Open, (): Promise<OpenSelection | null> => this.open());
     ipcMain.handle(
-      IpcChannel.WorkspaceOpenFile,
+      WorkspaceChannel.OpenFile,
       (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
         this.openFile(filePath),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceOpenFolder,
+      WorkspaceChannel.OpenFolder,
       (): Promise<DirectoryListing | null> => this.openFolder(),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceCloseFolder,
+      WorkspaceChannel.CloseFolder,
       (_event: IpcMainInvokeEvent, root: unknown): void => {
         if (typeof root === 'string' && root.length > 0) {
           this.workspace.removeRoot(root);
@@ -92,12 +93,12 @@ export class WorkspaceManager {
       },
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceReadDirectory,
+      WorkspaceChannel.ReadDirectory,
       (_event: IpcMainInvokeEvent, directoryPath: unknown): Promise<DirectoryListing | null> =>
         this.readDirectory(directoryPath),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceCreateFile,
+      WorkspaceChannel.CreateFile,
       (
         _event: IpcMainInvokeEvent,
         directoryPath: unknown,
@@ -105,7 +106,7 @@ export class WorkspaceManager {
       ): Promise<FileOperationResult> => this.create(directoryPath, name, 'file'),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceCreateFolder,
+      WorkspaceChannel.CreateFolder,
       (
         _event: IpcMainInvokeEvent,
         directoryPath: unknown,
@@ -113,7 +114,7 @@ export class WorkspaceManager {
       ): Promise<FileOperationResult> => this.create(directoryPath, name, 'directory'),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceRename,
+      WorkspaceChannel.Rename,
       (
         _event: IpcMainInvokeEvent,
         targetPath: unknown,
@@ -121,17 +122,17 @@ export class WorkspaceManager {
       ): Promise<FileOperationResult> => this.rename(targetPath, newName),
     );
     ipcMain.handle(
-      IpcChannel.WorkspaceDelete,
+      WorkspaceChannel.Delete,
       (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> =>
         this.delete(targetPath),
     );
     ipcMain.handle(
-      IpcChannel.ProjectModelLoad,
+      ProjectChannel.ModelLoad,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<ProjectModel | null> =>
         this.loadProjectModel(root),
     );
     ipcMain.handle(
-      IpcChannel.ProjectItemsLoad,
+      ProjectChannel.ItemsLoad,
       (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> =>
         this.loadProjectItems(projectPath),
     );

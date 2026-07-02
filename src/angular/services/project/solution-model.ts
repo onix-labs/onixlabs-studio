@@ -1,5 +1,6 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { ProjectApi } from '../../../shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { ProjectChannel } from '@shared/api/project-channels';
 import {
   ProjectEntry,
   ProjectItemNode,
@@ -89,9 +90,9 @@ export class SolutionModel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
-   * Holds the project-system bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: ProjectApi | undefined = window.studio?.project;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the current model, or null when no root is open or none was recognised.
@@ -234,11 +235,14 @@ export class SolutionModel {
    */
   private async refresh(root: string | null): Promise<void> {
     const generation: number = ++this.generation;
-    if (this.api === undefined || root === null) {
+    if (this.bridge === undefined || root === null) {
       this.reset(null);
       return;
     }
-    const model: ProjectModel | null = await this.api.loadModel(root);
+    const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
+      ProjectChannel.ModelLoad,
+      root,
+    );
     if (generation !== this.generation) {
       return;
     }
@@ -288,7 +292,9 @@ export class SolutionModel {
         next !== undefined;
         next = queue.shift()
       ) {
-        const items: ProjectItems | null = (await this.api?.loadItems(next.path)) ?? null;
+        const items: ProjectItems | null =
+          (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, next.path)) ??
+          null;
         if (generation !== this.generation) {
           return;
         }

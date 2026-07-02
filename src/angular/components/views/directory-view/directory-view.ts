@@ -10,7 +10,8 @@ import {
   untracked,
 } from '@angular/core';
 import { ProjectModel } from '../../../../shared/project-system';
-import { DirectoryListing, RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
+import { DirectoryListing } from '@shared/api/workspace-channels';
+import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
 import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';

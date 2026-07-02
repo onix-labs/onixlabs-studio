@@ -7,7 +7,7 @@ import {
   LspSemanticTokensLegend,
   LspStartResult,
 } from '@shared/lsp-types';
-import { DirectoryListing } from '@shared/studio-api';
+import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';

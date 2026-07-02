@@ -1,11 +1,12 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Bridge } from '@shared/api/bridge';
 import {
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
   OpenSelection,
-  WorkspaceApi,
-} from '@shared/studio-api';
+  WorkspaceChannel,
+} from '@shared/api/workspace-channels';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
@@ -68,16 +69,16 @@ export interface WorkspaceTreeRow {
 
 /**
  * Represents the renderer-side workspace state: the open root and its lazily-expanded directory
- * tree, exposed as signals. Wraps the Electron workspace bridge on `window.studio.workspace`; when
- * the application runs outside Electron the bridge is absent and every operation degrades to a safe
- * no-op so the UI renders its empty state instead of throwing.
+ * tree, exposed as signals. Drives the workspace IPC channels over the generic {@link Bridge}
+ * transport (`window.bridge`); when the application runs outside Electron the bridge is absent and
+ * every operation degrades to a safe no-op so the UI renders its empty state instead of throwing.
  */
 @Service()
 export class Workspace {
   /**
-   * Holds the workspace bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: WorkspaceApi | undefined = window.studio?.workspace;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the settings service, consulted for how "Expand All" should behave.
@@ -111,7 +112,7 @@ export class Workspace {
   /**
    * Gets a value indicating whether a real workspace bridge is available (running in Electron).
    */
-  public readonly isElectron: boolean = this.api !== undefined;
+  public readonly isElectron: boolean = this.bridge !== undefined;
 
   /**
    * Gets the open root listing, or null when no folder is open.
@@ -158,8 +159,9 @@ export class Workspace {
    * @returns Returns a promise that resolves once the folder has been opened (or the dialog cancelled).
    */
   public async openFolder(): Promise<void> {
-    const listing: DirectoryListing | null = await (this.api?.openFolder() ??
-      Promise.resolve(null));
+    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
+      WorkspaceChannel.OpenFolder,
+    ) ?? Promise.resolve(null));
     if (listing === null) {
       return;
     }
@@ -172,7 +174,9 @@ export class Workspace {
    * @returns Returns the selection, or null when cancelled or running outside Electron.
    */
   public open(): Promise<OpenSelection | null> {
-    return this.api?.open() ?? Promise.resolve(null);
+    return (
+      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.Open) ?? Promise.resolve(null)
+    );
   }
 
   /**
@@ -181,7 +185,10 @@ export class Workspace {
    * @returns Returns the file selection (text or binary), or null when invalid or outside Electron.
    */
   public readFile(path: string): Promise<OpenSelection | null> {
-    return this.api?.openFile(path) ?? Promise.resolve(null);
+    return (
+      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.OpenFile, path) ??
+      Promise.resolve(null)
+    );
   }
 
   /**
@@ -191,7 +198,10 @@ export class Workspace {
    * @returns Returns the listing, or null when invalid or running outside Electron.
    */
   public readDirectoryListing(path: string): Promise<DirectoryListing | null> {
-    return this.api?.readDirectory(path) ?? Promise.resolve(null);
+    return (
+      this.bridge?.invoke<DirectoryListing | null>(WorkspaceChannel.ReadDirectory, path) ??
+      Promise.resolve(null)
+    );
   }
 
   /**
@@ -210,7 +220,7 @@ export class Workspace {
   public async closeFolder(): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
     if (root !== undefined) {
-      await (this.api?.closeFolder(root) ?? Promise.resolve());
+      await (this.bridge?.invoke<void>(WorkspaceChannel.CloseFolder, root) ?? Promise.resolve());
     }
     this.rootListing.set(null);
     this.treeNodes.set([]);
@@ -286,8 +296,10 @@ export class Workspace {
       path,
       (current: WorkspaceTreeNode): WorkspaceTreeNode => ({ ...current, loading: true }),
     );
-    const listing: DirectoryListing | null = await (this.api?.readDirectory(path) ??
-      Promise.resolve(null));
+    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
+      WorkspaceChannel.ReadDirectory,
+      path,
+    ) ?? Promise.resolve(null));
     const children: readonly WorkspaceTreeNode[] =
       listing === null
         ? []
@@ -489,8 +501,11 @@ export class Workspace {
       if (node.children !== null) {
         children = node.children;
       } else {
-        const listing: DirectoryListing | null = await (this.api?.readDirectory(node.path) ??
-          Promise.resolve(null));
+        const listing: DirectoryListing | null =
+          await (this.bridge?.invoke<DirectoryListing | null>(
+            WorkspaceChannel.ReadDirectory,
+            node.path,
+          ) ?? Promise.resolve(null));
         children =
           listing === null
             ? []
