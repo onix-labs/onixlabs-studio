@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { CodeAgents } from '../../../../../services/code-agents/code-agents';
-import { CodeCommands } from '../../../../../services/code-commands/code-commands';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { CodeRunner } from '../../../../../services/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
@@ -39,7 +39,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
 
 /**
  * Represents the contextual ribbon shown when a code tab is active. File actions act on the active
- * document, editor commands route through the {@link CodeCommands} registry, the language field sets
+ * document, editor commands route through the {@link EditorCommands} registry, the language field sets
  * the active document's syntax, and Run/Terminal drive the docked run terminal.
  */
 @Component({
@@ -68,7 +68,7 @@ export class CodeRibbon {
   /**
    * Holds the code command registry editor commands route through.
    */
-  private readonly commands: CodeCommands = inject(CodeCommands);
+  private readonly commands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the documents service handling open, save and language.

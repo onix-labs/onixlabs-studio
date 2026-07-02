@@ -1,13 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 
-import { CodeCommandHandler, CodeCommands } from './code-commands';
+import { EditorCommandHandler, EditorCommands } from './editor-commands';
 
 /**
  * Builds the no-op ribbon command methods shared by the test handlers.
  * @param calls The set that records invoked method names.
  * @returns Returns the recording command methods.
  */
-function recordingCommands(calls: Set<string>): Omit<CodeCommandHandler, 'getText' | 'replaceText'> {
+function recordingCommands(
+  calls: Set<string>,
+): Omit<EditorCommandHandler, 'getText' | 'replaceText'> {
   return {
     cut: (): void => void calls.add('cut'),
     copy: (): void => void calls.add('copy'),
@@ -28,7 +30,7 @@ function recordingCommands(calls: Set<string>): Omit<CodeCommandHandler, 'getTex
  * @param initial The initial document text.
  * @returns Returns the recording handler.
  */
-function recordingHandler(calls: Set<string>, initial: string = ''): CodeCommandHandler {
+function recordingHandler(calls: Set<string>, initial: string = ''): EditorCommandHandler {
   let text: string = initial;
   return {
     ...recordingCommands(calls),
@@ -39,11 +41,11 @@ function recordingHandler(calls: Set<string>, initial: string = ''): CodeCommand
   };
 }
 
-describe('CodeCommands', () => {
-  let commands: CodeCommands;
+describe('EditorCommands', () => {
+  let commands: EditorCommands;
 
   beforeEach(() => {
-    commands = TestBed.inject(CodeCommands);
+    commands = TestBed.inject(EditorCommands);
   });
 
   it('hasActiveEditor_whenNoHandlerRegistered_returnsFalse', () => {

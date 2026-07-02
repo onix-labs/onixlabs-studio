@@ -3,7 +3,7 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 /**
  * Defines the editor commands the code ribbon can invoke on the active code editor.
  */
-export interface CodeCommandHandler {
+export interface EditorCommandHandler {
   /**
    * Cuts the current selection to the clipboard.
    */
@@ -63,23 +63,23 @@ export interface CodeCommandHandler {
 }
 
 /**
- * Routes code ribbon editor commands to the active code editor, and gives the agent per-tab access to
+ * Routes a ribbon's editor commands to the active text editor, and gives the agent per-tab access to
  * each editor.
  *
- * Each {@link CodeView} registers its handler under its tab id; the ribbon controls forward to the
+ * Each text-editor view registers its handler under its tab id; the ribbon controls forward to the
  * active tab's handler, while the agent — which is docked to a specific tab — acts on that tab's
  * handler by id. Handlers are retained until their editor is disposed, so an agent in a backgrounded
  * tab still reaches its editor. File-level actions (open) are handled separately by the documents
  * service, since they are not tied to a live editor instance.
  */
 @Service()
-export class CodeCommands {
+export class EditorCommands {
   /**
    * Holds every live editor's command handler, keyed by tab id.
    */
-  private readonly handlers: Map<string, CodeCommandHandler> = new Map<
+  private readonly handlers: Map<string, EditorCommandHandler> = new Map<
     string,
-    CodeCommandHandler
+    EditorCommandHandler
   >();
 
   /**
@@ -105,7 +105,7 @@ export class CodeCommands {
    * @param id The owning tab identifier.
    * @param handler The handler to register.
    */
-  public register(id: string, handler: CodeCommandHandler): void {
+  public register(id: string, handler: EditorCommandHandler): void {
     this.handlers.set(id, handler);
     this.activeId.set(id);
     this.lastActiveId = id;
@@ -153,7 +153,7 @@ export class CodeCommands {
    * @returns Returns true when an editor was registered for the tab and updated.
    */
   public replaceText(id: string, text: string): boolean {
-    const handler: CodeCommandHandler | undefined = this.handlers.get(id);
+    const handler: EditorCommandHandler | undefined = this.handlers.get(id);
     if (handler === undefined) {
       return false;
     }
@@ -176,7 +176,7 @@ export class CodeCommands {
    * @returns Returns true when an editor was available and updated.
    */
   public replaceActiveText(text: string): boolean {
-    const target: CodeCommandHandler | null = this.fallbackTarget();
+    const target: EditorCommandHandler | null = this.fallbackTarget();
     if (target === null) {
       return false;
     }
@@ -188,7 +188,7 @@ export class CodeCommands {
    * Resolves the active editor's handler (for ribbon commands).
    * @returns Returns the active handler, or null when none is active.
    */
-  private activeHandler(): CodeCommandHandler | null {
+  private activeHandler(): EditorCommandHandler | null {
     const id: string | null = this.activeId();
     return id === null ? null : (this.handlers.get(id) ?? null);
   }
@@ -198,7 +198,7 @@ export class CodeCommands {
    * editor the user worked in.
    * @returns Returns the target handler, or null when none is available.
    */
-  private fallbackTarget(): CodeCommandHandler | null {
+  private fallbackTarget(): EditorCommandHandler | null {
     const id: string | null = this.activeId() ?? this.lastActiveId;
     return id === null ? null : (this.handlers.get(id) ?? null);
   }

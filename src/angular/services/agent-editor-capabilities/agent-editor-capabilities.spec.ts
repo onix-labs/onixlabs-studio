@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
-import { CodeCommandHandler, CodeCommands } from '../code-commands/code-commands';
+import {
+  EditorCommandHandler,
+  EditorCommands,
+} from '@shared/angular/services/editor-commands/editor-commands';
 import {
   MarkdownCommandHandler,
   MarkdownCommands,
@@ -55,7 +58,7 @@ function markdownHandler(initial: string): MarkdownCommandHandler {
  * @param initial The initial text.
  * @returns Returns the handler.
  */
-function textHandler(initial: string): CodeCommandHandler {
+function textHandler(initial: string): EditorCommandHandler {
   let text: string = initial;
   return {
     cut: (): void => undefined,
@@ -76,7 +79,7 @@ function textHandler(initial: string): CodeCommandHandler {
 
 describe('AgentEditorCapabilities', () => {
   let registered: Map<string, AiCapability>;
-  let codeCommands: CodeCommands;
+  let editorCommands: EditorCommands;
   let markdownCommands: MarkdownCommands;
 
   beforeEach(() => {
@@ -90,7 +93,7 @@ describe('AgentEditorCapabilities', () => {
     TestBed.configureTestingModule({
       providers: [{ provide: AiRuntime, useValue: runtimeStub }],
     });
-    codeCommands = TestBed.inject(CodeCommands);
+    editorCommands = TestBed.inject(EditorCommands);
     markdownCommands = TestBed.inject(MarkdownCommands);
     // Instantiate the service so it registers its capabilities.
     TestBed.inject(AgentEditorCapabilities);
@@ -108,7 +111,7 @@ describe('AgentEditorCapabilities', () => {
   });
 
   it('read_whenEditorActive_returnsItsText', () => {
-    codeCommands.register('tab-1', textHandler('hello'));
+    editorCommands.register('tab-1', textHandler('hello'));
     const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
 
     expect(read?.(undefined)).toEqual({ available: true, text: 'hello' });
@@ -122,7 +125,7 @@ describe('AgentEditorCapabilities', () => {
   });
 
   it('read_whenBothEditorsActive_prefersTheMarkdownEditor', () => {
-    codeCommands.register('tab-1', textHandler('code text'));
+    editorCommands.register('tab-1', textHandler('code text'));
     markdownCommands.register('doc-1', markdownHandler('# Markdown'));
     const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
 
@@ -130,15 +133,15 @@ describe('AgentEditorCapabilities', () => {
   });
 
   it('replace_whenEditorActive_updatesTheDocumentAndReportsOk', () => {
-    codeCommands.register('tab-1', textHandler('old'));
+    editorCommands.register('tab-1', textHandler('old'));
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({ text: 'new' })).toEqual({ ok: true });
-    expect(codeCommands.readActiveText()).toBe('new');
+    expect(editorCommands.readActiveText()).toBe('new');
   });
 
   it('replace_whenInputMalformed_reportsNotOk', () => {
-    codeCommands.register('tab-1', textHandler('x'));
+    editorCommands.register('tab-1', textHandler('x'));
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({})).toEqual({ ok: false });
@@ -153,35 +156,35 @@ describe('AgentEditorCapabilities', () => {
   });
 
   it('replace_whenBothEditorsActive_prefersTheMarkdownEditor', () => {
-    codeCommands.register('tab-1', textHandler('code old'));
+    editorCommands.register('tab-1', textHandler('code old'));
     markdownCommands.register('doc-1', markdownHandler('# md old'));
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({ text: '# md new' })).toEqual({ ok: true });
     expect(markdownCommands.readActiveDocument()).toBe('# md new');
-    expect(codeCommands.readActiveText()).toBe('code old');
+    expect(editorCommands.readActiveText()).toBe('code old');
   });
 
   it('read_whenTabIdGiven_readsThatTabNotTheActiveOne', () => {
-    codeCommands.register('tab-1', textHandler('one'));
-    codeCommands.register('tab-2', textHandler('two')); // tab-2 is active
+    editorCommands.register('tab-1', textHandler('one'));
+    editorCommands.register('tab-2', textHandler('two')); // tab-2 is active
     const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
 
     expect(read?.({ tabId: 'tab-1' })).toEqual({ available: true, text: 'one' });
   });
 
   it('replace_whenTabIdGiven_writesToThatTabNotTheActiveOne', () => {
-    codeCommands.register('tab-1', textHandler('one'));
-    codeCommands.register('tab-2', textHandler('two')); // tab-2 is active
+    editorCommands.register('tab-1', textHandler('one'));
+    editorCommands.register('tab-2', textHandler('two')); // tab-2 is active
     const replace: AiCapability | undefined = registered.get(REPLACE_ACTIVE_DOCUMENT);
 
     expect(replace?.({ text: 'edited', tabId: 'tab-1' })).toEqual({ ok: true });
-    expect(codeCommands.readText('tab-1')).toBe('edited');
-    expect(codeCommands.readText('tab-2')).toBe('two');
+    expect(editorCommands.readText('tab-1')).toBe('edited');
+    expect(editorCommands.readText('tab-2')).toBe('two');
   });
 
   it('read_whenTabIdUnknown_reportsUnavailable', () => {
-    codeCommands.register('tab-1', textHandler('one'));
+    editorCommands.register('tab-1', textHandler('one'));
     const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
 
     expect(read?.({ tabId: 'missing' })).toEqual({ available: false, text: '' });

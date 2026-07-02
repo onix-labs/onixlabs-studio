@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { CodeCommands } from '../../../../../services/code-commands/code-commands';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '../../../../../services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
@@ -13,7 +13,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
 
 /**
  * Represents the contextual ribbon shown when a directory tab is active. The Edit group routes edit
- * commands through the {@link CodeCommands} seam; the Solution Build and Run groups dispatch through
+ * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
  * the {@link Builds} seam to the active workspace's build runner (the Task picker chooses what Start
  * runs). The Target and Source-Control groups remain static scaffolding.
  */
@@ -41,7 +41,7 @@ export class DirectoryRibbon {
   /**
    * Holds the editor command seam the Edit group dispatches through.
    */
-  private readonly commands: CodeCommands = inject(CodeCommands);
+  private readonly commands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.

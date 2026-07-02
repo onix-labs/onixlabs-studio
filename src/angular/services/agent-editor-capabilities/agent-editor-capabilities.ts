@@ -1,6 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
-import { CodeCommands } from '../code-commands/code-commands';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { MarkdownCommands } from '@features/markdown/angular/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 
@@ -45,7 +45,7 @@ export class AgentEditorCapabilities {
   /**
    * Holds the code-editor command seam the capabilities act through.
    */
-  private readonly codeCommands: CodeCommands = inject(CodeCommands);
+  private readonly editorCommands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the markdown-editor command seam, consulted first so the agent reads the live markdown
@@ -82,14 +82,14 @@ export class AgentEditorCapabilities {
       if (markdown !== null) {
         return { available: true, text: markdown };
       }
-      const code: string | null = this.codeCommands.readText(tabId);
+      const code: string | null = this.editorCommands.readText(tabId);
       return code === null ? { available: false, text: '' } : { available: true, text: code };
     }
     const markdown: string | null = this.markdownCommands.readActiveDocument();
     if (markdown !== null) {
       return { available: true, text: markdown };
     }
-    const text: string | null = this.codeCommands.readActiveText();
+    const text: string | null = this.editorCommands.readActiveText();
     return text === null ? { available: false, text: '' } : { available: true, text };
   }
 
@@ -110,12 +110,12 @@ export class AgentEditorCapabilities {
       if (this.markdownCommands.replaceDocument(tabId, text)) {
         return { ok: true };
       }
-      return { ok: this.codeCommands.replaceText(tabId, text) };
+      return { ok: this.editorCommands.replaceText(tabId, text) };
     }
     if (this.markdownCommands.replaceActiveDocument(text)) {
       return { ok: true };
     }
-    return { ok: this.codeCommands.replaceActiveText(text) };
+    return { ok: this.editorCommands.replaceActiveText(text) };
   }
 
   /**

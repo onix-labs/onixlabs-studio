@@ -20,7 +20,10 @@ import {
 import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
 import { ChangeMargins } from '../../../services/change-margin/change-margins';
 import { CodeAgents } from '../../../services/code-agents/code-agents';
-import { CodeCommandHandler, CodeCommands } from '../../../services/code-commands/code-commands';
+import {
+  EditorCommandHandler,
+  EditorCommands,
+} from '@shared/angular/services/editor-commands/editor-commands';
 import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
 import {
   EditorTerminals,
@@ -120,7 +123,7 @@ export class CodeView implements OnInit, OnDestroy {
   /**
    * Holds the code command registry the ribbon routes editor commands through.
    */
-  private readonly codeCommands: CodeCommands = inject(CodeCommands);
+  private readonly editorCommands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the docked run-terminal panel state.
@@ -213,9 +216,9 @@ export class CodeView implements OnInit, OnDestroy {
   private readonly paneReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the command handler registered with the {@link CodeCommands} registry while active.
+   * Holds the command handler registered with the {@link EditorCommands} registry while active.
    */
-  private commandHandler: CodeCommandHandler | null = null;
+  private commandHandler: EditorCommandHandler | null = null;
 
   /**
    * Holds the change-margin controller drawing the save-state gutter bars, or null before the editor
@@ -259,7 +262,7 @@ export class CodeView implements OnInit, OnDestroy {
         }
         this.documents.setActiveDocument(this.tabId());
       } else if (this.commandHandler !== null) {
-        this.codeCommands.deactivate(this.tabId());
+        this.editorCommands.deactivate(this.tabId());
         this.commandHandler = null;
       }
     });
@@ -352,7 +355,7 @@ export class CodeView implements OnInit, OnDestroy {
       this.changeMargin = null;
     }
     if (this.commandHandler !== null) {
-      this.codeCommands.forget(this.tabId());
+      this.editorCommands.forget(this.tabId());
       this.commandHandler = null;
     }
     if (this.modelUri !== null) {
@@ -561,6 +564,6 @@ export class CodeView implements OnInit, OnDestroy {
       replaceText: (text: string): void => pane.replaceAll(text),
     };
 
-    this.codeCommands.register(this.tabId(), this.commandHandler);
+    this.editorCommands.register(this.tabId(), this.commandHandler);
   }
 }
