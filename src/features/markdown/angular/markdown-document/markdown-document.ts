@@ -39,6 +39,7 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
   selector: 'app-markdown-document',
   imports: [MarkdownEditor],
   templateUrl: './markdown-document.html',
+  styleUrl: './markdown-document.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownDocument implements OnInit, OnDestroy {

@@ -23,8 +23,8 @@
   min-block-size: 0;
 }
 
-// The editor pane takes the remaining width beside any tool panel.
-app-markdown-editor {
+// The document core (and the editor pane inside it) takes the remaining width beside any tool panel.
+app-markdown-document {
   flex: 1;
   min-inline-size: 0;
 }
