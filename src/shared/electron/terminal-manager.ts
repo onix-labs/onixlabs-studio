@@ -5,8 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
-import { IpcChannel } from '../shared/ipc-channels';
-import { TerminalCreateResult } from '../shared/studio-api';
+import { TerminalChannel, TerminalCreateResult } from '@shared/api/terminal-channels';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -56,26 +55,26 @@ export class TerminalManager {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.TerminalCreate,
+      TerminalChannel.Create,
       (_event: IpcMainInvokeEvent, options: unknown): TerminalCreateResult => this.create(options),
     );
     ipcMain.handle(
-      IpcChannel.TerminalWrite,
+      TerminalChannel.Write,
       (_event: IpcMainInvokeEvent, id: unknown, data: unknown): boolean =>
         typeof id === 'string' && typeof data === 'string' ? this.write(id, data) : false,
     );
     ipcMain.handle(
-      IpcChannel.TerminalResize,
+      TerminalChannel.Resize,
       (_event: IpcMainInvokeEvent, id: unknown, cols: unknown, rows: unknown): boolean =>
         typeof id === 'string' && this.isDimension(cols) && this.isDimension(rows)
           ? this.resize(id, cols, rows)
           : false,
     );
-    ipcMain.handle(IpcChannel.TerminalDispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
+    ipcMain.handle(TerminalChannel.Dispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
       typeof id === 'string' ? this.dispose(id) : false,
     );
     ipcMain.handle(
-      IpcChannel.TerminalGetCwd,
+      TerminalChannel.GetCwd,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
@@ -134,11 +133,11 @@ export class TerminalManager {
       });
 
       terminal.onData((data: string): void => {
-        this.send(IpcChannel.TerminalData, id, data);
+        this.send(TerminalChannel.Data, id, data);
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
-        this.send(IpcChannel.TerminalExit, id, event.exitCode, event.signal ?? null);
+        this.send(TerminalChannel.Exit, id, event.exitCode, event.signal ?? null);
         this.terminals.delete(id);
       });
 
@@ -316,7 +315,7 @@ export class TerminalManager {
    * @param channel The IPC channel to send on.
    * @param args The arguments to send.
    */
-  private send(channel: IpcChannel, ...args: readonly unknown[]): void {
+  private send(channel: TerminalChannel, ...args: readonly unknown[]): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
       window.webContents.send(channel, ...args);

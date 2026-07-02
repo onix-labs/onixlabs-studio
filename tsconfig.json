@@ -32,6 +32,9 @@
     },
     {
       "path": "./tsconfig.spec.json"
+    },
+    {
+      "path": "./src/electron/tsconfig.json"
     }
   ]
 }

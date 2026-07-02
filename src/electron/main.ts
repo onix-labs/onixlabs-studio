@@ -24,7 +24,7 @@ import { SecurityManager } from './security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from './git-manager';
 import { TaskRunner } from './task-runner';
-import { TerminalManager } from './terminal-manager';
+import { TerminalManager } from '@shared/electron/terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
 

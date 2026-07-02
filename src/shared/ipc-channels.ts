@@ -56,41 +56,6 @@ export enum IpcChannel {
   AppRelaunch = 'app:relaunch',
 
   /**
-   * Requests that a new pseudo-terminal session be spawned.
-   */
-  TerminalCreate = 'terminal:create',
-
-  /**
-   * Writes input data to a pseudo-terminal session.
-   */
-  TerminalWrite = 'terminal:write',
-
-  /**
-   * Resizes a pseudo-terminal session to a new column/row count.
-   */
-  TerminalResize = 'terminal:resize',
-
-  /**
-   * Disposes (kills) a pseudo-terminal session.
-   */
-  TerminalDispose = 'terminal:dispose',
-
-  /**
-   * Requests the current working directory of a pseudo-terminal session.
-   */
-  TerminalGetCwd = 'terminal:get-cwd',
-
-  /**
-   * Carries output data from a pseudo-terminal session to the renderer.
-   */
-  TerminalData = 'terminal:data',
-
-  /**
-   * Notifies the renderer that a pseudo-terminal session has exited.
-   */
-  TerminalExit = 'terminal:exit',
-
-  /**
    * Requests that a file-system path be opened in the operating system's default handler.
    */
   ShellOpenPath = 'shell:open-path',
