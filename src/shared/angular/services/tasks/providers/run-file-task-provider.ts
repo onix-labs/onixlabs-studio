@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import { RunApi, TempFileResult } from '../../../../shared/studio-api';
+import { RunApi, TempFileResult } from '@shared/studio-api';
 import { ActiveDocumentContext, Task, TaskContext, TaskProvider } from '../task';
 import { Tasks } from '../tasks';
 

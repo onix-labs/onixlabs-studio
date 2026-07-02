@@ -1,11 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { OpenSelection } from '../../../shared/studio-api';
-import {
-  TaskApi,
-  TaskOutputStream,
-  TaskRunRequest,
-  TaskRunResult,
-} from '../../../shared/task-types';
+import { OpenSelection } from '@shared/studio-api';
+import { TaskApi, TaskOutputStream, TaskRunRequest, TaskRunResult } from '@shared/task-types';
 import {
   Diagnostic,
   Diagnostics,

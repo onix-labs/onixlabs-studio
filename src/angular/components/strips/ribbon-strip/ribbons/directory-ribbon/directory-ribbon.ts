@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
-import { Builds, BuildTask } from '../../../../../services/tasks/builds';
+import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';

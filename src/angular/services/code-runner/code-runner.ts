@@ -1,7 +1,7 @@
 import { inject, Service } from '@angular/core';
-import { RunFileTaskProvider } from '../tasks/providers/run-file-task-provider';
-import { Task } from '../tasks/task';
-import { Tasks } from '../tasks/tasks';
+import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
+import { Task } from '@shared/angular/services/tasks/task';
+import { Tasks } from '@shared/angular/services/tasks/tasks';
 
 /**
  * Runs the active code document. This is now a thin facade over the task model: it builds the

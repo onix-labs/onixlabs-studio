@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TempFileResult } from '../../../../shared/studio-api';
+import { TempFileResult } from '@shared/studio-api';
 import { Task } from '../task';
 import { RunFileTaskProvider } from './run-file-task-provider';
 

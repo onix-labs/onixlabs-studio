@@ -30,15 +30,15 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '../../../services/project/solution-model';
-import { Output } from '../../../services/output/output';
+import { Output } from '@shared/angular/services/output/output';
 import { RepositoryOpener } from '../../../services/repositories/repository-opener';
 import { Repository } from '../../../services/repository/repository';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
 } from '../../../services/workspace-source-control-commands/workspace-source-control-commands';
-import { BuildRunner } from '../../../services/tasks/build-runner';
-import { Builds } from '../../../services/tasks/builds';
+import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
+import { Builds } from '@shared/angular/services/tasks/builds';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';

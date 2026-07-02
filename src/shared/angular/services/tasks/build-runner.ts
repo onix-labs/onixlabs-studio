@@ -1,6 +1,6 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { DirectoryEntry, DirectoryListing, OpenSelection } from '../../../shared/studio-api';
-import { TaskApi } from '../../../shared/task-types';
+import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/studio-api';
+import { TaskApi } from '@shared/task-types';
 import {
   Diagnostic,
   Diagnostics,
