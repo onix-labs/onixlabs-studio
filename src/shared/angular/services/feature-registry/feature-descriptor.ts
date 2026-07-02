@@ -18,6 +18,31 @@ export interface FeatureViewInputs {
 }
 
 /**
+ * Describes the inputs every feature document-panel component receives when the workspace mounts it
+ * in a document well. A document panel is a lean editor surface for an open document of the feature's
+ * type — distinct from the full tab view — and must declare these inputs.
+ */
+export interface FeatureDocumentPanelInputs {
+  /**
+   * Gets the identifier of the document the panel instance displays (the well panel's id).
+   */
+  readonly documentId: string;
+
+  /**
+   * Gets a value indicating whether this document is the active one in its well, so the editor
+   * relayouts and focuses. Inactive panels stay mounted but hidden.
+   */
+  readonly isActive: boolean;
+
+  /**
+   * Gets a value indicating whether the backing document is released when the panel is destroyed. The
+   * workspace owns the document's lifecycle in the well, so it passes false: a destroy is a re-parent,
+   * not a close.
+   */
+  readonly removeOnDestroy: boolean;
+}
+
+/**
  * Describes which chrome strips a feature shows while it is the active tab. Defaults to showing
  * both; a full-bleed feature (such as settings) opts out of one or both.
  */
@@ -62,6 +87,13 @@ export interface FeatureDescriptor {
    * no inputs.
    */
   readonly ribbon?: Type<unknown>;
+
+  /**
+   * Gets the panel component the workspace mounts in a document well to display an open document of
+   * this feature's type, if any. It is a lean editor surface (editor, toolstrip, status) distinct
+   * from the full tab {@link view}, and must declare the {@link FeatureDocumentPanelInputs} inputs.
+   */
+  readonly documentPanel?: Type<unknown>;
 
   /**
    * Gets the chrome strips shown while a tab of this type is active. Omitted fields fall back to

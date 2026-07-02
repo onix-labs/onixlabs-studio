@@ -98,6 +98,12 @@ export class MarkdownDocument implements OnInit, OnDestroy {
   public readonly selectionChange: OutputEmitterRef<Selection> = output<Selection>();
 
   /**
+   * Holds the document id captured at initialisation, so teardown releases exactly the document that
+   * was registered without re-reading the required {@link documentId} input during destruction.
+   */
+  private registeredDocumentId: string | null = null;
+
+  /**
    * Initialises the component, wiring the effect that focuses the documents service on this document
    * while the owning leaf is active.
    */
@@ -115,20 +121,26 @@ export class MarkdownDocument implements OnInit, OnDestroy {
    * content.
    */
   public ngOnInit(): void {
+    this.registeredDocumentId = this.documentId();
     this.documents.ensure(this.documentId(), NEW_MARKDOWN_DOCUMENT_NAME);
     this.documents.setLanguage(this.documentId(), MARKDOWN_LANGUAGE);
   }
 
   /**
    * Clears the active-document focus and releases the backing document when this component owns its
-   * lifecycle (a standalone tab). The pane destroys the Crepe editor itself.
+   * lifecycle (a standalone tab). The pane destroys the Crepe editor itself. No-ops when the component
+   * was never initialised (it has no registered document to release).
    */
   public ngOnDestroy(): void {
-    if (this.documents.activeDocumentId() === this.documentId()) {
+    const id: string | null = this.registeredDocumentId;
+    if (id === null) {
+      return;
+    }
+    if (this.documents.activeDocumentId() === id) {
       this.documents.setActiveDocument(null);
     }
     if (this.removeOnDestroy()) {
-      this.documents.remove(this.documentId());
+      this.documents.remove(id);
     }
   }
 

@@ -1,4 +1,11 @@
-@if (isMarkdown()) {
+@if (documentPanel(); as panel) {
+  <ng-container
+    *ngComponentOutlet="
+      panel;
+      inputs: { documentId: documentId(), isActive: isActive(), removeOnDestroy: false }
+    "
+  />
+} @else if (isMarkdown()) {
   <app-markdown-view
     [documentId]="documentId()"
     [isActive]="isActive()"

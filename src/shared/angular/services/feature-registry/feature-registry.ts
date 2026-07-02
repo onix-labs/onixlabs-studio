@@ -54,6 +54,17 @@ export class FeatureRegistry {
   }
 
   /**
+   * Gets the document-panel component registered for a feature type, mounted in a workspace document
+   * well to display an open document of that type.
+   * @param type The feature type, or undefined when none resolves.
+   * @returns Returns the document-panel component, or undefined when the type has no registered
+   * feature or the feature contributes no document panel.
+   */
+  public documentPanelFor(type: string | undefined): Type<unknown> | undefined {
+    return type === undefined ? undefined : this.descriptors().get(type)?.documentPanel;
+  }
+
+  /**
    * Gets the chrome policy for a tab type, with any unset fields defaulted to visible.
    * @param type The tab type, or undefined when no tab is active.
    * @returns Returns the resolved chrome policy; both strips are visible for an unregistered type.
