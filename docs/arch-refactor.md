@@ -431,10 +431,22 @@ green throughout = 6 fail / 953 pass):
      `New Document · Ln 2 · Col 1 · LF · UTF-8` (cursor/EOL re-emit through the core);
      `FeatureRegistry.documentPanelFor('code')` → `CodeDocumentPanel` (well leaf wired, fallback dead).
 
-### Then (unchanged, in roughly this order)
+### Then (in roughly this order)
 
-- **`<app-diff-editor>`** — the source-control diff view (`createDiffEditor`, two read-only models)
-  is a *separate* variant that shares the Monaco service + theme plumbing but not the component.
+- **`<app-diff-editor>` (DONE)** — `af19db4` add the shared pane + `Monaco.getDiffEditorOptions()`;
+  `0a03961` rewire `diff-view` as a leaf composing it. The §3.1 decomposition applied to the diff
+  surface: the source-control `diff-view` conflated the Monaco `createDiffEditor` engine (two read-only
+  models, theme, dispose) with source-control chrome (file header, git change-status badge, empty
+  state). Extracted the engine into `@shared/angular/components/diff-editor` (`<app-diff-editor>`, the
+  diff sibling of `<app-text-editor>` — read-only two-model vs single editable); `diff-view` keeps the
+  chrome and forwards `original`/`modified`/`language`/`inline`. Construction options deduped into
+  `Monaco.getDiffEditorOptions()` (byte-identical to the old inline literal; `renderSideBySide` stays a
+  per-view flag at the call site). The leaf shrank 236→60 lines. Green: build + eslint + prettier +
+  suite baseline (6 fail / 956 pass, +3 new diff-editor specs). **Live CDP diff-render was NOT run**
+  — the esbuild dev server doesn't serve app source modules for import, and git IPC returned empty in
+  the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
+  the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
+  build/tests, with Monaco boot already proven in the code-feature smoke.
 - **Generic `Bridge` + `shared/electron` carve** (§5) — terminal pty backing (`terminal-manager`
   electron + pty channels) is still in `src/electron` + the god IPC trio; carve into
   `shared/electron` + `shared/api` as a focused step.
