@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -11,6 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 
 /**
  * Describes an image to insert: the source URL or path and its alternative text.
@@ -85,6 +87,11 @@ export interface ImageInsert {
 })
 export class MarkdownImageModal {
   /**
+   * Holds the file client used to show the native image picker.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Gets a value indicating whether the modal is open.
    */
   public readonly open: InputSignal<boolean> = input.required<boolean>();
@@ -118,8 +125,8 @@ export class MarkdownImageModal {
    * Opens the native image picker and, when a file is chosen, fills the source field with its path.
    */
   protected async browse(): Promise<void> {
-    const path: string | null | undefined = await window.studio?.file.pickImage();
-    if (path !== null && path !== undefined && path.length > 0) {
+    const path: string | null = await this.fileSystem.pickImage();
+    if (path !== null && path.length > 0) {
       this.url.set(path);
     }
   }

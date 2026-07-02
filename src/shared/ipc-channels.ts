@@ -76,51 +76,6 @@ export enum IpcChannel {
   SecuritySetImagePolicy = 'security:set-image-policy',
 
   /**
-   * Reads the contents of a file from disk.
-   */
-  FileRead = 'file:read',
-
-  /**
-   * Writes contents to a file on disk.
-   */
-  FileWrite = 'file:write',
-
-  /**
-   * Begins watching a file on disk for changes.
-   */
-  FileWatch = 'file:watch',
-
-  /**
-   * Stops watching a file on disk for changes.
-   */
-  FileUnwatch = 'file:unwatch',
-
-  /**
-   * Notifies the renderer that a watched file changed on disk.
-   */
-  FileChanged = 'file:changed',
-
-  /**
-   * Shows an open-file dialog and reads the chosen file.
-   */
-  DialogOpenFile = 'dialog:open-file',
-
-  /**
-   * Shows an open-image dialog and returns the chosen file's path, without reading its contents.
-   */
-  DialogPickImage = 'dialog:pick-image',
-
-  /**
-   * Shows a save-file dialog and returns the chosen path.
-   */
-  DialogSaveFile = 'dialog:save-file',
-
-  /**
-   * Shows a confirmation dialog for saving unsaved changes before closing.
-   */
-  DialogConfirmSave = 'dialog:confirm-save',
-
-  /**
    * Writes editor content to a per-key temporary file so a language runner can execute it.
    */
   RunWriteTempFile = 'run:write-temp-file',

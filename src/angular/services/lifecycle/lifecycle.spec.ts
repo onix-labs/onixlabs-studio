@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AppApi, SaveDialogChoice } from '../../../shared/studio-api';
+import type { SaveDialogChoice } from '@shared/api/file-channels';
+import type { AppApi } from '../../../shared/studio-api';
 import { Documents, UnsavedDocument } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Lifecycle } from './lifecycle';

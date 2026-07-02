@@ -23,14 +23,11 @@ import type { ImageSourcePolicy } from '../shared/security-types';
 import type { TaskOutputStream, TaskRunRequest, TaskRunResult } from '../shared/task-types';
 import type {
   DirectoryListing,
-  FileInfo,
   FileOperationResult,
-  FileWriteResult,
   GitRunResult,
   GpuRenderingInfo,
   OpenSelection,
   RepositoryInfo,
-  SaveDialogChoice,
   StudioApi,
   TempFileResult,
 } from '../shared/studio-api';
@@ -85,39 +82,6 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url) as Promise<void>,
-  },
-  file: {
-    read: (path: string): Promise<FileInfo | null> =>
-      ipcRenderer.invoke(IpcChannel.FileRead, path) as Promise<FileInfo | null>,
-    write: (path: string, content: string, hasBom?: boolean): Promise<FileWriteResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.FileWrite,
-        path,
-        content,
-        hasBom === true,
-      ) as Promise<FileWriteResult>,
-    openDialog: (): Promise<FileInfo | null> =>
-      ipcRenderer.invoke(IpcChannel.DialogOpenFile) as Promise<FileInfo | null>,
-    pickImage: (): Promise<string | null> =>
-      ipcRenderer.invoke(IpcChannel.DialogPickImage) as Promise<string | null>,
-    saveDialog: (defaultPath?: string): Promise<string | null> =>
-      ipcRenderer.invoke(IpcChannel.DialogSaveFile, defaultPath) as Promise<string | null>,
-    confirmSave: (fileName: string): Promise<SaveDialogChoice> =>
-      ipcRenderer.invoke(IpcChannel.DialogConfirmSave, fileName) as Promise<SaveDialogChoice>,
-    watch: (path: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.FileWatch, path) as Promise<void>,
-    unwatch: (path: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.FileUnwatch, path) as Promise<void>,
-    onChanged: (listener: (path: string) => void): (() => void) => {
-      const handler: (event: IpcRendererEvent, path: string) => void = (
-        _event: IpcRendererEvent,
-        path: string,
-      ): void => listener(path);
-      ipcRenderer.on(IpcChannel.FileChanged, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.FileChanged, handler);
-      };
-    },
   },
   run: {
     writeTempFile: (key: string, extension: string, content: string): Promise<TempFileResult> =>

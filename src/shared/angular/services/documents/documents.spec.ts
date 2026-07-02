@@ -1,7 +1,7 @@
 import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { FileInfo } from '@shared/studio-api';
+import { FileInfo } from '@shared/api/file-channels';
 import { FileSystem } from '../file-system/file-system';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';

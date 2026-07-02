@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
-import type { AppApi, SaveDialogChoice } from '../../../shared/studio-api';
+import type { SaveDialogChoice } from '@shared/api/file-channels';
+import type { AppApi } from '../../../shared/studio-api';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 

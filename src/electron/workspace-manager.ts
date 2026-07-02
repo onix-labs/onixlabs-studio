@@ -10,10 +10,10 @@ import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { IpcChannel } from '../shared/ipc-channels';
 import { ProjectItems, ProjectModel } from '../shared/project-system';
+import { FileInfo } from '@shared/api/file-channels';
 import {
   DirectoryEntry,
   DirectoryListing,
-  FileInfo,
   FileOperationResult,
   OpenSelection,
 } from '../shared/studio-api';

@@ -3,6 +3,7 @@
 // renderer consumes it. Keep this module platform-neutral (types only — no Node or
 // DOM dependencies) so both compilation targets can import it.
 
+import type { FileInfo } from './api/file-channels';
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
 import type { ProjectItems, ProjectModel } from './project-system';
@@ -75,137 +76,6 @@ export interface AppApi {
    * @param proceed True to allow the window to close; false to keep it open.
    */
   respondClose(proceed: boolean): void;
-}
-
-/**
- * Describes a file read from disk.
- */
-export interface FileInfo {
-  /**
-   * Gets the absolute path of the file.
-   */
-  readonly path: string;
-
-  /**
-   * Gets the file name, including its extension.
-   */
-  readonly name: string;
-
-  /**
-   * Gets the file extension, including the leading dot (empty when there is none).
-   */
-  readonly extension: string;
-
-  /**
-   * Gets the textual contents of the file, with any leading byte-order mark removed.
-   */
-  readonly content: string;
-
-  /**
-   * Gets the text encoding the file was read as (currently always "UTF-8"). Absent on file infos
-   * synthesised outside the read path, where the consumer assumes UTF-8.
-   */
-  readonly encoding?: string;
-
-  /**
-   * Gets a value indicating whether the file began with a UTF-8 byte-order mark, so it can be
-   * preserved when the file is written back. Absent (treated as false) on synthesised file infos.
-   */
-  readonly hasBom?: boolean;
-}
-
-/**
- * Describes the result of a file write.
- */
-export interface FileWriteResult {
-  /**
-   * Gets a value indicating whether the write succeeded.
-   */
-  readonly success: boolean;
-
-  /**
-   * Gets the absolute path written to, when successful.
-   */
-  readonly path?: string;
-
-  /**
-   * Gets the error message, when the write failed.
-   */
-  readonly error?: string;
-}
-
-/**
- * Identifies the user's choice in the unsaved-changes confirmation dialog.
- */
-export type SaveDialogChoice = 'save' | 'dontSave' | 'cancel';
-
-/**
- * Defines the file-system operations exposed to the renderer process. All paths are validated in the
- * main process before any disk access.
- */
-export interface FileApi {
-  /**
-   * Reads a file from disk.
-   * @param path The absolute path of the file to read.
-   * @returns Returns the file info, or null when the file cannot be read.
-   */
-  read(path: string): Promise<FileInfo | null>;
-
-  /**
-   * Writes contents to a file on disk.
-   * @param path The absolute path to write to.
-   * @param content The contents to write.
-   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark. Defaults to false.
-   * @returns Returns the result describing success or failure.
-   */
-  write(path: string, content: string, hasBom?: boolean): Promise<FileWriteResult>;
-
-  /**
-   * Shows an open-file dialog and reads the chosen file.
-   * @returns Returns the chosen file's info, or null when the dialog was cancelled.
-   */
-  openDialog(): Promise<FileInfo | null>;
-
-  /**
-   * Shows an open-image dialog and returns the chosen file's absolute path. Unlike {@link openDialog}
-   * the file's contents are not read, so it is suitable for referencing large binary images.
-   * @returns Returns the chosen image's absolute path, or null when the dialog was cancelled.
-   */
-  pickImage(): Promise<string | null>;
-
-  /**
-   * Shows a save-file dialog and returns the chosen path.
-   * @param defaultPath The path suggested in the dialog.
-   * @returns Returns the chosen absolute path, or null when the dialog was cancelled.
-   */
-  saveDialog(defaultPath?: string): Promise<string | null>;
-
-  /**
-   * Shows a confirmation dialog asking whether to save unsaved changes.
-   * @param fileName The name of the file with unsaved changes.
-   * @returns Returns the user's choice.
-   */
-  confirmSave(fileName: string): Promise<SaveDialogChoice>;
-
-  /**
-   * Begins watching a file on disk; subsequent changes are delivered through {@link onChanged}.
-   * Watching is reference-counted, so balanced {@link watch}/{@link unwatch} calls are required.
-   * @param path The absolute path of the file to watch.
-   */
-  watch(path: string): Promise<void>;
-
-  /**
-   * Stops watching a file on disk.
-   * @param path The absolute path of the file to stop watching.
-   */
-  unwatch(path: string): Promise<void>;
-
-  /**
-   * Subscribes to change notifications for watched files.
-   * @param listener Receives the absolute path of the file that changed.
-   * @returns Returns a function that removes the listener.
-   */
-  onChanged(listener: (path: string) => void): () => void;
 }
 
 /**
@@ -702,11 +572,6 @@ export interface StudioApi {
    * Gets the operating-system shell operations for the application.
    */
   readonly shell: ShellApi;
-
-  /**
-   * Gets the file-system operations for the application.
-   */
-  readonly file: FileApi;
 
   /**
    * Gets the code-execution operations for the application.

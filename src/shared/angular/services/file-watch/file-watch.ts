@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
-import type { FileApi, FileInfo } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { FileChannel, FileInfo } from '@shared/api/file-channels';
 import { FileSystem } from '../file-system/file-system';
 
 /**
@@ -27,9 +28,9 @@ export class FileWatch {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
-   * Holds the preload file API, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: FileApi | undefined = window.studio?.file;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the subscribers for each watched path.
@@ -40,8 +41,8 @@ export class FileWatch {
    * Initializes a new instance of the {@link FileWatch} class, subscribing to change notifications.
    */
   public constructor() {
-    this.api?.onChanged((path: string): void => {
-      void this.onChanged(path);
+    this.bridge?.on(FileChannel.Changed, (...args: unknown[]): void => {
+      void this.onChanged(args[0] as string);
     });
   }
 
@@ -56,7 +57,7 @@ export class FileWatch {
     if (entry === undefined) {
       entry = { callbacks: new Set<(info: FileInfo) => void>() };
       this.watchers.set(path, entry);
-      void this.api?.watch(path);
+      void this.bridge?.invoke(FileChannel.Watch, path);
     }
     entry.callbacks.add(onChange);
     return (): void => this.unwatch(path, onChange);
@@ -75,7 +76,7 @@ export class FileWatch {
     entry.callbacks.delete(onChange);
     if (entry.callbacks.size === 0) {
       this.watchers.delete(path);
-      void this.api?.unwatch(path);
+      void this.bridge?.invoke(FileChannel.Unwatch, path);
     }
   }
 

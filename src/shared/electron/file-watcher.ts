@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { IpcChannel } from '../shared/ipc-channels';
+import { FileChannel } from '@shared/api/file-channels';
 
 /**
  * Specifies how long, in milliseconds, to coalesce rapid change events for a file before notifying.
@@ -57,12 +57,12 @@ export class FileWatcher {
    * Registers the file-watch IPC handlers.
    */
   public register(): void {
-    ipcMain.handle(IpcChannel.FileWatch, (_event: IpcMainInvokeEvent, target: unknown): void => {
+    ipcMain.handle(FileChannel.Watch, (_event: IpcMainInvokeEvent, target: unknown): void => {
       if (typeof target === 'string') {
         this.watch(target);
       }
     });
-    ipcMain.handle(IpcChannel.FileUnwatch, (_event: IpcMainInvokeEvent, target: unknown): void => {
+    ipcMain.handle(FileChannel.Unwatch, (_event: IpcMainInvokeEvent, target: unknown): void => {
       if (typeof target === 'string') {
         this.unwatch(target);
       }
@@ -167,7 +167,7 @@ export class FileWatcher {
   private send(target: string): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
-      window.webContents.send(IpcChannel.FileChanged, target);
+      window.webContents.send(FileChannel.Changed, target);
     }
   }
 }

@@ -9,8 +9,12 @@ import {
 } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { IpcChannel } from '../shared/ipc-channels';
-import { FileInfo, FileWriteResult, SaveDialogChoice } from '../shared/studio-api';
+import {
+  FileChannel,
+  FileInfo,
+  FileWriteResult,
+  SaveDialogChoice,
+} from '@shared/api/file-channels';
 
 /**
  * Specifies the UTF-8 byte-order mark, as a string (U+FEFF). Detected and stripped on read, and
@@ -61,12 +65,12 @@ export class FileManager {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.FileRead,
+      FileChannel.Read,
       (_event: IpcMainInvokeEvent, filePath: unknown): Promise<FileInfo | null> =>
         this.read(filePath),
     );
     ipcMain.handle(
-      IpcChannel.FileWrite,
+      FileChannel.Write,
       (
         _event: IpcMainInvokeEvent,
         filePath: unknown,
@@ -74,15 +78,15 @@ export class FileManager {
         hasBom: unknown,
       ): Promise<FileWriteResult> => this.write(filePath, content, hasBom === true),
     );
-    ipcMain.handle(IpcChannel.DialogOpenFile, (): Promise<FileInfo | null> => this.openDialog());
-    ipcMain.handle(IpcChannel.DialogPickImage, (): Promise<string | null> => this.pickImage());
+    ipcMain.handle(FileChannel.OpenFileDialog, (): Promise<FileInfo | null> => this.openDialog());
+    ipcMain.handle(FileChannel.PickImage, (): Promise<string | null> => this.pickImage());
     ipcMain.handle(
-      IpcChannel.DialogSaveFile,
+      FileChannel.SaveFileDialog,
       (_event: IpcMainInvokeEvent, defaultPath: unknown): Promise<string | null> =>
         this.saveDialog(typeof defaultPath === 'string' ? defaultPath : undefined),
     );
     ipcMain.handle(
-      IpcChannel.DialogConfirmSave,
+      FileChannel.ConfirmSave,
       (_event: IpcMainInvokeEvent, fileName: unknown): Promise<SaveDialogChoice> =>
         this.confirmSave(typeof fileName === 'string' ? fileName : ''),
     );

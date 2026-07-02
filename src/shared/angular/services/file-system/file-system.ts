@@ -1,5 +1,11 @@
 import { Service } from '@angular/core';
-import { FileApi, FileInfo, FileWriteResult, SaveDialogChoice } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import {
+  FileChannel,
+  FileInfo,
+  FileWriteResult,
+  SaveDialogChoice,
+} from '@shared/api/file-channels';
 
 /**
  * Holds the result returned when a write is attempted outside Electron.
@@ -10,8 +16,9 @@ const UNAVAILABLE_WRITE: FileWriteResult = {
 };
 
 /**
- * Represents the renderer-side wrapper around the Electron file bridge exposed on
- * `window.studio.file`.
+ * Represents the renderer-side file client: the typed wrapper around the file/dialog IPC channels,
+ * driven over the generic {@link Bridge} transport (`window.bridge`). It is the file slice of the old
+ * `window.studio`, naming its channels from the shared {@link FileChannel} contract.
  *
  * When the application runs outside Electron (served as a plain web app or under unit tests) the
  * bridge is absent and every operation degrades to a safe no-op so callers never throw.
@@ -19,14 +26,14 @@ const UNAVAILABLE_WRITE: FileWriteResult = {
 @Service()
 export class FileSystem {
   /**
-   * Holds the file bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: FileApi | undefined = window.studio?.file;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Gets a value indicating whether a real file bridge is available (i.e. running in Electron).
+   * Gets a value indicating whether a real bridge is available (i.e. running in Electron).
    */
-  public readonly isElectron: boolean = this.api !== undefined;
+  public readonly isElectron: boolean = this.bridge !== undefined;
 
   /**
    * Reads a file from disk.
@@ -34,7 +41,7 @@ export class FileSystem {
    * @returns Returns the file info, or null when unavailable or unreadable.
    */
   public read(path: string): Promise<FileInfo | null> {
-    return this.api?.read(path) ?? Promise.resolve(null);
+    return this.bridge?.invoke<FileInfo | null>(FileChannel.Read, path) ?? Promise.resolve(null);
   }
 
   /**
@@ -45,7 +52,10 @@ export class FileSystem {
    * @returns Returns the result describing success or failure.
    */
   public write(path: string, content: string, hasBom: boolean = false): Promise<FileWriteResult> {
-    return this.api?.write(path, content, hasBom) ?? Promise.resolve(UNAVAILABLE_WRITE);
+    return (
+      this.bridge?.invoke<FileWriteResult>(FileChannel.Write, path, content, hasBom) ??
+      Promise.resolve(UNAVAILABLE_WRITE)
+    );
   }
 
   /**
@@ -53,7 +63,17 @@ export class FileSystem {
    * @returns Returns the chosen file's info, or null when cancelled or unavailable.
    */
   public openDialog(): Promise<FileInfo | null> {
-    return this.api?.openDialog() ?? Promise.resolve(null);
+    return (
+      this.bridge?.invoke<FileInfo | null>(FileChannel.OpenFileDialog) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Shows an open-image dialog and returns the chosen file's absolute path, without reading it.
+   * @returns Returns the chosen image's absolute path, or null when cancelled or unavailable.
+   */
+  public pickImage(): Promise<string | null> {
+    return this.bridge?.invoke<string | null>(FileChannel.PickImage) ?? Promise.resolve(null);
   }
 
   /**
@@ -62,7 +82,10 @@ export class FileSystem {
    * @returns Returns the chosen path, or null when cancelled or unavailable.
    */
   public saveDialog(defaultPath?: string): Promise<string | null> {
-    return this.api?.saveDialog(defaultPath) ?? Promise.resolve(null);
+    return (
+      this.bridge?.invoke<string | null>(FileChannel.SaveFileDialog, defaultPath) ??
+      Promise.resolve(null)
+    );
   }
 
   /**
@@ -71,6 +94,9 @@ export class FileSystem {
    * @returns Returns the user's choice; defaults to discarding when unavailable.
    */
   public confirmSave(fileName: string): Promise<SaveDialogChoice> {
-    return this.api?.confirmSave(fileName) ?? Promise.resolve('dontSave');
+    return (
+      this.bridge?.invoke<SaveDialogChoice>(FileChannel.ConfirmSave, fileName) ??
+      Promise.resolve('dontSave')
+    );
   }
 }

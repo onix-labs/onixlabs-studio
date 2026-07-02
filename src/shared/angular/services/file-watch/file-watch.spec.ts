@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
-import { FileApi, FileInfo } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { FileChannel, FileInfo } from '@shared/api/file-channels';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from './file-watch';
 
@@ -33,21 +34,24 @@ describe('FileWatch', () => {
   beforeEach(() => {
     watched = [];
     unwatched = [];
-    const fileApi: FileApi = {
-      watch: (path: string): Promise<void> => {
-        watched.push(path);
-        return Promise.resolve();
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (FileChannel.Watch as string)) {
+          watched.push(args[0] as string);
+        } else if (channel === (FileChannel.Unwatch as string)) {
+          unwatched.push(args[0] as string);
+        }
+        return Promise.resolve(undefined as T);
       },
-      unwatch: (path: string): Promise<void> => {
-        unwatched.push(path);
-        return Promise.resolve();
-      },
-      onChanged: (listener: (path: string) => void): (() => void) => {
-        fireChange = listener;
+      send: (): void => undefined,
+      on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+        if (channel === (FileChannel.Changed as string)) {
+          fireChange = (path: string): void => listener(path);
+        }
         return (): void => undefined;
       },
-    } as unknown as FileApi;
-    (globalThis as unknown as { studio: { file: FileApi } }).studio = { file: fileApi };
+    };
+    (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
 
     TestBed.configureTestingModule({
       providers: [
@@ -63,7 +67,7 @@ describe('FileWatch', () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as { studio?: unknown }).studio;
+    delete (globalThis as unknown as { bridge?: unknown }).bridge;
   });
 
   it('watch_whenFirstSubscriberForPath_bridgesToTheMainWatcher', () => {
