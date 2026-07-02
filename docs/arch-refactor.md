@@ -447,9 +447,33 @@ green throughout = 6 fail / 953 pass):
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — terminal pty backing (`terminal-manager`
-  electron + pty channels) is still in `src/electron` + the god IPC trio; carve into
-  `shared/electron` + `shared/api` as a focused step.
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + terminal pilot DONE; the other
+  ~10 IPC domains REMAIN.** The enabler and the pattern, proven end-to-end on the terminal slice:
+  - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
+    `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
+    `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
+    get only the payload). Additive.
+  - `refactor(terminal)` ×2 — the first real slice, proving renderer + api + electron in one capability.
+    Because the shared `<app-terminal>` needs the pty, its backing is **shared, not feature-owned**
+    (§3.1): pty channel contract → `src/shared/api/terminal-channels.ts` (`TerminalChannel` enum +
+    `TerminalCreateOptions/Result`); `TerminalBridge` (shared client) drives them over `window.bridge`;
+    `terminal-manager` → `src/shared/electron/` naming the enum; the terminal slice **deleted wholesale**
+    from the god trio (`IpcChannel` 7 members, `StudioApi.TerminalApi`+types+field, preload literal).
+  - **Build wiring learned (reuse for the rest):** the renderer tsconfig (`tsconfig.app.json`, which
+    globs `src/shared/**`) must **exclude** `src/shared/electron/**` + `src/features/**/electron/**`
+    (node/electron code); the electron tsconfig already compiles `src/shared` via `../shared/**` and
+    excludes only `../shared/angular`; the **root tsconfig must `reference` the electron tsconfig** or
+    eslint's `projectService` can't place relocated electron files (parsing error). esbuild
+    `build:main`/`build:preload` resolve `@shared/...` via tsconfig paths, so main-side aliases work.
+  - **CDP smoke passed:** terminal tab spawns a pty over `window.bridge`, input writes reach it, output
+    round-trips to xterm (`echo` result rendered); `window.studio.terminal` is gone.
+  - **REMAINING (per-domain, same template):** migrate `file`/`dialog`, `workspace`, `sourceControl`
+    (git), `ai`, `lsp`, `project`, `run`/`tasks`, `security`, `shell`, `display`/`window`/`app` off
+    `window.studio` onto `window.bridge` + a `shared/api` (or feature `api`) channel slice, moving each
+    handler to `shared/electron` (or `features/<f>/electron`). Each shrinks the god trio; the trio is
+    deleted when the last domain migrates. Also relocate `main.ts`/`preload.ts` themselves into
+    `shared/electron` (§7: `dist-electron/shared/electron/…`, updating `package.json main`,
+    `build:main`/`build:preload` outfiles, and the `__dirname`-relative `INDEX_HTML`/`preload` paths).
 - **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3 inlined copies now
   — terminal, markdown, code; plus the original still shared by the unmigrated directory +
   source-control ribbons; `styleUrl` can't use aliases, so each migrated ribbon inlines).
