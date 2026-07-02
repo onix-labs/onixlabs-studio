@@ -66,16 +66,6 @@ export enum IpcChannel {
   ShellOpenExternal = 'shell:open-external',
 
   /**
-   * Gets the current image-source Content-Security-Policy.
-   */
-  SecurityGetImagePolicy = 'security:get-image-policy',
-
-  /**
-   * Sets the image-source Content-Security-Policy.
-   */
-  SecuritySetImagePolicy = 'security:set-image-policy',
-
-  /**
    * Writes editor content to a per-key temporary file so a language runner can execute it.
    */
   RunWriteTempFile = 'run:write-temp-file',

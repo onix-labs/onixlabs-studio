@@ -5,7 +5,6 @@
 
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
-import type { SecurityApi } from './security-types';
 import type { TaskApi } from './task-types';
 
 /**
@@ -414,11 +413,6 @@ export interface StudioApi {
    * Gets the AI-agent authentication and verification operations for the application.
    */
   readonly ai: AiApi;
-
-  /**
-   * Gets the security operations for the application.
-   */
-  readonly security: SecurityApi;
 
   /**
    * Gets the language-server (LSP) operations for the application.

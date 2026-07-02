@@ -1,8 +1,10 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { ImageSourcePolicy, SecurityApi } from '@shared/security-types';
+import { Bridge } from '@shared/api/bridge';
+import { ImageSourcePolicy, SecurityChannel } from '@shared/api/security-channels';
 
 /**
- * Renderer-side wrapper around the security bridge exposed on `window.studio.security`.
+ * Renderer-side security client: the typed wrapper around the security IPC channels, driven over the
+ * generic {@link Bridge} transport (`window.bridge`).
  *
  * It surfaces the active {@link ImageSourcePolicy} as a signal and forwards changes to the main
  * process, which owns and enforces the Content-Security-Policy. Outside Electron the bridge is absent
@@ -11,9 +13,9 @@ import type { ImageSourcePolicy, SecurityApi } from '@shared/security-types';
 @Service()
 export class Security {
   /**
-   * Holds the security bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: SecurityApi | undefined = window.studio?.security;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the latest known image-source policy.
@@ -26,9 +28,9 @@ export class Security {
   public readonly imagePolicy: Signal<ImageSourcePolicy> = this.policy.asReadonly();
 
   /**
-   * Gets a value indicating whether a real security bridge is available (i.e. running in Electron).
+   * Gets a value indicating whether a real bridge is available (i.e. running in Electron).
    */
-  public readonly isAvailable: boolean = this.api !== undefined;
+  public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
    * Initialises the service, loading the active policy from the main process.
@@ -42,7 +44,8 @@ export class Security {
    * @returns Returns the resolved {@link ImageSourcePolicy}.
    */
   public async refresh(): Promise<ImageSourcePolicy> {
-    const policy: ImageSourcePolicy = (await this.api?.getImagePolicy()) ?? 'local';
+    const policy: ImageSourcePolicy =
+      (await this.bridge?.invoke<ImageSourcePolicy>(SecurityChannel.GetImagePolicy)) ?? 'local';
     this.policy.set(policy);
     return policy;
   }
@@ -54,7 +57,9 @@ export class Security {
    * @returns Returns the stored {@link ImageSourcePolicy}.
    */
   public async setImagePolicy(policy: ImageSourcePolicy): Promise<ImageSourcePolicy> {
-    const stored: ImageSourcePolicy = (await this.api?.setImagePolicy(policy)) ?? this.policy();
+    const stored: ImageSourcePolicy =
+      (await this.bridge?.invoke<ImageSourcePolicy>(SecurityChannel.SetImagePolicy, policy)) ??
+      this.policy();
     this.policy.set(stored);
     return stored;
   }

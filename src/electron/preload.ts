@@ -18,7 +18,6 @@ import type {
   LspStartRequest,
   LspStartResult,
 } from '../shared/lsp-types';
-import type { ImageSourcePolicy } from '../shared/security-types';
 import type { TaskOutputStream, TaskRunRequest, TaskRunResult } from '../shared/task-types';
 import type {
   GitRunResult,
@@ -224,12 +223,6 @@ const studioApi: StudioApi = {
     respondPermission: (reply: AiPermissionReply): void => {
       ipcRenderer.send(IpcChannel.AiPermissionReply, reply);
     },
-  },
-  security: {
-    getImagePolicy: (): Promise<ImageSourcePolicy> =>
-      ipcRenderer.invoke(IpcChannel.SecurityGetImagePolicy) as Promise<ImageSourcePolicy>,
-    setImagePolicy: (policy: ImageSourcePolicy): Promise<ImageSourcePolicy> =>
-      ipcRenderer.invoke(IpcChannel.SecuritySetImagePolicy, policy) as Promise<ImageSourcePolicy>,
   },
   lsp: {
     start: (request: LspStartRequest): Promise<LspStartResult> =>

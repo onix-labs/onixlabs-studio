@@ -1,26 +1,30 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { ImageSourcePolicy, SecurityApi } from '@shared/security-types';
+import { Bridge } from '@shared/api/bridge';
+import { ImageSourcePolicy, SecurityChannel } from '@shared/api/security-channels';
 import { Security } from './security';
 
 describe('Security', () => {
   let setCalls: ImageSourcePolicy[];
 
   /**
-   * Installs a stub security bridge on `window.studio.security`.
+   * Installs a stub transport on `window.bridge` that routes the security channels.
    * @param initial The policy the bridge reports initially.
    */
   function stubBridge(initial: ImageSourcePolicy): void {
     let current: ImageSourcePolicy = initial;
-    const api: SecurityApi = {
-      getImagePolicy: (): Promise<ImageSourcePolicy> => Promise.resolve(current),
-      setImagePolicy: (policy: ImageSourcePolicy): Promise<ImageSourcePolicy> => {
-        current = policy;
-        setCalls.push(policy);
-        return Promise.resolve(current);
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (SecurityChannel.SetImagePolicy as string)) {
+          current = args[0] as ImageSourcePolicy;
+          setCalls.push(current);
+        }
+        return Promise.resolve(current as T);
       },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (globalThis as unknown as { studio: { security: SecurityApi } }).studio = { security: api };
+    (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
   }
 
   beforeEach(() => {
@@ -28,7 +32,7 @@ describe('Security', () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as { studio?: unknown }).studio;
+    delete (globalThis as unknown as { bridge?: unknown }).bridge;
   });
 
   it('isAvailable_whenBridgeAbsent_isFalse', () => {

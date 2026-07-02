@@ -8,8 +8,7 @@ import {
   OnHeadersReceivedListenerDetails,
   session,
 } from 'electron';
-import { IpcChannel } from '../shared/ipc-channels';
-import type { ImageSourcePolicy } from '../shared/security-types';
+import { ImageSourcePolicy, SecurityChannel } from '@shared/api/security-channels';
 import { MEDIA_SCHEME } from './media-protocol';
 
 /**
@@ -59,9 +58,9 @@ export class SecurityManager {
       },
     );
 
-    ipcMain.handle(IpcChannel.SecurityGetImagePolicy, (): ImageSourcePolicy => this.policy);
+    ipcMain.handle(SecurityChannel.GetImagePolicy, (): ImageSourcePolicy => this.policy);
     ipcMain.handle(
-      IpcChannel.SecuritySetImagePolicy,
+      SecurityChannel.SetImagePolicy,
       (_event: IpcMainInvokeEvent, value: unknown): ImageSourcePolicy => this.setImagePolicy(value),
     );
   }

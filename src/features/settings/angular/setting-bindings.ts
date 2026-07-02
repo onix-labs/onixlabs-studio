@@ -1,5 +1,5 @@
 import { computed, inject, Injector, Service, signal, Signal } from '@angular/core';
-import type { ImageSourcePolicy } from '@shared/security-types';
+import type { ImageSourcePolicy } from '@shared/api/security-channels';
 import { Display } from '@shared/angular/services/display/display';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Security } from '@shared/angular/services/security/security';
