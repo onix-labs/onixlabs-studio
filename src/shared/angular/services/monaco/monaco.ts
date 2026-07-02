@@ -499,6 +499,32 @@ export class Monaco {
   }
 
   /**
+   * Builds the Monaco diff-editor construction options from the current global settings. Shared by
+   * every diff surface so the read-only, side-by-side comparison view resolves the same theme and font
+   * as the single-editor pages. The caller supplies the `renderSideBySide` flag, which is a per-view
+   * (inline vs side-by-side) choice rather than a global setting.
+   * @returns Returns the diff-editor construction options.
+   */
+  public getDiffEditorOptions(): MonacoApi.editor.IStandaloneDiffEditorConstructionOptions {
+    const resolved: TextEditorSettings = this.settings.globalTextEditor();
+    return {
+      theme: this.getThemeName(resolved.currentLineHighlight),
+      automaticLayout: true,
+      readOnly: true,
+      originalEditable: false,
+      renderOverviewRuler: true,
+      ignoreTrimWhitespace: false,
+      enableSplitViewResizing: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      fontSize: resolved.fontSize,
+      fontFamily: `"${resolved.fontFamily}", monospace`,
+      lineNumbers: 'on',
+      padding: { top: 12 },
+    };
+  }
+
+  /**
    * Loads the Monaco AMD loader, fetches the editor, configures the worker environment, and registers
    * the application's themes.
    * @returns Returns a promise that resolves once Monaco is ready.
