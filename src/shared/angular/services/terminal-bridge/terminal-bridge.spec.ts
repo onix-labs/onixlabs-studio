@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { TerminalCreateResult } from '@shared/studio-api';
+import { TerminalCreateResult } from '@shared/api/terminal-channels';
 import { TerminalBridge } from './terminal-bridge';
 
 describe('TerminalBridge', () => {

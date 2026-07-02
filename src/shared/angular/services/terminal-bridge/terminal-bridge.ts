@@ -1,5 +1,10 @@
 import { Service } from '@angular/core';
-import { TerminalApi, TerminalCreateOptions, TerminalCreateResult } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import {
+  TerminalChannel,
+  TerminalCreateOptions,
+  TerminalCreateResult,
+} from '@shared/api/terminal-channels';
 
 /**
  * Holds the result returned when a terminal operation is attempted outside Electron.
@@ -10,8 +15,9 @@ const UNAVAILABLE_RESULT: TerminalCreateResult = {
 };
 
 /**
- * Represents the renderer-side wrapper around the Electron terminal bridge exposed on
- * `window.studio.terminal`.
+ * Represents the renderer-side terminal client: the typed wrapper around the pty IPC channels, driven
+ * over the generic {@link Bridge} transport (`window.bridge`). It is the terminal slice of the old
+ * `window.studio`, naming its channels from the shared {@link TerminalChannel} contract.
  *
  * When the application runs outside Electron (served as a plain web app or under unit tests) the
  * bridge is absent and every operation degrades to a safe no-op so callers never throw.
@@ -19,14 +25,14 @@ const UNAVAILABLE_RESULT: TerminalCreateResult = {
 @Service()
 export class TerminalBridge {
   /**
-   * Holds the terminal bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: TerminalApi | undefined = window.studio?.terminal;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Gets a value indicating whether a real terminal bridge is available (i.e. running in Electron).
+   * Gets a value indicating whether a real bridge is available (i.e. running in Electron).
    */
-  public readonly isElectron: boolean = this.api !== undefined;
+  public readonly isElectron: boolean = this.bridge !== undefined;
 
   /**
    * Spawns a new pseudo-terminal session.
@@ -34,7 +40,10 @@ export class TerminalBridge {
    * @returns Returns the result describing success and the spawned shell.
    */
   public create(options: TerminalCreateOptions): Promise<TerminalCreateResult> {
-    return this.api?.create(options) ?? Promise.resolve(UNAVAILABLE_RESULT);
+    return (
+      this.bridge?.invoke<TerminalCreateResult>(TerminalChannel.Create, options) ??
+      Promise.resolve(UNAVAILABLE_RESULT)
+    );
   }
 
   /**
@@ -44,7 +53,7 @@ export class TerminalBridge {
    * @returns Returns true when the session exists and the data was written.
    */
   public write(id: string, data: string): Promise<boolean> {
-    return this.api?.write(id, data) ?? Promise.resolve(false);
+    return this.bridge?.invoke<boolean>(TerminalChannel.Write, id, data) ?? Promise.resolve(false);
   }
 
   /**
@@ -55,7 +64,9 @@ export class TerminalBridge {
    * @returns Returns true when the session exists and was resized.
    */
   public resize(id: string, cols: number, rows: number): Promise<boolean> {
-    return this.api?.resize(id, cols, rows) ?? Promise.resolve(false);
+    return (
+      this.bridge?.invoke<boolean>(TerminalChannel.Resize, id, cols, rows) ?? Promise.resolve(false)
+    );
   }
 
   /**
@@ -64,7 +75,7 @@ export class TerminalBridge {
    * @returns Returns true when the session existed and was disposed.
    */
   public dispose(id: string): Promise<boolean> {
-    return this.api?.dispose(id) ?? Promise.resolve(false);
+    return this.bridge?.invoke<boolean>(TerminalChannel.Dispose, id) ?? Promise.resolve(false);
   }
 
   /**
@@ -73,7 +84,7 @@ export class TerminalBridge {
    * @returns Returns the working directory, or null when it cannot be determined.
    */
   public getCwd(id: string): Promise<string | null> {
-    return this.api?.getCwd(id) ?? Promise.resolve(null);
+    return this.bridge?.invoke<string | null>(TerminalChannel.GetCwd, id) ?? Promise.resolve(null);
   }
 
   /**
@@ -82,7 +93,11 @@ export class TerminalBridge {
    * @returns Returns a function that removes the listener.
    */
   public onData(listener: (id: string, data: string) => void): () => void {
-    return this.api?.onData(listener) ?? ((): void => undefined);
+    return (
+      this.bridge?.on(TerminalChannel.Data, (...args: unknown[]): void =>
+        listener(args[0] as string, args[1] as string),
+      ) ?? ((): void => undefined)
+    );
   }
 
   /**
@@ -93,6 +108,10 @@ export class TerminalBridge {
   public onExit(
     listener: (id: string, exitCode: number, signal: number | null) => void,
   ): () => void {
-    return this.api?.onExit(listener) ?? ((): void => undefined);
+    return (
+      this.bridge?.on(TerminalChannel.Exit, (...args: unknown[]): void =>
+        listener(args[0] as string, args[1] as number, args[2] as number | null),
+      ) ?? ((): void => undefined)
+    );
   }
 }

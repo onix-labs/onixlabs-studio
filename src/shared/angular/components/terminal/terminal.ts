@@ -20,7 +20,7 @@ import { ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
-import { TerminalCreateResult } from '@shared/studio-api';
+import { TerminalCreateResult } from '@shared/api/terminal-channels';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
