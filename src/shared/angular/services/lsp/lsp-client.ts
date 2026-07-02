@@ -6,8 +6,8 @@ import {
   LspMessage,
   LspSemanticTokensLegend,
   LspStartResult,
-} from '../../../shared/lsp-types';
-import { DirectoryListing } from '../../../shared/studio-api';
+} from '@shared/lsp-types';
+import { DirectoryListing } from '@shared/studio-api';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -629,7 +629,10 @@ export class LspClient implements OnDestroy {
     this.api.notify(sessionId, 'textDocument/didChange', {
       textDocument: { uri: tracked.uri, version: tracked.version },
       contentChanges: [
-        { range: { start: { line: 0, character: 0 }, end: this.endPosition(tracked.text) }, text: content },
+        {
+          range: { start: { line: 0, character: 0 }, end: this.endPosition(tracked.text) },
+          text: content,
+        },
       ],
     });
     tracked.text = content;

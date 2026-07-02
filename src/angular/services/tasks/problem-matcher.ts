@@ -1,4 +1,4 @@
-import { DiagnosticSeverity } from '../diagnostics/diagnostics';
+import { DiagnosticSeverity } from '@shared/angular/services/diagnostics/diagnostics';
 
 /**
  * Describes a single problem extracted from a line of task output by a {@link ProblemMatcher}.

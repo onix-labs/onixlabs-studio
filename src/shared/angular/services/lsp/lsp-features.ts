@@ -5,7 +5,7 @@ import {
   LspSemanticTokensLegend,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
-} from '../../../shared/lsp-types';
+} from '@shared/lsp-types';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 

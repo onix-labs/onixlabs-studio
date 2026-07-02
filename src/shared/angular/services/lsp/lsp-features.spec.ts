@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { LspSemanticTokensLegend } from '../../../shared/lsp-types';
+import { LspSemanticTokensLegend } from '@shared/lsp-types';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { LspFeatures } from './lsp-features';

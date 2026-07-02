@@ -25,7 +25,7 @@ import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status
 import { CodeTerminals, TerminalLayout } from '../../../services/code-terminals/code-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
-import { LspClient } from '../../../services/lsp/lsp-client';
+import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';

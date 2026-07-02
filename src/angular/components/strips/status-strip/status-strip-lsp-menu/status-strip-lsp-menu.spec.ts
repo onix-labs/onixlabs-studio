@@ -1,6 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { LspServer, LspStatus } from '../../../../services/lsp/lsp-status';
+import { LspServer, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { StatusStripLspMenu } from './status-strip-lsp-menu';
 
@@ -25,15 +25,25 @@ describe('StatusStripLspMenu', () => {
   });
 
   it('render_whenActiveWorkspaceHasNoServers_showsNoTrigger', () => {
-    status.register('/root::java', { serverId: 'java', rootPath: '/root', restart: (): void => undefined });
+    status.register('/root::java', {
+      serverId: 'java',
+      rootPath: '/root',
+      restart: (): void => undefined,
+    });
     rootPath.set('/other');
     fixture.detectChanges();
 
-    expect((fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger'),
+    ).toBeNull();
   });
 
   it('render_labelsTheCategoryAndReflectsTheStartingState', () => {
-    status.register('/root::java', { serverId: 'java', rootPath: '/root', restart: (): void => undefined });
+    status.register('/root::java', {
+      serverId: 'java',
+      rootPath: '/root',
+      restart: (): void => undefined,
+    });
     rootPath.set('/root');
     fixture.detectChanges();
 
@@ -47,7 +57,11 @@ describe('StatusStripLspMenu', () => {
   });
 
   it('render_whenSeveralServers_stillLabelsTheCategory', () => {
-    status.register('/root::java', { serverId: 'java', rootPath: '/root', restart: (): void => undefined });
+    status.register('/root::java', {
+      serverId: 'java',
+      rootPath: '/root',
+      restart: (): void => undefined,
+    });
     status.register('/root::typescript', {
       serverId: 'typescript',
       rootPath: '/root',
@@ -57,7 +71,8 @@ describe('StatusStripLspMenu', () => {
     fixture.detectChanges();
 
     expect(
-      (fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')?.textContent,
+      (fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')
+        ?.textContent,
     ).toContain('Language Servers');
   });
 

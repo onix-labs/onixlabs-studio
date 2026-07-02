@@ -6,7 +6,11 @@ import {
   TaskRunRequest,
   TaskRunResult,
 } from '../../../shared/task-types';
-import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
+import {
+  Diagnostic,
+  Diagnostics,
+  DiagnosticsProvider,
+} from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';

@@ -2,7 +2,7 @@ import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { LspServer, LspServerState, LspStatus } from '../../../../services/lsp/lsp-status';
+import { LspServer, LspServerState, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
@@ -136,5 +136,4 @@ export class StatusStripLspMenu {
         return server.detail ?? 'Unavailable';
     }
   }
-
 }
