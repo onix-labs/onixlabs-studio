@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
-import { CodeAgents } from '../../../../services/code-agents/code-agents';
+import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';

@@ -4,7 +4,6 @@ import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';
-import { CodeView } from '../views/code-view/code-view';
 import { DirectoryView } from '../views/directory-view/directory-view';
 import { SourceControlView } from '../views/source-control-view/source-control-view';
 
@@ -16,7 +15,7 @@ import { SourceControlView } from '../views/source-control-view/source-control-v
  */
 @Component({
   selector: 'app-content-host',
-  imports: [NgComponentOutlet, DirectoryView, CodeView, SourceControlView, DocumentConflictModal],
+  imports: [NgComponentOutlet, DirectoryView, SourceControlView, DocumentConflictModal],
   templateUrl: './content-host.html',
   styleUrl: './content-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

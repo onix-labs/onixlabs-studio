@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { CodeAgents } from '../../../../../services/code-agents/code-agents';
+import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
-import { CodeRunner } from '../../../../../services/code-runner/code-runner';
+import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
@@ -56,7 +56,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     RibbonStripField,
   ],
   templateUrl: './code-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrl: './code-ribbon.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CodeRibbon {

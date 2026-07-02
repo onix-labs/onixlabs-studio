@@ -10,6 +10,7 @@ import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from './services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
+import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
 import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
@@ -41,6 +42,8 @@ export const config: ApplicationConfig = {
     provideTerminalFeature(),
     // Stand up the agent feature: register its chat view + ribbon with the shell.
     provideAgentFeature(),
+    // Stand up the code feature: register its tab view, ribbon, and the lean document-well panel.
+    provideCodeFeature(),
     // Stand up the markdown feature: register its tab view, ribbon, and the lean document-well panel.
     provideMarkdownFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).

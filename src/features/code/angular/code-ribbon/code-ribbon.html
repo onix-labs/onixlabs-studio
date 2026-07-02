@@ -30,7 +30,12 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Language">
-    <app-ribbon-strip-button [icon]="Icon.PLAY" label="Run" [disabled]="!canRun()" (action)="onRun()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.PLAY"
+      label="Run"
+      [disabled]="!canRun()"
+      (action)="onRun()"
+    />
     <app-ribbon-strip-column [spread]="true">
       <app-ribbon-strip-field
         label="Syntax"
@@ -47,7 +52,11 @@
 
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-column>
-      <app-ribbon-strip-check label="Word Wrap" [checked]="wordWrap()" (toggled)="onWordWrap($event)" />
+      <app-ribbon-strip-check
+        label="Word Wrap"
+        [checked]="wordWrap()"
+        (toggled)="onWordWrap($event)"
+      />
       <app-ribbon-strip-check label="Minimap" [checked]="minimap()" (toggled)="onMinimap($event)" />
       <app-ribbon-strip-check
         label="Line Numbers"

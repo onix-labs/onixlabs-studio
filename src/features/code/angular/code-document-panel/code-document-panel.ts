@@ -14,7 +14,7 @@ import {
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
-import { CodeDocumentEditor } from '../code-document/code-document';
+import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 
 /**
  * Represents the lean code surface mounted in a workspace document well: the shared

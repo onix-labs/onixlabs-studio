@@ -16,15 +16,15 @@ import {
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
-import { CodeDocumentEditor } from '../code-document/code-document';
-import { ChangeMarginController } from '../../../services/change-margin/change-margin-controller';
-import { ChangeMargins } from '../../../services/change-margin/change-margins';
-import { CodeAgents } from '../../../services/code-agents/code-agents';
+import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
+import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
+import { ChangeMargins } from '@features/code/angular/change-margin/change-margins';
+import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import {
   EditorCommandHandler,
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
-import { CodeStatus, EndOfLine } from '../../../services/code-status/code-status';
+import { CodeStatus, EndOfLine } from '@features/code/angular/code-status/code-status';
 import {
   EditorTerminals,
   TerminalLayout,

@@ -1,0 +1,10 @@
+// Shared host layout for every per-tab-type ribbon: it fills the strip width and hosts the overflow
+// wrapper, which lays the groups out in a row and moves any that do not fit into a dropdown. Inlined
+// from the shared ribbon-row.scss because a relocated component's styleUrl cannot resolve a path
+// alias (consolidate into the shared ribbon framework later — arch-refactor §10).
+:host {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-inline-size: 0;
+}

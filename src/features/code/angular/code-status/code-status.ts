@@ -83,9 +83,7 @@ export class CodeStatus {
       this.statusBar.contribute(
         STATUS_OWNER,
         {
-          leading: [
-            { id: 'code-path', text: context.path ?? 'New Document' },
-          ],
+          leading: [{ id: 'code-path', text: context.path ?? 'New Document' }],
           trailing: [
             { id: 'code-line', text: `Ln ${context.line}` },
             { id: 'code-col', text: `Col ${context.column}` },
