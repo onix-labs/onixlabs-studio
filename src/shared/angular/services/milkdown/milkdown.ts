@@ -26,7 +26,7 @@ const SYSTEM_DEFAULT_FONT: string = 'System Default';
 
 /**
  * Resolves the markdown editor's settings into the CSS custom properties and layout values the
- * {@link MarkdownView} applies to its Crepe editor element.
+ * shared markdown editor applies to its Crepe editor element.
  *
  * The values are derived from {@link Settings.markdownEditor}; theme colours are handled entirely in
  * the global `_milkdown.scss` stylesheet via the `data-theme-mode` attribute, so this service is only

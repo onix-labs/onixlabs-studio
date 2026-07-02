@@ -1,0 +1,25 @@
+// Shared host layout for every per-tab-type ribbon: it fills the strip width and hosts the overflow
+// wrapper, which lays the groups out in a row and moves any that do not fit into a dropdown. (Inlined
+// from the shared ribbon-row base because component styleUrls cannot resolve path aliases; consolidate
+// the shared ribbon-row styling into the shared ribbon framework once more ribbons move to features.)
+:host {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-inline-size: 0;
+}
+
+// The Format group stacks the Style field over a row of formatting buttons. Add breathing room
+// between them, beyond the ribbon column's default control spacing. Scoped to this ribbon so the
+// other ribbons' columns keep their tighter spacing.
+app-ribbon-strip-row {
+  margin-block-start: 0.375rem;
+  // Spread the square formatting buttons across the field's width above them.
+  justify-content: space-between;
+}
+
+// The insert-modal hosts render full-screen fixed overlays, so they need no place in the ribbon's
+// flex flow. Take them out of it entirely, so they neither add width nor a gap beside the groups.
+.markdown-ribbon__overlays {
+  position: absolute;
+}

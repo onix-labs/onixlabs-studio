@@ -36,7 +36,7 @@ import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/st
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DockContainer } from '../../dock/dock-container/dock-container';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Modal } from '../../shared/modal/modal';
+import { Modal } from '@shared/angular/components/modal/modal';
 import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
 
 /**

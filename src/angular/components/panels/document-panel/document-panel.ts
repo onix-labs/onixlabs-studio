@@ -15,7 +15,6 @@ import { DockState } from '../../../services/dock/dock-state';
 import { findStackOfPanel } from '../../../services/dock/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { CodeView } from '../../views/code-view/code-view';
-import { MarkdownView } from '../../views/markdown-view/markdown-view';
 
 /**
  * Feature type used for markdown documents in the well.
@@ -37,7 +36,7 @@ const CODE_TYPE: string = 'code';
  */
 @Component({
   selector: 'app-document-panel',
-  imports: [NgComponentOutlet, CodeView, MarkdownView],
+  imports: [NgComponentOutlet, CodeView],
   templateUrl: './document-panel.html',
   styleUrl: './document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

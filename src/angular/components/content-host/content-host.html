@@ -12,9 +12,6 @@
         @case ('code') {
           <app-code-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
         }
-        @case ('markdown') {
-          <app-markdown-view [documentId]="tab.id" [isActive]="tab.id === activeTabId()" />
-        }
         @case ('source-control') {
           <app-source-control-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
         }

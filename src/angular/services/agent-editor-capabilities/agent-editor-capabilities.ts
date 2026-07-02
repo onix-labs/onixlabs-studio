@@ -1,7 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '../../../shared/ai-types';
 import { CodeCommands } from '../code-commands/code-commands';
-import { MarkdownCommands } from '../markdown-commands/markdown-commands';
+import { MarkdownCommands } from '@features/markdown/angular/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 
 /**
@@ -58,11 +58,13 @@ export class AgentEditorCapabilities {
    * capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(READ_ACTIVE_DOCUMENT, (input: unknown): ReadResult =>
-      this.readActive(input),
+    this.runtime.registerCapability(
+      READ_ACTIVE_DOCUMENT,
+      (input: unknown): ReadResult => this.readActive(input),
     );
-    this.runtime.registerCapability(REPLACE_ACTIVE_DOCUMENT, (input: unknown): ReplaceResult =>
-      this.replaceActive(input),
+    this.runtime.registerCapability(
+      REPLACE_ACTIVE_DOCUMENT,
+      (input: unknown): ReplaceResult => this.replaceActive(input),
     );
   }
 

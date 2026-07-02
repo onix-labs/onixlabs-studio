@@ -6,7 +6,7 @@ import { CodeCommandHandler, CodeCommands } from '../code-commands/code-commands
 import {
   MarkdownCommandHandler,
   MarkdownCommands,
-} from '../markdown-commands/markdown-commands';
+} from '@features/markdown/angular/markdown-commands/markdown-commands';
 import { AgentEditorCapabilities } from './agent-editor-capabilities';
 
 /**

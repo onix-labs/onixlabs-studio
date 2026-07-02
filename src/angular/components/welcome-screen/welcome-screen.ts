@@ -7,7 +7,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Modal } from '../shared/modal/modal';
+import { Modal } from '@shared/angular/components/modal/modal';
 
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.

@@ -1,8 +1,34 @@
+import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from './content-host';
+
+// Stub feature views let the content host be tested for its mount/hide behaviour in isolation: the
+// host mounts registered views by type through the registry, so these stand in for real feature views
+// without booting the editors (Monaco, Crepe) those views would otherwise mount. Each declares the
+// tabId + isActive inputs every registry-mounted view receives.
+@Component({
+  selector: 'app-stub-code-view',
+  template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class StubCodeView {
+  public readonly tabId: InputSignal<string> = input<string>('');
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+}
+
+@Component({
+  selector: 'app-stub-markdown-view',
+  template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class StubMarkdownView {
+  public readonly tabId: InputSignal<string> = input<string>('');
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+}
 
 describe('ContentHost', () => {
   let fixture: ComponentFixture<ContentHost>;
@@ -13,6 +39,9 @@ describe('ContentHost', () => {
       imports: [ContentHost],
     }).compileComponents();
 
+    const registry: FeatureRegistry = TestBed.inject(FeatureRegistry);
+    registry.register({ type: 'code', view: StubCodeView });
+    registry.register({ type: 'markdown', view: StubMarkdownView });
     tabs = TestBed.inject(Tabs);
   });
 
@@ -36,10 +65,10 @@ describe('ContentHost', () => {
       host.querySelectorAll<HTMLElement>('.tab-view'),
     );
     const codeWrapper: HTMLElement | undefined = wrappers.find(
-      (wrapper: HTMLElement): boolean => wrapper.querySelector('app-code-view') !== null,
+      (wrapper: HTMLElement): boolean => wrapper.querySelector('app-stub-code-view') !== null,
     );
     const markdownWrapper: HTMLElement | undefined = wrappers.find(
-      (wrapper: HTMLElement): boolean => wrapper.querySelector('app-markdown-view') !== null,
+      (wrapper: HTMLElement): boolean => wrapper.querySelector('app-stub-markdown-view') !== null,
     );
 
     // Both views are mounted (one wrapper each), proving inactive tabs are not destroyed.
@@ -64,7 +93,7 @@ describe('ContentHost', () => {
     await fixture.whenStable();
 
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('app-code-view')).not.toBeNull();
-    expect(host.querySelector('app-markdown-view')).not.toBeNull();
+    expect(host.querySelector('app-stub-code-view')).not.toBeNull();
+    expect(host.querySelector('app-stub-markdown-view')).not.toBeNull();
   });
 });

@@ -1,0 +1,34 @@
+<div class="markdown-layout">
+  <app-markdown-document
+    [documentId]="tabId()"
+    [isActive]="isActive()"
+    (ready)="onReady()"
+    (contentChange)="onContentChange()"
+    (selectionChange)="onSelectionChange($event)"
+  />
+
+  @if (activePanel() !== 'none') {
+    <div
+      class="markdown-layout__splitter"
+      role="separator"
+      aria-orientation="vertical"
+      (mousedown)="onPanelSplitterDown($event)"
+    ></div>
+    <aside class="tool-panel" [style.flex-basis.px]="panelSize()">
+      @switch (activePanel()) {
+        @case ('outline') {
+          <app-markdown-outline-panel />
+        }
+        @case ('review') {
+          <app-markdown-review-panel />
+        }
+        @case ('agent') {
+          <app-markdown-agent-panel [documentId]="tabId()" />
+        }
+        @case ('reader') {
+          <app-markdown-reader-panel />
+        }
+      }
+    </aside>
+  }
+</div>
