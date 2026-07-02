@@ -453,9 +453,9 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 4 slices DONE (terminal,
-  file/dialog, workspace/project, security); ~6 IPC domains REMAIN.** The enabler and the pattern,
-  proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 5 slices DONE (terminal,
+  file/dialog, workspace/project, security, run/tasks); ~4 IPC domains REMAIN.** The enabler and the
+  pattern, proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -513,8 +513,19 @@ changed` + `dialog:open-file/pick-image/save-file/confirm-save`, plus `FileInfo`
       `IpcChannel` members, `SecurityApi` + field, preload literal, `security-types.ts`. **CDP smoke:**
       `security:get/set-image-policy` round-trips over `window.bridge` (https→all→restore), boots clean with
       the relocated media scheme, `window.studio.security` gone.
-  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `lsp`, `run`/`tasks`,
-    `shell`, `display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
+  - `refactor(tasks)` — the **run + task-execution** slice (one cohesive cluster; both clients live under
+    `shared/angular/services/tasks/`). **Two api files in one slice:** `task-channels.ts` (`TaskChannel`
+    run/cancel/output/exit + `TaskRunRequest`/`TaskRunResult`/`TaskOutputStream`, consolidating and
+    deleting `task-types.ts`) and `run-channels.ts` (`RunChannel` write-temp-file + `TempFileResult`,
+    moved out of studio-api). `BuildRunner` (tasks: run/cancel over `invoke`, output/exit over
+    `bridge.on`) and `RunFileTaskProvider` (run: write-temp-file over `invoke`) on `window.bridge`; their
+    spec fakes folded into one `FakeTaskBridge` / bridge mock. `code-runner` + `task-runner` (both
+    self-contained — only built-ins) → `src/shared/electron/`. Deleted from the god trio: 5 `IpcChannel`
+    members, `RunApi` + `TaskApi` + `TempFileResult` + both fields, 2 preload literals, `task-types.ts`.
+    **CDP smoke:** `tasks:run` spawns a child and streams output + exit 0 over `window.bridge`;
+    `run:write-temp-file` writes a temp file; `window.studio.run`/`tasks` gone.
+  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `lsp`,
+    `shell`+`display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
     (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
     Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
