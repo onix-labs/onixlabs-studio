@@ -453,9 +453,9 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 3 slices DONE (terminal,
-  file/dialog, workspace/project); ~7 IPC domains REMAIN.** The enabler and the pattern, proven
-  end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 4 slices DONE (terminal,
+  file/dialog, workspace/project, security); ~6 IPC domains REMAIN.** The enabler and the pattern,
+  proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -502,8 +502,19 @@ changed` + `dialog:open-file/pick-image/save-file/confirm-save`, plus `FileInfo`
     stubs; compare `channel === (SomeChannel.X as string)` — the bare enum-vs-string comparison trips
     `@typescript-eslint/no-unsafe-enum-comparison`, the `as string` cast satisfies it. Set
     `(window as unknown as { bridge: Bridge }).bridge = …` in `beforeEach`, `delete` it in `afterEach`.
+  - `refactor(security)` — the **security** slice (CSP image-source policy; app-wide shared plumbing).
+    `src/shared/api/security-channels.ts` (`SecurityChannel` get/set-image-policy + the `ImageSourcePolicy`
+    payload) — **consolidated the old dedicated `security-types.ts` into the api-slice home and deleted
+    it**, dropping the `SecurityApi` interface (the bridge client is the typed wrapper). `Security` client
+    - spec on `window.bridge`; settings' `ImageSourcePolicy` binding repointed. `security-manager` **and its
+      1-file cone `media-protocol`** (the self-contained `studio-media://` scheme, used by `main` + the
+      manager) → `src/shared/electron/` — **opposite call to workspace's cone:** 1 tiny self-contained file
+      is cheap to move now, so it moved, rather than deferring to §7. Deleted from the god trio: 2
+      `IpcChannel` members, `SecurityApi` + field, preload literal, `security-types.ts`. **CDP smoke:**
+      `security:get/set-image-policy` round-trips over `window.bridge` (https→all→restore), boots clean with
+      the relocated media scheme, `window.studio.security` gone.
   - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `lsp`, `run`/`tasks`,
-    `security`, `shell`, `display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
+    `shell`, `display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
     (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
     Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
