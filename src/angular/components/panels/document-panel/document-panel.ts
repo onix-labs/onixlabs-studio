@@ -62,20 +62,4 @@ export class DocumentPanel {
     const id: string = this.panel().id;
     return findStackOfPanel(this.dockState.layout(), id)?.active === id;
   });
-
-  /**
-   * Gets the markdown editor's initial content, seeded from the document.
-   * @returns Returns the document's initial content.
-   */
-  public markdownContent(): string {
-    return this.documents.initialContentOf(this.panel().id);
-  }
-
-  /**
-   * Records an edit to a markdown document so its dirty state and saves track the changes.
-   * @param content The new markdown content.
-   */
-  public onMarkdownChange(content: string): void {
-    this.documents.setContent(this.panel().id, content);
-  }
 }

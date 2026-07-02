@@ -8,9 +8,6 @@ import {
   InputSignal,
   NgZone,
   OnDestroy,
-  OnInit,
-  output,
-  OutputEmitterRef,
   signal,
   Signal,
   viewChild,
@@ -47,7 +44,7 @@ import {
   wrapInWarningAlertCommand,
 } from '@shared/angular/milkdown/github-alert-plugin';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { MarkdownDocument } from './markdown-document/markdown-document';
 import {
   MarkdownBlockType,
   MarkdownCommandHandler,
@@ -194,17 +191,6 @@ const READ_HIGHLIGHT_SENTENCE: string = 'markdown-read-sentence';
 const READ_REVEAL_MARGIN: number = 120;
 
 /**
- * Display name given to a new, unsaved markdown document.
- */
-const NEW_MARKDOWN_DOCUMENT_NAME: string = 'New Document';
-
-/**
- * Monaco language identifier applied to markdown documents, so a new document still serialises and
- * saves as markdown before it has a file extension.
- */
-const MARKDOWN_LANGUAGE: string = 'markdown';
-
-/**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
  * document, with optional Outline/Review/Agent/Reader tool panels beside it. It owns the markdown-tab
  * concerns the bare pane does not — the backing document and save target, the ribbon command handler,
@@ -214,7 +200,7 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
 @Component({
   selector: 'app-markdown-view',
   imports: [
-    MarkdownEditor,
+    MarkdownDocument,
     MarkdownOutlinePanel,
     MarkdownReviewPanel,
     MarkdownAgentPanel,
@@ -227,12 +213,7 @@ const MARKDOWN_LANGUAGE: string = 'markdown';
     '[class.panels-left]': 'panelPosition() === "left"',
   },
 })
-export class MarkdownView implements OnInit, OnDestroy {
-  /**
-   * Holds the documents service owning the tab's content, file association and dirty state.
-   */
-  private readonly documents: Documents = inject(Documents);
-
+export class MarkdownView implements OnDestroy {
   /**
    * Holds the settings service supplying the markdown editor preferences.
    */
@@ -264,10 +245,20 @@ export class MarkdownView implements OnInit, OnDestroy {
   private readonly zone: NgZone = inject(NgZone);
 
   /**
-   * Holds the shared markdown-editor pane this view drives, or undefined before the view initialises.
+   * Holds the document-bound markdown editor this view drives, or undefined before the view
+   * initialises.
    */
-  private readonly pane: Signal<MarkdownEditor | undefined> =
-    viewChild<MarkdownEditor>(MarkdownEditor);
+  private readonly documentCore: Signal<MarkdownDocument | undefined> =
+    viewChild<MarkdownDocument>(MarkdownDocument);
+
+  /**
+   * Gets the shared markdown-editor pane through the document core, so this view can drive it through
+   * its imperative API.
+   * @returns Returns the pane, or undefined before the view initialises.
+   */
+  private pane(): MarkdownEditor | undefined {
+    return this.documentCore()?.getPane();
+  }
 
   /**
    * Holds the review session registered with the {@link Review} service while active, or null.
@@ -340,11 +331,6 @@ export class MarkdownView implements OnInit, OnDestroy {
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
 
   /**
-   * Gets the markdown content the editor is initialised with.
-   */
-  public readonly content: InputSignal<string> = input<string>('');
-
-  /**
    * Gets a value indicating whether the editor is read-only.
    */
   public readonly readOnly: InputSignal<boolean> = input<boolean>(false);
@@ -354,11 +340,6 @@ export class MarkdownView implements OnInit, OnDestroy {
    * so their editor state is preserved, but they do not own the ribbon command handler.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
-
-  /**
-   * Emits the serialised markdown whenever the user edits the content.
-   */
-  public readonly contentChange: OutputEmitterRef<string> = output<string>();
 
   /**
    * Holds the editor's scroll container, to which the scroll-spy listener is attached.
@@ -404,7 +385,6 @@ export class MarkdownView implements OnInit, OnDestroy {
         this.registerReviewSession();
         this.registerReadSession();
         this.refreshActiveBlockType();
-        this.documents.setActiveDocument(this.documentId());
         this.panels.setActiveDocument(this.documentId());
       } else {
         if (this.commandHandler !== null) {
@@ -418,19 +398,9 @@ export class MarkdownView implements OnInit, OnDestroy {
   }
 
   /**
-   * Registers the backing document so the ribbon's save commands target it, seeding a new markdown
-   * document with its display name and language. An existing document (a file opened into the well)
-   * keeps its own name and content.
-   */
-  public ngOnInit(): void {
-    this.documents.ensure(this.documentId(), NEW_MARKDOWN_DOCUMENT_NAME);
-    this.documents.setLanguage(this.documentId(), MARKDOWN_LANGUAGE);
-  }
-
-  /**
-   * Clears the active-document focus, releases the ribbon command handler and review/read sessions,
-   * detaches the scroll-spy, and releases the backing document when this view owns its lifecycle (a
-   * standalone tab). The pane destroys the Crepe editor itself.
+   * Releases the ribbon command handler and review/read sessions, detaches the scroll-spy, and drops
+   * this document's tool-panel state. The document core releases the backing document and the pane
+   * destroys the Crepe editor themselves.
    */
   public ngOnDestroy(): void {
     this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
@@ -441,28 +411,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     }
     this.unregisterReviewSession();
     this.unregisterReadSession();
-    if (this.documents.activeDocumentId() === this.documentId()) {
-      this.documents.setActiveDocument(null);
-    }
     this.panels.remove(this.documentId());
-    if (this.removeOnDestroy()) {
-      this.documents.remove(this.documentId());
-    }
-  }
-
-  /**
-   * Gets the absolute directory of the backing document's file, against which a relative image source
-   * resolves. Returns an empty string when the document has no path yet (an unsaved tab), in which case
-   * relative images cannot be located until the document is saved. Bound to the pane's base directory.
-   * @returns Returns the document's directory, or an empty string.
-   */
-  protected documentDirectory(): string {
-    const filePath: string | null = this.documents.get(this.documentId())?.filePath() ?? null;
-    if (filePath === null) {
-      return '';
-    }
-    const separator: number = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-    return separator < 0 ? '' : filePath.slice(0, separator);
   }
 
   /**
@@ -515,12 +464,10 @@ export class MarkdownView implements OnInit, OnDestroy {
   }
 
   /**
-   * Re-emits the user's edit to the host and, while active, refreshes the history state, outline,
-   * review source, and read model.
-   * @param markdown The editor's new serialised markdown.
+   * Refreshes the history state, outline, review source, and read model when the user edits the
+   * content while this view is active. The document core has already recorded the edit.
    */
-  protected onContentChange(markdown: string): void {
-    this.contentChange.emit(markdown);
+  protected onContentChange(): void {
     if (this.isActive()) {
       this.publishHistoryState();
       this.refreshOutline();
@@ -540,13 +487,6 @@ export class MarkdownView implements OnInit, OnDestroy {
     const blockType: MarkdownBlockType = this.resolveActiveBlockType(selection);
     this.commands.setActiveBlockType(blockType);
     this.publishHistoryState();
-  }
-
-  /**
-   * Saves the backing document when the pane requests it (the editor's Cmd/Ctrl+S shortcut).
-   */
-  protected onSaveRequested(): void {
-    void this.documents.save(this.documentId());
   }
 
   /**

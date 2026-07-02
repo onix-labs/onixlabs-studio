@@ -1,13 +1,12 @@
 <div class="markdown-layout">
-  <app-markdown-editor
-    [content]="content()"
+  <app-markdown-document
+    [documentId]="documentId()"
     [readOnly]="readOnly()"
     [isActive]="isActive()"
-    [baseDirectory]="documentDirectory()"
+    [removeOnDestroy]="removeOnDestroy()"
     (ready)="onReady()"
-    (contentChange)="onContentChange($event)"
+    (contentChange)="onContentChange()"
     (selectionChange)="onSelectionChange($event)"
-    (saveRequested)="onSaveRequested()"
   />
 
   @if (activePanel() !== 'none') {

@@ -1,0 +1,10 @@
+<app-markdown-editor
+  [content]="initialContent()"
+  [readOnly]="readOnly()"
+  [isActive]="isActive()"
+  [baseDirectory]="documentDirectory()"
+  (ready)="onReady()"
+  (contentChange)="onContentChange($event)"
+  (selectionChange)="onSelectionChange($event)"
+  (saveRequested)="onSaveRequested()"
+/>
