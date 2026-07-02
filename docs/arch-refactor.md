@@ -344,21 +344,62 @@ How to re-run a CDP smoke test (macOS, no playwright/puppeteer in repo):
    reads component instances + private fields in the dev (unminified) build. Note Milkdown's
    `markdownUpdated` is **debounced ~600ms** — wait before asserting dirty state.
 
+### Markdown feature (done) + the view/well split + document-panel seam
+
+**`markdown` stood up** at `src/features/markdown/angular` (view, ribbon+insert-modals,
+`markdown-commands`/`-panels`/`-reader`/`-review`, plus the two new pieces below). Registered by one
+`provideMarkdownFeature()` line in `config.ts`; `@case`s deleted from `content-host` +
+`ribbon-strip-container`. Prerequisites promoted to `@shared` first: `documents` + its filesystem
+cone (`file-system`/`-watch`/`-conflicts`), and the `modal` atom (used by insert-modals, source-control,
+welcome). Commits: `af65614` (documents→shared) · `6dd8d36` (inner core) · `3fb3cd8` (well panel +
+registry seam) · `df6e671` (relocate + register).
+
+**A "view" is a tab-only leaf; the document well is a DIFFERENT leaf.** Discovered: the workspace
+document well (`document-panel`) was reusing the full feature *views* (`<app-code-view>`/
+`<app-markdown-view>`) to show open documents — an inbound feature→feature edge the outbound-import
+gate-check missed. Corrected model (user's): a **view** is the holistic tab surface (tab + ribbon +
+editor + optional panels + status, the shell supplying ribbon/status/tab); the **well** must NOT
+import a view. Instead:
+- **Shared inner core** (`markdown-document`, feature-owned): wraps the shared `<app-markdown-editor>`
+  + owns the document binding (seed from `Documents`, write edits back, save, language/lifecycle,
+  active-doc). The content round-trip is gone from the shell — the core self-owns it via `Documents`.
+- **Tab leaf** (`markdown-view`): core + tool panels + ribbon command handler + sessions. Its id input
+  is **`tabId`** (the `FeatureViewInputs` contract the registry mounts by), not `documentId`.
+- **Well leaf** (`markdown-document-panel`, lean): core + a compact toolstrip (name/dirty/save) + a
+  status strip (word count). No ribbon, no tool panels; editable like a tab. Both leaves share the core.
+- **Registry `documentPanel` seam** (§4 seam-1 shape, extended): `FeatureDescriptor.documentPanel?` +
+  `FeatureRegistry.documentPanelFor(type)`; `document-panel` mounts it by document type via
+  `ngComponentOutlet`, importing only `@shared`. Falls back to the tab view for unmigrated types.
+
+**Bridges — the one sanctioned cross-feature coupling.** `AgentEditorCapabilities` (agent↔editor,
+eager in `config.ts`, per §4 seam-3 slated to leave `src/angular`) dispatches through BOTH
+`CodeCommands` and `MarkdownCommands` (read/replace the active document). Per the user's rule: a
+**bridge** is the ONE place where a capability used across features may couple to multiple features'
+command seams; **neither editor feature owns the other's bridge commands**. So the bridge importing
+`@features/markdown/markdown-commands` is by design (not a rule-1 violation). It stays app-level glue
+for now and ultimately lands outside both editor features (resolve with the code phase).
+
 ### Next (in roughly this order)
 
-1. **Stand up `code` + `markdown` tab features** — their wrappers now exist, so the views can move
-   to `src/features/<f>/angular` by the proven terminal/agent/settings template (gate-check cone →
-   relocate + repoint → `<f>.feature.ts` + `provide<F>Feature` → one `config.ts` line → delete any
-   `@case`).
+1. **Stand up the `code` tab feature** — by the proven template, now with the view/well split: build
+   `code-document` (inner core over `<app-text-editor>`) + a lean `code-document-panel` (toolstrip +
+   `code-status`-backed status strip) contributed as the `documentPanel`; `code-view` becomes the tab
+   leaf. Then relocate `code-view` + `code-ribbon` + `code-agents`/`-commands`/`-status`/`-terminals`/
+   `-runner` + `change-margin` (code-only) to `src/features/code/angular`. **Coupling to resolve
+   (deferred from the markdown pass):** `directory-ribbon` (workspace) dispatches 6 edit commands
+   through `CodeCommands` and `directory-view` calls `codeTerminals.remove()` — workspace→code edges;
+   and the agent **bridge** references `../code-commands` (allowed, per the bridge rule). Decide
+   `CodeCommands`/`CodeTerminals` ownership then (shared registry vs sever vs bridge-only).
 2. **`<app-diff-editor>`** — the source-control diff view (`createDiffEditor`, two read-only models)
    is a *separate* variant that shares the Monaco service + theme plumbing but not the component.
-3. **Promote `Documents` + `change-margins` to shared** (text-document services used by both code
-   and markdown — else a markdown→code edge).
+3. **Promote `lsp` to shared** — consumed by code-view + `directory-view` (workspace) + the shell
+   status-strip lsp menu, so it must be `@shared` before code migrates (else workspace/shell→code).
+   (`Documents` already promoted; `change-margins` is code-only, so it becomes code-feature-owned.)
 4. **Generic `Bridge` + `shared/electron` carve** (§5) — terminal pty backing (`terminal-manager`
    electron + pty channels) is still in `src/electron` + the god IPC trio; carve into
    `shared/electron` + `shared/api` as a focused step.
-5. **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (2 copies now —
-   `styleUrl` can't use aliases, so each migrated ribbon inlined it).
+5. **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (now 3 copies —
+   terminal, markdown, and each future migrated ribbon; `styleUrl` can't use aliases, so each inlines).
 
 `welcome` remains special (shell-slotted, not a tab; injects `RepositoryOpener` → a feature→feature
 edge) — deferred until a shell "start-view" slot or an accepted root straggler import.
@@ -427,6 +468,23 @@ line to `src/angular/config.ts` → delete the feature's `@case` from `content-h
   `p`/`f`/`svc`.
 - **zsh does not word-split unquoted `$var`.** `files=$(grep -rl …); for f in $files` runs ONCE with
   the whole blob. Iterate via `grep … | while IFS= read -r f; do …; done`.
+
+### Gate-checking a feature's cone — the blind spots that bit the markdown pass
+
+A grep like `grep -rlE "services/<x>/<x>"` finds importers written as `.../services/<x>/<x>` but
+**misses sibling imports** (`../<x>/<x>`, no `services/` segment). Two real consumers hid this way:
+`agent-editor-capabilities` → `../markdown-commands` (a **bridge**), and `directory-*` → `../code-*`
+(workspace). Always also grep the sibling form: `from '[^']*/<x>/<x>'`.
+
+Likewise, the cone has **inbound** edges, not just outbound: a component elsewhere may *embed the
+feature's view/component*. Grep the selector (`app-<x>-view`) and the class import, not only the
+feature's own imports — that is how the document-well reuse of the views was missed at first.
+
+Two couplings recur and are the crux of the editor features: **editor command registries**
+(`CodeCommands`/`MarkdownCommands` — like the shared `Editors` registry) are consumed by ribbons of
+other features and by the agent bridge; and the **document well** reuses editor surfaces. The
+markdown pass resolved both (registries stay feature-owned + a sanctioned bridge; well mounts a lean
+`documentPanel` via the registry). The code pass must resolve the same two — see §10 next-step 1.
 
 ### Where to look first
 
