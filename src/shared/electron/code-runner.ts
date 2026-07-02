@@ -4,8 +4,7 @@ import { rmSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { IpcChannel } from '../shared/ipc-channels';
-import { TempFileResult } from '../shared/studio-api';
+import { RunChannel, TempFileResult } from '@shared/api/run-channels';
 
 /**
  * Holds the base name (without extension) given to every run file.
@@ -45,7 +44,7 @@ export class CodeRunner {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.RunWriteTempFile,
+      RunChannel.WriteTempFile,
       (
         _event: IpcMainInvokeEvent,
         key: unknown,

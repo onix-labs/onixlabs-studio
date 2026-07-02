@@ -5,7 +5,6 @@
 
 import type { AiApi } from './ai-types';
 import type { LspApi } from './lsp-types';
-import type { TaskApi } from './task-types';
 
 /**
  * Defines the runtime version information exposed to the renderer process.
@@ -73,41 +72,6 @@ export interface AppApi {
    * @param proceed True to allow the window to close; false to keep it open.
    */
   respondClose(proceed: boolean): void;
-}
-
-/**
- * Describes the result of writing a temporary file for code execution.
- */
-export interface TempFileResult {
-  /**
-   * Gets a value indicating whether the temporary file was written.
-   */
-  readonly success: boolean;
-
-  /**
-   * Gets the absolute path of the temporary file, when successful.
-   */
-  readonly path?: string;
-
-  /**
-   * Gets the error message, when the write failed.
-   */
-  readonly error?: string;
-}
-
-/**
- * Defines the code-execution operations exposed to the renderer process.
- */
-export interface RunApi {
-  /**
-   * Writes editor content to a stable per-key temporary file and returns its path, so a language
-   * runner can execute it.
-   * @param key A stable key (the owning tab's id) that selects the temporary file.
-   * @param extension The file extension to give the temporary file.
-   * @param content The content to write.
-   * @returns Returns the result describing success and the file path.
-   */
-  writeTempFile(key: string, extension: string, content: string): Promise<TempFileResult>;
 }
 
 /**
@@ -405,11 +369,6 @@ export interface StudioApi {
   readonly shell: ShellApi;
 
   /**
-   * Gets the code-execution operations for the application.
-   */
-  readonly run: RunApi;
-
-  /**
    * Gets the AI-agent authentication and verification operations for the application.
    */
   readonly ai: AiApi;
@@ -418,11 +377,6 @@ export interface StudioApi {
    * Gets the language-server (LSP) operations for the application.
    */
   readonly lsp: LspApi;
-
-  /**
-   * Gets the task-runner operations for the application.
-   */
-  readonly tasks: TaskApi;
 
   /**
    * Gets the version-control (git) operations for the application.

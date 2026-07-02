@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
-import { RunApi, TempFileResult } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { RunChannel, TempFileResult } from '@shared/api/run-channels';
 import { ActiveDocumentContext, Task, TaskContext, TaskProvider } from '../task';
 import { Tasks } from '../tasks';
 
@@ -59,9 +60,10 @@ export class RunFileTaskProvider implements TaskProvider {
   public readonly id: string = PROVIDER_ID;
 
   /**
-   * Holds the run bridge used to write the document to a temporary file, or undefined outside Electron.
+   * Holds the generic transport used to write the document to a temporary file, or undefined outside
+   * Electron.
    */
-  private readonly api: RunApi | undefined = window.studio?.run;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Initializes the provider, registering it with the task orchestrator.
@@ -123,10 +125,11 @@ export class RunFileTaskProvider implements TaskProvider {
     document: ActiveDocumentContext,
     runner: LanguageRunner,
   ): Promise<string | null> {
-    if (this.api === undefined) {
+    if (this.bridge === undefined) {
       return null;
     }
-    const result: TempFileResult = await this.api.writeTempFile(
+    const result: TempFileResult = await this.bridge.invoke<TempFileResult>(
+      RunChannel.WriteTempFile,
       document.tabId,
       runner.extension,
       document.content,

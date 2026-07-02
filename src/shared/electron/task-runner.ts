@@ -1,8 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import * as os from 'node:os';
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
-import { IpcChannel } from '../shared/ipc-channels';
-import { TaskRunRequest, TaskRunResult } from '../shared/task-types';
+import { TaskChannel, TaskRunRequest, TaskRunResult } from '@shared/api/task-channels';
 
 /**
  * Runs tasks as child processes for the renderer: spawns a command through the platform shell,
@@ -41,10 +40,10 @@ export class TaskRunner {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.TaskRun,
+      TaskChannel.Run,
       (_event: IpcMainInvokeEvent, request: unknown): TaskRunResult => this.run(request),
     );
-    ipcMain.handle(IpcChannel.TaskCancel, (_event: IpcMainInvokeEvent, runId: unknown): boolean =>
+    ipcMain.handle(TaskChannel.Cancel, (_event: IpcMainInvokeEvent, runId: unknown): boolean =>
       typeof runId === 'string' ? this.cancel(runId) : false,
     );
   }
@@ -95,17 +94,17 @@ export class TaskRunner {
       });
 
       child.stdout.on('data', (data: Buffer): void => {
-        this.send(IpcChannel.TaskOutput, runId, data.toString(), 'stdout');
+        this.send(TaskChannel.Output, runId, data.toString(), 'stdout');
       });
       child.stderr.on('data', (data: Buffer): void => {
-        this.send(IpcChannel.TaskOutput, runId, data.toString(), 'stderr');
+        this.send(TaskChannel.Output, runId, data.toString(), 'stderr');
       });
       child.on('error', (error: Error): void => {
-        this.send(IpcChannel.TaskOutput, runId, `${error.message}\n`, 'stderr');
+        this.send(TaskChannel.Output, runId, `${error.message}\n`, 'stderr');
       });
       child.on('close', (code: number | null, signal: NodeJS.Signals | null): void => {
         this.runs.delete(runId);
-        this.send(IpcChannel.TaskExit, runId, code, signal);
+        this.send(TaskChannel.Exit, runId, code, signal);
       });
 
       this.runs.set(runId, child);
@@ -140,7 +139,7 @@ export class TaskRunner {
    * @param channel The IPC channel to send on.
    * @param args The arguments to send.
    */
-  private send(channel: IpcChannel, ...args: readonly unknown[]): void {
+  private send(channel: TaskChannel, ...args: readonly unknown[]): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
       window.webContents.send(channel, ...args);

@@ -13,7 +13,7 @@ import {
 import * as path from 'node:path';
 import { IpcChannel } from '@shared/ipc-channels';
 import { AiManager } from './ai/ai-manager';
-import { CodeRunner } from './code-runner';
+import { CodeRunner } from '@shared/electron/code-runner';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { LspManager } from './lsp/lsp-manager';
@@ -23,7 +23,7 @@ import { MediaProtocol } from '@shared/electron/media-protocol';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from './git-manager';
-import { TaskRunner } from './task-runner';
+import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';

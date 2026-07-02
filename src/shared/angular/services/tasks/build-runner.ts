@@ -1,6 +1,7 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Bridge } from '@shared/api/bridge';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
-import { TaskApi } from '@shared/task-types';
+import { TaskChannel } from '@shared/api/task-channels';
 import {
   Diagnostic,
   Diagnostics,
@@ -102,9 +103,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
-   * Holds the task-runner bridge, or undefined outside Electron.
+   * Holds the generic transport, or undefined outside Electron.
    */
-  private readonly api: TaskApi | undefined = window.studio?.tasks;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the discovered tasks.
@@ -185,11 +186,12 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     };
     this.unregisterProvider = this.diagnostics.register(provider);
     this.cleanupOutput =
-      this.api?.onOutput((runId: string, chunk: string): void => this.onOutput(runId, chunk)) ??
-      null;
+      this.bridge?.on(TaskChannel.Output, (...args: unknown[]): void =>
+        this.onOutput(args[0] as string, args[1] as string),
+      ) ?? null;
     this.cleanupExit =
-      this.api?.onExit((runId: string, code: number | null, signal: string | null): void =>
-        this.onExit(runId, code, signal),
+      this.bridge?.on(TaskChannel.Exit, (...args: unknown[]): void =>
+        this.onExit(args[0] as string, args[1] as number | null, args[2] as string | null),
       ) ?? null;
 
     effect((): void => {
@@ -223,7 +225,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @param taskId The task to run.
    */
   public run(taskId: string): void {
-    if (this.api === undefined || this.activeRunId !== null) {
+    if (this.bridge === undefined || this.activeRunId !== null) {
       return;
     }
     const task: BuildTask | undefined = this.discovered().find(
@@ -239,7 +241,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     this.isRunning.set(true);
     this.setProblems([]);
     this.output.appendLine(`> ${task.label}`);
-    void this.api.run({ runId, command: task.command, cwd: task.cwd });
+    void this.bridge.invoke(TaskChannel.Run, { runId, command: task.command, cwd: task.cwd });
   }
 
   /**
@@ -247,7 +249,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   public cancel(): void {
     if (this.activeRunId !== null) {
-      void this.api?.cancel(this.activeRunId);
+      void this.bridge?.invoke(TaskChannel.Cancel, this.activeRunId);
     }
   }
 

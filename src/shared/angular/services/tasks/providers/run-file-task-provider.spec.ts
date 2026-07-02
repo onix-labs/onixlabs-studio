@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { TempFileResult } from '@shared/studio-api';
+import { Bridge } from '@shared/api/bridge';
+import { RunChannel, TempFileResult } from '@shared/api/run-channels';
 import { Task } from '../task';
 import { RunFileTaskProvider } from './run-file-task-provider';
 
@@ -8,17 +9,24 @@ describe('RunFileTaskProvider', () => {
 
   beforeEach(() => {
     writeCalls = [];
-    const run: unknown = {
-      writeTempFile: (key: string, extension: string, content: string): Promise<TempFileResult> => {
-        writeCalls.push({ key, extension, content });
-        return Promise.resolve({ success: true, path: `/tmp/${key}/run${extension}` });
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (RunChannel.WriteTempFile as string)) {
+          const [key, extension, content] = args as [string, string, string];
+          writeCalls.push({ key, extension, content });
+          const result: TempFileResult = { success: true, path: `/tmp/${key}/run${extension}` };
+          return Promise.resolve(result as T);
+        }
+        return Promise.resolve(null as T);
       },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (window as unknown as { studio: { run: unknown } }).studio = { run };
+    (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('canRun_reflectsTheRunnerTable', () => {

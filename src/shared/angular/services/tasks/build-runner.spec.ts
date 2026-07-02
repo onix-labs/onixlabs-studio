@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
-import { TaskApi, TaskOutputStream, TaskRunRequest, TaskRunResult } from '@shared/task-types';
+import { TaskChannel, TaskRunRequest } from '@shared/api/task-channels';
 import {
   Diagnostic,
   Diagnostics,
@@ -14,42 +14,54 @@ import { BuildRunner } from './build-runner';
 import { BuildTask } from './builds';
 
 /**
- * A controllable fake of the task-runner bridge.
+ * A controllable fake transport: routes the task-runner channels (recording runs and capturing the
+ * output/exit listeners so tests can emit them) and the workspace open-file channel used to read a
+ * discovered `package.json`.
  */
-class FakeTaskApi implements TaskApi {
+class FakeTaskBridge implements Bridge {
   public readonly runCalls: TaskRunRequest[] = [];
-  private outputListener:
-    | ((runId: string, chunk: string, stream: TaskOutputStream) => void)
-    | null = null;
-  private exitListener:
-    | ((runId: string, code: number | null, signal: string | null) => void)
-    | null = null;
+  private outputListener: ((...args: unknown[]) => void) | null = null;
+  private exitListener: ((...args: unknown[]) => void) | null = null;
 
-  public run(request: TaskRunRequest): Promise<TaskRunResult> {
-    this.runCalls.push(request);
-    return Promise.resolve({ success: true, pid: 1 });
+  public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+    if (channel === (TaskChannel.Run as string)) {
+      this.runCalls.push(args[0] as TaskRunRequest);
+      return Promise.resolve({ success: true, pid: 1 } as T);
+    }
+    if (channel === (TaskChannel.Cancel as string)) {
+      return Promise.resolve(true as T);
+    }
+    if (channel === (WorkspaceChannel.OpenFile as string)) {
+      const path: string = args[0] as string;
+      const selection: OpenSelection | null = path.endsWith('package.json')
+        ? {
+            kind: 'file',
+            file: { path, name: 'package.json', extension: '.json', content: PACKAGE_JSON },
+          }
+        : null;
+      return Promise.resolve(selection as T);
+    }
+    return Promise.resolve(null as T);
   }
 
-  public cancel(): Promise<boolean> {
-    return Promise.resolve(true);
+  public send(): void {
+    return undefined;
   }
 
-  public onOutput(
-    listener: (runId: string, chunk: string, stream: TaskOutputStream) => void,
-  ): () => void {
-    this.outputListener = listener;
-    return (): void => {
-      this.outputListener = null;
-    };
-  }
-
-  public onExit(
-    listener: (runId: string, code: number | null, signal: string | null) => void,
-  ): () => void {
-    this.exitListener = listener;
-    return (): void => {
-      this.exitListener = null;
-    };
+  public on(channel: string, listener: (...args: unknown[]) => void): () => void {
+    if (channel === (TaskChannel.Output as string)) {
+      this.outputListener = listener;
+      return (): void => {
+        this.outputListener = null;
+      };
+    }
+    if (channel === (TaskChannel.Exit as string)) {
+      this.exitListener = listener;
+      return (): void => {
+        this.exitListener = null;
+      };
+    }
+    return (): void => undefined;
   }
 
   public emitOutput(runId: string, chunk: string): void {
@@ -77,31 +89,13 @@ class FakeDiagnostics {
 const PACKAGE_JSON: string = JSON.stringify({ scripts: { build: 'tsc', test: 'vitest' } });
 
 describe('BuildRunner', () => {
-  let api: FakeTaskApi;
+  let api: FakeTaskBridge;
   let diagnostics: FakeDiagnostics;
 
   beforeEach(() => {
-    api = new FakeTaskApi();
+    api = new FakeTaskBridge();
     diagnostics = new FakeDiagnostics();
-    const bridge: Bridge = {
-      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
-        if (channel === (WorkspaceChannel.OpenFile as string)) {
-          const path: string = args[0] as string;
-          const selection: OpenSelection | null = path.endsWith('package.json')
-            ? {
-                kind: 'file',
-                file: { path, name: 'package.json', extension: '.json', content: PACKAGE_JSON },
-              }
-            : null;
-          return Promise.resolve(selection as T);
-        }
-        return Promise.resolve(null as T);
-      },
-      send: (): void => undefined,
-      on: (): (() => void) => (): void => undefined,
-    };
-    (window as unknown as { studio: unknown }).studio = { tasks: api };
-    (window as unknown as { bridge: Bridge }).bridge = bridge;
+    (window as unknown as { bridge: Bridge }).bridge = api;
     TestBed.configureTestingModule({
       providers: [
         BuildRunner,
@@ -114,7 +108,6 @@ describe('BuildRunner', () => {
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
     delete (window as unknown as { bridge?: unknown }).bridge;
   });
 

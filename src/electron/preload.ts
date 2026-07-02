@@ -18,13 +18,11 @@ import type {
   LspStartRequest,
   LspStartResult,
 } from '../shared/lsp-types';
-import type { TaskOutputStream, TaskRunRequest, TaskRunResult } from '../shared/task-types';
 import type {
   GitRunResult,
   GpuRenderingInfo,
   RepositoryInfo,
   StudioApi,
-  TempFileResult,
 } from '../shared/studio-api';
 
 /**
@@ -77,59 +75,6 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url) as Promise<void>,
-  },
-  run: {
-    writeTempFile: (key: string, extension: string, content: string): Promise<TempFileResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.RunWriteTempFile,
-        key,
-        extension,
-        content,
-      ) as Promise<TempFileResult>,
-  },
-  tasks: {
-    run: (request: TaskRunRequest): Promise<TaskRunResult> =>
-      ipcRenderer.invoke(IpcChannel.TaskRun, request) as Promise<TaskRunResult>,
-    cancel: (runId: string): Promise<boolean> =>
-      ipcRenderer.invoke(IpcChannel.TaskCancel, runId) as Promise<boolean>,
-    onOutput: (
-      listener: (runId: string, chunk: string, stream: TaskOutputStream) => void,
-    ): (() => void) => {
-      const handler: (
-        event: IpcRendererEvent,
-        runId: string,
-        chunk: string,
-        stream: TaskOutputStream,
-      ) => void = (
-        _event: IpcRendererEvent,
-        runId: string,
-        chunk: string,
-        stream: TaskOutputStream,
-      ): void => listener(runId, chunk, stream);
-      ipcRenderer.on(IpcChannel.TaskOutput, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.TaskOutput, handler);
-      };
-    },
-    onExit: (
-      listener: (runId: string, code: number | null, signal: string | null) => void,
-    ): (() => void) => {
-      const handler: (
-        event: IpcRendererEvent,
-        runId: string,
-        code: number | null,
-        signal: string | null,
-      ) => void = (
-        _event: IpcRendererEvent,
-        runId: string,
-        code: number | null,
-        signal: string | null,
-      ): void => listener(runId, code, signal);
-      ipcRenderer.on(IpcChannel.TaskExit, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.TaskExit, handler);
-      };
-    },
   },
   sourceControl: {
     openRepository: (): Promise<RepositoryInfo | null> =>
