@@ -71,12 +71,14 @@ describe('Dock blueprint', () => {
       TestBed.configureTestingModule({ providers: [DockState, DockPanelRegistry] });
     });
 
-    it('fallsBackToTheWorkspaceDefault', () => {
+    it('buildsTheDefaultLayoutButCataloguesNoPanels', () => {
       const state: DockState = TestBed.inject(DockState);
       const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
 
+      // DockState still falls back to the built-in default layout tree...
       expect(collectPanelIds(state.layout())).toContain('files');
-      expect(registry.has('files')).toBe(true);
+      // ...but the registry names no panel of its own: every catalogue entry comes from a blueprint.
+      expect(registry.has('files')).toBe(false);
     });
   });
 });

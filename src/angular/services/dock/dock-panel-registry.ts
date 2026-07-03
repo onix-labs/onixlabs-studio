@@ -1,11 +1,4 @@
-import { inject, Service, Type } from '@angular/core';
-import { AgentPanel } from '../../components/panels/agent-panel/agent-panel';
-import { OutputPanel } from '../../components/panels/output-panel/output-panel';
-import { ProblemsPanel } from '../../components/panels/problems-panel/problems-panel';
-import { SolutionPanel } from '../../components/panels/solution-panel/solution-panel';
-import { TerminalPanel } from '../../components/panels/terminal-panel/terminal-panel';
-import { TreePanel } from '../../components/panels/tree-panel/tree-panel';
-import { Icon } from '@shared/angular/icons/icon';
+import { inject, Service } from '@angular/core';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
 
@@ -21,17 +14,14 @@ export class DockPanelRegistry {
   private readonly panels: Map<string, DockPanel> = new Map<string, DockPanel>();
 
   /**
-   * Initialises the registry from the host-supplied blueprint's panels, or the built-in workspace
-   * catalogue when no blueprint was provided.
+   * Initialises the registry from the host-supplied blueprint's panels. Every dock-hosting tab
+   * provides a {@link DockBlueprint} (the workspace and source-control tabs each supply their own), so
+   * the registry names no panel of its own; document panels are registered dynamically as they open.
    */
   public constructor() {
     const blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
-    if (blueprint !== null) {
-      for (const panel of blueprint.panels) {
-        this.register(panel);
-      }
-    } else {
-      this.seed();
+    for (const panel of blueprint?.panels ?? []) {
+      this.register(panel);
     }
   }
 
@@ -59,44 +49,5 @@ export class DockPanelRegistry {
    */
   public has(id: string): boolean {
     return this.panels.has(id);
-  }
-
-  /**
-   * Seeds the catalogue of built-in IDE tool panels. Documents are registered dynamically as files
-   * open into the well.
-   */
-  private seed(): void {
-    const tool: (id: string, title: string, icon: Icon, component: Type<unknown>) => void = (
-      id: string,
-      title: string,
-      icon: Icon,
-      component: Type<unknown>,
-    ): void => this.register({ id, title, icon, role: 'tool', component });
-
-    // The File Explorer renders its own tool strip (search and tree actions) just like the Solution
-    // Explorer, so it opts out of the shared default strip.
-    this.register({
-      id: 'files',
-      title: 'File Explorer',
-      icon: Icon.FILE_EXPLORER,
-      role: 'tool',
-      component: TreePanel,
-      ownsToolStrip: true,
-    });
-    // The Solution Explorer is catalogued but not in the seeded layout: the directory view adds it to
-    // the layout only when the open root has a recognised project system, and removes it otherwise. It
-    // renders its own tool strip (search and tree actions), so it opts out of the shared default strip.
-    this.register({
-      id: 'solution',
-      title: 'Solution Explorer',
-      icon: Icon.SOLUTION_EXPLORER,
-      role: 'tool',
-      component: SolutionPanel,
-      ownsToolStrip: true,
-    });
-    tool('agent', 'Agent', Icon.AGENT, AgentPanel);
-    tool('output', 'Output', Icon.OUTPUT, OutputPanel);
-    tool('errors', 'Error List', Icon.PROBLEMS, ProblemsPanel);
-    tool('terminal', 'Terminal', Icon.TERMINAL, TerminalPanel);
   }
 }

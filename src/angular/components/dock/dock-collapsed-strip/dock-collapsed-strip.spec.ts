@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock/dock-test-blueprint';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
 import { StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
@@ -27,6 +29,7 @@ describe('DockCollapsedStrip', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DockCollapsedStrip],
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: TEST_DOCK_BLUEPRINT }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DockCollapsedStrip);

@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { DOCK_BLUEPRINT } from './dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from './dock-test-blueprint';
 import { DockFloating, FloatWindow } from './dock-floating';
 import { Rect } from './dock-legality';
 import { StackNode } from './dock-node';
@@ -11,7 +13,9 @@ describe('DockFloating', () => {
   const rect: Rect = { left: 100, top: 100, width: 360, height: 240 };
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: TEST_DOCK_BLUEPRINT }],
+    });
     floating = TestBed.inject(DockFloating);
     state = TestBed.inject(DockState);
   });

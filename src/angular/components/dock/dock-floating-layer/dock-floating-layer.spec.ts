@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock/dock-test-blueprint';
 import { DockFloating } from '../../../services/dock/dock-floating';
 import { DockFloatingLayer } from './dock-floating-layer';
 
@@ -10,6 +12,7 @@ describe('DockFloatingLayer', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DockFloatingLayer],
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: TEST_DOCK_BLUEPRINT }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DockFloatingLayer);

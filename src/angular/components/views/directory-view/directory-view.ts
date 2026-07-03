@@ -24,6 +24,7 @@ import { DockFloating } from '../../../services/dock/dock-floating';
 import { DockFocus } from '../../../services/dock/dock-focus';
 import { DockGeometry } from '../../../services/dock/dock-geometry';
 import { StackNode } from '../../../services/dock/dock-node';
+import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
 import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
 import { DockState } from '../../../services/dock/dock-state';
 import { DockTabContext } from '../../../services/dock/dock-tab-context';
@@ -47,6 +48,7 @@ import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { CommitDetail } from '../source-control-view/panels/commit-detail/commit-detail';
 import { DockContainer } from '../../dock/dock-container/dock-container';
+import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 
 /**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
@@ -82,6 +84,7 @@ import { DockContainer } from '../../dock/dock-container/dock-container';
     DockFloating,
     DockAutoHide,
     DockDrag,
+    { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
   ],
 })
 export class DirectoryView implements OnInit, OnDestroy {

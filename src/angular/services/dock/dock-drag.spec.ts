@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { DOCK_BLUEPRINT } from './dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from './dock-test-blueprint';
 import { DockDrag } from './dock-drag';
 import { DockPanel } from './dock-panel';
 
@@ -6,7 +8,9 @@ describe('DockDrag', () => {
   let drag: DockDrag;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: TEST_DOCK_BLUEPRINT }],
+    });
     drag = TestBed.inject(DockDrag);
   });
 
