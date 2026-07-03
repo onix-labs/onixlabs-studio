@@ -10,13 +10,10 @@ import type {
   AiRunRequest,
   AiVerifyResult,
 } from '../shared/ai-types';
+import { AppChannel } from '@shared/api/app-channels';
+import type { DisplayStartup, HostEnv } from '@shared/api/host';
 import { IpcChannel } from '@shared/ipc-channels';
-import type {
-  GitRunResult,
-  GpuRenderingInfo,
-  RepositoryInfo,
-  StudioApi,
-} from '../shared/studio-api';
+import type { GitRunResult, RepositoryInfo, StudioApi } from '../shared/studio-api';
 
 /**
  * Holds the display startup state read synchronously from the main process, before the first paint,
@@ -24,29 +21,23 @@ import type {
  * process resolved these from the active GPU and the persisted startup preferences by the time this
  * preload runs.
  */
-const displayStartup: { gpuRendering: GpuRenderingInfo; hardwareAccelerationEnabled: boolean } =
-  ipcRenderer.sendSync(IpcChannel.AppGetDisplayStartup) as {
-    gpuRendering: GpuRenderingInfo;
-    hardwareAccelerationEnabled: boolean;
-  };
+const displayStartup: DisplayStartup = ipcRenderer.sendSync(
+  AppChannel.GetDisplayStartup,
+) as DisplayStartup;
+
+/**
+ * Specifies the static host facts exposed to the renderer under `window.host`: values needed
+ * synchronously at startup that cannot travel over the async `window.bridge`.
+ */
+const host: HostEnv = {
+  platform: process.platform,
+  display: displayStartup,
+};
 
 /**
  * Specifies the concrete API exposed to the renderer under `window.studio`.
  */
 const studioApi: StudioApi = {
-  versions: {
-    node: (): string => process.versions.node,
-    chrome: (): string => process.versions.chrome,
-    electron: (): string => process.versions.electron,
-  },
-  platform: process.platform,
-  display: {
-    gpuRendering: displayStartup.gpuRendering,
-    hardwareAccelerationEnabled: displayStartup.hardwareAccelerationEnabled,
-    setHardwareAcceleration: (enabled: boolean): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.AppSetHardwareAcceleration, enabled) as Promise<void>,
-    relaunch: (): void => ipcRenderer.send(IpcChannel.AppRelaunch),
-  },
   sourceControl: {
     openRepository: (): Promise<RepositoryInfo | null> =>
       ipcRenderer.invoke(IpcChannel.SourceControlOpenRepository) as Promise<RepositoryInfo | null>,
@@ -143,6 +134,7 @@ const studioApi: StudioApi = {
 };
 
 contextBridge.exposeInMainWorld('studio', studioApi);
+contextBridge.exposeInMainWorld('host', host);
 
 /**
  * Specifies the generic renderer↔main transport exposed to the renderer under `window.bridge`. Unlike

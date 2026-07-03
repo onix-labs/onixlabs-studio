@@ -1,15 +1,14 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { WindowChannel } from '@shared/api/window-channels';
-import { StudioApi } from '@shared/studio-api';
 
 /**
  * Represents the renderer-side wrapper around the app-shell chrome: window controls and the host
  * platform. Window operations are driven over the generic {@link Bridge} transport (`window.bridge`);
- * `platform` is still read from the legacy `window.studio` (it migrates with the display slice).
+ * `platform` is read from the static {@link Window.host} object.
  *
  * When the application runs outside Electron (served as a plain web app or under unit tests) the
- * bridge is absent and the window operations become no-ops.
+ * bridge and host are absent and the window operations become no-ops.
  */
 @Service()
 export class Studio {
@@ -19,15 +18,9 @@ export class Studio {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Holds the legacy Studio bridge, or undefined when running outside Electron. Retained only for
-   * {@link platform} until the display/host slice moves it off `window.studio`.
-   */
-  private readonly api: StudioApi | undefined = window.studio;
-
-  /**
    * Gets the operating system platform, or 'browser' when running outside Electron.
    */
-  public readonly platform: string = this.api?.platform ?? 'browser';
+  public readonly platform: string = window.host?.platform ?? 'browser';
 
   /**
    * Gets a value indicating whether custom window controls should be shown. They are shown on

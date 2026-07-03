@@ -11,7 +11,7 @@ import { Root } from './components/root/root';
  * @returns Returns true when corners and decorative effects should be reduced.
  */
 function shouldReduceEffects(): boolean {
-  const recommend: boolean = window.studio?.display?.gpuRendering?.recommendReducedEffects ?? false;
+  const recommend: boolean = window.host?.display?.gpuRendering?.recommendReducedEffects ?? false;
   try {
     const raw: string | null = localStorage.getItem('settings');
     const choice: unknown = raw
@@ -36,7 +36,7 @@ function shouldReduceEffects(): boolean {
 // backdrop. When reduced, corners fall back to plain rounded rectangles
 // (`:root[data-corners='round']` in styles/_variables.scss) and the heavy decorative effects are
 // softened (`:host-context([data-reduced-gpu])` in welcome-screen.scss). No-op outside Electron,
-// where `window.studio` is undefined and no override is persisted.
+// where `window.host` is undefined and no override is persisted.
 if (shouldReduceEffects()) {
   const root: HTMLElement = document.documentElement;
   root.setAttribute('data-corners', 'round');

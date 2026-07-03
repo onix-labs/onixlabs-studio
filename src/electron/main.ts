@@ -11,7 +11,6 @@ import {
   WindowOpenHandlerResponse,
 } from 'electron';
 import * as path from 'node:path';
-import { IpcChannel } from '@shared/ipc-channels';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
@@ -366,7 +365,7 @@ class Program {
       this.resolveClose(proceed === true);
     });
 
-    ipcMain.on(IpcChannel.AppGetDisplayStartup, (event: IpcMainEvent): void => {
+    ipcMain.on(AppChannel.GetDisplayStartup, (event: IpcMainEvent): void => {
       // Synchronous: both values were resolved before the window (and thus this preload) was created.
       event.returnValue = {
         gpuRendering: this.gpuRendering,
@@ -375,7 +374,7 @@ class Program {
     });
 
     ipcMain.handle(
-      IpcChannel.AppSetHardwareAcceleration,
+      AppChannel.SetHardwareAcceleration,
       (_event: IpcMainInvokeEvent, enabled: unknown): void => {
         if (typeof enabled !== 'boolean') {
           return;
@@ -384,7 +383,7 @@ class Program {
       },
     );
 
-    ipcMain.on(IpcChannel.AppRelaunch, (): void => {
+    ipcMain.on(AppChannel.Relaunch, (): void => {
       // Relaunch then quit through the normal close path, so the renderer's unsaved-work confirmation
       // still runs before the process exits.
       app.relaunch();

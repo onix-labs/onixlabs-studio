@@ -15,4 +15,22 @@ export enum AppChannel {
    * The renderer tells the main process whether the window may close (renderer→main, send).
    */
   ConfirmClose = 'app:confirm-close',
+
+  /**
+   * Synchronously reports the display startup snapshot (the GPU rendering recommendation and whether
+   * hardware acceleration is enabled), read once by the preload before the first paint to build
+   * `window.host`. This is the one `sendSync` channel; it is not reached over the async {@link Bridge}.
+   */
+  GetDisplayStartup = 'app:get-display-startup',
+
+  /**
+   * Persists the GPU hardware-acceleration preference; takes effect after the next relaunch, since
+   * hardware acceleration can only be toggled before the app is ready (invoke).
+   */
+  SetHardwareAcceleration = 'app:set-hardware-acceleration',
+
+  /**
+   * Relaunches the application so a startup-only preference change can take effect (send).
+   */
+  Relaunch = 'app:relaunch',
 }

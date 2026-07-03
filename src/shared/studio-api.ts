@@ -6,80 +6,6 @@
 import type { AiApi } from './ai-types';
 
 /**
- * Defines the runtime version information exposed to the renderer process.
- */
-export interface RuntimeVersions {
-  /**
-   * Gets the Node.js version the application is running on.
-   * @returns Returns the Node.js version string.
-   */
-  node(): string;
-
-  /**
-   * Gets the Chromium version the application is running on.
-   * @returns Returns the Chromium version string.
-   */
-  chrome(): string;
-
-  /**
-   * Gets the Electron version the application is running on.
-   * @returns Returns the Electron version string.
-   */
-  electron(): string;
-}
-
-/**
- * Describes the GPU-derived rendering recommendation resolved by the main process at startup. The
- * renderer uses it to seed (and explain) the "modern UI features" setting when that setting is left
- * on its automatic mode.
- */
-export interface GpuRenderingInfo {
-  /**
-   * Gets a value indicating whether the active GPU is flagged as likely to render the heavier visual
-   * effects poorly, so the renderer should fall back to plain rounded corners and reduced decorative
-   * effects. Some GPUs (notably the Intel UHD 630) corrupt the GPU-rasterized squircle corner masks.
-   */
-  readonly recommendReducedEffects: boolean;
-
-  /**
-   * Gets a human-readable description of the active GPU (for example, its OpenGL renderer string),
-   * shown in the settings hint. Empty when the GPU could not be identified.
-   */
-  readonly description: string;
-}
-
-/**
- * Defines the display and GPU-rendering operations exposed to the renderer process. Combines the
- * read-only startup state (resolved before the first paint) with the operations needed to change
- * the startup-only hardware-acceleration preference.
- */
-export interface DisplayApi {
-  /**
-   * Gets the GPU-derived rendering recommendation resolved at startup.
-   */
-  readonly gpuRendering: GpuRenderingInfo;
-
-  /**
-   * Gets a value indicating whether GPU hardware acceleration is currently enabled. Reflects the
-   * persisted preference applied at this launch; a change made via
-   * {@link DisplayApi.setHardwareAcceleration} only takes effect after a relaunch.
-   */
-  readonly hardwareAccelerationEnabled: boolean;
-
-  /**
-   * Persists the GPU hardware-acceleration preference. The change takes effect after the next
-   * relaunch, since hardware acceleration can only be toggled before the app is ready.
-   * @param enabled Whether hardware acceleration should be enabled on the next launch.
-   */
-  setHardwareAcceleration(enabled: boolean): Promise<void>;
-
-  /**
-   * Relaunches the application so a startup-only preference change can take effect.
-   */
-  relaunch(): void;
-}
-
-/**
  * Defines the minimal, sandboxed API surface exposed to the renderer process via
  * the context bridge. This is the only channel through which the renderer reaches
  * privileged capability.
@@ -272,23 +198,6 @@ export interface SourceControlApi {
 }
 
 export interface StudioApi {
-  /**
-   * Gets the runtime version information for the host process.
-   */
-  readonly versions: RuntimeVersions;
-
-  /**
-   * Gets the operating system platform the application is running on (the Node.js
-   * `process.platform` value, such as `darwin`, `win32`, or `linux`).
-   */
-  readonly platform: string;
-
-  /**
-   * Gets the display and GPU-rendering operations, including the startup rendering recommendation
-   * and the hardware-acceleration preference.
-   */
-  readonly display: DisplayApi;
-
   /**
    * Gets the AI-agent authentication and verification operations for the application.
    */
