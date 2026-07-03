@@ -4,12 +4,6 @@
       <ng-container
         *ngComponentOutlet="view; inputs: { tabId: tab.id, isActive: tab.id === activeTabId() }"
       />
-    } @else {
-      @switch (tab.type) {
-        @case ('directory') {
-          <app-directory-view [tabId]="tab.id" [isActive]="tab.id === activeTabId()" />
-        }
-      }
     }
   </div>
 }

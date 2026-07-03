@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { DirectoryRibbon } from '@features/workspace/angular/directory-ribbon/directory-ribbon';
 
 /**
  * Represents the contextual ribbon strip, whose content depends on the active tab type. The
@@ -11,7 +10,7 @@ import { DirectoryRibbon } from '@features/workspace/angular/directory-ribbon/di
  */
 @Component({
   selector: 'app-ribbon-strip-container',
-  imports: [NgComponentOutlet, DirectoryRibbon],
+  imports: [NgComponentOutlet],
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

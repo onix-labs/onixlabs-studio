@@ -15,6 +15,7 @@ import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feat
 import { provideRepositoryFeature } from '@features/repository/angular/repository.feature';
 import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
+import { provideWorkspaceFeature } from '@features/workspace/angular/workspace.feature';
 
 /**
  * Defines the application-wide Angular providers.
@@ -49,6 +50,8 @@ export const config: ApplicationConfig = {
     provideMarkdownFeature(),
     // Stand up the repository feature: register its source-control view + ribbon with the shell.
     provideRepositoryFeature(),
+    // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.
+    provideWorkspaceFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close

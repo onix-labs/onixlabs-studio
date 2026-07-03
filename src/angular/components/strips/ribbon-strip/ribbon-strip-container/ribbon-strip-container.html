@@ -1,9 +1,3 @@
 @if (registry.ribbonFor(activeType()); as ribbon) {
   <div class="ribbon"><ng-container *ngComponentOutlet="ribbon" /></div>
-} @else {
-  @switch (activeType()) {
-    @case ('directory') {
-      <div class="ribbon"><app-directory-ribbon /></div>
-    }
-  }
 }

@@ -4,7 +4,6 @@ import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';
-import { DirectoryView } from '@features/workspace/angular/directory-view/directory-view';
 
 /**
  * Represents the content area that hosts the view for every open tab.
@@ -14,7 +13,7 @@ import { DirectoryView } from '@features/workspace/angular/directory-view/direct
  */
 @Component({
   selector: 'app-content-host',
-  imports: [NgComponentOutlet, DirectoryView, DocumentConflictModal],
+  imports: [NgComponentOutlet, DocumentConflictModal],
   templateUrl: './content-host.html',
   styleUrl: './content-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
