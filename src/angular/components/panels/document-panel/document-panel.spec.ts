@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { StackNode } from '../../../services/dock/dock-node';
-import { DockState } from '../../../services/dock/dock-state';
-import { firstStackOfRole } from '../../../services/dock/dock-tree';
+import { DockPanel } from '@shared/angular/services/dock/dock-panel';
+import { StackNode } from '@shared/angular/services/dock/dock-node';
+import { DockState } from '@shared/angular/services/dock/dock-state';
+import { firstStackOfRole } from '@shared/angular/services/dock/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileInfo } from '@shared/api/file-channels';
 import { Icon } from '@shared/angular/icons/icon';

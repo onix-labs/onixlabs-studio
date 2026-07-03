@@ -18,17 +18,17 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
-import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
-import { DockDrag } from '../../../services/dock/dock-drag';
-import { DockFloating } from '../../../services/dock/dock-floating';
-import { DockFocus } from '../../../services/dock/dock-focus';
-import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { StackNode } from '../../../services/dock/dock-node';
-import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
-import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
-import { DockState } from '../../../services/dock/dock-state';
-import { DockTabContext } from '../../../services/dock/dock-tab-context';
-import { collectPanelIds, findStackOfPanel } from '../../../services/dock/dock-tree';
+import { DockAutoHide } from '@shared/angular/services/dock/dock-auto-hide';
+import { DockDrag } from '@shared/angular/services/dock/dock-drag';
+import { DockFloating } from '@shared/angular/services/dock/dock-floating';
+import { DockFocus } from '@shared/angular/services/dock/dock-focus';
+import { DockGeometry } from '@shared/angular/services/dock/dock-geometry';
+import { StackNode } from '@shared/angular/services/dock/dock-node';
+import { DOCK_BLUEPRINT } from '@shared/angular/services/dock/dock-blueprint';
+import { DockPanelRegistry } from '@shared/angular/services/dock/dock-panel-registry';
+import { DockState } from '@shared/angular/services/dock/dock-state';
+import { DockTabContext } from '@shared/angular/services/dock/dock-tab-context';
+import { collectPanelIds, findStackOfPanel } from '@shared/angular/services/dock/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -47,7 +47,7 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Workspaces } from '../../../services/workspaces/workspaces';
 import { CommitDetail } from '../source-control-view/panels/commit-detail/commit-detail';
-import { DockContainer } from '../../dock/dock-container/dock-container';
+import { DockContainer } from '@shared/angular/components/dock/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 
 /**

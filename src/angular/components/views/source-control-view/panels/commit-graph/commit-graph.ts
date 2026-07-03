@@ -9,7 +9,7 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { DockPanel } from '../../../../../services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock/dock-panel';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { GitRef, GraphNode } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';

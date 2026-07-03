@@ -10,7 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockPanel } from '../../../../../services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
   GitBranch,

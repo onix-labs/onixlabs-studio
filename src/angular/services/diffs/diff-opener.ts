@@ -1,11 +1,11 @@
 import { inject, Service } from '@angular/core';
 import { DiffDocumentPanel } from '../../components/views/source-control-view/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockFocus } from '../dock/dock-focus';
-import { DockPanelRegistry } from '../dock/dock-panel-registry';
-import { DockState } from '../dock/dock-state';
-import { StackNode } from '../dock/dock-node';
-import { firstStackOfRole } from '../dock/dock-tree';
+import { DockFocus } from '@shared/angular/services/dock/dock-focus';
+import { DockPanelRegistry } from '@shared/angular/services/dock/dock-panel-registry';
+import { DockState } from '@shared/angular/services/dock/dock-state';
+import { StackNode } from '@shared/angular/services/dock/dock-node';
+import { firstStackOfRole } from '@shared/angular/services/dock/dock-tree';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { FileDiff } from '@shared/angular/services/source-control/source-control-provider';

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
-import { DockPanel } from '../../../services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock/dock-panel';
 import {
   Diagnostic,
   DiagnosticSeverity,

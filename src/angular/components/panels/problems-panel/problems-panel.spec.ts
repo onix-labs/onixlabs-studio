@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DockPanel } from '../../../services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock/dock-panel';
 import {
   Diagnostic,
   Diagnostics,
