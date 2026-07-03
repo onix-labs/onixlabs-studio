@@ -4,7 +4,6 @@ import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DirectoryRibbon } from '../ribbons/directory-ribbon/directory-ribbon';
-import { SourceControlRibbon } from '@features/repository/angular/source-control-ribbon/source-control-ribbon';
 
 /**
  * Represents the contextual ribbon strip, whose content depends on the active tab type. The
@@ -12,7 +11,7 @@ import { SourceControlRibbon } from '@features/repository/angular/source-control
  */
 @Component({
   selector: 'app-ribbon-strip-container',
-  imports: [NgComponentOutlet, DirectoryRibbon, SourceControlRibbon],
+  imports: [NgComponentOutlet, DirectoryRibbon],
   templateUrl: './ribbon-strip-container.html',
   styleUrl: './ribbon-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

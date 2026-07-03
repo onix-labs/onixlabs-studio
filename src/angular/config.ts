@@ -12,6 +12,7 @@ import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
+import { provideRepositoryFeature } from '@features/repository/angular/repository.feature';
 import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
 
@@ -46,6 +47,8 @@ export const config: ApplicationConfig = {
     provideCodeFeature(),
     // Stand up the markdown feature: register its tab view, ribbon, and the lean document-well panel.
     provideMarkdownFeature(),
+    // Stand up the repository feature: register its source-control view + ribbon with the shell.
+    provideRepositoryFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close

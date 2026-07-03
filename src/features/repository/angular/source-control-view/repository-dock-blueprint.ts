@@ -43,6 +43,12 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
     },
     { id: 'commit', title: 'Commit', icon: Icon.LIST_ALL, role: 'tool', component: CommitDetail },
     { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: AgentPanel },
-    { id: 'terminal', title: 'Terminal', icon: Icon.TERMINAL, role: 'tool', component: TerminalPanel },
+    {
+      id: 'terminal',
+      title: 'Terminal',
+      icon: Icon.TERMINAL,
+      role: 'tool',
+      component: TerminalPanel,
+    },
   ],
 };
