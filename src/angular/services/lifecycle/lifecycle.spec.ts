@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 
+import { AppChannel } from '@shared/api/app-channels';
+import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
-import type { AppApi } from '../../../shared/studio-api';
 import { Documents, UnsavedDocument } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Lifecycle } from './lifecycle';
@@ -25,21 +26,26 @@ describe('Lifecycle', () => {
   }
 
   /**
-   * Installs the lifecycle bridge on `window.studio.app` and the service's dependencies, then injects
-   * the service so it subscribes to close requests.
+   * Installs a stub transport on `window.bridge` routing the app-lifecycle channels, and the service's
+   * dependencies, then injects the service so it subscribes to close requests.
    * @returns Returns the injected service.
    */
   function create(): Lifecycle {
-    const api: AppApi = {
-      onRequestClose: (listener: () => void): (() => void) => {
-        requestClose = listener;
+    const bridge: Bridge = {
+      invoke: <T>(): Promise<T> => Promise.resolve(undefined as T),
+      send: (channel: string, ...args: unknown[]): void => {
+        if (channel === (AppChannel.ConfirmClose as string)) {
+          respondedWith.push(args[0] as boolean);
+        }
+      },
+      on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+        if (channel === (AppChannel.RequestClose as string)) {
+          requestClose = listener;
+        }
         return (): void => undefined;
       },
-      respondClose: (proceed: boolean): void => {
-        respondedWith.push(proceed);
-      },
     };
-    (globalThis as unknown as { studio: { app: AppApi } }).studio = { app: api };
+    (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
 
     const documentsStub: Pick<Documents, 'dirtyDocuments' | 'save'> = {
       dirtyDocuments: (): readonly UnsavedDocument[] => dirty,
@@ -71,7 +77,7 @@ describe('Lifecycle', () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as { studio?: unknown }).studio;
+    delete (globalThis as unknown as { bridge?: unknown }).bridge;
   });
 
   it('requestClose_whenNoUnsavedChanges_proceeds', async () => {

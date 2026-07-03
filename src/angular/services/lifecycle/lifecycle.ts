@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
+import { AppChannel } from '@shared/api/app-channels';
+import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
-import type { AppApi } from '../../../shared/studio-api';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 
@@ -14,9 +15,9 @@ import { FileSystem } from '@shared/angular/services/file-system/file-system';
 @Service()
 export class Lifecycle {
   /**
-   * Holds the application-lifecycle bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: AppApi | undefined = window.studio?.app;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the documents service tracking unsaved changes.
@@ -32,7 +33,7 @@ export class Lifecycle {
    * Initializes a new instance of the {@link Lifecycle} class, subscribing to close requests.
    */
   public constructor() {
-    this.api?.onRequestClose((): void => {
+    this.bridge?.on(AppChannel.RequestClose, (): void => {
       void this.onRequestClose();
     });
   }
@@ -43,7 +44,7 @@ export class Lifecycle {
    */
   private async onRequestClose(): Promise<void> {
     const proceed: boolean = await this.confirmUnsavedChanges();
-    this.api?.respondClose(proceed);
+    this.bridge?.send(AppChannel.ConfirmClose, proceed);
   }
 
   /**

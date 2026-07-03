@@ -47,22 +47,6 @@ const studioApi: StudioApi = {
       ipcRenderer.invoke(IpcChannel.AppSetHardwareAcceleration, enabled) as Promise<void>,
     relaunch: (): void => ipcRenderer.send(IpcChannel.AppRelaunch),
   },
-  windowControls: {
-    minimize: (): void => ipcRenderer.send(IpcChannel.WindowMinimize),
-    toggleMaximize: (): void => ipcRenderer.send(IpcChannel.WindowToggleMaximize),
-    close: (): void => ipcRenderer.send(IpcChannel.WindowClose),
-    setMovable: (movable: boolean): void => ipcRenderer.send(IpcChannel.WindowSetMovable, movable),
-  },
-  app: {
-    onRequestClose: (listener: () => void): (() => void) => {
-      const handler: (event: IpcRendererEvent) => void = (): void => listener();
-      ipcRenderer.on(IpcChannel.AppRequestClose, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.AppRequestClose, handler);
-      };
-    },
-    respondClose: (proceed: boolean): void => ipcRenderer.send(IpcChannel.AppConfirmClose, proceed),
-  },
   sourceControl: {
     openRepository: (): Promise<RepositoryInfo | null> =>
       ipcRenderer.invoke(IpcChannel.SourceControlOpenRepository) as Promise<RepositoryInfo | null>,

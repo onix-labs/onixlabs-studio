@@ -29,51 +29,6 @@ export interface RuntimeVersions {
 }
 
 /**
- * Defines the window control operations exposed to the renderer process.
- */
-export interface WindowControlsApi {
-  /**
-   * Minimizes the application window.
-   */
-  minimize(): void;
-
-  /**
-   * Toggles the application window between its maximized and restored states.
-   */
-  toggleMaximize(): void;
-
-  /**
-   * Closes the application window.
-   */
-  close(): void;
-
-  /**
-   * Sets whether the application window may be moved by dragging its draggable regions.
-   * @param movable True to allow the window to be moved; false to lock it in place.
-   */
-  setMovable(movable: boolean): void;
-}
-
-/**
- * Defines the application-lifecycle operations exposed to the renderer process.
- */
-export interface AppApi {
-  /**
-   * Subscribes to the main process's request to close the window, giving the renderer a chance to
-   * confirm or save unsaved work. The handler must eventually answer with {@link respondClose}.
-   * @param listener Invoked when the main process wants to close the window.
-   * @returns Returns a function that removes the listener.
-   */
-  onRequestClose(listener: () => void): () => void;
-
-  /**
-   * Tells the main process whether the window may close.
-   * @param proceed True to allow the window to close; false to keep it open.
-   */
-  respondClose(proceed: boolean): void;
-}
-
-/**
  * Describes the GPU-derived rendering recommendation resolved by the main process at startup. The
  * renderer uses it to seed (and explain) the "modern UI features" setting when that setting is left
  * on its automatic mode.
@@ -333,16 +288,6 @@ export interface StudioApi {
    * and the hardware-acceleration preference.
    */
   readonly display: DisplayApi;
-
-  /**
-   * Gets the window control operations for the application window.
-   */
-  readonly windowControls: WindowControlsApi;
-
-  /**
-   * Gets the application-lifecycle operations for the application.
-   */
-  readonly app: AppApi;
 
   /**
    * Gets the AI-agent authentication and verification operations for the application.

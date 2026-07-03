@@ -7,36 +7,6 @@
  */
 export enum IpcChannel {
   /**
-   * Requests that the application window be minimized.
-   */
-  WindowMinimize = 'window:minimize',
-
-  /**
-   * Requests that the application window toggle between its maximized and restored states.
-   */
-  WindowToggleMaximize = 'window:toggle-maximize',
-
-  /**
-   * Requests that the application window be closed.
-   */
-  WindowClose = 'window:close',
-
-  /**
-   * Sets whether the application window may be moved by dragging its draggable regions.
-   */
-  WindowSetMovable = 'window:set-movable',
-
-  /**
-   * Asks the renderer to confirm/save unsaved work before the window closes (main to renderer).
-   */
-  AppRequestClose = 'app:request-close',
-
-  /**
-   * Carries the renderer's decision on whether the window may close (renderer to main).
-   */
-  AppConfirmClose = 'app:confirm-close',
-
-  /**
    * Synchronously reports the display startup state: the GPU-derived rendering recommendation (used
    * to seed the "modern UI features" setting and its hint) and whether GPU hardware acceleration is
    * currently enabled. Read once at startup, before the first paint.

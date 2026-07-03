@@ -12,7 +12,9 @@ import {
 } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '@shared/ipc-channels';
+import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
+import { WindowChannel } from '@shared/api/window-channels';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { FileManager } from '@shared/electron/file-manager';
@@ -331,11 +333,11 @@ class Program {
    * resolves the window from the request sender so it always acts on the requesting window.
    */
   private registerIpcHandlers(): void {
-    ipcMain.on(IpcChannel.WindowMinimize, (event: IpcMainEvent): void => {
+    ipcMain.on(WindowChannel.Minimize, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.minimize();
     });
 
-    ipcMain.on(IpcChannel.WindowToggleMaximize, (event: IpcMainEvent): void => {
+    ipcMain.on(WindowChannel.ToggleMaximize, (event: IpcMainEvent): void => {
       const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
       if (targetWindow === null) {
         return;
@@ -348,11 +350,11 @@ class Program {
       }
     });
 
-    ipcMain.on(IpcChannel.WindowClose, (event: IpcMainEvent): void => {
+    ipcMain.on(WindowChannel.Close, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
 
-    ipcMain.on(IpcChannel.WindowSetMovable, (event: IpcMainEvent, movable: unknown): void => {
+    ipcMain.on(WindowChannel.SetMovable, (event: IpcMainEvent, movable: unknown): void => {
       if (typeof movable !== 'boolean') {
         return;
       }
@@ -360,7 +362,7 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
 
-    ipcMain.on(IpcChannel.AppConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
+    ipcMain.on(AppChannel.ConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);
     });
 
@@ -658,7 +660,7 @@ class Program {
         clearTimeout(timer);
         resolve(proceed);
       };
-      window.webContents.send(IpcChannel.AppRequestClose);
+      window.webContents.send(AppChannel.RequestClose);
     });
   }
 
