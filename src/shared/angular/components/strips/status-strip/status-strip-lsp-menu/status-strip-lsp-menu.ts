@@ -5,6 +5,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { LspServer, LspServerState, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 
 /**
  * Summarises the language servers of the active workspace for the status strip's trigger button.
@@ -93,9 +94,7 @@ export class StatusStripLspMenu {
   /**
    * Gets the position that opens the menu upward from the trigger, its left edges aligned.
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = [
-    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
-  ];
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-start'];
 
   /**
    * Restarts a server through the registry, which tears its session down and re-opens its documents.

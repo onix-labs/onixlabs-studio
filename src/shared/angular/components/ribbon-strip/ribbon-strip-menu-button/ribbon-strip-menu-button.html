@@ -12,27 +12,11 @@
     type="button"
     class="ribbon-menu-button__menu"
     [disabled]="disabled()"
-    [cdkMenuTriggerFor]="menu"
-    [cdkMenuPosition]="menuPosition"
+    [cdkMenuTriggerFor]="menu.panel() ?? null"
+    [cdkMenuPosition]="menu.position()"
   >
     <app-icon [icon]="Icon.CARET_DOWN" [size]="0.75" />
   </button>
 </div>
 
-<ng-template #menu>
-  <div class="dock-panel-menu" cdkMenu>
-    @for (item of items(); track item.id) {
-      <button
-        type="button"
-        class="dock-panel-menu__item"
-        cdkMenuItem
-        (cdkMenuItemTriggered)="onSelect(item.id)"
-      >
-        @if (item.icon; as icon) {
-          <app-icon [icon]="icon" />
-        }
-        <span>{{ item.label }}</span>
-      </button>
-    }
-  </div>
-</ng-template>
+<app-menu #menu [items]="items()" placement="down-start" (selected)="onSelect($event)" />

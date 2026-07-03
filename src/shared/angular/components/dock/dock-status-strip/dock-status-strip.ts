@@ -1,8 +1,8 @@
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import {
@@ -19,7 +19,7 @@ import {
  */
 @Component({
   selector: 'app-dock-status-strip',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [AppIcon, CdkMenuTrigger, Menu],
   templateUrl: './dock-status-strip.html',
   styleUrl: './dock-status-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -66,22 +66,23 @@ export class DockStatusStrip {
   protected readonly zoom: Signal<number> = this.editorZoom.percent;
 
   /**
-   * Gets the selectable zoom levels, as percentages.
+   * Gets the selectable zoom levels as menu items, the current level marked active.
    */
-  protected readonly zoomLevels: readonly number[] = this.editorZoom.levels;
+  protected readonly zoomItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+    this.editorZoom.levels.map(
+      (level: number): MenuItem => ({
+        id: String(level),
+        label: `${level}%`,
+        active: level === this.zoom(),
+      }),
+    ),
+  );
 
   /**
-   * Gets the position that opens the zoom menu upward from its trigger, right edges aligned.
+   * Sets the global editor zoom to the chosen level.
+   * @param id The chosen zoom level's id, a percentage.
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = [
-    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
-  ];
-
-  /**
-   * Sets the global editor zoom to the given level.
-   * @param percent The zoom level, as a percentage.
-   */
-  protected setZoom(percent: number): void {
-    this.editorZoom.set(percent);
+  protected setZoom(id: string): void {
+    this.editorZoom.set(Number(id));
   }
 }

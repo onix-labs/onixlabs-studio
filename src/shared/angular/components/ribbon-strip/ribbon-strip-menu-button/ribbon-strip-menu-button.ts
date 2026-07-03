@@ -1,5 +1,4 @@
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -9,6 +8,7 @@ import {
   OutputEmitterRef,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu } from '@shared/angular/components/menu/menu';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -38,7 +38,7 @@ export interface RibbonMenuItem {
  */
 @Component({
   selector: 'app-ribbon-strip-menu-button',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [AppIcon, CdkMenuTrigger, Menu],
   templateUrl: './ribbon-strip-menu-button.html',
   styleUrl: './ribbon-strip-menu-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -79,13 +79,6 @@ export class RibbonStripMenuButton {
    * Emits the {@link RibbonMenuItem.id} of the chosen dropdown item.
    */
   public readonly selected: OutputEmitterRef<string> = output<string>();
-
-  /**
-   * Gets the position that opens the dropdown downward from the chevron, their left edges aligned.
-   */
-  protected readonly menuPosition: readonly ConnectedPosition[] = [
-    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
-  ];
 
   /**
    * Handles a click on the primary action, emitting the {@link action} event.

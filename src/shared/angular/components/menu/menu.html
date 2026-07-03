@@ -1,0 +1,19 @@
+<ng-template #panel>
+  <div class="app-menu-panel" cdkMenu>
+    @for (item of items(); track item.id) {
+      <button
+        type="button"
+        class="app-menu-panel__item"
+        [class.app-menu-panel__item--active]="item.active ?? false"
+        cdkMenuItem
+        [cdkMenuItemDisabled]="item.disabled ?? false"
+        (cdkMenuItemTriggered)="onSelect(item.id)"
+      >
+        @if (item.icon; as icon) {
+          <app-icon [icon]="icon" />
+        }
+        <span class="app-menu-panel__item-label">{{ item.label }}</span>
+      </button>
+    }
+  </div>
+</ng-template>

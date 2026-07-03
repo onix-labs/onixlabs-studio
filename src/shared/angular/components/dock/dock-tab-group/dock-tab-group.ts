@@ -1,6 +1,5 @@
 import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -29,6 +28,7 @@ import { DockSide, StackNode } from '../../../services/dock/dock-node';
 import { DockState } from '../../../services/dock/dock-state';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
 import { DockTool, DockToolStrip } from '../dock-tool-strip/dock-tool-strip';
@@ -54,8 +54,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     CdkDropList,
     CdkDrag,
     CdkMenuTrigger,
-    CdkMenu,
-    CdkMenuItem,
+    Menu,
     AppIcon,
   ],
   templateUrl: './dock-tab-group.html',
@@ -165,11 +164,14 @@ export class DockTabGroup {
   );
 
   /**
-   * Gets the document picker menu position, anchoring the menu's right edge below the button.
+   * Gets the panels held by the stack as document-picker menu items.
    */
-  protected readonly documentMenuPosition: readonly ConnectedPosition[] = [
-    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
-  ];
+  protected readonly documentItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] =>
+      this.panels().map(
+        (panel: DockPanel): MenuItem => ({ id: panel.id, label: panel.title, icon: panel.icon }),
+      ),
+  );
 
   /**
    * Gets the stubbed tools shown in a document well's tool strip, distinct from the default panel

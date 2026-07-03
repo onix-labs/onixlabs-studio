@@ -1,5 +1,4 @@
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
-import { ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,6 +9,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 
 /**
  * The shared explorer tool strip rendered at the top of the Solution Explorer and File Explorer panel
@@ -19,7 +19,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
  */
 @Component({
   selector: 'app-explorer-toolbar',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [AppIcon, CdkMenuTrigger, Menu],
   templateUrl: './explorer-toolbar.html',
   styleUrl: './explorer-toolbar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -56,10 +56,10 @@ export class ExplorerToolbar {
   public readonly collapseAll: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Gets the more-actions menu position, anchoring the menu's right edge below the button.
+   * Gets the more-actions menu items. No actions are wired yet, so it shows an inert placeholder.
    */
-  protected readonly moreMenuPosition: readonly ConnectedPosition[] = [
-    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+  protected readonly moreItems: readonly MenuItem[] = [
+    { id: 'none', label: 'No actions yet', disabled: true },
   ];
 
   /**

@@ -6,6 +6,7 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 
 /**
  * Pairs a category heading with the open tabs that fall under it, for the grouped tab menu.
@@ -88,9 +89,7 @@ export class TitleStripTabMenu {
   /**
    * Gets the position that opens the menu below the trigger with their right edges aligned.
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = [
-    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
-  ];
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['down-end'];
 
   /**
    * Activates the given tab, bringing it into view in the tab strip.

@@ -31,23 +31,12 @@
       class="explorer-toolbar__button"
       title="More Actions"
       aria-label="More Actions"
-      [cdkMenuTriggerFor]="moreMenu"
-      [cdkMenuPosition]="moreMenuPosition"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
     >
       <app-icon [icon]="Icon.DOTS_THREE" />
     </button>
   </div>
 </div>
 
-<ng-template #moreMenu>
-  <div class="dock-panel-menu" cdkMenu>
-    <button
-      type="button"
-      class="dock-panel-menu__item dock-panel-menu__item--muted"
-      cdkMenuItem
-      cdkMenuItemDisabled
-    >
-      <span>No actions yet</span>
-    </button>
-  </div>
-</ng-template>
+<app-menu #moreMenu [items]="moreItems" placement="down-end" />

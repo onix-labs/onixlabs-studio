@@ -107,28 +107,19 @@
           class="dock-tab-group__menu-button"
           title="Documents"
           aria-label="Documents"
-          [cdkMenuTriggerFor]="documentMenu"
-          [cdkMenuPosition]="documentMenuPosition"
+          [cdkMenuTriggerFor]="documentMenu.panel() ?? null"
+          [cdkMenuPosition]="documentMenu.position()"
         >
           <app-icon [icon]="Icon.CARET_DOWN" />
         </button>
       </div>
 
-      <ng-template #documentMenu>
-        <div class="dock-panel-menu" cdkMenu>
-          @for (panel of panels(); track panel.id) {
-            <button
-              type="button"
-              class="dock-panel-menu__item"
-              cdkMenuItem
-              (cdkMenuItemTriggered)="activate(panel.id)"
-            >
-              <app-icon [icon]="panel.icon" />
-              <span>{{ panel.title }}</span>
-            </button>
-          }
-        </div>
-      </ng-template>
+      <app-menu
+        #documentMenu
+        [items]="documentItems()"
+        placement="down-end"
+        (selected)="activate($event)"
+      />
     }
   </div>
 
