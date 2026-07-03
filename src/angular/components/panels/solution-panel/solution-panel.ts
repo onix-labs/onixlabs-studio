@@ -14,8 +14,8 @@ import { SolutionModel, SolutionRow } from '../../../services/project/solution-m
 import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Icon } from '@shared/angular/icons/icon';
-import { ExplorerToolbar } from '../../shared/explorer-toolbar/explorer-toolbar';
-import { HighlightedText } from '../../shared/highlighted-text/highlighted-text';
+import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
+import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
