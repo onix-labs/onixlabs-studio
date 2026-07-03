@@ -269,19 +269,33 @@ each feature folder is independently deletable; the app builds and runs througho
 > 14 cone files' relative `../shared/…` were converted to `@shared/…`. Verified by a full-app CDP boot
 > smoke (app renders, `window.bridge`/`window.host` live, relocated ai + git handlers wire up).
 > **`src/` is now `{ angular, features, shared }`.**
-> **Recommended next: the renderer feature relocation — the last stretch to the §1 end state
-> (`src/` = `features/` + `shared/` only).** `src/angular/` still holds the two unmigrated tab features
-> (`repository`/source-control, then `workspace`/directory — do them in that order, they own the dock +
-> the most cross-feature glue) plus the residual `src/angular/services` + `src/angular/components` that
-> belong under `shared/angular` or a feature. Follow the proven feature recipe (§9 Step 3): gate-check
-> the cone → move foreign kitchen deps to `shared` → sever cross-feature embeds → relocate to
-> `features/<f>/{angular,electron,api}` → `<f>.feature.ts` + one `config.ts` line → delete its `@case`.
-> When `src/angular/` empties, the refactor is done.
-> **Reference:** `window.host` (chrome slice) is the static-data counterpart to `window.bridge`
-> (preload-exposed, `shared/api/host.ts`, for pre-first-paint values). `ai-types.ts` deliberately stayed
-> in `src/shared/` (30 importers); a later cosmetic move under `shared/api` is optional. Working state:
-> **clean, all green (6 baseline fails; ~9 pre-existing prettier warnings, none introduced), fully pushed
-> to `origin/feature/arch-refactor`.**
+> **NOW IN PROGRESS: the renderer feature relocation — the last stretch to the §1 end state
+> (`src/` = `features/` + `shared/` only).** Two unmigrated tab features remain in `src/angular/`:
+> `repository`/source-control, then `workspace`/directory (that order — they own the dock + the most
+> cross-feature glue). **REPOSITORY is being relocated in staged prerequisites (see §12 for the full
+> scope):**
+>
+> - **Step 1 DONE** — promoted the git-capability layer (`repository/`, `repositories/`, `source-control/`
+>   git-provider layer) to `shared/angular/services`. Clean; consumed by workspace + shell + welcome too.
+> - **Step 2 NEXT — the dock promotion + seam #2 (the real blocker).** The SC view needs the dock (13
+>   services + 11 components + `file-opener` + the deferred `diffs/`), which is shared per §3 but
+>   `dock-panel-registry.seed()` hard-references 6 feature panels (**seam #2**). Good news: the
+>   `DOCK_BLUEPRINT` inversion already exists and the SC view already uses it — only **directory-view**
+>   still relies on `seed()`. Close it by giving directory-view a `WORKSPACE_DOCK_BLUEPRINT` (mirror the
+>   SC blueprint), delete `seed()` + its panel imports → the dock is panel-agnostic → move dock
+>   services/components + `file-opener` + `diffs/` to `shared`. (Panels stay in `src/angular`, now
+>   importing the shared dock — a legal `src/angular → @shared` edge.)
+> - **Step 3 — relocate the repository feature** (small once the dock is shared): `source-control-view/`
+>   (+ 5 panels + `repository-dock-blueprint`) + `source-control-ribbon/` + `source-control-commands/`
+>   → `features/repository/angular`; `repository.feature.ts` (`{ type:'source-control', view, ribbon }`)
+>   - one `config.ts` line; delete the two `@case ('source-control')` fallbacks (content-host.html +
+>     ribbon-strip-container.html). The SC cone does NOT reach into workspace — clean.
+>     Then `workspace` (last) becomes small since the dock + git layer are already shared.
+>     **Reference:** `window.host` (chrome slice) is the static-data counterpart to `window.bridge`
+>     (preload-exposed, `shared/api/host.ts`, for pre-first-paint values). `ai-types.ts` deliberately stayed
+>     in `src/shared/` (30 importers); a later cosmetic move under `shared/api` is optional. Working state:
+>     **clean, all green (6 baseline fails; ~9 pre-existing prettier warnings, none introduced), fully pushed
+>     to `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
@@ -761,3 +775,44 @@ markdown pass resolved both (registries stay feature-owned + a sanctioned bridge
 The commit messages on this branch are detailed and atomic — `git log -p` for any of the §10
 wrapper commits shows the exact before/after reasoning. Start a continuation by reading §10's "Next"
 list, then this section's relocation recipe.
+
+## 12. Repository feature relocation — scope (2026-07-03)
+
+Chosen approach: **staged, git-layer first** (user-selected). The repository feature is small and clean
+on its own, but it sits on shared kitchen not yet in `shared/`. Full scope, in dependency order:
+
+**The feature proper (moves in step 3):** `source-control-view/` (view + 5 panels: commit-detail,
+commit-graph, diff-document-panel, diff-view, source-control-sidebar + `repository-dock-blueprint`) +
+`source-control-ribbon/` + `source-control-commands/`. **Verified: the SC cone does NOT import anything
+from workspace** (no directory-view / workspaces / active-workspace / workspace-git / solution-model) —
+so no repository→workspace edge to sever. It already provides its own `REPOSITORY_DOCK_BLUEPRINT`.
+
+**Step 1 (DONE) — git-capability layer → `shared/angular/services`.** `repository/`, `repositories/`,
+`source-control/` (git-provider layer, merged into the existing shared `source-control/`). Genuinely
+shared: consumed by workspace (directory-view), the shell (`title-strip-button-list` open-repo), and
+welcome (`RepositoryOpener`), not just the SC tab. `diffs/` deferred to step 2 (its `diff-opener` needs
+the dock + the `DiffDocumentPanel` feature component).
+
+**Step 2 (NEXT) — the dock → `shared`, closing seam #2.** The SC view depends on the dock (`services/dock/`
+= 13 services, `components/dock/` = 11 components) + `file-opener/` + the deferred `diffs/`. The dock is
+shared per §3, but the promotion is blocked by **seam #2**: `dock-panel-registry.ts` `seed()` hard-imports
+6 feature panels (`agent`/`output`/`problems`/`solution`/`terminal`/`tree`). The inversion mechanism
+(`DOCK_BLUEPRINT` token) already exists and the SC view already uses it; only **directory-view** still
+relies on `seed()`. Plan: give directory-view a `WORKSPACE_DOCK_BLUEPRINT` (mirror the SC blueprint),
+delete `seed()` + its panel imports → the dock names no feature → move `services/dock/` + `components/dock/`
+
+- `file-opener/` + `diffs/` to `shared/angular`. The 6 panels **stay in `src/angular`** (workspace-owned),
+  now importing the shared dock (legal `src/angular → @shared`). NB `file-opener` also imports
+  `document-panel` + `Workspaces` (both still `src/angular`) — check whether it can promote cleanly or needs
+  those first. This is the heavy step and it touches the workspace side (the seam-#2 closure).
+
+**Step 3 — relocate the repository feature.** Move the SC cone → `features/repository/angular`; add
+`repository.feature.ts` = `provideRepositoryFeature()` with `{ type:'source-control', view:
+SourceControlView, ribbon: SourceControlRibbon }` (chrome defaults to ribbon+status shown); one
+`config.ts` line; delete `@case ('source-control')` from `content-host.html` + `ribbon-strip-container.html`
+(the registry `viewFor`/`ribbonFor` lookup already precedes the `@switch` fallback).
+
+After this, `workspace` (last) is small — the dock + git layer are already shared; it mainly needs the
+`WORKSPACE_DOCK_BLUEPRINT` (done in step 2) + relocating `directory-view` + its workspace-owned services
+(`workspaces`, `workspace-git`, `workspace-source-control-commands`, the workspace panels) to
+`features/workspace`.
