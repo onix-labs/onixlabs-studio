@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
-import { ProjectItems, ProjectModel } from '../../../shared/project-system';
+import { ProjectItems, ProjectModel } from '@shared/project-system';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 

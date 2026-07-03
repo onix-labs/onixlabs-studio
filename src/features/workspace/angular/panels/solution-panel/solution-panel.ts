@@ -10,9 +10,9 @@ import {
 import { ProjectModel } from '@shared/project-system';
 import { DockPanel } from '@shared/angular/services/dock/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';
+import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
-import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
-import { WorkspaceSourceControlCommands } from '../../../../../services/workspace-source-control-commands/workspace-source-control-commands';
+import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -29,7 +29,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripField,
   ],
   templateUrl: './directory-ribbon.html',
-  styleUrl: '../ribbon-row.scss',
+  styleUrl: './directory-ribbon.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DirectoryRibbon {

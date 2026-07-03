@@ -15,7 +15,7 @@ import {
   WorkspaceTreeNode,
   WorkspaceTreeRow,
 } from '@shared/angular/services/workspace/workspace';
-import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';

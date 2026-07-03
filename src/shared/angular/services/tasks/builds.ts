@@ -67,9 +67,9 @@ export interface BuildHandler {
  * Routes the root ribbon's build/run/test actions to the active workspace's build runner.
  *
  * Each workspace's {@link import('./build-runner').BuildRunner} registers as the handler while its
- * directory tab is active; the root {@link import('../../components/strips/ribbon-strip/ribbons/directory-ribbon/directory-ribbon').DirectoryRibbon}
- * reads the exposed signals and calls the action methods, which forward to the registered handler (or
- * do nothing when no workspace is active). This mirrors the editor-command seam.
+ * directory tab is active; the active workspace's ribbon reads the exposed signals and calls the
+ * action methods, which forward to the registered handler (or do nothing when no workspace is
+ * active). This mirrors the editor-command seam.
  */
 @Service()
 export class Builds {

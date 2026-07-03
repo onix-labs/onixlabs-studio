@@ -9,7 +9,7 @@ import {
   OnInit,
   untracked,
 } from '@angular/core';
-import { ProjectModel } from '../../../../shared/project-system';
+import { ProjectModel } from '@shared/project-system';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
@@ -32,19 +32,19 @@ import { collectPanelIds, findStackOfPanel } from '@shared/angular/services/dock
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
-import { SolutionModel } from '../../../services/project/solution-model';
+import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { Output } from '@shared/angular/services/output/output';
 import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
-} from '../../../services/workspace-source-control-commands/workspace-source-control-commands';
+} from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@features/repository/angular/source-control-view/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock/dock-container/dock-container';
