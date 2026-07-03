@@ -453,9 +453,10 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 5 slices DONE (terminal,
-  file/dialog, workspace/project, security, run/tasks); ~4 IPC domains REMAIN.** The enabler and the
-  pattern, proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 6 slices DONE (terminal,
+  file/dialog, workspace/project, security, run/tasks, lsp); 4 IPC domains REMAIN (sourceControl/git,
+  ai, shell, and the display/windowControls/app chrome cluster; plus static `versions`/`platform`).**
+  The enabler and the pattern, proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -524,8 +525,21 @@ changed` + `dialog:open-file/pick-image/save-file/confirm-save`, plus `FileInfo`
     members, `RunApi` + `TaskApi` + `TempFileResult` + both fields, 2 preload literals, `task-types.ts`.
     **CDP smoke:** `tasks:run` spawns a child and streams output + exit 0 over `window.bridge`;
     `run:write-temp-file` writes a temp file; `window.studio.run`/`tasks` gone.
-  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `lsp`,
-    `shell`+`display`/`window`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
+  - `refactor(lsp)` — the **language-server** slice, the largest. `git mv src/shared/lsp-types.ts →
+src/shared/api/lsp-channels.ts` (history preserved), added the `LspChannel` enum (8: start/stop/
+    notify/request/notification/server-exit/get/set-settings), dropped `LspApi`; repointed ~11
+    `lsp-types` importers. **All three renderer clients** rewired: `LspSettings` (get/set via `invoke`),
+    `LspFeatures` (request via `invoke`), `LspClient` (start/stop/get-settings via `invoke`, **notify via
+    `bridge.send`** — the first send-based domain client, onNotification/onExit via `bridge.on`). All
+    three specs' fakes rewritten (`FakeLsp implements Bridge`). `lsp-manager` + electron `lsp-settings`
+    **repointed in place** (kept in `src/electron/lsp/`) — `lsp-manager` depends on the deferred
+    `workspace-context`, so its cone rides §7. Deleted from the god trio: 8 `IpcChannel` members,
+    `LspApi` + field, preload literal, `lsp-types.ts` (renamed into the slice). **CDP smoke:**
+    `lsp:get/set-settings` round-trips over `window.bridge` (toggle java → reflected → restored); the
+    richer start/notify/onNotification/onExit paths are exercised by the passing `lsp-client.spec`
+    through the `FakeLsp` bridge; `window.studio.lsp` gone.
+  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `shell`,
+    `display`/`windowControls`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
     (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
     Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
