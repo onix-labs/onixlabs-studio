@@ -6,7 +6,7 @@ import {
   Diagnostics,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
-import { FileOpener } from '../../../services/file-opener/file-opener';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

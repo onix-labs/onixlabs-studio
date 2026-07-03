@@ -2,7 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ProjectModel } from '../../../../shared/project-system';
 import { DockPanel } from '@shared/angular/services/dock/dock-panel';
-import { FileOpener } from '../../../services/file-opener/file-opener';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '../../../services/project/solution-model';
 import { Icon } from '@shared/angular/icons/icon';
 import { SolutionPanel } from './solution-panel';

@@ -4,9 +4,8 @@ import { DirectoryListing } from '@shared/api/workspace-channels';
 /**
  * Bridges opening a directory to the workspace instance that hosts it. Each directory tab is its own
  * IDE instance with its own scoped state; when a folder is opened, its root listing is stashed here
- * under the new tab's id, and the tab's {@link import('../../components/views/directory-view/directory-view').DirectoryView}
- * consumes it once on init to seed its scoped workspace. This is the only global seam between the
- * shell and the per-instance workspaces.
+ * under the new tab's id, and the owning tab's view consumes it once on init to seed its scoped
+ * workspace. This is the only global seam between the shell and the per-instance workspaces.
  */
 @Service()
 export class Workspaces {

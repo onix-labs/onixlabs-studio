@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { FileOpener } from '../../services/file-opener/file-opener';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { RecentItem, RecentItems } from '../../services/recent-items/recent-items';
 import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { TabType } from '@shared/angular/services/tabs/tab';

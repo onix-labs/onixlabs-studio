@@ -8,7 +8,7 @@ import {
   Signal,
 } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock/dock-panel';
-import { FileOpener } from '../../../services/file-opener/file-opener';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import {
   Workspace,

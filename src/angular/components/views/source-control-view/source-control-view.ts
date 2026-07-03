@@ -25,7 +25,7 @@ import { DockTabContext } from '@shared/angular/services/dock/dock-tab-context';
 import { collectPanelIds } from '@shared/angular/services/dock/dock-tree';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
-import { FileOpener } from '../../../services/file-opener/file-opener';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Repositories } from '@shared/angular/services/repositories/repositories';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { GitBranch } from '@shared/angular/services/repository/repository-data';
