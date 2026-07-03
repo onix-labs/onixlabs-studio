@@ -2,8 +2,11 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { DiffOpener } from '../../../../../services/diffs/diff-opener';
-import { Repository } from '../../../../../services/repository/repository';
-import { GitChangeStatus, GitFileChange } from '../../../../../services/repository/repository-data';
+import { Repository } from '@shared/angular/services/repository/repository';
+import {
+  GitChangeStatus,
+  GitFileChange,
+} from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**

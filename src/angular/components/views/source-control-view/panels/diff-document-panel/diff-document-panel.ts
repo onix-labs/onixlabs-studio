@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { DockPanel } from '../../../../../services/dock/dock-panel';
 import { Diffs } from '../../../../../services/diffs/diffs';
-import { GitFileChange } from '../../../../../services/repository/repository-data';
+import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { DiffView } from '../diff-view/diff-view';
 
 /**

@@ -26,9 +26,9 @@ import { collectPanelIds } from '../../../services/dock/dock-tree';
 import { DiffOpener } from '../../../services/diffs/diff-opener';
 import { Diffs } from '../../../services/diffs/diffs';
 import { FileOpener } from '../../../services/file-opener/file-opener';
-import { Repositories } from '../../../services/repositories/repositories';
-import { Repository } from '../../../services/repository/repository';
-import { GitBranch } from '../../../services/repository/repository-data';
+import { Repositories } from '@shared/angular/services/repositories/repositories';
+import { Repository } from '@shared/angular/services/repository/repository';
+import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import {
   SourceControlCommandHandler,
   SourceControlCommands,

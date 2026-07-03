@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { GitFileChange } from '../repository/repository-data';
+import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Diffs } from './diffs';
 
 /**

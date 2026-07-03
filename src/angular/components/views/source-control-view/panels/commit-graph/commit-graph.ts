@@ -10,8 +10,8 @@ import {
   Signal,
 } from '@angular/core';
 import { DockPanel } from '../../../../../services/dock/dock-panel';
-import { Repository } from '../../../../../services/repository/repository';
-import { GitRef, GraphNode } from '../../../../../services/repository/repository-data';
+import { Repository } from '@shared/angular/services/repository/repository';
+import { GitRef, GraphNode } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 

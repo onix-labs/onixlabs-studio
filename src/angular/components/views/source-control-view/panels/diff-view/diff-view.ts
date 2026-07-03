@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { GitChangeStatus } from '../../../../../services/repository/repository-data';
+import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DiffEditor } from '@shared/angular/components/diff-editor/diff-editor';
 

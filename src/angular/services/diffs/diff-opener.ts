@@ -6,9 +6,9 @@ import { DockPanelRegistry } from '../dock/dock-panel-registry';
 import { DockState } from '../dock/dock-state';
 import { StackNode } from '../dock/dock-node';
 import { firstStackOfRole } from '../dock/dock-tree';
-import { GitFileChange } from '../repository/repository-data';
-import { Repository } from '../repository/repository';
-import { FileDiff } from '../source-control/source-control-provider';
+import { GitFileChange } from '@shared/angular/services/repository/repository-data';
+import { Repository } from '@shared/angular/services/repository/repository';
+import { FileDiff } from '@shared/angular/services/source-control/source-control-provider';
 import { Diffs } from './diffs';
 
 /**

@@ -1,10 +1,10 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import { GitChangeStatus } from '../repository/repository-data';
-import { ParsedStatus } from '../source-control/git-output';
-import { SourceControlProvider } from '../source-control/source-control-provider';
-import { SourceControlProviders } from '../source-control/source-control-providers';
+import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
+import { ParsedStatus } from '@shared/angular/services/source-control/git-output';
+import { SourceControlProvider } from '@shared/angular/services/source-control/source-control-provider';
+import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**

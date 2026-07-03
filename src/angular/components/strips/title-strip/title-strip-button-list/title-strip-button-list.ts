@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { FileOpener } from '../../../../services/file-opener/file-opener';
-import { RepositoryOpener } from '../../../../services/repositories/repository-opener';
+import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
 import { Tabs } from '@shared/angular/services/tabs/tabs';

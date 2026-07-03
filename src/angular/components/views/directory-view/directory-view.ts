@@ -33,8 +33,8 @@ import { FileOpener } from '../../../services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '../../../services/project/solution-model';
 import { Output } from '@shared/angular/services/output/output';
-import { RepositoryOpener } from '../../../services/repositories/repository-opener';
-import { Repository } from '../../../services/repository/repository';
+import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
+import { Repository } from '@shared/angular/services/repository/repository';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,

@@ -11,13 +11,13 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '../../../../../services/dock/dock-panel';
-import { Repository, WORKING_NODE_ID } from '../../../../../services/repository/repository';
+import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
   GitBranch,
   GitRemote,
   GitStash,
   GitTag,
-} from '../../../../../services/repository/repository-data';
+} from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TreeRow, TreeView } from '../../../../shared/tree-view/tree-view';
 
@@ -263,7 +263,12 @@ export class SourceControlSidebar {
         depth: 0,
         expandable: true,
         expanded: open,
-        data: { kind: 'section', icon: section.icon, label: section.label, sectionKey: section.key },
+        data: {
+          kind: 'section',
+          icon: section.icon,
+          label: section.label,
+          sectionKey: section.key,
+        },
       });
       if (open) {
         out.push(...section.children());

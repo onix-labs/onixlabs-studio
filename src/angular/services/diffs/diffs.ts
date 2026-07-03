@@ -1,5 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import { GitFileChange } from '../repository/repository-data';
+import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 
 /**
  * Holds the diffs currently open in the source-control document well, keyed by their dock panel id,

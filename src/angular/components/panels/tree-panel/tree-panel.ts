@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { DockPanel } from '../../../services/dock/dock-panel';
 import { FileOpener } from '../../../services/file-opener/file-opener';
-import { GitChangeStatus, statusLetter } from '../../../services/repository/repository-data';
+import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import {
   Workspace,
   WorkspaceTreeNode,
