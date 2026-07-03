@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { LspSettings as LspSettingsData } from '@shared/lsp-types';
+import { Bridge } from '@shared/api/bridge';
+import { LspChannel, LspSettings as LspSettingsData } from '@shared/api/lsp-channels';
 import { LspSettings } from './lsp-settings';
 
 describe('LspSettings', () => {
@@ -16,19 +17,27 @@ describe('LspSettings', () => {
       serverArgs: {},
     };
     setCalls = [];
-    const lsp: unknown = {
-      getSettings: (): Promise<LspSettingsData> => Promise.resolve(stored),
-      setSettings: (settings: LspSettingsData): Promise<LspSettingsData> => {
-        setCalls.push(settings);
-        stored = settings;
-        return Promise.resolve(settings);
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (LspChannel.GetSettings as string)) {
+          return Promise.resolve(stored as T);
+        }
+        if (channel === (LspChannel.SetSettings as string)) {
+          const settings: LspSettingsData = args[0] as LspSettingsData;
+          setCalls.push(settings);
+          stored = settings;
+          return Promise.resolve(settings as T);
+        }
+        return Promise.resolve(null as T);
       },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (window as unknown as { studio: { lsp: unknown } }).studio = { lsp };
+    (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('refresh_loadsDisabledServers', async () => {

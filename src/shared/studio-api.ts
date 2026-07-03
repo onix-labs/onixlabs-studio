@@ -4,7 +4,6 @@
 // DOM dependencies) so both compilation targets can import it.
 
 import type { AiApi } from './ai-types';
-import type { LspApi } from './lsp-types';
 
 /**
  * Defines the runtime version information exposed to the renderer process.
@@ -372,11 +371,6 @@ export interface StudioApi {
    * Gets the AI-agent authentication and verification operations for the application.
    */
   readonly ai: AiApi;
-
-  /**
-   * Gets the language-server (LSP) operations for the application.
-   */
-  readonly lsp: LspApi;
 
   /**
    * Gets the version-control (git) operations for the application.

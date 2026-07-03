@@ -1,12 +1,13 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { Bridge } from '@shared/api/bridge';
 import {
-  LspApi,
+  LspChannel,
   LspExit,
   LspMessage,
   LspSemanticTokensLegend,
   LspStartResult,
-} from '@shared/lsp-types';
+} from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
@@ -247,9 +248,9 @@ export class LspClient implements OnDestroy {
   private featuresDisposer: (() => void) | null = null;
 
   /**
-   * Holds the language-server bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: LspApi | undefined = window.studio?.lsp;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the tracked documents, keyed by their normalised file path.
@@ -315,7 +316,7 @@ export class LspClient implements OnDestroy {
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
-    if (this.api === undefined) {
+    if (this.bridge === undefined) {
       return;
     }
     this.diagnostics.register({
@@ -327,10 +328,13 @@ export class LspClient implements OnDestroy {
         };
       },
     });
-    this.notificationDisposer = this.api.onNotification((message: LspMessage): void =>
-      this.onNotification(message),
+    this.notificationDisposer = this.bridge.on(
+      LspChannel.Notification,
+      (...args: unknown[]): void => this.onNotification(args[0] as LspMessage),
     );
-    this.exitDisposer = this.api.onExit((exit: LspExit): void => this.onExit(exit));
+    this.exitDisposer = this.bridge.on(LspChannel.ServerExit, (...args: unknown[]): void =>
+      this.onExit(args[0] as LspExit),
+    );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
@@ -384,7 +388,7 @@ export class LspClient implements OnDestroy {
    * @param state The document's current state.
    */
   public syncDocument(state: LspDocumentState): void {
-    if (this.api === undefined || state.path === null) {
+    if (this.bridge === undefined || state.path === null) {
       return;
     }
     const serverId: string | undefined = LANGUAGE_SERVERS[state.languageId];
@@ -448,11 +452,11 @@ export class LspClient implements OnDestroy {
   public async restart(sessionId: string): Promise<void> {
     const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
       this.sessionInfo.get(sessionId);
-    if (this.api === undefined || !this.sessions.has(sessionId) || info === undefined) {
+    if (this.bridge === undefined || !this.sessions.has(sessionId) || info === undefined) {
       return;
     }
     this.status.setState(sessionId, 'starting');
-    await this.api.stop(sessionId);
+    await this.bridge.invoke(LspChannel.Stop, sessionId);
     this.sessions.delete(sessionId);
     this.legends.delete(sessionId);
     const documents: TrackedDocument[] = [...this.tracked.values()].filter(
@@ -489,7 +493,7 @@ export class LspClient implements OnDestroy {
    * @param rootPath The root the server is rooted at.
    */
   public prestartServer(serverId: string, rootPath: string): void {
-    if (this.api === undefined || this.lspSettings.isDisabled(serverId)) {
+    if (this.bridge === undefined || this.lspSettings.isDisabled(serverId)) {
       return;
     }
     const sessionId: string = `${rootPath}::${serverId}`;
@@ -523,7 +527,7 @@ export class LspClient implements OnDestroy {
     this.exitDisposer?.();
     this.featuresDisposer?.();
     for (const sessionId of this.sessions.keys()) {
-      void this.api?.stop(sessionId);
+      void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
     }
     this.sessions.clear();
@@ -549,7 +553,7 @@ export class LspClient implements OnDestroy {
    */
   private async open(tracked: TrackedDocument, content: string): Promise<void> {
     const sessionId: string | null = await this.ensureSession(tracked);
-    if (sessionId === null || this.api === undefined) {
+    if (sessionId === null || this.bridge === undefined) {
       return;
     }
     // The server is now the authority for this language: turn off Monaco's built-in worker
@@ -558,7 +562,7 @@ export class LspClient implements OnDestroy {
     this.suppressBuiltInDiagnostics(tracked.languageId);
     tracked.opened = true;
     tracked.text = content;
-    this.api.notify(sessionId, 'textDocument/didOpen', {
+    this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
       textDocument: {
         uri: tracked.uri,
         languageId: tracked.languageId,
@@ -619,14 +623,14 @@ export class LspClient implements OnDestroy {
       return;
     }
     const sessionId: string | null = await this.ensureSession(tracked);
-    if (sessionId === null || this.api === undefined) {
+    if (sessionId === null || this.bridge === undefined) {
       return;
     }
     tracked.version += 1;
     // Send the edit as a single change replacing the whole previous document with the new text. This
     // carries an explicit range, which servers advertising incremental sync require; a range-less
     // full-text change (valid only under full sync) crashes them.
-    this.api.notify(sessionId, 'textDocument/didChange', {
+    this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didChange', {
       textDocument: { uri: tracked.uri, version: tracked.version },
       contentChanges: [
         {
@@ -657,14 +661,14 @@ export class LspClient implements OnDestroy {
    * @returns Returns a promise that resolves once the close notification has been sent.
    */
   private async close(tracked: TrackedDocument): Promise<void> {
-    if (!tracked.opened || this.api === undefined) {
+    if (!tracked.opened || this.bridge === undefined) {
       return;
     }
     const sessionId: string | null = await this.ensureSession(tracked);
     if (sessionId === null) {
       return;
     }
-    this.api.notify(sessionId, 'textDocument/didClose', {
+    this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didClose', {
       textDocument: { uri: tracked.uri },
     });
   }
@@ -677,7 +681,7 @@ export class LspClient implements OnDestroy {
    * @returns Returns the session id when the server is running, or null when it failed to start.
    */
   private async ensureSession(tracked: TrackedDocument): Promise<string | null> {
-    if (this.api === undefined) {
+    if (this.bridge === undefined) {
       return null;
     }
     const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
@@ -711,7 +715,7 @@ export class LspClient implements OnDestroy {
     rootPath: string,
     standaloneFile?: string,
   ): Promise<boolean> {
-    if (this.api === undefined) {
+    if (this.bridge === undefined) {
       return Promise.resolve(false);
     }
     this.status.register(sessionId, {
@@ -720,8 +724,8 @@ export class LspClient implements OnDestroy {
       restart: (): void => void this.restart(sessionId),
     });
     this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
-    const pending: Promise<boolean> = this.api
-      .start({ sessionId, serverId, rootPath, standaloneFile })
+    const pending: Promise<boolean> = this.bridge
+      .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
           this.status.setState(sessionId, 'unavailable', result.error);

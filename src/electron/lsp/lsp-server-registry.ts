@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { LspServerId } from '../../shared/lsp-types';
+import { LspServerId } from '@shared/api/lsp-channels';
 import { ProjectModel } from '../../shared/project-system';
 import { projectSystems } from '../project-system/default-project-systems';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
@@ -277,8 +277,7 @@ export class LspServerRegistry {
       return unavailable('The C# language server could not be downloaded.');
     }
     const logDir: string = await this.provisioner.dataDirectory('roslyn', rootPath);
-    const model: ProjectModel | null =
-      (await projectSystems.get('dotnet')?.load(rootPath)) ?? null;
+    const model: ProjectModel | null = (await projectSystems.get('dotnet')?.load(rootPath)) ?? null;
     const postInitialize: readonly LspPostInitialize[] | undefined = this.csharpOpenPlan(model);
     const env: Record<string, string> = { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
     if (path.isAbsolute(dotnet)) {

@@ -1,8 +1,7 @@
 import { app, ipcMain, IpcMainInvokeEvent } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { IpcChannel } from '../../shared/ipc-channels';
-import { LspSettings } from '../../shared/lsp-types';
+import { LspChannel, LspSettings } from '@shared/api/lsp-channels';
 
 /**
  * Holds the default settings used before any have been stored.
@@ -33,9 +32,9 @@ export class LspSettingsManager {
    */
   public register(): void {
     this.settings = this.load();
-    ipcMain.handle(IpcChannel.LspGetSettings, (): LspSettings => this.settings);
+    ipcMain.handle(LspChannel.GetSettings, (): LspSettings => this.settings);
     ipcMain.handle(
-      IpcChannel.LspSetSettings,
+      LspChannel.SetSettings,
       (_event: IpcMainInvokeEvent, value: unknown): LspSettings => this.set(value),
     );
   }

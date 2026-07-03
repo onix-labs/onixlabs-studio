@@ -1,6 +1,53 @@
-// Shared Language Server Protocol types used between the Electron main process and the renderer.
+// Shared Language Server Protocol contract used between the Electron main process and the renderer.
 // Keep this module platform-neutral (no Node or DOM dependencies) so both compilation targets can
-// import it.
+// import it. The renderer's LSP clients and the main-process LSP manager name their channels from
+// here, over the generic `Bridge` transport (`window.bridge`); the main process owns each server's
+// lifecycle, so a hostile renderer can only reference servers by id, never spawn arbitrary processes.
+
+/**
+ * Names the Language Server Protocol IPC channels.
+ */
+export enum LspChannel {
+  /**
+   * Starts a language-server session, performing the initialize/initialized handshake (invoke).
+   */
+  Start = 'lsp:start',
+
+  /**
+   * Stops a language-server session, shutting the server down (invoke).
+   */
+  Stop = 'lsp:stop',
+
+  /**
+   * Sends an LSP notification to a session's server (renderer→main, send).
+   */
+  Notify = 'lsp:notify',
+
+  /**
+   * Sends an LSP request to a session's server and awaits its response (invoke).
+   */
+  Request = 'lsp:request',
+
+  /**
+   * Pushes an LSP notification from a session's server to the renderer (main→renderer, send).
+   */
+  Notification = 'lsp:notification',
+
+  /**
+   * Notifies the renderer that a server process exited (main→renderer, send).
+   */
+  ServerExit = 'lsp:server-exit',
+
+  /**
+   * Gets the user's language-server settings (invoke).
+   */
+  GetSettings = 'lsp:get-settings',
+
+  /**
+   * Stores the user's language-server settings (invoke).
+   */
+  SetSettings = 'lsp:set-settings',
+}
 
 /**
  * Identifies a language server known to the main-process registry (for example `typescript`). The
@@ -223,72 +270,4 @@ export interface LspSettings {
    * A server with no entry (or an empty array) starts with its default arguments only.
    */
   readonly serverArgs: Readonly<Record<string, readonly string[]>>;
-}
-
-/**
- * Specifies the language-server operations exposed to the renderer. The main process owns each
- * server's lifecycle (spawn, `initialize`, `shutdown`, crash handling); the renderer drives document
- * synchronisation and language features by forwarding LSP notifications and requests through this
- * surface.
- */
-export interface LspApi {
-  /**
-   * Starts a language-server session, performing the `initialize`/`initialized` handshake.
-   * @param request The session, server, and workspace root to start.
-   * @returns Returns the start outcome, including server capabilities on success.
-   */
-  start(request: LspStartRequest): Promise<LspStartResult>;
-
-  /**
-   * Stops a language-server session, shutting the server down and terminating its process.
-   * @param sessionId The session to stop.
-   * @returns Returns a promise that resolves once the stop request has been sent.
-   */
-  stop(sessionId: string): Promise<void>;
-
-  /**
-   * Sends an LSP notification to a session's server (for example `textDocument/didOpen`).
-   * @param sessionId The session whose server receives the notification.
-   * @param method The LSP method name.
-   * @param params The method parameters.
-   */
-  notify(sessionId: string, method: string, params?: unknown): void;
-
-  /**
-   * Sends an LSP request to a session's server and awaits its response (for example
-   * `textDocument/completion`).
-   * @param sessionId The session whose server receives the request.
-   * @param method The LSP method name.
-   * @param params The method parameters.
-   * @returns Returns the server's result, or rejects when the server reports an error.
-   */
-  request(sessionId: string, method: string, params?: unknown): Promise<unknown>;
-
-  /**
-   * Subscribes to LSP notifications pushed from any session's server (for example
-   * `textDocument/publishDiagnostics`).
-   * @param listener Receives each server notification.
-   * @returns Returns a function that unsubscribes the listener.
-   */
-  onNotification(listener: (message: LspMessage) => void): () => void;
-
-  /**
-   * Subscribes to server-process exits across all sessions.
-   * @param listener Receives each exit report.
-   * @returns Returns a function that unsubscribes the listener.
-   */
-  onExit(listener: (exit: LspExit) => void): () => void;
-
-  /**
-   * Gets the user's language-server settings.
-   * @returns Returns the current settings.
-   */
-  getSettings(): Promise<LspSettings>;
-
-  /**
-   * Stores the user's language-server settings.
-   * @param settings The settings to store.
-   * @returns Returns the stored settings.
-   */
-  setSettings(settings: LspSettings): Promise<LspSettings>;
 }

@@ -1,13 +1,12 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Bridge } from '@shared/api/bridge';
 import {
-  LspApi,
-  LspExit,
-  LspMessage,
+  LspChannel,
   LspSettings as LspSettingsData,
   LspStartRequest,
   LspStartResult,
-} from '@shared/lsp-types';
+} from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -17,62 +16,65 @@ import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings'
 import { LspServer, LspStatus } from './lsp-status';
 
 /**
- * A fake language-server bridge that records what the client sends and lets the test push server
- * notifications back.
+ * A fake transport that records what the client sends over the LSP channels and lets the test push
+ * server notifications and exits back through the captured listeners.
  */
-class FakeLsp implements LspApi {
+class FakeLsp implements Bridge {
   public readonly starts: LspStartRequest[] = [];
   public readonly notifications: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly stops: string[] = [];
   public startResult: LspStartResult = { success: true };
-  private notificationListener: ((message: LspMessage) => void) | null = null;
-  private exitListener: ((exit: LspExit) => void) | null = null;
+  private notificationListener: ((...args: unknown[]) => void) | null = null;
+  private exitListener: ((...args: unknown[]) => void) | null = null;
 
-  public start(request: LspStartRequest): Promise<LspStartResult> {
-    this.starts.push(request);
-    return Promise.resolve(this.startResult);
+  public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+    switch (channel) {
+      case LspChannel.Start as string:
+        this.starts.push(args[0] as LspStartRequest);
+        return Promise.resolve(this.startResult as T);
+      case LspChannel.Stop as string:
+        this.stops.push(args[0] as string);
+        return Promise.resolve(undefined as T);
+      case LspChannel.GetSettings as string:
+        return Promise.resolve({
+          disabledServers: [],
+          javaPath: null,
+          dotnetPath: null,
+          clangdPath: null,
+          typescriptServerPath: null,
+          serverArgs: {},
+        } as LspSettingsData as T);
+      case LspChannel.SetSettings as string:
+        return Promise.resolve(args[0] as T);
+      default:
+        return Promise.resolve(null as T);
+    }
   }
 
-  public stop(sessionId: string): Promise<void> {
-    this.stops.push(sessionId);
-    return Promise.resolve();
+  public send(channel: string, ...args: unknown[]): void {
+    if (channel === (LspChannel.Notify as string)) {
+      this.notifications.push({
+        sessionId: args[0] as string,
+        method: args[1] as string,
+        params: args[2],
+      });
+    }
   }
 
-  public notify(sessionId: string, method: string, params?: unknown): void {
-    this.notifications.push({ sessionId, method, params });
-  }
-
-  public request(): Promise<unknown> {
-    return Promise.resolve(null);
-  }
-
-  public onNotification(listener: (message: LspMessage) => void): () => void {
-    this.notificationListener = listener;
-    return (): void => {
-      this.notificationListener = null;
-    };
-  }
-
-  public onExit(listener: (exit: LspExit) => void): () => void {
-    this.exitListener = listener;
-    return (): void => {
-      this.exitListener = null;
-    };
-  }
-
-  public getSettings(): Promise<LspSettingsData> {
-    return Promise.resolve({
-      disabledServers: [],
-      javaPath: null,
-      dotnetPath: null,
-      clangdPath: null,
-      typescriptServerPath: null,
-      serverArgs: {},
-    });
-  }
-
-  public setSettings(settings: LspSettingsData): Promise<LspSettingsData> {
-    return Promise.resolve(settings);
+  public on(channel: string, listener: (...args: unknown[]) => void): () => void {
+    if (channel === (LspChannel.Notification as string)) {
+      this.notificationListener = listener;
+      return (): void => {
+        this.notificationListener = null;
+      };
+    }
+    if (channel === (LspChannel.ServerExit as string)) {
+      this.exitListener = listener;
+      return (): void => {
+        this.exitListener = null;
+      };
+    }
+    return (): void => undefined;
   }
 
   public publishDiagnostics(sessionId: string, uri: string, diagnostics: unknown[]): void {
@@ -168,11 +170,11 @@ describe('LspClient', () => {
     monaco = new FakeMonaco();
     disabledServers = new Set<string>();
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
-    (window as unknown as { studio: { lsp: LspApi } }).studio = { lsp };
+    (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   it('syncDocument_supportedFileInRoot_startsServerAndSendsDidOpen', async () => {

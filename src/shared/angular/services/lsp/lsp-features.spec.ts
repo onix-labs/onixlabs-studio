@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { LspSemanticTokensLegend } from '@shared/lsp-types';
+import { Bridge } from '@shared/api/bridge';
+import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { LspFeatures } from './lsp-features';
@@ -89,17 +90,23 @@ describe('LspFeatures', () => {
     responses = {};
     semanticLegend = null;
     suppressWhen = undefined;
-    const lsp: unknown = {
-      request: (sessionId: string, method: string, params: unknown): Promise<unknown> => {
-        requests.push({ sessionId, method, params });
-        return Promise.resolve(responses[method] ?? null);
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (LspChannel.Request as string)) {
+          const [sessionId, method, params] = args as [string, string, unknown];
+          requests.push({ sessionId, method, params });
+          return Promise.resolve((responses[method] ?? null) as T);
+        }
+        return Promise.resolve(null as T);
       },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (window as unknown as { studio: { lsp: unknown } }).studio = { lsp };
+    (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
   afterEach(() => {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
   /**

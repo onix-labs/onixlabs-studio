@@ -1,5 +1,6 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import { LspApi, LspSettings as LspSettingsData } from '@shared/lsp-types';
+import { Bridge } from '@shared/api/bridge';
+import { LspChannel, LspSettings as LspSettingsData } from '@shared/api/lsp-channels';
 
 /**
  * Holds the settings used before any have been loaded from the main process.
@@ -22,9 +23,9 @@ const DEFAULT_SETTINGS: LspSettingsData = {
 @Service()
 export class LspSettings {
   /**
-   * Holds the language-server bridge, or undefined when running outside Electron.
+   * Holds the generic transport, or undefined when running outside Electron.
    */
-  private readonly api: LspApi | undefined = window.studio?.lsp;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the latest known settings.
@@ -40,7 +41,7 @@ export class LspSettings {
   /**
    * Gets whether a real bridge is available (i.e. running in Electron).
    */
-  public readonly isAvailable: boolean = this.api !== undefined;
+  public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
    * Initializes the service, loading the settings from the main process.
@@ -54,7 +55,8 @@ export class LspSettings {
    * @returns Returns the loaded settings.
    */
   public async refresh(): Promise<LspSettingsData> {
-    const settings: LspSettingsData = (await this.api?.getSettings()) ?? this.current();
+    const settings: LspSettingsData =
+      (await this.bridge?.invoke<LspSettingsData>(LspChannel.GetSettings)) ?? this.current();
     this.current.set(settings);
     return settings;
   }
@@ -164,7 +166,8 @@ export class LspSettings {
    * @returns Returns a promise that resolves once the settings are stored.
    */
   private async store(next: LspSettingsData): Promise<void> {
-    const stored: LspSettingsData = (await this.api?.setSettings(next)) ?? next;
+    const stored: LspSettingsData =
+      (await this.bridge?.invoke<LspSettingsData>(LspChannel.SetSettings, next)) ?? next;
     this.current.set(stored);
   }
 }

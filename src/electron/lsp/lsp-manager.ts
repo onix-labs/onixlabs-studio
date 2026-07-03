@@ -14,15 +14,15 @@ import type {
   InitializeParams,
   InitializeResult,
 } from 'vscode-languageserver-protocol';
-import { IpcChannel } from '../../shared/ipc-channels';
 import {
+  LspChannel,
   LspExit,
   LspMessage,
   LspStartRequest,
   LspStartResult,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
-} from '../../shared/lsp-types';
+} from '@shared/api/lsp-channels';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
@@ -102,17 +102,17 @@ export class LspManager {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.LspStart,
+      LspChannel.Start,
       (_event: IpcMainInvokeEvent, request: unknown): Promise<LspStartResult> =>
         this.start(request),
     );
     ipcMain.handle(
-      IpcChannel.LspStop,
+      LspChannel.Stop,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
         typeof id === 'string' ? this.stop(id) : Promise.resolve(),
     );
     ipcMain.handle(
-      IpcChannel.LspRequest,
+      LspChannel.Request,
       (
         _event: IpcMainInvokeEvent,
         id: unknown,
@@ -121,7 +121,7 @@ export class LspManager {
       ): Promise<unknown> => this.request(id, method, params),
     );
     ipcMain.on(
-      IpcChannel.LspNotify,
+      LspChannel.Notify,
       (_event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
         this.notify(id, method, params),
     );
@@ -307,7 +307,7 @@ export class LspManager {
       return;
     }
     const exit: LspExit = { sessionId: id, code, signal: signal ?? null };
-    this.send(IpcChannel.LspServerExit, exit);
+    this.send(LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
 
@@ -363,7 +363,7 @@ export class LspManager {
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
     const message: LspMessage = { sessionId, method, params };
-    this.send(IpcChannel.LspNotification, message);
+    this.send(LspChannel.Notification, message);
   }
 
   /**
@@ -488,7 +488,7 @@ export class LspManager {
    * @param channel The IPC channel to send on.
    * @param payload The payload to send.
    */
-  private send(channel: IpcChannel, payload: unknown): void {
+  private send(channel: LspChannel, payload: unknown): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
       window.webContents.send(channel, payload);

@@ -121,46 +121,6 @@ export enum IpcChannel {
   AiPermissionReply = 'ai:permission-reply',
 
   /**
-   * Starts a language-server session and runs its initialize handshake.
-   */
-  LspStart = 'lsp:start',
-
-  /**
-   * Stops a language-server session and terminates its process.
-   */
-  LspStop = 'lsp:stop',
-
-  /**
-   * Sends an LSP notification from the renderer to a session's server.
-   */
-  LspNotify = 'lsp:notify',
-
-  /**
-   * Sends an LSP request from the renderer to a session's server and awaits its response.
-   */
-  LspRequest = 'lsp:request',
-
-  /**
-   * Carries an LSP notification from a session's server to the renderer.
-   */
-  LspNotification = 'lsp:notification',
-
-  /**
-   * Notifies the renderer that a session's server process has exited.
-   */
-  LspServerExit = 'lsp:server-exit',
-
-  /**
-   * Gets the user's language-server settings.
-   */
-  LspGetSettings = 'lsp:get-settings',
-
-  /**
-   * Stores the user's language-server settings.
-   */
-  LspSetSettings = 'lsp:set-settings',
-
-  /**
    * Shows an open-folder dialog and resolves the chosen folder's git repository root.
    */
   SourceControlOpenRepository = 'source-control:open-repository',

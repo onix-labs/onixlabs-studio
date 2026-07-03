@@ -1,11 +1,12 @@
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { Bridge } from '@shared/api/bridge';
 import {
-  LspApi,
+  LspChannel,
   LspSemanticTokensLegend,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
-} from '@shared/lsp-types';
+} from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 
@@ -166,9 +167,9 @@ export class LspFeatures {
   private readonly editors: Editors = inject(Editors);
 
   /**
-   * Holds the language-server bridge, or undefined outside Electron.
+   * Holds the generic transport, or undefined outside Electron.
    */
-  private readonly api: LspApi | undefined = window.studio?.lsp;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the registered document resolvers contributed by the workspace clients.
@@ -191,7 +192,7 @@ export class LspFeatures {
    * Initializes the service, registering the Monaco providers once Monaco has loaded.
    */
   public constructor() {
-    if (this.api === undefined) {
+    if (this.bridge === undefined) {
       return;
     }
     void this.monaco.ensureLoaded().then((): void => this.registerProviders());
@@ -300,7 +301,7 @@ export class LspFeatures {
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
     const ref: LspDocumentRef | null = this.resolve(model);
-    if (ref === null || this.api === undefined) {
+    if (ref === null || this.bridge === undefined) {
       return undefined;
     }
     const legend: LspSemanticTokensLegend | null | undefined = ref.semanticLegend;
@@ -309,9 +310,14 @@ export class LspFeatures {
     }
     let result: unknown;
     try {
-      result = await this.api.request(ref.sessionId, 'textDocument/semanticTokens/full', {
-        textDocument: { uri: ref.uri },
-      });
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/semanticTokens/full',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
     } catch {
       return undefined;
     }
@@ -500,7 +506,7 @@ export class LspFeatures {
     extra?: Record<string, unknown>,
   ): Promise<unknown> {
     const ref: LspDocumentRef | null = this.resolve(model);
-    if (ref === null || this.api === undefined) {
+    if (ref === null || this.bridge === undefined) {
       return null;
     }
     const params: Record<string, unknown> = {
@@ -509,7 +515,7 @@ export class LspFeatures {
       ...extra,
     };
     try {
-      return await this.api.request(ref.sessionId, method, params);
+      return await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, params);
     } catch {
       return null;
     }

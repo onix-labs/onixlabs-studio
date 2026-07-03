@@ -12,13 +12,6 @@ import type {
 } from '../shared/ai-types';
 import { IpcChannel } from '@shared/ipc-channels';
 import type {
-  LspExit,
-  LspMessage,
-  LspSettings,
-  LspStartRequest,
-  LspStartResult,
-} from '../shared/lsp-types';
-import type {
   GitRunResult,
   GpuRenderingInfo,
   RepositoryInfo,
@@ -168,40 +161,6 @@ const studioApi: StudioApi = {
     respondPermission: (reply: AiPermissionReply): void => {
       ipcRenderer.send(IpcChannel.AiPermissionReply, reply);
     },
-  },
-  lsp: {
-    start: (request: LspStartRequest): Promise<LspStartResult> =>
-      ipcRenderer.invoke(IpcChannel.LspStart, request) as Promise<LspStartResult>,
-    stop: (sessionId: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.LspStop, sessionId) as Promise<void>,
-    notify: (sessionId: string, method: string, params?: unknown): void =>
-      ipcRenderer.send(IpcChannel.LspNotify, sessionId, method, params),
-    request: (sessionId: string, method: string, params?: unknown): Promise<unknown> =>
-      ipcRenderer.invoke(IpcChannel.LspRequest, sessionId, method, params),
-    onNotification: (listener: (message: LspMessage) => void): (() => void) => {
-      const handler: (event: IpcRendererEvent, message: LspMessage) => void = (
-        _event: IpcRendererEvent,
-        message: LspMessage,
-      ): void => listener(message);
-      ipcRenderer.on(IpcChannel.LspNotification, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.LspNotification, handler);
-      };
-    },
-    onExit: (listener: (exit: LspExit) => void): (() => void) => {
-      const handler: (event: IpcRendererEvent, exit: LspExit) => void = (
-        _event: IpcRendererEvent,
-        exit: LspExit,
-      ): void => listener(exit);
-      ipcRenderer.on(IpcChannel.LspServerExit, handler);
-      return (): void => {
-        ipcRenderer.removeListener(IpcChannel.LspServerExit, handler);
-      };
-    },
-    getSettings: (): Promise<LspSettings> =>
-      ipcRenderer.invoke(IpcChannel.LspGetSettings) as Promise<LspSettings>,
-    setSettings: (settings: LspSettings): Promise<LspSettings> =>
-      ipcRenderer.invoke(IpcChannel.LspSetSettings, settings) as Promise<LspSettings>,
   },
 };
 
