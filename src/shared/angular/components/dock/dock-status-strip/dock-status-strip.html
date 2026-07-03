@@ -1,4 +1,4 @@
-<!-- Stubbed segments; handlers are intentionally absent until wired to the active document. -->
+<!-- Error/warning counts and zoom are stubbed; the document segments are fed by DocumentStatus. -->
 <div class="dock-status-strip__group">
   <button type="button" class="dock-status-strip__segment" title="Errors and warnings">
     <app-icon [icon]="Icon.ERROR" />
@@ -8,11 +8,19 @@
   </button>
 </div>
 <div class="dock-status-strip__group">
-  <button type="button" class="dock-status-strip__segment" title="Go to line and column">
-    Ln {{ line }}, Col {{ column }}
-  </button>
-  <button type="button" class="dock-status-strip__segment" title="Select encoding">
-    {{ encoding }}
-  </button>
+  @if (status(); as document) {
+    <button type="button" class="dock-status-strip__segment" title="Go to line and column">
+      Ln {{ document.line }}, Col {{ document.column }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Language mode">
+      {{ document.language }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
+      {{ document.eol }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Select encoding">
+      {{ document.encoding }}
+    </button>
+  }
   <button type="button" class="dock-status-strip__segment" title="Zoom level">{{ zoom }}%</button>
 </div>

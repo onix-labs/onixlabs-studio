@@ -1,11 +1,17 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import {
+  DocumentStatus,
+  DocumentStatusInfo,
+} from '@shared/angular/services/document-status/document-status';
 
 /**
  * Represents the status strip shown along the bottom of a document well. It summarises the active
- * document: the count of errors and warnings, the caret line and column, the file encoding and the
- * editor zoom level. The values are stubbed for now until they are wired to the active document.
+ * document: the count of errors and warnings, the caret line and column, the language mode, the
+ * end-of-line sequence, the encoding and the editor zoom level. The document-derived segments are fed
+ * by the active surface through the shared {@link DocumentStatus} service; the error/warning counts
+ * and zoom level remain stubbed until they are wired.
  */
 @Component({
   selector: 'app-dock-status-strip',
@@ -16,9 +22,19 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 })
 export class DockStatusStrip {
   /**
+   * Holds the source of the active document's status.
+   */
+  private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the active document's status, or null when no document is publishing.
+   */
+  protected readonly status: Signal<DocumentStatusInfo | null> = this.documentStatus.info;
 
   /**
    * Gets the stubbed number of errors found in the active document.
@@ -29,21 +45,6 @@ export class DockStatusStrip {
    * Gets the stubbed number of warnings found in the active document.
    */
   protected readonly warnings: number = 0;
-
-  /**
-   * Gets the stubbed caret line number.
-   */
-  protected readonly line: number = 1;
-
-  /**
-   * Gets the stubbed caret column number.
-   */
-  protected readonly column: number = 1;
-
-  /**
-   * Gets the stubbed document encoding.
-   */
-  protected readonly encoding: string = 'UTF-8 with BOM';
 
   /**
    * Gets the stubbed editor zoom level, as a percentage.
