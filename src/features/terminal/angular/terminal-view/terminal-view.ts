@@ -14,7 +14,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
-import { Studio } from '@shared/angular/services/studio/studio';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import {
@@ -74,9 +74,9 @@ export class TerminalView implements OnDestroy {
   private readonly terminalCommands: TerminalCommands = inject(TerminalCommands);
 
   /**
-   * Holds the Studio bridge used to open the working directory in the OS file manager.
+   * Holds the shell client used to open the working directory in the OS file manager.
    */
-  private readonly studio: Studio = inject(Studio);
+  private readonly shell: Shell = inject(Shell);
 
   /**
    * Holds the docked agent-panel state for terminal tabs.
@@ -312,7 +312,7 @@ export class TerminalView implements OnDestroy {
     }
     const cwd: string | null = await pane.getCwd();
     if (cwd !== null) {
-      await this.studio.openPath(cwd);
+      await this.shell.openPath(cwd);
     }
     pane.focus();
   }

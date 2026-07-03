@@ -12,6 +12,7 @@ import {
 } from 'electron';
 import * as path from 'node:path';
 import { IpcChannel } from '@shared/ipc-channels';
+import { ShellChannel } from '@shared/api/shell-channels';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { FileManager } from '@shared/electron/file-manager';
@@ -389,7 +390,7 @@ class Program {
     });
 
     ipcMain.handle(
-      IpcChannel.ShellOpenPath,
+      ShellChannel.OpenPath,
       (_event: IpcMainInvokeEvent, target: unknown): Promise<string> =>
         typeof target === 'string' && target.length > 0
           ? shell.openPath(target)
@@ -397,7 +398,7 @@ class Program {
     );
 
     ipcMain.handle(
-      IpcChannel.ShellOpenExternal,
+      ShellChannel.OpenExternal,
       (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
     );
 

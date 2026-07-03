@@ -54,13 +54,4 @@ export class Studio {
   public setWindowMovable(movable: boolean): void {
     this.api?.windowControls.setMovable(movable);
   }
-
-  /**
-   * Opens a file-system path in the operating system's default handler.
-   * @param path The absolute path to open.
-   * @returns Returns a promise that resolves when the request has been dispatched.
-   */
-  public openPath(path: string): Promise<void> {
-    return this.api?.shell.openPath(path) ?? Promise.resolve();
-  }
 }

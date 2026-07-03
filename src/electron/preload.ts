@@ -63,12 +63,6 @@ const studioApi: StudioApi = {
     },
     respondClose: (proceed: boolean): void => ipcRenderer.send(IpcChannel.AppConfirmClose, proceed),
   },
-  shell: {
-    openPath: (path: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.ShellOpenPath, path) as Promise<void>,
-    openExternal: (url: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url) as Promise<void>,
-  },
   sourceControl: {
     openRepository: (): Promise<RepositoryInfo | null> =>
       ipcRenderer.invoke(IpcChannel.SourceControlOpenRepository) as Promise<RepositoryInfo | null>,

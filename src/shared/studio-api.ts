@@ -74,24 +74,6 @@ export interface AppApi {
 }
 
 /**
- * Defines the operating-system shell operations exposed to the renderer process.
- */
-export interface ShellApi {
-  /**
-   * Opens a file-system path in the operating system's default handler (e.g. the file manager).
-   * @param path The absolute path to open.
-   */
-  openPath(path: string): Promise<void>;
-
-  /**
-   * Opens an external URL in the operating system's default browser. Only http, https, and mailto
-   * URLs are honoured; anything else is ignored.
-   * @param url The URL to open.
-   */
-  openExternal(url: string): Promise<void>;
-}
-
-/**
  * Describes the GPU-derived rendering recommendation resolved by the main process at startup. The
  * renderer uses it to seed (and explain) the "modern UI features" setting when that setting is left
  * on its automatic mode.
@@ -361,11 +343,6 @@ export interface StudioApi {
    * Gets the application-lifecycle operations for the application.
    */
   readonly app: AppApi;
-
-  /**
-   * Gets the operating-system shell operations for the application.
-   */
-  readonly shell: ShellApi;
 
   /**
    * Gets the AI-agent authentication and verification operations for the application.

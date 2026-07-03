@@ -56,16 +56,6 @@ export enum IpcChannel {
   AppRelaunch = 'app:relaunch',
 
   /**
-   * Requests that a file-system path be opened in the operating system's default handler.
-   */
-  ShellOpenPath = 'shell:open-path',
-
-  /**
-   * Requests that an external URL be opened in the operating system's default browser.
-   */
-  ShellOpenExternal = 'shell:open-external',
-
-  /**
    * Gets the agent's current authentication status.
    */
   AiAuthStatus = 'ai:auth-status',

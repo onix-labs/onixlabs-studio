@@ -14,6 +14,7 @@ import {
 import type { AgentSurface } from '@shared/ai-types';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -56,6 +57,11 @@ export class AgentChat {
    * Holds the tab registry, used to light this conversation's tab while it awaits a decision.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the shell client, used to open link clicks in the operating system's default browser.
+   */
+  private readonly shell: Shell = inject(Shell);
 
   /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
@@ -189,6 +195,6 @@ export class AgentChat {
       return;
     }
     event.preventDefault();
-    void window.studio?.shell?.openExternal(href);
+    void this.shell.openExternal(href);
   }
 }
