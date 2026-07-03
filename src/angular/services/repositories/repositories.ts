@@ -1,5 +1,5 @@
 import { Service } from '@angular/core';
-import { RepositoryInfo } from '../../../shared/studio-api';
+import { RepositoryInfo } from '@shared/api/source-control-channels';
 
 /**
  * Hands a newly-opened repository to its source-control tab. When a repository is opened, its

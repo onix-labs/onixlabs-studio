@@ -24,7 +24,7 @@ import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
-import { GitManager } from './git-manager';
+import { GitManager } from '@shared/electron/git-manager';
 import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { WorkspaceContext } from './workspace-context';

@@ -10,7 +10,8 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
-import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
+import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
 import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
@@ -91,7 +92,7 @@ export class SourceControlView implements OnInit, OnDestroy {
   /**
    * Holds the git bridge used to open a repository in place from the empty state.
    */
-  private readonly api: SourceControlApi | undefined = window.studio?.sourceControl;
+  private readonly api: SourceControlClient | undefined = inject(SourceControl).client;
 
   /**
    * Holds the repository model the panels render. Exposed for the template's empty-state guard.

@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
-import { RepositoryInfo, SourceControlApi } from '../../../shared/studio-api';
+import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Repositories } from './repositories';
@@ -15,7 +16,7 @@ export class RepositoryOpener {
   /**
    * Holds the git bridge, or undefined when running outside Electron.
    */
-  private readonly api: SourceControlApi | undefined = window.studio?.sourceControl;
+  private readonly api: SourceControlClient | undefined = inject(SourceControl).client;
 
   /**
    * Holds the top-level tab registry.

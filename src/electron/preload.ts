@@ -13,7 +13,7 @@ import type {
 import { AppChannel } from '@shared/api/app-channels';
 import type { DisplayStartup, HostEnv } from '@shared/api/host';
 import { IpcChannel } from '@shared/ipc-channels';
-import type { GitRunResult, RepositoryInfo, StudioApi } from '../shared/studio-api';
+import type { StudioApi } from '../shared/studio-api';
 
 /**
  * Holds the display startup state read synchronously from the main process, before the first paint,
@@ -38,57 +38,6 @@ const host: HostEnv = {
  * Specifies the concrete API exposed to the renderer under `window.studio`.
  */
 const studioApi: StudioApi = {
-  sourceControl: {
-    openRepository: (): Promise<RepositoryInfo | null> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlOpenRepository) as Promise<RepositoryInfo | null>,
-    resolveRepository: (directory: string): Promise<RepositoryInfo | null> =>
-      ipcRenderer.invoke(
-        IpcChannel.SourceControlResolveRepository,
-        directory,
-      ) as Promise<RepositoryInfo | null>,
-    closeRepository: (root: string): Promise<void> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlCloseRepository, root) as Promise<void>,
-    status: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlStatus, root) as Promise<GitRunResult>,
-    log: (root: string, limit: number): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlLog, root, limit) as Promise<GitRunResult>,
-    refs: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlRefs, root) as Promise<GitRunResult>,
-    stashes: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlStashes, root) as Promise<GitRunResult>,
-    commitFiles: (root: string, hash: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlCommitFiles, root, hash) as Promise<GitRunResult>,
-    readBlob: (root: string, revision: string, filePath: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.SourceControlReadBlob,
-        root,
-        revision,
-        filePath,
-      ) as Promise<GitRunResult>,
-    stage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlStage, root, paths) as Promise<GitRunResult>,
-    unstage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlUnstage, root, paths) as Promise<GitRunResult>,
-    commit: (root: string, message: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlCommit, root, message) as Promise<GitRunResult>,
-    stash: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlStash, root) as Promise<GitRunResult>,
-    checkout: (root: string, branch: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlCheckout, root, branch) as Promise<GitRunResult>,
-    createBranch: (root: string, name: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlCreateBranch, root, name) as Promise<GitRunResult>,
-    fetch: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlFetch, root) as Promise<GitRunResult>,
-    pull: (root: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(IpcChannel.SourceControlPull, root) as Promise<GitRunResult>,
-    push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
-      ipcRenderer.invoke(
-        IpcChannel.SourceControlPush,
-        root,
-        remote,
-        branch,
-      ) as Promise<GitRunResult>,
-  },
   ai: {
     getAuthStatus: (): Promise<AiAuthStatus> =>
       ipcRenderer.invoke(IpcChannel.AiAuthStatus) as Promise<AiAuthStatus>,

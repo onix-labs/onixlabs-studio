@@ -8,8 +8,7 @@ import {
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
 } from 'electron';
-import { IpcChannel } from '../shared/ipc-channels';
-import { GitRunResult, RepositoryInfo } from '../shared/studio-api';
+import { GitRunResult, RepositoryInfo, SourceControlChannel } from '../api/source-control-channels';
 
 /**
  * Holds the maximum time, in milliseconds, a single git invocation may run before being killed.
@@ -91,42 +90,42 @@ export class GitManager {
    */
   public register(): void {
     ipcMain.handle(
-      IpcChannel.SourceControlOpenRepository,
+      SourceControlChannel.OpenRepository,
       (): Promise<RepositoryInfo | null> => this.openRepository(),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlResolveRepository,
+      SourceControlChannel.ResolveRepository,
       (_event: IpcMainInvokeEvent, directory: unknown): Promise<RepositoryInfo | null> =>
         this.resolveRepository(directory),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlCloseRepository,
+      SourceControlChannel.CloseRepository,
       (_event: IpcMainInvokeEvent, root: unknown): void => this.closeRepository(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlStatus,
+      SourceControlChannel.Status,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.status(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlLog,
+      SourceControlChannel.Log,
       (_event: IpcMainInvokeEvent, root: unknown, limit: unknown): Promise<GitRunResult> =>
         this.log(root, limit),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlRefs,
+      SourceControlChannel.Refs,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.refs(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlStashes,
+      SourceControlChannel.Stashes,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stashes(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlCommitFiles,
+      SourceControlChannel.CommitFiles,
       (_event: IpcMainInvokeEvent, root: unknown, hash: unknown): Promise<GitRunResult> =>
         this.commitFiles(root, hash),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlReadBlob,
+      SourceControlChannel.ReadBlob,
       (
         _event: IpcMainInvokeEvent,
         root: unknown,
@@ -135,44 +134,44 @@ export class GitManager {
       ): Promise<GitRunResult> => this.readBlob(root, revision, filePath),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlStage,
+      SourceControlChannel.Stage,
       (_event: IpcMainInvokeEvent, root: unknown, paths: unknown): Promise<GitRunResult> =>
         this.stage(root, paths),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlUnstage,
+      SourceControlChannel.Unstage,
       (_event: IpcMainInvokeEvent, root: unknown, paths: unknown): Promise<GitRunResult> =>
         this.unstage(root, paths),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlCommit,
+      SourceControlChannel.Commit,
       (_event: IpcMainInvokeEvent, root: unknown, message: unknown): Promise<GitRunResult> =>
         this.commit(root, message),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlStash,
+      SourceControlChannel.Stash,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stash(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlCheckout,
+      SourceControlChannel.Checkout,
       (_event: IpcMainInvokeEvent, root: unknown, branch: unknown): Promise<GitRunResult> =>
         this.checkout(root, branch),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlCreateBranch,
+      SourceControlChannel.CreateBranch,
       (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
         this.createBranch(root, name),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlFetch,
+      SourceControlChannel.Fetch,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.fetch(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlPull,
+      SourceControlChannel.Pull,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.pull(root),
     );
     ipcMain.handle(
-      IpcChannel.SourceControlPush,
+      SourceControlChannel.Push,
       (
         _event: IpcMainInvokeEvent,
         root: unknown,

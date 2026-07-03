@@ -11,7 +11,8 @@ import {
 } from '@angular/core';
 import { ProjectModel } from '../../../../shared/project-system';
 import { DirectoryListing } from '@shared/api/workspace-channels';
-import { RepositoryInfo, SourceControlApi } from '../../../../shared/studio-api';
+import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
@@ -202,7 +203,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
    * {@link Repository}; undefined when running outside Electron.
    */
-  private readonly sourceControlApi: SourceControlApi | undefined = window.studio?.sourceControl;
+  private readonly sourceControlApi: SourceControlClient | undefined = inject(SourceControl).client;
 
   /**
    * Holds whether the reused commit panel has been registered with this tab's dock, so it is added at

@@ -1,5 +1,6 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { RepositoryInfo, SourceControlApi } from '../../../shared/studio-api';
+import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitChangeStatus } from '../repository/repository-data';
 import { ParsedStatus } from '../source-control/git-output';
 import { SourceControlProvider } from '../source-control/source-control-provider';
@@ -31,7 +32,7 @@ export class WorkspaceGit {
   /**
    * Holds the git bridge, or undefined when running outside Electron.
    */
-  private readonly api: SourceControlApi | undefined = window.studio?.sourceControl;
+  private readonly api: SourceControlClient | undefined = inject(SourceControl).client;
 
   /**
    * Holds the per-tab workspace whose open folder is tracked.

@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { RepositoryInfo } from '../../../shared/studio-api';
+import { RepositoryInfo } from '@shared/api/source-control-channels';
 import {
   FileDiff,
   MutationResult,

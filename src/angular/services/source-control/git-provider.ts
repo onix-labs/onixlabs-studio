@@ -1,4 +1,4 @@
-import { GitRunResult, SourceControlApi } from '../../../shared/studio-api';
+import { GitRunResult, SourceControlClient } from '@shared/api/source-control-channels';
 import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import {
   ParsedRefs,
@@ -17,11 +17,11 @@ import { FileDiff, MutationResult, SourceControlProvider } from './source-contro
 const DEFAULT_LOG_LIMIT: number = 500;
 
 /**
- * The git implementation of {@link SourceControlProvider}. It calls the safe git bridge
- * (`window.studio.sourceControl`) for a single opened repository root and maps the raw output through
- * the {@link import('./git-output')} parsers into the application's source-control model. Running
- * outside Electron (no bridge) every read yields empty data, so the surfaces render their empty state
- * rather than throwing.
+ * The git implementation of {@link SourceControlProvider}. It calls the safe git client (the
+ * {@link SourceControlClient} over `window.bridge`) for a single opened repository root and maps the
+ * raw output through the {@link import('./git-output')} parsers into the application's source-control
+ * model. Running outside Electron (no client) every read yields empty data, so the surfaces render
+ * their empty state rather than throwing.
  */
 export class GitProvider implements SourceControlProvider {
   /**
@@ -30,16 +30,18 @@ export class GitProvider implements SourceControlProvider {
   public readonly root: string;
 
   /**
-   * Holds the git bridge, or undefined when running outside Electron.
+   * Holds the git client, or undefined when running outside Electron.
    */
-  private readonly api: SourceControlApi | undefined = window.studio?.sourceControl;
+  private readonly api: SourceControlClient | undefined;
 
   /**
    * Initialises a new instance of the {@link GitProvider} class bound to a repository root.
    * @param root The repository's absolute root path.
+   * @param client The source-control client, or undefined when running outside Electron.
    */
-  public constructor(root: string) {
+  public constructor(root: string, client: SourceControlClient | undefined) {
     this.root = root;
+    this.api = client;
   }
 
   /**
@@ -48,7 +50,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getStatus(): Promise<ParsedStatus> {
     return parseStatus(
-      await this.read((api: SourceControlApi): Promise<GitRunResult> => api.status(this.root)),
+      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.status(this.root)),
     );
   }
 
@@ -59,7 +61,9 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getCommits(limit: number = DEFAULT_LOG_LIMIT): Promise<GitCommit[]> {
     return parseLog(
-      await this.read((api: SourceControlApi): Promise<GitRunResult> => api.log(this.root, limit)),
+      await this.read(
+        (api: SourceControlClient): Promise<GitRunResult> => api.log(this.root, limit),
+      ),
     );
   }
 
@@ -69,7 +73,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getRefs(): Promise<ParsedRefs> {
     return parseRefs(
-      await this.read((api: SourceControlApi): Promise<GitRunResult> => api.refs(this.root)),
+      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.refs(this.root)),
     );
   }
 
@@ -79,7 +83,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getStashes(): Promise<GitStash[]> {
     return parseStashes(
-      await this.read((api: SourceControlApi): Promise<GitRunResult> => api.stashes(this.root)),
+      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.stashes(this.root)),
     );
   }
 
@@ -90,7 +94,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getCommitFiles(commit: GitCommit): Promise<GitFileChange[]> {
     const output: string = await this.read(
-      (api: SourceControlApi): Promise<GitRunResult> => api.commitFiles(this.root, commit.hash),
+      (api: SourceControlClient): Promise<GitRunResult> => api.commitFiles(this.root, commit.hash),
     );
     return parseCommitFiles(output, commit.hash, commit.parents[0] ?? null);
   }
@@ -134,7 +138,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public stage(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> => api.stage(this.root, paths),
+      (api: SourceControlClient): Promise<GitRunResult> => api.stage(this.root, paths),
     );
   }
 
@@ -145,7 +149,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public unstage(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> => api.unstage(this.root, paths),
+      (api: SourceControlClient): Promise<GitRunResult> => api.unstage(this.root, paths),
     );
   }
 
@@ -156,7 +160,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public commit(message: string): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> => api.commit(this.root, message),
+      (api: SourceControlClient): Promise<GitRunResult> => api.commit(this.root, message),
     );
   }
 
@@ -165,7 +169,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public stash(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.stash(this.root));
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.stash(this.root));
   }
 
   /**
@@ -175,7 +179,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public checkout(branch: string): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> => api.checkout(this.root, branch),
+      (api: SourceControlClient): Promise<GitRunResult> => api.checkout(this.root, branch),
     );
   }
 
@@ -186,7 +190,7 @@ export class GitProvider implements SourceControlProvider {
    */
   public createBranch(name: string): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> => api.createBranch(this.root, name),
+      (api: SourceControlClient): Promise<GitRunResult> => api.createBranch(this.root, name),
     );
   }
 
@@ -195,7 +199,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetch(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.fetch(this.root));
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.fetch(this.root));
   }
 
   /**
@@ -203,7 +207,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pull(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlApi): Promise<GitRunResult> => api.pull(this.root));
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.pull(this.root));
   }
 
   /**
@@ -217,7 +221,7 @@ export class GitProvider implements SourceControlProvider {
     readonly branch: string;
   }): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlApi): Promise<GitRunResult> =>
+      (api: SourceControlClient): Promise<GitRunResult> =>
         api.push(this.root, setUpstream?.remote, setUpstream?.branch),
     );
   }
@@ -237,7 +241,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   private async mutate(
-    call: (api: SourceControlApi) => Promise<GitRunResult>,
+    call: (api: SourceControlClient) => Promise<GitRunResult>,
   ): Promise<MutationResult> {
     if (this.api === undefined) {
       return { success: false, error: 'Source control is unavailable' };
@@ -268,7 +272,7 @@ export class GitProvider implements SourceControlProvider {
    * @param call Invokes the desired bridge method.
    * @returns Returns the command's standard output, or an empty string.
    */
-  private async read(call: (api: SourceControlApi) => Promise<GitRunResult>): Promise<string> {
+  private async read(call: (api: SourceControlClient) => Promise<GitRunResult>): Promise<string> {
     if (this.api === undefined) {
       return '';
     }

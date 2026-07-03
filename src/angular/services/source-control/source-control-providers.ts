@@ -1,4 +1,5 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitProvider } from './git-provider';
 import { SourceControlProvider } from './source-control-provider';
 
@@ -11,11 +12,16 @@ import { SourceControlProvider } from './source-control-provider';
 @Service()
 export class SourceControlProviders {
   /**
+   * Holds the source-control client shared by every git provider this factory creates.
+   */
+  private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
    * Creates a provider for a repository root.
    * @param root The repository's absolute root path.
    * @returns Returns the provider bound to the root.
    */
   public create(root: string): SourceControlProvider {
-    return new GitProvider(root);
+    return new GitProvider(root, this.sourceControl.client);
   }
 }
