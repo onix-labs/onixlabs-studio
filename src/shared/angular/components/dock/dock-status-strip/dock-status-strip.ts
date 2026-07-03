@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import {
   DocumentStatus,
   DocumentStatusInfo,
@@ -8,10 +9,9 @@ import {
 
 /**
  * Represents the status strip shown along the bottom of a document well. It summarises the active
- * document: the count of errors and warnings, the caret line and column, the language mode, the
- * end-of-line sequence, the encoding and the editor zoom level. The document-derived segments are fed
- * by the active surface through the shared {@link DocumentStatus} service; the error/warning counts
- * and zoom level remain stubbed until they are wired.
+ * document: the count of errors and warnings (from the workspace {@link Diagnostics} aggregate) and,
+ * from the active surface via the shared {@link DocumentStatus} service, the caret line and column, the
+ * language mode, the end-of-line sequence, the encoding and the editor zoom level.
  */
 @Component({
   selector: 'app-dock-status-strip',
@@ -27,6 +27,11 @@ export class DockStatusStrip {
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
 
   /**
+   * Holds the workspace diagnostics aggregate backing the error and warning counts.
+   */
+  private readonly diagnostics: Diagnostics = inject(Diagnostics);
+
+  /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
@@ -37,17 +42,12 @@ export class DockStatusStrip {
   protected readonly status: Signal<DocumentStatusInfo | null> = this.documentStatus.info;
 
   /**
-   * Gets the stubbed number of errors found in the active document.
+   * Gets the number of error-severity diagnostics in the workspace.
    */
-  protected readonly errors: number = 0;
+  protected readonly errors: Signal<number> = this.diagnostics.errorCount;
 
   /**
-   * Gets the stubbed number of warnings found in the active document.
+   * Gets the number of warning-severity diagnostics in the workspace.
    */
-  protected readonly warnings: number = 0;
-
-  /**
-   * Gets the stubbed editor zoom level, as a percentage.
-   */
-  protected readonly zoom: number = 100;
+  protected readonly warnings: Signal<number> = this.diagnostics.warningCount;
 }

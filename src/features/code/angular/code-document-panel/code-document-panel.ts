@@ -83,6 +83,11 @@ export class CodeDocumentPanel {
   private readonly eolSignal: WritableSignal<TextEditorEol> = signal<TextEditorEol>('LF');
 
   /**
+   * Holds the editor zoom level, as a percentage.
+   */
+  private readonly zoomSignal: WritableSignal<number> = signal<number>(100);
+
+  /**
    * Initializes a new instance of the {@link CodeDocumentPanel} class, publishing its status to the
    * well status strip while it is the active document and clearing it when it is not or is destroyed.
    */
@@ -102,6 +107,7 @@ export class CodeDocumentPanel {
         language: document.language(),
         eol: this.eolSignal(),
         encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        zoom: this.zoomSignal(),
       });
     });
     destroyRef.onDestroy((): void => this.documentStatus.clear(this.documentId()));
@@ -121,5 +127,13 @@ export class CodeDocumentPanel {
    */
   protected onEolChange(eol: TextEditorEol): void {
     this.eolSignal.set(eol);
+  }
+
+  /**
+   * Records the editor zoom level reported by the editor core, for the well status strip.
+   * @param zoom The zoom percentage.
+   */
+  protected onZoomChange(zoom: number): void {
+    this.zoomSignal.set(zoom);
   }
 }

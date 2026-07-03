@@ -104,6 +104,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Re-emits the editor zoom level, as a percentage, to the owning leaf.
+   */
+  public readonly zoomChange: OutputEmitterRef<number> = output<number>();
+
+  /**
    * Holds the document id captured at initialisation, so teardown releases exactly the document that
    * was resolved without re-reading the required {@link documentId} input during destruction.
    */
@@ -203,5 +208,13 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    */
   protected onEolChange(eol: TextEditorEol): void {
     this.eolChange.emit(eol);
+  }
+
+  /**
+   * Re-emits the editor zoom level, as a percentage, to the owning leaf.
+   * @param zoom The zoom percentage.
+   */
+  protected onZoomChange(zoom: number): void {
+    this.zoomChange.emit(zoom);
   }
 }
