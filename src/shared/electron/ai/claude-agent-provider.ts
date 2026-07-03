@@ -16,7 +16,7 @@ import {
   type AiPermissionPosture,
   type AiProviderId,
   type AiVerifyResult,
-} from '../../shared/ai-types';
+} from '@shared/ai-types';
 import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';

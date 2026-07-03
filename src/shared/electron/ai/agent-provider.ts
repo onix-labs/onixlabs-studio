@@ -4,7 +4,7 @@ import type {
   AiModelInfo,
   AiPermissionPosture,
   AiProviderId,
-} from '../../shared/ai-types';
+} from '@shared/ai-types';
 
 /**
  * Reports whether a provider can currently run, with a reason suitable for display.

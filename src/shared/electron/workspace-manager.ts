@@ -8,7 +8,7 @@ import {
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
-import { ProjectItems, ProjectModel } from '../shared/project-system';
+import { ProjectItems, ProjectModel } from '@shared/project-system';
 import { FileInfo } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import {

@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, ipcMain, IpcMainInvokeEvent, safeStorage } from 'electron';
-import type { AiAuthSource, AiAuthStatus } from '../../shared/ai-types';
-import { AiChannel } from '../../shared/api/ai-channels';
+import type { AiAuthSource, AiAuthStatus } from '@shared/ai-types';
+import { AiChannel } from '@shared/api/ai-channels';
 
 /**
  * A resolved credential for running an agent turn. The API key, when present, never leaves the main

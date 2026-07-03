@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
-import type { AiBridgeReply } from '../../shared/ai-types';
-import { AiChannel } from '../../shared/api/ai-channels';
+import type { AiBridgeReply } from '@shared/ai-types';
+import { AiChannel } from '@shared/api/ai-channels';
 
 /**
  * Holds how long (ms) to wait for the renderer to answer a capability request before failing.

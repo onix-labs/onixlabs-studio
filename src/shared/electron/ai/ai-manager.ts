@@ -10,13 +10,13 @@ import type {
   AiRunRequest,
   AiRunState,
   AiVerifyResult,
-} from '../../shared/ai-types';
+} from '@shared/ai-types';
 
 /**
  * The permission postures accepted from the renderer, used to validate the untrusted run request.
  */
 const PERMISSION_POSTURES: readonly AiPermissionPosture[] = ['prompt', 'auto-edits', 'auto-all'];
-import { AiChannel } from '../../shared/api/ai-channels';
+import { AiChannel } from '@shared/api/ai-channels';
 import type {
   AgentAuth,
   AgentProvider,

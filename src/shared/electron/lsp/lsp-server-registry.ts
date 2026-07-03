@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LspServerId } from '@shared/api/lsp-channels';
-import { ProjectModel } from '../../shared/project-system';
+import { ProjectModel } from '@shared/project-system';
 import { projectSystems } from '../project-system/default-project-systems';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';

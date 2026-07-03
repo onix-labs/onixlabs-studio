@@ -34,7 +34,7 @@
       "path": "./tsconfig.spec.json"
     },
     {
-      "path": "./src/electron/tsconfig.json"
+      "path": "./src/shared/electron/tsconfig.json"
     }
   ]
 }

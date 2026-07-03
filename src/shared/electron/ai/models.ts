@@ -1,4 +1,4 @@
-import type { AiModelInfo } from '../../shared/ai-types';
+import type { AiModelInfo } from '@shared/ai-types';
 
 // The Anthropic model catalogue both providers offer. Claude runs them through the Agent SDK; Vercel
 // runs the same models through `@ai-sdk/anthropic` (the seam to additional back-ends later). The ids
