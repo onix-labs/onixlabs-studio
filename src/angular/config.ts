@@ -5,7 +5,6 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
-import { AgentEditorCapabilities } from './services/agent-editor-capabilities/agent-editor-capabilities';
 import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -33,11 +32,6 @@ export const config: ApplicationConfig = {
     // to the document (corners and decorative effects) before the first view renders.
     provideAppInitializer((): void => {
       inject(Display);
-    }),
-    // Instantiate the agent's in-app editor capabilities at start-up so they are registered with the
-    // runtime whenever an agent runs.
-    provideAppInitializer((): void => {
-      inject(AgentEditorCapabilities);
     }),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.

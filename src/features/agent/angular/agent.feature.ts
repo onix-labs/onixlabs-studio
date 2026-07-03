@@ -1,5 +1,11 @@
-import { EnvironmentProviders, makeEnvironmentProviders } from '@angular/core';
+import {
+  EnvironmentProviders,
+  inject,
+  makeEnvironmentProviders,
+  provideAppInitializer,
+} from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { AgentEditorCapabilities } from './agent-editor-capabilities/agent-editor-capabilities';
 import { AgentRibbon } from './agent-ribbon/agent-ribbon';
 import { AgentView } from './agent-view/agent-view';
 
@@ -17,9 +23,16 @@ const agentFeature: FeatureDescriptor = {
 /**
  * Registers the agent feature with the application shell. The renderer composition root adds this to
  * its provider list — the one place that enumerates features. The agent feature owns no electron or
- * api surface: its view composes the shared `<app-agent>` over the shared agent runtime.
+ * api surface: its view composes the shared `<app-agent>` over the shared agent runtime. It also
+ * eagerly instantiates the agent's in-app editor capabilities so they are registered with the AI
+ * runtime whenever an agent runs (reading/replacing the active code or markdown editor).
  * @returns Returns the environment providers that stand the agent feature up at start-up.
  */
 export function provideAgentFeature(): EnvironmentProviders {
-  return makeEnvironmentProviders([provideFeature(agentFeature)]);
+  return makeEnvironmentProviders([
+    provideFeature(agentFeature),
+    provideAppInitializer((): void => {
+      inject(AgentEditorCapabilities);
+    }),
+  ]);
 }
