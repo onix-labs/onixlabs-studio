@@ -16,8 +16,8 @@ import { SourceControl } from '@shared/angular/services/source-control/source-co
 import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
-import { DiffOpener } from '../../../services/diffs/diff-opener';
-import { Diffs } from '../../../services/diffs/diffs';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { DockAutoHide } from '@shared/angular/services/dock/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock/dock-drag';
 import { DockFloating } from '@shared/angular/services/dock/dock-floating';

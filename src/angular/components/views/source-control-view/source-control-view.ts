@@ -23,8 +23,8 @@ import { DockPanelRegistry } from '@shared/angular/services/dock/dock-panel-regi
 import { DockState } from '@shared/angular/services/dock/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock/dock-tab-context';
 import { collectPanelIds } from '@shared/angular/services/dock/dock-tree';
-import { DiffOpener } from '../../../services/diffs/diff-opener';
-import { Diffs } from '../../../services/diffs/diffs';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Repositories } from '@shared/angular/services/repositories/repositories';
 import { Repository } from '@shared/angular/services/repository/repository';

@@ -1,5 +1,5 @@
 import { inject, Service } from '@angular/core';
-import { DiffDocumentPanel } from '../../components/views/source-control-view/panels/diff-document-panel/diff-document-panel';
+import { DiffDocumentPanel } from '@shared/angular/components/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock/dock-panel-registry';
