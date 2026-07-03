@@ -38,7 +38,7 @@ export interface WorkspaceSourceControlCommandHandler {
  *
  * The active directory view registers its handler here; the ribbon buttons call the matching method,
  * which forwards to the registered handler (or does nothing when no directory tab is active). This is
- * the workspace twin of {@link import('../source-control-commands/source-control-commands').SourceControlCommands}.
+ * the workspace twin of the repository feature's source-control commands.
  */
 @Service()
 export class WorkspaceSourceControlCommands {

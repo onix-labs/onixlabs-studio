@@ -46,7 +46,7 @@ import { ActiveWorkspace } from '@shared/angular/services/workspace/active-works
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '../../../services/workspace-git/workspace-git';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
-import { CommitDetail } from '../source-control-view/panels/commit-detail/commit-detail';
+import { CommitDetail } from '@features/repository/angular/source-control-view/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 

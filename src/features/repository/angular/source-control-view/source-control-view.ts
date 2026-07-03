@@ -32,7 +32,7 @@ import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import {
   SourceControlCommandHandler,
   SourceControlCommands,
-} from '../../../services/source-control-commands/source-control-commands';
+} from '@features/repository/angular/source-control-commands/source-control-commands';
 import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DockContainer } from '@shared/angular/components/dock/dock-container/dock-container';

@@ -17,8 +17,8 @@ import { defaultLayout } from '@shared/angular/services/dock/dock-tree';
  * open root has a recognised project system, and removes it otherwise. Every panel is dockable.
  *
  * This is the blueprint the workspace tab provides to the shared dock framework, mirroring the
- * source-control tab's {@link import('../source-control-view/repository-dock-blueprint')}. It replaces
- * the dock's former built-in default, so the dock names no feature panel of its own.
+ * source-control tab's own dock blueprint. It replaces the dock's former built-in default, so the
+ * dock names no feature panel of its own.
  */
 export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
   createLayout(): DockNode {
