@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { DocumentConflictModal } from '../shared/document-conflict-modal/document-conflict-modal';
+import { DocumentConflictModal } from '@shared/angular/components/document-conflict-modal/document-conflict-modal';
 
 /**
  * Represents the content area that hosts the view for every open tab.

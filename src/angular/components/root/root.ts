@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { ContentHost } from '../content-host/content-host';
-import { RibbonStripContainer } from '../strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
-import { StatusStripContainer } from '../strips/status-strip/status-strip-container/status-strip-container';
-import { TitleStripContainer } from '../strips/title-strip/title-strip-container/title-strip-container';
+import { ContentHost } from '@shared/angular/components/content-host/content-host';
+import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
+import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
+import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
 import { WelcomeScreen } from '../welcome-screen/welcome-screen';
 
 /**
