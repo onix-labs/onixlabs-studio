@@ -257,21 +257,25 @@ each feature folder is independently deletable; the app builds and runs througho
 
 ## 10. Progress log (status)
 
-> **▶ NEXT SESSION — start here (2026-07-03).** Mid-way through the §5 IPC carve: moving every
+> **▶ NEXT SESSION — start here (2026-07-03).** Nearly through the §5 IPC carve: moving every
 > `window.studio.<domain>` off the god trio onto the generic `window.bridge` + per-domain `shared/api`
-> channel slices. **8 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
-> run/tasks, lsp, shell, chrome cluster). **`window.studio` is now down to exactly two: `sourceControl`
-> (git) and `ai`** — both large.
-> **Recommended next: `ai` or `sourceControl`** (either order). These are the two big domains, each
-> with a rich channel surface and a dedicated main-process manager (`ai-manager`, `git-manager`) — the
-> same proven recipe, just more channels. After both, `window.studio` and the god trio are empty:
-> delete `studio-api.ts` + the `window.studio` preload object + `ipc-channels.ts`, then do the §7
-> `main.ts`/`preload.ts` relocation into `shared/electron`, carrying the deferred shared cone
-> (`workspace-context`, `project-system/`, the `lsp/` dir) with it. **New in the chrome slice:**
-> `window.host` — a small static object (preload-exposed, typed in `shared/api/host.ts`) for values the
-> renderer needs _synchronously at startup_ and the async bridge can't carry (`platform`, the display/GPU
-> startup snapshot). It is the sanctioned static-data counterpart to `window.bridge`. Working state:
-> **clean, all green (6 baseline fails), fully pushed to `origin/feature/arch-refactor`.**
+> channel slices. **9 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
+> run/tasks, lsp, shell, chrome cluster, source-control/git). **`window.studio` is now down to exactly
+> one: `ai`** — the last (and large) domain.
+> **Recommended next: `ai`** — the final slice. Rich channel surface with a dedicated main-process
+> manager (`ai-manager`, in `src/electron/ai/`) plus send/on event streams and permission round-trips
+> (not just invoke), so expect the `Bridge`-mock spec recipe to matter. Mirror the source-control slice:
+> an `ai-channels.ts` slice (enum + the `ai-types.ts` payloads folded in) + a renderer client over
+> `window.bridge`; check whether `ai-manager`'s cone (`renderer-bridge`, the providers) is self-contained
+> enough to move to `shared/electron` or should repoint in place. **When `ai` lands, the god trio is
+> empty:** delete `studio-api.ts` + `global.d.ts`'s `studio?` + the `window.studio` preload object +
+> `ipc-channels.ts`, then do the §7 `main.ts`/`preload.ts` relocation into `shared/electron`, carrying
+> the deferred shared cone (`workspace-context`, `project-system/`, the `lsp/` dir) with it.
+> **Reference:** `window.host` (from the chrome slice) is the sanctioned static-data counterpart to
+> `window.bridge` — preload-exposed, typed in `shared/api/host.ts`, for values the renderer needs
+> _synchronously at startup_ (`platform`, the display/GPU snapshot). Working state: **clean, all green
+> (6 baseline fails; 9 pre-existing prettier warnings, none in the touched set), fully pushed to
+> `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
@@ -469,9 +473,9 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 8 slices DONE (terminal,
-  file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster); 2 IPC domains
-  REMAIN (`sourceControl`/git and `ai` — both large). `window.studio` is down to `{ sourceControl, ai }`.**
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 9 slices DONE (terminal,
+  file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster, source-control/git);
+  1 IPC domain REMAINS (`ai` — large). `window.studio` is down to `{ ai }`.**
   The enabler and the pattern, proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
@@ -589,10 +593,29 @@ acceleration` round-trips over `window.bridge`; `window.host.platform='darwin'` 
     facts the renderer needs synchronously at startup, before any async round-trip (platform, display/GPU
     startup snapshot). Preload builds it from the one `sendSync` channel (`app:get-display-startup`) that
     is not reached over the bridge. When more sync-startup needs appear, they belong here, not on a channel.
-  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git) and `ai` off `window.studio`
-    onto `window.bridge` + a `shared/api`
-    (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
-    Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
+  - `refactor(source-control)` — the **git** slice, and the **largest** (18 channels, 5 renderer
+    consumers, a relocated manager). `source-control-channels.ts` (`SourceControlChannel` enum + the
+    `RepositoryInfo`/`GitRunResult` types relocated from studio-api + a renderer-facing
+    `SourceControlClient` interface). A shared `SourceControl` @Service exposes
+    `client: SourceControlClient | undefined` — the 18 ops built over `bridge.invoke`, or undefined
+    outside Electron — **so every `this.api?.method(...)` call site stayed byte-identical; only the source
+    of `api` changed.** The `read`/`mutate` closure abstraction in `git-provider` kept working via a
+    one-word type rename (`SourceControlApi`→`SourceControlClient`). **`git-provider` is `new`'d, not
+    DI:** it takes the client through its constructor, and its factory (`SourceControlProviders`) injects
+    `SourceControl` and passes `.client` in — the pattern for a non-DI consumer of a bridge client. The
+    other four (`repository-opener`, `workspace-git`, `directory-view`, `source-control-view`) inject
+    `SourceControl` and read `.client`; `repository`/`repositories` just repoint the `RepositoryInfo`
+    type import. `GitManager` is self-contained (built-ins + electron + shared types) → **git-moved to
+    `shared/electron`**, channel refs + types repointed, `main.ts` imports it via `@shared/electron`.
+    Deleted from the god trio: 18 `IpcChannel` members, `SourceControlApi` + `RepositoryInfo` +
+    `GitRunResult` + the `sourceControl` field, the preload literal + its type imports; studio-api's
+    orphaned `StudioApi` doc comment reunited with the interface. **`window.studio` now holds only
+    `{ ai }`.** **CDP smoke:** `source-control:{resolve,status,close}-repository` round-trips over
+    `window.bridge` against this repo (resolves `onixlabs-studio`, `status` succeeds, closes cleanly);
+    `window.studio` keys are exactly `['ai']`.
+  - **REMAINING (the last domain):** migrate `ai` off `window.studio` onto `window.bridge` + a `shared/api`
+    (or feature `api`) channel slice, moving the handler to `shared/electron` (or `features/<f>/electron`).
+    This empties the god trio, which is then deleted. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
     updating `package.json main`, `build:main`/`build:preload` outfiles, and the `__dirname`-relative
     `INDEX_HTML`/`preload` paths) — and with them the shared electron cone (`workspace-context`,
