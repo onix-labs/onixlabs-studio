@@ -6,9 +6,8 @@
     "outDir": "./out-tsc/app",
     "types": []
   },
-  "include": ["src/angular/**/*.ts", "src/shared/**/*.ts", "src/features/**/*.ts"],
+  "include": ["src/shared/**/*.ts", "src/features/**/*.ts"],
   "exclude": [
-    "src/angular/**/*.spec.ts",
     "src/shared/**/*.spec.ts",
     "src/features/**/*.spec.ts",
     "src/shared/electron/**/*.ts",

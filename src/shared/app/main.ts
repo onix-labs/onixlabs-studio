@@ -1,6 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { config } from './config';
-import { Root } from './components/root/root';
+import { Root } from './root/root';
 
 /**
  * Resolves whether the heavier UI effects should be reduced for the first paint, mirroring the
@@ -34,7 +34,7 @@ function shouldReduceEffects(): boolean {
 // process flags GPUs that corrupt squircle corner masks (notably the Intel UHD 630); the same
 // low-power GPUs also struggle with the welcome screen's animated, blurred, blended orbs and frosted
 // backdrop. When reduced, corners fall back to plain rounded rectangles
-// (`:root[data-corners='round']` in styles/_variables.scss) and the heavy decorative effects are
+// (`:root[data-corners='round']` in shared/angular/styles/_variables.scss) and the heavy decorative effects are
 // softened (`:host-context([data-reduced-gpu])` in welcome-screen.scss). No-op outside Electron,
 // where `window.host` is undefined and no override is persisted.
 if (shouldReduceEffects()) {

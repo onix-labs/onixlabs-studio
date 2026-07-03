@@ -7,8 +7,8 @@
     "types": ["vitest/globals"]
   },
   "include": [
-    "src/angular/**/*.d.ts",
-    "src/angular/**/*.spec.ts",
+    "src/shared/**/*.d.ts",
+    "src/features/**/*.d.ts",
     "src/shared/**/*.spec.ts",
     "src/features/**/*.spec.ts"
   ]

@@ -18,7 +18,8 @@
     "declaration": false
   },
   "include": ["../**/*.ts"],
-  /* Exclude src/shared/angular: it is renderer (Angular) code that must not be compiled by this
-     node-only config; the main and preload processes only consume the shared api types. */
-  "exclude": ["../angular/**"]
+  /* Exclude src/shared/angular and src/shared/app: they are renderer (Angular) code that must not be
+     compiled by this node-only config; the main and preload processes only consume the shared api
+     types. */
+  "exclude": ["../angular/**", "../app/**"]
 }

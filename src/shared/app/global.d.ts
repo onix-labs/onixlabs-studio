@@ -1,5 +1,5 @@
-import type { Bridge } from '../shared/api/bridge';
-import type { HostEnv } from '../shared/api/host';
+import type { Bridge } from '@shared/api/bridge';
+import type { HostEnv } from '@shared/api/host';
 
 declare global {
   interface Window {
