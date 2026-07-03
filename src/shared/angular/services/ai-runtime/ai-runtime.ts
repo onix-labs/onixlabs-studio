@@ -7,7 +7,7 @@ import type {
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 
 /**

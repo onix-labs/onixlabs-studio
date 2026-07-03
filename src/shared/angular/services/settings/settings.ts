@@ -1,5 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiPermissionPosture, AiProviderId } from '@shared/ai-types';
+import type { AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
 import {
   AiModels,
   SETTINGS_BY_KEY,

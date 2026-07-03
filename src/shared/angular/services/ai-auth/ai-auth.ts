@@ -1,6 +1,6 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiClient } from '@shared/api/ai-channels';
-import type { AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
+import type { AiAuthStatus, AiVerifyResult } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 
 /**

@@ -10,7 +10,7 @@ import type {
   AiProviderInfo,
   AiRunRequest,
   AiVerifyResult,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 
 /**
  * Builds an {@link AiClient} that forwards each operation to its {@link AiChannel} over the generic

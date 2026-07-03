@@ -13,7 +13,7 @@ import type {
   AiProviderId,
   AiProviderInfo,
   AiVerifyResult,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AiAuth } from '@shared/angular/services/ai-auth/ai-auth';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';

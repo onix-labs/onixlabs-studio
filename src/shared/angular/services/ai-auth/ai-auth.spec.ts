@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { AiChannel } from '@shared/api/ai-channels';
 import type { Bridge } from '@shared/api/bridge';
-import type { AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
+import type { AiAuthStatus, AiVerifyResult } from '@shared/api/ai-types';
 import { AiAuth } from './ai-auth';
 
 /**

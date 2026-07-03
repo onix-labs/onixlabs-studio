@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiModelInfo, AiProviderInfo } from '@shared/ai-types';
+import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { AgentEngine } from './agent-engine';

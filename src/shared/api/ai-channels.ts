@@ -13,7 +13,7 @@ import type {
   AiProviderInfo,
   AiRunRequest,
   AiVerifyResult,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 
 /**
  * Names the AI-agent IPC channels. Auth/config/run-control are request/response `invoke`; the event

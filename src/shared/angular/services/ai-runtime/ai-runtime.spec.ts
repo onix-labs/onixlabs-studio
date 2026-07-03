@@ -9,7 +9,7 @@ import type {
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 import { AiRuntime } from './ai-runtime';
 
 /**

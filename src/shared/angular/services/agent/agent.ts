@@ -7,7 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AgentSurface, AiEvent, AiRunState } from '@shared/ai-types';
+import type { AgentSurface, AiEvent, AiRunState } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AgentSessionHandle } from '../agent-sessions/agent-sessions';

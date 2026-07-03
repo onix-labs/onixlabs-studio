@@ -9,7 +9,7 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-} from '@shared/project-system';
+} from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 
 /**

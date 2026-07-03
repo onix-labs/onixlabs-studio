@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AiModelInfo, AiProviderInfo } from '@shared/ai-types';
+import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Icon } from '@shared/angular/icons/icon';

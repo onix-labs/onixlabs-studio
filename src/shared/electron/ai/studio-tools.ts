@@ -3,7 +3,7 @@ import {
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
 
 /**

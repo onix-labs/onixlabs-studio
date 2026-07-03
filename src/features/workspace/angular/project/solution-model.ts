@@ -7,7 +7,7 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-} from '@shared/project-system';
+} from '@shared/api/project-system';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**

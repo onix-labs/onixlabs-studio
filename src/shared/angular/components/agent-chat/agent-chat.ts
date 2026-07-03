@@ -11,7 +11,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import type { AgentSurface } from '@shared/ai-types';
+import type { AgentSurface } from '@shared/api/ai-types';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Shell } from '@shared/angular/services/shell/shell';

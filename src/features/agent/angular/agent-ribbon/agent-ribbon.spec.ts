@@ -1,7 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/ai-types';
+import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { AgentRibbon } from './agent-ribbon';

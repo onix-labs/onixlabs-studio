@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
-import type { AiBridgeReply } from '@shared/ai-types';
+import type { AiBridgeReply } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
 
 /**

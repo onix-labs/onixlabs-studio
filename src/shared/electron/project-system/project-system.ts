@@ -1,4 +1,4 @@
-import { ProjectItems, ProjectModel } from '@shared/project-system';
+import { ProjectItems, ProjectModel } from '@shared/api/project-system';
 
 /**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm

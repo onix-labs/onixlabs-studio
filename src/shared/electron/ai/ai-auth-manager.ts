@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, ipcMain, IpcMainInvokeEvent, safeStorage } from 'electron';
-import type { AiAuthSource, AiAuthStatus } from '@shared/ai-types';
+import type { AiAuthSource, AiAuthStatus } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
 
 /**

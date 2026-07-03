@@ -10,7 +10,7 @@ import type {
   AiRunRequest,
   AiRunState,
   AiVerifyResult,
-} from '@shared/ai-types';
+} from '@shared/api/ai-types';
 
 /**
  * The permission postures accepted from the renderer, used to validate the untrusted run request.

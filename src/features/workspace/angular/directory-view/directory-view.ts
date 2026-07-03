@@ -9,7 +9,7 @@ import {
   OnInit,
   untracked,
 } from '@angular/core';
-import { ProjectModel } from '@shared/project-system';
+import { ProjectModel } from '@shared/api/project-system';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
