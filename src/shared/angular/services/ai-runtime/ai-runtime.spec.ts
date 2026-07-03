@@ -1,15 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 
+import { AiChannel } from '@shared/api/ai-channels';
+import type { Bridge } from '@shared/api/bridge';
 import type {
-  AiApi,
-  AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
   AiEvent,
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
-  AiVerifyResult,
 } from '@shared/ai-types';
 import { AiRuntime } from './ai-runtime';
 
@@ -46,46 +45,45 @@ describe('AiRuntime', () => {
   }
 
   /**
-   * Installs the stub agent bridge on `window.studio.ai`.
+   * Installs a stub transport on `window.bridge` routing the agent run channels: `invoke` records
+   * run/abort and answers `list-providers`; `on` captures the event and in-app-capability listeners so
+   * the tests can drive them; `send` records the replies.
    */
   function stubBridge(): void {
-    const status: AiAuthStatus = {
-      source: 'local-login',
-      available: true,
-      hasStoredKey: false,
-      detail: 'ok',
-    };
-    const api: AiApi = {
-      getAuthStatus: (): Promise<AiAuthStatus> => Promise.resolve(status),
-      setApiKey: (): Promise<AiAuthStatus> => Promise.resolve(status),
-      clearApiKey: (): Promise<AiAuthStatus> => Promise.resolve(status),
-      verifyAuthentication: (): Promise<AiVerifyResult> =>
-        Promise.resolve({ ok: true, detail: 'ok' }),
-      listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
-      run: (request: AiRunRequest): Promise<void> => {
-        runCalls.push(request);
-        return Promise.resolve();
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (AiChannel.ListProviders as string)) {
+          return Promise.resolve(PROVIDERS as T);
+        }
+        if (channel === (AiChannel.Run as string)) {
+          runCalls.push(args[0] as AiRunRequest);
+          return Promise.resolve(undefined as T);
+        }
+        if (channel === (AiChannel.Abort as string)) {
+          abortCalls.push(args[0] as string);
+          return Promise.resolve(undefined as T);
+        }
+        return Promise.resolve(undefined as T);
       },
-      abort: (requestId: string): Promise<void> => {
-        abortCalls.push(requestId);
-        return Promise.resolve();
+      send: (channel: string, ...args: unknown[]): void => {
+        if (channel === (AiChannel.BridgeReply as string)) {
+          bridgeReplies.push(args[0] as AiBridgeReply);
+        }
+        if (channel === (AiChannel.PermissionReply as string)) {
+          permissionReplies.push(args[0] as AiPermissionReply);
+        }
       },
-      onEvent: (listener: (event: AiEvent) => void): (() => void) => {
-        fireEvent = listener;
+      on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+        if (channel === (AiChannel.Event as string)) {
+          fireEvent = (event: AiEvent): void => listener(event);
+        }
+        if (channel === (AiChannel.BridgeRequest as string)) {
+          fireBridgeRequest = (request: AiBridgeRequest): void => listener(request);
+        }
         return (): void => undefined;
       },
-      onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) => {
-        fireBridgeRequest = handler;
-        return (): void => undefined;
-      },
-      respondBridge: (reply: AiBridgeReply): void => {
-        bridgeReplies.push(reply);
-      },
-      respondPermission: (reply: AiPermissionReply): void => {
-        permissionReplies.push(reply);
-      },
     };
-    (globalThis as unknown as { studio: { ai: AiApi } }).studio = { ai: api };
+    (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
   }
 
   beforeEach(() => {
@@ -96,7 +94,7 @@ describe('AiRuntime', () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as { studio?: unknown }).studio;
+    delete (globalThis as unknown as { bridge?: unknown }).bridge;
   });
 
   it('isAvailable_whenBridgeAbsent_isFalse', () => {

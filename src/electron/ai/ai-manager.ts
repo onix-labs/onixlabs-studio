@@ -16,8 +16,13 @@ import type {
  * The permission postures accepted from the renderer, used to validate the untrusted run request.
  */
 const PERMISSION_POSTURES: readonly AiPermissionPosture[] = ['prompt', 'auto-edits', 'auto-all'];
-import { IpcChannel } from '../../shared/ipc-channels';
-import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import { AiChannel } from '../../shared/api/ai-channels';
+import type {
+  AgentAuth,
+  AgentProvider,
+  AgentRunContext,
+  ProviderAvailability,
+} from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { OllamaProvider } from './ollama-provider';
@@ -91,22 +96,22 @@ export class AiManager {
   public register(): void {
     this.auth.register();
     this.bridge.register();
-    ipcMain.on(IpcChannel.AiPermissionReply, (_event: IpcMainEvent, reply: unknown): void => {
+    ipcMain.on(AiChannel.PermissionReply, (_event: IpcMainEvent, reply: unknown): void => {
       if (this.isPermissionReply(reply)) {
         this.resolvePermission(reply);
       }
     });
     ipcMain.handle(
-      IpcChannel.AiVerify,
+      AiChannel.Verify,
       (): Promise<AiVerifyResult> => this.claude.verify(this.auth.resolveCredential()),
     );
-    ipcMain.handle(IpcChannel.AiListProviders, (): readonly AiProviderInfo[] => this.listProviders());
-    ipcMain.handle(IpcChannel.AiRun, (_event: IpcMainInvokeEvent, request: unknown): void => {
+    ipcMain.handle(AiChannel.ListProviders, (): readonly AiProviderInfo[] => this.listProviders());
+    ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       if (this.isRunRequest(request)) {
         this.run(request);
       }
     });
-    ipcMain.handle(IpcChannel.AiAbort, (_event: IpcMainInvokeEvent, requestId: unknown): void => {
+    ipcMain.handle(AiChannel.Abort, (_event: IpcMainInvokeEvent, requestId: unknown): void => {
       if (typeof requestId === 'string') {
         this.abort(requestId);
       }
@@ -215,7 +220,11 @@ export class AiManager {
         this.finish(request.requestId, controller.signal.aborted ? 'aborted' : 'completed', ''),
       )
       .catch((error: unknown): void =>
-        this.finish(request.requestId, 'error', error instanceof Error ? error.message : String(error)),
+        this.finish(
+          request.requestId,
+          'error',
+          error instanceof Error ? error.message : String(error),
+        ),
       );
   }
 
@@ -243,7 +252,7 @@ export class AiManager {
    * @param event The event to send.
    */
   private emit(event: AiEvent): void {
-    this.windowGetter()?.webContents.send(IpcChannel.AiEvent, event);
+    this.windowGetter()?.webContents.send(AiChannel.Event, event);
   }
 
   /**

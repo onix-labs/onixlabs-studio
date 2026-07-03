@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiApi, AiAuthStatus, AiProviderInfo, AiVerifyResult } from '@shared/ai-types';
+import { AiChannel } from '@shared/api/ai-channels';
+import type { Bridge } from '@shared/api/bridge';
+import type { AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
 import { AiAuth } from './ai-auth';
 
 /**
@@ -17,30 +19,35 @@ describe('AiAuth', () => {
   let lastSetKey: string | undefined;
 
   /**
-   * Installs a stub agent bridge on `window.studio.ai`.
-   * @param overrides Partial bridge methods to override the defaults.
+   * Installs a stub transport on `window.bridge` routing the agent auth channels.
    */
-  function stubBridge(overrides: Partial<AiApi> = {}): void {
-    const api: AiApi = {
-      getAuthStatus: (): Promise<AiAuthStatus> => Promise.resolve(LOCAL_LOGIN),
-      setApiKey: (key: string): Promise<AiAuthStatus> => {
-        lastSetKey = key;
-        return Promise.resolve({ ...LOCAL_LOGIN, source: 'api-key', hasStoredKey: true });
+  function stubBridge(): void {
+    const bridge: Bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (AiChannel.AuthStatus as string)) {
+          return Promise.resolve(LOCAL_LOGIN as T);
+        }
+        if (channel === (AiChannel.SetApiKey as string)) {
+          lastSetKey = args[0] as string;
+          return Promise.resolve({ ...LOCAL_LOGIN, source: 'api-key', hasStoredKey: true } as T);
+        }
+        if (channel === (AiChannel.ClearApiKey as string)) {
+          return Promise.resolve({
+            ...LOCAL_LOGIN,
+            source: 'none',
+            available: false,
+            hasStoredKey: false,
+          } as T);
+        }
+        if (channel === (AiChannel.Verify as string)) {
+          return Promise.resolve({ ok: true, detail: 'ok' } as T);
+        }
+        return Promise.resolve(undefined as T);
       },
-      clearApiKey: (): Promise<AiAuthStatus> =>
-        Promise.resolve({ ...LOCAL_LOGIN, source: 'none', available: false, hasStoredKey: false }),
-      verifyAuthentication: (): Promise<AiVerifyResult> =>
-        Promise.resolve({ ok: true, detail: 'ok' }),
-      listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve([]),
-      run: (): Promise<void> => Promise.resolve(),
-      abort: (): Promise<void> => Promise.resolve(),
-      onEvent: (): (() => void) => (): void => undefined,
-      onBridgeRequest: (): (() => void) => (): void => undefined,
-      respondBridge: (): void => undefined,
-      respondPermission: (): void => undefined,
-      ...overrides,
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
     };
-    (globalThis as unknown as { studio: { ai: AiApi } }).studio = { ai: api };
+    (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
   }
 
   beforeEach(() => {
@@ -48,7 +55,7 @@ describe('AiAuth', () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as { studio?: unknown }).studio;
+    delete (globalThis as unknown as { bridge?: unknown }).bridge;
   });
 
   it('status_whenBridgeAbsent_reportsUnavailable', () => {

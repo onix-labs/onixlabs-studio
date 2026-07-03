@@ -64,9 +64,9 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     viewChild.required<ElementRef<HTMLDivElement>>('container');
 
   /**
-   * Holds a value indicating whether a real Studio bridge is available (running in Electron).
+   * Holds a value indicating whether a real bridge is available (running in Electron).
    */
-  private readonly isElectron: boolean = window.studio !== undefined;
+  private readonly isElectron: boolean = window.bridge !== undefined;
 
   /**
    * Holds the xterm instance, or null before initialisation or outside Electron.

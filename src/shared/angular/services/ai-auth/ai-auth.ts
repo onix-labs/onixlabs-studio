@@ -1,5 +1,7 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiApi, AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AiClient } from '@shared/api/ai-channels';
+import type { AiAuthStatus, AiVerifyResult } from '@shared/ai-types';
+import { Ai } from '@shared/angular/services/ai/ai';
 
 /**
  * The status reported when the agent bridge is unavailable (outside Electron — served as a plain web
@@ -13,7 +15,7 @@ const UNAVAILABLE_STATUS: AiAuthStatus = {
 };
 
 /**
- * Renderer-side wrapper around the agent auth bridge exposed on `window.studio.ai`.
+ * Renderer-side wrapper around the agent auth operations (the {@link Ai} client over `window.bridge`).
  *
  * It surfaces the current {@link AiAuthStatus} as a signal and forwards key-management and
  * verification requests to the main process. The API key never crosses the bridge — only status,
@@ -23,9 +25,9 @@ const UNAVAILABLE_STATUS: AiAuthStatus = {
 @Service()
 export class AiAuth {
   /**
-   * Holds the agent bridge, or undefined when running outside Electron.
+   * Holds the agent client, or undefined when running outside Electron.
    */
-  private readonly api: AiApi | undefined = window.studio?.ai;
+  private readonly api: AiClient | undefined = inject(Ai).client;
 
   /**
    * Holds the latest known authentication status.

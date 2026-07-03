@@ -51,7 +51,7 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
    * @returns Returns a function that unsubscribes from marker changes.
    */
   public connect(onChange: (diagnostics: readonly Diagnostic[]) => void): () => void {
-    if (window.studio === undefined) {
+    if (window.bridge === undefined) {
       return NO_OP;
     }
     let disposable: MonacoApi.IDisposable | null = null;

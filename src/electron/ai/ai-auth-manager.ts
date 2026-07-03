@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, ipcMain, IpcMainInvokeEvent, safeStorage } from 'electron';
 import type { AiAuthSource, AiAuthStatus } from '../../shared/ai-types';
-import { IpcChannel } from '../../shared/ipc-channels';
+import { AiChannel } from '../../shared/api/ai-channels';
 
 /**
  * A resolved credential for running an agent turn. The API key, when present, never leaves the main
@@ -161,12 +161,12 @@ export class AiAuthManager {
    * Registers the IPC handlers for the renderer's auth status and key-management requests.
    */
   public register(): void {
-    ipcMain.handle(IpcChannel.AiAuthStatus, (): AiAuthStatus => this.getStatus());
+    ipcMain.handle(AiChannel.AuthStatus, (): AiAuthStatus => this.getStatus());
     ipcMain.handle(
-      IpcChannel.AiSetApiKey,
+      AiChannel.SetApiKey,
       (_event: IpcMainInvokeEvent, key: unknown): AiAuthStatus =>
         typeof key === 'string' ? this.setApiKey(key) : this.getStatus(),
     );
-    ipcMain.handle(IpcChannel.AiClearApiKey, (): AiAuthStatus => this.clearApiKey());
+    ipcMain.handle(AiChannel.ClearApiKey, (): AiAuthStatus => this.clearApiKey());
   }
 }

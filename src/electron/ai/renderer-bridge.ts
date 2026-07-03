@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
 import type { AiBridgeReply } from '../../shared/ai-types';
-import { IpcChannel } from '../../shared/ipc-channels';
+import { AiChannel } from '../../shared/api/ai-channels';
 
 /**
  * Holds how long (ms) to wait for the renderer to answer a capability request before failing.
@@ -58,7 +58,7 @@ export class RendererBridge {
    * Registers the IPC listener that settles requests when the renderer replies.
    */
   public register(): void {
-    ipcMain.on(IpcChannel.AiBridgeReply, (_event: IpcMainEvent, reply: unknown): void => {
+    ipcMain.on(AiChannel.BridgeReply, (_event: IpcMainEvent, reply: unknown): void => {
       if (this.isReply(reply)) {
         this.settle(reply);
       }
@@ -90,14 +90,16 @@ export class RendererBridge {
       return Promise.reject(new Error('No window is available to handle the capability request.'));
     }
     const requestId: string = randomUUID();
-    return new Promise<unknown>((resolve: (result: unknown) => void, reject: (error: Error) => void): void => {
-      const timer: NodeJS.Timeout = setTimeout((): void => {
-        this.pending.delete(requestId);
-        reject(new Error(`The capability "${capability}" timed out.`));
-      }, REQUEST_TIMEOUT_MS);
-      this.pending.set(requestId, { resolve, reject, timer });
-      window.webContents.send(IpcChannel.AiBridgeRequest, { requestId, capability, input });
-    });
+    return new Promise<unknown>(
+      (resolve: (result: unknown) => void, reject: (error: Error) => void): void => {
+        const timer: NodeJS.Timeout = setTimeout((): void => {
+          this.pending.delete(requestId);
+          reject(new Error(`The capability "${capability}" timed out.`));
+        }, REQUEST_TIMEOUT_MS);
+        this.pending.set(requestId, { resolve, reject, timer });
+        window.webContents.send(AiChannel.BridgeRequest, { requestId, capability, input });
+      },
+    );
   }
 
   /**

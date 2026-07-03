@@ -8,9 +8,9 @@ import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
  */
 function setElectron(present: boolean): void {
   if (present) {
-    (window as unknown as { studio?: unknown }).studio = {};
+    (window as unknown as { bridge?: unknown }).bridge = {};
   } else {
-    delete (window as unknown as { studio?: unknown }).studio;
+    delete (window as unknown as { bridge?: unknown }).bridge;
   }
 }
 

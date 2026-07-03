@@ -1,13 +1,14 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
+import type { AiClient } from '@shared/api/ai-channels';
 import type {
   AgentSurface,
-  AiApi,
   AiBridgeRequest,
   AiEvent,
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
 } from '@shared/ai-types';
+import { Ai } from '@shared/angular/services/ai/ai';
 
 /**
  * A renderer-side in-app capability the agent can invoke through the bridge. Receives the request's
@@ -63,9 +64,9 @@ export interface AiRunOptions {
 @Service()
 export class AiRuntime {
   /**
-   * Holds the agent bridge, or undefined when running outside Electron.
+   * Holds the agent client, or undefined when running outside Electron.
    */
-  private readonly api: AiApi | undefined = window.studio?.ai;
+  private readonly api: AiClient | undefined = inject(Ai).client;
 
   /**
    * Holds the event subscribers.
