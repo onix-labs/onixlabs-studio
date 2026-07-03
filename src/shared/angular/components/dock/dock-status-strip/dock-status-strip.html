@@ -20,8 +20,30 @@
     <button type="button" class="dock-status-strip__segment" title="Select encoding">
       {{ document.encoding }}
     </button>
-    <button type="button" class="dock-status-strip__segment" title="Zoom level">
-      {{ document.zoom }}%
+    <button
+      type="button"
+      class="dock-status-strip__segment"
+      title="Select zoom level"
+      [cdkMenuTriggerFor]="zoomMenu"
+      [cdkMenuPosition]="menuPosition"
+    >
+      {{ zoom() }}%
     </button>
   </div>
 }
+
+<ng-template #zoomMenu>
+  <div class="dock-status-strip__zoom-menu" cdkMenu>
+    @for (level of zoomLevels; track level) {
+      <button
+        type="button"
+        class="dock-status-strip__zoom-item"
+        [class.dock-status-strip__zoom-item--active]="level === zoom()"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="setZoom(level)"
+      >
+        {{ level }}%
+      </button>
+    }
+  </div>
+</ng-template>

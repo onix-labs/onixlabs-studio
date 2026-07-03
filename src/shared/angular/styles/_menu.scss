@@ -282,3 +282,46 @@
     transform: rotate(360deg);
   }
 }
+
+// The document well status strip's zoom drop-up: a compact list of the selectable zoom levels, with
+// the active level marked in the accent colour.
+.dock-status-strip__zoom-menu {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 7rem;
+  padding: 0.25rem;
+  background: var(--menu-background-color);
+  color: var(--menu-foreground-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.dock-status-strip__zoom-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--menu-item-background-color--hover);
+    outline: none;
+  }
+}
+
+.dock-status-strip__zoom-item--active {
+  color: var(--accent-color);
+  font-weight: 600;
+}

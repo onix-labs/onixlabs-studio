@@ -19,6 +19,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
+import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -76,6 +77,11 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private readonly theme: Theme = inject(Theme);
 
   /**
+   * Holds the global editor zoom, applied as a scale factor on the configured font size.
+   */
+  private readonly editorZoom: EditorZoom = inject(EditorZoom);
+
+  /**
    * Holds a reference to the element Monaco mounts into.
    */
   private readonly host: Signal<ElementRef<HTMLDivElement>> =
@@ -119,21 +125,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
-   * Emits the editor zoom level as a percentage (100 at the default zoom) when it changes via
-   * mouse-wheel zoom, and once when the editor is created. Monaco's zoom is global across editors.
-   */
-  public readonly zoomChange: OutputEmitterRef<number> = output<number>();
-
-  /**
    * Holds the Monaco editor instance, or null before creation and after disposal.
    */
   private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
-
-  /**
-   * Holds the subscription to Monaco's global zoom-level changes, disposed with the component. It is
-   * not tied to the editor instance, so it must be released explicitly rather than with the editor.
-   */
-  private zoomListener: MonacoApi.IDisposable | null = null;
 
   /**
    * Holds the string form of the editor's model URI, or null before creation and after disposal.
@@ -179,7 +173,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         insertSpaces: resolved.insertSpaces,
         detectIndentation: false,
         fontFamily: `"${resolved.fontFamily}", monospace`,
-        fontSize: resolved.fontSize,
+        fontSize: Math.round((resolved.fontSize * this.editorZoom.percent()) / 100),
       });
       this.monaco
         .getMonaco()
@@ -237,10 +231,6 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Disposes the editor when the pane is torn down.
    */
   public ngOnDestroy(): void {
-    if (this.zoomListener !== null) {
-      this.zoomListener.dispose();
-      this.zoomListener = null;
-    }
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -382,7 +372,6 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       ...this.monaco.getEditorOptions(language),
       value: this.content(),
       language,
-      mouseWheelZoom: true,
     });
 
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
@@ -411,25 +400,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       },
     );
 
-    // Monaco's mouse-wheel zoom is global, so the listener lives on EditorZoom, not the editor, and
-    // is disposed with the component. Seed the current level so the host's status is correct at once.
-    this.zoomChange.emit(this.zoomPercent(monaco.editor.EditorZoom.getZoomLevel()));
-    this.zoomListener = monaco.editor.EditorZoom.onDidChangeZoomLevel((level: number): void => {
-      this.zoomChange.emit(this.zoomPercent(level));
-    });
-
     this.editorReady.set(true);
     this.ready.emit();
-  }
-
-  /**
-   * Converts a Monaco zoom level to a percentage, matching Monaco's own font scaling of one tenth per
-   * level (level 0 is 100%, level 1 is 110%, level -1 is 90%).
-   * @param level The Monaco zoom level.
-   * @returns Returns the zoom percentage.
-   */
-  private zoomPercent(level: number): number {
-    return 100 + level * 10;
   }
 
   /**

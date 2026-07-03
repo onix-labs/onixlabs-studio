@@ -29,11 +29,6 @@ export interface DocumentStatusInfo {
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
   readonly encoding: string;
-
-  /**
-   * Gets the editor zoom level, as a percentage (100 at the default zoom).
-   */
-  readonly zoom: number;
 }
 
 /**
