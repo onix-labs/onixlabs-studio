@@ -5,7 +5,7 @@ import { ContentHost } from '@shared/angular/components/content-host/content-hos
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
 import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
-import { WelcomeScreen } from '../welcome-screen/welcome-screen';
+import { WelcomeScreen } from '@features/welcome/angular/welcome-screen/welcome-screen';
 
 /**
  * Represents the application root, composing the chrome strips and the content host, or the welcome
