@@ -257,18 +257,19 @@ each feature folder is independently deletable; the app builds and runs througho
 
 ## 10. Progress log (status)
 
-> **▶ NEXT SESSION — start here (2026-07-03 morning).** Mid-way through the §5 IPC carve: moving every
+> **▶ NEXT SESSION — start here (2026-07-03).** Mid-way through the §5 IPC carve: moving every
 > `window.studio.<domain>` off the god trio onto the generic `window.bridge` + per-domain `shared/api`
-> channel slices. **6 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
-> run/tasks, lsp). **4 domains remain** on `window.studio`: `sourceControl` (git — large), `ai` (large),
-> `shell` (tiny: 2 channels, handler inline in `main.ts`), and the `display`/`windowControls`/`app`
-> **chrome cluster** (handlers inline in `main.ts`; plus static `versions`/`platform` sync values).
-> **Recommended next: `shell`** — smallest, warms up the "handler is inline in `main.ts`, no dedicated
-> manager" case (decide: extract a tiny `shell-manager` into `shared/electron`, or leave the handler in
-> `main.ts` and just move the channel contract + renderer client). Then the chrome cluster (same inline
-> pattern), then the two big ones (`ai`, `sourceControl`). **The recipe for each domain is proven — see
-> the per-slice bullets below + the `Bridge`-mock spec recipe.** When the last domain migrates, delete
-> the god trio (`ipc-channels.ts`/`studio-api.ts`/the `window.studio` preload object) and do the §7
+> channel slices. **7 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
+> run/tasks, lsp, shell). **3 domains remain** on `window.studio`: `sourceControl` (git — large), `ai`
+> (large), and the `display`/`windowControls`/`app` **chrome cluster** (handlers inline in `main.ts`;
+> plus static `versions`/`platform` sync values — the `Studio` wrapper service is now exactly this
+> cluster, minus `openPath` which left for the new `Shell` service).
+> **Recommended next: the chrome cluster** (`display`/`windowControls`/`app`) — same inline-handler
+> pattern the `shell` slice just proved (leave the handler in `main.ts`, carve the contract + renderer
+> client; the `Studio` service is its ready-made renderer wrapper). Then the two big ones (`ai`,
+> `sourceControl`). **The recipe for each domain is proven — see the per-slice bullets below + the
+> `Bridge`-mock spec recipe.** When the last domain migrates, delete the god trio
+> (`ipc-channels.ts`/`studio-api.ts`/the `window.studio` preload object) and do the §7
 > `main.ts`/`preload.ts` relocation into `shared/electron`, carrying the deferred shared cone
 > (`workspace-context`, `project-system/`, the `lsp/` dir) with it. Working state: **clean, all green
 > (6 baseline fails), fully pushed to `origin/feature/arch-refactor`.**
@@ -469,10 +470,10 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 6 slices DONE (terminal,
-  file/dialog, workspace/project, security, run/tasks, lsp); 4 IPC domains REMAIN (sourceControl/git,
-  ai, shell, and the display/windowControls/app chrome cluster; plus static `versions`/`platform`).**
-  The enabler and the pattern, proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 7 slices DONE (terminal,
+  file/dialog, workspace/project, security, run/tasks, lsp, shell); 3 IPC domains REMAIN
+  (sourceControl/git, ai, and the display/windowControls/app chrome cluster; plus static
+  `versions`/`platform`).** The enabler and the pattern, proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -554,8 +555,20 @@ src/shared/api/lsp-channels.ts` (history preserved), added the `LspChannel` enum
     `lsp:get/set-settings` round-trips over `window.bridge` (toggle java → reflected → restored); the
     richer start/notify/onNotification/onExit paths are exercised by the passing `lsp-client.spec`
     through the `FakeLsp` bridge; `window.studio.lsp` gone.
-  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, `shell`,
-    `display`/`windowControls`/`app` off `window.studio` onto `window.bridge` + a `shared/api`
+  - `refactor(shell)` — the **shell** slice, and the **first inline-handler case** (the pattern the
+    chrome cluster reuses). `shell-channels.ts` (`ShellChannel` open-path/open-external; no payload
+    types — just string args) + a new shared `Shell` service wrapping them over `window.bridge`. The two
+    direct consumers repointed at it: `agent-chat` (link clicks) now injects `Shell` instead of reaching
+    into `window.studio.shell`, and **`openPath` moved out of the `Studio` wrapper into `Shell`**
+    (`terminal-view`, its only caller, repointed) — leaving `Studio` as purely the chrome-cluster wrapper
+    (platform + windowControls) for the next slice. **The handler stays inline in `main.ts`:** it is woven
+    into the nav/window security guards (`openExternalUrl` is shared with the window-open handlers), so it
+    is not a standalone manager and rides the §7 `main.ts` move; only the two channel refs switch to
+    `ShellChannel`. Deleted from the god trio: 2 `IpcChannel` members, `ShellApi` + field, preload literal.
+    **CDP smoke:** `shell:open-path` returns `Invalid path` for an empty path and `shell:open-external`
+    no-ops a rejected scheme, both over `window.bridge` (nothing launched); `window.studio.shell` gone.
+  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, and the
+    `display`/`windowControls`/`app` chrome cluster off `window.studio` onto `window.bridge` + a `shared/api`
     (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
     Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
