@@ -259,20 +259,19 @@ each feature folder is independently deletable; the app builds and runs througho
 
 > **▶ NEXT SESSION — start here (2026-07-03).** Mid-way through the §5 IPC carve: moving every
 > `window.studio.<domain>` off the god trio onto the generic `window.bridge` + per-domain `shared/api`
-> channel slices. **7 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
-> run/tasks, lsp, shell). **3 domains remain** on `window.studio`: `sourceControl` (git — large), `ai`
-> (large), and the `display`/`windowControls`/`app` **chrome cluster** (handlers inline in `main.ts`;
-> plus static `versions`/`platform` sync values — the `Studio` wrapper service is now exactly this
-> cluster, minus `openPath` which left for the new `Shell` service).
-> **Recommended next: the chrome cluster** (`display`/`windowControls`/`app`) — same inline-handler
-> pattern the `shell` slice just proved (leave the handler in `main.ts`, carve the contract + renderer
-> client; the `Studio` service is its ready-made renderer wrapper). Then the two big ones (`ai`,
-> `sourceControl`). **The recipe for each domain is proven — see the per-slice bullets below + the
-> `Bridge`-mock spec recipe.** When the last domain migrates, delete the god trio
-> (`ipc-channels.ts`/`studio-api.ts`/the `window.studio` preload object) and do the §7
+> channel slices. **8 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
+> run/tasks, lsp, shell, chrome cluster). **`window.studio` is now down to exactly two: `sourceControl`
+> (git) and `ai`** — both large.
+> **Recommended next: `ai` or `sourceControl`** (either order). These are the two big domains, each
+> with a rich channel surface and a dedicated main-process manager (`ai-manager`, `git-manager`) — the
+> same proven recipe, just more channels. After both, `window.studio` and the god trio are empty:
+> delete `studio-api.ts` + the `window.studio` preload object + `ipc-channels.ts`, then do the §7
 > `main.ts`/`preload.ts` relocation into `shared/electron`, carrying the deferred shared cone
-> (`workspace-context`, `project-system/`, the `lsp/` dir) with it. Working state: **clean, all green
-> (6 baseline fails), fully pushed to `origin/feature/arch-refactor`.**
+> (`workspace-context`, `project-system/`, the `lsp/` dir) with it. **New in the chrome slice:**
+> `window.host` — a small static object (preload-exposed, typed in `shared/api/host.ts`) for values the
+> renderer needs _synchronously at startup_ and the async bridge can't carry (`platform`, the display/GPU
+> startup snapshot). It is the sanctioned static-data counterpart to `window.bridge`. Working state:
+> **clean, all green (6 baseline fails), fully pushed to `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
@@ -470,10 +469,10 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 7 slices DONE (terminal,
-  file/dialog, workspace/project, security, run/tasks, lsp, shell); 3 IPC domains REMAIN
-  (sourceControl/git, ai, and the display/windowControls/app chrome cluster; plus static
-  `versions`/`platform`).** The enabler and the pattern, proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 8 slices DONE (terminal,
+  file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster); 2 IPC domains
+  REMAIN (`sourceControl`/git and `ai` — both large). `window.studio` is down to `{ sourceControl, ai }`.**
+  The enabler and the pattern, proven end-to-end on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -567,8 +566,31 @@ src/shared/api/lsp-channels.ts` (history preserved), added the `LspChannel` enum
     `ShellChannel`. Deleted from the god trio: 2 `IpcChannel` members, `ShellApi` + field, preload literal.
     **CDP smoke:** `shell:open-path` returns `Invalid path` for an empty path and `shell:open-external`
     no-ops a rejected scheme, both over `window.bridge` (nothing launched); `window.studio.shell` gone.
-  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git), `ai`, and the
-    `display`/`windowControls`/`app` chrome cluster off `window.studio` onto `window.bridge` + a `shared/api`
+  - `refactor(chrome)` ×2 — the **chrome cluster** (`windowControls` + `app` + `display`), split by the
+    async/sync seam. **Part 1 (pure channels):** `window-channels.ts` (`WindowChannel` minimize/toggle/
+    close/set-movable, all `send`) + `app-channels.ts` (`AppChannel` request-close/confirm-close). `Studio`
+    drives window controls over `bridge.send`; `Lifecycle` drives the close round-trip (`bridge.on`
+    request-close, `bridge.send` confirm-close), its `AppApi` fake → bridge mock. **Part 2 (static/sync
+    tail — the new bit):** the display startup snapshot + `platform` are read _synchronously before first
+    paint_, so they can't cross the async bridge → introduced **`window.host`**, a small static object the
+    preload exposes alongside `window.bridge` (typed `HostEnv` in `shared/api/host.ts`, which also now owns
+    `GpuRenderingInfo`). The `Display` service reads `window.host.display` for its snapshot and drives
+    set-hw-accel (invoke) + relaunch (send) over the bridge; `Studio.platform` reads `window.host`;
+    pre-bootstrap `main.ts` reads `window.host.display` for the first-paint policy. Dropped the unused
+    `versions` surface. **Handlers stay inline in `main.ts`** (chrome; ride §7) — only channel refs switch
+    (`main.ts` no longer imports `IpcChannel` at all). Deleted from the god trio: 9 `IpcChannel` members
+    (4 window + 5 app), `WindowControlsApi`/`AppApi`/`DisplayApi`/`RuntimeVersions`/`GpuRenderingInfo` +
+    the display/windowControls/app/platform/versions fields, the two preload literals + the static studio
+    surface. **`window.studio` now holds only `{ sourceControl, ai }`.** **CDP smoke:**
+    `window:toggle-maximize` visibly resizes the window (1280×800↔1920×1050) and `app:set-hardware-
+acceleration` round-trips over `window.bridge`; `window.host.platform='darwin'` + GPU snapshot present;
+    `window.studio` keys are exactly `['sourceControl','ai']`; boots clean.
+  - **`window.host` (design note).** The sanctioned static-data counterpart to `window.bridge`: for host
+    facts the renderer needs synchronously at startup, before any async round-trip (platform, display/GPU
+    startup snapshot). Preload builds it from the one `sendSync` channel (`app:get-display-startup`) that
+    is not reached over the bridge. When more sync-startup needs appear, they belong here, not on a channel.
+  - **REMAINING (per-domain, same template):** migrate `sourceControl` (git) and `ai` off `window.studio`
+    onto `window.bridge` + a `shared/api`
     (or feature `api`) channel slice, moving each handler to `shared/electron` (or `features/<f>/electron`).
     Each shrinks the god trio; the trio is deleted when the last domain migrates. Also relocate
     `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
