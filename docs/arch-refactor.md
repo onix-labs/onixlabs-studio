@@ -257,26 +257,31 @@ each feature folder is independently deletable; the app builds and runs througho
 
 ## 10. Progress log (status)
 
-> **▶ NEXT SESSION — start here (2026-07-03).** **§5 IPC carve is COMPLETE.** All ~10 domains are off
-> `window.studio` and onto the generic `window.bridge` + per-domain `shared/api` channel slices
-> (terminal, file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster,
-> source-control/git, ai). **The god trio is DELETED:** `studio-api.ts` and `ipc-channels.ts` are gone;
-> the preload exposes only `window.bridge` + `window.host`; `global.d.ts` no longer declares `studio?`.
-> The renderer's "am-I-in-Electron?" probe is now `window.bridge !== undefined` everywhere.
-> **Recommended next: §7 — relocate `main.ts`/`preload.ts` into `shared/electron`.** Move the two
-> entrypoints to `dist-electron/shared/electron/…`, updating `package.json main`, the
-> `build:main`/`build:preload` esbuild outfiles, and the `__dirname`-relative paths; carry the deferred
-> shared cone with them (`workspace-context`, `project-system/`, the `lsp/` dir, and the `ai/` cone —
-> each was repointed in place, not moved, precisely so §7 could move them as a unit). The self-contained
-> managers already moved (`security-manager`, `code-runner`/`task-runner`, `git-manager`,
-> `media-protocol`) show the target shape. After §7, `src/electron/` should be empty and `src/` holds
-> only `features/` + `shared/` — the §1 end state.
-> **Reference:** `window.host` (chrome slice) is the sanctioned static-data counterpart to `window.bridge`
-> — preload-exposed, typed in `shared/api/host.ts`, for values the renderer needs _synchronously at
-> startup_ (`platform`, the display/GPU snapshot). `ai-types.ts` deliberately stayed put (30 importers) —
-> its physical move under `shared/api` is part of the §6/§7 reorg, not the transport carve. Working
-> state: **clean, all green (6 baseline fails; 9 pre-existing prettier warnings, none in the touched
-> set), fully pushed to `origin/feature/arch-refactor`.**
+> **▶ NEXT SESSION — start here (2026-07-03).** **§5 IPC carve COMPLETE** (all ~10 domains on
+> `window.bridge` + `shared/api` slices; god trio deleted — `studio-api.ts`/`ipc-channels.ts` gone,
+> preload exposes only `window.bridge` + `window.host`; probe = `window.bridge !== undefined`).
+> **§7 ELECTRON RELOCATION COMPLETE too:** `main.ts`/`preload.ts` + the whole remaining cone
+> (`ai/`, `lsp/`, `project-system/`, `workspace-context`, `workspace-manager`, `startup-preferences`,
+> the electron `tsconfig.json`) moved into `src/shared/electron/` as a unit; **`src/electron/` is
+> DELETED.** Key call: the build **output stayed at `dist-electron/electron/`** (only esbuild INPUT paths
+> changed) so `__dirname`/`INDEX_HTML`/preload-sibling/`package.json main` are all untouched — zero
+> runtime-path churn. main/preload needed no import edits (only `./` siblings + `@shared` aliases); the
+> 14 cone files' relative `../shared/…` were converted to `@shared/…`. Verified by a full-app CDP boot
+> smoke (app renders, `window.bridge`/`window.host` live, relocated ai + git handlers wire up).
+> **`src/` is now `{ angular, features, shared }`.**
+> **Recommended next: the renderer feature relocation — the last stretch to the §1 end state
+> (`src/` = `features/` + `shared/` only).** `src/angular/` still holds the two unmigrated tab features
+> (`repository`/source-control, then `workspace`/directory — do them in that order, they own the dock +
+> the most cross-feature glue) plus the residual `src/angular/services` + `src/angular/components` that
+> belong under `shared/angular` or a feature. Follow the proven feature recipe (§9 Step 3): gate-check
+> the cone → move foreign kitchen deps to `shared` → sever cross-feature embeds → relocate to
+> `features/<f>/{angular,electron,api}` → `<f>.feature.ts` + one `config.ts` line → delete its `@case`.
+> When `src/angular/` empties, the refactor is done.
+> **Reference:** `window.host` (chrome slice) is the static-data counterpart to `window.bridge`
+> (preload-exposed, `shared/api/host.ts`, for pre-first-paint values). `ai-types.ts` deliberately stayed
+> in `src/shared/` (30 importers); a later cosmetic move under `shared/api` is optional. Working state:
+> **clean, all green (6 baseline fails; ~9 pre-existing prettier warnings, none introduced), fully pushed
+> to `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
@@ -634,13 +639,28 @@ acceleration` round-trips over `window.bridge`; `window.host.platform='darwin'` 
     `window.studio === undefined`; `ai:auth-status` (`local-login`) + `ai:list-providers`
     (`[claude,vercel,ollama]`) invoke over `window.bridge`, `ai:event` subscription returns an unsubscribe;
     `window.bridge` + `window.host` present, boots clean.
-  - **NEXT (§7 — the physical relocation):** move `main.ts`/`preload.ts` into `shared/electron`
-    (`dist-electron/shared/electron/…`, updating `package.json main`, `build:main`/`build:preload`
-    outfiles, and the `__dirname`-relative `INDEX_HTML`/`preload` paths), carrying the shared electron
-    cones repointed-in-place (`workspace-context`, `project-system/`, the `lsp/` dir, the `ai/` cone).
-    The self-contained managers already moved (`security-manager`, `code-runner`/`task-runner`,
-    `git-manager`, `media-protocol`) are the target shape. Endgame: `src/electron/` empties and `src/`
-    holds only `features/` + `shared/`.
+  - `refactor(electron)` — **§7 physical relocation DONE.** The whole remaining `src/electron/` tree
+    moved into `src/shared/electron/` as a unit (`main.ts`, `preload.ts`, `workspace-context`,
+    `workspace-manager`, `startup-preferences`, and the `ai/`, `lsp/`, `project-system/` dirs + the
+    electron `tsconfig.json`); **`src/electron/` deleted.** **Key decision (diverges from the earlier
+    plan wording): keep the build OUTPUT at `dist-electron/electron/`** — change only the esbuild INPUT
+    paths. Because `__dirname` at runtime is the _output_ dir (unchanged), `INDEX_HTML` (`__dirname/../../
+dist/…`), the `preload.js` sibling, and `package.json main` all stay valid — **zero runtime-path
+    churn, no electron-builder change**. Mechanics: `main.ts`/`preload.ts` needed no import edits (only
+    `./` siblings, which move as a unit, + `@shared` aliases); the 14 cone files using relative
+    `../shared/…` were converted to `@shared/…` (depth-change breakage). The moved electron `tsconfig`
+    was repointed (`extends ../../../tsconfig.json`, `include ../**/*.ts`, `exclude ../angular/**`) and
+    the root tsconfig's project reference updated; `tsconfig.app` already excludes `src/shared/electron`.
+    **Full-app CDP boot smoke:** app-root renders, `window.bridge` + `window.host` (`darwin`) exposed by
+    the moved preload, relocated main-process handlers wire up (`ai:auth-status`→`local-login`,
+    `source-control:resolve-repository`→`onixlabs-studio`); no module-load errors. `src/` is now
+    `{ angular, features, shared }` — no electron code outside `shared`.
+  - **NEXT — the last stretch (§1 end state):** relocate the renderer that still lives in `src/angular/`.
+    Two unmigrated tab features remain — `repository` (source-control) then `workspace` (directory), in
+    that order (they own the dock + the most cross-feature glue) — plus the residual
+    `src/angular/services` + `src/angular/components` that belong under `shared/angular` or a feature.
+    Follow the proven feature recipe (§9 Step 3). When `src/angular/` empties, `src/` = `features/` +
+    `shared/` only and the refactor is complete.
 - **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3 inlined copies now
   — terminal, markdown, code; plus the original still shared by the unmigrated directory +
   source-control ribbons; `styleUrl` can't use aliases, so each migrated ribbon inlines).
