@@ -19,7 +19,7 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TreeRow, TreeView } from '../../../../shared/tree-view/tree-view';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
  * Identifies the outcome of a build/check on a pull request or a CI/CD action: in progress, passed, or

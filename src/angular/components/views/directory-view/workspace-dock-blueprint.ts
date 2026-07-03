@@ -1,8 +1,8 @@
-import { AgentPanel } from '../../panels/agent-panel/agent-panel';
+import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '../../panels/output-panel/output-panel';
 import { ProblemsPanel } from '../../panels/problems-panel/problems-panel';
 import { SolutionPanel } from '../../panels/solution-panel/solution-panel';
-import { TerminalPanel } from '../../panels/terminal-panel/terminal-panel';
+import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '../../panels/tree-panel/tree-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock/dock-blueprint';

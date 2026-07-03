@@ -17,7 +17,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '../../shared/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '../../shared/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TreeRow, TreeView } from '../../shared/tree-view/tree-view';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
  * Renders the logical solution model (solution folders, projects, and each project's files) as the body

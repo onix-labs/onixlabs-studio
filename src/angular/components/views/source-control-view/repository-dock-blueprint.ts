@@ -1,5 +1,5 @@
-import { AgentPanel } from '../../panels/agent-panel/agent-panel';
-import { TerminalPanel } from '../../panels/terminal-panel/terminal-panel';
+import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
+import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock/dock-node';

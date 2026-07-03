@@ -55,8 +55,8 @@ export interface TreeRow {
 }
 
 /**
- * A reusable tree presenter shared by the File Explorer, Solution Explorer, and source-control
- * Repository panel. It owns the structural concerns — the flat list of indented rows, the
+ * A reusable tree presenter for hierarchical row surfaces — file trees, solution trees, change
+ * lists, and the like. It owns the structural concerns — the flat list of indented rows, the
  * expand/collapse chevron, hover and selection chrome (a full-width fill with an inset accent bar),
  * focus, and accessibility — while each consumer supplies its already-flattened {@link TreeRow}s and
  * projects a row-content template (`<ng-template let-row>`) that renders each row's icon, label, and
