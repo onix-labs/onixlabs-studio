@@ -16,21 +16,12 @@ still need your call. Once resolved, this file is deleted.
   `dist-electron/electron/`, `FeatureDescriptor` is `{ type, view, ribbon?, documentPanel?, chrome? }`,
   the dock uses a declarative `DockBlueprint` via `DOCK_BLUEPRINT`. `agents.md` is accurate. Discarded.
 - **Migration procedure / progress log** — spent; preserved in git history. Discarded.
+- **Git issues #96–#99** — **#97/#98/#99 closed as delivered**; epic **#96** kept open with a
+  "delivered" status + remaining work repointed at **#188/#189**.
 
 ## Open — for you to take one by one
 
-### 1. Reconcile git issues #96–#99
-
-The Git epic **#96** and its children — **#97** (GitIpcHandler), **#98** (tree status decorations),
-**#99** (changes/branch panel) — describe work that has **substantially shipped**, but their bodies
-predate the feature-first refactor (they cite `src/angular/components/**`, `ng g`, `GitIpcHandler`)
-and have **no milestone**. The delivered feature also went beyond their scope (network ops, branch
-ops, stash, provider adapter) and left the gaps now tracked by #188/#189.
-
-**Decision needed:** close #97–#99 as delivered and repoint #96 at the remaining work (#188/#189), or
-rescope each to the current design + a milestone. Maintainer call — I did not touch them.
-
-### 2. `make-git-test-repo.sh` test-repo generator
+### 1. `make-git-test-repo.sh` test-repo generator
 
 A throwaway script that built a rich fixture repo (merge graph, branches, tags, stashes, ahead/behind
 via a bare remote, a dirty tree with staged/unstaged/untracked/rename/delete) lived in a session
