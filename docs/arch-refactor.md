@@ -257,25 +257,26 @@ each feature folder is independently deletable; the app builds and runs througho
 
 ## 10. Progress log (status)
 
-> **▶ NEXT SESSION — start here (2026-07-03).** Nearly through the §5 IPC carve: moving every
-> `window.studio.<domain>` off the god trio onto the generic `window.bridge` + per-domain `shared/api`
-> channel slices. **9 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
-> run/tasks, lsp, shell, chrome cluster, source-control/git). **`window.studio` is now down to exactly
-> one: `ai`** — the last (and large) domain.
-> **Recommended next: `ai`** — the final slice. Rich channel surface with a dedicated main-process
-> manager (`ai-manager`, in `src/electron/ai/`) plus send/on event streams and permission round-trips
-> (not just invoke), so expect the `Bridge`-mock spec recipe to matter. Mirror the source-control slice:
-> an `ai-channels.ts` slice (enum + the `ai-types.ts` payloads folded in) + a renderer client over
-> `window.bridge`; check whether `ai-manager`'s cone (`renderer-bridge`, the providers) is self-contained
-> enough to move to `shared/electron` or should repoint in place. **When `ai` lands, the god trio is
-> empty:** delete `studio-api.ts` + `global.d.ts`'s `studio?` + the `window.studio` preload object +
-> `ipc-channels.ts`, then do the §7 `main.ts`/`preload.ts` relocation into `shared/electron`, carrying
-> the deferred shared cone (`workspace-context`, `project-system/`, the `lsp/` dir) with it.
-> **Reference:** `window.host` (from the chrome slice) is the sanctioned static-data counterpart to
-> `window.bridge` — preload-exposed, typed in `shared/api/host.ts`, for values the renderer needs
-> _synchronously at startup_ (`platform`, the display/GPU snapshot). Working state: **clean, all green
-> (6 baseline fails; 9 pre-existing prettier warnings, none in the touched set), fully pushed to
-> `origin/feature/arch-refactor`.**
+> **▶ NEXT SESSION — start here (2026-07-03).** **§5 IPC carve is COMPLETE.** All ~10 domains are off
+> `window.studio` and onto the generic `window.bridge` + per-domain `shared/api` channel slices
+> (terminal, file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster,
+> source-control/git, ai). **The god trio is DELETED:** `studio-api.ts` and `ipc-channels.ts` are gone;
+> the preload exposes only `window.bridge` + `window.host`; `global.d.ts` no longer declares `studio?`.
+> The renderer's "am-I-in-Electron?" probe is now `window.bridge !== undefined` everywhere.
+> **Recommended next: §7 — relocate `main.ts`/`preload.ts` into `shared/electron`.** Move the two
+> entrypoints to `dist-electron/shared/electron/…`, updating `package.json main`, the
+> `build:main`/`build:preload` esbuild outfiles, and the `__dirname`-relative paths; carry the deferred
+> shared cone with them (`workspace-context`, `project-system/`, the `lsp/` dir, and the `ai/` cone —
+> each was repointed in place, not moved, precisely so §7 could move them as a unit). The self-contained
+> managers already moved (`security-manager`, `code-runner`/`task-runner`, `git-manager`,
+> `media-protocol`) show the target shape. After §7, `src/electron/` should be empty and `src/` holds
+> only `features/` + `shared/` — the §1 end state.
+> **Reference:** `window.host` (chrome slice) is the sanctioned static-data counterpart to `window.bridge`
+> — preload-exposed, typed in `shared/api/host.ts`, for values the renderer needs _synchronously at
+> startup_ (`platform`, the display/GPU snapshot). `ai-types.ts` deliberately stayed put (30 importers) —
+> its physical move under `shared/api` is part of the §6/§7 reorg, not the transport carve. Working
+> state: **clean, all green (6 baseline fails; 9 pre-existing prettier warnings, none in the touched
+> set), fully pushed to `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
@@ -473,10 +474,12 @@ text-editor → .monaco-editor` + `code-ribbon`; no zero-height (1280×619 throu
   the ad-hoc launch (real repo, commits=0), so staging a live diff was disproportionate and would test
   the git bridge, not this change; validated instead by the verbatim-copy + byte-identical-options +
   build/tests, with Monaco boot already proven in the code-feature smoke.
-- **Generic `Bridge` + `shared/electron` carve** (§5) — **FOUNDATION + 9 slices DONE (terminal,
-  file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster, source-control/git);
-  1 IPC domain REMAINS (`ai` — large). `window.studio` is down to `{ ai }`.**
-  The enabler and the pattern, proven end-to-end on the terminal slice:
+- **Generic `Bridge` + `shared/electron` carve** (§5) — **COMPLETE. All 10 IPC domains carved (terminal,
+  file/dialog, workspace/project, security, run/tasks, lsp, shell, chrome cluster, source-control/git,
+  ai). The god trio is DELETED** (`studio-api.ts` + `ipc-channels.ts` removed; preload exposes only
+  `window.bridge` + `window.host`; `global.d.ts` drops `studio?`). Every `window.studio.<domain>` now
+  rides `window.bridge` + a `shared/api` channel slice. The enabler and the pattern, proven end-to-end
+  on the terminal slice:
   - `feat(shared) window.bridge` — the generic pub/sub transport: `Bridge` interface in
     `src/shared/api/bridge.ts` (`invoke`/`send`/`on` over raw channel names), exposed by the preload as
     `window.bridge` alongside `window.studio`, naming no feature (strips the Electron event so listeners
@@ -613,13 +616,31 @@ acceleration` round-trips over `window.bridge`; `window.host.platform='darwin'` 
     `{ ai }`.** **CDP smoke:** `source-control:{resolve,status,close}-repository` round-trips over
     `window.bridge` against this repo (resolves `onixlabs-studio`, `status` succeeds, closes cleanly);
     `window.studio` keys are exactly `['ai']`.
-  - **REMAINING (the last domain):** migrate `ai` off `window.studio` onto `window.bridge` + a `shared/api`
-    (or feature `api`) channel slice, moving the handler to `shared/electron` (or `features/<f>/electron`).
-    This empties the god trio, which is then deleted. Also relocate
-    `main.ts`/`preload.ts` themselves into `shared/electron` (§7: `dist-electron/shared/electron/…`,
-    updating `package.json main`, `build:main`/`build:preload` outfiles, and the `__dirname`-relative
-    `INDEX_HTML`/`preload` paths) — and with them the shared electron cone (`workspace-context`,
-    `project-system/`) that the workspace slice deferred.
+  - `refactor(ai)` — the **ai** slice, the **last domain** and the **richest surface**: `invoke`
+    (auth/config/run-control) + main→renderer `on` streams (events + in-app-capability requests) +
+    renderer→main `send` (replies). `ai-channels.ts` (`AiChannel` enum + a renderer-facing `AiClient`
+    interface). A shared `Ai` @Service exposes `client: AiClient | undefined` built over `window.bridge`
+    — `invoke`/`on`/`send` mapped per channel (the `on` wrappers cast `args[0]` to the payload; the
+    generic `bridge.on` already strips the event and returns the unsubscribe) — so `ai-auth` + `ai-runtime`
+    keep every `this.api?.method(...)` call site. **`ai-types.ts` stayed put** as the shared payload module
+    (30 importers across both processes; only its `AiApi` interface was dropped, replaced by `AiClient`) —
+    physically relocating it is §6/§7, not the transport carve. The two specs' `AiApi` fakes became bridge
+    mocks — notably the `on`-stream listeners are captured through the mock's `on` so the tests still drive
+    events/capability-requests. `ai-manager`/`ai-auth-manager`/`renderer-bridge` repoint their 11 channel
+    refs to `AiChannel` **in place** (the `ai/` cone is large — its physical move rides §7, as lsp did).
+    `output-panel` + `monaco-diagnostics-provider` switch their `am-I-in-Electron?` probe from
+    `window.studio` to `window.bridge`. **THE GOD TRIO IS DELETED:** `studio-api.ts` + `ipc-channels.ts`
+    removed; preload drops the whole `window.studio` surface; `global.d.ts` drops `studio?`. **CDP smoke:**
+    `window.studio === undefined`; `ai:auth-status` (`local-login`) + `ai:list-providers`
+    (`[claude,vercel,ollama]`) invoke over `window.bridge`, `ai:event` subscription returns an unsubscribe;
+    `window.bridge` + `window.host` present, boots clean.
+  - **NEXT (§7 — the physical relocation):** move `main.ts`/`preload.ts` into `shared/electron`
+    (`dist-electron/shared/electron/…`, updating `package.json main`, `build:main`/`build:preload`
+    outfiles, and the `__dirname`-relative `INDEX_HTML`/`preload` paths), carrying the shared electron
+    cones repointed-in-place (`workspace-context`, `project-system/`, the `lsp/` dir, the `ai/` cone).
+    The self-contained managers already moved (`security-manager`, `code-runner`/`task-runner`,
+    `git-manager`, `media-protocol`) are the target shape. Endgame: `src/electron/` empties and `src/`
+    holds only `features/` + `shared/`.
 - **Consolidate the inlined `ribbon-row.scss`** into the shared ribbon framework (3 inlined copies now
   — terminal, markdown, code; plus the original still shared by the unmigrated directory +
   source-control ribbons; `styleUrl` can't use aliases, so each migrated ribbon inlines).
