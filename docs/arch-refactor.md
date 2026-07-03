@@ -271,7 +271,7 @@ each feature folder is independently deletable; the app builds and runs througho
 > the god trio (`ipc-channels.ts`/`studio-api.ts`/the `window.studio` preload object) and do the §7
 > `main.ts`/`preload.ts` relocation into `shared/electron`, carrying the deferred shared cone
 > (`workspace-context`, `project-system/`, the `lsp/` dir) with it. Working state: **clean, all green
-> (6 baseline fails), 21 commits ahead of origin — pushed.**
+> (6 baseline fails), fully pushed to `origin/feature/arch-refactor`.**
 
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
