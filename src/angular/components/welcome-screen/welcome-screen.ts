@@ -4,7 +4,7 @@ import { RecentItem, RecentItems } from '../../services/recent-items/recent-item
 import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { WelcomeModal } from '../../services/welcome-modal/welcome-modal';
+import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';

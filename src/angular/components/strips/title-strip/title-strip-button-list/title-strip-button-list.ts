@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { WelcomeModal } from '../../../../services/welcome-modal/welcome-modal';
+import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
