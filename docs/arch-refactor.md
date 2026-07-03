@@ -257,6 +257,22 @@ each feature folder is independently deletable; the app builds and runs througho
 
 ## 10. Progress log (status)
 
+> **▶ NEXT SESSION — start here (2026-07-03 morning).** Mid-way through the §5 IPC carve: moving every
+> `window.studio.<domain>` off the god trio onto the generic `window.bridge` + per-domain `shared/api`
+> channel slices. **6 of ~10 domains done** (terminal, file/dialog, workspace/project, security,
+> run/tasks, lsp). **4 domains remain** on `window.studio`: `sourceControl` (git — large), `ai` (large),
+> `shell` (tiny: 2 channels, handler inline in `main.ts`), and the `display`/`windowControls`/`app`
+> **chrome cluster** (handlers inline in `main.ts`; plus static `versions`/`platform` sync values).
+> **Recommended next: `shell`** — smallest, warms up the "handler is inline in `main.ts`, no dedicated
+> manager" case (decide: extract a tiny `shell-manager` into `shared/electron`, or leave the handler in
+> `main.ts` and just move the channel contract + renderer client). Then the chrome cluster (same inline
+> pattern), then the two big ones (`ai`, `sourceControl`). **The recipe for each domain is proven — see
+> the per-slice bullets below + the `Bridge`-mock spec recipe.** When the last domain migrates, delete
+> the god trio (`ipc-channels.ts`/`studio-api.ts`/the `window.studio` preload object) and do the §7
+> `main.ts`/`preload.ts` relocation into `shared/electron`, carrying the deferred shared cone
+> (`workspace-context`, `project-system/`, the `lsp/` dir) with it. Working state: **clean, all green
+> (6 baseline fails), 21 commits ahead of origin — pushed.**
+
 Branch `feature/arch-refactor`. **Green after every commit** = `ng build` + `eslint src` +
 `prettier --check` pass and the test suite holds its baseline (**6 known pre-existing fails**,
 none introduced by this refactor — they predate it, sit in code/specs the refactor does not
