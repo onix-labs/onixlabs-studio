@@ -1,0 +1,155 @@
+// Shared AI-agent streamed-event protocol, platform-neutral (types only) so both the Electron
+// back-end and the Angular front-end can import it.
+
+/**
+ * Identifies the lifecycle state carried by a {@link AiStatusEvent}.
+ */
+export type AiRunState = 'started' | 'completed' | 'aborted' | 'error';
+
+/**
+ * The fields every streamed agent event carries.
+ */
+export interface AiEventBase {
+  /**
+   * Gets the identifier of the run the event belongs to.
+   */
+  readonly requestId: string;
+}
+
+/**
+ * A chunk of assistant text.
+ */
+export interface AiTextEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'text';
+
+  /**
+   * Gets the text chunk.
+   */
+  readonly delta: string;
+}
+
+/**
+ * A chunk of assistant reasoning.
+ */
+export interface AiThinkingEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'thinking';
+
+  /**
+   * Gets the reasoning chunk.
+   */
+  readonly delta: string;
+}
+
+/**
+ * Signals that the agent began using a tool.
+ */
+export interface AiToolStartEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'tool-start';
+
+  /**
+   * Gets the identifier correlating this tool use with its completion.
+   */
+  readonly toolId: string;
+
+  /**
+   * Gets the tool's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a one-line summary of the tool's input.
+   */
+  readonly detail: string;
+}
+
+/**
+ * Signals that a tool use completed.
+ */
+export interface AiToolEndEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'tool-end';
+
+  /**
+   * Gets the identifier of the tool use that completed.
+   */
+  readonly toolId: string;
+
+  /**
+   * Gets a value indicating whether the tool succeeded.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets a one-line summary of the result.
+   */
+  readonly detail: string;
+}
+
+/**
+ * Requests the user's decision before a gated tool runs. Emitted once the permission broker lands
+ * (#113); defined here so the event protocol is stable.
+ */
+export interface AiPermissionEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'permission';
+
+  /**
+   * Gets the identifier the renderer answers the request with.
+   */
+  readonly permissionId: string;
+
+  /**
+   * Gets the display name of the tool requesting permission.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a one-line summary of what the tool will do.
+   */
+  readonly detail: string;
+}
+
+/**
+ * Reports a change in the run's lifecycle.
+ */
+export interface AiStatusEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'status';
+
+  /**
+   * Gets the new lifecycle state.
+   */
+  readonly state: AiRunState;
+
+  /**
+   * Gets a short human-readable description of the state.
+   */
+  readonly detail: string;
+}
+
+/**
+ * A streamed event from a running agent turn. Both providers parse their model output into this
+ * provider-agnostic protocol.
+ */
+export type AiEvent =
+  | AiTextEvent
+  | AiThinkingEvent
+  | AiToolStartEvent
+  | AiToolEndEvent
+  | AiPermissionEvent
+  | AiStatusEvent;
