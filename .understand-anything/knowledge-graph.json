@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T09:57:49.070Z",
-    "gitCommitHash": "cdc7e672fee5be3cd69a80a471738dac1cd53405"
+    "analyzedAt": "2026-07-04T10:15:17.658Z",
+    "gitCommitHash": "f3f677b11347c0aaf557c6b276f8efba05d47878"
   },
   "nodes": [
     {
@@ -2755,7 +2755,7 @@
       "type": "file",
       "name": "dock-state.ts",
       "filePath": "src/shared/angular/services/dock/dock-state.ts",
-      "summary": "Central dock state service holding the layout tree signal and exposing all mutations (tab, split, dock-edge, move, resize, collapse, reset) via the pure dock-tree helpers.",
+      "summary": "Dock layout state + Memento undo/redo caretaker: routes structural mutations through a bounded-history commit(), exposing undo/redo and canUndo/canRedo; reads undoStackSize from Settings.",
       "tags": [
         "service",
         "dock",
@@ -2774,7 +2774,7 @@
         24,
         171
       ],
-      "summary": "Injectable service owning the layout tree signal; each method applies a pure dock-tree transform (tabInto, splitStack, dockEdge, removeFromLayout, reorderTab, movePanel, setSizes, setActive, setCollapsed) and reset rebuilds from the blueprint layout.",
+      "summary": "Holds the dock layout tree and exposes immutable mutations over it, each replacing the tree with a structurally-shared copy. Also the Memento caretaker: structural mutations go through commit(), which captures the prior tree onto a bounded (undoStackSize) undo stack, powering undo()/redo() and canUndo/canRedo.",
       "tags": [
         "service",
         "dock",
@@ -24329,6 +24329,13 @@
     {
       "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
       "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-state.ts",
+      "target": "file:src/shared/angular/services/settings/settings.ts",
       "type": "imports",
       "direction": "forward",
       "weight": 0.7
