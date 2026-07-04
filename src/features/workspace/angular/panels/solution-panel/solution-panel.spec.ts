@@ -8,15 +8,33 @@ import { Icon } from '@shared/angular/icons/icon';
 import { SolutionPanel } from './solution-panel';
 
 /**
- * A fake solution model whose rows and model presence the test sets, recording toggles.
+ * A fake solution model whose rows and model presence the test sets, recording toggles, search queries,
+ * and expand/collapse calls the panel forwards from its toolbar.
  */
 class FakeSolutionModel {
   public readonly model: WritableSignal<ProjectModel | null> = signal<ProjectModel | null>(null);
   public readonly rows: WritableSignal<readonly SolutionRow[]> = signal<readonly SolutionRow[]>([]);
+  public readonly query: WritableSignal<string> = signal<string>('');
   public readonly toggled: SolutionRow[] = [];
+  public readonly queries: string[] = [];
+  public expandAllCount: number = 0;
+  public collapseAllCount: number = 0;
 
   public toggle(row: SolutionRow): void {
     this.toggled.push(row);
+  }
+
+  public setQuery(value: string): void {
+    this.queries.push(value);
+    this.query.set(value);
+  }
+
+  public expandAll(): void {
+    this.expandAllCount++;
+  }
+
+  public collapseAll(): void {
+    this.collapseAllCount++;
   }
 }
 
