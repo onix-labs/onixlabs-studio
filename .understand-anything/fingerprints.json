@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "40c5e0f7dd29044dd7e664e2d0fa905fe08d939a",
-  "generatedAt": "2026-07-04T13:14:25.424Z",
+  "gitCommitHash": "98f56af77604bea09c2827caa17b8d690f8e8bc8",
+  "generatedAt": "2026-07-04T13:30:31.948Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -17591,7 +17591,7 @@
     },
     "src/shared/angular/services/settings/settings.ts": {
       "filePath": "src/shared/angular/services/settings/settings.ts",
-      "contentHash": "3bcf436d541ef16dccb3bfff453aba2c996b0011b53185b8899b564a8076c944",
+      "contentHash": "f104ca8c79492cf81ab3310b0c57f497b6269b76c6e6415874421ef05f095cc9",
       "functions": [],
       "classes": [
         {
@@ -17627,9 +17627,7 @@
             "read",
             "assignSection",
             "validate",
-            "load",
-            "isProfileAwareFormat",
-            "migrateLegacy"
+            "load"
           ],
           "properties": [
             "store",
@@ -17655,7 +17653,7 @@
             "aiTokenCap"
           ],
           "exported": true,
-          "lineCount": 591
+          "lineCount": 495
         }
       ],
       "imports": [
@@ -17694,12 +17692,28 @@
           "specifiers": [
             "SettingsStore"
           ]
+        },
+        {
+          "source": "./settings-migration",
+          "specifiers": [
+            "restoreOverrides"
+          ]
+        },
+        {
+          "source": "./settings-profiles",
+          "specifiers": [
+            "addProfile",
+            "AddProfileResult",
+            "removeProfile",
+            "resolveForLanguage",
+            "updateProfileIn"
+          ]
         }
       ],
       "exports": [
         "Settings"
       ],
-      "totalLines": 996,
+      "totalLines": 866,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/shell/shell.ts": {
@@ -22502,6 +22516,128 @@
         "buildMarkdownCommandHandler"
       ],
       "totalLines": 88,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/settings/settings-migration.ts": {
+      "filePath": "src/shared/angular/services/settings/settings-migration.ts",
+      "contentHash": "0b1812d38c583373c42d7436529b42e19b457d2545a7ba803dd92e6c62610acc",
+      "functions": [
+        {
+          "name": "restoreOverrides",
+          "params": [
+            "raw"
+          ],
+          "returnType": "SettingsOverrides",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "isProfileAwareFormat",
+          "params": [
+            "settings"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "migrateLegacy",
+          "params": [
+            "legacy"
+          ],
+          "returnType": "SettingsOverrides",
+          "exported": false,
+          "lineCount": 33
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "./settings",
+          "specifiers": [
+            "AiSettings",
+            "ApplicationSettings",
+            "AppearanceSettings",
+            "MarkdownEditorSettings",
+            "SettingsOverrides",
+            "TextEditorSettings",
+            "TextEditorSettingsWithProfiles",
+            "WorkspacesSettings"
+          ]
+        }
+      ],
+      "exports": [
+        "restoreOverrides"
+      ],
+      "totalLines": 124,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/settings/settings-profiles.ts": {
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "contentHash": "09ef82efa30a982402d40c4e8101500753f9a1ff0863cff92a34f3ef8485378f",
+      "functions": [
+        {
+          "name": "addProfile",
+          "params": [
+            "profiles",
+            "name",
+            "languages",
+            "settings"
+          ],
+          "returnType": "AddProfileResult",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "updateProfileIn",
+          "params": [
+            "profiles",
+            "id",
+            "updates"
+          ],
+          "returnType": "readonly EditorProfile[]",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "removeProfile",
+          "params": [
+            "profiles",
+            "id"
+          ],
+          "returnType": "readonly EditorProfile[]",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "resolveForLanguage",
+          "params": [
+            "global",
+            "profiles",
+            "language"
+          ],
+          "returnType": "TextEditorSettings",
+          "exported": true,
+          "lineCount": 29
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "./settings",
+          "specifiers": [
+            "EditorProfile",
+            "PartialTextEditorSettings",
+            "TextEditorSettings"
+          ]
+        }
+      ],
+      "exports": [
+        "addProfile",
+        "updateProfileIn",
+        "removeProfile",
+        "resolveForLanguage"
+      ],
+      "totalLines": 109,
       "hasStructuralAnalysis": true
     }
   }

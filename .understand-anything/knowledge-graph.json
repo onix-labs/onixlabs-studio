@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T13:13:55.979Z",
-    "gitCommitHash": "40c5e0f7dd29044dd7e664e2d0fa905fe08d939a"
+    "analyzedAt": "2026-07-04T13:30:12.472Z",
+    "gitCommitHash": "98f56af77604bea09c2827caa17b8d690f8e8bc8"
   },
   "nodes": [
     {
@@ -12888,6 +12888,104 @@
         "editor"
       ],
       "complexity": "moderate"
+    },
+    {
+      "id": "file:src/shared/angular/services/settings/settings-migration.ts",
+      "type": "file",
+      "name": "settings-migration.ts",
+      "filePath": "src/shared/angular/services/settings/settings-migration.ts",
+      "summary": "Pure legacy-settings migration: restores the sparse override map from a persisted value, flattening the legacy nested format forward.",
+      "tags": [
+        "settings",
+        "migration",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/settings/settings-migration.ts:restoreOverrides",
+      "type": "function",
+      "name": "restoreOverrides",
+      "filePath": "src/shared/angular/services/settings/settings-migration.ts",
+      "summary": "Restores the sparse override map from a raw persisted value, migrating the legacy nested format forward.",
+      "tags": [
+        "settings",
+        "migration"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "type": "file",
+      "name": "settings-profiles.ts",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Pure editor-profile transforms: add/update/remove a profile and resolve the effective per-language settings by merging a matching profile over the global settings.",
+      "tags": [
+        "settings",
+        "profiles",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/settings/settings-profiles.ts:addProfile",
+      "type": "function",
+      "name": "addProfile",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Pure editor-profile transform (addProfile).",
+      "tags": [
+        "settings",
+        "profiles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/settings/settings-profiles.ts:updateProfileIn",
+      "type": "function",
+      "name": "updateProfileIn",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Pure editor-profile transform (updateProfileIn).",
+      "tags": [
+        "settings",
+        "profiles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/settings/settings-profiles.ts:removeProfile",
+      "type": "function",
+      "name": "removeProfile",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Pure editor-profile transform (removeProfile).",
+      "tags": [
+        "settings",
+        "profiles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/settings/settings-profiles.ts:resolveForLanguage",
+      "type": "function",
+      "name": "resolveForLanguage",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Pure editor-profile transform (resolveForLanguage).",
+      "tags": [
+        "settings",
+        "profiles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "interface:src/shared/angular/services/settings/settings-profiles.ts:AddProfileResult",
+      "type": "interface",
+      "name": "AddProfileResult",
+      "filePath": "src/shared/angular/services/settings/settings-profiles.ts",
+      "summary": "Result of addProfile: the created profile and the updated list.",
+      "tags": [
+        "settings",
+        "profiles"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -24706,6 +24804,118 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-migration.ts",
+      "target": "function:src/shared/angular/services/settings/settings-migration.ts:restoreOverrides",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-migration.ts",
+      "target": "function:src/shared/angular/services/settings/settings-migration.ts:restoreOverrides",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:addProfile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:addProfile",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:updateProfileIn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:updateProfileIn",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:removeProfile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:removeProfile",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:resolveForLanguage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "function:src/shared/angular/services/settings/settings-profiles.ts:resolveForLanguage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "interface:src/shared/angular/services/settings/settings-profiles.ts:AddProfileResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "interface:src/shared/angular/services/settings/settings-profiles.ts:AddProfileResult",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings.ts",
+      "target": "file:src/shared/angular/services/settings/settings-migration.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings.ts",
+      "target": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-migration.ts",
+      "target": "file:src/shared/angular/services/settings/settings.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-profiles.ts",
+      "target": "file:src/shared/angular/services/settings/settings.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.5
     }
   ],
   "layers": [
@@ -25179,7 +25389,9 @@
         "file:src/shared/angular/services/feature-registry/feature-descriptor.ts",
         "file:src/shared/angular/services/feature-registry/feature-registry.ts",
         "file:src/shared/angular/services/feature-registry/provide-feature.ts",
-        "file:src/shared/angular/services/markdown-commands/markdown-commands.ts"
+        "file:src/shared/angular/services/markdown-commands/markdown-commands.ts",
+        "file:src/shared/angular/services/settings/settings-migration.ts",
+        "file:src/shared/angular/services/settings/settings-profiles.ts"
       ]
     },
     {
