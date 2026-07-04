@@ -2,10 +2,15 @@
 
 > **Overall quality score: 88 / 100** — _Very good; a disciplined, convention-strong codebase with
 > concentrated, well-understood debt._
+>
+> **⟳ Remediation complete (2026-07-04):** the P0–P3 roadmap in §10 has been executed. Most of the identified
+> debt is paid down (both cross-feature leaks, the dead code, DRY clusters 1–2, three of the four god-files,
+> the Memento pattern, and the two grab-bag splits); P3b's component/service merges were **consciously
+> declined**. See the annotated table and the [Remediation outcomes](#remediation-outcomes-2026-07-04) in §10.
 
 **Repository:** `onixlabs-studio` (Angular 22 + Electron desktop IDE)
-**Commit reviewed:** `c99011e`
-**Date:** 2026-07-04
+**Commit reviewed:** `c99011e` (findings) · outcomes annotated as of the P0–P3 work on `main`
+**Date:** 2026-07-04 (report) · 2026-07-04 (outcomes)
 **Standard applied:** the project's own `docs/agents.md` (§7 conventions + §2 architecture invariants).
 
 ---
@@ -372,20 +377,59 @@ way the number falls is by importing debt.
 
 Ordered by payoff-to-effort. All are pre-feature-wave cleanups; none is a rewrite.
 
-| Pri | Action | Type | Effort | Points |
-|-----|--------|------|--------|--------|
-| **P0** | Add the **boundary lint rule** (`dependency-cruiser` or ESLint `no-restricted-imports`: a feature may import `@shared/*` + its own `@features/<self>/*`, never a sibling). Makes INV2 self-policing. | Enforcement | ~2h | Arch |
-| **P0** | Fix the **2 cross-feature violations** — promote `MarkdownCommands` and `CommitDetail` to `@shared` (pure relocation; precedent exists). | Relocation | ~½ day | Arch |
-| **P1** | Delete **dead code**: `SEED_*` fixtures (~370 LOC), `Radio` component, 4 dead exports, wire-or-remove `undoStackSize`, feature-flag the stub PR/issue data, convert/hide the 4 untracked-TODO buttons. | Deletion | ~½ day | YAGNI |
-| **P1** | **DRY cluster 1 + 2** — `<app-form-modal>` shell for insert-modals; `RibbonHost` `hostDirective` for the 6 ribbon `:host` copies. | Refactor | ~1 day | DRY |
-| **P2** | **Decompose the god-files** in priority order: `markdown-view.ts` → 1 orchestrator + 5 units; `settings.ts` → engine/facade/migration; `lsp-client.ts` → paths/mapper/session. | Refactor | ~2–3 days | SOLID |
-| **P2** | **Adopt Memento** in `DockState` — undo/redo + layout persistence; consumes `undoStackSize`. | Feature/pattern | ~½ day | Patterns |
-| **P3** | Split the 5+-type grab-bag files (`ai-types.ts`, `settings-registry.ts`); adopt "one primary type per file" as a soft convention for new code. | Refactor | ~½ day | Navigability |
-| **P3** | **DRY clusters 3–5** — `CommandRouter<T>` base; merge ribbon button/small-button; merge text/password fields. | Refactor | ~1 day | DRY |
-| **P3** | Doc hygiene — fix agents.md Angular **20 → 22** drift; repair orphaned TSDoc (`documents.ts:457` + malformed closers); split `SourceControlProvider` into read/mutate/remote before backend #2. | Docs/design | ~½ day | Docs |
+> **Status update (2026-07-04): P0–P3 executed.** The **Status** column and the
+> [Remediation outcomes](#remediation-outcomes-2026-07-04) subsection below record what shipped, what was
+> deliberately declined, and what remains. In short: P0 done; P1 done (with two intentional keeps); P2 done
+> (three of four god-files — `monaco.ts` was flagged optional and left); P3a/P3c done; **P3b (the component/
+> service merges) consciously declined** in favour of keeping distinct UI components and services separate.
 
-**Do P0–P1 before the next feature.** They are cheap, they harden the architecture against regression, and
-they remove the exact leftovers that would otherwise get copied into new code.
+| Pri | Action | Type | Effort | Status |
+|-----|--------|------|--------|--------|
+| **P0** | Add the **boundary lint rule** (`dependency-cruiser` or ESLint `no-restricted-imports`: a feature may import `@shared/*` + its own `@features/<self>/*`, never a sibling). Makes INV2 self-policing. | Enforcement | ~2h | ✅ **Done** — `eslint.config.js` enforces INV1/INV2. |
+| **P0** | Fix the **2 cross-feature violations** — promote `MarkdownCommands` and `CommitDetail` to `@shared` (pure relocation; precedent exists). | Relocation | ~½ day | ✅ **Done** — both now under `@shared`. |
+| **P1** | Delete **dead code**: `SEED_*` fixtures (~370 LOC), `Radio` component, 4 dead exports, wire-or-remove `undoStackSize`, feature-flag the stub PR/issue data, convert/hide the 4 untracked-TODO buttons. | Deletion | ~½ day | ✅ **Done, 2 intentional keeps** — `SEED_*` + dead exports deleted; **`Radio` kept** (slated for use); **`undoStackSize` kept and now consumed by the P2 Memento**; stub PR/issue data + TODO buttons left pending issue numbers. |
+| **P1** | **DRY cluster 1 + 2** — `<app-form-modal>` shell for insert-modals; `RibbonHost` `hostDirective` for the 6 ribbon `:host` copies. | Refactor | ~1 day | ✅ **Done** — `form-modal` + `ribbon-host` shipped. |
+| **P2** | **Decompose the god-files** in priority order: `markdown-view.ts` → 1 orchestrator + 5 units; `settings.ts` → engine/facade/migration; `lsp-client.ts` → paths/mapper/session. | Refactor | ~2–3 days | ✅ **Done (3 of 4)** — `markdown-view` 1270→535, `settings` 995→865, `lsp-client` 1016→856. `monaco.ts` (flagged optional/cohesive) left as-is. |
+| **P2** | **Adopt Memento** in `DockState` — undo/redo + layout persistence; consumes `undoStackSize`. | Feature/pattern | ~½ day | ✅ **Done** — undo/redo **and** per-blueprint layout persistence; consumes `undoStackSize`. |
+| **P3** | Split the 5+-type grab-bag files (`ai-types.ts`, `settings-registry.ts`); adopt "one primary type per file" as a soft convention for new code. | Refactor | ~½ day | ✅ **Done** — `ai-types` → 6 `api/ai/*` modules + barrel; `settings-registry` → `settings-schema.ts` + data. |
+| **P3** | **DRY clusters 3–5** — `CommandRouter<T>` base; merge ribbon button/small-button; merge text/password fields. | Refactor | ~1 day | ⛔ **Declined by design** — see outcomes. Kept `text/password` and `ribbon button/small` as separate components; kept the 5 command services standalone. The one real finding (text/password commit-event inconsistency) was **fixed without merging**. |
+| **P3** | Doc hygiene — fix agents.md Angular **20 → 22** drift; repair orphaned TSDoc (`documents.ts:457` + malformed closers); split `SourceControlProvider` into read/mutate/remote before backend #2. | Docs/design | ~½ day | ✅ **Done (docs); split deferred** — agents.md 20→22 + all orphaned/malformed TSDoc fixed. The `SourceControlProvider` read/mutate/remote split is deferred to when backend #2 lands. |
+
+**P0–P1 were completed before the current feature work, as prescribed.** They hardened the architecture
+against regression and removed the leftovers that would otherwise get copied into new code.
+
+<a id="remediation-outcomes-2026-07-04"></a>
+### Remediation outcomes (2026-07-04)
+
+**Shipped (P0–P3a, P3c):** boundary lint rule + the two cross-feature promotions (P0); dead-code deletion and
+DRY clusters 1–2 (P1); the three god-file decompositions and the Memento (undo/redo **+** layout persistence)
+(P2); the `ai-types` and `settings-registry` grab-bag splits (P3a); and the doc hygiene (P3c). Each landed
+behind the full green gate (prettier / eslint / tsc / `ng build` / co-located specs) and the knowledge graph
+was resynced after every structural change.
+
+**Deliberately declined — P3b (the DRY merges).** After review these were judged to trade real flexibility
+for a small, low-value dedup, against the house preference for **keeping distinct units separate**:
+
+- **Cluster 5 — text-field / password-field merge: declined.** They serve different purposes (masking,
+  `autocomplete=off`, password-manager signalling); one-atom-per-type is more discoverable. The report itself
+  rated this LOW–MED. *However*, the genuine finding underneath it — the two committed their value on
+  **different DOM events** (`text-field` on `change`/blur, `password-field` on `input`/keystroke) — **was
+  fixed**: `text-field` now commits on `input` too, so the siblings behave identically without being merged.
+- **Cluster 4 — ribbon button / small-button merge: declined.** Same instinct: kept as two components to
+  preserve room to add new button types or split functionality later. (Size is a variant axis, but the
+  flexibility of separate components was preferred over the ~40-line dedup.)
+- **Cluster 3 — command-bus base/primitive: declined.** The genuinely-shared scaffold is only ~10 trivial,
+  stable lines per service (a `handler` signal + `register`/`unregister`); the bulk (the typed forwarders)
+  stays per-service under the house style regardless, so each file barely shrinks. Sharing it would couple
+  five otherwise-independent services to a common primitive for little gain. (Both a composition primitive
+  and an `AbstractCommandService` inheritance base were weighed; the differing public API names and non-uniform
+  `hasActive` make the base awkward, and inheritance is the tightest coupling — so neither was adopted.)
+
+**Deferred:** `monaco.ts` (772 LOC) decomposition — flagged optional/cohesive; and the `SourceControlProvider`
+read/mutate/remote split — to be done when the second git backend lands.
+
+**Net effect on §6 (one-type-per-file):** the two worst grab-bags after `settings.ts` are resolved —
+`ai-types.ts` (21→split) and `settings-registry.ts` (schema vocabulary hived into `settings-schema.ts`).
 
 ---
 
