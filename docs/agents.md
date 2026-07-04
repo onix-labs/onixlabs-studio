@@ -12,7 +12,7 @@ follow, and how to build, test, and verify changes.
 
 ## 1. Stack at a glance
 
-- **Angular 20, standalone + zoneless.** Signals are the reactive model; there is no Zone.js. A
+- **Angular 22, standalone + zoneless.** Signals are the reactive model; there is no Zone.js. A
   `@Service()` decorator (= `@Injectable({ providedIn: 'root' })`) marks DI singletons.
 - **Electron**, main + preload written in TypeScript and **esbuild-bundled** (not `tsc`-emitted);
   `tsc --noEmit` type-checks them.
