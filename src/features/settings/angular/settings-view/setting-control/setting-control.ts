@@ -14,13 +14,13 @@ import { NumberField } from '@shared/angular/components/forms/number-field/numbe
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
+import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import {
   ChoiceOption,
   ColorSwatch,
   ControlDef,
-  SETTINGS_BY_KEY,
   SettingDef,
-} from '@shared/angular/services/settings/settings-registry';
+} from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Renders and edits a single setting, selecting the form control from the setting's registry control

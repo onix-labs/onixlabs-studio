@@ -4,10 +4,10 @@ import {
   AiModels,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
-  SettingDef,
   SettingsKey,
   SettingsValues,
 } from './settings-registry';
+import { SettingDef } from './settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { restoreOverrides } from './settings-migration';
 import {

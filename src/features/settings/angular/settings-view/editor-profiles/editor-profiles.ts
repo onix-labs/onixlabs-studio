@@ -11,11 +11,8 @@ import {
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
-import {
-  ChoiceOption,
-  findSection,
-  SettingDef,
-} from '@shared/angular/services/settings/settings-registry';
+import { findSection } from '@shared/angular/services/settings/settings-registry';
+import { ChoiceOption, SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

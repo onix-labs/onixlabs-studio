@@ -5,7 +5,8 @@ import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings'
 import { Security } from '@shared/angular/services/security/security';
 import { AccentColor, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { SettingOwner, SettingsKey } from '@shared/angular/services/settings/settings-registry';
+import { SettingsKey } from '@shared/angular/services/settings/settings-registry';
+import { SettingOwner } from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Represents a reactive read/write binding for a single setting, abstracting which service owns the
