@@ -1,0 +1,15 @@
+// The document-bound core sits between a composing leaf (the tab view's layout row, or the document
+// well panel) and the shared <app-markdown-editor> pane. It must fill whatever flex slot the leaf
+// gives it and pass that size straight through to the editor, which otherwise collapses to zero height.
+:host {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+app-markdown-editor {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}

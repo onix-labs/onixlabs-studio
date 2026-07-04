@@ -1,0 +1,20 @@
+// The document-bound core sits between a composing leaf (the tab view's editor slot, or the document
+// well panel) and the shared <app-text-editor> pane. It must fill whatever slot the leaf gives it and
+// pass that size straight through to the editor, which otherwise collapses to zero height. The two
+// leaves hand it different slots — a definite-height block (the tab view) and a flex child (the well
+// panel) — so it fills by both `100%` sizing and `flex`, and lays the pane out as a stretched flex
+// child that inherits the resolved height.
+:host {
+  display: flex;
+  flex: 1;
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+app-text-editor {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}

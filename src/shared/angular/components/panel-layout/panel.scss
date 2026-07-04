@@ -1,0 +1,58 @@
+// A single edge-docked panel: a thin resize splitter on the edge facing the layout's centre,
+// followed by the projected content. The flex direction places the splitter on the correct side
+// for each docking edge.
+:host {
+  display: flex;
+  box-sizing: border-box;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+:host([data-edge='right']) {
+  flex-direction: row;
+}
+
+:host([data-edge='left']) {
+  flex-direction: row-reverse;
+}
+
+:host([data-edge='bottom']) {
+  flex-direction: column;
+}
+
+:host([data-edge='top']) {
+  flex-direction: column-reverse;
+}
+
+.panel__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel__splitter {
+  flex: 0 0 auto;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+:host([data-edge='left']) .panel__splitter,
+:host([data-edge='right']) .panel__splitter {
+  width: 4px;
+  cursor: col-resize;
+}
+
+:host([data-edge='top']) .panel__splitter,
+:host([data-edge='bottom']) .panel__splitter {
+  height: 4px;
+  cursor: row-resize;
+}
+
+// Hidden: the size binding already collapses the host to zero; suppress the splitter so a collapsed
+// panel cannot be grabbed (it is reopened through its owning feature's toggle, not by dragging).
+:host(.panel--hidden) .panel__splitter {
+  display: none;
+}

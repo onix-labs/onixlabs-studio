@@ -1,0 +1,35 @@
+<div class="dock-status-strip__group">
+  <button type="button" class="dock-status-strip__segment" title="Errors and warnings">
+    <app-icon [icon]="Icon.ERROR" />
+    {{ errors() }}
+    <app-icon [icon]="Icon.WARNING" />
+    {{ warnings() }}
+  </button>
+</div>
+@if (status(); as document) {
+  <div class="dock-status-strip__group">
+    <button type="button" class="dock-status-strip__segment" title="Go to line and column">
+      Ln {{ document.line }}, Col {{ document.column }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Language mode">
+      {{ document.language }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
+      {{ document.eol }}
+    </button>
+    <button type="button" class="dock-status-strip__segment" title="Select encoding">
+      {{ document.encoding }}
+    </button>
+    <button
+      type="button"
+      class="dock-status-strip__segment"
+      title="Select zoom level"
+      [cdkMenuTriggerFor]="zoomMenu.panel() ?? null"
+      [cdkMenuPosition]="zoomMenu.position()"
+    >
+      {{ zoom() }}%
+    </button>
+  </div>
+}
+
+<app-menu #zoomMenu [items]="zoomItems()" placement="up-end" (selected)="setZoom($event)" />

@@ -1,0 +1,25 @@
+/* TypeScript configuration for the Electron main and preload processes.
+   Type-checks src/shared/electron/*.ts against the shared api types (CommonJS, Node target).
+   The build itself is done by esbuild (see build:main / build:preload); this config is `tsc --noEmit`
+   only. rootDir is src/shared so the electron code and the shared types it consumes are one tree. */
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "outDir": "../../../dist-electron",
+    "rootDir": "..",
+    "esModuleInterop": true,
+    "importHelpers": false,
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["../**/*.ts"],
+  /* Exclude src/shared/angular and src/shared/app: they are renderer (Angular) code that must not be
+     compiled by this node-only config; the main and preload processes only consume the shared api
+     types. */
+  "exclude": ["../angular/**", "../app/**"]
+}

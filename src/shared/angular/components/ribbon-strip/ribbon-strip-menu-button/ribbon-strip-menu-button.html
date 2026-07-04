@@ -1,0 +1,22 @@
+<div class="ribbon-menu-button">
+  <button
+    type="button"
+    class="ribbon-menu-button__action"
+    [disabled]="disabled()"
+    (click)="onAction()"
+  >
+    <app-icon [icon]="icon()" [size]="1.5" />
+    <span>{{ label() }}</span>
+  </button>
+  <button
+    type="button"
+    class="ribbon-menu-button__menu"
+    [disabled]="disabled()"
+    [cdkMenuTriggerFor]="menu.panel() ?? null"
+    [cdkMenuPosition]="menu.position()"
+  >
+    <app-icon [icon]="Icon.CARET_DOWN" [size]="0.75" />
+  </button>
+</div>
+
+<app-menu #menu [items]="items()" placement="down-start" (selected)="onSelect($event)" />

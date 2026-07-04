@@ -20,8 +20,8 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "browser": "src/angular/main.ts",
-            "index": "src/angular/index.html",
+            "browser": "src/shared/app/main.ts",
+            "index": "src/shared/app/index.html",
             "baseHref": "./",
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
@@ -50,7 +50,7 @@
               "node_modules/@phosphor-icons/web/src/bold/style.css",
               "node_modules/@phosphor-icons/web/src/fill/style.css",
               "node_modules/@phosphor-icons/web/src/duotone/style.css",
-              "src/angular/styles/styles.scss"
+              "src/shared/angular/styles/styles.scss"
             ],
             "allowedCommonJsDependencies": [
               "@xterm/xterm",

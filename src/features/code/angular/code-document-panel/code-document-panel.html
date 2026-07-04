@@ -1,0 +1,11 @@
+<div class="document-panel">
+  <div class="document-panel__editor">
+    <app-code-document
+      [documentId]="documentId()"
+      [isActive]="isActive()"
+      [removeOnDestroy]="removeOnDestroy()"
+      (cursorChange)="onCursorChange($event)"
+      (eolChange)="onEolChange($event)"
+    />
+  </div>
+</div>

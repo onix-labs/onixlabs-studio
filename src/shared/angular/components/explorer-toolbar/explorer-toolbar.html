@@ -1,0 +1,42 @@
+<div class="explorer-toolbar">
+  <input
+    class="explorer-toolbar__search"
+    type="text"
+    [value]="query()"
+    (input)="onSearch($event)"
+    [placeholder]="searchPlaceholder()"
+    [attr.aria-label]="searchPlaceholder()"
+  />
+  <div class="explorer-toolbar__actions">
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="Expand All"
+      aria-label="Expand All"
+      (click)="expandAll.emit()"
+    >
+      <app-icon [icon]="Icon.PLUS_SQUARE" />
+    </button>
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="Collapse All"
+      aria-label="Collapse All"
+      (click)="collapseAll.emit()"
+    >
+      <app-icon [icon]="Icon.MINUS_SQUARE" />
+    </button>
+    <button
+      type="button"
+      class="explorer-toolbar__button"
+      title="More Actions"
+      aria-label="More Actions"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
+    >
+      <app-icon [icon]="Icon.DOTS_THREE" />
+    </button>
+  </div>
+</div>
+
+<app-menu #moreMenu [items]="moreItems" placement="down-end" />

@@ -1,0 +1,25 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.document-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.document-panel__editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+
+  app-code-document {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+}

@@ -1,0 +1,5 @@
+// The component only provides a menu template opened through the caller's trigger; its host renders
+// nothing and must not become a stray flex/grid child of the caller's layout.
+:host {
+  display: none;
+}

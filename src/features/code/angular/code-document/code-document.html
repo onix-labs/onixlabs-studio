@@ -1,0 +1,9 @@
+<app-text-editor
+  [content]="doc()?.content() ?? ''"
+  [language]="doc()?.language() ?? 'plaintext'"
+  [isActive]="isActive()"
+  (ready)="onReady()"
+  (contentChange)="onContentChange($event)"
+  (cursorChange)="onCursorChange($event)"
+  (eolChange)="onEolChange($event)"
+/>

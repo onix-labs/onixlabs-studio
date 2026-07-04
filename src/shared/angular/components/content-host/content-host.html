@@ -1,0 +1,11 @@
+@for (tab of tabs(); track tab.id) {
+  <div class="tab-view" [class.tab-view--hidden]="tab.id !== activeTabId()">
+    @if (registry.viewFor(tab.type); as view) {
+      <ng-container
+        *ngComponentOutlet="view; inputs: { tabId: tab.id, isActive: tab.id === activeTabId() }"
+      />
+    }
+  </div>
+}
+
+<app-document-conflict-modal />

@@ -1,0 +1,26 @@
+<div class="document-panel">
+  <div class="document-panel__toolstrip">
+    <span class="document-panel__title">{{ fileName() }}</span>
+    @if (dirty()) {
+      <span class="document-panel__dirty" aria-label="Unsaved changes" title="Unsaved changes"
+        >●</span
+      >
+    }
+    <span class="document-panel__spacer"></span>
+    <button type="button" class="document-panel__save" [disabled]="!dirty()" (click)="onSave()">
+      Save
+    </button>
+  </div>
+
+  <div class="document-panel__editor">
+    <app-markdown-document
+      [documentId]="documentId()"
+      [isActive]="isActive()"
+      [removeOnDestroy]="removeOnDestroy()"
+    />
+  </div>
+
+  <div class="document-panel__status">
+    <span>{{ wordCount() }} {{ wordCount() === 1 ? 'word' : 'words' }}</span>
+  </div>
+</div>
