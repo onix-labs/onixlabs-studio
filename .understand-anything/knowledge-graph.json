@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T20:18:23.491Z",
-    "gitCommitHash": "e659c5913b74678fae01a9dae70cffe33b310092"
+    "analyzedAt": "2026-07-04T21:01:51.663Z",
+    "gitCommitHash": "676c775294f162a147cffe8a6e36a59efdb4b0fc"
   },
   "nodes": [
     {
@@ -13278,6 +13278,111 @@
         "schema"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/monaco/monaco-languages.ts",
+      "type": "file",
+      "name": "monaco-languages.ts",
+      "filePath": "src/shared/angular/services/monaco/monaco-languages.ts",
+      "summary": "Pure language reference tables + lookups (languageForExtension/extensionForLanguage/supportedLanguages) for the Monaco integration.",
+      "tags": [
+        "monaco",
+        "languages",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-languages.ts:languageForExtension",
+      "type": "function",
+      "name": "languageForExtension",
+      "filePath": "src/shared/angular/services/monaco/monaco-languages.ts",
+      "summary": "Resolves the Monaco language id for a file extension.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-languages.ts:extensionForLanguage",
+      "type": "function",
+      "name": "extensionForLanguage",
+      "filePath": "src/shared/angular/services/monaco/monaco-languages.ts",
+      "summary": "Resolves the canonical extension for a language.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-languages.ts:supportedLanguages",
+      "type": "function",
+      "name": "supportedLanguages",
+      "filePath": "src/shared/angular/services/monaco/monaco-languages.ts",
+      "summary": "Lists supported languages sorted by name.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "type": "file",
+      "name": "monaco-heuristic-tokens.ts",
+      "filePath": "src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "summary": "Pure heuristic semantic-token scan (buildHeuristicSemanticTokens) that colours type/method identifiers a Monarch tokenizer leaves uncoloured, plus its consts and MonarchToken.",
+      "tags": [
+        "monaco",
+        "tokens",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts:buildHeuristicSemanticTokens",
+      "type": "function",
+      "name": "buildHeuristicSemanticTokens",
+      "filePath": "src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "summary": "Builds delta-packed heuristic semantic tokens from source + Monarch tokens.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/monaco/monaco-themes.ts",
+      "type": "file",
+      "name": "monaco-themes.ts",
+      "filePath": "src/shared/angular/services/monaco/monaco-themes.ts",
+      "summary": "Pure Monaco theme definitions: defineThemes(monaco) painting the four onix themes from the --gray-* palette, plus readGray.",
+      "tags": [
+        "monaco",
+        "themes",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-themes.ts:defineThemes",
+      "type": "function",
+      "name": "defineThemes",
+      "filePath": "src/shared/angular/services/monaco/monaco-themes.ts",
+      "summary": "Registers the four onix light/dark editor themes.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/monaco/monaco-themes.ts:readGray",
+      "type": "function",
+      "name": "readGray",
+      "filePath": "src/shared/angular/services/monaco/monaco-themes.ts",
+      "summary": "Reads a --gray-* CSS custom property with a fallback.",
+      "tags": [
+        "monaco"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -25558,6 +25663,69 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-languages.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-languages.ts:languageForExtension",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-languages.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-languages.ts:extensionForLanguage",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-languages.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-languages.ts:supportedLanguages",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts:buildHeuristicSemanticTokens",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-themes.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-themes.ts:defineThemes",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco-themes.ts",
+      "target": "function:src/shared/angular/services/monaco/monaco-themes.ts:readGray",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco.ts",
+      "target": "file:src/shared/angular/services/monaco/monaco-languages.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco.ts",
+      "target": "file:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/monaco/monaco.ts",
+      "target": "file:src/shared/angular/services/monaco/monaco-themes.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
     }
   ],
   "layers": [
@@ -26038,7 +26206,10 @@
         "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
         "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
         "file:src/shared/angular/services/dock/dock-persistence.ts",
-        "file:src/shared/angular/services/settings/settings-schema.ts"
+        "file:src/shared/angular/services/settings/settings-schema.ts",
+        "file:src/shared/angular/services/monaco/monaco-languages.ts",
+        "file:src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+        "file:src/shared/angular/services/monaco/monaco-themes.ts"
       ]
     },
     {

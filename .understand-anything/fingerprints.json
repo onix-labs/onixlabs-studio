@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "e659c5913b74678fae01a9dae70cffe33b310092",
-  "generatedAt": "2026-07-04T20:19:00.580Z",
+  "gitCommitHash": "676c775294f162a147cffe8a6e36a59efdb4b0fc",
+  "generatedAt": "2026-07-04T21:02:41.980Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -9686,7 +9686,7 @@
     },
     "src/shared/angular/components/forms/text-field/text-field.html": {
       "filePath": "src/shared/angular/components/forms/text-field/text-field.html",
-      "contentHash": "894a506fbc49aae50a0830ff7e4f9ae4fd302269e588334067011cb306f9a600",
+      "contentHash": "2a5454c654a9f1700bb5651dcad51e7fa500317c50eb955f5764b273645ca774",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -9706,13 +9706,13 @@
     },
     "src/shared/angular/components/forms/text-field/text-field.ts": {
       "filePath": "src/shared/angular/components/forms/text-field/text-field.ts",
-      "contentHash": "fc254ce63b5f497be45399a77ddb0426c9fbf39d09510eba12f4175badbad1bb",
+      "contentHash": "f92a74ef662e9166d4fb34379b54f4b8f7fb98078269cb557b0e8b5bb75b2b6d",
       "functions": [],
       "classes": [
         {
           "name": "TextField",
           "methods": [
-            "onChange"
+            "onInput"
           ],
           "properties": [
             "value",
@@ -17118,19 +17118,8 @@
     },
     "src/shared/angular/services/monaco/monaco.ts": {
       "filePath": "src/shared/angular/services/monaco/monaco.ts",
-      "contentHash": "cd710ee0c2711d2e7a020105d76d4a9c64c4da50fed653ec7791ba228b98bb5f",
-      "functions": [
-        {
-          "name": "buildHeuristicSemanticTokens",
-          "params": [
-            "source",
-            "monarchLines"
-          ],
-          "returnType": "Uint32Array",
-          "exported": true,
-          "lineCount": 63
-        }
-      ],
+      "contentHash": "34bfbd4499279150753d7085557a8583132f3cfba718e178bf5fae405b40d824",
+      "functions": [],
       "classes": [
         {
           "name": "Monaco",
@@ -17147,11 +17136,9 @@
             "load",
             "resolveWorkerUrl",
             "loadScript",
-            "defineThemes",
             "suppressHeuristicTokensWhen",
             "registerHeuristicSemanticTokens",
-            "isHeuristicTokensSuppressed",
-            "readGray"
+            "isHeuristicTokensSuppressed"
           ],
           "properties": [
             "settings",
@@ -17162,7 +17149,7 @@
             "isLoaded"
           ],
           "exported": true,
-          "lineCount": 447
+          "lineCount": 316
         }
       ],
       "imports": [
@@ -17196,13 +17183,38 @@
             "ResolvedThemeMode",
             "Theme"
           ]
+        },
+        {
+          "source": "./monaco-languages",
+          "specifiers": [
+            "extensionForLanguage",
+            "LanguageInfo",
+            "languageForExtension",
+            "supportedLanguages"
+          ]
+        },
+        {
+          "source": "./monaco-heuristic-tokens",
+          "specifiers": [
+            "buildHeuristicSemanticTokens",
+            "HEURISTIC_SEMANTIC_TOKEN_LANGUAGES",
+            "HEURISTIC_SEMANTIC_TOKEN_LEGEND"
+          ]
+        },
+        {
+          "source": "./monaco-themes",
+          "specifiers": [
+            "defineThemes"
+          ]
         }
       ],
       "exports": [
+        "LanguageInfo",
+        "MonarchToken",
         "buildHeuristicSemanticTokens",
         "Monaco"
       ],
-      "totalLines": 773,
+      "totalLines": 411,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/output/output.ts": {
@@ -23096,6 +23108,110 @@
         "isSettingsOwned"
       ],
       "totalLines": 193,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/monaco/monaco-languages.ts": {
+      "filePath": "src/shared/angular/services/monaco/monaco-languages.ts",
+      "contentHash": "2047c8dc3c569bb0dd3a1c5a20dc18f0e1148459e64b62e85f30528fb55a1d03",
+      "functions": [
+        {
+          "name": "languageForExtension",
+          "params": [
+            "extension"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "extensionForLanguage",
+          "params": [
+            "language"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "supportedLanguages",
+          "params": [],
+          "returnType": "readonly LanguageInfo[]",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "languageForExtension",
+        "extensionForLanguage",
+        "supportedLanguages"
+      ],
+      "totalLines": 148,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/monaco/monaco-heuristic-tokens.ts": {
+      "filePath": "src/shared/angular/services/monaco/monaco-heuristic-tokens.ts",
+      "contentHash": "4c344644149a7f13965f9a9459158eb4381f60b90772ce4177d05000ac4b2e51",
+      "functions": [
+        {
+          "name": "buildHeuristicSemanticTokens",
+          "params": [
+            "source",
+            "monarchLines"
+          ],
+          "returnType": "Uint32Array",
+          "exported": true,
+          "lineCount": 63
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "HEURISTIC_SEMANTIC_TOKEN_LANGUAGES",
+        "HEURISTIC_SEMANTIC_TOKEN_LEGEND",
+        "buildHeuristicSemanticTokens"
+      ],
+      "totalLines": 135,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/monaco/monaco-themes.ts": {
+      "filePath": "src/shared/angular/services/monaco/monaco-themes.ts",
+      "contentHash": "f1cfe4f23ea2f7050c763b081fac256c7112da217660619044a5b741b178e85f",
+      "functions": [
+        {
+          "name": "readGray",
+          "params": [
+            "name"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "defineThemes",
+          "params": [
+            "monaco"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 97
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "monaco-editor",
+          "specifiers": [
+            "* as MonacoApi"
+          ]
+        }
+      ],
+      "exports": [
+        "readGray",
+        "defineThemes"
+      ],
+      "totalLines": 131,
       "hasStructuralAnalysis": true
     }
   }
