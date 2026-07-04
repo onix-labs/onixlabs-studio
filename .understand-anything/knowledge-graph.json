@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T13:30:12.472Z",
-    "gitCommitHash": "98f56af77604bea09c2827caa17b8d690f8e8bc8"
+    "analyzedAt": "2026-07-04T13:49:01.667Z",
+    "gitCommitHash": "365bf503b9bfbc3f0c35e64a97e7a8baa184ec35"
   },
   "nodes": [
     {
@@ -12986,6 +12986,177 @@
         "profiles"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "type": "file",
+      "name": "lsp-paths.ts",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Pure path/URI utilities for the LSP client: normalise, file-URI encode/decode, basename, parentDir, isWithin.",
+      "tags": [
+        "lsp",
+        "paths",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:normalise",
+      "type": "function",
+      "name": "normalise",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Normalises a path (forward slashes + lower-cased drive letter) for use as a map key.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:pathToUri",
+      "type": "function",
+      "name": "pathToUri",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Converts an absolute path to a file: URI.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:uriToPath",
+      "type": "function",
+      "name": "uriToPath",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Converts a file: URI back to an absolute path.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:basename",
+      "type": "function",
+      "name": "basename",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Extracts the final path segment.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:parentDir",
+      "type": "function",
+      "name": "parentDir",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Gets the forward-slashed parent directory.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-paths.ts:isWithin",
+      "type": "function",
+      "name": "isWithin",
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "summary": "Determines whether a path is a root or its descendant.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "type": "file",
+      "name": "lsp-diagnostic-mapper.ts",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "Pure LSP->provider and LSP->Monaco diagnostic transforms (severity mapping, one-based position conversion). The client owns the sinks.",
+      "tags": [
+        "lsp",
+        "diagnostics",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:severityOf",
+      "type": "function",
+      "name": "severityOf",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "Maps an LSP severity to the provider-agnostic severity.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:markerSeverityOf",
+      "type": "function",
+      "name": "markerSeverityOf",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "Maps an LSP severity to a Monaco marker severity.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toDiagnostic",
+      "type": "function",
+      "name": "toDiagnostic",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "Maps a server diagnostic to the provider shape for a document context.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toMarkerData",
+      "type": "function",
+      "name": "toMarkerData",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "Maps server diagnostics to one-based Monaco marker data.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "interface:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:DiagnosticContext",
+      "type": "interface",
+      "name": "DiagnosticContext",
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "summary": "The uri + documentId a diagnostic is mapped against.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "type": "file",
+      "name": "lsp-capabilities.ts",
+      "filePath": "src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "summary": "Pure parsing of an LSP server ServerCapabilities: extracts the semantic tokens legend.",
+      "tags": [
+        "lsp",
+        "capabilities",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/lsp/lsp-capabilities.ts:semanticLegendOf",
+      "type": "function",
+      "name": "semanticLegendOf",
+      "filePath": "src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "summary": "Extracts the semantic token legend from server capabilities, or null.",
+      "tags": [
+        "lsp"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -24916,6 +25087,223 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.5
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:normalise",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:normalise",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:pathToUri",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:pathToUri",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:uriToPath",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:uriToPath",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:basename",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:basename",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:parentDir",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:parentDir",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:isWithin",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-paths.ts:isWithin",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:severityOf",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:severityOf",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:markerSeverityOf",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:markerSeverityOf",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toDiagnostic",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toDiagnostic",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toMarkerData",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:toMarkerData",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "interface:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:DiagnosticContext",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "interface:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts:DiagnosticContext",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-capabilities.ts:semanticLegendOf",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "target": "function:src/shared/angular/services/lsp/lsp-capabilities.ts:semanticLegendOf",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-client.ts",
+      "target": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-client.ts",
+      "target": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-client.ts",
+      "target": "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "file:src/shared/angular/services/lsp/lsp-paths.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "file:src/shared/angular/services/lsp/lsp-client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "target": "file:src/shared/angular/services/diagnostics/diagnostics.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "target": "file:src/shared/api/lsp-channels.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.5
     }
   ],
   "layers": [
@@ -25391,7 +25779,10 @@
         "file:src/shared/angular/services/feature-registry/provide-feature.ts",
         "file:src/shared/angular/services/markdown-commands/markdown-commands.ts",
         "file:src/shared/angular/services/settings/settings-migration.ts",
-        "file:src/shared/angular/services/settings/settings-profiles.ts"
+        "file:src/shared/angular/services/settings/settings-profiles.ts",
+        "file:src/shared/angular/services/lsp/lsp-paths.ts",
+        "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+        "file:src/shared/angular/services/lsp/lsp-capabilities.ts"
       ]
     },
     {

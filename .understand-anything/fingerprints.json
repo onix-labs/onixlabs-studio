@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "98f56af77604bea09c2827caa17b8d690f8e8bc8",
-  "generatedAt": "2026-07-04T13:30:31.948Z",
+  "gitCommitHash": "365bf503b9bfbc3f0c35e64a97e7a8baa184ec35",
+  "generatedAt": "2026-07-04T13:49:19.232Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -16692,7 +16692,7 @@
     },
     "src/shared/angular/services/lsp/lsp-client.ts": {
       "filePath": "src/shared/angular/services/lsp/lsp-client.ts",
-      "contentHash": "1fb052f52b61399a2e94b9cc11b418d936562a56fba5813f11d83bcb720221c5",
+      "contentHash": "46e8c5975daf8ad524dc9d0065d5ad9ee7dd4e7f22e8238d0c5a1fc8f78f0255",
       "functions": [],
       "classes": [
         {
@@ -16700,7 +16700,6 @@
           "methods": [
             "constructor",
             "resolveDocument",
-            "semanticLegendOf",
             "syncDocument",
             "closeDocument",
             "restart",
@@ -16719,19 +16718,10 @@
             "onNotification",
             "suppressBuiltInDiagnostics",
             "setMarkers",
-            "markerSeverityOf",
             "onExit",
             "ownsSession",
-            "toDiagnostic",
             "publish",
-            "severityOf",
-            "documentRoot",
-            "parentDir",
-            "isWithin",
-            "normalise",
-            "pathToUri",
-            "uriToPath",
-            "basename"
+            "documentRoot"
           ],
           "properties": [
             "workspace",
@@ -16754,7 +16744,7 @@
             "exitDisposer"
           ],
           "exported": true,
-          "lineCount": 808
+          "lineCount": 645
         }
       ],
       "imports": [
@@ -16798,8 +16788,7 @@
           "source": "../diagnostics/diagnostics",
           "specifiers": [
             "Diagnostic",
-            "Diagnostics",
-            "DiagnosticSeverity"
+            "Diagnostics"
           ]
         },
         {
@@ -16834,6 +16823,29 @@
           ]
         },
         {
+          "source": "./lsp-paths",
+          "specifiers": [
+            "isWithin",
+            "normalise",
+            "parentDir",
+            "pathToUri",
+            "uriToPath"
+          ]
+        },
+        {
+          "source": "./lsp-diagnostic-mapper",
+          "specifiers": [
+            "toDiagnostic",
+            "toMarkerData"
+          ]
+        },
+        {
+          "source": "./lsp-capabilities",
+          "specifiers": [
+            "semanticLegendOf"
+          ]
+        },
+        {
           "source": "@shared/angular/services/lsp-settings/lsp-settings",
           "specifiers": [
             "LspSettings"
@@ -16849,7 +16861,7 @@
       "exports": [
         "LspClient"
       ],
-      "totalLines": 1017,
+      "totalLines": 857,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/lsp/lsp-features.ts": {
@@ -22638,6 +22650,190 @@
         "resolveForLanguage"
       ],
       "totalLines": 109,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/lsp/lsp-paths.ts": {
+      "filePath": "src/shared/angular/services/lsp/lsp-paths.ts",
+      "contentHash": "def255b62037747f13ccedf082308d575753058f2000a4f90b14a104d5ed89db",
+      "functions": [
+        {
+          "name": "normalise",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "pathToUri",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "uriToPath",
+          "params": [
+            "uri"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "basename",
+          "params": [
+            "path"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "parentDir",
+          "params": [
+            "filePath"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "isWithin",
+          "params": [
+            "target",
+            "root"
+          ],
+          "returnType": "boolean",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "normalise",
+        "pathToUri",
+        "uriToPath",
+        "basename",
+        "parentDir",
+        "isWithin"
+      ],
+      "totalLines": 66,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts": {
+      "filePath": "src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
+      "contentHash": "758bc033993a3f85c4e516d15c72cb47c63f986d7ef9c08f71271403e237659d",
+      "functions": [
+        {
+          "name": "severityOf",
+          "params": [
+            "severity"
+          ],
+          "returnType": "DiagnosticSeverity",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "markerSeverityOf",
+          "params": [
+            "monaco",
+            "severity"
+          ],
+          "returnType": "MonacoApi.MarkerSeverity",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "toDiagnostic",
+          "params": [
+            "diagnostic",
+            "context"
+          ],
+          "returnType": "Diagnostic",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "toMarkerData",
+          "params": [
+            "monaco",
+            "diagnostics"
+          ],
+          "returnType": "MonacoApi.editor.IMarkerData[]",
+          "exported": true,
+          "lineCount": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "monaco-editor",
+          "specifiers": [
+            "* as MonacoApi"
+          ]
+        },
+        {
+          "source": "../diagnostics/diagnostics",
+          "specifiers": [
+            "Diagnostic",
+            "DiagnosticSeverity"
+          ]
+        },
+        {
+          "source": "./lsp-client",
+          "specifiers": [
+            "LspDiagnostic"
+          ]
+        },
+        {
+          "source": "./lsp-paths",
+          "specifiers": [
+            "basename",
+            "uriToPath"
+          ]
+        }
+      ],
+      "exports": [
+        "severityOf",
+        "markerSeverityOf",
+        "toDiagnostic",
+        "toMarkerData"
+      ],
+      "totalLines": 105,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/lsp/lsp-capabilities.ts": {
+      "filePath": "src/shared/angular/services/lsp/lsp-capabilities.ts",
+      "contentHash": "9a4e193a386b6046ed8afe1041e337d9273b85cab960d5222cc55816ffb455a1",
+      "functions": [
+        {
+          "name": "semanticLegendOf",
+          "params": [
+            "capabilities"
+          ],
+          "returnType": "LspSemanticTokensLegend | null",
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@shared/api/lsp-channels",
+          "specifiers": [
+            "LspSemanticTokensLegend"
+          ]
+        }
+      ],
+      "exports": [
+        "semanticLegendOf"
+      ],
+      "totalLines": 28,
       "hasStructuralAnalysis": true
     }
   }
