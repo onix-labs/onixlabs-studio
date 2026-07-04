@@ -130,12 +130,6 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly lspClient: LspClient = inject(LspClient);
 
   /**
-   * Holds whether this tab has added the Solution Explorer panel to its layout, so it is added and
-   * removed at most once per state change and a user who closes it is not fought.
-   */
-  private solutionShown: boolean = false;
-
-  /**
    * Holds this tab's scoped document model.
    */
   private readonly documents: Documents = inject(Documents);
@@ -307,15 +301,17 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @param hasModel Whether this tab currently has a project model.
    */
   private syncSolutionPanel(hasModel: boolean): void {
-    if (hasModel && !this.solutionShown) {
+    // Derive presence from the live layout rather than a per-instance flag: the layout persists across
+    // a tab's close/reopen, so a flag that resets with each DirectoryView would re-add a panel that is
+    // already there, accumulating duplicates. Mirrors revealCommit's guard.
+    const present: boolean = collectPanelIds(this.dockState.layout()).includes('solution');
+    if (hasModel && !present) {
       const filesStack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'files');
       if (filesStack !== null) {
         this.dockState.tabInto(filesStack.id, 'solution');
-        this.solutionShown = true;
       }
-    } else if (!hasModel && this.solutionShown) {
+    } else if (!hasModel && present) {
       this.dockState.removeFromLayout('solution');
-      this.solutionShown = false;
     }
   }
 

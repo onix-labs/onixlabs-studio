@@ -180,12 +180,13 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    // The root node is the solution name; the folders and projects nest under it.
+    // The root node is the solution name; only the root starts expanded, so the top-level folder and
+    // project nest under it while the folder's contents stay hidden until it is opened.
     expect(rowFor(model, 'MySolution')?.kind).toBe('solution');
     expect(rowFor(model, 'MySolution')?.depth).toBe(0);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
     expect(rowFor(model, 'Group')?.depth).toBe(1);
-    expect(rowFor(model, 'A')?.expanded).toBe(false);
+    expect(rowFor(model, 'Group')?.expanded).toBe(false);
   });
 
   it('rootOpens_withoutSolution_namesTheRootAfterTheFolder', async () => {
@@ -221,28 +222,29 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('rootNode_whileContentsLoad_revealsTheStructureWithPerProjectSpinners_thenClears', async () => {
+  it('rootNode_whileContentsLoad_staysCollapsedWithPerProjectSpinners_thenClears', async () => {
     project.model = sampleModel();
     project.deferItems = true;
     const model: SolutionModel = build();
     await open(model);
 
-    // The structure shows straight away; the root and each still-loading project carry the spinner,
-    // and a loading project cannot be expanded until its contents arrive.
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
+    // The tree stays collapsed to the root while loading; the root, the folder above a still-loading
+    // project, and each still-loading top-level project carry the spinner, and a loading project cannot
+    // be expanded until its contents arrive.
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
     expect(rowFor(model, 'MySolution')?.loading).toBe(true);
-    expect(rowFor(model, 'A')?.loading).toBe(true);
-    expect(rowFor(model, 'A')?.expandable).toBe(false);
+    expect(rowFor(model, 'Group')?.loading).toBe(true);
     expect(rowFor(model, 'B')?.loading).toBe(true);
+    expect(rowFor(model, 'B')?.expandable).toBe(false);
 
     project.resolveAll();
     await flush();
-    // Once every project's contents have loaded, the spinners clear and the structure remains.
+    // Once every project's contents have loaded, the spinners clear and the tree stays collapsed.
     expect(rowFor(model, 'MySolution')?.loading).toBe(false);
-    expect(rowFor(model, 'A')?.loading).toBe(false);
-    expect(rowFor(model, 'A')?.expandable).toBe(true);
+    expect(rowFor(model, 'Group')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.loading).toBe(false);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
+    expect(rowFor(model, 'B')?.expandable).toBe(true);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
@@ -252,6 +254,8 @@ describe('SolutionModel', () => {
     await open(model);
     const requestsAfterOpen: number = project.itemRequests.length;
 
+    // Reveal the folder that holds A, then expand A itself.
+    model.toggle(rowFor(model, 'Group')!);
     model.toggle(rowFor(model, 'A')!);
 
     // A's contents appear with no further fetch; its sub-folder is collapsed so its file is hidden.

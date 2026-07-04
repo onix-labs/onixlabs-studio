@@ -253,23 +253,22 @@ export class SolutionModel {
   }
 
   /**
-   * Replaces the model and resets the tree state, revealing the solution root and its folders straight
-   * away so the full structure shows, and marking every project as loading so each carries its own
-   * spinner until its contents arrive. Projects stay collapsed (their contents are hidden until opened).
+   * Replaces the model and resets the tree state, collapsing everything but the solution root, and
+   * marking every project as loading so each carries its own spinner until its contents arrive. The
+   * tree stays collapsed to the root; the user expands the projects and folders they want.
    * @param model The new model, or null to clear.
    */
   private reset(model: ProjectModel | null): void {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
     this.searchQuery.set('');
-    // Reveal the structure immediately; each project shows its own spinner while it loads.
+    // Start collapsed to just the solution root; every project shows its own spinner while it loads.
     const loading: Set<string> = new Set<string>();
     const expanded: Set<string> = new Set<string>();
     if (model !== null) {
       for (const project of model.projects) {
         loading.add(project.path);
       }
-      this.collectFolderKeys(model.tree, '', expanded);
       expanded.add(ROOT_KEY);
     }
     this.loadingProjects.set(loading);
@@ -338,26 +337,6 @@ export class SolutionModel {
     }
     const segments: string[] = model.root.replace(/[/\\]+$/, '').split(/[/\\]/);
     return segments[segments.length - 1] || model.root;
-  }
-
-  /**
-   * Collects the keys of every solution folder, so they start expanded.
-   * @param nodes The nodes to scan.
-   * @param parentKey The key prefix of the nodes' parent.
-   * @param keys The set the folder keys are added to.
-   */
-  private collectFolderKeys(
-    nodes: readonly ProjectNode[],
-    parentKey: string,
-    keys: Set<string>,
-  ): void {
-    for (const node of nodes) {
-      if (node.type === 'folder') {
-        const key: string = `${parentKey}/${node.name}`;
-        keys.add(key);
-        this.collectFolderKeys(node.children, key, keys);
-      }
-    }
   }
 
   /**

@@ -51,7 +51,7 @@ describe('EditorProfiles', () => {
 
   it('render_whenRegistryDrivesRows_rendersAnOverridePerOverridableSetting', async () => {
     const element: HTMLElement = await addAndExpandProfile();
-    expect(element.querySelectorAll('.override').length).toBe(7);
+    expect(element.querySelectorAll('.override').length).toBe(9);
   });
 
   it('render_whenProfileDoesNotOverride_leavesOverrideCheckboxesUnchecked', async () => {
@@ -59,7 +59,7 @@ describe('EditorProfiles', () => {
 
     const checks: NodeListOf<HTMLInputElement> =
       element.querySelectorAll<HTMLInputElement>('.override__check input');
-    expect(checks.length).toBe(7);
+    expect(checks.length).toBe(9);
     expect(Array.from(checks).every((check: HTMLInputElement): boolean => !check.checked)).toBe(
       true,
     );

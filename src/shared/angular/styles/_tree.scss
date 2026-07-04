@@ -80,18 +80,18 @@ app-tree-view {
 .tree-icon {
   flex: 0 0 auto;
   font-size: 1rem;
+  // Every tree glyph — files, folders, projects and the solution root — reads as a neutral grey
+  // rather than the active accent, so the accent is reserved for selection and focus.
+  color: var(--form-muted-foreground-color);
   opacity: 0.85;
 
   &.tree-icon--folder,
   &.tree-icon--project {
-    color: var(--accent-color);
     opacity: 1;
   }
 
-  // A project still loading its contents is dimmed to a muted grey until it is ready, overriding the
-  // accent colour above (defined after it so it wins at equal specificity).
+  // A project still loading its contents is dimmed further until it is ready.
   &.tree-icon--loading {
-    color: var(--form-muted-foreground-color);
     opacity: 0.55;
   }
 }

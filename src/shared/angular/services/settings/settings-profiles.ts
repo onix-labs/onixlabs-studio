@@ -94,6 +94,7 @@ export function resolveForLanguage(
     showLineNumbers: profile.settings.showLineNumbers ?? global.showLineNumbers,
     showMinimap: profile.settings.showMinimap ?? global.showMinimap,
     currentLineHighlight: profile.settings.currentLineHighlight ?? global.currentLineHighlight,
+    colorBrackets: profile.settings.colorBrackets ?? global.colorBrackets,
     wordWrap: profile.settings.wordWrap ?? global.wordWrap,
     stickyScroll: profile.settings.stickyScroll ?? global.stickyScroll,
     cursorBlinking: profile.settings.cursorBlinking ?? global.cursorBlinking,
@@ -103,6 +104,7 @@ export function resolveForLanguage(
     tabSize: profile.settings.tabSize ?? global.tabSize,
     fontFamily: profile.settings.fontFamily ?? global.fontFamily,
     fontSize: profile.settings.fontSize ?? global.fontSize,
+    lineHeight: profile.settings.lineHeight ?? global.lineHeight,
     braceStyle: profile.settings.braceStyle ?? global.braceStyle,
   };
 }

@@ -4,6 +4,7 @@
       [documentId]="documentId()"
       [isActive]="isActive()"
       [removeOnDestroy]="removeOnDestroy()"
+      (ready)="onReady()"
       (cursorChange)="onCursorChange($event)"
       (eolChange)="onEolChange($event)"
     />

@@ -10,15 +10,22 @@
   block-size: 1.2rem;
   margin: 0;
   background: var(--form-track-color);
+  // A transparent border at rest keeps the pill's colours unchanged, then recolours to the accent on
+  // focus (mirroring the other form controls).
+  border: 0.0625rem solid transparent;
   border-radius: 999px;
   cursor: pointer;
-  transition: background-color 150ms ease-in-out;
+  transition:
+    background-color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
 
   &::before {
     content: '';
     position: absolute;
-    inset-block-start: 0.15rem;
-    inset-inline-start: 0.15rem;
+    // The knob is centred within the track's inner (inside-border) box: 0.0875rem = (1.075rem inner
+    // height − 0.9rem knob) / 2, so it sits with equal space above and below.
+    inset-block-start: 0.0875rem;
+    inset-inline-start: 0.0875rem;
     inline-size: 0.9rem;
     block-size: 0.9rem;
     background: var(--form-knob-color);
@@ -34,9 +41,10 @@
     }
   }
 
+  // Form controls signal focus by recolouring their border to the accent, not with an outline ring.
   &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.125rem;
+    outline: none;
+    border-color: var(--accent-color);
   }
 
   &:disabled {

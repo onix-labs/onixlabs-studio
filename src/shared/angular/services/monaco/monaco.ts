@@ -228,6 +228,9 @@ export class Monaco {
       automaticLayout: true,
       minimap: { enabled: resolved.showMinimap },
       fontSize: resolved.fontSize,
+      // A value of 0 tells Monaco to derive the line height from the font size; a value in (0, 8) is a
+      // multiplier of it.
+      lineHeight: resolved.lineHeight,
       fontFamily: `"${resolved.fontFamily}", monospace`,
       lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
       // Widen the line-decorations lane to ~1rem so the change-margin bars sit in a clear gap between

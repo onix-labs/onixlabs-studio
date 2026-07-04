@@ -144,7 +144,9 @@ export class SolutionPanel {
         return Icon.PROJECT;
       case 'folder':
       case 'item-folder':
-        return row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
+        // A folder reads as a dashed folder while any project beneath it is still loading, resolving to
+        // a plain (or open) folder once loaded.
+        return row.loading ? Icon.FOLDER_LOADING : row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
       default:
         return this.fileIconFor(row.label);
     }

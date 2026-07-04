@@ -53,10 +53,10 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 12 global scalar settings plus a custom "profiles" entry, which is
+    // The Text Editor section has 14 global scalar settings plus a custom "profiles" entry, which is
     // rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(14);
   });
 
   it('render_whenForeignOwnedSection_rendersItsRows', async () => {

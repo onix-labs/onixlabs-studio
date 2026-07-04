@@ -19,7 +19,7 @@ export function restoreLayout(raw: unknown, knownPanelIds: ReadonlySet<string>):
   if (!isPersistedNode(raw)) {
     return null;
   }
-  const sanitized: DockNode | null = sanitizeNode(raw, knownPanelIds);
+  const sanitized: DockNode | null = sanitizeNode(raw, knownPanelIds, new Set<string>());
   if (sanitized === null || firstStackOfRole(sanitized, 'document') === null) {
     return null;
   }
@@ -67,17 +67,25 @@ function isPersistedNode(value: unknown): value is DockNode {
 /**
  * Prunes a validated tree to the panels still known this session: drops unknown panel ids, removes
  * emptied tool stacks, and promotes single-child splits. Empty document wells are kept so reopened
- * documents have a home.
+ * documents have a home. Each panel id is also kept at most once across the whole tree, so a layout
+ * corrupted by an earlier double-add (which would otherwise render the same panel several times) is
+ * healed on restore.
  * @param node The node to prune.
  * @param known The panel ids still registered this session.
+ * @param seen The panel ids already kept elsewhere in the tree, so repeats are dropped. Mutated as the
+ * tree is walked.
  * @returns Returns the pruned node, or null when nothing usable survives.
  */
-function sanitizeNode(node: DockNode, known: ReadonlySet<string>): DockNode | null {
+function sanitizeNode(
+  node: DockNode,
+  known: ReadonlySet<string>,
+  seen: Set<string>,
+): DockNode | null {
   if (isSplitNode(node)) {
     const children: DockNode[] = [];
     const sizes: number[] = [];
     node.children.forEach((child: DockNode, index: number): void => {
-      const pruned: DockNode | null = sanitizeNode(child, known);
+      const pruned: DockNode | null = sanitizeNode(child, known, seen);
       if (pruned !== null) {
         children.push(pruned);
         sizes.push(node.sizes[index]);
@@ -91,7 +99,14 @@ function sanitizeNode(node: DockNode, known: ReadonlySet<string>): DockNode | nu
     }
     return { ...node, children, sizes };
   }
-  const panels: readonly string[] = node.panels.filter((id: string): boolean => known.has(id));
+  // Keep each known panel at most once across the whole tree; the first occurrence wins.
+  const panels: string[] = [];
+  for (const id of node.panels) {
+    if (known.has(id) && !seen.has(id)) {
+      panels.push(id);
+      seen.add(id);
+    }
+  }
   if (panels.length === 0 && node.role === 'tool') {
     return null;
   }

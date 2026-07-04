@@ -16,3 +16,36 @@ body {
   user-select: none;
   font-family: var(--font-sans), sans-serif;
 }
+
+// A single, consistent keyboard-focus treatment for the whole app: a 1px accent outline. This replaces
+// the browser's default focus ring wherever an element has no focus style of its own, so focus reads
+// the same everywhere. Components that need a tighter offset keep their own `:focus-visible` rule (they
+// win on specificity); form controls opt out entirely and recolour their border instead (see below).
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 0.0625rem;
+}
+
+// The app-wide form-control focus policy: a bordered text input, select or text area signals focus by
+// recolouring its own border to the accent, never with an outline ring. This is deliberately global so
+// every such control behaves the same — the shared forms/ atoms and any native control used directly in
+// a component (search boxes, modal fields, the agent composer, and so on). `!important` is required to
+// override the many components that still declare their own `:focus-visible` outline at a higher
+// specificity; it is the single authoritative statement of the policy. Scoped to text-like inputs so it
+// never touches range sliders or the checkbox/radio/toggle controls (those carry their own accent-border
+// focus in the forms/ atoms).
+:is(
+  input:not([type]),
+  input[type='text'],
+  input[type='password'],
+  input[type='email'],
+  input[type='number'],
+  input[type='search'],
+  input[type='tel'],
+  input[type='url']
+):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none !important;
+  border-color: var(--accent-color) !important;
+}

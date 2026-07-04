@@ -174,6 +174,18 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         detectIndentation: false,
         fontFamily: `"${resolved.fontFamily}", monospace`,
         fontSize: Math.round((resolved.fontSize * this.editorZoom.percent()) / 100),
+        // The line height is a multiplier of the font size (0 = automatic), so it tracks the zoomed
+        // font size Monaco derives it from without any extra scaling here.
+        lineHeight: resolved.lineHeight,
+      });
+      // Bracket-pair colouring is a model option, not an editor one: in standalone Monaco the per-editor
+      // `bracketPairColorization` option is ignored (the model service seeds every model from global
+      // config), so the toggle must be applied to the model directly to take effect.
+      editor.getModel()?.updateOptions({
+        bracketColorizationOptions: {
+          enabled: resolved.colorBrackets,
+          independentColorPoolPerBracketType: false,
+        },
       });
       this.monaco
         .getMonaco()

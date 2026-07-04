@@ -102,6 +102,11 @@ export interface TextEditorSettings {
   readonly currentLineHighlight: CurrentLineHighlightStyle;
 
   /**
+   * Gets a value indicating whether matching bracket pairs are coloured by their nesting depth.
+   */
+  readonly colorBrackets: boolean;
+
+  /**
    * Gets a value indicating whether long lines are wrapped.
    */
   readonly wordWrap: boolean;
@@ -140,6 +145,11 @@ export interface TextEditorSettings {
    * Gets the editor font size, in pixels.
    */
   readonly fontSize: number;
+
+  /**
+   * Gets the editor line height as a multiple of the font size; 0 derives it automatically.
+   */
+  readonly lineHeight: number;
 
   /**
    * Gets the brace placement style the editor formats to.
@@ -477,6 +487,7 @@ export class Settings {
       showLineNumbers: this.read('textEditor.global.showLineNumbers'),
       showMinimap: this.read('textEditor.global.showMinimap'),
       currentLineHighlight: this.read('textEditor.global.currentLineHighlight'),
+      colorBrackets: this.read('textEditor.global.colorBrackets'),
       wordWrap: this.read('textEditor.global.wordWrap'),
       stickyScroll: this.read('textEditor.global.stickyScroll'),
       cursorBlinking: this.read('textEditor.global.cursorBlinking'),
@@ -485,6 +496,7 @@ export class Settings {
       tabSize: this.read('textEditor.global.tabSize'),
       fontFamily: this.read('textEditor.global.fontFamily'),
       fontSize: this.read('textEditor.global.fontSize'),
+      lineHeight: this.read('textEditor.global.lineHeight'),
       braceStyle: this.read('textEditor.global.braceStyle'),
     }),
   );
@@ -833,8 +845,8 @@ export class Settings {
   }
 
   /**
-   * Validates a value against the registry control: numeric values are rounded and clamped to the
-   * control's configured range; all other values pass through unchanged.
+   * Validates a value against the registry control: numeric values are snapped to the control's step
+   * and clamped to its configured range; all other values pass through unchanged.
    * @param key The setting key.
    * @param value The value to validate.
    * @returns Returns the validated value.
@@ -845,7 +857,13 @@ export class Settings {
       return value;
     }
 
-    let result: number = Math.round(value);
+    // Round to the decimal precision implied by the control's step rather than always to an integer, so
+    // a fractional step (such as the line-height multiplier's 0.1) keeps its decimals. An integer step —
+    // including a coarse one like a token cap's 1000, which is only a UI increment — still rounds to a
+    // whole number without snapping to that step.
+    const step: number = def.control.step ?? 1;
+    const decimals: number = (String(step).split('.')[1] ?? '').length;
+    let result: number = decimals === 0 ? Math.round(value) : Number(value.toFixed(decimals));
     if (def.control.min !== undefined) {
       result = Math.max(def.control.min, result);
     }

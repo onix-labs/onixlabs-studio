@@ -26,9 +26,10 @@
     border-color: var(--form-control-border-color--hover);
   }
 
+  // Form controls signal focus by recolouring their border to the accent, not with an outline ring.
   &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
+    outline: none;
+    border-color: var(--accent-color);
   }
 
   &:disabled {

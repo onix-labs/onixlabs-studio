@@ -75,9 +75,11 @@
   --accent-color: var(--accent-blue);
   --accent-color-rgb: var(--accent-blue-rgb);
 
-  // Semantic accent tokens. Keyboard focus rings draw in the active accent throughout the app.
+  // Semantic accent tokens. Keyboard focus rings draw in the active accent throughout the app, as a
+  // consistent 1px outline (form controls are the exception — they recolour their border instead; see
+  // _base.scss and the forms/ atoms).
   --focus-ring-color: var(--accent-color);
-  --focus-ring-width: 0.125rem;
+  --focus-ring-width: 0.0625rem;
 
   // Accent surface: a subtle accent-tinted fill paired with a brighter accent border. Toolbar
   // command buttons (title strip, ribbon) are transparent at rest and adopt this surface on hover.

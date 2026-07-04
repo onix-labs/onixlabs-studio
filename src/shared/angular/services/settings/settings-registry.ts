@@ -46,6 +46,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
   readonly 'textEditor.global.currentLineHighlight': CurrentLineHighlightStyle;
+  readonly 'textEditor.global.colorBrackets': boolean;
   readonly 'textEditor.global.wordWrap': boolean;
   readonly 'textEditor.global.stickyScroll': boolean;
   readonly 'textEditor.global.cursorBlinking': CursorBlinkingStyle;
@@ -54,6 +55,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.tabSize': number;
   readonly 'textEditor.global.fontFamily': string;
   readonly 'textEditor.global.fontSize': number;
+  readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.profiles': readonly EditorProfile[];
 
@@ -243,6 +245,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'outline',
       },
       {
+        key: 'textEditor.global.colorBrackets',
+        title: 'Coloured brackets',
+        description: 'Colour matching bracket pairs by their nesting depth.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
         key: 'textEditor.global.wordWrap',
         title: 'Word wrap',
         description: 'Wrap long lines.',
@@ -317,6 +327,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The editor font size in pixels.',
         control: { kind: 'number', min: 6, max: 72, step: 1, unit: 'px' },
         default: 14,
+      },
+      {
+        key: 'textEditor.global.lineHeight',
+        title: 'Line height',
+        description: 'The line height as a multiple of the font size; 0 derives it automatically.',
+        control: { kind: 'number', min: 0, max: 4, step: 0.1 },
+        profileOverridable: true,
+        default: 0,
       },
       {
         key: 'textEditor.global.braceStyle',
