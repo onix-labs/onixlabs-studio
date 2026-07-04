@@ -10,6 +10,13 @@ import {
 } from './settings-registry';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { restoreOverrides } from './settings-migration';
+import {
+  addProfile,
+  AddProfileResult,
+  removeProfile,
+  resolveForLanguage,
+  updateProfileIn,
+} from './settings-profiles';
 
 /**
  * Identifies the highlight style applied to the current line in the text editor.
@@ -689,15 +696,14 @@ export class Settings {
     languages: readonly string[],
     settings: PartialTextEditorSettings = {},
   ): EditorProfile {
-    const profile: EditorProfile = {
-      id: crypto.randomUUID(),
+    const result: AddProfileResult = addProfile(
+      this.read('textEditor.profiles'),
       name,
       languages,
       settings,
-    };
-
-    this.set('textEditor.profiles', [...this.read('textEditor.profiles'), profile]);
-    return profile;
+    );
+    this.set('textEditor.profiles', result.next);
+    return result.profile;
   }
 
   /**
@@ -706,13 +712,7 @@ export class Settings {
    * @param updates The updates to apply to the profile.
    */
   public updateProfile(id: string, updates: Partial<Omit<EditorProfile, 'id'>>): void {
-    this.set(
-      'textEditor.profiles',
-      this.read('textEditor.profiles').map(
-        (profile: EditorProfile): EditorProfile =>
-          profile.id === id ? { ...profile, ...updates } : profile,
-      ),
-    );
+    this.set('textEditor.profiles', updateProfileIn(this.read('textEditor.profiles'), id, updates));
   }
 
   /**
@@ -720,12 +720,7 @@ export class Settings {
    * @param id The identifier of the profile to delete.
    */
   public deleteProfile(id: string): void {
-    this.set(
-      'textEditor.profiles',
-      this.read('textEditor.profiles').filter(
-        (profile: EditorProfile): boolean => profile.id !== id,
-      ),
-    );
+    this.set('textEditor.profiles', removeProfile(this.read('textEditor.profiles'), id));
   }
 
   /**
@@ -735,30 +730,7 @@ export class Settings {
    * @returns Returns the resolved settings for the language.
    */
   public resolveSettingsForLanguage(language: string): TextEditorSettings {
-    const global: TextEditorSettings = this.globalTextEditor();
-    const profile: EditorProfile | undefined = this.profiles().find(
-      (candidate: EditorProfile): boolean => candidate.languages.includes(language),
-    );
-
-    if (profile === undefined) {
-      return global;
-    }
-
-    return {
-      showLineNumbers: profile.settings.showLineNumbers ?? global.showLineNumbers,
-      showMinimap: profile.settings.showMinimap ?? global.showMinimap,
-      currentLineHighlight: profile.settings.currentLineHighlight ?? global.currentLineHighlight,
-      wordWrap: profile.settings.wordWrap ?? global.wordWrap,
-      stickyScroll: profile.settings.stickyScroll ?? global.stickyScroll,
-      cursorBlinking: profile.settings.cursorBlinking ?? global.cursorBlinking,
-      cursorSmoothCaretAnimation:
-        profile.settings.cursorSmoothCaretAnimation ?? global.cursorSmoothCaretAnimation,
-      insertSpaces: profile.settings.insertSpaces ?? global.insertSpaces,
-      tabSize: profile.settings.tabSize ?? global.tabSize,
-      fontFamily: profile.settings.fontFamily ?? global.fontFamily,
-      fontSize: profile.settings.fontSize ?? global.fontSize,
-      braceStyle: profile.settings.braceStyle ?? global.braceStyle,
-    };
+    return resolveForLanguage(this.globalTextEditor(), this.profiles(), language);
   }
 
   /**
