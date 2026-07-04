@@ -18,18 +18,10 @@ import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import {
   createCodeBlockCommand,
-  insertHrCommand,
-  toggleEmphasisCommand,
-  toggleInlineCodeCommand,
-  toggleStrongCommand,
   turnIntoTextCommand,
   wrapInBlockquoteCommand,
-  wrapInBulletListCommand,
   wrapInHeadingCommand,
-  wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark';
-import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
-import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
 import {
@@ -45,7 +37,6 @@ import {
   MarkdownBlockType,
   MarkdownCommandHandler,
   MarkdownCommands,
-  OutlineHeading,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
 import {
@@ -61,6 +52,8 @@ import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-rea
 import { MarkdownClipboard } from './markdown-clipboard';
 import { ReadAlongHighlighter } from './read-along-highlighter';
 import { ReviewReveal } from './review-reveal';
+import { OutlineScrollSpy } from './outline-scroll-spy';
+import { buildMarkdownCommandHandler } from './build-command-handler';
 
 /**
  * Heading level for an H1 element.
@@ -96,35 +89,6 @@ const HEADING_LEVEL_6: number = 6;
  * Document root depth used as the lower bound when walking up the node tree from a selection.
  */
 const ROOT_DEPTH: number = 0;
-
-/**
- * Delay in milliseconds for deferring an action to the next event-loop tick.
- */
-const NEXT_TICK_DELAY: number = 0;
-
-/**
- * Distance in pixels below the top of the editor's scroll viewport of the reading line: the active
- * heading is the last whose top has crossed it, and clicking an outline entry lands that heading
- * exactly on it. The two must be the same value — were the click gap smaller than the activation
- * line, a clicked heading would land above the line with the next heading already past it, and the
- * Outline marker would jump ahead by one whenever a section is shorter than the gap between them.
- */
-const READING_LINE_OFFSET: number = 56;
-
-/**
- * Divisor applied to the viewport width to probe the reading line at the editor's horizontal centre,
- * where the centred document content always sits.
- */
-const READING_PROBE_DIVISOR: number = 2;
-
-/**
- * Pixels a clicked heading is parked above the reading line. Landing it on the line exactly leaves the
- * probe at the heading's top edge, where the hit-test is ambiguous (it can resolve to the previous
- * block); the small cushion puts the probe firmly inside the heading and absorbs the slack between the
- * smooth scroll's final event and its true resting position. Must stay below the shortest heading's
- * line height so the heading still owns the line.
- */
-const HEADING_LAND_BIAS: number = 8;
 
 /**
  * Minimum width of a markdown tool panel, in pixels.
@@ -241,6 +205,17 @@ export class MarkdownView implements OnDestroy {
   );
 
   /**
+   * Holds the outline scroll-spy: heading extraction, active-heading tracking, and scroll-to-heading.
+   * It owns the scroll listener over the shared container the view captures in {@link onReady}.
+   */
+  private readonly outline: OutlineScrollSpy = new OutlineScrollSpy(
+    (): MarkdownEditor | undefined => this.pane(),
+    this.commands,
+    this.zone,
+    (): boolean => this.isActive(),
+  );
+
+  /**
    * Gets the tool panel currently open beside this document's editor, or `none` when none is open.
    * Read per document so each markdown tab keeps its own open panel (and its live Agent panel)
    * regardless of which tab is active.
@@ -285,16 +260,10 @@ export class MarkdownView implements OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds the editor's scroll container, to which the scroll-spy listener is attached.
+   * Holds the editor's scroll container, captured once here and shared with the outline scroll-spy and
+   * the review and read collaborators (the outline owns the scroll listener over it).
    */
   private scrollContainer: HTMLElement | null = null;
-
-  /**
-   * Holds the document position of each heading node, in document order, captured when the outline is
-   * built. The scroll-spy maps a coordinate to a position and finds the last heading at or before it,
-   * so the active index always refers to the same heading list the Outline panel renders.
-   */
-  private headingPositions: readonly number[] = [];
 
   /**
    * Holds a value indicating whether the pane's editor instance has been created.
@@ -305,12 +274,6 @@ export class MarkdownView implements OnDestroy {
    * Holds the command handler registered with the {@link MarkdownCommands} registry while active.
    */
   private commandHandler: MarkdownCommandHandler | null = null;
-
-  /**
-   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
-   * event-listener cleanup.
-   */
-  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
 
   /**
    * Initialises the view, wiring the effect that registers or releases the ribbon command handler and
@@ -346,7 +309,7 @@ export class MarkdownView implements OnDestroy {
    * destroys the Crepe editor themselves.
    */
   public ngOnDestroy(): void {
-    this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
+    this.outline.detach();
     this.scrollContainer = null;
     if (this.commandHandler !== null) {
       this.commands.forget(this.tabId());
@@ -390,9 +353,8 @@ export class MarkdownView implements OnDestroy {
   protected onReady(): void {
     const scroller: HTMLElement | null = this.pane()?.getScrollContainer() ?? null;
     if (scroller !== null && scroller !== this.scrollContainer) {
-      this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
       this.scrollContainer = scroller;
-      scroller.addEventListener('scroll', this.boundScrollHandler, { passive: true });
+      this.outline.attach(scroller);
     }
 
     const wasReady: boolean = this.paneReady();
@@ -413,7 +375,7 @@ export class MarkdownView implements OnDestroy {
   protected onContentChange(): void {
     if (this.isActive()) {
       this.publishHistoryState();
-      this.refreshOutline();
+      this.outline.refresh();
       this.review.notifySourceChanged();
       this.readAlong.publishModel();
     }
@@ -436,34 +398,12 @@ export class MarkdownView implements OnDestroy {
    * Registers the ribbon command handler for this editor, mapping each command to a pane action.
    */
   private registerCommandHandler(): void {
-    this.commandHandler = {
-      cut: (): void => this.clipboard.clipboardCommand('cut'),
-      cutAsPlaintext: (): void => this.clipboard.cutPlaintext(),
-      copy: (): void => this.clipboard.clipboardCommand('copy'),
-      copyAsPlaintext: (): void => this.clipboard.copyPlaintext(),
-      paste: (): void => this.clipboard.pasteMarkdown(),
-      pasteAsPlaintext: (): void => this.clipboard.pastePlaintext(),
-      pasteAsCode: (): void => this.clipboard.pasteCode(),
-      undo: (): void => this.pane()?.run(callCommand(undoCommand.key)),
-      redo: (): void => this.pane()?.run(callCommand(redoCommand.key)),
-      toggleBold: (): void => this.pane()?.run(callCommand(toggleStrongCommand.key)),
-      toggleItalic: (): void => this.pane()?.run(callCommand(toggleEmphasisCommand.key)),
-      toggleStrikethrough: (): void =>
-        this.pane()?.run(callCommand(toggleStrikethroughCommand.key)),
-      toggleInlineCode: (): void => this.pane()?.run(callCommand(toggleInlineCodeCommand.key)),
-      toggleBulletList: (): void => this.pane()?.run(callCommand(wrapInBulletListCommand.key)),
-      toggleOrderedList: (): void => this.pane()?.run(callCommand(wrapInOrderedListCommand.key)),
-      insertTable: (): void => this.pane()?.run(callCommand(insertTableCommand.key)),
-      insertHorizontalRule: (): void => this.pane()?.run(callCommand(insertHrCommand.key)),
-      insertMarkdown: (markdown: string): void => this.clipboard.insertParsedBlock(markdown),
-      insertInlineMarkdown: (markdown: string): void => this.clipboard.insertParsedInline(markdown),
-      insertText: (text: string): void => this.clipboard.insertRawText(text),
-      appendMarkdown: (markdown: string): void => this.clipboard.appendParsedBlock(markdown),
+    this.commandHandler = buildMarkdownCommandHandler({
+      clipboard: this.clipboard,
+      outline: this.outline,
+      paneOf: (): MarkdownEditor | undefined => this.pane(),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
-      goToHeading: (index: number): void => this.scrollToHeading(index),
-      readDocument: (): string => this.pane()?.getMarkdown() ?? '',
-      replaceDocument: (markdown: string): void => this.pane()?.replaceAll(markdown),
-    };
+    });
 
     this.commands.register(this.tabId(), this.commandHandler);
   }
@@ -539,7 +479,7 @@ export class MarkdownView implements OnDestroy {
     this.publishHistoryState();
     // Refresh the outline from the rendered DOM (deferred), so activating a tab whose content has not
     // changed still populates the Outline panel.
-    this.refreshOutline();
+    this.outline.refresh();
   }
 
   /**
@@ -565,105 +505,6 @@ export class MarkdownView implements OnDestroy {
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
     });
-  }
-
-  /**
-   * Walks the document model for heading nodes and publishes the resulting outline to the command
-   * registry, so the Outline panel reflects the document's headings, capturing each heading's document
-   * position for the scroll-spy. Both ATX and setext headings parse to the same heading node, so both
-   * are captured. Reads the document (not the DOM), so the outline and the scroll-spy share one source
-   * of truth — the same heading list, in the same order — and cannot drift apart.
-   */
-  private refreshOutline(): void {
-    // Deferred a tick so the document reflects the latest content. Reading the document is a pure read
-    // that never touches the editor's plugins, so it cannot interfere with an in-flight transaction.
-    setTimeout((): void => {
-      const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-      if (!this.isActive() || view === null) {
-        return;
-      }
-      const headings: OutlineHeading[] = [];
-      const positions: number[] = [];
-      view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
-        if (node.type.name !== 'heading') {
-          return true;
-        }
-        positions.push(pos);
-        headings.push({
-          id: `heading-${headings.length}`,
-          level: (node.attrs['level'] as number) || HEADING_LEVEL_1,
-          text: node.textContent,
-          index: headings.length,
-        });
-        return false;
-      });
-      this.headingPositions = positions;
-      this.zone.run((): void => {
-        this.commands.setOutline(headings);
-      });
-      this.updateActiveHeading();
-    }, NEXT_TICK_DELAY);
-  }
-
-  /**
-   * Recomputes which heading the reader is currently at and publishes its index, so the Outline panel
-   * can move its active marker. Maps the reading line ({@link READING_LINE_OFFSET} below the viewport
-   * top) to a document position through the editor's own hit-testing, then takes the last heading at or
-   * before that position — robust against hidden, transformed, or asynchronously-rendered content that
-   * a DOM-rectangle scan trips over. Reads layout synchronously on scroll (rather than deferring to an
-   * animation frame, which can be suspended) so the marker never appears frozen.
-   */
-  private updateActiveHeading(): void {
-    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-    if (!this.isActive() || this.scrollContainer === null || view === null) {
-      return;
-    }
-    if (this.headingPositions.length === 0) {
-      this.zone.run((): void => this.commands.setActiveHeading(0));
-      return;
-    }
-    const viewport: DOMRect = this.scrollContainer.getBoundingClientRect();
-    const at: { pos: number } | null = view.posAtCoords({
-      left: viewport.left + viewport.width / READING_PROBE_DIVISOR,
-      top: viewport.top + READING_LINE_OFFSET,
-    });
-    if (at === null) {
-      return;
-    }
-    let active: number = 0;
-    for (let index: number = 0; index < this.headingPositions.length; index++) {
-      if (this.headingPositions[index] <= at.pos) {
-        active = index;
-      } else {
-        break;
-      }
-    }
-    this.zone.run((): void => this.commands.setActiveHeading(active));
-  }
-
-  /**
-   * Jumps the editor so the heading with the given ordinal lands just above the reading line. The jump
-   * is instant rather than animated: a single scroll event fires at the exact resting position, so the
-   * scroll-spy reads it once and unambiguously activates the clicked heading — an animated scroll's
-   * easing tail fires its final event short of rest and settles a heading off. The marker still glides
-   * to the heading through its own transition.
-   * @param index The heading's zero-based ordinal among the document's headings.
-   */
-  private scrollToHeading(index: number): void {
-    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-    const scroller: HTMLElement | null = this.scrollContainer;
-    const pos: number | undefined = this.headingPositions[index];
-    if (view === null || scroller === null || pos === undefined) {
-      return;
-    }
-    const headingTop: number = view.coordsAtPos(pos).top;
-    const offset: number =
-      headingTop -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop -
-      READING_LINE_OFFSET +
-      HEADING_LAND_BIAS;
-    scroller.scrollTo({ top: offset, behavior: 'auto' });
   }
 
   /**
