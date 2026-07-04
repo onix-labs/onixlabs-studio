@@ -108,6 +108,34 @@ function nextNodeId(): string {
 }
 
 /**
+ * Advances the node-id sequence past every identifier already present in a tree, so identifiers minted
+ * after a persisted layout is restored cannot collide with the restored ones. The process-global
+ * sequence restarts at zero each session, whereas a restored tree carries ids from an earlier session;
+ * this lifts the counter above the highest restored `dock-{n}` before any new node is created.
+ * @param tree The restored layout tree whose identifiers are reserved.
+ */
+export function reserveNodeIds(tree: DockNode): void {
+  sequence = Math.max(sequence, highestNodeNumber(tree));
+}
+
+/**
+ * Finds the largest `{n}` across a tree's `dock-{n}` identifiers.
+ * @param node The node to scan, recursing into split children.
+ * @returns Returns the highest identifier number found, or zero when none match.
+ */
+function highestNodeNumber(node: DockNode): number {
+  const match: RegExpExecArray | null = /^dock-(\d+)$/.exec(node.id);
+  const own: number = match !== null ? Number(match[1]) : 0;
+  if (isSplitNode(node)) {
+    return node.children.reduce(
+      (max: number, child: DockNode): number => Math.max(max, highestNodeNumber(child)),
+      own,
+    );
+  }
+  return own;
+}
+
+/**
  * Creates a stack node with a fresh identifier, activating its first panel.
  * @param role The role of the stack, which governs docking legality.
  * @param panels The ordered identifiers of the panels the stack should hold.

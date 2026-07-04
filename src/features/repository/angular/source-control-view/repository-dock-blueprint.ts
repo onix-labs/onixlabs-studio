@@ -15,6 +15,7 @@ import { SourceControlSidebar } from './panels/source-control-sidebar/source-con
  * user can rearrange or float them.
  */
 export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
+  key: 'source-control',
   createLayout(): DockNode {
     return mkSplit(
       'row',

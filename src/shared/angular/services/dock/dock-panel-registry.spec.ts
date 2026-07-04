@@ -11,6 +11,7 @@ import { DockPanelRegistry } from './dock-panel-registry';
  * registry seeds itself from whichever blueprint its host tab provides, so a test provides one too.
  */
 const TEST_BLUEPRINT: DockBlueprint = {
+  key: 'test',
   createLayout: (): DockNode => mkStack('tool', ['files']),
   panels: [
     {

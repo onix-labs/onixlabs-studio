@@ -1,8 +1,70 @@
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { DockNode, isSplitNode, isStackNode, StackNode } from './dock-node';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
+import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findStackOfPanel, firstStackOfRole } from './dock-tree';
+
+/**
+ * An in-memory {@link SettingsStore} stand-in, so persistence tests are hermetic (no localStorage) and
+ * can seed and read the stored layout directly.
+ */
+class FakeStore {
+  /**
+   * Holds the persisted entries by key.
+   */
+  public readonly map: Map<string, unknown> = new Map<string, unknown>();
+
+  /**
+   * Reads a stored value, or the fallback when absent.
+   * @param key The entry key.
+   * @param fallback The value to return when the key is absent.
+   * @returns Returns the stored value or the fallback.
+   */
+  public get<T>(key: string, fallback: T): T {
+    return this.map.has(key) ? (this.map.get(key) as T) : fallback;
+  }
+
+  /**
+   * Writes a stored value.
+   * @param key The entry key.
+   * @param value The value to store.
+   */
+  public set<T>(key: string, value: T): void {
+    this.map.set(key, value);
+  }
+}
+
+/**
+ * A stand-in panel body; only its type is catalogued, so it is never instantiated.
+ */
+class PersistStubPanel {}
+
+/**
+ * The persistence key the blueprint below stores its layout under.
+ */
+const PERSIST_LAYOUT_KEY: string = 'dock.layout.persist';
+
+/**
+ * A keyed blueprint cataloguing one tool panel, used to drive the persistence tests.
+ */
+const PERSIST_BLUEPRINT: DockBlueprint = {
+  key: 'persist',
+  createLayout: (): DockNode =>
+    mkSplit('row', [mkStack('tool', ['explorer']), mkStack('document', [])], [1, 2]),
+  panels: [
+    {
+      id: 'explorer',
+      title: 'Explorer',
+      icon: Icon.CODE,
+      role: 'tool',
+      component: PersistStubPanel,
+    },
+  ],
+};
 
 /**
  * Asserts a stack holds the given panel and returns it, failing the test otherwise.
@@ -221,5 +283,64 @@ describe('DockState', () => {
 
       expect(steps).toBe(10);
     });
+  });
+});
+
+describe('DockState persistence', () => {
+  let store: FakeStore;
+
+  /**
+   * Configures a DockState backed by the keyed persistence blueprint and the fake store, optionally
+   * seeding a persisted layout before the state is constructed.
+   * @param seed The value to seed the store's layout entry with, or undefined to leave it empty.
+   * @returns Returns the constructed DockState.
+   */
+  function inject(seed?: unknown): DockState {
+    store = new FakeStore();
+    if (seed !== undefined) {
+      store.set(PERSIST_LAYOUT_KEY, seed);
+    }
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: DOCK_BLUEPRINT, useValue: PERSIST_BLUEPRINT },
+        { provide: SettingsStore, useValue: store },
+      ],
+    });
+    return TestBed.inject(DockState);
+  }
+
+  it('restore_stripsUnknownDocumentPanelsButKeepsTheWell', () => {
+    const persisted: unknown = {
+      kind: 'split',
+      id: 'dock-1',
+      dir: 'row',
+      children: [
+        { kind: 'stack', id: 'dock-2', role: 'tool', panels: ['explorer'], active: 'explorer' },
+        { kind: 'stack', id: 'dock-3', role: 'document', panels: ['/gone.ts'], active: '/gone.ts' },
+      ],
+      sizes: [2, 3],
+    };
+
+    const state: DockState = inject(persisted);
+
+    expect(findStackOfPanel(state.layout(), 'explorer')?.role).toBe('tool');
+    expect(firstStackOfRole(state.layout(), 'document')?.panels).toEqual([]);
+  });
+
+  it('restore_fallsBackToTheBlueprintLayoutOnGarbage', () => {
+    const state: DockState = inject({ not: 'a tree' });
+
+    expect(findStackOfPanel(state.layout(), 'explorer')?.role).toBe('tool');
+    expect(firstStackOfRole(state.layout(), 'document')).not.toBeNull();
+  });
+
+  it('mutation_persistsTheCurrentLayoutToTheStore', () => {
+    const state: DockState = inject();
+    const well: StackNode = firstStackOfRole(state.layout(), 'document')!;
+    state.tabInto(well.id, 'doc-x');
+
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(store.get<DockNode | null>(PERSIST_LAYOUT_KEY, null)).toBe(state.layout());
   });
 });

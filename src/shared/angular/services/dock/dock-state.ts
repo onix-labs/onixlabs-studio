@@ -1,7 +1,9 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
+import { restoreLayout } from './dock-persistence';
 import {
   defaultLayout,
   dockEdge,
@@ -35,9 +37,30 @@ export class DockState {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the current layout tree, seeded from the blueprint's layout (or the workspace default).
+   * Holds the key-value store the layout is persisted through, so a rearranged dock is restored on the
+   * next session.
    */
-  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.createLayout());
+  private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds the key this dock's layout persists under, or null when no blueprint was provided (the
+   * bare-default case, where persistence is a no-op).
+   */
+  private readonly persistKey: string | null = this.blueprint?.key ?? null;
+
+  /**
+   * Holds the ids of the panels the blueprint catalogues, used to prune a restored layout of panels no
+   * longer known this session (stale features, and every dynamic document id, which is gone on restart).
+   */
+  private readonly knownPanelIds: ReadonlySet<string> = new Set<string>(
+    this.blueprint?.panels.map((panel): string => panel.id) ?? [],
+  );
+
+  /**
+   * Holds the current layout tree, restored from persistence when available, otherwise seeded from the
+   * blueprint's layout (or the workspace default).
+   */
+  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.loadLayout());
 
   /**
    * Gets the current layout tree.
@@ -65,6 +88,20 @@ export class DockState {
    * Gets a value indicating whether an undone layout can be reapplied.
    */
   public readonly canRedo: Signal<boolean> = computed((): boolean => this.future().length > 0);
+
+  /**
+   * Initialises the dock, persisting the current layout whenever it changes. The effect covers every
+   * mutation path — structural commits, undo/redo, and tab activation — because all of them replace the
+   * tree signal; its first run harmlessly re-writes the just-restored layout. Persistence is a no-op
+   * when no blueprint (hence no key) was provided.
+   */
+  public constructor() {
+    effect((): void => {
+      if (this.persistKey !== null) {
+        this.store.set<DockNode>(`dock.layout.${this.persistKey}`, this.tree());
+      }
+    });
+  }
 
   /**
    * Adds a panel as a tab in the given stack and makes it active.
@@ -240,5 +277,18 @@ export class DockState {
    */
   private createLayout(): DockNode {
     return this.blueprint !== null ? this.blueprint.createLayout() : defaultLayout();
+  }
+
+  /**
+   * Restores the persisted layout for this dock, pruned to the panels still known this session, and
+   * falls back to a fresh layout when there is no key, nothing persisted, or nothing usable survives.
+   * @returns Returns the layout to seed the tree with.
+   */
+  private loadLayout(): DockNode {
+    if (this.persistKey === null) {
+      return this.createLayout();
+    }
+    const raw: unknown = this.store.get<unknown>(`dock.layout.${this.persistKey}`, null);
+    return restoreLayout(raw, this.knownPanelIds) ?? this.createLayout();
   }
 }
