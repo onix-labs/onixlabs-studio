@@ -13,10 +13,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { Crepe } from '@milkdown/crepe';
-import type { Ctx } from '@milkdown/ctx';
-import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
-import { Slice, type Node as ProseMirrorNode, type NodeType } from '@milkdown/kit/prose/model';
+import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import {
@@ -35,7 +32,6 @@ import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset
 import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
-import type { Parser } from '@milkdown/transformer';
 import {
   wrapInCautionAlertCommand,
   wrapInImportantAlertCommand,
@@ -72,6 +68,7 @@ import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-o
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
+import { MarkdownClipboard } from './markdown-clipboard';
 
 /**
  * Heading level for an H1 element.
@@ -268,6 +265,14 @@ export class MarkdownView implements OnDestroy {
   private pane(): MarkdownEditor | undefined {
     return this.documentCore()?.getPane();
   }
+
+  /**
+   * Holds the clipboard and insertion command runner, driving the pane through a live accessor so it
+   * stays correct across the editor recreations that follow an external content load.
+   */
+  private readonly clipboard: MarkdownClipboard = new MarkdownClipboard(
+    (): MarkdownEditor | undefined => this.pane(),
+  );
 
   /**
    * Holds the review session registered with the {@link Review} service while active, or null.
@@ -491,13 +496,13 @@ export class MarkdownView implements OnDestroy {
    */
   private registerCommandHandler(): void {
     this.commandHandler = {
-      cut: (): void => this.clipboardCommand('cut'),
-      cutAsPlaintext: (): void => this.cutPlaintext(),
-      copy: (): void => this.clipboardCommand('copy'),
-      copyAsPlaintext: (): void => this.copyPlaintext(),
-      paste: (): void => this.pasteMarkdown(),
-      pasteAsPlaintext: (): void => this.pastePlaintext(),
-      pasteAsCode: (): void => this.pasteCode(),
+      cut: (): void => this.clipboard.clipboardCommand('cut'),
+      cutAsPlaintext: (): void => this.clipboard.cutPlaintext(),
+      copy: (): void => this.clipboard.clipboardCommand('copy'),
+      copyAsPlaintext: (): void => this.clipboard.copyPlaintext(),
+      paste: (): void => this.clipboard.pasteMarkdown(),
+      pasteAsPlaintext: (): void => this.clipboard.pastePlaintext(),
+      pasteAsCode: (): void => this.clipboard.pasteCode(),
       undo: (): void => this.pane()?.run(callCommand(undoCommand.key)),
       redo: (): void => this.pane()?.run(callCommand(redoCommand.key)),
       toggleBold: (): void => this.pane()?.run(callCommand(toggleStrongCommand.key)),
@@ -509,10 +514,10 @@ export class MarkdownView implements OnDestroy {
       toggleOrderedList: (): void => this.pane()?.run(callCommand(wrapInOrderedListCommand.key)),
       insertTable: (): void => this.pane()?.run(callCommand(insertTableCommand.key)),
       insertHorizontalRule: (): void => this.pane()?.run(callCommand(insertHrCommand.key)),
-      insertMarkdown: (markdown: string): void => this.insertParsedBlock(markdown),
-      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(markdown),
-      insertText: (text: string): void => this.insertRawText(text),
-      appendMarkdown: (markdown: string): void => this.appendParsedBlock(markdown),
+      insertMarkdown: (markdown: string): void => this.clipboard.insertParsedBlock(markdown),
+      insertInlineMarkdown: (markdown: string): void => this.clipboard.insertParsedInline(markdown),
+      insertText: (text: string): void => this.clipboard.insertRawText(text),
+      appendMarkdown: (markdown: string): void => this.clipboard.appendParsedBlock(markdown),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
       goToHeading: (index: number): void => this.scrollToHeading(index),
       readDocument: (): string => this.pane()?.getMarkdown() ?? '',
@@ -520,178 +525,6 @@ export class MarkdownView implements OnDestroy {
     };
 
     this.commands.register(this.tabId(), this.commandHandler);
-  }
-
-  /**
-   * Focuses the editor and runs a native clipboard command (cut or copy) against its selection, so
-   * the editor's own clipboard serialisation handles the formatted content.
-   * @param command The clipboard command to execute.
-   */
-  private clipboardCommand(command: 'cut' | 'copy'): void {
-    this.pane()?.focusEditor();
-    document.execCommand(command);
-  }
-
-  /**
-   * Copies the current selection to the clipboard as unformatted plain text, discarding markdown
-   * syntax. Blocks are joined with newlines so multi-paragraph selections survive as readable text.
-   */
-  private copyPlaintext(): void {
-    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
-    if (crepe === null) {
-      return;
-    }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const selection: Selection = view.state.selection;
-      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
-      void navigator.clipboard.writeText(text).catch((): void => undefined);
-      view.focus();
-    });
-  }
-
-  /**
-   * Cuts the current selection to the clipboard as unformatted plain text, then deletes it.
-   */
-  private cutPlaintext(): void {
-    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
-    if (crepe === null) {
-      return;
-    }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const selection: Selection = view.state.selection;
-      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
-      void navigator.clipboard.writeText(text).catch((): void => undefined);
-      view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Reads the clipboard text and, when it holds any, hands it to the given editor action. Browsers
-   * block programmatic `paste`, so each paste variant reads the clipboard and inserts the text itself.
-   * @param action The action to run with the clipboard text.
-   */
-  private withClipboardText(action: (text: string) => void): void {
-    void navigator.clipboard
-      .readText()
-      .then((text: string): void => {
-        if (text.length === 0) {
-          return;
-        }
-        action(text);
-      })
-      .catch((): void => undefined);
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection, parsing them as markdown so formatting is
-   * preserved.
-   */
-  private pasteMarkdown(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const parser: Parser = ctx.get(parserCtx);
-        const doc: ProseMirrorNode = parser(text);
-        const view: EditorView = ctx.get(editorViewCtx);
-        const slice: Slice = new Slice(doc.content, 0, 0);
-        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection as unformatted plain text.
-   */
-  private pastePlaintext(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const view: EditorView = ctx.get(editorViewCtx);
-        view.dispatch(view.state.tr.insertText(text).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection as a code block.
-   */
-  private pasteCode(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const view: EditorView = ctx.get(editorViewCtx);
-        const codeBlockType: NodeType | undefined = view.state.schema.nodes['code_block'];
-        if (codeBlockType === undefined) {
-          return;
-        }
-        const codeBlock: ProseMirrorNode = codeBlockType.create(null, view.state.schema.text(text));
-        view.dispatch(view.state.tr.replaceSelectionWith(codeBlock).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Parses markdown and inserts it as block-level content at the cursor, replacing any selection.
-   * @param markdown The markdown to parse and insert.
-   */
-  private insertParsedBlock(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      view.dispatch(view.state.tr.replaceSelection(new Slice(doc.content, 0, 0)).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Parses markdown and inserts its inline content at the cursor, replacing any selection. The parsed
-   * document's first block holds the inline content (such as a link), which is spliced into the
-   * current block rather than inserted as a new paragraph.
-   * @param markdown The inline markdown to parse and insert.
-   */
-  private insertParsedInline(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      const block: ProseMirrorNode | null = doc.content.firstChild;
-      const inline: Slice = new Slice(block !== null ? block.content : doc.content, 0, 0);
-      view.dispatch(view.state.tr.replaceSelection(inline).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Inserts raw text at the cursor, replacing any selection.
-   * @param text The text to insert.
-   */
-  private insertRawText(text: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      view.dispatch(view.state.tr.insertText(text).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Parses markdown and appends it as block-level content at the end of the document, leaving the
-   * selection where it was. Used for content that lives apart from the cursor, such as a footnote
-   * definition.
-   * @param markdown The markdown to parse and append.
-   */
-  private appendParsedBlock(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      const end: number = view.state.doc.content.size;
-      view.dispatch(view.state.tr.insert(end, doc.content).scrollIntoView());
-      view.focus();
-    });
   }
 
   /**
