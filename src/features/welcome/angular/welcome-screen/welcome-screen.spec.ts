@@ -26,11 +26,11 @@ describe('WelcomeScreen', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('coldStart_whenNoTabs_isVisibleWithAmbientOrbs', () => {
+  it('coldStart_whenNoTabs_isVisibleWithAmbientGlow', () => {
     expect(host.querySelector('.modal--visible')).not.toBeNull();
     expect(host.querySelector('.welcome-modal--ambient')).not.toBeNull();
-    expect(host.querySelector('.welcome__orbs--active')).not.toBeNull();
-    expect(host.querySelectorAll('.welcome__orb').length).toBe(6);
+    expect(host.querySelector('.welcome__glow--active')).not.toBeNull();
+    expect(host.querySelectorAll('.welcome__glow-blob').length).toBe(2);
   });
 
   it('withTabs_whenModalClosed_isNotVisible', () => {

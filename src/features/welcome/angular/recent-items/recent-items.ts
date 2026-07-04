@@ -21,6 +21,11 @@ export interface RecentItem {
   readonly detail: string;
 
   /**
+   * Gets a short, human-readable label for when the item was last opened (e.g. "2h ago").
+   */
+  readonly timestamp: string;
+
+  /**
    * Gets the icon used to represent the item.
    */
   readonly icon: Icon;

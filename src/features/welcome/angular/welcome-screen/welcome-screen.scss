@@ -2,41 +2,62 @@
   display: contents;
 }
 
-// Theme the reusable modal for the welcome presentation: a wide frosted panel over a blurred
-// backdrop. These custom properties are consumed by the modal (with card defaults) and inherit down
-// into it.
+// Theme the reusable modal for the welcome presentation. The welcome screen is deliberately a fixed
+// dark, purple-accented surface regardless of the app's theme and accent, so it pins its own palette
+// here as scoped custom properties. `--accent-color` (and its RGB triplet), `--body-foreground-color`
+// and `--welcome-muted-foreground-color` are overridden too, so the modal chrome (close button, focus
+// rings) and any inherited defaults adopt the same fixed palette. All of these inherit down into the
+// projected content and into the modal component.
 .welcome-modal {
+  // Fixed palette.
+  --wl-accent: #8b5cf6;
+  --wl-accent-rgb: 139, 92, 246;
+  --wl-text: #f4f4fa;
+  --wl-muted: #b7b7cc;
+  --wl-faint: #7c7c95;
+  --wl-surface: rgba(255, 255, 255, 0.035);
+  --wl-surface-hover: rgba(255, 255, 255, 0.07);
+  --wl-surface-border: rgba(255, 255, 255, 0.08);
+  --wl-border: rgba(255, 255, 255, 0.08);
+
+  // Pin the accent and inherited foregrounds to the fixed palette within the welcome.
+  --accent-color: var(--wl-accent);
+  --accent-color-rgb: var(--wl-accent-rgb);
+  --body-foreground-color: var(--wl-text);
+  --welcome-muted-foreground-color: var(--wl-muted);
+
+  // Modal presentation: a wide, solid dark panel with a soft internal glow, over a dark backdrop.
   --modal-fade-duration: 280ms;
-  --modal-panel-inline-size: min(52rem, 100%);
-  --modal-panel-padding: 2rem;
-  // Mostly opaque (20% see-through), frosted so the orbs read as a soft glow through the edges.
-  --modal-panel-background: color-mix(in srgb, var(--welcome-panel-background-color) 80%, transparent);
-  --modal-panel-backdrop-filter: blur(1.25rem);
-  --modal-panel-border-color: var(--welcome-border-color);
-  --modal-panel-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.35);
-  --modal-backdrop-color: var(--welcome-backdrop-color);
+  --modal-panel-inline-size: min(70rem, 100%);
+  --modal-panel-padding: 1.75rem;
+  --modal-panel-radius: 1.5rem;
+  --modal-panel-background:
+    radial-gradient(130% 90% at 88% -12%, rgba(139, 92, 246, 0.16), transparent 55%),
+    linear-gradient(158deg, #16172a 0%, #0d0e18 62%);
+  --modal-panel-backdrop-filter: none;
+  --modal-panel-border-color: rgba(255, 255, 255, 0.09);
+  --modal-panel-shadow: 0 2rem 4.5rem rgba(0, 0, 0, 0.6);
+  --modal-backdrop-color: rgba(6, 7, 16, 0.55);
 }
 
-// Cold-start scene: a darker canvas so the glowing orbs read against it, with no content behind to
-// blur. The modal additionally treats this backdrop as a window-drag region (driven by
-// `draggableBackdrop`) since there is no title strip to move the frameless window by.
+// Cold-start scene: a near-opaque dark canvas so the static glow reads against it, with no content
+// behind to blur.
 .welcome-modal--ambient {
-  --modal-backdrop-color: rgba(8, 10, 22, 0.82);
+  --modal-backdrop-color: rgba(5, 6, 14, 0.98);
   --modal-backdrop-blur: 0;
 }
 
-// The drifting orb layer, projected behind the panel. Visible (and animating) only in the ambient
-// cold-start scene.
-.welcome__orbs {
+// A calm, static purple glow projected behind the panel. Shown (faded in) only in the ambient
+// cold-start scene; purely decorative.
+.welcome__glow {
   position: absolute;
   inset: 0;
   overflow: hidden;
   opacity: 0;
 }
 
-.welcome__orbs--active {
+.welcome__glow--active {
   opacity: 1;
-  // Fade in only; the base state has no transition, so the orbs vanish instantly on exit.
   transition: opacity 280ms ease;
 
   @starting-style {
@@ -44,236 +65,70 @@
   }
 }
 
-.welcome__orb {
+.welcome__glow-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(3.25rem);
-  mix-blend-mode: screen;
-  will-change: transform;
-  animation-play-state: paused;
+  filter: blur(6rem);
 }
 
-.welcome__orbs--active .welcome__orb {
-  animation-play-state: running;
-}
-
-// Two blues, two purples and two pinks, sized and seeded so they drift across the scene like a gravity-free
-// lava lamp.
-.welcome__orb--a {
+// A large violet bloom top-right, and a softer, cooler one drifting up from the lower edge.
+.welcome__glow-blob--a {
   inline-size: 46rem;
   block-size: 46rem;
-  inset-block-start: -6rem;
-  inset-inline-start: -4rem;
-  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.6), rgba(59, 130, 246, 0) 68%);
-  animation: welcome-orb-a 38s ease-in-out -5s infinite;
+  inset-block-start: -15rem;
+  inset-inline-end: -12rem;
+  background: radial-gradient(circle at center, rgba(139, 92, 246, 0.5), transparent 68%);
 }
 
-.welcome__orb--b {
-  inline-size: 42rem;
-  block-size: 42rem;
-  inset-block-end: -8rem;
-  inset-inline-end: -6rem;
-  background: radial-gradient(circle at center, rgba(139, 92, 246, 0.55), rgba(139, 92, 246, 0) 68%);
-  animation: welcome-orb-b 44s ease-in-out -19s infinite;
-}
-
-.welcome__orb--c {
-  inline-size: 38rem;
-  block-size: 38rem;
-  inset-block-start: 22%;
-  inset-inline-start: 32%;
-  background: radial-gradient(circle at center, rgba(96, 165, 250, 0.5), rgba(96, 165, 250, 0) 70%);
-  animation: welcome-orb-c 33s ease-in-out -11s infinite;
-}
-
-.welcome__orb--d {
+.welcome__glow-blob--b {
   inline-size: 40rem;
   block-size: 40rem;
-  inset-block-end: 12%;
-  inset-inline-start: 14%;
-  background: radial-gradient(circle at center, rgba(168, 85, 247, 0.5), rgba(168, 85, 247, 0) 70%);
-  animation: welcome-orb-d 41s ease-in-out -27s infinite;
+  inset-block-end: -18rem;
+  inset-inline-start: 24%;
+  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.32), transparent 70%);
 }
 
-.welcome__orb--e {
-  inline-size: 36rem;
-  block-size: 36rem;
-  inset-block-start: 8%;
-  inset-inline-end: 10%;
-  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.5), rgba(236, 72, 153, 0) 70%);
-  animation: welcome-orb-e 36s ease-in-out -14s infinite;
-}
-
-.welcome__orb--f {
-  inline-size: 44rem;
-  block-size: 44rem;
-  inset-block-end: -4rem;
-  inset-inline-start: 38%;
-  background: radial-gradient(circle at center, rgba(244, 114, 182, 0.5), rgba(244, 114, 182, 0) 70%);
-  animation: welcome-orb-f 48s ease-in-out -8s infinite;
-}
-
-// Each orb wanders a multi-point circuit (rather than bouncing straight out and back), with gentle
-// scale drift, so the motion reads as fluid rather than mechanical.
-@keyframes welcome-orb-a {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  20% {
-    transform: translate(9vw, 6vh) scale(1.08);
-  }
-  40% {
-    transform: translate(15vw, -5vh) scale(1.14);
-  }
-  60% {
-    transform: translate(6vw, -12vh) scale(0.96);
-  }
-  80% {
-    transform: translate(-5vw, -4vh) scale(1.04);
-  }
-}
-
-@keyframes welcome-orb-b {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  22% {
-    transform: translate(-8vw, -7vh) scale(1.1);
-  }
-  44% {
-    transform: translate(-15vw, 3vh) scale(0.94);
-  }
-  66% {
-    transform: translate(-7vw, 11vh) scale(1.12);
-  }
-  85% {
-    transform: translate(3vw, 6vh) scale(1.02);
-  }
-}
-
-@keyframes welcome-orb-c {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  18% {
-    transform: translate(11vw, -5vh) scale(1.12);
-  }
-  40% {
-    transform: translate(5vw, 13vh) scale(0.92);
-  }
-  62% {
-    transform: translate(-9vw, 7vh) scale(1.16);
-  }
-  82% {
-    transform: translate(-6vw, -6vh) scale(0.98);
-  }
-}
-
-@keyframes welcome-orb-d {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(10vw, -9vh) scale(1.06);
-  }
-  50% {
-    transform: translate(2vw, -16vh) scale(1.12);
-  }
-  72% {
-    transform: translate(-11vw, -6vh) scale(0.92);
-  }
-  88% {
-    transform: translate(-5vw, 4vh) scale(1.04);
-  }
-}
-
-@keyframes welcome-orb-e {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  24% {
-    transform: translate(-10vw, 6vh) scale(1.1);
-  }
-  48% {
-    transform: translate(-4vw, 14vh) scale(0.95);
-  }
-  70% {
-    transform: translate(8vw, 9vh) scale(1.14);
-  }
-  86% {
-    transform: translate(6vw, -3vh) scale(1.02);
-  }
-}
-
-@keyframes welcome-orb-f {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  20% {
-    transform: translate(7vw, -8vh) scale(1.07);
-  }
-  42% {
-    transform: translate(-6vw, -13vh) scale(1.13);
-  }
-  64% {
-    transform: translate(-13vw, -2vh) scale(0.94);
-  }
-  84% {
-    transform: translate(-4vw, 7vh) scale(1.05);
-  }
-}
-
-// Logo on the left, identity text on the right.
+// Logo on the left, identity text beside it.
 .welcome__header {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 
 .welcome__logo {
   flex: none;
-  inline-size: 6.5rem;
-  block-size: 6.5rem;
+  inline-size: 6rem;
+  block-size: 6rem;
   user-select: none;
 }
 
 .welcome__intro {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
   min-inline-size: 0;
 }
 
 .welcome__title {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.welcome__standfirst {
-  margin: 0;
-  font-size: 1rem;
+  font-size: 1.9rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--wl-text);
 }
 
 .welcome__instruction {
   margin: 0;
   font-size: 0.9rem;
-  color: var(--welcome-muted-foreground-color);
+  color: var(--wl-faint);
 }
 
-// The 40/60 split: actions on the left, recent items on the right.
+// The split: a fixed-width action column on the left, recent items filling the right.
 .welcome__body {
   display: grid;
-  grid-template-columns: 2fr 3fr;
-  gap: 1rem;
-  margin-block-start: 2rem;
+  grid-template-columns: 21rem 1fr;
+  gap: 1.25rem;
+  margin-block-start: 1.75rem;
   min-block-size: 0;
 }
 
@@ -283,44 +138,54 @@
   gap: 0.5rem;
 }
 
-// Each action mirrors the new-tab menu items: an icon, a primary label, and a quieter hint.
+// Each action: an icon, a primary label over a quieter hint, and a trailing chevron. Every action
+// lifts to an accent-tinted state on hover; the buttons grow to fill the column so the last one lines
+// up with the foot of the recent-items panel.
 .welcome__action {
   display: flex;
+  flex: 1 0 auto;
   align-items: center;
   gap: 0.85rem;
   inline-size: 100%;
-  padding: 0.55rem 0.8rem;
+  padding: 0.85rem;
   font: inherit;
   text-align: start;
   color: inherit;
-  background: transparent;
-  border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.85rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: pointer;
   transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  i {
-    flex: none;
-    inline-size: 1.5rem;
-    font-size: 1.5rem;
-    text-align: center;
-  }
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 
   &:hover,
   &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
+    background: rgba(var(--accent-color-rgb), 0.12);
+    border-color: rgba(var(--accent-color-rgb), 0.6);
+    box-shadow: 0 0.75rem 2rem -0.75rem rgba(var(--accent-color-rgb), 0.55);
     outline: none;
 
-    .welcome__action-hint {
-      color: var(--accent-surface-foreground-color);
-      opacity: 0.7;
+    .welcome__action-icon {
+      color: #d9ccff;
+    }
+
+    .welcome__action-chevron {
+      color: rgba(var(--accent-color-rgb), 0.95);
     }
   }
+}
+
+.welcome__action-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.4rem;
+  font-size: 1.9rem;
+  color: var(--wl-text);
+  transition: color 150ms ease;
 }
 
 .welcome__action-text {
@@ -332,78 +197,190 @@
 
 .welcome__action-label {
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--wl-text);
 }
 
 .welcome__action-hint {
   font-size: 0.78rem;
-  color: var(--welcome-muted-foreground-color);
+  color: var(--wl-faint);
+}
+
+.welcome__action-chevron {
+  flex: none;
+  margin-inline-start: auto;
+  font-size: 1rem;
+  color: var(--wl-faint);
+  transition: color 150ms ease;
 }
 
 // The recent-items panel framing the right-hand column.
 .welcome__recent {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  min-block-size: 14rem;
-  padding: 1rem;
-  background: var(--body-background-color);
-  border: 0.0625rem solid var(--welcome-border-color);
-  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  gap: 0.75rem;
+  min-block-size: 22rem;
+  padding: 1.1rem 1.15rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+// Title, filter pills, and search on a single row.
+.welcome__recent-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .welcome__recent-title {
+  flex: none;
   margin: 0;
-  font-size: 0.8rem;
+  margin-inline-end: 0.35rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--welcome-muted-foreground-color);
+  color: var(--wl-text);
+}
+
+.welcome__filters {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.welcome__filter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.32rem 0.55rem;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--wl-muted);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+
+  i {
+    font-size: 0.9rem;
+  }
+
+  &:hover {
+    color: var(--wl-text);
+    background: var(--wl-surface);
+  }
+
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface);
+  }
+}
+
+.welcome__filter--active {
+  color: #fff;
+  background: var(--accent-color);
+
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: var(--accent-color);
+  }
+}
+
+.welcome__search {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  margin-inline-start: auto;
+  font-size: 1rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface-hover);
+  }
 }
 
 .welcome__recent-list {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
 }
 
-.welcome__recent-item {
+.welcome__recent-row {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  padding-inline-end: 0.35rem;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: background 120ms ease;
+
+  &:hover {
+    background: var(--wl-surface);
+  }
+}
+
+// The name/detail region is the click target; the trailing pin and menu are separate controls.
+.welcome__recent-open {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
   gap: 0.75rem;
-  inline-size: 100%;
-  padding: 0.55rem 0.7rem;
+  min-inline-size: 0;
+  padding: 0.5rem;
   font: inherit;
   text-align: start;
   color: inherit;
   background: transparent;
   border: none;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
+  border-radius: inherit;
   cursor: pointer;
-  transition: var(--hover-transition);
 
-  i {
-    flex: none;
-    font-size: 1.2rem;
-    color: var(--welcome-muted-foreground-color);
-  }
-
-  &:hover,
   &:focus-visible {
-    background: var(--accent-surface-background-color);
-    color: var(--accent-surface-foreground-color);
     outline: none;
-
-    i {
-      color: var(--accent-surface-foreground-color);
-    }
   }
+}
+
+.welcome__recent-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 1.15rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .welcome__recent-text {
@@ -416,16 +393,50 @@
 .welcome__recent-name {
   overflow: hidden;
   font-size: 0.9rem;
+  font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
+  color: var(--wl-text);
 }
 
 .welcome__recent-detail {
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--welcome-muted-foreground-color);
+  color: var(--wl-faint);
+}
+
+.welcome__recent-time {
+  flex: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--wl-faint);
+}
+
+.welcome__recent-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  font-size: 0.95rem;
+  color: var(--wl-faint);
+  background: transparent;
+  border: none;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface-hover);
+  }
 }
 
 // The empty state fills the panel and sits centred.
@@ -435,13 +446,13 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   text-align: center;
-  color: var(--welcome-muted-foreground-color);
+  color: var(--wl-faint);
 
   i {
-    font-size: 1.8rem;
-    opacity: 0.6;
+    font-size: 2rem;
+    opacity: 0.7;
   }
 }
 
@@ -449,6 +460,7 @@
   margin: 0.2rem 0 0;
   font-size: 0.9rem;
   font-weight: 500;
+  color: var(--wl-muted);
 }
 
 .welcome__recent-empty-hint {
@@ -457,42 +469,9 @@
   opacity: 0.8;
 }
 
-// Honour reduced-motion: no drift — just show/hide. (The modal honours reduced-motion itself.)
+// Honour reduced-motion: the glow appears without a fade. (The modal honours reduced-motion itself.)
 @media (prefers-reduced-motion: reduce) {
-  .welcome__orbs--active {
+  .welcome__glow--active {
     transition: none;
-  }
-
-  .welcome__orb {
-    animation: none;
-  }
-}
-
-// Low-power GPUs (flagged with data-reduced-gpu on <html>, from the same weak-GPU detection that
-// forces round corners) struggle with this scene: six large orbs that are blurred, screen-blended,
-// and animated continuously force a re-blur and backdrop read-back every frame, and the frosted
-// panel adds a real-time backdrop-filter on top. Reduce it to a cheap static glow — stop the drift
-// (so the scene rasterizes once), drop the blend mode and layer promotion, shrink the blur, halve
-// the orb count, and soften the panel's backdrop blur. Capable GPUs keep the full effect untouched.
-:host-context([data-reduced-gpu]) {
-  .welcome__orbs--active {
-    transition: none;
-  }
-
-  .welcome__orb {
-    animation: none;
-    mix-blend-mode: normal;
-    filter: blur(2rem);
-    will-change: auto;
-  }
-
-  .welcome__orb--d,
-  .welcome__orb--e,
-  .welcome__orb--f {
-    display: none;
-  }
-
-  .welcome-modal {
-    --modal-panel-backdrop-filter: blur(0.5rem);
   }
 }

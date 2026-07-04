@@ -787,6 +787,11 @@ export class Icon {
   public static readonly DOTS_THREE: Icon = new Icon('ph-bold ph-dots-three');
 
   /**
+   * Gets the bold vertical three-dots glyph used for a row's overflow menu.
+   */
+  public static readonly DOTS_THREE_VERTICAL: Icon = new Icon('ph-bold ph-dots-three-vertical');
+
+  /**
    * Initialises a new instance of the {@link Icon} class.
    * @param classList The CSS class list that renders the icon.
    */
