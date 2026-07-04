@@ -34,10 +34,10 @@ export class TextField {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Handles a change on the underlying input, updating the {@link value} model.
-   * @param event The DOM change event raised by the input.
+   * Handles input on the underlying control, updating the {@link value} model on each keystroke.
+   * @param event The DOM input event raised by the input.
    */
-  protected onChange(event: Event): void {
+  protected onInput(event: Event): void {
     this.value.set((event.target as HTMLInputElement).value);
   }
 }
