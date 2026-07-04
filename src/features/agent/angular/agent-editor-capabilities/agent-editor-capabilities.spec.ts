@@ -9,7 +9,7 @@ import {
 import {
   MarkdownCommandHandler,
   MarkdownCommands,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { AgentEditorCapabilities } from './agent-editor-capabilities';
 
 /**

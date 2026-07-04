@@ -11,7 +11,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import {
   MarkdownCommands,
   OutlineHeading,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
 
 /**

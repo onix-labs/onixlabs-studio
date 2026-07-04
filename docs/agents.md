@@ -44,6 +44,14 @@ consumers of shared infra modelled as features for uniformity.
    feature's internals by relative path. Removing a feature's folder removes the feature — the only
    permitted straggler is **one line** in `src/shared/app/config.ts`.
 
+> **Enforced, not just documented.** INV2 is mechanically checked by ESLint. `eslint.config.js`
+> generates a per-feature `@typescript-eslint/no-restricted-imports` rule that bans importing a
+> _sibling_ `@features/<other>/*` — a feature may import only `@shared/*` and its own
+> `@features/<self>/*`. A cross-feature import fails `npm run lint`. The fix is always to **promote
+> the shared surface to `@shared`**, never to add a cross-import (precedent: `MarkdownCommands` →
+> `@shared/angular/services/markdown-commands`, `CommitDetail` →
+> `@shared/angular/components/panels/commit-detail`).
+
 ### Kitchen vs recipe
 
 `shared` is a kitchen stocked with reusable capability components, framework, atoms, cross-cutting

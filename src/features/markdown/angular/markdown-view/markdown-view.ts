@@ -50,7 +50,7 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
   OutlineHeading,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanel,

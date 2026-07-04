@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   MarkdownCommandHandler,
   MarkdownCommands,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { MarkdownRibbon } from './markdown-ribbon';
 

@@ -10,7 +10,7 @@ import {
 import {
   MarkdownBlockType,
   MarkdownCommands,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
 import {
   MarkdownPanel,

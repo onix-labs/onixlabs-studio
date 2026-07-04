@@ -3,7 +3,7 @@ import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock/dock-node';
-import { CommitDetail } from './panels/commit-detail/commit-detail';
+import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { CommitGraph } from './panels/commit-graph/commit-graph';
 import { SourceControlSidebar } from './panels/source-control-sidebar/source-control-sidebar';
 
