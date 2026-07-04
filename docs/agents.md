@@ -293,11 +293,19 @@ function; free functions sharing mutable state are usually a class.
 - **Single Responsibility**; **stepdown rule** (public API first, private helpers below, each one
   level of abstraction beneath the last); **composition over inheritance** (inject collaborators);
   prefer fully-initialised `readonly` objects over mutable-with-setters.
+- **File-level SRP** — a file holds one primary responsibility; **no file crosses ~500 LOC / ~5
+  responsibilities without decomposition**. Extract pure transforms into free-function modules and
+  stateful collaborators into injected classes (with `dispose()` only where there is per-instance
+  lifecycle to tear down), keeping the original type a thin orchestrator that forwards to them; reuse
+  shared atoms/wrappers rather than re-implementing.
 - Functions are **small and focused** (~≤20 lines, one thing, one level of abstraction) with **0–2
   parameters** (three or more → a parameter/options object).
 - **Explicit return types on every function and method**, including `void`/`Promise<void>`.
 - **No unintended side effects** — a query must not mutate. Prefer `async`/`await`; **never leave a
   floating promise** (await it, return it, or mark it handled); surface cancellation via `AbortSignal`.
+- **Ship no dead code** — no stub/seed data on production paths, no editable setting without a reader,
+  no unreferenced exports. Add a control/feature only with the code that consumes it. (Commented-out
+  code and untracked `TODO`s are covered under _Comments_ below.)
 
 ### Error handling
 
@@ -458,6 +466,9 @@ into relocate-then-flip commits.
       throw typed errors, never silent `null`/`undefined`.
 - [ ] Every member — including `private` — has genuine TSDoc with the correct opening phrase.
 - [ ] Comments explain _why_; no commented-out code; no untracked `TODO`s.
+- [ ] No file crosses ~500 LOC / ~5 responsibilities without decomposition into modules/collaborators.
+- [ ] No dead code shipped: no stub/seed data on production paths, no editable setting without a
+      reader, no unreferenced exports.
 - [ ] Angular: standalone, signals/`computed`, `OnPush`, `inject()`, `protected` template members,
       built-in control flow. Electron: `contextIsolation`/`sandbox` on, `nodeIntegration` off, narrow
       `contextBridge`, IPC validated.
