@@ -6,8 +6,8 @@
 //
 // The Phosphor webfonts are registered in angular.json `styles` rather than imported here, because
 // the package ships plain CSS with font `url()`s relative to the stylesheet; the build resolves and
-// copies those fonts only for entries in the styles array. The regular (`ph ph-{name}`), light
-// (`ph-light ph-{name}`), bold (`ph-bold ph-{name}`), fill (`ph-fill ph-{name}`) and duotone
-// (`ph-duotone ph-{name}`) weights are loaded. The remaining weight (`ph-thin`) is a separate
-// stylesheet — add `node_modules/@phosphor-icons/web/src/thin/style.css` to that array when the
-// first `Icon` of that weight is introduced, so unused weights are never shipped.
+// copies those fonts only for entries in the styles array. The thin (`ph-thin ph-{name}`), regular
+// (`ph ph-{name}`), light (`ph-light ph-{name}`), bold (`ph-bold ph-{name}`), fill (`ph-fill ph-{name}`)
+// and duotone (`ph-duotone ph-{name}`) weights are loaded. Any further weight is a separate stylesheet —
+// add it to that array when the first `Icon` of that weight is introduced, so unused weights are never
+// shipped.

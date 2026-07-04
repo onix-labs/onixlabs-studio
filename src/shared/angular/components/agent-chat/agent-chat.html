@@ -1,5 +1,12 @@
 <div class="agent">
   <div class="agent__messages" role="log" aria-label="Conversation">
+    @if (items().length === 0) {
+      <div class="agent__empty">
+        <app-icon class="agent__empty-icon" [icon]="Icon.AGENT_EMPTY" aria-hidden="true" />
+        <p class="agent__empty-caption">Ask the agent anything to get started</p>
+      </div>
+    }
+
     @for (item of items(); track item.id) {
       @switch (item.kind) {
         @case ('user') {
@@ -75,18 +82,27 @@
   </div>
 
   <form class="agent__composer" (submit)="$event.preventDefault(); send()">
+    <span class="agent__composer-label">Message</span>
     <textarea
       #input
       class="agent__input"
       rows="1"
-      placeholder="Message the agent…"
+      placeholder="Ask the agent to do something…"
       aria-label="Message the agent"
       [value]="draft()"
-      (input)="onInput(input.value)"
+      (input)="onInput(input.value); autoGrow(input)"
       (keydown)="onKeydown($event)"
     ></textarea>
 
-    <div class="agent__controls">
+    <div class="agent__composer-footer">
+      <p class="agent__composer-hint" aria-hidden="true">
+        <span>↵ to send</span>
+        <span class="agent__composer-sep">·</span>
+        <span>⇧↵ for new line</span>
+        <span class="agent__composer-sep">·</span>
+        <span>{{ wordCount() }}</span>
+      </p>
+
       @if (isRunning()) {
         <button
           type="button"
@@ -94,6 +110,7 @@
           aria-label="Stop"
           (click)="stop()"
         >
+          <span class="agent__send-label">Stop</span>
           <app-icon [icon]="Icon.STOP" />
         </button>
       } @else {
@@ -103,6 +120,7 @@
           aria-label="Send"
           [disabled]="draft().trim().length === 0"
         >
+          <span class="agent__send-label">Send</span>
           <app-icon [icon]="Icon.SEND" />
         </button>
       }

@@ -1,7 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
+  ElementRef,
   HostListener,
   inject,
   input,
@@ -9,6 +11,7 @@ import {
   signal,
   Signal,
   untracked,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
@@ -86,6 +89,23 @@ export class AgentChat {
   private readonly draftText: WritableSignal<string> = signal<string>('');
 
   /**
+   * References the composer's text area, so its auto-grown height can be reset after a send.
+   */
+  private readonly inputRef: Signal<ElementRef<HTMLTextAreaElement> | undefined> =
+    viewChild<ElementRef<HTMLTextAreaElement>>('input');
+
+  /**
+   * Gets the composer's live word count, labelled for the hint line.
+   */
+  protected readonly wordCount: Signal<string> = computed((): string => {
+    const words: number = this.draftText()
+      .trim()
+      .split(/\s+/)
+      .filter((word: string): boolean => word.length > 0).length;
+    return words === 1 ? '1 word' : `${words} words`;
+  });
+
+  /**
    * Gets the transcript rendered in the message list.
    */
   public readonly items: Signal<readonly AgentItem[]> = this.agent.items;
@@ -152,6 +172,21 @@ export class AgentChat {
     }
     this.agent.send(text, this.tabId(), this.surface());
     this.draftText.set('');
+    // Collapse the auto-grown text area back to a single row now that it is empty.
+    const element: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+    if (element !== undefined) {
+      element.style.height = 'auto';
+    }
+  }
+
+  /**
+   * Grows the composer's text area to fit its content, so a multi-line prompt is fully visible up to
+   * the area's maximum height, past which it scrolls.
+   * @param element The text area element.
+   */
+  public autoGrow(element: HTMLTextAreaElement): void {
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
   }
 
   /**
