@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "f3f677b11347c0aaf557c6b276f8efba05d47878",
-  "generatedAt": "2026-07-04T10:15:18.504Z",
+  "gitCommitHash": "40c5e0f7dd29044dd7e664e2d0fa905fe08d939a",
+  "generatedAt": "2026-07-04T13:14:25.424Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -2962,7 +2962,7 @@
     },
     "src/features/markdown/angular/markdown-view/markdown-view.ts": {
       "filePath": "src/features/markdown/angular/markdown-view/markdown-view.ts",
-      "contentHash": "1f43eac5e5909e4fbf121d981145d4e30fccbec189160b12436ab6ede18a32c5",
+      "contentHash": "5c0816d565ef889860345f1f66138ef54f965be6283746f4702130113975399b",
       "functions": [],
       "classes": [
         {
@@ -2976,41 +2976,9 @@
             "onContentChange",
             "onSelectionChange",
             "registerCommandHandler",
-            "clipboardCommand",
-            "copyPlaintext",
-            "cutPlaintext",
-            "withClipboardText",
-            "pasteMarkdown",
-            "pastePlaintext",
-            "pasteCode",
-            "insertParsedBlock",
-            "insertParsedInline",
-            "insertRawText",
-            "appendParsedBlock",
             "applyBlockType",
             "refreshActiveBlockType",
             "publishHistoryState",
-            "refreshOutline",
-            "updateActiveHeading",
-            "scrollToHeading",
-            "registerReviewSession",
-            "unregisterReviewSession",
-            "applyReviewEdit",
-            "revealReviewIssue",
-            "reviewSourceLength",
-            "scrollRangeIntoView",
-            "rangeFromRendered",
-            "segmentAt",
-            "flashReviewRange",
-            "clearReviewFlash",
-            "supportsHighlight",
-            "registerReadSession",
-            "unregisterReadSession",
-            "publishReadModel",
-            "highlightReadWord",
-            "sentenceRange",
-            "clearReadHighlight",
-            "revealReadWord",
             "resolveActiveBlockType"
           ],
           "properties": [
@@ -3021,11 +2989,10 @@
             "reader",
             "zone",
             "documentCore",
-            "reviewSession",
-            "reviewFlashTimer",
-            "readSession",
-            "readWords",
-            "readWordRanges",
+            "clipboard",
+            "reviewReveal",
+            "readAlong",
+            "outline",
             "activePanel",
             "panelPosition",
             "panelSize",
@@ -3034,13 +3001,11 @@
             "tabId",
             "isActive",
             "scrollContainer",
-            "headingPositions",
             "paneReady",
-            "commandHandler",
-            "boundScrollHandler"
+            "commandHandler"
           ],
           "exported": true,
-          "lineCount": 1046
+          "lineCount": 405
         }
       ],
       "imports": [
@@ -3063,30 +3028,9 @@
           ]
         },
         {
-          "source": "@milkdown/crepe",
-          "specifiers": [
-            "Crepe"
-          ]
-        },
-        {
-          "source": "@milkdown/ctx",
-          "specifiers": [
-            "Ctx"
-          ]
-        },
-        {
-          "source": "@milkdown/kit/core",
-          "specifiers": [
-            "editorViewCtx",
-            "parserCtx"
-          ]
-        },
-        {
           "source": "@milkdown/kit/prose/model",
           "specifiers": [
-            "Slice",
-            "ProseMirrorNode",
-            "NodeType"
+            "ProseMirrorNode"
           ]
         },
         {
@@ -3105,29 +3049,9 @@
           "source": "@milkdown/preset-commonmark",
           "specifiers": [
             "createCodeBlockCommand",
-            "insertHrCommand",
-            "toggleEmphasisCommand",
-            "toggleInlineCodeCommand",
-            "toggleStrongCommand",
             "turnIntoTextCommand",
             "wrapInBlockquoteCommand",
-            "wrapInBulletListCommand",
-            "wrapInHeadingCommand",
-            "wrapInOrderedListCommand"
-          ]
-        },
-        {
-          "source": "@milkdown/preset-gfm",
-          "specifiers": [
-            "insertTableCommand",
-            "toggleStrikethroughCommand"
-          ]
-        },
-        {
-          "source": "@milkdown/kit/plugin/history",
-          "specifiers": [
-            "redoCommand",
-            "undoCommand"
+            "wrapInHeadingCommand"
           ]
         },
         {
@@ -3141,12 +3065,6 @@
           "source": "@milkdown/utils",
           "specifiers": [
             "callCommand"
-          ]
-        },
-        {
-          "source": "@milkdown/transformer",
-          "specifiers": [
-            "Parser"
           ]
         },
         {
@@ -3176,8 +3094,7 @@
           "specifiers": [
             "MarkdownBlockType",
             "MarkdownCommandHandler",
-            "MarkdownCommands",
-            "OutlineHeading"
+            "MarkdownCommands"
           ]
         },
         {
@@ -3201,36 +3118,9 @@
           ]
         },
         {
-          "source": "@features/markdown/angular/markdown-review/review-types",
-          "specifiers": [
-            "ReviewIssue",
-            "ReviewSession"
-          ]
-        },
-        {
           "source": "@features/markdown/angular/markdown-reader/markdown-reader",
           "specifiers": [
             "Reader"
-          ]
-        },
-        {
-          "source": "@features/markdown/angular/markdown-reader/reader-types",
-          "specifiers": [
-            "HighlightMode",
-            "ReadSession"
-          ]
-        },
-        {
-          "source": "@features/markdown/angular/markdown-reader/read-model",
-          "specifiers": [
-            "buildReadModel",
-            "ReadModel"
-          ]
-        },
-        {
-          "source": "@features/markdown/angular/markdown-reader/read-tokenize",
-          "specifiers": [
-            "ReadWord"
           ]
         },
         {
@@ -3256,12 +3146,42 @@
           "specifiers": [
             "MarkdownReaderPanel"
           ]
+        },
+        {
+          "source": "./markdown-clipboard",
+          "specifiers": [
+            "MarkdownClipboard"
+          ]
+        },
+        {
+          "source": "./read-along-highlighter",
+          "specifiers": [
+            "ReadAlongHighlighter"
+          ]
+        },
+        {
+          "source": "./review-reveal",
+          "specifiers": [
+            "ReviewReveal"
+          ]
+        },
+        {
+          "source": "./outline-scroll-spy",
+          "specifiers": [
+            "OutlineScrollSpy"
+          ]
+        },
+        {
+          "source": "./build-command-handler",
+          "specifiers": [
+            "buildMarkdownCommandHandler"
+          ]
         }
       ],
       "exports": [
         "MarkdownView"
       ],
-      "totalLines": 1271,
+      "totalLines": 536,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-view/panels/markdown-agent-panel/markdown-agent-panel.ts": {
@@ -22177,6 +22097,411 @@
         "FormModal"
       ],
       "totalLines": 85,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/markdown-clipboard.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "contentHash": "1c28056ebd4bee1e32a29ce004e890c0fab1efda7b2f509df00451225e9aace0",
+      "functions": [],
+      "classes": [
+        {
+          "name": "MarkdownClipboard",
+          "methods": [
+            "constructor",
+            "clipboardCommand",
+            "copyPlaintext",
+            "cutPlaintext",
+            "withClipboardText",
+            "pasteMarkdown",
+            "pastePlaintext",
+            "pasteCode",
+            "insertParsedBlock",
+            "insertParsedInline",
+            "insertRawText",
+            "appendParsedBlock"
+          ],
+          "properties": [
+            "paneOf"
+          ],
+          "exported": true,
+          "lineCount": 187
+        }
+      ],
+      "imports": [
+        {
+          "source": "@milkdown/crepe",
+          "specifiers": [
+            "Crepe"
+          ]
+        },
+        {
+          "source": "@milkdown/ctx",
+          "specifiers": [
+            "Ctx"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/core",
+          "specifiers": [
+            "editorViewCtx",
+            "parserCtx"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/prose/model",
+          "specifiers": [
+            "Slice",
+            "ProseMirrorNode",
+            "NodeType"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/prose/state",
+          "specifiers": [
+            "Selection"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/prose/view",
+          "specifiers": [
+            "EditorView"
+          ]
+        },
+        {
+          "source": "@milkdown/transformer",
+          "specifiers": [
+            "Parser"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/markdown-editor/markdown-editor",
+          "specifiers": [
+            "MarkdownEditor"
+          ]
+        }
+      ],
+      "exports": [
+        "MarkdownClipboard"
+      ],
+      "totalLines": 204,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/read-along-highlighter.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "contentHash": "b5a060f88593a6a679dea174c20cc1d5e97abe8aec4229ebd424a8db3d64dc99",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ReadAlongHighlighter",
+          "methods": [
+            "constructor",
+            "register",
+            "unregister",
+            "publishModel",
+            "highlightReadWord",
+            "sentenceRange",
+            "clearReadHighlight",
+            "revealReadWord"
+          ],
+          "properties": [
+            "paneOf",
+            "scrollerOf",
+            "zone",
+            "reader",
+            "readSession",
+            "readWords",
+            "readWordRanges"
+          ],
+          "exported": true,
+          "lineCount": 197
+        }
+      ],
+      "imports": [
+        {
+          "source": "@angular/core",
+          "specifiers": [
+            "NgZone"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/markdown-editor/markdown-editor",
+          "specifiers": [
+            "MarkdownEditor"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-reader/markdown-reader",
+          "specifiers": [
+            "Reader"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-reader/reader-types",
+          "specifiers": [
+            "HighlightMode",
+            "ReadSession"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-reader/read-model",
+          "specifiers": [
+            "buildReadModel",
+            "ReadModel"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-reader/read-tokenize",
+          "specifiers": [
+            "ReadWord"
+          ]
+        },
+        {
+          "source": "./highlight-support",
+          "specifiers": [
+            "REVEAL_CENTRE_DIVISOR",
+            "supportsHighlight",
+            "WORD_STEP"
+          ]
+        }
+      ],
+      "exports": [
+        "ReadAlongHighlighter"
+      ],
+      "totalLines": 233,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/review-reveal.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "contentHash": "ae871a36fa098efd85ee752ee9be25718add2e9b3058f52da10dc0598d4cede5",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ReviewReveal",
+          "methods": [
+            "constructor",
+            "register",
+            "unregister",
+            "applyReviewEdit",
+            "revealReviewIssue",
+            "reviewSourceLength",
+            "scrollRangeIntoView",
+            "rangeFromRendered",
+            "segmentAt",
+            "flashReviewRange",
+            "clearReviewFlash"
+          ],
+          "properties": [
+            "paneOf",
+            "scrollerOf",
+            "review",
+            "reviewSession",
+            "reviewFlashTimer"
+          ],
+          "exported": true,
+          "lineCount": 237
+        }
+      ],
+      "imports": [
+        {
+          "source": "@shared/angular/components/markdown-editor/markdown-editor",
+          "specifiers": [
+            "MarkdownEditor"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-review/markdown-review",
+          "specifiers": [
+            "Review"
+          ]
+        },
+        {
+          "source": "@features/markdown/angular/markdown-review/review-types",
+          "specifiers": [
+            "ReviewIssue",
+            "ReviewSession"
+          ]
+        },
+        {
+          "source": "./highlight-support",
+          "specifiers": [
+            "REVEAL_CENTRE_DIVISOR",
+            "supportsHighlight",
+            "WORD_STEP"
+          ]
+        }
+      ],
+      "exports": [
+        "ReviewReveal"
+      ],
+      "totalLines": 289,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/outline-scroll-spy.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "contentHash": "357d6a24f3d86eca8c8e6e94207c9914efa9458c81e5196374a429e595979732",
+      "functions": [],
+      "classes": [
+        {
+          "name": "OutlineScrollSpy",
+          "methods": [
+            "constructor",
+            "attach",
+            "detach",
+            "refresh",
+            "goToHeading",
+            "updateActiveHeading"
+          ],
+          "properties": [
+            "paneOf",
+            "commands",
+            "zone",
+            "isActive",
+            "scroller",
+            "headingPositions",
+            "boundScrollHandler"
+          ],
+          "exported": true,
+          "lineCount": 177
+        }
+      ],
+      "imports": [
+        {
+          "source": "@angular/core",
+          "specifiers": [
+            "NgZone"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/prose/model",
+          "specifiers": [
+            "ProseMirrorNode"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/prose/view",
+          "specifiers": [
+            "EditorView"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/markdown-editor/markdown-editor",
+          "specifiers": [
+            "MarkdownEditor"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/markdown-commands/markdown-commands",
+          "specifiers": [
+            "MarkdownCommands",
+            "OutlineHeading"
+          ]
+        }
+      ],
+      "exports": [
+        "OutlineScrollSpy"
+      ],
+      "totalLines": 229,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/highlight-support.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "contentHash": "54d45ea0f2c6e9d9ac6160d37ff4fed1903c27ebf4d2802a358b73d0c5340f18",
+      "functions": [
+        {
+          "name": "supportsHighlight",
+          "params": [],
+          "returnType": "boolean",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "WORD_STEP",
+        "REVEAL_CENTRE_DIVISOR",
+        "supportsHighlight"
+      ],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-view/build-command-handler.ts": {
+      "filePath": "src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "contentHash": "2543ef990216011003a5cb97b6ac7beb3d1f2646e38ff29882cc7355ed0519a9",
+      "functions": [
+        {
+          "name": "buildMarkdownCommandHandler",
+          "params": [
+            "deps"
+          ],
+          "returnType": "MarkdownCommandHandler",
+          "exported": true,
+          "lineCount": 32
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@milkdown/preset-commonmark",
+          "specifiers": [
+            "insertHrCommand",
+            "toggleEmphasisCommand",
+            "toggleInlineCodeCommand",
+            "toggleStrongCommand",
+            "wrapInBulletListCommand",
+            "wrapInOrderedListCommand"
+          ]
+        },
+        {
+          "source": "@milkdown/preset-gfm",
+          "specifiers": [
+            "insertTableCommand",
+            "toggleStrikethroughCommand"
+          ]
+        },
+        {
+          "source": "@milkdown/kit/plugin/history",
+          "specifiers": [
+            "redoCommand",
+            "undoCommand"
+          ]
+        },
+        {
+          "source": "@milkdown/utils",
+          "specifiers": [
+            "callCommand"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/markdown-editor/markdown-editor",
+          "specifiers": [
+            "MarkdownEditor"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/markdown-commands/markdown-commands",
+          "specifiers": [
+            "MarkdownBlockType",
+            "MarkdownCommandHandler"
+          ]
+        },
+        {
+          "source": "./markdown-clipboard",
+          "specifiers": [
+            "MarkdownClipboard"
+          ]
+        },
+        {
+          "source": "./outline-scroll-spy",
+          "specifiers": [
+            "OutlineScrollSpy"
+          ]
+        }
+      ],
+      "exports": [
+        "buildMarkdownCommandHandler"
+      ],
+      "totalLines": 88,
       "hasStructuralAnalysis": true
     }
   }

@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T10:15:17.658Z",
-    "gitCommitHash": "f3f677b11347c0aaf557c6b276f8efba05d47878"
+    "analyzedAt": "2026-07-04T13:13:55.979Z",
+    "gitCommitHash": "40c5e0f7dd29044dd7e664e2d0fa905fe08d939a"
   },
   "nodes": [
     {
@@ -12738,6 +12738,156 @@
         "form"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "type": "file",
+      "name": "markdown-clipboard.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "summary": "Clipboard and insertion command runner for the markdown editor: cut/copy + three paste variants + parsed-block/inline/raw insertion, driven through a live pane accessor so it survives editor recreation.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/features/markdown/angular/markdown-view/markdown-clipboard.ts:MarkdownClipboard",
+      "type": "class",
+      "name": "MarkdownClipboard",
+      "filePath": "src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "summary": "Runs the markdown editor’s clipboard and insertion commands against a live pane.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "type": "file",
+      "name": "read-along-highlighter.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "summary": "Read-along session and spoken word/sentence CSS-Highlight painting for the markdown editor, driven through live pane/scroller accessors.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/features/markdown/angular/markdown-view/read-along-highlighter.ts:ReadAlongHighlighter",
+      "type": "class",
+      "name": "ReadAlongHighlighter",
+      "filePath": "src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "summary": "Drives the read-along session and highlights the spoken word/sentence over the rendered text.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "type": "file",
+      "name": "review-reveal.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "summary": "Review session seam and flagged-issue reveal (scroll into view + CSS-Highlight flash) for the markdown editor.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/features/markdown/angular/markdown-view/review-reveal.ts:ReviewReveal",
+      "type": "class",
+      "name": "ReviewReveal",
+      "filePath": "src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "summary": "Drives the review session and reveals a flagged issue by scrolling and flashing its rendered text.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "type": "file",
+      "name": "outline-scroll-spy.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "summary": "Outline heading extraction, active-heading scroll-spy, and scroll-to-heading for the markdown editor; owns the passive scroll listener via attach/detach.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts:OutlineScrollSpy",
+      "type": "class",
+      "name": "OutlineScrollSpy",
+      "filePath": "src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "summary": "Extracts headings, tracks the active heading on scroll, and jumps to a heading; owns the scroll listener.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "type": "file",
+      "name": "highlight-support.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "summary": "Shared CSS Custom Highlight support helper and scan/reveal constants for the review and read-along collaborators.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/features/markdown/angular/markdown-view/highlight-support.ts:supportsHighlight",
+      "type": "function",
+      "name": "supportsHighlight",
+      "filePath": "src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "summary": "Reports whether the CSS Custom Highlight API is available.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "type": "file",
+      "name": "build-command-handler.ts",
+      "filePath": "src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "summary": "Pure factory assembling the markdown ribbon command handler from its collaborators.",
+      "tags": [
+        "markdown",
+        "editor",
+        "collaborator"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/features/markdown/angular/markdown-view/build-command-handler.ts:buildMarkdownCommandHandler",
+      "type": "function",
+      "name": "buildMarkdownCommandHandler",
+      "filePath": "src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "summary": "Builds the ribbon command handler, routing each command to the clipboard, outline, block-type applier, or live pane.",
+      "tags": [
+        "markdown",
+        "editor"
+      ],
+      "complexity": "moderate"
     }
   ],
   "edges": [
@@ -17321,35 +17471,7 @@
     },
     {
       "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
-      "target": "file:src/features/markdown/angular/markdown-reader/read-model.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
-      "target": "file:src/features/markdown/angular/markdown-reader/read-tokenize.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
-      "target": "file:src/features/markdown/angular/markdown-reader/reader-types.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
       "target": "file:src/features/markdown/angular/markdown-review/markdown-review.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
-      "target": "file:src/features/markdown/angular/markdown-review/review-types.ts",
       "type": "imports",
       "direction": "forward",
       "weight": 0.7
@@ -24339,6 +24461,251 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/markdown-clipboard.ts:MarkdownClipboard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/markdown-clipboard.ts:MarkdownClipboard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/read-along-highlighter.ts:ReadAlongHighlighter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/read-along-highlighter.ts:ReadAlongHighlighter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/review-reveal.ts:ReviewReveal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/review-reveal.ts:ReviewReveal",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts:OutlineScrollSpy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "target": "class:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts:OutlineScrollSpy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "target": "function:src/features/markdown/angular/markdown-view/highlight-support.ts:supportsHighlight",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "target": "function:src/features/markdown/angular/markdown-view/highlight-support.ts:supportsHighlight",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "function:src/features/markdown/angular/markdown-view/build-command-handler.ts:buildMarkdownCommandHandler",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "function:src/features/markdown/angular/markdown-view/build-command-handler.ts:buildMarkdownCommandHandler",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-view.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "target": "file:src/shared/angular/components/markdown-editor/markdown-editor.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/shared/angular/components/markdown-editor/markdown-editor.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/features/markdown/angular/markdown-reader/markdown-reader.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/features/markdown/angular/markdown-reader/reader-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/features/markdown/angular/markdown-reader/read-model.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/features/markdown/angular/markdown-reader/read-tokenize.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "file:src/shared/angular/components/markdown-editor/markdown-editor.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "file:src/features/markdown/angular/markdown-review/markdown-review.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "file:src/features/markdown/angular/markdown-review/review-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "target": "file:src/shared/angular/components/markdown-editor/markdown-editor.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "target": "file:src/shared/angular/services/markdown-commands/markdown-commands.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "file:src/shared/angular/components/markdown-editor/markdown-editor.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "file:src/shared/angular/services/markdown-commands/markdown-commands.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-view/build-command-handler.ts",
+      "target": "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
     }
   ],
   "layers": [
@@ -24491,7 +24858,13 @@
         "file:src/features/workspace/angular/panels/solution-panel/solution-panel.scss",
         "file:src/features/workspace/angular/panels/tree-panel/tree-panel.html",
         "file:src/features/workspace/angular/panels/tree-panel/tree-panel.scss",
-        "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts"
+        "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+        "file:src/features/markdown/angular/markdown-view/markdown-clipboard.ts",
+        "file:src/features/markdown/angular/markdown-view/read-along-highlighter.ts",
+        "file:src/features/markdown/angular/markdown-view/review-reveal.ts",
+        "file:src/features/markdown/angular/markdown-view/outline-scroll-spy.ts",
+        "file:src/features/markdown/angular/markdown-view/highlight-support.ts",
+        "file:src/features/markdown/angular/markdown-view/build-command-handler.ts"
       ]
     },
     {
