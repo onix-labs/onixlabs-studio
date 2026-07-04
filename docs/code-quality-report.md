@@ -4,7 +4,7 @@
 > concentrated, well-understood debt._
 >
 > **⟳ Remediation complete (2026-07-04):** the P0–P3 roadmap in §10 has been executed. Most of the identified
-> debt is paid down (both cross-feature leaks, the dead code, DRY clusters 1–2, three of the four god-files,
+> debt is paid down (both cross-feature leaks, the dead code, DRY clusters 1–2, **all four god-files**,
 > the Memento pattern, and the two grab-bag splits); P3b's component/service merges were **consciously
 > declined**. See the annotated table and the [Remediation outcomes](#remediation-outcomes-2026-07-04) in §10.
 
@@ -138,14 +138,14 @@ This is a model implementation of the paradigm rule. No action required.
 | **I**nterface Segregation | **Strong / Adequate** | Focused role interfaces; `ProjectSystem.loadProjectItems?` is optional so a provider isn't forced to implement what it can't (textbook ISP). **One tension:** `SourceControlProvider` is broad (~18 read+mutate+network methods) — a read-only backend must implement `commit`/`push`. Split into `Readable`/`Mutable`/`Remote` _before_ the second backend lands. |
 | **D**ependency Inversion | **Strong** | `inject()` is universal; consumers depend on abstractions (a `SourceControlProvider` from an injected factory; the generic `Bridge`). **One architectural leak:** the two cross-feature imports depend on a concrete sibling feature — see §7. |
 
-### The four god-files (SRP decomposition targets)
+### The four god-files (SRP decomposition targets) — ✅ all decomposed (2026-07-04)
 
-| File | LOC | Responsibilities crammed together | Decomposition |
+| File | LOC → | Responsibilities crammed together | Decomposition (as shipped) |
 |------|-----|-----------------------------------|---------------|
-| `markdown-view/markdown-view.ts` | **1270** | command-handler assembly + 4 clipboard variants + outline scroll-spy + review reveal/flash + read-along highlighting + panel splitter — **6 responsibilities**. | Keep `MarkdownView` as a thin orchestrator; extract `OutlineScrollSpy`, `MarkdownClipboard`, `ReviewReveal`, `ReadAlongHighlighter`, and a `buildMarkdownCommandHandler(pane)` factory. |
-| `settings/settings.ts` | **995** | generic reactive override engine + ~40 backwards-compat named accessors + legacy nested→flat migration — **3 roles**. | `Settings` (engine) + `SettingsFacade` (compat accessors, or retire) + `SettingsMigration` (unit). |
-| `lsp/lsp-client.ts` | **1016** | document-sync + session lifecycle + LSP→Monaco marker mapping + path/URI utilities. | Pure `lsp-paths` module + `LspDiagnosticMapper` + `LspSessionManager`; `LspClient` becomes just document-sync. |
-| `monaco/monaco.ts` | **772** | loader bootstrap + worker env + theme defs + language tables + heuristic semantic-token provider. | _Lower priority_ — cohesive to "configure Monaco"; optionally hive off `defineThemes` + the token provider. |
+| `markdown-view/markdown-view.ts` | **1270 → 535** | command-handler assembly + 4 clipboard variants + outline scroll-spy + review reveal/flash + read-along highlighting + panel splitter — **6 responsibilities**. | ✅ `MarkdownView` is a thin orchestrator; extracted `OutlineScrollSpy`, `MarkdownClipboard`, `ReviewReveal`, `ReadAlongHighlighter`, and `buildMarkdownCommandHandler`. |
+| `settings/settings.ts` | **995 → 865** | generic reactive override engine + ~40 backwards-compat named accessors + legacy nested→flat migration — **3 roles**. | ✅ `Settings` (engine + accessors) + pure `settings-migration` + `settings-profiles`. (Accessors kept on `Settings` — 24 consumers; a separate facade would have been churn for no gain.) |
+| `lsp/lsp-client.ts` | **1016 → 856** | document-sync + session lifecycle + LSP→Monaco marker mapping + path/URI utilities. | ✅ Pure `lsp-paths` + `lsp-diagnostic-mapper` + `lsp-capabilities`; `LspClient` keeps document-sync + session lifecycle (the session manager was left in place — it is entangled with the tracked-document map + sync queue; a clean cut needs a shared-state owner first). |
+| `monaco/monaco.ts` | **772 → 410** | loader bootstrap + worker env + theme defs + language tables + heuristic semantic-token provider. | ✅ Pure `monaco-languages` + `monaco-heuristic-tokens` + `monaco-themes`; `Monaco` is the loader/orchestrator. (The originally-lower-priority fourth, completed on follow-up.) |
 
 **Minor documentation slips (agents.md §7 "every member documented"):** `documents.ts:457` `saveActive()`
 is undocumented (its TSDoc block was orphaned above `openFileInfo` during an edit); malformed TSDoc
@@ -389,7 +389,7 @@ Ordered by payoff-to-effort. All are pre-feature-wave cleanups; none is a rewrit
 | **P0** | Fix the **2 cross-feature violations** — promote `MarkdownCommands` and `CommitDetail` to `@shared` (pure relocation; precedent exists). | Relocation | ~½ day | ✅ **Done** — both now under `@shared`. |
 | **P1** | Delete **dead code**: `SEED_*` fixtures (~370 LOC), `Radio` component, 4 dead exports, wire-or-remove `undoStackSize`, feature-flag the stub PR/issue data, convert/hide the 4 untracked-TODO buttons. | Deletion | ~½ day | ✅ **Done, 2 intentional keeps** — `SEED_*` + dead exports deleted; **`Radio` kept** (slated for use); **`undoStackSize` kept and now consumed by the P2 Memento**; stub PR/issue data + TODO buttons left pending issue numbers. |
 | **P1** | **DRY cluster 1 + 2** — `<app-form-modal>` shell for insert-modals; `RibbonHost` `hostDirective` for the 6 ribbon `:host` copies. | Refactor | ~1 day | ✅ **Done** — `form-modal` + `ribbon-host` shipped. |
-| **P2** | **Decompose the god-files** in priority order: `markdown-view.ts` → 1 orchestrator + 5 units; `settings.ts` → engine/facade/migration; `lsp-client.ts` → paths/mapper/session. | Refactor | ~2–3 days | ✅ **Done (3 of 4)** — `markdown-view` 1270→535, `settings` 995→865, `lsp-client` 1016→856. `monaco.ts` (flagged optional/cohesive) left as-is. |
+| **P2** | **Decompose the god-files** in priority order: `markdown-view.ts` → 1 orchestrator + 5 units; `settings.ts` → engine/facade/migration; `lsp-client.ts` → paths/mapper/session. | Refactor | ~2–3 days | ✅ **Done (4 of 4)** — `markdown-view` 1270→535, `settings` 995→865, `lsp-client` 1016→856, and `monaco.ts` 772→410 (→ `monaco-languages` / `monaco-heuristic-tokens` / `monaco-themes`; the originally-optional fourth, done on follow-up). |
 | **P2** | **Adopt Memento** in `DockState` — undo/redo + layout persistence; consumes `undoStackSize`. | Feature/pattern | ~½ day | ✅ **Done** — undo/redo **and** per-blueprint layout persistence; consumes `undoStackSize`. |
 | **P3** | Split the 5+-type grab-bag files (`ai-types.ts`, `settings-registry.ts`); adopt "one primary type per file" as a soft convention for new code. | Refactor | ~½ day | ✅ **Done** — `ai-types` → 6 `api/ai/*` modules + barrel; `settings-registry` → `settings-schema.ts` + data. |
 | **P3** | **DRY clusters 3–5** — `CommandRouter<T>` base; merge ribbon button/small-button; merge text/password fields. | Refactor | ~1 day | ⛔ **Declined by design** — see outcomes. Kept `text/password` and `ribbon button/small` as separate components; kept the 5 command services standalone. The one real finding (text/password commit-event inconsistency) was **fixed without merging**. |
@@ -425,8 +425,9 @@ for a small, low-value dedup, against the house preference for **keeping distinc
   and an `AbstractCommandService` inheritance base were weighed; the differing public API names and non-uniform
   `hasActive` make the base awkward, and inheritance is the tightest coupling — so neither was adopted.)
 
-**Deferred:** `monaco.ts` (772 LOC) decomposition — flagged optional/cohesive; and the `SourceControlProvider`
-read/mutate/remote split — to be done when the second git backend lands.
+**Deferred:** the `SourceControlProvider` read/mutate/remote split — to be done when the second git backend
+lands. (The originally-optional `monaco.ts` decomposition, initially deferred, was subsequently completed —
+772→410, split into `monaco-languages` / `monaco-heuristic-tokens` / `monaco-themes`.)
 
 **Net effect on §6 (one-type-per-file):** the two worst grab-bags after `settings.ts` are resolved —
 `ai-types.ts` (21→split) and `settings-registry.ts` (schema vocabulary hived into `settings-schema.ts`).
