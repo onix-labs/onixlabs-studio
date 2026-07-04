@@ -9,6 +9,7 @@ import {
   SettingsValues,
 } from './settings-registry';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { restoreOverrides } from './settings-migration';
 
 /**
  * Identifies the highlight style applied to the current line in the text editor.
@@ -336,52 +337,10 @@ export interface AppSettings {
 }
 
 /**
- * Defines the legacy text editor settings format (a flat object without profiles), retained so
- * settings persisted by an earlier version can be migrated forward.
- */
-type LegacyTextEditorSettings = Partial<TextEditorSettings>;
-
-/**
- * Defines the legacy persisted settings shape (nested section objects) accepted by the migration path.
- * The current format is a flat map keyed by the dotted setting keys.
- */
-interface LegacyAppSettings {
-  /**
-   * Gets the persisted application settings, if any.
-   */
-  readonly application?: Partial<ApplicationSettings>;
-
-  /**
-   * Gets the persisted appearance settings, if any.
-   */
-  readonly appearance?: Partial<AppearanceSettings>;
-
-  /**
-   * Gets the persisted text editor settings, in either the legacy flat or the profile-aware format.
-   */
-  readonly textEditor?: LegacyTextEditorSettings | TextEditorSettingsWithProfiles;
-
-  /**
-   * Gets the persisted markdown editor settings, if any.
-   */
-  readonly markdownEditor?: Partial<MarkdownEditorSettings>;
-
-  /**
-   * Gets the persisted AI agent settings, if any.
-   */
-  readonly ai?: Partial<AiSettings>;
-
-  /**
-   * Gets the persisted workspace settings, if any.
-   */
-  readonly workspaces?: Partial<WorkspacesSettings>;
-}
-
-/**
  * Defines the persisted, sparse override map: only keys the user has changed from their default are
  * stored. Any absent key falls back to the registry default.
  */
-type SettingsOverrides = Partial<Record<SettingsKey, unknown>>;
+export type SettingsOverrides = Partial<Record<SettingsKey, unknown>>;
 
 /**
  * Holds the settings-store key under which the settings are persisted.
@@ -929,67 +888,6 @@ export class Settings {
    * @returns Returns the restored sparse override map.
    */
   private load(): SettingsOverrides {
-    const raw: unknown = this.store.get<unknown>(SETTINGS_KEY, null);
-    if (raw === null || typeof raw !== 'object') {
-      return {};
-    }
-
-    const record: Record<string, unknown> = raw as Record<string, unknown>;
-    if (Object.keys(record).some((key: string): boolean => key.includes('.'))) {
-      return { ...record };
-    }
-
-    return this.migrateLegacy(record);
-  }
-
-  /**
-   * Determines whether the persisted text editor settings use the profile-aware format.
-   * @param settings The persisted text editor settings.
-   * @returns Returns true when the settings use the profile-aware format; otherwise, false.
-   */
-  private isProfileAwareFormat(
-    settings: LegacyTextEditorSettings | TextEditorSettingsWithProfiles | undefined,
-  ): settings is TextEditorSettingsWithProfiles {
-    return settings !== undefined && 'global' in settings && 'profiles' in settings;
-  }
-
-  /**
-   * Migrates the legacy nested settings shape into the flat override map, preserving only values the
-   * user had set.
-   * @param legacy The persisted legacy settings.
-   * @returns Returns the migrated sparse override map.
-   */
-  private migrateLegacy(legacy: LegacyAppSettings): SettingsOverrides {
-    const overrides: Record<string, unknown> = {};
-
-    function put(key: string, value: unknown): void {
-      if (value !== undefined) {
-        overrides[key] = value;
-      }
-    }
-
-    function putAll(prefix: string, source: object | undefined): void {
-      for (const [field, value] of Object.entries(source ?? {})) {
-        put(`${prefix}.${field}`, value);
-      }
-    }
-
-    putAll('application', legacy.application);
-    putAll('appearance', legacy.appearance);
-
-    const textEditor: LegacyTextEditorSettings | TextEditorSettingsWithProfiles | undefined =
-      legacy.textEditor;
-    if (this.isProfileAwareFormat(textEditor)) {
-      putAll('textEditor.global', textEditor.global);
-      put('textEditor.profiles', textEditor.profiles);
-    } else {
-      putAll('textEditor.global', textEditor);
-    }
-
-    putAll('markdownEditor', legacy.markdownEditor);
-    putAll('ai', legacy.ai);
-    putAll('workspaces', legacy.workspaces);
-
-    return overrides;
+    return restoreOverrides(this.store.get<unknown>(SETTINGS_KEY, null));
   }
 }
