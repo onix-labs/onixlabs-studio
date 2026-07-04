@@ -8,6 +8,7 @@ import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
@@ -56,7 +57,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     RibbonStripField,
   ],
   templateUrl: './code-ribbon.html',
-  styleUrl: './code-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CodeRibbon {

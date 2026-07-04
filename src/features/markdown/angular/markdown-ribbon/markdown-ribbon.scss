@@ -1,13 +1,5 @@
-// Shared host layout for every per-tab-type ribbon: it fills the strip width and hosts the overflow
-// wrapper, which lays the groups out in a row and moves any that do not fit into a dropdown. (Inlined
-// from the shared ribbon-row base because component styleUrls cannot resolve path aliases; consolidate
-// the shared ribbon-row styling into the shared ribbon framework once more ribbons move to features.)
-:host {
-  display: flex;
-  flex: 1;
-  align-items: stretch;
-  min-inline-size: 0;
-}
+// Host layout (fill the strip width, stretch the overflow wrapper) is applied by the shared
+// `RibbonHost` host directive; this stylesheet only carries markdown-ribbon-specific rules.
 
 // The Format group stacks the Style field over a row of formatting buttons. Add breathing room
 // between them, beyond the ribbon column's default control spacing. Scoped to this ribbon so the

@@ -3,6 +3,7 @@ import { EditorCommands } from '@shared/angular/services/editor-commands/editor-
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
@@ -29,7 +30,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripField,
   ],
   templateUrl: './directory-ribbon.html',
-  styleUrl: './directory-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DirectoryRibbon {

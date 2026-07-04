@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { SourceControlCommands } from '@features/repository/angular/source-control-commands/source-control-commands';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
@@ -14,7 +15,7 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
   selector: 'app-source-control-ribbon',
   imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton],
   templateUrl: './source-control-ribbon.html',
-  styleUrl: './source-control-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SourceControlRibbon {
