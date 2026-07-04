@@ -12,11 +12,6 @@ export type SplitDirection = 'row' | 'col';
 export type StackRole = 'tool' | 'document';
 
 /**
- * Specifies the discriminant kinds of node that make up the dock layout tree.
- */
-export type DockNodeKind = 'split' | 'stack';
-
-/**
  * Specifies the side of a stack or the application edge a panel can dock against. `left` and
  * `right` produce a horizontal (`row`) split; `top` and `bottom` produce a vertical (`col`) split.
  */

@@ -75,11 +75,6 @@ export interface ReadDocument {
 }
 
 /**
- * Word index used when there is no current word.
- */
-export const NO_WORD: number = -1;
-
-/**
  * Zero (counts and comparisons).
  */
 const ZERO: number = 0;
