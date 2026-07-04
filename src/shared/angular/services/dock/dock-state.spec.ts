@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { DockNode, isSplitNode, isStackNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findStackOfPanel, firstStackOfRole } from './dock-tree';
@@ -148,5 +149,77 @@ describe('DockState', () => {
 
     expect(isStackNode(state.layout())).toBe(false);
     expect(firstStackOfRole(state.layout(), 'document')?.panels).toEqual([]);
+  });
+
+  describe('history (undo/redo)', () => {
+    it('undo_afterAStructuralMutation_restoresThePreviousLayout', () => {
+      const before: DockNode = state.layout();
+      expect(state.canUndo()).toBe(false);
+
+      state.tabInto(wellId(), 'doc-a');
+      expect(state.canUndo()).toBe(true);
+
+      state.undo();
+
+      expect(state.layout()).toBe(before);
+      expect(state.canUndo()).toBe(false);
+      expect(state.canRedo()).toBe(true);
+    });
+
+    it('redo_afterUndo_reappliesTheLayout', () => {
+      state.tabInto(wellId(), 'doc-a');
+      const after: DockNode = state.layout();
+
+      state.undo();
+      state.redo();
+
+      expect(state.layout()).toBe(after);
+      expect(state.canRedo()).toBe(false);
+      expect(state.canUndo()).toBe(true);
+    });
+
+    it('setActive_whenCalled_doesNotAddToTheUndoHistory', () => {
+      const initial: DockNode = state.layout();
+      const id: string = wellId();
+      state.tabInto(id, 'doc-a');
+      state.tabInto(id, 'doc-b');
+
+      // A pure focus change between the two structural mutations must not become its own undo step.
+      state.setActive(id, 'doc-a');
+      state.undo();
+      state.undo();
+
+      expect(state.layout()).toBe(initial);
+      expect(state.canUndo()).toBe(false);
+    });
+
+    it('mutating_afterUndo_clearsTheRedoHistory', () => {
+      const id: string = wellId();
+      state.tabInto(id, 'doc-a');
+      state.undo();
+      expect(state.canRedo()).toBe(true);
+
+      state.tabInto(id, 'doc-b');
+
+      expect(state.canRedo()).toBe(false);
+    });
+
+    it('undoStackSize_boundsTheHistoryDepth', () => {
+      const settings: Settings = TestBed.inject(Settings);
+      settings.setUndoStackSize(10);
+      const id: string = wellId();
+
+      for (let index: number = 0; index < 12; index++) {
+        state.tabInto(id, `doc-${index}`);
+      }
+
+      let steps: number = 0;
+      while (state.canUndo()) {
+        state.undo();
+        steps++;
+      }
+
+      expect(steps).toBe(10);
+    });
   });
 });
