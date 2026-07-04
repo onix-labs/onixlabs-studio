@@ -15,6 +15,7 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
+import { basename, isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspStatus } from './lsp-status';
 
@@ -347,7 +348,7 @@ export class LspClient implements OnDestroy {
    * @returns Returns the document reference, or null.
    */
   private resolveDocument(path: string): LspDocumentRef | null {
-    const tracked: TrackedDocument | undefined = this.tracked.get(this.normalise(path));
+    const tracked: TrackedDocument | undefined = this.tracked.get(normalise(path));
     if (!tracked?.opened) {
       return null;
     }
@@ -399,12 +400,12 @@ export class LspClient implements OnDestroy {
     if (resolved === null) {
       return;
     }
-    const key: string = this.normalise(state.path);
+    const key: string = normalise(state.path);
     const existing: TrackedDocument | undefined = this.tracked.get(key);
     if (existing === undefined) {
       const tracked: TrackedDocument = {
         documentId: state.documentId,
-        uri: this.pathToUri(state.path),
+        uri: pathToUri(state.path),
         serverId,
         rootPath: resolved.root,
         standalone: resolved.standalone,
@@ -596,7 +597,7 @@ export class LspClient implements OnDestroy {
     if (monaco === undefined) {
       return '';
     }
-    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
       return '';
     }
@@ -691,7 +692,7 @@ export class LspClient implements OnDestroy {
         sessionId,
         tracked.serverId,
         tracked.rootPath,
-        tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
+        tracked.standalone ? uriToPath(tracked.uri) : undefined,
       );
     const started: boolean = await pending;
     return started ? sessionId : null;
@@ -760,7 +761,7 @@ export class LspClient implements OnDestroy {
       return;
     }
     const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;
-    const key: string = this.normalise(this.uriToPath(params.uri));
+    const key: string = normalise(uriToPath(params.uri));
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
@@ -804,7 +805,7 @@ export class LspClient implements OnDestroy {
     if (monaco === undefined) {
       return;
     }
-    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
       return;
     }
@@ -885,9 +886,9 @@ export class LspClient implements OnDestroy {
    * @returns Returns the mapped diagnostic.
    */
   private toDiagnostic(diagnostic: LspDiagnostic, tracked: TrackedDocument): Diagnostic {
-    const path: string = this.uriToPath(tracked.uri);
+    const path: string = uriToPath(tracked.uri);
     return {
-      file: this.basename(path),
+      file: basename(path),
       message: diagnostic.message,
       severity: this.severityOf(diagnostic.severity),
       line: diagnostic.range.start.line + 1,
@@ -941,76 +942,8 @@ export class LspClient implements OnDestroy {
   private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
     const listing: DirectoryListing | null = this.workspace.root();
     if (listing !== null) {
-      return this.isWithin(filePath, listing.path)
-        ? { root: listing.path, standalone: false }
-        : null;
+      return isWithin(filePath, listing.path) ? { root: listing.path, standalone: false } : null;
     }
-    return { root: this.parentDir(filePath), standalone: true };
-  }
-
-  /**
-   * Gets the parent directory of a path, normalised to forward slashes (the main process resolves it
-   * back to a platform path, so the slash form is portable).
-   * @param filePath The path whose parent directory is taken.
-   * @returns Returns the parent directory.
-   */
-  private parentDir(filePath: string): string {
-    const slashed: string = filePath.replace(/\\/g, '/');
-    const index: number = slashed.lastIndexOf('/');
-    return index <= 0 ? slashed : slashed.slice(0, index);
-  }
-
-  /**
-   * Determines whether a path lies within a root (the root itself or a descendant).
-   * @param target The path to test.
-   * @param root The workspace root.
-   * @returns Returns true when the path is within the root.
-   */
-  private isWithin(target: string, root: string): boolean {
-    const normalisedTarget: string = this.normalise(target);
-    const normalisedRoot: string = this.normalise(root);
-    return normalisedTarget === normalisedRoot || normalisedTarget.startsWith(`${normalisedRoot}/`);
-  }
-
-  /**
-   * Normalises a path for use as a map key and prefix comparison: back-slashes become forward
-   * slashes and the drive letter is lower-cased, so the same file always maps to one key.
-   * @param path The path to normalise.
-   * @returns Returns the normalised path.
-   */
-  private normalise(path: string): string {
-    const slashed: string = path.replace(/\\/g, '/');
-    return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
-  }
-
-  /**
-   * Converts an absolute file path to a `file:` URI.
-   * @param path The absolute path.
-   * @returns Returns the file URI.
-   */
-  private pathToUri(path: string): string {
-    const slashed: string = path.replace(/\\/g, '/');
-    const absolute: string = slashed.startsWith('/') ? slashed : `/${slashed}`;
-    return encodeURI(`file://${absolute}`);
-  }
-
-  /**
-   * Converts a `file:` URI back to an absolute path.
-   * @param uri The file URI.
-   * @returns Returns the absolute path.
-   */
-  private uriToPath(uri: string): string {
-    const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
-    return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
-  }
-
-  /**
-   * Extracts the base name from a path.
-   * @param path The path to extract from.
-   * @returns Returns the final path segment.
-   */
-  private basename(path: string): string {
-    const segments: string[] = path.split('/');
-    return segments[segments.length - 1];
+    return { root: parentDir(filePath), standalone: true };
   }
 }
