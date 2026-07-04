@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "365bf503b9bfbc3f0c35e64a97e7a8baa184ec35",
-  "generatedAt": "2026-07-04T13:49:19.232Z",
+  "gitCommitHash": "19bc90196637bda39d16fb8fced300bc6258f723",
+  "generatedAt": "2026-07-04T15:27:31.416Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -4207,7 +4207,7 @@
     },
     "src/features/repository/angular/source-control-view/repository-dock-blueprint.ts": {
       "filePath": "src/features/repository/angular/source-control-view/repository-dock-blueprint.ts",
-      "contentHash": "f07fd2b425e0a9f9c04dac2491137b52ea094c365a78c2a26af57fc244e55e3d",
+      "contentHash": "d63c6e6720c185c00963403625cbeb06fa4b0bf11d4d9174c871c14b690b3990",
       "functions": [],
       "classes": [],
       "imports": [
@@ -4265,7 +4265,7 @@
       "exports": [
         "REPOSITORY_DOCK_BLUEPRINT"
       ],
-      "totalLines": 55,
+      "totalLines": 56,
       "hasStructuralAnalysis": true
     },
     "src/features/repository/angular/source-control-view/source-control-view.html": {
@@ -6533,7 +6533,7 @@
     },
     "src/features/workspace/angular/directory-view/workspace-dock-blueprint.ts": {
       "filePath": "src/features/workspace/angular/directory-view/workspace-dock-blueprint.ts",
-      "contentHash": "fb067515211a6667847ab31c9902acba8cbd5e036ed420bc975b31ccdd829de0",
+      "contentHash": "7c4f6073770d1522448b32176720427b3662f0aa1d712e9af2dc17deb836d3ee",
       "functions": [],
       "classes": [],
       "imports": [
@@ -6601,7 +6601,7 @@
       "exports": [
         "WORKSPACE_DOCK_BLUEPRINT"
       ],
-      "totalLines": 62,
+      "totalLines": 63,
       "hasStructuralAnalysis": true
     },
     "src/features/workspace/angular/panels/output-panel/output-panel.html": {
@@ -14693,7 +14693,7 @@
     },
     "src/shared/angular/services/dock/dock-blueprint.ts": {
       "filePath": "src/shared/angular/services/dock/dock-blueprint.ts",
-      "contentHash": "0eb49b80eccf0830d42dc44186328db52bef692c67e4ef89604add334c732a61",
+      "contentHash": "27737425fb5c993b74caef1ca2673ed468bcb76ef0664d39d6f9f0f6bbbaf623",
       "functions": [],
       "classes": [],
       "imports": [
@@ -14719,7 +14719,7 @@
       "exports": [
         "DOCK_BLUEPRINT"
       ],
-      "totalLines": 39,
+      "totalLines": 46,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/dock/dock-drag.ts": {
@@ -15188,7 +15188,7 @@
     },
     "src/shared/angular/services/dock/dock-node.ts": {
       "filePath": "src/shared/angular/services/dock/dock-node.ts",
-      "contentHash": "4f92a63d3bb8952f468f505a901b02e38d0610bfa898349a89d8445a54e83aa3",
+      "contentHash": "adba74b863bdaabcdae358fa169251fcf9ed00b8fb19a825d00ebc87279bfe58",
       "functions": [
         {
           "name": "nextNodeId",
@@ -15196,6 +15196,24 @@
           "returnType": "string",
           "exported": false,
           "lineCount": 4
+        },
+        {
+          "name": "reserveNodeIds",
+          "params": [
+            "tree"
+          ],
+          "returnType": "void",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "highestNodeNumber",
+          "params": [
+            "node"
+          ],
+          "returnType": "number",
+          "exported": false,
+          "lineCount": 11
         },
         {
           "name": "mkStack",
@@ -15238,12 +15256,13 @@
       "classes": [],
       "imports": [],
       "exports": [
+        "reserveNodeIds",
         "mkStack",
         "mkSplit",
         "isSplitNode",
         "isStackNode"
       ],
-      "totalLines": 160,
+      "totalLines": 188,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/dock/dock-panel-registry.ts": {
@@ -15325,12 +15344,13 @@
     },
     "src/shared/angular/services/dock/dock-state.ts": {
       "filePath": "src/shared/angular/services/dock/dock-state.ts",
-      "contentHash": "0a220ea031981a68d6f685756eff1c7c09704ff992b65a51fd4fd8f0d90b8812",
+      "contentHash": "85f2ffb852d678de16a20bed4320039adb64e1706ead3db26c7a6801c9397916",
       "functions": [],
       "classes": [
         {
           "name": "DockState",
           "methods": [
+            "constructor",
             "tabInto",
             "splitStack",
             "dockEdge",
@@ -15346,11 +15366,15 @@
             "undo",
             "redo",
             "commit",
-            "createLayout"
+            "createLayout",
+            "loadLayout"
           ],
           "properties": [
             "blueprint",
             "settings",
+            "store",
+            "persistKey",
+            "knownPanelIds",
             "tree",
             "layout",
             "past",
@@ -15359,7 +15383,7 @@
             "canRedo"
           ],
           "exported": true,
-          "lineCount": 220
+          "lineCount": 268
         }
       ],
       "imports": [
@@ -15367,6 +15391,7 @@
           "source": "@angular/core",
           "specifiers": [
             "computed",
+            "effect",
             "inject",
             "Service",
             "signal",
@@ -15378,6 +15403,12 @@
           "source": "@shared/angular/services/settings/settings",
           "specifiers": [
             "Settings"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings-store/settings-store",
+          "specifiers": [
+            "SettingsStore"
           ]
         },
         {
@@ -15395,6 +15426,12 @@
             "mkStack",
             "StackNode",
             "StackRole"
+          ]
+        },
+        {
+          "source": "./dock-persistence",
+          "specifiers": [
+            "restoreLayout"
           ]
         },
         {
@@ -15418,7 +15455,7 @@
       "exports": [
         "DockState"
       ],
-      "totalLines": 245,
+      "totalLines": 295,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/dock/dock-tab-context.ts": {
@@ -15461,7 +15498,7 @@
     },
     "src/shared/angular/services/dock/dock-test-blueprint.ts": {
       "filePath": "src/shared/angular/services/dock/dock-test-blueprint.ts",
-      "contentHash": "3d0af520ed41bad4600b78ade32afc941ac2264ce7c0330e76023d15b90270d4",
+      "contentHash": "402bb64bbc7b1b2238944b7023de65cf6bda8c615a5517c7b9f81abd34a222fc",
       "functions": [],
       "classes": [],
       "imports": [
@@ -15505,7 +15542,7 @@
       "exports": [
         "TEST_DOCK_BLUEPRINT"
       ],
-      "totalLines": 36,
+      "totalLines": 37,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/dock/dock-tree.ts": {
@@ -22834,6 +22871,62 @@
         "semanticLegendOf"
       ],
       "totalLines": 28,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/dock/dock-persistence.ts": {
+      "filePath": "src/shared/angular/services/dock/dock-persistence.ts",
+      "contentHash": "c2374691940db7841a5a5f834da87055b3380166fda797e4ff88bee850bc7dbb",
+      "functions": [
+        {
+          "name": "restoreLayout",
+          "params": [
+            "raw",
+            "knownPanelIds"
+          ],
+          "returnType": "DockNode | null",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "isPersistedNode",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 30
+        },
+        {
+          "name": "sanitizeNode",
+          "params": [
+            "node",
+            "known"
+          ],
+          "returnType": "DockNode | null",
+          "exported": false,
+          "lineCount": 27
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "./dock-node",
+          "specifiers": [
+            "DockNode",
+            "isSplitNode",
+            "reserveNodeIds"
+          ]
+        },
+        {
+          "source": "./dock-tree",
+          "specifiers": [
+            "firstStackOfRole"
+          ]
+        }
+      ],
+      "exports": [
+        "restoreLayout"
+      ],
+      "totalLines": 102,
       "hasStructuralAnalysis": true
     }
   }

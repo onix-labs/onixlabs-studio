@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T13:49:01.667Z",
-    "gitCommitHash": "365bf503b9bfbc3f0c35e64a97e7a8baa184ec35"
+    "analyzedAt": "2026-07-04T15:27:10.968Z",
+    "gitCommitHash": "19bc90196637bda39d16fb8fced300bc6258f723"
   },
   "nodes": [
     {
@@ -13157,6 +13157,43 @@
         "lsp"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "type": "file",
+      "name": "dock-persistence.ts",
+      "filePath": "src/shared/angular/services/dock/dock-persistence.ts",
+      "summary": "Pure restore of a persisted dock layout: structurally validates untrusted stored JSON, prunes it to known panels (dropping dynamic document ids), keeps the document well, and reserves node ids.",
+      "tags": [
+        "dock",
+        "persistence",
+        "pure"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/dock/dock-persistence.ts:restoreLayout",
+      "type": "function",
+      "name": "restoreLayout",
+      "filePath": "src/shared/angular/services/dock/dock-persistence.ts",
+      "summary": "Rebuilds a validated, pruned dock layout tree from a persisted value, or null when nothing usable survives.",
+      "tags": [
+        "dock",
+        "persistence"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/shared/angular/services/dock/dock-node.ts:reserveNodeIds",
+      "type": "function",
+      "name": "reserveNodeIds",
+      "filePath": "src/shared/angular/services/dock/dock-node.ts",
+      "summary": "Advances the node-id sequence past a restored tree, so ids minted afterwards cannot collide with restored ones.",
+      "tags": [
+        "dock",
+        "persistence"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -25304,6 +25341,62 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.5
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "target": "function:src/shared/angular/services/dock/dock-persistence.ts:restoreLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "target": "function:src/shared/angular/services/dock/dock-persistence.ts:restoreLayout",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-node.ts",
+      "target": "function:src/shared/angular/services/dock/dock-node.ts:reserveNodeIds",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-node.ts",
+      "target": "function:src/shared/angular/services/dock/dock-node.ts:reserveNodeIds",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "target": "file:src/shared/angular/services/dock/dock-node.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "target": "file:src/shared/angular/services/dock/dock-tree.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-state.ts",
+      "target": "file:src/shared/angular/services/dock/dock-persistence.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/dock/dock-state.ts",
+      "target": "file:src/shared/angular/services/settings-store/settings-store.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
     }
   ],
   "layers": [
@@ -25782,7 +25875,8 @@
         "file:src/shared/angular/services/settings/settings-profiles.ts",
         "file:src/shared/angular/services/lsp/lsp-paths.ts",
         "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
-        "file:src/shared/angular/services/lsp/lsp-capabilities.ts"
+        "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
+        "file:src/shared/angular/services/dock/dock-persistence.ts"
       ]
     },
     {
