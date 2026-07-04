@@ -1,7 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
-import { MarkdownCommands } from '@features/markdown/angular/markdown-commands/markdown-commands';
+import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 
 /**

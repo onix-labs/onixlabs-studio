@@ -20,12 +20,12 @@ describe('TextField', () => {
     expect(component).toBeTruthy();
   });
 
-  it('value_whenInputChanged_updatesTheModel', () => {
+  it('value_whenInputTyped_updatesTheModelOnEachKeystroke', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const input: HTMLInputElement | null = element.querySelector<HTMLInputElement>('input');
     if (input !== null) {
       input.value = 'JetBrains Mono';
-      input.dispatchEvent(new Event('change'));
+      input.dispatchEvent(new Event('input'));
     }
 
     expect(component.value()).toBe('JetBrains Mono');

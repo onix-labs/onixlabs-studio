@@ -163,16 +163,19 @@ export class Documents {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
-   * Holds the file-watch service used to reload documents when their file changes on disk.   */
+   * Holds the file-watch service used to reload documents when their file changes on disk.
+   */
   private readonly fileWatch: FileWatch = inject(FileWatch);
 
   /**
-   * Holds the conflict registry used to prompt when a watched file changes under unsaved edits.   */
+   * Holds the conflict registry used to prompt when a watched file changes under unsaved edits.
+   */
   private readonly fileConflicts: FileConflicts = inject(FileConflicts);
 
   /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
-   * documents), or null when each document is its own top-level tab (standalone editor tabs).   */
+   * documents), or null when each document is its own top-level tab (standalone editor tabs).
+   */
   private owningTabId: string | null = null;
 
   /**
@@ -275,7 +278,8 @@ export class Documents {
   /**
    * Records the top-level tab that hosts this (per-workspace) document model's well documents, so a
    * file conflict surfaces on the workspace tab. The root model leaves this unset; each document is
-   * then its own tab.   * @param tabId The hosting tab's id.
+   * then its own tab.
+   * @param tabId The hosting tab's id.
    */
   public setOwningTab(tabId: string): void {
     this.owningTabId = tabId;
@@ -346,10 +350,6 @@ export class Documents {
     this.watchEntry(id);
   }
 
-  /**
-   * Saves the active tab's document, prompting for a path when it has never been saved.
-   * @returns Returns true when the document was saved.
-   */
   /**
    * Opens an already-read file into a tab of the given type, reusing the tab if the file is already
    * open. The document is seeded with the file's content, name, path, and detected language.
@@ -454,6 +454,10 @@ export class Documents {
     return removed;
   }
 
+  /**
+   * Saves the active tab's document, prompting for a path when it has never been saved.
+   * @returns Returns true when the document was saved.
+   */
   public saveActive(): Promise<boolean> {
     const id: string | null = this.resolveActiveId();
     return id === null ? Promise.resolve(false) : this.save(id);

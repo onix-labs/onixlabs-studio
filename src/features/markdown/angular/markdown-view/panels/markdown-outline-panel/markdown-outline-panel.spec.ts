@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { MarkdownCommands } from '@features/markdown/angular/markdown-commands/markdown-commands';
+import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownOutlinePanel } from './markdown-outline-panel';
 
 describe('MarkdownOutlinePanel', () => {

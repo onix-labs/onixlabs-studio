@@ -84,15 +84,3 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   'source-control': { label: 'Source Control', icon: Icon.SOURCE_CONTROL },
   settings: { label: 'Settings', icon: Icon.SETTINGS },
 };
-
-/**
- * Specifies the tab types a user can create from the new-tab menu. The settings tab is excluded
- * because it is a singleton opened from its own dedicated button.
- */
-export const CREATABLE_TAB_TYPES: readonly TabType[] = [
-  'directory',
-  'code',
-  'markdown',
-  'terminal',
-  'agent',
-];

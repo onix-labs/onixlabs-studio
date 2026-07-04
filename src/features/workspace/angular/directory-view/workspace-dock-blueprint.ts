@@ -21,6 +21,7 @@ import { defaultLayout } from '@shared/angular/services/dock/dock-tree';
  * dock names no feature panel of its own.
  */
 export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
+  key: 'workspace',
   createLayout(): DockNode {
     return defaultLayout();
   },

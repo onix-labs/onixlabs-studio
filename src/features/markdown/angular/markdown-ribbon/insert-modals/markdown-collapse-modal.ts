@@ -10,7 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Modal } from '@shared/angular/components/modal/modal';
+import { FormModal } from './form-modal';
 
 /**
  * Describes a collapsible (details/summary) block to insert: its summary heading and optional body.
@@ -33,18 +33,18 @@ export interface CollapseInsert {
  */
 @Component({
   selector: 'app-markdown-collapse-modal',
-  imports: [Modal],
+  imports: [FormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal
+    <app-form-modal
       [open]="open()"
+      heading="Insert Collapsible Block"
       [width]="30"
-      ariaLabel="Insert Collapsible Block"
-      (dismiss)="cancel()"
+      [canSubmit]="valid()"
+      (confirmed)="confirm()"
+      (cancelled)="cancel()"
     >
-      <h2 class="insert-modal__title">Insert Collapsible Block</h2>
-
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="collapse-summary">Summary</label>
         <input
@@ -69,19 +69,7 @@ export interface CollapseInsert {
           (input)="body.set(bodyInput.value)"
         ></textarea>
       </div>
-
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancel()">Cancel</button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!valid()"
-          (click)="confirm()"
-        >
-          Insert
-        </button>
-      </div>
-    </app-modal>
+    </app-form-modal>
   `,
 })
 export class MarkdownCollapseModal {

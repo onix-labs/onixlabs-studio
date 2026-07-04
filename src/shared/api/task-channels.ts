@@ -27,11 +27,6 @@ export enum TaskChannel {
 }
 
 /**
- * Identifies which stream a chunk of task output came from.
- */
-export type TaskOutputStream = 'stdout' | 'stderr';
-
-/**
  * Describes a request to run a task as a child process whose output streams back to the renderer.
  * The command is supplied by the renderer (the same capability it already has through the integrated
  * terminal) and run through the platform shell.

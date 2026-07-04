@@ -221,22 +221,27 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('rootNode_whileContentsLoad_isCollapsedNonExpandableWithSpinner_thenExpands', async () => {
+  it('rootNode_whileContentsLoad_revealsTheStructureWithPerProjectSpinners_thenClears', async () => {
     project.model = sampleModel();
     project.deferItems = true;
     const model: SolutionModel = build();
     await open(model);
 
-    // While loading, only the root node shows — collapsed, not expandable, with the spinner.
-    expect(labels(model)).toEqual(['MySolution']);
+    // The structure shows straight away; the root and each still-loading project carry the spinner,
+    // and a loading project cannot be expanded until its contents arrive.
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
     expect(rowFor(model, 'MySolution')?.loading).toBe(true);
-    expect(rowFor(model, 'MySolution')?.expandable).toBe(false);
+    expect(rowFor(model, 'A')?.loading).toBe(true);
+    expect(rowFor(model, 'A')?.expandable).toBe(false);
+    expect(rowFor(model, 'B')?.loading).toBe(true);
 
     project.resolveAll();
     await flush();
-    // Once loaded, the spinner clears and the structure is revealed.
+    // Once every project's contents have loaded, the spinners clear and the structure remains.
     expect(rowFor(model, 'MySolution')?.loading).toBe(false);
-    expect(rowFor(model, 'MySolution')?.expandable).toBe(true);
+    expect(rowFor(model, 'A')?.loading).toBe(false);
+    expect(rowFor(model, 'A')?.expandable).toBe(true);
+    expect(rowFor(model, 'B')?.loading).toBe(false);
     expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'B']);
   });
 

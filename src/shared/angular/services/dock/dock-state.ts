@@ -1,6 +1,9 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
+import { restoreLayout } from './dock-persistence';
 import {
   defaultLayout,
   dockEdge,
@@ -29,9 +32,35 @@ export class DockState {
   private readonly blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
 
   /**
-   * Holds the current layout tree, seeded from the blueprint's layout (or the workspace default).
+   * Holds the settings the history caretaker reads the bounded undo depth from.
    */
-  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.createLayout());
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the key-value store the layout is persisted through, so a rearranged dock is restored on the
+   * next session.
+   */
+  private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds the key this dock's layout persists under, or null when no blueprint was provided (the
+   * bare-default case, where persistence is a no-op).
+   */
+  private readonly persistKey: string | null = this.blueprint?.key ?? null;
+
+  /**
+   * Holds the ids of the panels the blueprint catalogues, used to prune a restored layout of panels no
+   * longer known this session (stale features, and every dynamic document id, which is gone on restart).
+   */
+  private readonly knownPanelIds: ReadonlySet<string> = new Set<string>(
+    this.blueprint?.panels.map((panel): string => panel.id) ?? [],
+  );
+
+  /**
+   * Holds the current layout tree, restored from persistence when available, otherwise seeded from the
+   * blueprint's layout (or the workspace default).
+   */
+  private readonly tree: WritableSignal<DockNode> = signal<DockNode>(this.loadLayout());
 
   /**
    * Gets the current layout tree.
@@ -39,12 +68,48 @@ export class DockState {
   public readonly layout: Signal<DockNode> = this.tree.asReadonly();
 
   /**
+   * Holds the past layout snapshots (the caretaker's undo stack), oldest first, most recent last.
+   * Each entry is a whole immutable tree captured before a structural mutation — a memento, cheap to
+   * hold because the trees are structurally shared.
+   */
+  private readonly past: WritableSignal<readonly DockNode[]> = signal<readonly DockNode[]>([]);
+
+  /**
+   * Holds the undone layout snapshots available to redo, most recently undone first.
+   */
+  private readonly future: WritableSignal<readonly DockNode[]> = signal<readonly DockNode[]>([]);
+
+  /**
+   * Gets a value indicating whether an earlier layout can be restored.
+   */
+  public readonly canUndo: Signal<boolean> = computed((): boolean => this.past().length > 0);
+
+  /**
+   * Gets a value indicating whether an undone layout can be reapplied.
+   */
+  public readonly canRedo: Signal<boolean> = computed((): boolean => this.future().length > 0);
+
+  /**
+   * Initialises the dock, persisting the current layout whenever it changes. The effect covers every
+   * mutation path — structural commits, undo/redo, and tab activation — because all of them replace the
+   * tree signal; its first run harmlessly re-writes the just-restored layout. Persistence is a no-op
+   * when no blueprint (hence no key) was provided.
+   */
+  public constructor() {
+    effect((): void => {
+      if (this.persistKey !== null) {
+        this.store.set<DockNode>(`dock.layout.${this.persistKey}`, this.tree());
+      }
+    });
+  }
+
+  /**
    * Adds a panel as a tab in the given stack and makes it active.
    * @param stackId The identifier of the stack to tab into.
    * @param panelId The identifier of the panel to add.
    */
   public tabInto(stackId: string, panelId: string): void {
-    this.tree.set(tabInto(this.tree(), stackId, panelId));
+    this.commit(tabInto(this.tree(), stackId, panelId));
   }
 
   /**
@@ -55,7 +120,7 @@ export class DockState {
    * @param role The role of the new stack.
    */
   public splitStack(stackId: string, panelId: string, side: DockSide, role: StackRole): void {
-    this.tree.set(splitStack(this.tree(), stackId, panelId, side, role));
+    this.commit(splitStack(this.tree(), stackId, panelId, side, role));
   }
 
   /**
@@ -64,7 +129,7 @@ export class DockState {
    * @param side The edge to dock against.
    */
   public dockEdge(panelId: string, side: DockSide): void {
-    this.tree.set(dockEdge(this.tree(), panelId, side));
+    this.commit(dockEdge(this.tree(), panelId, side));
   }
 
   /**
@@ -72,7 +137,7 @@ export class DockState {
    * @param panelId The identifier of the panel to remove.
    */
   public removeFromLayout(panelId: string): void {
-    this.tree.set(removeFromLayout(this.tree(), panelId));
+    this.commit(removeFromLayout(this.tree(), panelId));
   }
 
   /**
@@ -83,7 +148,7 @@ export class DockState {
   public removeStack(stackId: string): void {
     const next: DockNode | null = removeNode(this.tree(), stackId);
     if (next !== null) {
-      this.tree.set(next);
+      this.commit(next);
     }
   }
 
@@ -103,7 +168,7 @@ export class DockState {
   ): void {
     const stack: StackNode = mkStack(role, panels);
     const withActive: StackNode = active !== null ? { ...stack, active } : stack;
-    this.tree.set(dockNodeEdge(this.tree(), withActive, side));
+    this.commit(dockNodeEdge(this.tree(), withActive, side));
   }
 
   /**
@@ -112,6 +177,8 @@ export class DockState {
    * @param panelId The identifier of the panel to activate.
    */
   public setActive(stackId: string, panelId: string): void {
+    // Activating a tab is a focus change, not a layout mutation, so it bypasses the undo history:
+    // undo/redo restore whole arrangements, not which tab was last looked at.
     this.tree.set(setActive(this.tree(), stackId, panelId));
   }
 
@@ -121,7 +188,7 @@ export class DockState {
    * @param collapsed Whether the stack should be collapsed.
    */
   public setCollapsed(stackId: string, collapsed: boolean): void {
-    this.tree.set(setCollapsed(this.tree(), stackId, collapsed));
+    this.commit(setCollapsed(this.tree(), stackId, collapsed));
   }
 
   /**
@@ -131,7 +198,7 @@ export class DockState {
    * @param toIndex The index the panel should occupy after the move.
    */
   public reorderTab(stackId: string, fromIndex: number, toIndex: number): void {
-    this.tree.set(reorderTab(this.tree(), stackId, fromIndex, toIndex));
+    this.commit(reorderTab(this.tree(), stackId, fromIndex, toIndex));
   }
 
   /**
@@ -141,7 +208,7 @@ export class DockState {
    * @param targetIndex The index the panel should occupy in the target stack.
    */
   public movePanel(panelId: string, targetStackId: string, targetIndex: number): void {
-    this.tree.set(movePanel(this.tree(), panelId, targetStackId, targetIndex));
+    this.commit(movePanel(this.tree(), panelId, targetStackId, targetIndex));
   }
 
   /**
@@ -150,14 +217,57 @@ export class DockState {
    * @param sizes The new flex-grow weight of each child.
    */
   public setSizes(splitId: string, sizes: readonly number[]): void {
-    this.tree.set(setSizes(this.tree(), splitId, sizes));
+    this.commit(setSizes(this.tree(), splitId, sizes));
   }
 
   /**
    * Restores the seeded default layout, discarding the current arrangement.
    */
   public reset(): void {
-    this.tree.set(this.createLayout());
+    this.commit(this.createLayout());
+  }
+
+  /**
+   * Restores the most recent layout from before the last structural mutation. Does nothing when
+   * there is no history to undo.
+   */
+  public undo(): void {
+    const past: readonly DockNode[] = this.past();
+    if (past.length === 0) {
+      return;
+    }
+    const previous: DockNode = past[past.length - 1];
+    this.past.set(past.slice(0, -1));
+    this.future.set([this.tree(), ...this.future()]);
+    this.tree.set(previous);
+  }
+
+  /**
+   * Reapplies the most recently undone layout. Does nothing when there is nothing to redo.
+   */
+  public redo(): void {
+    const future: readonly DockNode[] = this.future();
+    if (future.length === 0) {
+      return;
+    }
+    const next: DockNode = future[0];
+    this.future.set(future.slice(1));
+    this.past.set([...this.past(), this.tree()]);
+    this.tree.set(next);
+  }
+
+  /**
+   * Captures the current layout as a memento, then applies the next one. The undo stack is bounded to
+   * the configured undo depth (oldest snapshots dropped), and any redo history is discarded because a
+   * fresh mutation forks a new future.
+   * @param next The layout tree to apply.
+   */
+  private commit(next: DockNode): void {
+    const limit: number = Math.max(0, Math.trunc(this.settings.undoStackSize()));
+    const history: readonly DockNode[] = [...this.past(), this.tree()];
+    this.past.set(limit === 0 ? [] : history.slice(-limit));
+    this.future.set([]);
+    this.tree.set(next);
   }
 
   /**
@@ -167,5 +277,18 @@ export class DockState {
    */
   private createLayout(): DockNode {
     return this.blueprint !== null ? this.blueprint.createLayout() : defaultLayout();
+  }
+
+  /**
+   * Restores the persisted layout for this dock, pruned to the panels still known this session, and
+   * falls back to a fresh layout when there is no key, nothing persisted, or nothing usable survives.
+   * @returns Returns the layout to seed the tree with.
+   */
+  private loadLayout(): DockNode {
+    if (this.persistKey === null) {
+      return this.createLayout();
+    }
+    const raw: unknown = this.store.get<unknown>(`dock.layout.${this.persistKey}`, null);
+    return restoreLayout(raw, this.knownPanelIds) ?? this.createLayout();
   }
 }

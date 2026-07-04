@@ -14,6 +14,13 @@ import { DockPanel } from './dock-panel';
  */
 export interface DockBlueprint {
   /**
+   * Gets the stable key this dock's layout is persisted under (`dock.layout.<key>`), so a rearranged
+   * layout is restored on the next session. Distinct per blueprint kind (for example `workspace` and
+   * `source-control`), so each kind remembers its own arrangement.
+   */
+  readonly key: string;
+
+  /**
    * Builds a fresh layout tree for the dock to start with and reset to. Called once per dock instance
    * and again on every reset, so it must mint a new tree each time.
    * @returns Returns a fresh layout tree.

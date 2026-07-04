@@ -1,11 +1,12 @@
 @if (summary(); as summary) {
   <button
     type="button"
-    class="lsp-status-menu__trigger"
+    class="lsp-status-menu__trigger lsp-status-menu__trigger--{{ summary.state }}"
     [title]="summary.label"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
   >
+    <app-icon class="lsp-status-menu__trigger-icon" [icon]="summary.icon" />
     <span class="lsp-status-menu__trigger-label">{{ summary.label }}</span>
   </button>
 }

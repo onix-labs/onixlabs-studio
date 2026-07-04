@@ -3,6 +3,7 @@ import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Icon } from '@shared/angular/icons/icon';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
@@ -30,7 +31,7 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
     RibbonStripField,
   ],
   templateUrl: './agent-ribbon.html',
-  styleUrl: './agent-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentRibbon {

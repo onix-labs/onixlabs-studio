@@ -12,11 +12,6 @@ export type SplitDirection = 'row' | 'col';
 export type StackRole = 'tool' | 'document';
 
 /**
- * Specifies the discriminant kinds of node that make up the dock layout tree.
- */
-export type DockNodeKind = 'split' | 'stack';
-
-/**
  * Specifies the side of a stack or the application edge a panel can dock against. `left` and
  * `right` produce a horizontal (`row`) split; `top` and `bottom` produce a vertical (`col`) split.
  */
@@ -110,6 +105,34 @@ let sequence: number = 0;
 function nextNodeId(): string {
   sequence += 1;
   return `dock-${sequence}`;
+}
+
+/**
+ * Advances the node-id sequence past every identifier already present in a tree, so identifiers minted
+ * after a persisted layout is restored cannot collide with the restored ones. The process-global
+ * sequence restarts at zero each session, whereas a restored tree carries ids from an earlier session;
+ * this lifts the counter above the highest restored `dock-{n}` before any new node is created.
+ * @param tree The restored layout tree whose identifiers are reserved.
+ */
+export function reserveNodeIds(tree: DockNode): void {
+  sequence = Math.max(sequence, highestNodeNumber(tree));
+}
+
+/**
+ * Finds the largest `{n}` across a tree's `dock-{n}` identifiers.
+ * @param node The node to scan, recursing into split children.
+ * @returns Returns the highest identifier number found, or zero when none match.
+ */
+function highestNodeNumber(node: DockNode): number {
+  const match: RegExpExecArray | null = /^dock-(\d+)$/.exec(node.id);
+  const own: number = match !== null ? Number(match[1]) : 0;
+  if (isSplitNode(node)) {
+    return node.children.reduce(
+      (max: number, child: DockNode): number => Math.max(max, highestNodeNumber(child)),
+      own,
+    );
+  }
+  return own;
 }
 
 /**

@@ -16,6 +16,7 @@ class StubPanel {}
  * built-in workspace default.
  */
 const TEST_BLUEPRINT: DockBlueprint = {
+  key: 'test',
   createLayout(): DockNode {
     return mkSplit('row', [mkStack('tool', ['alpha']), mkStack('document', [])], [1, 2]);
   },

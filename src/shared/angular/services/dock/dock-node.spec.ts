@@ -1,4 +1,12 @@
-import { isSplitNode, isStackNode, mkSplit, mkStack, SplitNode, StackNode } from './dock-node';
+import {
+  isSplitNode,
+  isStackNode,
+  mkSplit,
+  mkStack,
+  reserveNodeIds,
+  SplitNode,
+  StackNode,
+} from './dock-node';
 
 describe('dock-node', () => {
   it('mkStack_whenGivenPanels_activatesTheFirstPanel', () => {
@@ -73,5 +81,36 @@ describe('dock-node', () => {
   it('isStackNode_whenGivenAStack_returnsTrue', () => {
     expect(isStackNode(mkStack('tool', ['a']))).toBe(true);
     expect(isStackNode(mkSplit('row', [mkStack('tool', ['a'])]))).toBe(false);
+  });
+
+  it('reserveNodeIds_liftsTheSequencePastARestoredIdentifier', () => {
+    const restored: StackNode = {
+      kind: 'stack',
+      id: 'dock-9000',
+      role: 'tool',
+      panels: ['a'],
+      active: 'a',
+    };
+
+    reserveNodeIds(restored);
+
+    expect(mkStack('tool', ['b']).id).toBe('dock-9001');
+  });
+
+  it('reserveNodeIds_scansSplitChildrenForTheHighestIdentifier', () => {
+    const restored: SplitNode = {
+      kind: 'split',
+      id: 'dock-9100',
+      dir: 'row',
+      children: [
+        { kind: 'stack', id: 'dock-9105', role: 'tool', panels: ['a'], active: 'a' },
+        { kind: 'stack', id: 'dock-9102', role: 'document', panels: [], active: null },
+      ],
+      sizes: [1, 1],
+    };
+
+    reserveNodeIds(restored);
+
+    expect(mkStack('tool', ['x']).id).toBe('dock-9106');
   });
 });

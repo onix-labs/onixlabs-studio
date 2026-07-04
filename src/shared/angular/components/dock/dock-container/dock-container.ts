@@ -69,6 +69,16 @@ export class DockContainer {
   protected readonly padding: string = BASE_INSET;
 
   /**
+   * Gets a value indicating whether an earlier layout can be restored.
+   */
+  protected readonly canUndo: Signal<boolean> = this.dockState.canUndo;
+
+  /**
+   * Gets a value indicating whether an undone layout can be reapplied.
+   */
+  protected readonly canRedo: Signal<boolean> = this.dockState.canRedo;
+
+  /**
    * Registers the workspace element for edge docking and seeds focus to the document well.
    */
   public constructor() {
@@ -81,6 +91,24 @@ export class DockContainer {
    */
   public reset(): void {
     this.dockState.reset();
+    this.focusDocumentWell();
+  }
+
+  /**
+   * Restores the previous layout, discarding the last structural change. Focus returns to the
+   * document well so the accent never points at a stack the undo may have removed.
+   */
+  public undo(): void {
+    this.dockState.undo();
+    this.focusDocumentWell();
+  }
+
+  /**
+   * Reapplies the most recently undone layout. Focus returns to the document well so the accent never
+   * points at a stack the redo may have removed.
+   */
+  public redo(): void {
+    this.dockState.redo();
     this.focusDocumentWell();
   }
 

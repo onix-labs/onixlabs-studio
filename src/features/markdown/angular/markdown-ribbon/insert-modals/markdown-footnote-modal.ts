@@ -10,7 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Modal } from '@shared/angular/components/modal/modal';
+import { FormModal } from './form-modal';
 
 /**
  * Describes a footnote to insert: an optional reference label and the footnote's content.
@@ -34,13 +34,18 @@ export interface FootnoteInsert {
  */
 @Component({
   selector: 'app-markdown-footnote-modal',
-  imports: [Modal],
+  imports: [FormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Footnote" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert Footnote</h2>
-
+    <app-form-modal
+      [open]="open()"
+      heading="Insert Footnote"
+      [width]="30"
+      [canSubmit]="valid()"
+      (confirmed)="confirm()"
+      (cancelled)="cancel()"
+    >
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="footnote-label">Reference (optional)</label>
         <input
@@ -65,19 +70,7 @@ export interface FootnoteInsert {
           (input)="content.set(contentInput.value)"
         ></textarea>
       </div>
-
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancel()">Cancel</button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!valid()"
-          (click)="confirm()"
-        >
-          Insert
-        </button>
-      </div>
-    </app-modal>
+    </app-form-modal>
   `,
 })
 export class MarkdownFootnoteModal {

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
@@ -25,7 +26,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
     RibbonStripCheck,
   ],
   templateUrl: './terminal-ribbon.html',
-  styleUrl: './terminal-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TerminalRibbon {

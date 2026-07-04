@@ -9,12 +9,15 @@ import {
   LspStartResult,
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
-import { Diagnostic, Diagnostics, DiagnosticSeverity } from '../diagnostics/diagnostics';
+import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
+import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
+import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import { semanticLegendOf } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspStatus } from './lsp-status';
 
@@ -76,7 +79,7 @@ interface LspRange {
 /**
  * A single diagnostic reported by a language server.
  */
-interface LspDiagnostic {
+export interface LspDiagnostic {
   /**
    * Gets the range the diagnostic applies to.
    */
@@ -347,38 +350,12 @@ export class LspClient implements OnDestroy {
    * @returns Returns the document reference, or null.
    */
   private resolveDocument(path: string): LspDocumentRef | null {
-    const tracked: TrackedDocument | undefined = this.tracked.get(this.normalise(path));
+    const tracked: TrackedDocument | undefined = this.tracked.get(normalise(path));
     if (!tracked?.opened) {
       return null;
     }
     const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
     return { sessionId, uri: tracked.uri, semanticLegend: this.legends.get(sessionId) ?? null };
-  }
-
-  /**
-   * Extracts the semantic token legend from a server's initialize capabilities, or null when the
-   * server does not advertise a semantic tokens provider with a legend.
-   * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
-   * @returns Returns the legend, or null.
-   */
-  private semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend | null {
-    const provider: unknown = (capabilities as { semanticTokensProvider?: unknown } | undefined)
-      ?.semanticTokensProvider;
-    const legend: unknown = (provider as { legend?: unknown } | undefined)?.legend;
-    const candidate: { tokenTypes?: unknown; tokenModifiers?: unknown } | undefined = legend as
-      | { tokenTypes?: unknown; tokenModifiers?: unknown }
-      | undefined;
-    if (
-      candidate === undefined ||
-      !Array.isArray(candidate.tokenTypes) ||
-      !Array.isArray(candidate.tokenModifiers)
-    ) {
-      return null;
-    }
-    return {
-      tokenTypes: candidate.tokenTypes as readonly string[],
-      tokenModifiers: candidate.tokenModifiers as readonly string[],
-    };
   }
 
   /**
@@ -399,12 +376,12 @@ export class LspClient implements OnDestroy {
     if (resolved === null) {
       return;
     }
-    const key: string = this.normalise(state.path);
+    const key: string = normalise(state.path);
     const existing: TrackedDocument | undefined = this.tracked.get(key);
     if (existing === undefined) {
       const tracked: TrackedDocument = {
         documentId: state.documentId,
-        uri: this.pathToUri(state.path),
+        uri: pathToUri(state.path),
         serverId,
         rootPath: resolved.root,
         standalone: resolved.standalone,
@@ -596,7 +573,7 @@ export class LspClient implements OnDestroy {
     if (monaco === undefined) {
       return '';
     }
-    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
       return '';
     }
@@ -691,7 +668,7 @@ export class LspClient implements OnDestroy {
         sessionId,
         tracked.serverId,
         tracked.rootPath,
-        tracked.standalone ? this.uriToPath(tracked.uri) : undefined,
+        tracked.standalone ? uriToPath(tracked.uri) : undefined,
       );
     const started: boolean = await pending;
     return started ? sessionId : null;
@@ -731,7 +708,7 @@ export class LspClient implements OnDestroy {
           this.status.setState(sessionId, 'unavailable', result.error);
         }
         if (result.success) {
-          this.legends.set(sessionId, this.semanticLegendOf(result.capabilities));
+          this.legends.set(sessionId, semanticLegendOf(result.capabilities));
         }
         return result.success;
       });
@@ -760,7 +737,7 @@ export class LspClient implements OnDestroy {
       return;
     }
     const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;
-    const key: string = this.normalise(this.uriToPath(params.uri));
+    const key: string = normalise(uriToPath(params.uri));
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
@@ -768,7 +745,8 @@ export class LspClient implements OnDestroy {
     this.diagnosticsByDocument.set(
       tracked.documentId,
       params.diagnostics.map(
-        (diagnostic: LspDiagnostic): Diagnostic => this.toDiagnostic(diagnostic, tracked),
+        (diagnostic: LspDiagnostic): Diagnostic =>
+          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
       ),
     );
     this.setMarkers(tracked, params.diagnostics);
@@ -804,7 +782,7 @@ export class LspClient implements OnDestroy {
     if (monaco === undefined) {
       return;
     }
-    const modelUri: string | undefined = this.editors.modelUriForPath(this.uriToPath(tracked.uri));
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
       return;
     }
@@ -814,40 +792,8 @@ export class LspClient implements OnDestroy {
     if (model === null) {
       return;
     }
-    const markers: MonacoApi.editor.IMarkerData[] = diagnostics.map(
-      (diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => ({
-        severity: this.markerSeverityOf(monaco, diagnostic.severity),
-        message: diagnostic.message,
-        source: diagnostic.source,
-        startLineNumber: diagnostic.range.start.line + 1,
-        startColumn: diagnostic.range.start.character + 1,
-        endLineNumber: diagnostic.range.end.line + 1,
-        endColumn: diagnostic.range.end.character + 1,
-      }),
-    );
+    const markers: MonacoApi.editor.IMarkerData[] = toMarkerData(monaco, diagnostics);
     monaco.editor.setModelMarkers(model, LSP_MARKER_OWNER, markers);
-  }
-
-  /**
-   * Maps a Language Server Protocol severity to a Monaco marker severity.
-   * @param monaco The loaded Monaco namespace (for the severity enum).
-   * @param severity The protocol severity, or undefined.
-   * @returns Returns the Monaco marker severity.
-   */
-  private markerSeverityOf(
-    monaco: typeof MonacoApi,
-    severity: number | undefined,
-  ): MonacoApi.MarkerSeverity {
-    switch (severity) {
-      case 1:
-        return monaco.MarkerSeverity.Error;
-      case 2:
-        return monaco.MarkerSeverity.Warning;
-      case 3:
-        return monaco.MarkerSeverity.Info;
-      default:
-        return monaco.MarkerSeverity.Hint;
-    }
   }
 
   /**
@@ -879,26 +825,6 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Maps a language-server diagnostic into the provider-agnostic shape, resolving its document.
-   * @param diagnostic The server diagnostic.
-   * @param tracked The document the diagnostic belongs to.
-   * @returns Returns the mapped diagnostic.
-   */
-  private toDiagnostic(diagnostic: LspDiagnostic, tracked: TrackedDocument): Diagnostic {
-    const path: string = this.uriToPath(tracked.uri);
-    return {
-      file: this.basename(path),
-      message: diagnostic.message,
-      severity: this.severityOf(diagnostic.severity),
-      line: diagnostic.range.start.line + 1,
-      column: diagnostic.range.start.character + 1,
-      source: diagnostic.source ?? '',
-      documentId: tracked.documentId,
-      path,
-    };
-  }
-
-  /**
    * Pushes the merged diagnostics across every tracked document into the aggregate.
    */
   private publish(): void {
@@ -913,24 +839,6 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Maps a Language Server Protocol severity to the provider-agnostic severity.
-   * @param severity The protocol severity, or undefined.
-   * @returns Returns the mapped severity.
-   */
-  private severityOf(severity: number | undefined): DiagnosticSeverity {
-    switch (severity) {
-      case 1:
-        return 'error';
-      case 2:
-        return 'warning';
-      case 3:
-        return 'info';
-      default:
-        return 'hint';
-    }
-  }
-
-  /**
    * Resolves the root a document's server session is rooted at. A document inside the open workspace
    * folder is rooted at that folder; when no folder is open, the document is treated as standalone and
    * rooted at its own parent directory. A document outside the open folder is not handled here (it
@@ -941,76 +849,8 @@ export class LspClient implements OnDestroy {
   private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
     const listing: DirectoryListing | null = this.workspace.root();
     if (listing !== null) {
-      return this.isWithin(filePath, listing.path)
-        ? { root: listing.path, standalone: false }
-        : null;
+      return isWithin(filePath, listing.path) ? { root: listing.path, standalone: false } : null;
     }
-    return { root: this.parentDir(filePath), standalone: true };
-  }
-
-  /**
-   * Gets the parent directory of a path, normalised to forward slashes (the main process resolves it
-   * back to a platform path, so the slash form is portable).
-   * @param filePath The path whose parent directory is taken.
-   * @returns Returns the parent directory.
-   */
-  private parentDir(filePath: string): string {
-    const slashed: string = filePath.replace(/\\/g, '/');
-    const index: number = slashed.lastIndexOf('/');
-    return index <= 0 ? slashed : slashed.slice(0, index);
-  }
-
-  /**
-   * Determines whether a path lies within a root (the root itself or a descendant).
-   * @param target The path to test.
-   * @param root The workspace root.
-   * @returns Returns true when the path is within the root.
-   */
-  private isWithin(target: string, root: string): boolean {
-    const normalisedTarget: string = this.normalise(target);
-    const normalisedRoot: string = this.normalise(root);
-    return normalisedTarget === normalisedRoot || normalisedTarget.startsWith(`${normalisedRoot}/`);
-  }
-
-  /**
-   * Normalises a path for use as a map key and prefix comparison: back-slashes become forward
-   * slashes and the drive letter is lower-cased, so the same file always maps to one key.
-   * @param path The path to normalise.
-   * @returns Returns the normalised path.
-   */
-  private normalise(path: string): string {
-    const slashed: string = path.replace(/\\/g, '/');
-    return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
-  }
-
-  /**
-   * Converts an absolute file path to a `file:` URI.
-   * @param path The absolute path.
-   * @returns Returns the file URI.
-   */
-  private pathToUri(path: string): string {
-    const slashed: string = path.replace(/\\/g, '/');
-    const absolute: string = slashed.startsWith('/') ? slashed : `/${slashed}`;
-    return encodeURI(`file://${absolute}`);
-  }
-
-  /**
-   * Converts a `file:` URI back to an absolute path.
-   * @param uri The file URI.
-   * @returns Returns the absolute path.
-   */
-  private uriToPath(uri: string): string {
-    const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
-    return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
-  }
-
-  /**
-   * Extracts the base name from a path.
-   * @param path The path to extract from.
-   * @returns Returns the final path segment.
-   */
-  private basename(path: string): string {
-    const segments: string[] = path.split('/');
-    return segments[segments.length - 1];
+    return { root: parentDir(filePath), standalone: true };
   }
 }

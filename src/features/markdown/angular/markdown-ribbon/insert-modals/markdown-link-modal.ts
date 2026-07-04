@@ -10,7 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Modal } from '@shared/angular/components/modal/modal';
+import { FormModal } from './form-modal';
 
 /**
  * Describes a link to insert: the visible text and the destination URL.
@@ -33,13 +33,18 @@ export interface LinkInsert {
  */
 @Component({
   selector: 'app-markdown-link-modal',
-  imports: [Modal],
+  imports: [FormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="28" ariaLabel="Insert Link" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert Link</h2>
-
+    <app-form-modal
+      [open]="open()"
+      heading="Insert Link"
+      [width]="28"
+      [canSubmit]="valid()"
+      (confirmed)="confirm()"
+      (cancelled)="cancel()"
+    >
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="link-text">Text</label>
         <input
@@ -65,19 +70,7 @@ export interface LinkInsert {
           (input)="url.set(urlInput.value)"
         />
       </div>
-
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancel()">Cancel</button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!valid()"
-          (click)="confirm()"
-        >
-          Insert
-        </button>
-      </div>
-    </app-modal>
+    </app-form-modal>
   `,
 })
 export class MarkdownLinkModal {

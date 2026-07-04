@@ -10,7 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Modal } from '@shared/angular/components/modal/modal';
+import { FormModal } from './form-modal';
 
 /**
  * Describes a math expression to insert and whether it is a block or inline formula.
@@ -33,13 +33,18 @@ export interface MathInsert {
  */
 @Component({
   selector: 'app-markdown-math-modal',
-  imports: [Modal],
+  imports: [FormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Math" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert Math</h2>
-
+    <app-form-modal
+      [open]="open()"
+      heading="Insert Math"
+      [width]="30"
+      [canSubmit]="valid()"
+      (confirmed)="confirm()"
+      (cancelled)="cancel()"
+    >
       <div class="insert-modal__field">
         <label class="insert-modal__label" for="math-expression">LaTeX expression</label>
         <textarea
@@ -62,19 +67,7 @@ export interface MathInsert {
           Inline
         </label>
       </div>
-
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancel()">Cancel</button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!valid()"
-          (click)="confirm()"
-        >
-          Insert
-        </button>
-      </div>
-    </app-modal>
+    </app-form-modal>
   `,
 })
 export class MarkdownMathModal {

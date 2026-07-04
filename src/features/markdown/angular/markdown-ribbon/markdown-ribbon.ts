@@ -10,13 +10,14 @@ import {
 import {
   MarkdownBlockType,
   MarkdownCommands,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
 import {
   MarkdownPanel,
   MarkdownPanels,
 } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Icon } from '@shared/angular/icons/icon';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
@@ -126,6 +127,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
   ],
   templateUrl: './markdown-ribbon.html',
   styleUrl: './markdown-ribbon.scss',
+  hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownRibbon {

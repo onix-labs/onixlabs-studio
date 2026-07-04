@@ -19,6 +19,7 @@ class StubPanel {
  * A blueprint cataloguing the stub panel, standing in for a real tab's.
  */
 const BLUEPRINT: DockBlueprint = {
+  key: 'test',
   createLayout: (): DockNode => mkStack('tool', ['stub']),
   panels: [{ id: 'stub', title: 'Stub', icon: Icon.CODE, role: 'tool', component: StubPanel }],
 };

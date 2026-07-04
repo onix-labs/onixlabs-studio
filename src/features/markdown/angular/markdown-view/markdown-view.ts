@@ -13,29 +13,17 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { Crepe } from '@milkdown/crepe';
-import type { Ctx } from '@milkdown/ctx';
-import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
-import { Slice, type Node as ProseMirrorNode, type NodeType } from '@milkdown/kit/prose/model';
+import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import {
   createCodeBlockCommand,
-  insertHrCommand,
-  toggleEmphasisCommand,
-  toggleInlineCodeCommand,
-  toggleStrongCommand,
   turnIntoTextCommand,
   wrapInBlockquoteCommand,
-  wrapInBulletListCommand,
   wrapInHeadingCommand,
-  wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark';
-import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
-import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { callCommand } from '@milkdown/utils';
-import type { Parser } from '@milkdown/transformer';
 import {
   wrapInCautionAlertCommand,
   wrapInImportantAlertCommand,
@@ -49,29 +37,23 @@ import {
   MarkdownBlockType,
   MarkdownCommandHandler,
   MarkdownCommands,
-  OutlineHeading,
-} from '@features/markdown/angular/markdown-commands/markdown-commands';
+} from '@shared/angular/services/markdown-commands/markdown-commands';
 import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanel,
   MarkdownPanels,
 } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
-import {
-  ReviewIssue,
-  ReviewSession,
-} from '@features/markdown/angular/markdown-review/review-types';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
-import {
-  HighlightMode,
-  ReadSession,
-} from '@features/markdown/angular/markdown-reader/reader-types';
-import { buildReadModel, ReadModel } from '@features/markdown/angular/markdown-reader/read-model';
-import { ReadWord } from '@features/markdown/angular/markdown-reader/read-tokenize';
 import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
+import { MarkdownClipboard } from './markdown-clipboard';
+import { ReadAlongHighlighter } from './read-along-highlighter';
+import { ReviewReveal } from './review-reveal';
+import { OutlineScrollSpy } from './outline-scroll-spy';
+import { buildMarkdownCommandHandler } from './build-command-handler';
 
 /**
  * Heading level for an H1 element.
@@ -109,35 +91,6 @@ const HEADING_LEVEL_6: number = 6;
 const ROOT_DEPTH: number = 0;
 
 /**
- * Delay in milliseconds for deferring an action to the next event-loop tick.
- */
-const NEXT_TICK_DELAY: number = 0;
-
-/**
- * Distance in pixels below the top of the editor's scroll viewport of the reading line: the active
- * heading is the last whose top has crossed it, and clicking an outline entry lands that heading
- * exactly on it. The two must be the same value — were the click gap smaller than the activation
- * line, a clicked heading would land above the line with the next heading already past it, and the
- * Outline marker would jump ahead by one whenever a section is shorter than the gap between them.
- */
-const READING_LINE_OFFSET: number = 56;
-
-/**
- * Divisor applied to the viewport width to probe the reading line at the editor's horizontal centre,
- * where the centred document content always sits.
- */
-const READING_PROBE_DIVISOR: number = 2;
-
-/**
- * Pixels a clicked heading is parked above the reading line. Landing it on the line exactly leaves the
- * probe at the heading's top edge, where the hit-test is ambiguous (it can resolve to the previous
- * block); the small cushion puts the probe firmly inside the heading and absorbs the slack between the
- * smooth scroll's final event and its true resting position. Must stay below the shortest heading's
- * line height so the heading still owns the line.
- */
-const HEADING_LAND_BIAS: number = 8;
-
-/**
  * Minimum width of a markdown tool panel, in pixels.
  */
 const MIN_PANEL_SIZE: number = 220;
@@ -151,53 +104,6 @@ const MAX_PANEL_SIZE: number = 720;
  * Default width of a markdown tool panel, in pixels.
  */
 const DEFAULT_PANEL_SIZE: number = 320;
-
-/**
- * Sentinel returned by {@link String.indexOf} when no match is found.
- */
-const NOT_FOUND: number = -1;
-
-/**
- * Single-character step used when scanning rendered text for the next occurrence of a word.
- */
-const WORD_STEP: number = 1;
-
-/**
- * Minimum source length used when computing a review reveal's proportional position, guarding against
- * division by zero on an empty document.
- */
-const MIN_SOURCE_LENGTH: number = 1;
-
-/**
- * Divisor that centres a revealed review range within the scroll viewport.
- */
-const REVEAL_CENTRE_DIVISOR: number = 2;
-
-/**
- * CSS Custom Highlight registry name for a revealed review issue.
- */
-const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
-
-/**
- * Duration in milliseconds the review reveal highlight stays before it is cleared.
- */
-const REVIEW_FLASH_DURATION: number = 1600;
-
-/**
- * CSS Custom Highlight registry name for the read-along spoken word.
- */
-const READ_HIGHLIGHT_WORD: string = 'markdown-read-word';
-
-/**
- * CSS Custom Highlight registry name for the read-along spoken sentence.
- */
-const READ_HIGHLIGHT_SENTENCE: string = 'markdown-read-sentence';
-
-/**
- * Comfort margin in pixels from the viewport edges within which the spoken word is considered visible
- * and does not trigger a follow scroll.
- */
-const READ_REVEAL_MARGIN: number = 120;
 
 /**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
@@ -270,29 +176,44 @@ export class MarkdownView implements OnDestroy {
   }
 
   /**
-   * Holds the review session registered with the {@link Review} service while active, or null.
+   * Holds the clipboard and insertion command runner, driving the pane through a live accessor so it
+   * stays correct across the editor recreations that follow an external content load.
    */
-  private reviewSession: ReviewSession | null = null;
+  private readonly clipboard: MarkdownClipboard = new MarkdownClipboard(
+    (): MarkdownEditor | undefined => this.pane(),
+  );
 
   /**
-   * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
+   * Holds the review reveal collaborator: the review session seam and the flagged-issue reveal,
+   * driving the pane and scroll container through live accessors.
    */
-  private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly reviewReveal: ReviewReveal = new ReviewReveal(
+    (): MarkdownEditor | undefined => this.pane(),
+    (): HTMLElement | null => this.scrollContainer,
+    this.review,
+  );
 
   /**
-   * Holds the read session registered with the {@link Reader} service while active, or null.
+   * Holds the read-along collaborator: the read session and spoken-word highlighting, driving the pane
+   * and scroll container through live accessors.
    */
-  private readSession: ReadSession | null = null;
+  private readonly readAlong: ReadAlongHighlighter = new ReadAlongHighlighter(
+    (): MarkdownEditor | undefined => this.pane(),
+    (): HTMLElement | null => this.scrollContainer,
+    this.zone,
+    this.reader,
+  );
 
   /**
-   * Holds the words of the current read model, in rendered-DOM order.
+   * Holds the outline scroll-spy: heading extraction, active-heading tracking, and scroll-to-heading.
+   * It owns the scroll listener over the shared container the view captures in {@link onReady}.
    */
-  private readWords: readonly ReadWord[] = [];
-
-  /**
-   * Holds a DOM range per read-model word, aligned to {@link readWords} by index.
-   */
-  private readWordRanges: readonly Range[] = [];
+  private readonly outline: OutlineScrollSpy = new OutlineScrollSpy(
+    (): MarkdownEditor | undefined => this.pane(),
+    this.commands,
+    this.zone,
+    (): boolean => this.isActive(),
+  );
 
   /**
    * Gets the tool panel currently open beside this document's editor, or `none` when none is open.
@@ -339,16 +260,10 @@ export class MarkdownView implements OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds the editor's scroll container, to which the scroll-spy listener is attached.
+   * Holds the editor's scroll container, captured once here and shared with the outline scroll-spy and
+   * the review and read collaborators (the outline owns the scroll listener over it).
    */
   private scrollContainer: HTMLElement | null = null;
-
-  /**
-   * Holds the document position of each heading node, in document order, captured when the outline is
-   * built. The scroll-spy maps a coordinate to a position and finds the last heading at or before it,
-   * so the active index always refers to the same heading list the Outline panel renders.
-   */
-  private headingPositions: readonly number[] = [];
 
   /**
    * Holds a value indicating whether the pane's editor instance has been created.
@@ -359,12 +274,6 @@ export class MarkdownView implements OnDestroy {
    * Holds the command handler registered with the {@link MarkdownCommands} registry while active.
    */
   private commandHandler: MarkdownCommandHandler | null = null;
-
-  /**
-   * Holds the bound scroll handler driving the outline's active-heading scroll-spy, retained for
-   * event-listener cleanup.
-   */
-  private readonly boundScrollHandler: () => void = (): void => this.updateActiveHeading();
 
   /**
    * Initialises the view, wiring the effect that registers or releases the ribbon command handler and
@@ -379,8 +288,8 @@ export class MarkdownView implements OnDestroy {
 
       if (active) {
         this.registerCommandHandler();
-        this.registerReviewSession();
-        this.registerReadSession();
+        this.reviewReveal.register();
+        this.readAlong.register();
         this.refreshActiveBlockType();
         this.panels.setActiveDocument(this.tabId());
       } else {
@@ -388,8 +297,8 @@ export class MarkdownView implements OnDestroy {
           this.commands.deactivate(this.tabId());
           this.commandHandler = null;
         }
-        this.unregisterReviewSession();
-        this.unregisterReadSession();
+        this.reviewReveal.unregister();
+        this.readAlong.unregister();
       }
     });
   }
@@ -400,14 +309,14 @@ export class MarkdownView implements OnDestroy {
    * destroys the Crepe editor themselves.
    */
   public ngOnDestroy(): void {
-    this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
+    this.outline.detach();
     this.scrollContainer = null;
     if (this.commandHandler !== null) {
       this.commands.forget(this.tabId());
       this.commandHandler = null;
     }
-    this.unregisterReviewSession();
-    this.unregisterReadSession();
+    this.reviewReveal.unregister();
+    this.readAlong.unregister();
     this.panels.remove(this.tabId());
   }
 
@@ -444,9 +353,8 @@ export class MarkdownView implements OnDestroy {
   protected onReady(): void {
     const scroller: HTMLElement | null = this.pane()?.getScrollContainer() ?? null;
     if (scroller !== null && scroller !== this.scrollContainer) {
-      this.scrollContainer?.removeEventListener('scroll', this.boundScrollHandler);
       this.scrollContainer = scroller;
-      scroller.addEventListener('scroll', this.boundScrollHandler, { passive: true });
+      this.outline.attach(scroller);
     }
 
     const wasReady: boolean = this.paneReady();
@@ -456,7 +364,7 @@ export class MarkdownView implements OnDestroy {
     if (wasReady && this.isActive()) {
       this.refreshActiveBlockType();
       this.review.notifySourceChanged();
-      this.publishReadModel();
+      this.readAlong.publishModel();
     }
   }
 
@@ -467,9 +375,9 @@ export class MarkdownView implements OnDestroy {
   protected onContentChange(): void {
     if (this.isActive()) {
       this.publishHistoryState();
-      this.refreshOutline();
+      this.outline.refresh();
       this.review.notifySourceChanged();
-      this.publishReadModel();
+      this.readAlong.publishModel();
     }
   }
 
@@ -490,208 +398,14 @@ export class MarkdownView implements OnDestroy {
    * Registers the ribbon command handler for this editor, mapping each command to a pane action.
    */
   private registerCommandHandler(): void {
-    this.commandHandler = {
-      cut: (): void => this.clipboardCommand('cut'),
-      cutAsPlaintext: (): void => this.cutPlaintext(),
-      copy: (): void => this.clipboardCommand('copy'),
-      copyAsPlaintext: (): void => this.copyPlaintext(),
-      paste: (): void => this.pasteMarkdown(),
-      pasteAsPlaintext: (): void => this.pastePlaintext(),
-      pasteAsCode: (): void => this.pasteCode(),
-      undo: (): void => this.pane()?.run(callCommand(undoCommand.key)),
-      redo: (): void => this.pane()?.run(callCommand(redoCommand.key)),
-      toggleBold: (): void => this.pane()?.run(callCommand(toggleStrongCommand.key)),
-      toggleItalic: (): void => this.pane()?.run(callCommand(toggleEmphasisCommand.key)),
-      toggleStrikethrough: (): void =>
-        this.pane()?.run(callCommand(toggleStrikethroughCommand.key)),
-      toggleInlineCode: (): void => this.pane()?.run(callCommand(toggleInlineCodeCommand.key)),
-      toggleBulletList: (): void => this.pane()?.run(callCommand(wrapInBulletListCommand.key)),
-      toggleOrderedList: (): void => this.pane()?.run(callCommand(wrapInOrderedListCommand.key)),
-      insertTable: (): void => this.pane()?.run(callCommand(insertTableCommand.key)),
-      insertHorizontalRule: (): void => this.pane()?.run(callCommand(insertHrCommand.key)),
-      insertMarkdown: (markdown: string): void => this.insertParsedBlock(markdown),
-      insertInlineMarkdown: (markdown: string): void => this.insertParsedInline(markdown),
-      insertText: (text: string): void => this.insertRawText(text),
-      appendMarkdown: (markdown: string): void => this.appendParsedBlock(markdown),
+    this.commandHandler = buildMarkdownCommandHandler({
+      clipboard: this.clipboard,
+      outline: this.outline,
+      paneOf: (): MarkdownEditor | undefined => this.pane(),
       setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
-      goToHeading: (index: number): void => this.scrollToHeading(index),
-      readDocument: (): string => this.pane()?.getMarkdown() ?? '',
-      replaceDocument: (markdown: string): void => this.pane()?.replaceAll(markdown),
-    };
+    });
 
     this.commands.register(this.tabId(), this.commandHandler);
-  }
-
-  /**
-   * Focuses the editor and runs a native clipboard command (cut or copy) against its selection, so
-   * the editor's own clipboard serialisation handles the formatted content.
-   * @param command The clipboard command to execute.
-   */
-  private clipboardCommand(command: 'cut' | 'copy'): void {
-    this.pane()?.focusEditor();
-    document.execCommand(command);
-  }
-
-  /**
-   * Copies the current selection to the clipboard as unformatted plain text, discarding markdown
-   * syntax. Blocks are joined with newlines so multi-paragraph selections survive as readable text.
-   */
-  private copyPlaintext(): void {
-    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
-    if (crepe === null) {
-      return;
-    }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const selection: Selection = view.state.selection;
-      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
-      void navigator.clipboard.writeText(text).catch((): void => undefined);
-      view.focus();
-    });
-  }
-
-  /**
-   * Cuts the current selection to the clipboard as unformatted plain text, then deletes it.
-   */
-  private cutPlaintext(): void {
-    const crepe: Crepe | null = this.pane()?.getCrepe() ?? null;
-    if (crepe === null) {
-      return;
-    }
-    crepe.editor.action((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      const selection: Selection = view.state.selection;
-      const text: string = view.state.doc.textBetween(selection.from, selection.to, '\n');
-      void navigator.clipboard.writeText(text).catch((): void => undefined);
-      view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Reads the clipboard text and, when it holds any, hands it to the given editor action. Browsers
-   * block programmatic `paste`, so each paste variant reads the clipboard and inserts the text itself.
-   * @param action The action to run with the clipboard text.
-   */
-  private withClipboardText(action: (text: string) => void): void {
-    void navigator.clipboard
-      .readText()
-      .then((text: string): void => {
-        if (text.length === 0) {
-          return;
-        }
-        action(text);
-      })
-      .catch((): void => undefined);
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection, parsing them as markdown so formatting is
-   * preserved.
-   */
-  private pasteMarkdown(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const parser: Parser = ctx.get(parserCtx);
-        const doc: ProseMirrorNode = parser(text);
-        const view: EditorView = ctx.get(editorViewCtx);
-        const slice: Slice = new Slice(doc.content, 0, 0);
-        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection as unformatted plain text.
-   */
-  private pastePlaintext(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const view: EditorView = ctx.get(editorViewCtx);
-        view.dispatch(view.state.tr.insertText(text).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Pastes the clipboard contents at the selection as a code block.
-   */
-  private pasteCode(): void {
-    this.withClipboardText((text: string): void => {
-      this.pane()?.run((ctx: Ctx): void => {
-        const view: EditorView = ctx.get(editorViewCtx);
-        const codeBlockType: NodeType | undefined = view.state.schema.nodes['code_block'];
-        if (codeBlockType === undefined) {
-          return;
-        }
-        const codeBlock: ProseMirrorNode = codeBlockType.create(null, view.state.schema.text(text));
-        view.dispatch(view.state.tr.replaceSelectionWith(codeBlock).scrollIntoView());
-        view.focus();
-      });
-    });
-  }
-
-  /**
-   * Parses markdown and inserts it as block-level content at the cursor, replacing any selection.
-   * @param markdown The markdown to parse and insert.
-   */
-  private insertParsedBlock(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      view.dispatch(view.state.tr.replaceSelection(new Slice(doc.content, 0, 0)).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Parses markdown and inserts its inline content at the cursor, replacing any selection. The parsed
-   * document's first block holds the inline content (such as a link), which is spliced into the
-   * current block rather than inserted as a new paragraph.
-   * @param markdown The inline markdown to parse and insert.
-   */
-  private insertParsedInline(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      const block: ProseMirrorNode | null = doc.content.firstChild;
-      const inline: Slice = new Slice(block !== null ? block.content : doc.content, 0, 0);
-      view.dispatch(view.state.tr.replaceSelection(inline).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Inserts raw text at the cursor, replacing any selection.
-   * @param text The text to insert.
-   */
-  private insertRawText(text: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const view: EditorView = ctx.get(editorViewCtx);
-      view.dispatch(view.state.tr.insertText(text).scrollIntoView());
-      view.focus();
-    });
-  }
-
-  /**
-   * Parses markdown and appends it as block-level content at the end of the document, leaving the
-   * selection where it was. Used for content that lives apart from the cursor, such as a footnote
-   * definition.
-   * @param markdown The markdown to parse and append.
-   */
-  private appendParsedBlock(markdown: string): void {
-    this.pane()?.run((ctx: Ctx): void => {
-      const parser: Parser = ctx.get(parserCtx);
-      const doc: ProseMirrorNode = parser(markdown);
-      const view: EditorView = ctx.get(editorViewCtx);
-      const end: number = view.state.doc.content.size;
-      view.dispatch(view.state.tr.insert(end, doc.content).scrollIntoView());
-      view.focus();
-    });
   }
 
   /**
@@ -765,7 +479,7 @@ export class MarkdownView implements OnDestroy {
     this.publishHistoryState();
     // Refresh the outline from the rendered DOM (deferred), so activating a tab whose content has not
     // changed still populates the Outline panel.
-    this.refreshOutline();
+    this.outline.refresh();
   }
 
   /**
@@ -790,455 +504,6 @@ export class MarkdownView implements OnDestroy {
     }
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
-    });
-  }
-
-  /**
-   * Walks the document model for heading nodes and publishes the resulting outline to the command
-   * registry, so the Outline panel reflects the document's headings, capturing each heading's document
-   * position for the scroll-spy. Both ATX and setext headings parse to the same heading node, so both
-   * are captured. Reads the document (not the DOM), so the outline and the scroll-spy share one source
-   * of truth — the same heading list, in the same order — and cannot drift apart.
-   */
-  private refreshOutline(): void {
-    // Deferred a tick so the document reflects the latest content. Reading the document is a pure read
-    // that never touches the editor's plugins, so it cannot interfere with an in-flight transaction.
-    setTimeout((): void => {
-      const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-      if (!this.isActive() || view === null) {
-        return;
-      }
-      const headings: OutlineHeading[] = [];
-      const positions: number[] = [];
-      view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
-        if (node.type.name !== 'heading') {
-          return true;
-        }
-        positions.push(pos);
-        headings.push({
-          id: `heading-${headings.length}`,
-          level: (node.attrs['level'] as number) || HEADING_LEVEL_1,
-          text: node.textContent,
-          index: headings.length,
-        });
-        return false;
-      });
-      this.headingPositions = positions;
-      this.zone.run((): void => {
-        this.commands.setOutline(headings);
-      });
-      this.updateActiveHeading();
-    }, NEXT_TICK_DELAY);
-  }
-
-  /**
-   * Recomputes which heading the reader is currently at and publishes its index, so the Outline panel
-   * can move its active marker. Maps the reading line ({@link READING_LINE_OFFSET} below the viewport
-   * top) to a document position through the editor's own hit-testing, then takes the last heading at or
-   * before that position — robust against hidden, transformed, or asynchronously-rendered content that
-   * a DOM-rectangle scan trips over. Reads layout synchronously on scroll (rather than deferring to an
-   * animation frame, which can be suspended) so the marker never appears frozen.
-   */
-  private updateActiveHeading(): void {
-    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-    if (!this.isActive() || this.scrollContainer === null || view === null) {
-      return;
-    }
-    if (this.headingPositions.length === 0) {
-      this.zone.run((): void => this.commands.setActiveHeading(0));
-      return;
-    }
-    const viewport: DOMRect = this.scrollContainer.getBoundingClientRect();
-    const at: { pos: number } | null = view.posAtCoords({
-      left: viewport.left + viewport.width / READING_PROBE_DIVISOR,
-      top: viewport.top + READING_LINE_OFFSET,
-    });
-    if (at === null) {
-      return;
-    }
-    let active: number = 0;
-    for (let index: number = 0; index < this.headingPositions.length; index++) {
-      if (this.headingPositions[index] <= at.pos) {
-        active = index;
-      } else {
-        break;
-      }
-    }
-    this.zone.run((): void => this.commands.setActiveHeading(active));
-  }
-
-  /**
-   * Jumps the editor so the heading with the given ordinal lands just above the reading line. The jump
-   * is instant rather than animated: a single scroll event fires at the exact resting position, so the
-   * scroll-spy reads it once and unambiguously activates the clicked heading — an animated scroll's
-   * easing tail fires its final event short of rest and settles a heading off. The marker still glides
-   * to the heading through its own transition.
-   * @param index The heading's zero-based ordinal among the document's headings.
-   */
-  private scrollToHeading(index: number): void {
-    const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-    const scroller: HTMLElement | null = this.scrollContainer;
-    const pos: number | undefined = this.headingPositions[index];
-    if (view === null || scroller === null || pos === undefined) {
-      return;
-    }
-    const headingTop: number = view.coordsAtPos(pos).top;
-    const offset: number =
-      headingTop -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop -
-      READING_LINE_OFFSET +
-      HEADING_LAND_BIAS;
-    scroller.scrollTo({ top: offset, behavior: 'auto' });
-  }
-
-  /**
-   * Registers this view as the active review session, so the Review panel can read the live source,
-   * apply suggestions, and reveal flagged ranges in this editor.
-   */
-  private registerReviewSession(): void {
-    if (this.reviewSession !== null) {
-      return;
-    }
-    this.reviewSession = {
-      getSource: (): string => this.pane()?.getMarkdown() ?? '',
-      applyEdit: (start: number, end: number, replacement: string): void =>
-        this.applyReviewEdit(start, end, replacement),
-      reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
-    };
-    this.review.registerSession(this.reviewSession);
-  }
-
-  /**
-   * Unregisters this view's review session and clears any active reveal highlight.
-   */
-  private unregisterReviewSession(): void {
-    if (this.reviewSession !== null) {
-      this.review.unregisterSession(this.reviewSession);
-      this.reviewSession = null;
-    }
-    this.clearReviewFlash();
-  }
-
-  /**
-   * Applies a review suggestion by replacing the source range with the given text. The replacement is
-   * computed against the serialised markdown (the same source the issue offsets were derived from),
-   * then the whole document is re-parsed and swapped in a single, undoable transaction.
-   * @param start The start offset of the range to replace.
-   * @param end The end offset (exclusive) of the range to replace.
-   * @param replacement The replacement text.
-   */
-  private applyReviewEdit(start: number, end: number, replacement: string): void {
-    const pane: MarkdownEditor | undefined = this.pane();
-    if (pane === undefined) {
-      return;
-    }
-    const source: string = pane.getMarkdown();
-    pane.replaceAll(source.slice(0, start) + replacement + source.slice(end));
-  }
-
-  /**
-   * Scrolls the flagged text of a review issue into view and briefly highlights it. The flagged word
-   * is located in the rendered text at the occurrence closest to the issue's proportional position in
-   * the source (the rendered text differs from the markdown source, so this is an approximate match).
-   * @param issue The issue to reveal.
-   */
-  private revealReviewIssue(issue: ReviewIssue): void {
-    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
-    if (root === null || issue.word.length === 0) {
-      return;
-    }
-
-    const walker: TreeWalker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const segments: { node: Text; start: number }[] = [];
-    let rendered: string = '';
-    let node: Node | null = walker.nextNode();
-    while (node !== null) {
-      const textNode: Text = node as Text;
-      segments.push({ node: textNode, start: rendered.length });
-      rendered += textNode.textContent ?? '';
-      node = walker.nextNode();
-    }
-
-    const sourceLength: number = Math.max(MIN_SOURCE_LENGTH, this.reviewSourceLength());
-    const target: number = (issue.start / sourceLength) * rendered.length;
-    let best: number = NOT_FOUND;
-    let bestDelta: number = Number.POSITIVE_INFINITY;
-    let found: number = rendered.indexOf(issue.word);
-    while (found !== NOT_FOUND) {
-      const delta: number = Math.abs(found - target);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        best = found;
-      }
-      found = rendered.indexOf(issue.word, found + WORD_STEP);
-    }
-    if (best === NOT_FOUND) {
-      return;
-    }
-
-    const range: Range | null = this.rangeFromRendered(segments, best, best + issue.word.length);
-    if (range === null) {
-      return;
-    }
-    this.scrollRangeIntoView(range);
-    this.flashReviewRange(range);
-  }
-
-  /**
-   * Gets the length of the editor's serialised markdown source, used to position a review reveal.
-   * @returns Returns the source length, or zero when no editor is mounted.
-   */
-  private reviewSourceLength(): number {
-    return this.pane()?.getMarkdown().length ?? 0;
-  }
-
-  /**
-   * Scrolls the editor's scroll container so the given range is centred in view.
-   * @param range The range to reveal.
-   */
-  private scrollRangeIntoView(range: Range): void {
-    const scroller: HTMLElement | null = this.scrollContainer;
-    if (scroller === null) {
-      return;
-    }
-    const rect: DOMRect = range.getBoundingClientRect();
-    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
-    scroller.scrollTo({
-      top:
-        scroller.scrollTop +
-        (rect.top - scrollerRect.top) -
-        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
-      behavior: 'smooth',
-    });
-  }
-
-  /**
-   * Builds a DOM range spanning the given rendered-text offsets.
-   * @param segments The text-node segments with their start offsets.
-   * @param start The start offset in the rendered text.
-   * @param end The end offset (exclusive) in the rendered text.
-   * @returns Returns the range, or null when it cannot be resolved.
-   */
-  private rangeFromRendered(
-    segments: readonly { node: Text; start: number }[],
-    start: number,
-    end: number,
-  ): Range | null {
-    const startSegment: { node: Text; start: number } | undefined = this.segmentAt(segments, start);
-    const endSegment: { node: Text; start: number } | undefined = this.segmentAt(
-      segments,
-      end - WORD_STEP,
-    );
-    if (startSegment === undefined || endSegment === undefined) {
-      return null;
-    }
-    const range: Range = document.createRange();
-    range.setStart(startSegment.node, start - startSegment.start);
-    range.setEnd(endSegment.node, end - endSegment.start);
-    return range;
-  }
-
-  /**
-   * Finds the text-node segment containing a rendered-text offset.
-   * @param segments The segments.
-   * @param offset The rendered-text offset.
-   * @returns Returns the containing segment, or undefined.
-   */
-  private segmentAt(
-    segments: readonly { node: Text; start: number }[],
-    offset: number,
-  ): { node: Text; start: number } | undefined {
-    let match: { node: Text; start: number } | undefined;
-    for (const segment of segments) {
-      if (segment.start <= offset) {
-        match = segment;
-      } else {
-        break;
-      }
-    }
-    return match;
-  }
-
-  /**
-   * Briefly highlights a range using the CSS Custom Highlight API, which paints over the rendered text
-   * without mutating the editor's DOM or document. Clears any prior flash first. No-ops where the API
-   * is unavailable (such as under unit tests).
-   * @param range The range to flash.
-   */
-  private flashReviewRange(range: Range): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    this.clearReviewFlash();
-    CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
-    this.reviewFlashTimer = setTimeout((): void => {
-      this.clearReviewFlash();
-    }, REVIEW_FLASH_DURATION);
-  }
-
-  /**
-   * Clears the review reveal highlight and its pending timer, if any.
-   */
-  private clearReviewFlash(): void {
-    if (this.reviewFlashTimer !== null) {
-      clearTimeout(this.reviewFlashTimer);
-      this.reviewFlashTimer = null;
-    }
-    if (this.supportsHighlight()) {
-      CSS.highlights.delete(REVIEW_HIGHLIGHT_NAME);
-    }
-  }
-
-  /**
-   * Determines whether the CSS Custom Highlight API is available for review and read-along
-   * highlighting.
-   * @returns Returns true when the API can be used.
-   */
-  private supportsHighlight(): boolean {
-    return (
-      typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && Boolean(CSS.highlights)
-    );
-  }
-
-  /**
-   * Registers this view as the active read session and publishes its rendered word model, so the
-   * Reader panel can speak the document and highlight the spoken word here.
-   */
-  private registerReadSession(): void {
-    if (this.readSession !== null) {
-      return;
-    }
-    this.readSession = {
-      highlight: (index: number, mode: HighlightMode): void => this.highlightReadWord(index, mode),
-      clearHighlight: (): void => this.clearReadHighlight(),
-      revealWord: (index: number): void => this.revealReadWord(index),
-    };
-    this.reader.registerSession(this.readSession);
-    this.publishReadModel();
-  }
-
-  /**
-   * Clears any read-along highlight and unregisters this view as the read session.
-   */
-  private unregisterReadSession(): void {
-    if (this.readSession === null) {
-      return;
-    }
-    this.clearReadHighlight();
-    this.reader.unregisterSession(this.readSession);
-    this.readSession = null;
-    this.readWords = [];
-    this.readWordRanges = [];
-  }
-
-  /**
-   * Builds the read-along model from the rendered document and publishes it to the reader, keeping the
-   * local word ranges for in-document highlighting.
-   */
-  private publishReadModel(): void {
-    if (this.readSession === null) {
-      return;
-    }
-    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
-    const model: ReadModel = buildReadModel(root);
-    this.readWords = model.document.words;
-    this.readWordRanges = model.ranges;
-    this.zone.run((): void => this.reader.setDocument(model.document));
-  }
-
-  /**
-   * Highlights the read-along word at the given index, or its sentence, using the CSS Custom Highlight
-   * API, which paints over the rendered text without mutating ProseMirror's DOM.
-   * @param wordIndex The word to highlight.
-   * @param mode Whether to highlight the single word or its sentence.
-   */
-  private highlightReadWord(wordIndex: number, mode: HighlightMode): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    const word: ReadWord | undefined = this.readWords[wordIndex];
-    const wordRange: Range | undefined = this.readWordRanges[wordIndex];
-    if (word === undefined || wordRange === undefined) {
-      this.clearReadHighlight();
-      return;
-    }
-    if (mode === 'sentence') {
-      CSS.highlights.set(
-        READ_HIGHLIGHT_SENTENCE,
-        new Highlight(this.sentenceRange(wordIndex, word.sentenceIndex)),
-      );
-      CSS.highlights.delete(READ_HIGHLIGHT_WORD);
-    } else {
-      CSS.highlights.set(READ_HIGHLIGHT_WORD, new Highlight(wordRange));
-      CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
-    }
-  }
-
-  /**
-   * Builds a DOM range spanning every word in the given sentence.
-   * @param wordIndex A word within the sentence.
-   * @param sentenceIndex The sentence index to span.
-   * @returns Returns the sentence range.
-   */
-  private sentenceRange(wordIndex: number, sentenceIndex: number): Range {
-    let start: number = wordIndex;
-    let end: number = wordIndex;
-    while (
-      start - WORD_STEP >= 0 &&
-      this.readWords[start - WORD_STEP].sentenceIndex === sentenceIndex
-    ) {
-      start -= WORD_STEP;
-    }
-    while (
-      end + WORD_STEP < this.readWords.length &&
-      this.readWords[end + WORD_STEP].sentenceIndex === sentenceIndex
-    ) {
-      end += WORD_STEP;
-    }
-    const startRange: Range = this.readWordRanges[start];
-    const endRange: Range = this.readWordRanges[end];
-    const range: Range = document.createRange();
-    range.setStart(startRange.startContainer, startRange.startOffset);
-    range.setEnd(endRange.endContainer, endRange.endOffset);
-    return range;
-  }
-
-  /**
-   * Clears the read-along highlight from the document.
-   */
-  private clearReadHighlight(): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    CSS.highlights.delete(READ_HIGHLIGHT_WORD);
-    CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
-  }
-
-  /**
-   * Smoothly scrolls the spoken word into view when it drifts near or past the viewport edges, keeping
-   * the read-along position comfortably visible.
-   * @param wordIndex The word to reveal.
-   */
-  private revealReadWord(wordIndex: number): void {
-    const range: Range | undefined = this.readWordRanges[wordIndex];
-    const scroller: HTMLElement | null = this.scrollContainer;
-    if (range === undefined || scroller === null) {
-      return;
-    }
-    const rect: DOMRect = range.getBoundingClientRect();
-    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
-    const aboveComfort: boolean = rect.top < scrollerRect.top + READ_REVEAL_MARGIN;
-    const belowComfort: boolean = rect.bottom > scrollerRect.bottom - READ_REVEAL_MARGIN;
-    if (!aboveComfort && !belowComfort) {
-      return;
-    }
-    scroller.scrollTo({
-      top:
-        scroller.scrollTop +
-        (rect.top - scrollerRect.top) -
-        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
-      behavior: 'smooth',
     });
   }
 
