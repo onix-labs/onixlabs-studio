@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "19bc90196637bda39d16fb8fced300bc6258f723",
-  "generatedAt": "2026-07-04T15:27:31.416Z",
+  "gitCommitHash": "e659c5913b74678fae01a9dae70cffe33b310092",
+  "generatedAt": "2026-07-04T20:19:00.580Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -55,7 +55,7 @@
     },
     "docs/agents.md": {
       "filePath": "docs/agents.md",
-      "contentHash": "bacb8ad84651a216de23666c63b498fa88157ed88d6b4431603ded6764b0a7cb",
+      "contentHash": "11679b568f8702d94afc12e65d0f65f266f1a440c3f9cdff45493142440daf40",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -4513,7 +4513,7 @@
     },
     "src/features/settings/angular/setting-bindings.ts": {
       "filePath": "src/features/settings/angular/setting-bindings.ts",
-      "contentHash": "5570a1511d4d0b032b0bdfaf4b146c7fd6e2ba167c695c02d946cf571a2b43f6",
+      "contentHash": "0c42281eeee27440fa7e9a20297682d23479095fd1a35260ba24d4e4a3e3b905",
       "functions": [],
       "classes": [
         {
@@ -4587,15 +4587,20 @@
         {
           "source": "@shared/angular/services/settings/settings-registry",
           "specifiers": [
-            "SettingOwner",
             "SettingsKey"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings/settings-schema",
+          "specifiers": [
+            "SettingOwner"
           ]
         }
       ],
       "exports": [
         "SettingBindings"
       ],
-      "totalLines": 204,
+      "totalLines": 205,
       "hasStructuralAnalysis": true
     },
     "src/features/settings/angular/setting-descriptions.ts": {
@@ -4639,7 +4644,7 @@
     },
     "src/features/settings/angular/settings-restart.ts": {
       "filePath": "src/features/settings/angular/settings-restart.ts",
-      "contentHash": "ee7090e781ec46dbbddb9f0b174e5fb2d2316ea50e296a2a70c25edbade218db",
+      "contentHash": "c577ab32e7385e22e72a11a056bc1c885bebdf2c7bb72b6ce5a309f643063736",
       "functions": [],
       "classes": [
         {
@@ -4682,7 +4687,12 @@
         {
           "source": "@shared/angular/services/settings/settings-registry",
           "specifiers": [
-            "SETTINGS_BY_KEY",
+            "SETTINGS_BY_KEY"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings/settings-schema",
+          "specifiers": [
             "SettingDef"
           ]
         }
@@ -4690,7 +4700,7 @@
       "exports": [
         "SettingsRestart"
       ],
-      "totalLines": 56,
+      "totalLines": 57,
       "hasStructuralAnalysis": true
     },
     "src/features/settings/angular/settings-view/editor-profiles/editor-profiles.html": {
@@ -4715,7 +4725,7 @@
     },
     "src/features/settings/angular/settings-view/editor-profiles/editor-profiles.ts": {
       "filePath": "src/features/settings/angular/settings-view/editor-profiles/editor-profiles.ts",
-      "contentHash": "3ec58f73bb95d30956fcaee8f8143df03b7884b76c80665629be7c471d046f15",
+      "contentHash": "388885d1531b58f041bdb62b369ddc46fb08865ba005485f2001804e626a4541",
       "functions": [],
       "classes": [
         {
@@ -4810,8 +4820,13 @@
         {
           "source": "@shared/angular/services/settings/settings-registry",
           "specifiers": [
+            "findSection"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings/settings-schema",
+          "specifiers": [
             "ChoiceOption",
-            "findSection",
             "SettingDef"
           ]
         },
@@ -4831,7 +4846,7 @@
       "exports": [
         "EditorProfiles"
       ],
-      "totalLines": 226,
+      "totalLines": 223,
       "hasStructuralAnalysis": true
     },
     "src/features/settings/angular/settings-view/sections/ai-settings/ai-settings.html": {
@@ -4994,7 +5009,7 @@
     },
     "src/features/settings/angular/settings-view/setting-control/setting-control.ts": {
       "filePath": "src/features/settings/angular/settings-view/setting-control/setting-control.ts",
-      "contentHash": "54240ec594dddd6d92604ae39e185b70960eb12bd32c509a65a0676d89b420ee",
+      "contentHash": "7919dc957b99b86466738f0d9f4284f47f7ea10caa8d608d82cb18a59b096a85",
       "functions": [],
       "classes": [
         {
@@ -5081,10 +5096,15 @@
         {
           "source": "@shared/angular/services/settings/settings-registry",
           "specifiers": [
+            "SETTINGS_BY_KEY"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings/settings-schema",
+          "specifiers": [
             "ChoiceOption",
             "ColorSwatch",
             "ControlDef",
-            "SETTINGS_BY_KEY",
             "SettingDef"
           ]
         }
@@ -5117,7 +5137,7 @@
     },
     "src/features/settings/angular/settings-view/settings-section/settings-section.ts": {
       "filePath": "src/features/settings/angular/settings-view/settings-section/settings-section.ts",
-      "contentHash": "5b8ec330ba1dad8e298d5f27dc95003f02e2bafced85391f4ed83273a973d703",
+      "contentHash": "7e9697eda91f75c7f5a690056eb20bca783eda418119ba4a91e53d8d0c3fd581",
       "functions": [],
       "classes": [
         {
@@ -5169,7 +5189,12 @@
         {
           "source": "@shared/angular/services/settings/settings-registry",
           "specifiers": [
-            "findSection",
+            "findSection"
+          ]
+        },
+        {
+          "source": "@shared/angular/services/settings/settings-schema",
+          "specifiers": [
             "SettingDef"
           ]
         }
@@ -5177,7 +5202,7 @@
       "exports": [
         "SettingsSection"
       ],
-      "totalLines": 69,
+      "totalLines": 70,
       "hasStructuralAnalysis": true
     },
     "src/features/settings/angular/settings-view/settings-view.html": {
@@ -15882,7 +15907,7 @@
     },
     "src/shared/angular/services/documents/documents.ts": {
       "filePath": "src/shared/angular/services/documents/documents.ts",
-      "contentHash": "1e2c7124bf1818e14514d7ad58a7801d0195be19d938d901ad12ae90bc5688e4",
+      "contentHash": "8c16f74c20571716bb23da260613eb96cd7f3d26d605189407fca265eaa24d39",
       "functions": [],
       "classes": [
         {
@@ -15932,7 +15957,7 @@
             "activeDocumentId"
           ],
           "exported": true,
-          "lineCount": 542
+          "lineCount": 546
         }
       ],
       "imports": [
@@ -15995,7 +16020,7 @@
       "exports": [
         "Documents"
       ],
-      "totalLines": 691,
+      "totalLines": 695,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/editor-commands/editor-commands.ts": {
@@ -17562,16 +17587,8 @@
     },
     "src/shared/angular/services/settings/settings-registry.ts": {
       "filePath": "src/shared/angular/services/settings/settings-registry.ts",
-      "contentHash": "21651724f647bfeb5cdae7cfce670791f42ce15b2a94919fd10cd31915c470d4",
+      "contentHash": "ad923c9659bc200f2dd029d5efaece983b194403efa5835a72f5fdaf3027a733",
       "functions": [
-        {
-          "name": "isSettingsOwned",
-          "params": [
-            "def"
-          ],
-          "exported": true,
-          "lineCount": 3
-        },
         {
           "name": "findSection",
           "params": [
@@ -17626,21 +17643,35 @@
             "PanelPosition",
             "RibbonAlignment"
           ]
+        },
+        {
+          "source": "./settings-schema",
+          "specifiers": [
+            "isSettingsOwned"
+          ]
+        },
+        {
+          "source": "./settings-schema",
+          "specifiers": [
+            "ColorSwatch",
+            "SectionDef",
+            "SettingDef",
+            "SettingsOwnedDef"
+          ]
         }
       ],
       "exports": [
-        "isSettingsOwned",
         "SETTINGS_REGISTRY",
         "SETTINGS_BY_KEY",
         "SETTINGS_DEFAULTS",
         "findSection"
       ],
-      "totalLines": 828,
+      "totalLines": 641,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/settings/settings.ts": {
       "filePath": "src/shared/angular/services/settings/settings.ts",
-      "contentHash": "f104ca8c79492cf81ab3310b0c57f497b6269b76c6e6415874421ef05f095cc9",
+      "contentHash": "f021331004cbe3ed057d23017c8d50db8de75ab36df0b4e9f8a6dc4f56835889",
       "functions": [],
       "classes": [
         {
@@ -17731,9 +17762,14 @@
             "AiModels",
             "SETTINGS_BY_KEY",
             "SETTINGS_DEFAULTS",
-            "SettingDef",
             "SettingsKey",
             "SettingsValues"
+          ]
+        },
+        {
+          "source": "./settings-schema",
+          "specifiers": [
+            "SettingDef"
           ]
         },
         {
@@ -19264,7 +19300,7 @@
     },
     "src/shared/api/ai-types.ts": {
       "filePath": "src/shared/api/ai-types.ts",
-      "contentHash": "3b1e0158edb39ec470b3f425ca531dec30ac573af054e0090c4c7ce6a28819c5",
+      "contentHash": "54709089408c99454dc1d3c64139d5e15bb84d462d107bb7bccc72c12f3a96c9",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -19272,9 +19308,30 @@
         "READ_ACTIVE_DOCUMENT",
         "REPLACE_ACTIVE_DOCUMENT",
         "READ_TERMINAL_OUTPUT",
-        "WRITE_TERMINAL_INPUT"
+        "WRITE_TERMINAL_INPUT",
+        "AgentSurface",
+        "AiAuthSource",
+        "AiAuthStatus",
+        "AiVerifyResult",
+        "AiProviderId",
+        "AiModelInfo",
+        "AiProviderInfo",
+        "AiPermissionPosture",
+        "AiRunRequest",
+        "AiRunState",
+        "AiEventBase",
+        "AiTextEvent",
+        "AiThinkingEvent",
+        "AiToolStartEvent",
+        "AiToolEndEvent",
+        "AiPermissionEvent",
+        "AiStatusEvent",
+        "AiEvent",
+        "AiBridgeRequest",
+        "AiBridgeReply",
+        "AiPermissionReply"
       ],
-      "totalLines": 418,
+      "totalLines": 29,
       "hasStructuralAnalysis": true
     },
     "src/shared/api/app-channels.ts": {
@@ -22927,6 +22984,118 @@
         "restoreLayout"
       ],
       "totalLines": 102,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-tool-surface.ts": {
+      "filePath": "src/shared/api/ai/ai-tool-surface.ts",
+      "contentHash": "642ed1a9d40ef3ce5aaad3437e518e75608b2644f5660be83fc5044ec19e82c9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "READ_ACTIVE_DOCUMENT",
+        "REPLACE_ACTIVE_DOCUMENT",
+        "READ_TERMINAL_OUTPUT",
+        "WRITE_TERMINAL_INPUT"
+      ],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-auth-types.ts": {
+      "filePath": "src/shared/api/ai/ai-auth-types.ts",
+      "contentHash": "aed3d68f87ee4ded916b9adeca430b95911b35a179848800fba31e5025609860",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 55,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-provider-types.ts": {
+      "filePath": "src/shared/api/ai/ai-provider-types.ts",
+      "contentHash": "050b0daff9186044e889dfa2ac67e14790733510613019c953ecbf3e80212edb",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 62,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-run-types.ts": {
+      "filePath": "src/shared/api/ai/ai-run-types.ts",
+      "contentHash": "b78d657aadffadb4129df523f044fd334df7e095f2ba39e192f3f06173a0b5a8",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "./ai-tool-surface",
+          "specifiers": [
+            "AgentSurface"
+          ]
+        },
+        {
+          "source": "./ai-provider-types",
+          "specifiers": [
+            "AiProviderId"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-event-types.ts": {
+      "filePath": "src/shared/api/ai/ai-event-types.ts",
+      "contentHash": "661f60191c36f49fbb4260e0a96a5274c158a9c46f52d2a1fa80a6afdad37560",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 156,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/api/ai/ai-bridge-types.ts": {
+      "filePath": "src/shared/api/ai/ai-bridge-types.ts",
+      "contentHash": "86d5bb3078dbb9337dbf578aa93c64933f800f9b8b12095af3620273aae5ad19",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/services/settings/settings-schema.ts": {
+      "filePath": "src/shared/angular/services/settings/settings-schema.ts",
+      "contentHash": "6b78f66a3af3ad0c071ef505216ccc114b11e9bd30dabcd027fe13728e5042d1",
+      "functions": [
+        {
+          "name": "isSettingsOwned",
+          "params": [
+            "def"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@shared/angular/icons/icon",
+          "specifiers": [
+            "Icon"
+          ]
+        },
+        {
+          "source": "./settings-registry",
+          "specifiers": [
+            "SettingsKey"
+          ]
+        }
+      ],
+      "exports": [
+        "isSettingsOwned"
+      ],
+      "totalLines": 193,
       "hasStructuralAnalysis": true
     }
   }

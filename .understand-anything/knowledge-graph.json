@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T15:27:10.968Z",
-    "gitCommitHash": "19bc90196637bda39d16fb8fced300bc6258f723"
+    "analyzedAt": "2026-07-04T20:18:23.491Z",
+    "gitCommitHash": "e659c5913b74678fae01a9dae70cffe33b310092"
   },
   "nodes": [
     {
@@ -13194,6 +13194,90 @@
         "persistence"
       ],
       "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-tool-surface.ts",
+      "type": "file",
+      "name": "ai-tool-surface.ts",
+      "filePath": "src/shared/api/ai/ai-tool-surface.ts",
+      "summary": "In-app agent capability constants and the AgentSurface type.",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-auth-types.ts",
+      "type": "file",
+      "name": "ai-auth-types.ts",
+      "filePath": "src/shared/api/ai/ai-auth-types.ts",
+      "summary": "Agent authentication contract: source, status, verify result.",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-provider-types.ts",
+      "type": "file",
+      "name": "ai-provider-types.ts",
+      "filePath": "src/shared/api/ai/ai-provider-types.ts",
+      "summary": "Agent provider/model contract.",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-run-types.ts",
+      "type": "file",
+      "name": "ai-run-types.ts",
+      "filePath": "src/shared/api/ai/ai-run-types.ts",
+      "summary": "Agent run-request contract and permission posture.",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-event-types.ts",
+      "type": "file",
+      "name": "ai-event-types.ts",
+      "filePath": "src/shared/api/ai/ai-event-types.ts",
+      "summary": "Agent streamed-event protocol (text/thinking/tool/permission/status).",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/api/ai/ai-bridge-types.ts",
+      "type": "file",
+      "name": "ai-bridge-types.ts",
+      "filePath": "src/shared/api/ai/ai-bridge-types.ts",
+      "summary": "Agent bridge request/reply and permission reply contract.",
+      "tags": [
+        "ai",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/services/settings/settings-schema.ts",
+      "type": "file",
+      "name": "settings-schema.ts",
+      "filePath": "src/shared/angular/services/settings/settings-schema.ts",
+      "summary": "Settings schema vocabulary: control/definition/section types and the isSettingsOwned guard.",
+      "tags": [
+        "settings",
+        "schema"
+      ],
+      "complexity": "simple"
     }
   ],
   "edges": [
@@ -25397,6 +25481,83 @@
       "type": "imports",
       "direction": "forward",
       "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-tool-surface.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-auth-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-provider-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-run-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-event-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai-types.ts",
+      "target": "file:src/shared/api/ai/ai-bridge-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/api/ai/ai-run-types.ts",
+      "target": "file:src/shared/api/ai/ai-tool-surface.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/api/ai/ai-run-types.ts",
+      "target": "file:src/shared/api/ai/ai-provider-types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-registry.ts",
+      "target": "file:src/shared/angular/services/settings/settings-schema.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings-schema.ts",
+      "target": "file:src/shared/angular/services/settings/settings-registry.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "file:src/shared/angular/services/settings/settings.ts",
+      "target": "file:src/shared/angular/services/settings/settings-schema.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
     }
   ],
   "layers": [
@@ -25876,7 +26037,8 @@
         "file:src/shared/angular/services/lsp/lsp-paths.ts",
         "file:src/shared/angular/services/lsp/lsp-diagnostic-mapper.ts",
         "file:src/shared/angular/services/lsp/lsp-capabilities.ts",
-        "file:src/shared/angular/services/dock/dock-persistence.ts"
+        "file:src/shared/angular/services/dock/dock-persistence.ts",
+        "file:src/shared/angular/services/settings/settings-schema.ts"
       ]
     },
     {
@@ -25900,7 +26062,13 @@
         "file:src/shared/api/window-channels.ts",
         "file:src/shared/api/shell-channels.ts",
         "file:src/shared/api/terminal-channels.ts",
-        "file:src/shared/api/run-channels.ts"
+        "file:src/shared/api/run-channels.ts",
+        "file:src/shared/api/ai/ai-tool-surface.ts",
+        "file:src/shared/api/ai/ai-auth-types.ts",
+        "file:src/shared/api/ai/ai-provider-types.ts",
+        "file:src/shared/api/ai/ai-run-types.ts",
+        "file:src/shared/api/ai/ai-event-types.ts",
+        "file:src/shared/api/ai/ai-bridge-types.ts"
       ]
     },
     {
