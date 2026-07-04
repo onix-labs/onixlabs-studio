@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "a17bb9ec8fda7ca26e393c7ba4cbdbfb0c8ed43a",
-  "generatedAt": "2026-07-04T09:13:27.245Z",
+  "gitCommitHash": "cdc7e672fee5be3cd69a80a471738dac1cd53405",
+  "generatedAt": "2026-07-04T09:59:10.176Z",
   "files": {
     ".claude/settings.json": {
       "filePath": ".claude/settings.json",
@@ -177,19 +177,9 @@
       "totalLines": 53,
       "hasStructuralAnalysis": false
     },
-    "src/features/agent/angular/agent-ribbon/agent-ribbon.scss": {
-      "filePath": "src/features/agent/angular/agent-ribbon/agent-ribbon.scss",
-      "contentHash": "00b395a0291bed4396388285bddf513b0291b73f800899e24a93e2065c4f3daf",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 11,
-      "hasStructuralAnalysis": false
-    },
     "src/features/agent/angular/agent-ribbon/agent-ribbon.ts": {
       "filePath": "src/features/agent/angular/agent-ribbon/agent-ribbon.ts",
-      "contentHash": "e9254e55e1442425d148973d6c258c675b7e39ad220e54c65dc5503ca25862e3",
+      "contentHash": "2181101a296691162b78c80f9b41dfe8799a2feb275aa42c778e35ead71ffac8",
       "functions": [],
       "classes": [
         {
@@ -251,6 +241,12 @@
           ]
         },
         {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
+          ]
+        },
+        {
           "source": "@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button",
           "specifiers": [
             "RibbonStripButton"
@@ -296,7 +292,7 @@
       "exports": [
         "AgentRibbon"
       ],
-      "totalLines": 131,
+      "totalLines": 132,
       "hasStructuralAnalysis": true
     },
     "src/features/agent/angular/agent-view/agent-view.html": {
@@ -829,19 +825,9 @@
       "totalLines": 74,
       "hasStructuralAnalysis": false
     },
-    "src/features/code/angular/code-ribbon/code-ribbon.scss": {
-      "filePath": "src/features/code/angular/code-ribbon/code-ribbon.scss",
-      "contentHash": "fd1a934d2c6794dfd7ed6421753154ffea08190bbdeec7b4b0e5aab5eb2780a7",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 11,
-      "hasStructuralAnalysis": false
-    },
     "src/features/code/angular/code-ribbon/code-ribbon.ts": {
       "filePath": "src/features/code/angular/code-ribbon/code-ribbon.ts",
-      "contentHash": "9d6fabed4a6b21e7fd6ca428df29fd61b84160a8aefabacc6125be7108710350",
+      "contentHash": "3cea179d55e7473e6a5a8603a407065854e48ba6915dc243e1d36fc55dbf1033",
       "functions": [],
       "classes": [
         {
@@ -962,6 +948,12 @@
           ]
         },
         {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
+          ]
+        },
+        {
           "source": "@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button",
           "specifiers": [
             "RibbonStripButton"
@@ -1020,7 +1012,7 @@
       "exports": [
         "CodeRibbon"
       ],
-      "totalLines": 357,
+      "totalLines": 358,
       "hasStructuralAnalysis": true
     },
     "src/features/code/angular/code-runner/code-runner.ts": {
@@ -2022,7 +2014,7 @@
     },
     "src/features/markdown/angular/markdown-reader/read-tokenize.ts": {
       "filePath": "src/features/markdown/angular/markdown-reader/read-tokenize.ts",
-      "contentHash": "29679b840a787e233b4937f210d8882e66644cdc43e4cc66075b2b52368bd735",
+      "contentHash": "196421e7fbb92f004d8430c0d52f03cc83d88af09246c188e1af923423dec927",
       "functions": [
         {
           "name": "stripInline",
@@ -2057,11 +2049,10 @@
       "classes": [],
       "imports": [],
       "exports": [
-        "NO_WORD",
         "EMPTY_DOCUMENT",
         "tokenizeDocument"
       ],
-      "totalLines": 269,
+      "totalLines": 264,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-reader/reader-types.ts": {
@@ -2354,7 +2345,7 @@
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-collapse-modal.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-collapse-modal.ts",
-      "contentHash": "da7ea84c5b66db22d982e955dfae4a960700cb8d55ea473ab89e5bcf1a279d5e",
+      "contentHash": "f39a98a37462fcecd6936b8184b43594da5f71d6a82ff2f4d37f5b0bd96adc38",
       "functions": [],
       "classes": [
         {
@@ -2393,16 +2384,16 @@
           ]
         },
         {
-          "source": "@shared/angular/components/modal/modal",
+          "source": "./form-modal",
           "specifiers": [
-            "Modal"
+            "FormModal"
           ]
         }
       ],
       "exports": [
         "MarkdownCollapseModal"
       ],
-      "totalLines": 148,
+      "totalLines": 136,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-emoji-modal.ts": {
@@ -2491,7 +2482,7 @@
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-footnote-modal.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-footnote-modal.ts",
-      "contentHash": "51d076267cbbe5e05b2f833bccf2650041891a607fe8cd378e4827e079d6b6a6",
+      "contentHash": "64a0a38a7e7f3164984a102880199ff6a6648b6eaaae44e9f7e198a0b2a156c4",
       "functions": [],
       "classes": [
         {
@@ -2530,21 +2521,21 @@
           ]
         },
         {
-          "source": "@shared/angular/components/modal/modal",
+          "source": "./form-modal",
           "specifiers": [
-            "Modal"
+            "FormModal"
           ]
         }
       ],
       "exports": [
         "MarkdownFootnoteModal"
       ],
-      "totalLines": 144,
+      "totalLines": 137,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
-      "contentHash": "973642324aa7f6383cef8eba693fc969bae5c9ff04d78f8cec2179c6e359ad2f",
+      "contentHash": "d59f325776fad6cf4675176cda3bbbb5472f5115cfcea3bd29be62ed38cad296",
       "functions": [],
       "classes": [
         {
@@ -2586,9 +2577,9 @@
           ]
         },
         {
-          "source": "@shared/angular/components/modal/modal",
+          "source": "./form-modal",
           "specifiers": [
-            "Modal"
+            "FormModal"
           ]
         },
         {
@@ -2601,12 +2592,12 @@
       "exports": [
         "MarkdownImageModal"
       ],
-      "totalLines": 162,
+      "totalLines": 155,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-link-modal.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-link-modal.ts",
-      "contentHash": "db64ddbd51e8b86c51593794b62ba96dcc3f9db05a82e0a01834327bf5d63e59",
+      "contentHash": "37939c0f4bfdde4c745c6dc4ce3a353e7b3a49549cb46170e2936a0ec4d039d4",
       "functions": [],
       "classes": [
         {
@@ -2645,21 +2636,21 @@
           ]
         },
         {
-          "source": "@shared/angular/components/modal/modal",
+          "source": "./form-modal",
           "specifiers": [
-            "Modal"
+            "FormModal"
           ]
         }
       ],
       "exports": [
         "MarkdownLinkModal"
       ],
-      "totalLines": 142,
+      "totalLines": 135,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts",
-      "contentHash": "509c08507cedfa664711ff603f8084c368e9de202b9e0ec833e982e676170dc4",
+      "contentHash": "a43ae8cb30ec723486bba166dee8ae3e6aa31e9cbfda5254aa7395ec125815b1",
       "functions": [],
       "classes": [
         {
@@ -2698,16 +2689,16 @@
           ]
         },
         {
-          "source": "@shared/angular/components/modal/modal",
+          "source": "./form-modal",
           "specifiers": [
-            "Modal"
+            "FormModal"
           ]
         }
       ],
       "exports": [
         "MarkdownMathModal"
       ],
-      "totalLines": 141,
+      "totalLines": 134,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-ribbon/markdown-ribbon.html": {
@@ -2722,17 +2713,17 @@
     },
     "src/features/markdown/angular/markdown-ribbon/markdown-ribbon.scss": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/markdown-ribbon.scss",
-      "contentHash": "b9eb80c9112102417ba917957b3fbd4cf1d8fea91b900ed95f2f953e1eedc114",
+      "contentHash": "ba540bcd5e1dcc697b72492a2ed8216469fcf122819586ff66badfb3b664f6d8",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 26,
+      "totalLines": 18,
       "hasStructuralAnalysis": false
     },
     "src/features/markdown/angular/markdown-ribbon/markdown-ribbon.ts": {
       "filePath": "src/features/markdown/angular/markdown-ribbon/markdown-ribbon.ts",
-      "contentHash": "dae3863b8bb5aaafa413c43f1e4ad8013b388fcc812df2cd5a7c2a7633062c50",
+      "contentHash": "4fba5afc343df82df02617dc0bcb280029f4520bcc30b82b7202819141ef189a",
       "functions": [],
       "classes": [
         {
@@ -2847,6 +2838,12 @@
           ]
         },
         {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
+          ]
+        },
+        {
           "source": "@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button",
           "specifiers": [
             "RibbonStripButton"
@@ -2940,7 +2937,7 @@
       "exports": [
         "MarkdownRibbon"
       ],
-      "totalLines": 603,
+      "totalLines": 605,
       "hasStructuralAnalysis": true
     },
     "src/features/markdown/angular/markdown-view/markdown-view.html": {
@@ -3875,19 +3872,9 @@
       "totalLines": 38,
       "hasStructuralAnalysis": false
     },
-    "src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss": {
-      "filePath": "src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss",
-      "contentHash": "6b2abf4866e549ed65cc897402e99f27b907ccd07fd49d8a0393ed92a16a77e2",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 11,
-      "hasStructuralAnalysis": false
-    },
     "src/features/repository/angular/source-control-ribbon/source-control-ribbon.ts": {
       "filePath": "src/features/repository/angular/source-control-ribbon/source-control-ribbon.ts",
-      "contentHash": "e107ee3464ff33cae0cae75a543726afa3982697ecda0706eb12813fc7398c68",
+      "contentHash": "08777ad348d829b58b71cacfacba001eacbe393b96a866ebee814df9439884e6",
       "functions": [],
       "classes": [
         {
@@ -3934,6 +3921,12 @@
           ]
         },
         {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
+          ]
+        },
+        {
           "source": "@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button",
           "specifiers": [
             "RibbonStripButton"
@@ -3955,7 +3948,7 @@
       "exports": [
         "SourceControlRibbon"
       ],
-      "totalLines": 101,
+      "totalLines": 102,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/components/panels/commit-detail/commit-detail.html": {
@@ -5572,19 +5565,9 @@
       "totalLines": 35,
       "hasStructuralAnalysis": false
     },
-    "src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss": {
-      "filePath": "src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss",
-      "contentHash": "13df82f9d72f74ec694c3cf9e71fb37367856e5ab8a18f393afd36b0b33845b7",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 11,
-      "hasStructuralAnalysis": false
-    },
     "src/features/terminal/angular/terminal-ribbon/terminal-ribbon.ts": {
       "filePath": "src/features/terminal/angular/terminal-ribbon/terminal-ribbon.ts",
-      "contentHash": "ce7a7e2998e3969dfd302bcef68cd2f82c5e48ee5cd190e46263ef5cedfbee70",
+      "contentHash": "7ad6cc92780d7d2acbaef6af8264ab5102d9dd4e82703418a36776b958d3b6b8",
       "functions": [],
       "classes": [
         {
@@ -5625,6 +5608,12 @@
           "source": "@shared/angular/icons/icon",
           "specifiers": [
             "Icon"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
           ]
         },
         {
@@ -5679,7 +5668,7 @@
       "exports": [
         "TerminalRibbon"
       ],
-      "totalLines": 132,
+      "totalLines": 133,
       "hasStructuralAnalysis": true
     },
     "src/features/terminal/angular/terminal-status/terminal-status.ts": {
@@ -6178,19 +6167,9 @@
       "totalLines": 89,
       "hasStructuralAnalysis": false
     },
-    "src/features/workspace/angular/directory-ribbon/directory-ribbon.scss": {
-      "filePath": "src/features/workspace/angular/directory-ribbon/directory-ribbon.scss",
-      "contentHash": "b168db84b1c93de57895532f36a2debee9c165e20fb0eb57e6500527c1cc5a2e",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 11,
-      "hasStructuralAnalysis": false
-    },
     "src/features/workspace/angular/directory-ribbon/directory-ribbon.ts": {
       "filePath": "src/features/workspace/angular/directory-ribbon/directory-ribbon.ts",
-      "contentHash": "6fa54674a87e21157ced8dd97e2afaa4916d94ae1d287a8a0a6acf707fe8f5f8",
+      "contentHash": "ff54496583be6fb35a4c8281cea731f49a56a1904a0692d7de8b3a3b55de4bbd",
       "functions": [],
       "classes": [
         {
@@ -6264,6 +6243,12 @@
           ]
         },
         {
+          "source": "@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host",
+          "specifiers": [
+            "RibbonHost"
+          ]
+        },
+        {
           "source": "@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button",
           "specifiers": [
             "RibbonStripButton"
@@ -6309,7 +6294,7 @@
       "exports": [
         "DirectoryRibbon"
       ],
-      "totalLines": 195,
+      "totalLines": 196,
       "hasStructuralAnalysis": true
     },
     "src/features/workspace/angular/directory-view/directory-view.html": {
@@ -15279,7 +15264,7 @@
     },
     "src/shared/angular/services/dock/dock-node.ts": {
       "filePath": "src/shared/angular/services/dock/dock-node.ts",
-      "contentHash": "a823b346e2496a6dc2eff243f1bd837432c3ebe6364e32a6095c57c73747c850",
+      "contentHash": "4f92a63d3bb8952f468f505a901b02e38d0610bfa898349a89d8445a54e83aa3",
       "functions": [
         {
           "name": "nextNodeId",
@@ -15334,7 +15319,7 @@
         "isSplitNode",
         "isStackNode"
       ],
-      "totalLines": 165,
+      "totalLines": 160,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/dock/dock-panel-registry.ts": {
@@ -17352,7 +17337,7 @@
     },
     "src/shared/angular/services/repository/repository-data.ts": {
       "filePath": "src/shared/angular/services/repository/repository-data.ts",
-      "contentHash": "d6bda94dfb0f31f86ffba03b9dacd2fa1c4cb62d204e6a7a1e962cf008e51d44",
+      "contentHash": "39bf60cb78d9db3c36c33cc5f0d2608715da57d0cff3e1a46a6300bd14a63783",
       "functions": [
         {
           "name": "statusLetter",
@@ -17367,16 +17352,9 @@
       "classes": [],
       "imports": [],
       "exports": [
-        "statusLetter",
-        "SEED_STAGED",
-        "SEED_UNSTAGED",
-        "SEED_COMMITS",
-        "SEED_BRANCHES",
-        "SEED_REMOTES",
-        "SEED_TAGS",
-        "SEED_STASHES"
+        "statusLetter"
       ],
-      "totalLines": 783,
+      "totalLines": 345,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/repository/repository.ts": {
@@ -18261,7 +18239,7 @@
     },
     "src/shared/angular/services/tabs/tab.ts": {
       "filePath": "src/shared/angular/services/tabs/tab.ts",
-      "contentHash": "6b162daf72c4780bab903b2d805fe65c5d856b9e8b49e1f5da1af8c654ca3b8a",
+      "contentHash": "1444f1b8d33bc9a7d1c3336dd59969f4367fd32d08091a3e4cc59e279a5301c1",
       "functions": [],
       "classes": [],
       "imports": [
@@ -18273,10 +18251,9 @@
         }
       ],
       "exports": [
-        "TAB_TYPE_METADATA",
-        "CREATABLE_TAB_TYPES"
+        "TAB_TYPE_METADATA"
       ],
-      "totalLines": 99,
+      "totalLines": 87,
       "hasStructuralAnalysis": true
     },
     "src/shared/angular/services/tabs/tabs.ts": {
@@ -19413,12 +19390,12 @@
     },
     "src/shared/api/task-channels.ts": {
       "filePath": "src/shared/api/task-channels.ts",
-      "contentHash": "742d69fd985e789a8ee8adfaca69160de51965c6b666a2233f93041ab9a5f7d4",
+      "contentHash": "a5704200f1b136c69d13ebefb15ff8b49afdca78a57f1a4a337cb3922d53cef2",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 76,
+      "totalLines": 71,
       "hasStructuralAnalysis": true
     },
     "src/shared/api/terminal-channels.ts": {
@@ -22108,6 +22085,79 @@
       "imports": [],
       "exports": [],
       "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts": {
+      "filePath": "src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "contentHash": "ffcb7b3b63fb534c8302f2f1f935135f6e871b4cd505a025422c1f63b914ceb8",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RibbonHost",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 1
+        }
+      ],
+      "imports": [
+        {
+          "source": "@angular/core",
+          "specifiers": [
+            "Directive"
+          ]
+        }
+      ],
+      "exports": [
+        "RibbonHost"
+      ],
+      "totalLines": 23,
+      "hasStructuralAnalysis": true
+    },
+    "src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts": {
+      "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "contentHash": "f74413c66e96b624e2217fe326c2691f4d1224147abd9174dbaac6fe07a20010",
+      "functions": [],
+      "classes": [
+        {
+          "name": "FormModal",
+          "methods": [],
+          "properties": [
+            "open",
+            "heading",
+            "width",
+            "canSubmit",
+            "submitLabel",
+            "confirmed",
+            "cancelled"
+          ],
+          "exported": true,
+          "lineCount": 36
+        }
+      ],
+      "imports": [
+        {
+          "source": "@angular/core",
+          "specifiers": [
+            "ChangeDetectionStrategy",
+            "Component",
+            "input",
+            "InputSignal",
+            "output",
+            "OutputEmitterRef"
+          ]
+        },
+        {
+          "source": "@shared/angular/components/modal/modal",
+          "specifiers": [
+            "Modal"
+          ]
+        }
+      ],
+      "exports": [
+        "FormModal"
+      ],
+      "totalLines": 85,
       "hasStructuralAnalysis": true
     }
   }

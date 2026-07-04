@@ -17,8 +17,8 @@
       "Vitest"
     ],
     "description": "A modern cross-platform integrated development environment (Angular 22 + Electron desktop IDE).",
-    "analyzedAt": "2026-07-04T09:11:27.924Z",
-    "gitCommitHash": "a17bb9ec8fda7ca26e393c7ba4cbdbfb0c8ed43a"
+    "analyzedAt": "2026-07-04T09:57:49.070Z",
+    "gitCommitHash": "cdc7e672fee5be3cd69a80a471738dac1cd53405"
   },
   "nodes": [
     {
@@ -6643,7 +6643,7 @@
       "type": "file",
       "name": "repository-data.ts",
       "filePath": "src/shared/angular/services/repository/repository-data.ts",
-      "summary": "Core source-control data model: types for commits, refs, file changes, stashes and graph nodes, the statusLetter helper, and seed fixtures for the mock repository.",
+      "summary": "Defines the git domain value types (refs, changes, commits, branches, remotes, tags, stashes, graph nodes) and the statusLetter helper used across the source-control renderer layer. (Seed/mock fixtures removed — now pure types.)",
       "tags": [
         "data-model",
         "type-definition",
@@ -9564,20 +9564,6 @@
       "complexity": "simple"
     },
     {
-      "id": "file:src/features/agent/angular/agent-ribbon/agent-ribbon.scss",
-      "type": "file",
-      "name": "agent-ribbon.scss",
-      "filePath": "src/features/agent/angular/agent-ribbon/agent-ribbon.scss",
-      "summary": "Component styles for the agent ribbon strip.",
-      "tags": [
-        "component",
-        "styles",
-        "ribbon",
-        "agent"
-      ],
-      "complexity": "simple"
-    },
-    {
       "id": "file:src/features/agent/angular/agent-view/agent-view.html",
       "type": "file",
       "name": "agent-view.html",
@@ -9674,20 +9660,6 @@
         "code"
       ],
       "complexity": "moderate"
-    },
-    {
-      "id": "file:src/features/code/angular/code-ribbon/code-ribbon.scss",
-      "type": "file",
-      "name": "code-ribbon.scss",
-      "filePath": "src/features/code/angular/code-ribbon/code-ribbon.scss",
-      "summary": "Component styles for the code editor ribbon strip.",
-      "tags": [
-        "component",
-        "styles",
-        "ribbon",
-        "code"
-      ],
-      "complexity": "simple"
     },
     {
       "id": "file:src/features/code/angular/code-view/code-agent-panel/code-agent-panel.html",
@@ -10024,20 +9996,6 @@
       "complexity": "moderate"
     },
     {
-      "id": "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss",
-      "type": "file",
-      "name": "source-control-ribbon.scss",
-      "filePath": "src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss",
-      "summary": "Styles for the source-control ribbon control layout.",
-      "tags": [
-        "component",
-        "stylesheet",
-        "source-control",
-        "ribbon"
-      ],
-      "complexity": "simple"
-    },
-    {
       "id": "file:src/shared/angular/components/panels/commit-detail/commit-detail.html",
       "type": "file",
       "name": "commit-detail.html",
@@ -10321,21 +10279,6 @@
       "complexity": "simple"
     },
     {
-      "id": "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss",
-      "type": "file",
-      "name": "terminal-ribbon.scss",
-      "filePath": "src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss",
-      "summary": "Stylesheet for the terminal ribbon component.",
-      "tags": [
-        "terminal",
-        "stylesheet",
-        "ribbon",
-        "scss",
-        "angular"
-      ],
-      "complexity": "simple"
-    },
-    {
       "id": "file:src/features/terminal/angular/terminal-view/terminal-agent-panel/terminal-agent-panel.html",
       "type": "file",
       "name": "terminal-agent-panel.html",
@@ -10440,21 +10383,6 @@
         "angular"
       ],
       "complexity": "moderate"
-    },
-    {
-      "id": "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.scss",
-      "type": "file",
-      "name": "directory-ribbon.scss",
-      "filePath": "src/features/workspace/angular/directory-ribbon/directory-ribbon.scss",
-      "summary": "Stylesheet for the workspace directory ribbon component.",
-      "tags": [
-        "workspace",
-        "stylesheet",
-        "ribbon",
-        "scss",
-        "angular"
-      ],
-      "complexity": "simple"
     },
     {
       "id": "file:src/features/workspace/angular/directory-view/directory-view.html",
@@ -12754,6 +12682,60 @@
         "typescript",
         "build-system",
         "electron"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "file",
+      "name": "ribbon-host.ts",
+      "filePath": "src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "summary": "Shared host directive that applies every per-tab-type ribbon’s flex host layout (fill the strip width, stretch the overflow wrapper) via host style bindings, replacing the identical :host block previously copied into each feature ribbon’s stylesheet.",
+      "tags": [
+        "directive",
+        "ribbon",
+        "layout",
+        "host-directive"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts:RibbonHost",
+      "type": "class",
+      "name": "RibbonHost",
+      "filePath": "src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "summary": "Host directive applying the shared ribbon flex layout through host style bindings.",
+      "tags": [
+        "directive",
+        "ribbon",
+        "layout"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "file",
+      "name": "form-modal.ts",
+      "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "summary": "Shared chrome for the markdown Insert group’s field modals: wraps the app-modal panel with the heading, projected field content, and the Cancel/primary action row, so each insert modal supplies only its own fields and validity.",
+      "tags": [
+        "component",
+        "modal",
+        "form",
+        "content-projection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts:FormModal",
+      "type": "class",
+      "name": "FormModal",
+      "filePath": "src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "summary": "Content-projecting modal shell owning the insert modals’ heading, action buttons, and open/dismiss wiring.",
+      "tags": [
+        "component",
+        "modal",
+        "form"
       ],
       "complexity": "simple"
     }
@@ -17821,13 +17803,6 @@
       "weight": 0.8
     },
     {
-      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-collapse-modal.ts",
-      "target": "file:src/shared/angular/components/modal/modal.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
       "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-emoji-modal.ts",
       "target": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-emoji-modal.ts:MarkdownEmojiModal",
       "type": "contains",
@@ -17877,13 +17852,6 @@
       "weight": 0.8
     },
     {
-      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-footnote-modal.ts",
-      "target": "file:src/shared/angular/components/modal/modal.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
       "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
       "target": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts:MarkdownImageModal",
       "type": "contains",
@@ -17896,13 +17864,6 @@
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
-      "target": "file:src/shared/angular/components/modal/modal.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
     },
     {
       "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
@@ -17926,13 +17887,6 @@
       "weight": 0.8
     },
     {
-      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-link-modal.ts",
-      "target": "file:src/shared/angular/components/modal/modal.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
-    },
-    {
       "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts",
       "target": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts:MarkdownMathModal",
       "type": "contains",
@@ -17945,13 +17899,6 @@
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
-    },
-    {
-      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts",
-      "target": "file:src/shared/angular/components/modal/modal.ts",
-      "type": "imports",
-      "direction": "forward",
-      "weight": 0.7
     },
     {
       "source": "file:src/features/markdown/angular/markdown-ribbon/markdown-ribbon.ts",
@@ -23414,13 +23361,6 @@
       "weight": 0.5
     },
     {
-      "source": "file:src/features/agent/angular/agent-ribbon/agent-ribbon.scss",
-      "target": "file:src/features/agent/angular/agent-ribbon/agent-ribbon.ts",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
       "source": "file:src/features/agent/angular/agent-view/agent-view.html",
       "target": "file:src/features/agent/angular/agent-view/agent-view.ts",
       "type": "related",
@@ -23464,13 +23404,6 @@
     },
     {
       "source": "file:src/features/code/angular/code-ribbon/code-ribbon.html",
-      "target": "file:src/features/code/angular/code-ribbon/code-ribbon.ts",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "file:src/features/code/angular/code-ribbon/code-ribbon.scss",
       "target": "file:src/features/code/angular/code-ribbon/code-ribbon.ts",
       "type": "related",
       "direction": "forward",
@@ -23589,13 +23522,6 @@
       "weight": 0.5
     },
     {
-      "source": "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.html",
-      "target": "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
       "source": "file:src/shared/angular/components/panels/commit-detail/commit-detail.html",
       "target": "file:src/shared/angular/components/panels/commit-detail/commit-detail.scss",
       "type": "related",
@@ -23652,13 +23578,6 @@
       "weight": 0.5
     },
     {
-      "source": "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.html",
-      "target": "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
       "source": "file:src/features/terminal/angular/terminal-view/terminal-agent-panel/terminal-agent-panel.html",
       "target": "file:src/features/terminal/angular/terminal-view/terminal-agent-panel/terminal-agent-panel.scss",
       "type": "related",
@@ -23675,13 +23594,6 @@
     {
       "source": "file:src/features/welcome/angular/welcome-screen/welcome-screen.html",
       "target": "file:src/features/welcome/angular/welcome-screen/welcome-screen.scss",
-      "type": "related",
-      "direction": "forward",
-      "weight": 0.5
-    },
-    {
-      "source": "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.html",
-      "target": "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.scss",
       "type": "related",
       "direction": "forward",
       "weight": 0.5
@@ -24308,6 +24220,118 @@
       "type": "calls",
       "direction": "forward",
       "weight": 0.8
+    },
+    {
+      "source": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "target": "class:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts:RibbonHost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "target": "class:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts:RibbonHost",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "target": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts:FormModal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "target": "class:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts:FormModal",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "target": "file:src/shared/angular/components/modal/modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/agent/angular/agent-ribbon/agent-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/code/angular/code-ribbon/code-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/markdown-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.ts",
+      "target": "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-link-modal.ts",
+      "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-math-modal.ts",
+      "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-footnote-modal.ts",
+      "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-collapse-modal.ts",
+      "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/markdown-image-modal.ts",
+      "target": "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
     }
   ],
   "layers": [
@@ -24396,7 +24420,6 @@
         "file:src/features/terminal/angular/terminal.feature.ts",
         "file:src/features/code/angular/code-runner/code-runner.ts",
         "file:src/features/agent/angular/agent-ribbon/agent-ribbon.html",
-        "file:src/features/agent/angular/agent-ribbon/agent-ribbon.scss",
         "file:src/features/agent/angular/agent-view/agent-view.html",
         "file:src/features/agent/angular/agent-view/agent-view.scss",
         "file:src/features/code/angular/code-document-panel/code-document-panel.html",
@@ -24404,7 +24427,6 @@
         "file:src/features/code/angular/code-document/code-document.html",
         "file:src/features/code/angular/code-document/code-document.scss",
         "file:src/features/code/angular/code-ribbon/code-ribbon.html",
-        "file:src/features/code/angular/code-ribbon/code-ribbon.scss",
         "file:src/features/code/angular/code-view/code-agent-panel/code-agent-panel.html",
         "file:src/features/code/angular/code-view/code-agent-panel/code-agent-panel.scss",
         "file:src/features/code/angular/code-view/code-terminal-panel/code-terminal-panel.html",
@@ -24428,7 +24450,6 @@
         "file:src/features/markdown/angular/markdown-view/panels/markdown-review-panel/markdown-review-panel.scss",
         "file:src/features/markdown/angular/types/an-array-of-english-words.d.ts",
         "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.html",
-        "file:src/features/repository/angular/source-control-ribbon/source-control-ribbon.scss",
         "file:src/features/repository/angular/source-control-view/panels/commit-graph/commit-graph.html",
         "file:src/features/repository/angular/source-control-view/panels/commit-graph/commit-graph.scss",
         "file:src/features/repository/angular/source-control-view/panels/source-control-sidebar/source-control-sidebar.html",
@@ -24446,7 +24467,6 @@
         "file:src/features/settings/angular/settings-view/settings-view.html",
         "file:src/features/settings/angular/settings-view/settings-view.scss",
         "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.html",
-        "file:src/features/terminal/angular/terminal-ribbon/terminal-ribbon.scss",
         "file:src/features/terminal/angular/terminal-view/terminal-agent-panel/terminal-agent-panel.html",
         "file:src/features/terminal/angular/terminal-view/terminal-agent-panel/terminal-agent-panel.scss",
         "file:src/features/terminal/angular/terminal-view/terminal-view.html",
@@ -24454,7 +24474,6 @@
         "file:src/features/welcome/angular/welcome-screen/welcome-screen.html",
         "file:src/features/welcome/angular/welcome-screen/welcome-screen.scss",
         "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.html",
-        "file:src/features/workspace/angular/directory-ribbon/directory-ribbon.scss",
         "file:src/features/workspace/angular/directory-view/directory-view.html",
         "file:src/features/workspace/angular/directory-view/directory-view.scss",
         "file:src/features/workspace/angular/panels/output-panel/output-panel.html",
@@ -24464,7 +24483,8 @@
         "file:src/features/workspace/angular/panels/solution-panel/solution-panel.html",
         "file:src/features/workspace/angular/panels/solution-panel/solution-panel.scss",
         "file:src/features/workspace/angular/panels/tree-panel/tree-panel.html",
-        "file:src/features/workspace/angular/panels/tree-panel/tree-panel.scss"
+        "file:src/features/workspace/angular/panels/tree-panel/tree-panel.scss",
+        "file:src/features/markdown/angular/markdown-ribbon/insert-modals/form-modal.ts"
       ]
     },
     {
@@ -24690,7 +24710,8 @@
         "file:src/shared/angular/components/tree-view/tree-view.html",
         "file:src/shared/angular/components/panels/commit-detail/commit-detail.ts",
         "file:src/shared/angular/components/panels/commit-detail/commit-detail.html",
-        "file:src/shared/angular/components/panels/commit-detail/commit-detail.scss"
+        "file:src/shared/angular/components/panels/commit-detail/commit-detail.scss",
+        "file:src/shared/angular/components/ribbon-strip/ribbon-host/ribbon-host.ts"
       ]
     },
     {
