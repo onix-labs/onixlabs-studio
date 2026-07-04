@@ -11,7 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Modal } from '@shared/angular/components/modal/modal';
+import { FormModal } from './form-modal';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 
 /**
@@ -35,13 +35,18 @@ export interface ImageInsert {
  */
 @Component({
   selector: 'app-markdown-image-modal',
-  imports: [Modal],
+  imports: [FormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Insert Image" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert Image</h2>
-
+    <app-form-modal
+      [open]="open()"
+      heading="Insert Image"
+      [width]="30"
+      [canSubmit]="valid()"
+      (confirmed)="confirm()"
+      (cancelled)="cancel()"
+    >
       <div class="insert-modal__row">
         <div class="insert-modal__field">
           <label class="insert-modal__label" for="image-url">URL or file</label>
@@ -70,19 +75,7 @@ export interface ImageInsert {
           (input)="alt.set(altInput.value)"
         />
       </div>
-
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancel()">Cancel</button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!valid()"
-          (click)="confirm()"
-        >
-          Insert
-        </button>
-      </div>
-    </app-modal>
+    </app-form-modal>
   `,
 })
 export class MarkdownImageModal {
