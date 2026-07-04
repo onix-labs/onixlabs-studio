@@ -53,22 +53,14 @@ import {
   MarkdownPanels,
 } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
-import {
-  ReviewIssue,
-  ReviewSession,
-} from '@features/markdown/angular/markdown-review/review-types';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
-import {
-  HighlightMode,
-  ReadSession,
-} from '@features/markdown/angular/markdown-reader/reader-types';
-import { buildReadModel, ReadModel } from '@features/markdown/angular/markdown-reader/read-model';
-import { ReadWord } from '@features/markdown/angular/markdown-reader/read-tokenize';
 import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
 import { MarkdownClipboard } from './markdown-clipboard';
+import { ReadAlongHighlighter } from './read-along-highlighter';
+import { ReviewReveal } from './review-reveal';
 
 /**
  * Heading level for an H1 element.
@@ -150,53 +142,6 @@ const MAX_PANEL_SIZE: number = 720;
 const DEFAULT_PANEL_SIZE: number = 320;
 
 /**
- * Sentinel returned by {@link String.indexOf} when no match is found.
- */
-const NOT_FOUND: number = -1;
-
-/**
- * Single-character step used when scanning rendered text for the next occurrence of a word.
- */
-const WORD_STEP: number = 1;
-
-/**
- * Minimum source length used when computing a review reveal's proportional position, guarding against
- * division by zero on an empty document.
- */
-const MIN_SOURCE_LENGTH: number = 1;
-
-/**
- * Divisor that centres a revealed review range within the scroll viewport.
- */
-const REVEAL_CENTRE_DIVISOR: number = 2;
-
-/**
- * CSS Custom Highlight registry name for a revealed review issue.
- */
-const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
-
-/**
- * Duration in milliseconds the review reveal highlight stays before it is cleared.
- */
-const REVIEW_FLASH_DURATION: number = 1600;
-
-/**
- * CSS Custom Highlight registry name for the read-along spoken word.
- */
-const READ_HIGHLIGHT_WORD: string = 'markdown-read-word';
-
-/**
- * CSS Custom Highlight registry name for the read-along spoken sentence.
- */
-const READ_HIGHLIGHT_SENTENCE: string = 'markdown-read-sentence';
-
-/**
- * Comfort margin in pixels from the viewport edges within which the spoken word is considered visible
- * and does not trigger a follow scroll.
- */
-const READ_REVEAL_MARGIN: number = 120;
-
-/**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
  * document, with optional Outline/Review/Agent/Reader tool panels beside it. It owns the markdown-tab
  * concerns the bare pane does not — the backing document and save target, the ribbon command handler,
@@ -275,29 +220,25 @@ export class MarkdownView implements OnDestroy {
   );
 
   /**
-   * Holds the review session registered with the {@link Review} service while active, or null.
+   * Holds the review reveal collaborator: the review session seam and the flagged-issue reveal,
+   * driving the pane and scroll container through live accessors.
    */
-  private reviewSession: ReviewSession | null = null;
+  private readonly reviewReveal: ReviewReveal = new ReviewReveal(
+    (): MarkdownEditor | undefined => this.pane(),
+    (): HTMLElement | null => this.scrollContainer,
+    this.review,
+  );
 
   /**
-   * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
+   * Holds the read-along collaborator: the read session and spoken-word highlighting, driving the pane
+   * and scroll container through live accessors.
    */
-  private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
-
-  /**
-   * Holds the read session registered with the {@link Reader} service while active, or null.
-   */
-  private readSession: ReadSession | null = null;
-
-  /**
-   * Holds the words of the current read model, in rendered-DOM order.
-   */
-  private readWords: readonly ReadWord[] = [];
-
-  /**
-   * Holds a DOM range per read-model word, aligned to {@link readWords} by index.
-   */
-  private readWordRanges: readonly Range[] = [];
+  private readonly readAlong: ReadAlongHighlighter = new ReadAlongHighlighter(
+    (): MarkdownEditor | undefined => this.pane(),
+    (): HTMLElement | null => this.scrollContainer,
+    this.zone,
+    this.reader,
+  );
 
   /**
    * Gets the tool panel currently open beside this document's editor, or `none` when none is open.
@@ -384,8 +325,8 @@ export class MarkdownView implements OnDestroy {
 
       if (active) {
         this.registerCommandHandler();
-        this.registerReviewSession();
-        this.registerReadSession();
+        this.reviewReveal.register();
+        this.readAlong.register();
         this.refreshActiveBlockType();
         this.panels.setActiveDocument(this.tabId());
       } else {
@@ -393,8 +334,8 @@ export class MarkdownView implements OnDestroy {
           this.commands.deactivate(this.tabId());
           this.commandHandler = null;
         }
-        this.unregisterReviewSession();
-        this.unregisterReadSession();
+        this.reviewReveal.unregister();
+        this.readAlong.unregister();
       }
     });
   }
@@ -411,8 +352,8 @@ export class MarkdownView implements OnDestroy {
       this.commands.forget(this.tabId());
       this.commandHandler = null;
     }
-    this.unregisterReviewSession();
-    this.unregisterReadSession();
+    this.reviewReveal.unregister();
+    this.readAlong.unregister();
     this.panels.remove(this.tabId());
   }
 
@@ -461,7 +402,7 @@ export class MarkdownView implements OnDestroy {
     if (wasReady && this.isActive()) {
       this.refreshActiveBlockType();
       this.review.notifySourceChanged();
-      this.publishReadModel();
+      this.readAlong.publishModel();
     }
   }
 
@@ -474,7 +415,7 @@ export class MarkdownView implements OnDestroy {
       this.publishHistoryState();
       this.refreshOutline();
       this.review.notifySourceChanged();
-      this.publishReadModel();
+      this.readAlong.publishModel();
     }
   }
 
@@ -723,356 +664,6 @@ export class MarkdownView implements OnDestroy {
       READING_LINE_OFFSET +
       HEADING_LAND_BIAS;
     scroller.scrollTo({ top: offset, behavior: 'auto' });
-  }
-
-  /**
-   * Registers this view as the active review session, so the Review panel can read the live source,
-   * apply suggestions, and reveal flagged ranges in this editor.
-   */
-  private registerReviewSession(): void {
-    if (this.reviewSession !== null) {
-      return;
-    }
-    this.reviewSession = {
-      getSource: (): string => this.pane()?.getMarkdown() ?? '',
-      applyEdit: (start: number, end: number, replacement: string): void =>
-        this.applyReviewEdit(start, end, replacement),
-      reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
-    };
-    this.review.registerSession(this.reviewSession);
-  }
-
-  /**
-   * Unregisters this view's review session and clears any active reveal highlight.
-   */
-  private unregisterReviewSession(): void {
-    if (this.reviewSession !== null) {
-      this.review.unregisterSession(this.reviewSession);
-      this.reviewSession = null;
-    }
-    this.clearReviewFlash();
-  }
-
-  /**
-   * Applies a review suggestion by replacing the source range with the given text. The replacement is
-   * computed against the serialised markdown (the same source the issue offsets were derived from),
-   * then the whole document is re-parsed and swapped in a single, undoable transaction.
-   * @param start The start offset of the range to replace.
-   * @param end The end offset (exclusive) of the range to replace.
-   * @param replacement The replacement text.
-   */
-  private applyReviewEdit(start: number, end: number, replacement: string): void {
-    const pane: MarkdownEditor | undefined = this.pane();
-    if (pane === undefined) {
-      return;
-    }
-    const source: string = pane.getMarkdown();
-    pane.replaceAll(source.slice(0, start) + replacement + source.slice(end));
-  }
-
-  /**
-   * Scrolls the flagged text of a review issue into view and briefly highlights it. The flagged word
-   * is located in the rendered text at the occurrence closest to the issue's proportional position in
-   * the source (the rendered text differs from the markdown source, so this is an approximate match).
-   * @param issue The issue to reveal.
-   */
-  private revealReviewIssue(issue: ReviewIssue): void {
-    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
-    if (root === null || issue.word.length === 0) {
-      return;
-    }
-
-    const walker: TreeWalker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const segments: { node: Text; start: number }[] = [];
-    let rendered: string = '';
-    let node: Node | null = walker.nextNode();
-    while (node !== null) {
-      const textNode: Text = node as Text;
-      segments.push({ node: textNode, start: rendered.length });
-      rendered += textNode.textContent ?? '';
-      node = walker.nextNode();
-    }
-
-    const sourceLength: number = Math.max(MIN_SOURCE_LENGTH, this.reviewSourceLength());
-    const target: number = (issue.start / sourceLength) * rendered.length;
-    let best: number = NOT_FOUND;
-    let bestDelta: number = Number.POSITIVE_INFINITY;
-    let found: number = rendered.indexOf(issue.word);
-    while (found !== NOT_FOUND) {
-      const delta: number = Math.abs(found - target);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        best = found;
-      }
-      found = rendered.indexOf(issue.word, found + WORD_STEP);
-    }
-    if (best === NOT_FOUND) {
-      return;
-    }
-
-    const range: Range | null = this.rangeFromRendered(segments, best, best + issue.word.length);
-    if (range === null) {
-      return;
-    }
-    this.scrollRangeIntoView(range);
-    this.flashReviewRange(range);
-  }
-
-  /**
-   * Gets the length of the editor's serialised markdown source, used to position a review reveal.
-   * @returns Returns the source length, or zero when no editor is mounted.
-   */
-  private reviewSourceLength(): number {
-    return this.pane()?.getMarkdown().length ?? 0;
-  }
-
-  /**
-   * Scrolls the editor's scroll container so the given range is centred in view.
-   * @param range The range to reveal.
-   */
-  private scrollRangeIntoView(range: Range): void {
-    const scroller: HTMLElement | null = this.scrollContainer;
-    if (scroller === null) {
-      return;
-    }
-    const rect: DOMRect = range.getBoundingClientRect();
-    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
-    scroller.scrollTo({
-      top:
-        scroller.scrollTop +
-        (rect.top - scrollerRect.top) -
-        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
-      behavior: 'smooth',
-    });
-  }
-
-  /**
-   * Builds a DOM range spanning the given rendered-text offsets.
-   * @param segments The text-node segments with their start offsets.
-   * @param start The start offset in the rendered text.
-   * @param end The end offset (exclusive) in the rendered text.
-   * @returns Returns the range, or null when it cannot be resolved.
-   */
-  private rangeFromRendered(
-    segments: readonly { node: Text; start: number }[],
-    start: number,
-    end: number,
-  ): Range | null {
-    const startSegment: { node: Text; start: number } | undefined = this.segmentAt(segments, start);
-    const endSegment: { node: Text; start: number } | undefined = this.segmentAt(
-      segments,
-      end - WORD_STEP,
-    );
-    if (startSegment === undefined || endSegment === undefined) {
-      return null;
-    }
-    const range: Range = document.createRange();
-    range.setStart(startSegment.node, start - startSegment.start);
-    range.setEnd(endSegment.node, end - endSegment.start);
-    return range;
-  }
-
-  /**
-   * Finds the text-node segment containing a rendered-text offset.
-   * @param segments The segments.
-   * @param offset The rendered-text offset.
-   * @returns Returns the containing segment, or undefined.
-   */
-  private segmentAt(
-    segments: readonly { node: Text; start: number }[],
-    offset: number,
-  ): { node: Text; start: number } | undefined {
-    let match: { node: Text; start: number } | undefined;
-    for (const segment of segments) {
-      if (segment.start <= offset) {
-        match = segment;
-      } else {
-        break;
-      }
-    }
-    return match;
-  }
-
-  /**
-   * Briefly highlights a range using the CSS Custom Highlight API, which paints over the rendered text
-   * without mutating the editor's DOM or document. Clears any prior flash first. No-ops where the API
-   * is unavailable (such as under unit tests).
-   * @param range The range to flash.
-   */
-  private flashReviewRange(range: Range): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    this.clearReviewFlash();
-    CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
-    this.reviewFlashTimer = setTimeout((): void => {
-      this.clearReviewFlash();
-    }, REVIEW_FLASH_DURATION);
-  }
-
-  /**
-   * Clears the review reveal highlight and its pending timer, if any.
-   */
-  private clearReviewFlash(): void {
-    if (this.reviewFlashTimer !== null) {
-      clearTimeout(this.reviewFlashTimer);
-      this.reviewFlashTimer = null;
-    }
-    if (this.supportsHighlight()) {
-      CSS.highlights.delete(REVIEW_HIGHLIGHT_NAME);
-    }
-  }
-
-  /**
-   * Determines whether the CSS Custom Highlight API is available for review and read-along
-   * highlighting.
-   * @returns Returns true when the API can be used.
-   */
-  private supportsHighlight(): boolean {
-    return (
-      typeof Highlight !== 'undefined' && typeof CSS !== 'undefined' && Boolean(CSS.highlights)
-    );
-  }
-
-  /**
-   * Registers this view as the active read session and publishes its rendered word model, so the
-   * Reader panel can speak the document and highlight the spoken word here.
-   */
-  private registerReadSession(): void {
-    if (this.readSession !== null) {
-      return;
-    }
-    this.readSession = {
-      highlight: (index: number, mode: HighlightMode): void => this.highlightReadWord(index, mode),
-      clearHighlight: (): void => this.clearReadHighlight(),
-      revealWord: (index: number): void => this.revealReadWord(index),
-    };
-    this.reader.registerSession(this.readSession);
-    this.publishReadModel();
-  }
-
-  /**
-   * Clears any read-along highlight and unregisters this view as the read session.
-   */
-  private unregisterReadSession(): void {
-    if (this.readSession === null) {
-      return;
-    }
-    this.clearReadHighlight();
-    this.reader.unregisterSession(this.readSession);
-    this.readSession = null;
-    this.readWords = [];
-    this.readWordRanges = [];
-  }
-
-  /**
-   * Builds the read-along model from the rendered document and publishes it to the reader, keeping the
-   * local word ranges for in-document highlighting.
-   */
-  private publishReadModel(): void {
-    if (this.readSession === null) {
-      return;
-    }
-    const root: HTMLElement | null = this.pane()?.getEditorView()?.dom ?? null;
-    const model: ReadModel = buildReadModel(root);
-    this.readWords = model.document.words;
-    this.readWordRanges = model.ranges;
-    this.zone.run((): void => this.reader.setDocument(model.document));
-  }
-
-  /**
-   * Highlights the read-along word at the given index, or its sentence, using the CSS Custom Highlight
-   * API, which paints over the rendered text without mutating ProseMirror's DOM.
-   * @param wordIndex The word to highlight.
-   * @param mode Whether to highlight the single word or its sentence.
-   */
-  private highlightReadWord(wordIndex: number, mode: HighlightMode): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    const word: ReadWord | undefined = this.readWords[wordIndex];
-    const wordRange: Range | undefined = this.readWordRanges[wordIndex];
-    if (word === undefined || wordRange === undefined) {
-      this.clearReadHighlight();
-      return;
-    }
-    if (mode === 'sentence') {
-      CSS.highlights.set(
-        READ_HIGHLIGHT_SENTENCE,
-        new Highlight(this.sentenceRange(wordIndex, word.sentenceIndex)),
-      );
-      CSS.highlights.delete(READ_HIGHLIGHT_WORD);
-    } else {
-      CSS.highlights.set(READ_HIGHLIGHT_WORD, new Highlight(wordRange));
-      CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
-    }
-  }
-
-  /**
-   * Builds a DOM range spanning every word in the given sentence.
-   * @param wordIndex A word within the sentence.
-   * @param sentenceIndex The sentence index to span.
-   * @returns Returns the sentence range.
-   */
-  private sentenceRange(wordIndex: number, sentenceIndex: number): Range {
-    let start: number = wordIndex;
-    let end: number = wordIndex;
-    while (
-      start - WORD_STEP >= 0 &&
-      this.readWords[start - WORD_STEP].sentenceIndex === sentenceIndex
-    ) {
-      start -= WORD_STEP;
-    }
-    while (
-      end + WORD_STEP < this.readWords.length &&
-      this.readWords[end + WORD_STEP].sentenceIndex === sentenceIndex
-    ) {
-      end += WORD_STEP;
-    }
-    const startRange: Range = this.readWordRanges[start];
-    const endRange: Range = this.readWordRanges[end];
-    const range: Range = document.createRange();
-    range.setStart(startRange.startContainer, startRange.startOffset);
-    range.setEnd(endRange.endContainer, endRange.endOffset);
-    return range;
-  }
-
-  /**
-   * Clears the read-along highlight from the document.
-   */
-  private clearReadHighlight(): void {
-    if (!this.supportsHighlight()) {
-      return;
-    }
-    CSS.highlights.delete(READ_HIGHLIGHT_WORD);
-    CSS.highlights.delete(READ_HIGHLIGHT_SENTENCE);
-  }
-
-  /**
-   * Smoothly scrolls the spoken word into view when it drifts near or past the viewport edges, keeping
-   * the read-along position comfortably visible.
-   * @param wordIndex The word to reveal.
-   */
-  private revealReadWord(wordIndex: number): void {
-    const range: Range | undefined = this.readWordRanges[wordIndex];
-    const scroller: HTMLElement | null = this.scrollContainer;
-    if (range === undefined || scroller === null) {
-      return;
-    }
-    const rect: DOMRect = range.getBoundingClientRect();
-    const scrollerRect: DOMRect = scroller.getBoundingClientRect();
-    const aboveComfort: boolean = rect.top < scrollerRect.top + READ_REVEAL_MARGIN;
-    const belowComfort: boolean = rect.bottom > scrollerRect.bottom - READ_REVEAL_MARGIN;
-    if (!aboveComfort && !belowComfort) {
-      return;
-    }
-    scroller.scrollTo({
-      top:
-        scroller.scrollTop +
-        (rect.top - scrollerRect.top) -
-        scrollerRect.height / REVEAL_CENTRE_DIVISOR,
-      behavior: 'smooth',
-    });
   }
 
   /**
