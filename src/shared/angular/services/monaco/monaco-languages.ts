@@ -119,13 +119,10 @@ export function languageForExtension(extension: string): string {
  * Resolves the canonical file extension for a Monaco language identifier (the first extension
  * registered for it), used to suggest a file name when saving a new document.
  * @param language The Monaco language identifier.
- * @returns Returns the extension with a leading dot, or an empty string for plaintext or a language
- * with no registered extension.
+ * @returns Returns the extension with a leading dot (`.txt` for plaintext), or an empty string for a
+ * language with no registered extension.
  */
 export function extensionForLanguage(language: string): string {
-  if (language === DEFAULT_LANGUAGE) {
-    return '';
-  }
   for (const [extension, mapped] of Object.entries(EXTENSION_TO_LANGUAGE)) {
     if (mapped === language) {
       return extension;
