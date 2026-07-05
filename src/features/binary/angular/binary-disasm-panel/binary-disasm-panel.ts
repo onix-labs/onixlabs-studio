@@ -1,10 +1,8 @@
 import {
-  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
-  ElementRef,
   inject,
   input,
   InputSignal,
@@ -18,6 +16,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { ASM_LANGUAGE_ID } from '@shared/angular/services/monaco/monaco-asm-language';
@@ -57,22 +56,24 @@ interface DisasmContent {
 }
 
 /**
- * Represents the disassembly side panel: a read-only Monaco editor showing the native instructions
- * decoded for the visible byte range as syntax-highlighted assembly, cross-highlighted with the hex
- * grid. Clicking a line selects its bytes; a byte selection highlights (and reveals) the lines it
- * overlaps. It renders the document's already-loaded instructions — the loading itself is driven by
- * the view as the viewport moves.
+ * Represents the disassembly side panel: a read-only assembly listing showing the native instructions
+ * decoded for the visible byte range, cross-highlighted with the hex grid. It composes the shared
+ * {@link TextEditor} pane — pinned to a bare, read-only viewer through its options — and layers the
+ * disassembly-specific behaviour on top: clicking a line selects its bytes, and a byte selection
+ * highlights (and reveals) the lines it overlaps. It renders the document's already-loaded
+ * instructions — the loading itself is driven by the view as the viewport moves.
  */
 @Component({
   selector: 'app-binary-disasm-panel',
-  imports: [AppIcon],
+  imports: [AppIcon, TextEditor],
   templateUrl: './binary-disasm-panel.html',
   styleUrl: './binary-disasm-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
+export class BinaryDisasmPanel implements OnDestroy {
   /**
-   * Holds the Monaco service used to load the engine and resolve options.
+   * Holds the Monaco service, used to resolve the {@link MonacoApi.Range} constructor when building the
+   * cross-highlight decorations.
    */
   private readonly monaco: Monaco = inject(Monaco);
 
@@ -80,6 +81,11 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the Monaco language identifier for the assembly listing, exposed for the template's binding.
+   */
+  protected readonly ASM_LANGUAGE_ID: string = ASM_LANGUAGE_ID;
 
   /**
    * Gets the document whose instructions are shown, or undefined when none is bound.
@@ -94,10 +100,27 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
   public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Holds the element the Monaco editor mounts into.
+   * Pins the composed editor to a bare, read-only assembly viewer: no line numbers (each line already
+   * carries its address), no minimap or folding, no current-line highlight, and tight padding. A stable
+   * reference so the {@link TextEditor} options input does not churn.
    */
-  private readonly host: Signal<ElementRef<HTMLDivElement>> =
-    viewChild.required<ElementRef<HTMLDivElement>>('host');
+  protected readonly editorOptions: MonacoApi.editor.IEditorOptions = {
+    lineNumbers: 'off',
+    minimap: { enabled: false },
+    folding: false,
+    glyphMargin: false,
+    lineDecorationsWidth: 0,
+    renderLineHighlight: 'none',
+    scrollBeyondLastLine: false,
+    contextmenu: false,
+    wordWrap: 'off',
+    padding: { top: 4 },
+  };
+
+  /**
+   * Holds the composed read-only text-editor pane, or undefined before the view initialises.
+   */
+  private readonly pane: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
 
   /**
    * Holds whether the document's format can be natively disassembled (drives the empty note overlay).
@@ -108,63 +131,50 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
   });
 
   /**
-   * Holds the per-line instruction map for the current content, kept as a signal so the highlight
-   * re-applies after a content rebuild.
+   * Holds the built listing text and its line-to-instruction map, rebuilt whenever the decoded
+   * instructions change (the viewport moved, or the format resolved). Bound to the editor's content.
    */
-  private readonly lineInstructions: WritableSignal<readonly LineInstruction[]> = signal<
-    readonly LineInstruction[]
-  >([]);
+  protected readonly content: Signal<DisasmContent> = computed(
+    (): DisasmContent => buildContent(this.document()?.instructions() ?? []),
+  );
 
   /**
-   * Holds the Monaco editor instance, or null before creation and after disposal.
-   */
-  private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
-
-  /**
-   * Holds the selection-highlight decorations, or null before the editor is created.
+   * Holds the selection-highlight decorations, or null before the editor is ready.
    */
   private highlight: MonacoApi.editor.IEditorDecorationsCollection | null = null;
 
   /**
-   * Holds whether the editor has been created and is ready for content and decorations.
+   * Holds whether the composed editor has been created and is ready for decorations.
    */
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Wires the content-rebuild and cross-highlight effects.
+   * Holds the editor-instance listeners to release when the panel is torn down.
+   */
+  private readonly disposables: MonacoApi.IDisposable[] = [];
+
+  /**
+   * Wires the cross-highlight effect.
    */
   public constructor() {
-    // Rebuild the listing whenever the decoded instructions change (the viewport moved, or the format
-    // resolved).
+    // Highlight and reveal the lines whose bytes overlap the current selection. Re-runs when the
+    // listing changes (it reads the line map) so the highlight tracks the fresh content.
     effect((): void => {
-      const instructions: readonly DecodedInstruction[] = this.document()?.instructions() ?? [];
-      this.rebuild(instructions);
-    });
-
-    // Highlight and reveal the lines whose bytes overlap the current selection. Re-runs after a
-    // rebuild (it reads the line map) so the highlight tracks the fresh content.
-    effect((): void => {
-      this.lineInstructions();
+      this.content();
       const selection: BinarySelection | null = this.document()?.selection() ?? null;
       this.applyHighlight(selection);
     });
   }
 
   /**
-   * Loads Monaco if needed and creates the editor once the host element is available.
-   */
-  public ngAfterViewInit(): void {
-    void this.initEditor();
-  }
-
-  /**
-   * Disposes the editor when the panel is torn down.
+   * Releases the editor-instance listeners when the panel is torn down. The composed pane disposes the
+   * Monaco editor (and with it the decorations) itself.
    */
   public ngOnDestroy(): void {
-    if (this.editor !== null) {
-      this.editor.dispose();
-      this.editor = null;
+    for (const disposable of this.disposables) {
+      disposable.dispose();
     }
+    this.disposables.length = 0;
     this.highlight = null;
     this.editorReady.set(false);
   }
@@ -177,55 +187,27 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Awaits the Monaco load, then creates the read-only assembly editor.
-   * @returns Returns a promise that resolves once the editor has been created.
+   * Wires the editor-instance features once the composed pane's Monaco editor exists: the selection
+   * decorations, the click-to-select-bytes handler, and a re-highlight after each content change. The
+   * pane's `setValue` clears all decorations, so they must be re-applied once it has run — hence the
+   * re-highlight on the model-content change rather than only in the content effect.
    */
-  private async initEditor(): Promise<void> {
-    await this.monaco.ensureLoaded();
-    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
-    if (monaco === undefined) {
+  protected onReady(): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.pane()?.getEditor() ?? null;
+    if (editor === null) {
       return;
     }
-    const content: DisasmContent = buildContent(this.document()?.instructions() ?? []);
-    this.editor = monaco.editor.create(this.host().nativeElement, {
-      ...this.monaco.getEditorOptions(ASM_LANGUAGE_ID),
-      value: content.text,
-      language: ASM_LANGUAGE_ID,
-      readOnly: true,
-      lineNumbers: 'off',
-      minimap: { enabled: false },
-      folding: false,
-      glyphMargin: false,
-      lineDecorationsWidth: 0,
-      renderLineHighlight: 'none',
-      scrollBeyondLastLine: false,
-      contextmenu: false,
-      wordWrap: 'off',
-      padding: { top: 4 },
-    });
-    this.lineInstructions.set(content.lines);
-    this.highlight = this.editor.createDecorationsCollection();
-    this.editor.onMouseDown((event: MonacoApi.editor.IEditorMouseEvent): void =>
-      this.onEditorMouseDown(event),
+    this.highlight = editor.createDecorationsCollection();
+    this.disposables.push(
+      editor.onMouseDown((event: MonacoApi.editor.IEditorMouseEvent): void =>
+        this.onEditorMouseDown(event),
+      ),
+      editor.onDidChangeModelContent((): void =>
+        this.applyHighlight(this.document()?.selection() ?? null),
+      ),
     );
     this.editorReady.set(true);
     this.applyHighlight(this.document()?.selection() ?? null);
-  }
-
-  /**
-   * Rebuilds the listing text and line map, replacing the editor's content when it differs.
-   * @param instructions The decoded instructions to render.
-   */
-  private rebuild(instructions: readonly DecodedInstruction[]): void {
-    const content: DisasmContent = buildContent(instructions);
-    this.lineInstructions.set(content.lines);
-    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-    if (editor === null || !this.editorReady()) {
-      return;
-    }
-    if (editor.getValue() !== content.text) {
-      editor.setValue(content.text);
-    }
   }
 
   /**
@@ -233,7 +215,7 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
    * @param selection The current byte selection, or null when nothing is selected.
    */
   private applyHighlight(selection: BinarySelection | null): void {
-    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.pane()?.getEditor() ?? null;
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (editor === null || monaco === undefined || this.highlight === null || !this.editorReady()) {
       return;
@@ -244,7 +226,7 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
     }
     const decorations: MonacoApi.editor.IModelDeltaDecoration[] = [];
     let firstLine: number | null = null;
-    this.lineInstructions().forEach((line: LineInstruction, index: number): void => {
+    this.content().lines.forEach((line: LineInstruction, index: number): void => {
       if (line.startOffset < selection.end && line.startOffset + line.byteLength > selection.start) {
         const lineNumber: number = index + 1;
         firstLine ??= lineNumber;
@@ -271,7 +253,7 @@ export class BinaryDisasmPanel implements AfterViewInit, OnDestroy {
     if (lineNumber === undefined || document === undefined) {
       return;
     }
-    const line: LineInstruction | undefined = this.lineInstructions()[lineNumber - 1];
+    const line: LineInstruction | undefined = this.content().lines[lineNumber - 1];
     if (line === undefined) {
       return;
     }

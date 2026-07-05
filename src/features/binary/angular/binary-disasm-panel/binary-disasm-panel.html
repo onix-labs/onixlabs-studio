@@ -9,7 +9,15 @@
   </div>
 
   <div class="disasm__body">
-    <div #host class="disasm__editor"></div>
+    <div class="disasm__editor">
+      <app-text-editor
+        [content]="content().text"
+        [language]="ASM_LANGUAGE_ID"
+        [readOnly]="true"
+        [options]="editorOptions"
+        (ready)="onReady()"
+      />
+    </div>
     @if (!disassemblable()) {
       <p class="disasm__empty">No native disassembly for this format.</p>
     }

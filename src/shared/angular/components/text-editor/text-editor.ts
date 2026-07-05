@@ -99,6 +99,21 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   public readonly language: InputSignal<string> = input<string>('plaintext');
 
   /**
+   * Gets a value indicating whether the editor rejects user edits. A read-only pane is still updated
+   * through {@link content} and its imperative API — only interactive editing is blocked.
+   */
+  public readonly readOnly: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets editor options that override the settings-derived defaults. They are merged last — over both
+   * the initial construction options and every live re-application — so a composing view can pin chrome
+   * (for example hiding line numbers and the minimap on a disassembly listing) that would otherwise be
+   * reset when the settings, theme, or zoom change. Pass a stable reference to avoid needless churn.
+   */
+  public readonly options: InputSignal<MonacoApi.editor.IEditorOptions> =
+    input<MonacoApi.editor.IEditorOptions>({});
+
+  /**
    * Gets a value indicating whether the pane belongs to the active tab. The active pane is laid out
    * and focused.
    */
@@ -184,6 +199,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         // The line height is a multiplier of the font size (0 = automatic), so it tracks the zoomed
         // font size Monaco derives it from without any extra scaling here.
         lineHeight: resolved.lineHeight,
+        readOnly: this.readOnly(),
+        // Merged last so a composing view's pinned chrome wins over the settings-derived defaults.
+        ...this.options(),
       });
       this.applyBracketColorization();
       this.monaco
@@ -403,6 +421,10 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     const language: string = this.language();
     this.editor = monaco.editor.create(this.host().nativeElement, {
       ...this.monaco.getEditorOptions(language),
+      readOnly: this.readOnly(),
+      // Merged before value/language so a composing view's pinned chrome wins, but cannot clobber the
+      // seeded content or language.
+      ...this.options(),
       value: this.content(),
       language,
     });
