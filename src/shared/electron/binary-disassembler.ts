@@ -1,6 +1,4 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import * as fs from 'node:fs/promises';
-import type { FileHandle } from 'node:fs/promises';
 import {
   Architecture,
   Capstone,
@@ -10,24 +8,9 @@ import {
   Mode,
 } from 'disassembler';
 import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
-import { TrustedPaths } from './trusted-paths';
-import { WorkspaceContext } from './workspace-context';
 
 /**
- * Specifies how many bytes are read before the requested window, so an instruction straddling the
- * window start can be seen (and its partial lead discarded) rather than mis-decoding the window from a
- * mid-instruction byte. A little over the longest x86 instruction.
- */
-const PAD_BEFORE: number = 16;
-
-/**
- * Specifies how many bytes are read after the requested window, so an instruction straddling the
- * window end still decodes.
- */
-const PAD_AFTER: number = 16;
-
-/**
- * Specifies the largest window (in bytes) a single request will disassemble, bounding the work and the
+ * Specifies the largest buffer (in bytes) a single request will disassemble, bounding the work and the
  * IPC payload however large a range the renderer asks for.
  */
 const MAX_WINDOW: number = 64 * 1024;
@@ -47,10 +30,11 @@ interface ArchitectureSpec {
 }
 
 /**
- * Disassembles windows of native machine code on behalf of the binary/hex editor, using Capstone
- * compiled to WebAssembly. It reads only the requested (padded) window from disk — confined to trusted
- * paths or the open workspace — and returns decoded instructions over the shared
- * {@link DecodedInstruction} contract.
+ * Disassembles buffers of native machine code on behalf of the binary/hex editor, using Capstone
+ * compiled to WebAssembly. The renderer sends the bytes it is displaying (already obtained through the
+ * gated byte-read channel and with any unsaved edits applied), so this holds no path and touches no
+ * disk; it decodes the buffer and returns instructions over the shared {@link DecodedInstruction}
+ * contract.
  *
  * Capstone instances are created once per architecture and **held for the process lifetime**: the
  * underlying library frees any instance whose wrapper is garbage-collected, and that free path is
@@ -58,16 +42,6 @@ interface ArchitectureSpec {
  * session" guidance).
  */
 export class BinaryDisassembler {
-  /**
-   * Holds the shared workspace context, used to confine reads to the open root.
-   */
-  private readonly workspace: WorkspaceContext;
-
-  /**
-   * Holds the store of paths the user has opened, used to authorise reads outside the workspace.
-   */
-  private readonly trusted: TrustedPaths;
-
   /**
    * Holds the in-flight or resolved Capstone framework initialization, created on first use.
    */
@@ -80,16 +54,6 @@ export class BinaryDisassembler {
   private readonly instances: Map<string, CapstoneInstance> = new Map<string, CapstoneInstance>();
 
   /**
-   * Initializes a new instance of the {@link BinaryDisassembler} class.
-   * @param workspace The shared workspace context to confine reads to.
-   * @param trusted The store recording paths the user has opened, gating reads outside the workspace.
-   */
-  public constructor(workspace: WorkspaceContext, trusted: TrustedPaths) {
-    this.workspace = workspace;
-    this.trusted = trusted;
-  }
-
-  /**
    * Registers the disassembly IPC handler.
    */
   public register(): void {
@@ -97,45 +61,49 @@ export class BinaryDisassembler {
       BinaryChannel.Disassemble,
       (
         _event: IpcMainInvokeEvent,
-        filePath: unknown,
-        offset: unknown,
-        length: unknown,
+        bytes: unknown,
+        baseOffset: unknown,
+        filterStart: unknown,
+        filterEnd: unknown,
         architecture: unknown,
       ): Promise<DecodedInstruction[]> =>
-        this.disassemble(filePath, offset, length, architecture),
+        this.disassemble(bytes, baseOffset, filterStart, filterEnd, architecture),
     );
   }
 
   /**
-   * Disassembles a window of a file's machine code. The window is padded on both sides and the partial
-   * instruction straddling its start is discarded, so variable-length instructions decode correctly
-   * rather than from a mid-instruction byte.
-   * @param filePath The absolute path of the file.
-   * @param offset The first byte of the window to return instructions for.
-   * @param length The number of bytes in that window.
+   * Disassembles a buffer of machine code and returns the instructions whose start falls in the
+   * requested sub-range. The renderer pads the buffer on both sides of that sub-range, so an
+   * instruction straddling its start is decoded (and then filtered out) rather than mis-decoded from a
+   * mid-instruction byte.
+   * @param bytes The buffer to disassemble (a byte array from the renderer).
+   * @param baseOffset The absolute file offset of the buffer's first byte.
+   * @param filterStart The first offset to return instructions for.
+   * @param filterEnd The offset one past the last to return instructions for.
    * @param architecture The sniffed architecture label (`x86`, `x64`, `ARM`, `ARM64`).
-   * @returns Returns the decoded instructions within the window, or an empty list when unsupported,
-   * untrusted, or unreadable.
+   * @returns Returns the decoded instructions within the sub-range, or an empty list when unsupported
+   * or on error.
    */
   private async disassemble(
-    filePath: unknown,
-    offset: unknown,
-    length: unknown,
+    bytes: unknown,
+    baseOffset: unknown,
+    filterStart: unknown,
+    filterEnd: unknown,
     architecture: unknown,
   ): Promise<DecodedInstruction[]> {
-    if (typeof filePath !== 'string' || filePath.length === 0) {
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
       return [];
     }
-    if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) {
+    if (typeof baseOffset !== 'number' || !Number.isInteger(baseOffset) || baseOffset < 0) {
       return [];
     }
-    if (typeof length !== 'number' || !Number.isInteger(length) || length <= 0) {
+    if (typeof filterStart !== 'number' || !Number.isInteger(filterStart)) {
+      return [];
+    }
+    if (typeof filterEnd !== 'number' || !Number.isInteger(filterEnd)) {
       return [];
     }
     if (typeof architecture !== 'string') {
-      return [];
-    }
-    if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
       return [];
     }
     const spec: ArchitectureSpec | null = architectureSpec(architecture);
@@ -143,14 +111,11 @@ export class BinaryDisassembler {
       return [];
     }
     try {
-      const windowLength: number = Math.min(length, MAX_WINDOW);
-      const start: number = Math.max(0, offset - PAD_BEFORE);
-      const bytes: Uint8Array = await this.readWindow(filePath, start, offset + windowLength + PAD_AFTER);
+      const buffer: Uint8Array = bytes.subarray(0, MAX_WINDOW);
       const instance: CapstoneInstance = await this.instanceFor(architecture, spec);
-      const end: number = offset + windowLength;
-      return this.decodeWithResync(instance, bytes, start).filter(
+      return this.decodeWithResync(instance, buffer, baseOffset).filter(
         (instruction: DecodedInstruction): boolean =>
-          instruction.startOffset >= offset && instruction.startOffset < end,
+          instruction.startOffset >= filterStart && instruction.startOffset < filterEnd,
       );
     } catch {
       return [];
@@ -225,30 +190,6 @@ export class BinaryDisassembler {
     const instance: CapstoneInstance = framework.createInstance(spec.architecture, spec.mode);
     this.instances.set(architecture, instance);
     return instance;
-  }
-
-  /**
-   * Reads a byte window from a file, clamped to the file's size.
-   * @param filePath The absolute path of the file.
-   * @param start The first byte offset to read.
-   * @param end The offset one past the last byte to read.
-   * @returns Returns the bytes read (possibly shorter than requested near the end of the file).
-   */
-  private async readWindow(filePath: string, start: number, end: number): Promise<Uint8Array> {
-    let handle: FileHandle | undefined;
-    try {
-      handle = await fs.open(filePath, 'r');
-      const size: number = (await handle.stat()).size;
-      const from: number = Math.min(start, size);
-      const toRead: number = Math.max(0, Math.min(end, size) - from);
-      const buffer: Buffer = Buffer.alloc(toRead);
-      if (toRead > 0) {
-        await handle.read(buffer, 0, toRead, from);
-      }
-      return new Uint8Array(buffer);
-    } finally {
-      await handle?.close();
-    }
   }
 }
 

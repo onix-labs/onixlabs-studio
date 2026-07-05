@@ -6,7 +6,9 @@
  */
 export enum BinaryChannel {
   /**
-   * Disassembles a window of a file's machine code for the given architecture (invoke).
+   * Disassembles a buffer of machine code for the given architecture (invoke). The renderer sends the
+   * bytes it is displaying — so unsaved edits are reflected — along with the buffer's base offset and
+   * the sub-range to return instructions for.
    */
   Disassemble = 'binary:disassemble',
 }

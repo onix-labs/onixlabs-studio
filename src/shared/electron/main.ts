@@ -241,12 +241,10 @@ class Program {
   );
 
   /**
-   * Disassembles native machine code for the binary/hex editor, confined to the same trusted paths.
+   * Disassembles native machine code for the binary/hex editor. It decodes bytes the renderer sends
+   * (already obtained through the gated byte-read channel), so it needs no disk access of its own.
    */
-  private readonly binaryDisassembler: BinaryDisassembler = new BinaryDisassembler(
-    this.workspaceContext,
-    this.trustedPaths,
-  );
+  private readonly binaryDisassembler: BinaryDisassembler = new BinaryDisassembler();
 
   /**
    * Owns the user's language-server settings (disabled servers, runtime overrides).

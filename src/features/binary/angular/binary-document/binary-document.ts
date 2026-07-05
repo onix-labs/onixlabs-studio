@@ -26,6 +26,13 @@ const BLOCK_SIZE: number = 64 * 1024;
 const DISASSEMBLY_DEBOUNCE_MS: number = 120;
 
 /**
+ * Specifies how many bytes pad each side of a disassembly range, so an instruction straddling either
+ * edge decodes (the padding instructions are then filtered out). A little over the longest x86
+ * instruction.
+ */
+const DISASSEMBLY_PAD: number = 16;
+
+/**
  * Specifies the largest number of disassembled ranges cached before the cache is cleared, bounding
  * memory over a long editing session.
  */
@@ -269,7 +276,9 @@ export class BinaryDocumentEntry {
       this.instructions.set([]);
       return;
     }
-    const key: string = `${architecture}:${offset}:${length}`;
+    // The edits version is part of the key so an overwrite invalidates the cached decode and the range
+    // re-disassembles from the edited bytes rather than the stale result.
+    const key: string = `${architecture}:${offset}:${length}:${this.editsVersion()}`;
     const cached: readonly DecodedInstruction[] | undefined = this.disassemblyCache.get(key);
     if (cached !== undefined) {
       this.instructions.set(cached);
@@ -280,8 +289,18 @@ export class BinaryDocumentEntry {
     }
     const token: number = (this.disassemblyToken += 1);
     this.disassemblyTimer = setTimeout((): void => {
+      const window: { bytes: Uint8Array; base: number } | null = this.disassemblyWindow(
+        offset,
+        length,
+      );
+      if (window === null) {
+        if (token === this.disassemblyToken) {
+          this.instructions.set([]);
+        }
+        return;
+      }
       void this.disassembly
-        .disassemble(this.path, offset, length, architecture)
+        .disassemble(window.bytes, window.base, offset, offset + length, architecture)
         .then((result: readonly DecodedInstruction[]): void => {
           if (this.disassemblyCache.size >= MAX_DISASSEMBLY_CACHE) {
             this.disassemblyCache.clear();
@@ -292,6 +311,35 @@ export class BinaryDocumentEntry {
           }
         });
     }, DISASSEMBLY_DEBOUNCE_MS);
+  }
+
+  /**
+   * Builds the byte buffer to disassemble for a range: the requested bytes padded on both sides (so an
+   * instruction straddling either edge decodes) and read through {@link byteAt}, so pending edits are
+   * reflected. Returns null when no bytes in the range are loaded yet.
+   * @param offset The first byte of the range.
+   * @param length The number of bytes in the range.
+   * @returns Returns the padded buffer and its base offset, or null when nothing is loaded.
+   */
+  private disassemblyWindow(
+    offset: number,
+    length: number,
+  ): { bytes: Uint8Array; base: number } | null {
+    const start: number = Math.max(0, offset - DISASSEMBLY_PAD);
+    const end: number = Math.min(this.size(), offset + length + DISASSEMBLY_PAD);
+    let base: number = start;
+    while (base < end && this.byteAt(base) === null) {
+      base += 1;
+    }
+    const values: number[] = [];
+    for (let position: number = base; position < end; position += 1) {
+      const value: number | null = this.byteAt(position);
+      if (value === null) {
+        break;
+      }
+      values.push(value);
+    }
+    return values.length === 0 ? null : { bytes: Uint8Array.from(values), base };
   }
 
   /**

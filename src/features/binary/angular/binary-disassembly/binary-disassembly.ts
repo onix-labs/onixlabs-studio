@@ -15,26 +15,31 @@ export class BinaryDisassembly {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Disassembles a window of a file's machine code for the given architecture.
-   * @param path The absolute path of the file.
-   * @param offset The first byte of the window to return instructions for.
-   * @param length The number of bytes in that window.
+   * Disassembles a buffer of machine code, returning the instructions whose start falls in the
+   * requested sub-range. The caller pads the buffer around that sub-range so straddling instructions
+   * decode; passing the bytes it holds (rather than a path) reflects any unsaved edits.
+   * @param bytes The buffer to disassemble.
+   * @param baseOffset The absolute file offset of the buffer's first byte.
+   * @param filterStart The first offset to return instructions for.
+   * @param filterEnd The offset one past the last to return instructions for.
    * @param architecture The sniffed architecture label (`x86`, `x64`, `ARM`, `ARM64`).
-   * @returns Returns the decoded instructions within the window, or an empty list when unsupported or
-   * running outside Electron.
+   * @returns Returns the decoded instructions within the sub-range, or an empty list when unsupported
+   * or running outside Electron.
    */
   public disassemble(
-    path: string,
-    offset: number,
-    length: number,
+    bytes: Uint8Array,
+    baseOffset: number,
+    filterStart: number,
+    filterEnd: number,
     architecture: string,
   ): Promise<readonly DecodedInstruction[]> {
     return (
       this.bridge?.invoke<readonly DecodedInstruction[]>(
         BinaryChannel.Disassemble,
-        path,
-        offset,
-        length,
+        bytes,
+        baseOffset,
+        filterStart,
+        filterEnd,
         architecture,
       ) ?? Promise.resolve([])
     );
