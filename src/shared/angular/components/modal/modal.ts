@@ -2,11 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -89,10 +92,42 @@ export class Modal {
   public readonly draggableBackdrop: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the modal offers an expand/restore control beside the close
+   * button, letting the user toggle the panel between its themed width and filling the window (with a
+   * fixed inset all around). Off by default; only content that benefits from more room opts in.
+   */
+  public readonly expandable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds a value indicating whether the panel is currently expanded to fill the window. Reset
+   * whenever the modal closes so it reopens at its default size.
+   */
+  protected readonly expanded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Emitted when the user dismisses the modal via the backdrop, the Escape key, or the close button.
    * The caller owns the open state and is responsible for acting on this.
    */
   public readonly dismiss: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Initializes a new instance of the {@link Modal} class, collapsing any expanded state when the
+   * modal closes so it always reopens at its default size.
+   */
+  public constructor() {
+    effect((): void => {
+      if (!this.open()) {
+        this.expanded.set(false);
+      }
+    });
+  }
+
+  /**
+   * Toggles the panel between its default size and filling the window.
+   */
+  protected toggleExpanded(): void {
+    this.expanded.update((value: boolean): boolean => !value);
+  }
 
   /**
    * Requests dismissal, emitting only when the modal is currently dismissable.

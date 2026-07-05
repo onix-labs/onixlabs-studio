@@ -7,77 +7,88 @@
       </div>
     }
 
-    @for (item of items(); track item.id) {
-      @switch (item.kind) {
+    @for (row of rows(); track row.id) {
+      @switch (row.kind) {
         @case ('user') {
           <div class="agent__message agent__message--user">
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
-            <p class="agent__bubble">{{ item.text }}</p>
-          </div>
-        }
-        @case ('assistant') {
-          <div class="agent__message">
-            <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.AGENT" /></span>
-            <div class="agent__bubble agent__markdown" [innerHTML]="item.text | markdown"></div>
-          </div>
-        }
-        @case ('thinking') {
-          <p class="agent__thinking">{{ item.text }}</p>
-        }
-        @case ('tool') {
-          <div class="agent__tool" [class.agent__tool--error]="item.toolState === 'error'">
-            <span class="agent__tool-icon" aria-hidden="true">
-              @if (item.toolState === 'running') {
-                <app-icon class="agent__spin" [icon]="Icon.SPINNER" />
-              } @else if (item.toolState === 'ok') {
-                <app-icon [icon]="Icon.SUCCESS" />
-              } @else {
-                <app-icon [icon]="Icon.WARNING" />
-              }
-            </span>
-            <span class="agent__tool-name">{{ item.toolName }}</span>
-            @if (item.toolDetail) {
-              <span class="agent__tool-detail">{{ item.toolDetail }}</span>
-            }
+            <div class="agent__bubble agent__markdown" [innerHTML]="row.item!.text | markdown"></div>
           </div>
         }
         @case ('permission') {
           <div class="agent__permission">
             <p class="agent__permission-text">
-              Allow <strong>{{ item.permissionName }}</strong
+              Allow <strong>{{ row.item!.permissionName }}</strong
               >?
-              @if (item.permissionDetail) {
-                <span class="agent__permission-detail">{{ item.permissionDetail }}</span>
+              @if (row.item!.permissionDetail) {
+                <span class="agent__permission-detail">{{ row.item!.permissionDetail }}</span>
               }
             </p>
-            @if (item.permissionState === 'pending') {
+            @if (row.item!.permissionState === 'pending') {
               <div class="agent__permission-actions">
-                <button type="button" class="agent__btn" (click)="respond(item, true)">
+                <button type="button" class="agent__btn" (click)="respond(row.item!, true)">
                   Allow
                 </button>
                 <button
                   type="button"
                   class="agent__btn agent__btn--ghost"
-                  (click)="respond(item, false)"
+                  (click)="respond(row.item!, false)"
                 >
                   Deny
                 </button>
               </div>
             } @else {
               <span class="agent__permission-state">
-                {{ item.permissionState === 'allowed' ? 'Allowed' : 'Denied' }}
+                {{ row.item!.permissionState === 'allowed' ? 'Allowed' : 'Denied' }}
               </span>
             }
           </div>
         }
-      }
-    }
+        @default {
+          <!-- The agent-activity timeline: assistant text, reasoning, tool calls, and the live
+               working indicator, connected down a shared left rail. -->
+          <div
+            class="agent__row"
+            [class.agent__row--up]="row.connectsUp"
+            [class.agent__row--down]="row.connectsDown"
+            [class.agent__row--working]="row.kind === 'working'"
+          >
+            <div class="agent__node" aria-hidden="true">
+              <span
+                class="agent__node-icon"
+                [class.agent__node-icon--error]="row.item?.toolState === 'error'"
+              >
+                <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
+              </span>
+            </div>
 
-    @if (isRunning() && !awaitingDecision()) {
-      <p class="agent__working" aria-live="polite">
-        <app-icon class="agent__spin" [icon]="Icon.SPINNER" />
-        Working…
-      </p>
+            <div class="agent__row-content">
+              @switch (row.kind) {
+                @case ('assistant') {
+                  <div class="agent__bubble agent__markdown" [innerHTML]="row.item!.text | markdown"></div>
+                }
+                @case ('working') {
+                  <p class="agent__working" aria-live="polite">Working…</p>
+                }
+                @default {
+                  <details class="agent__action" [class.agent__action--error]="row.item!.toolState === 'error'">
+                    <summary class="agent__action-summary">
+                      <span class="agent__action-label">{{ row.label }}</span>
+                      <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                    </summary>
+                    <div class="agent__action-detail">
+                      <span class="agent__action-tech">{{ row.tech }}</span>
+                      @if (row.item!.toolDetail) {
+                        <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
+                      }
+                    </div>
+                  </details>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
     }
   </div>
 
@@ -103,27 +114,77 @@
         <span>{{ wordCount() }}</span>
       </p>
 
-      @if (isRunning()) {
+      <div class="agent__composer-actions">
         <button
           type="button"
-          class="agent__send agent__send--stop"
-          aria-label="Stop"
-          (click)="stop()"
+          class="agent__md"
+          aria-label="Write in Markdown"
+          title="Write in Markdown"
+          (click)="openMarkdown()"
         >
-          <span class="agent__send-label">Stop</span>
-          <app-icon [icon]="Icon.STOP" />
+          <app-icon [icon]="Icon.MARKDOWN" />
+          <span class="agent__md-label">MD</span>
         </button>
-      } @else {
-        <button
-          type="submit"
-          class="agent__send"
-          aria-label="Send"
-          [disabled]="draft().trim().length === 0"
-        >
-          <span class="agent__send-label">Send</span>
-          <app-icon [icon]="Icon.SEND" />
-        </button>
-      }
+
+        @if (isRunning()) {
+          <button
+            type="button"
+            class="agent__send agent__send--stop"
+            aria-label="Stop"
+            (click)="stop()"
+          >
+            <span class="agent__send-label">Stop</span>
+            <app-icon [icon]="Icon.STOP" />
+          </button>
+        } @else {
+          <button
+            type="submit"
+            class="agent__send"
+            aria-label="Send"
+            [disabled]="draft().trim().length === 0"
+          >
+            <span class="agent__send-label">Send</span>
+            <app-icon [icon]="Icon.SEND" />
+          </button>
+        }
+      </div>
     </div>
   </form>
+
+  <!-- The markdown composer: a modal Milkdown editor whose content is sent to the agent on submit.
+       The editor is only mounted while the modal is open so each session starts fresh and no editor
+       runs in the background. -->
+  <app-modal
+    [open]="markdownOpen()"
+    [width]="52"
+    [expandable]="true"
+    ariaLabel="Write in Markdown"
+    (dismiss)="cancelMarkdown()"
+  >
+    <div class="agent__md-modal">
+      <h2 class="agent__md-title">Write in Markdown</h2>
+      @if (markdownOpen()) {
+        <div class="agent__md-editor">
+          <app-markdown-editor
+            [content]="markdownSeed()"
+            [isActive]="true"
+            (contentChange)="onMarkdownChange($event)"
+          />
+        </div>
+      }
+      <div class="agent__md-actions">
+        <button type="button" class="agent__btn agent__btn--ghost" (click)="cancelMarkdown()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="agent__btn"
+          [disabled]="isRunning() || markdownValue().trim().length === 0"
+          (click)="submitMarkdown()"
+        >
+          Send to agent
+        </button>
+      </div>
+    </div>
+  </app-modal>
 </div>

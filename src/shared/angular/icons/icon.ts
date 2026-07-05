@@ -34,6 +34,16 @@ export class Icon {
    */
   public static readonly CLOSE: Icon = new Icon('ph ph-x');
 
+  /**
+   * Gets the expand icon shown on a modal's expand-to-fill control. Same weight as {@link CLOSE}.
+   */
+  public static readonly ARROWS_OUT: Icon = new Icon('ph ph-arrows-out-simple');
+
+  /**
+   * Gets the restore icon shown on a modal's expand control once expanded. Same weight as {@link CLOSE}.
+   */
+  public static readonly ARROWS_IN: Icon = new Icon('ph ph-arrows-in-simple');
+
   // --- Title strip: window lock ---
 
   /**
@@ -105,6 +115,11 @@ export class Icon {
    * Gets the thin agent (brain) glyph shown large in the agent panel's empty state.
    */
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');
+
+  /**
+   * Gets the generic action glyph shown on an agent tool-call timeline node.
+   */
+  public static readonly ACTION: Icon = new Icon('ph ph-lightning');
 
   // --- Ribbon: file commands ---
 

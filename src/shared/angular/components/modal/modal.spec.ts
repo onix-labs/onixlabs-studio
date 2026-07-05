@@ -95,7 +95,7 @@ describe('Modal', () => {
   });
 
   it('closeButton_whenDismissable_isShownAndEmitsDismiss', () => {
-    const close: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>('.modal__close');
+    const close: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>('.modal__control');
     expect(close).not.toBeNull();
 
     close!.click();
@@ -127,6 +127,6 @@ describe('Modal', () => {
     component.dismissable.set(false);
     fixture.detectChanges();
 
-    expect(host.querySelector('.modal__close')).toBeNull();
+    expect(host.querySelector('.modal__control')).toBeNull();
   });
 });

@@ -18,7 +18,9 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 1rem;
+  // No inter-row gap: timeline rows must sit flush so their connector rail draws as one continuous
+  // line. Off-rail rows (the user's messages, permission prompts) space themselves with margins.
+  gap: 0;
   min-block-size: 0;
   padding: 1.5rem;
   overflow: auto;
@@ -55,8 +57,11 @@
 
 .agent__message {
   display: flex;
+  // The bubble's top edge lines up with the top of the avatar rather than centring against it.
+  align-items: flex-start;
   gap: 0.75rem;
   max-inline-size: 48rem;
+  margin-block: 0.5rem;
 
   // The user's own messages are aligned to the trailing edge with the avatar on the right.
   &--user {
@@ -93,27 +98,69 @@
   }
 }
 
-.agent__thinking {
-  max-inline-size: 48rem;
-  margin: 0;
-  padding: 0.1rem 0.5rem;
-  color: var(--body-foreground-color);
-  font-size: 0.9rem;
-  font-style: italic;
-  white-space: pre-wrap;
-  opacity: 0.6;
-  user-select: text;
+// ── Agent-activity timeline ────────────────────────────────────────────────────────────────────
+// Assistant text, reasoning, tool calls, and the live working indicator render as rows down a shared
+// left rail: a node column (the icon) and a content column. A vertical connector line runs behind the
+// nodes so consecutive rows read as one timeline; the node's opaque background masks the line where it
+// crosses each icon, leaving visible segments between them. Rows sit flush (the container has no gap)
+// so the segments join; each row's own trailing space is padding the connector spans.
+$agent-node-size: 1.75rem;
+
+.agent__row {
+  display: grid;
+  grid-template-columns: $agent-node-size 1fr;
+  gap: 0.75rem;
+  padding-block-end: 0.85rem;
+
+  // The working indicator is a single status line: centre it against its spinner node rather than
+  // top-aligning it like the multi-line bubbles and actions.
+  &--working {
+    align-items: center;
+  }
 }
 
-.agent__tool {
+// The node column stretches to the row's full height (grid default) so the connector segments can be
+// positioned against it; the icon itself sits at the top.
+.agent__node {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  max-inline-size: 48rem;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.85rem;
+  align-items: flex-start;
+  justify-content: center;
+
+  // Connector segments: the upper half joins to the node above, the lower half to the node below.
+  // Each is shown only when the row declares that link, so the rail starts and ends cleanly.
+  .agent__row--up &::before,
+  .agent__row--down &::after {
+    content: '';
+    position: absolute;
+    inline-size: 0.0625rem;
+    inset-inline-start: 50%;
+    background: var(--agent-view-border-color);
+    transform: translateX(-50%);
+  }
+
+  .agent__row--up &::before {
+    inset-block-start: 0;
+    block-size: calc($agent-node-size / 2);
+  }
+
+  .agent__row--down &::after {
+    inset-block-start: calc($agent-node-size / 2);
+    inset-block-end: 0;
+  }
+}
+
+.agent__node-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  inline-size: $agent-node-size;
+  block-size: $agent-node-size;
+  font-size: 0.9rem;
+  color: var(--accent-color);
   background: var(--agent-view-surface-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 
   &--error {
@@ -121,22 +168,92 @@
   }
 }
 
-.agent__tool-icon {
-  display: grid;
-  place-items: center;
-  color: var(--accent-color);
+// The content column. Children align to the leading edge and shrink to their content so a bubble or
+// action chip never stretches the full width.
+.agent__row-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-inline-size: 0;
+
+  .agent__bubble {
+    max-inline-size: 44rem;
+  }
 }
 
-.agent__tool-name {
-  font-weight: 600;
+// A tool call: a collapsible summary that reads as a plain-language action, expanding to reveal the
+// underlying technical detail (the command, pattern, or MCP tool that ran).
+.agent__action {
+  max-inline-size: 44rem;
 }
 
-.agent__tool-detail {
-  overflow: hidden;
+.agent__action-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  // At least as tall as the node icon it sits beside, so a collapsed action lines up with its glyph.
+  box-sizing: border-box;
+  min-block-size: $agent-node-size;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
   color: var(--body-foreground-color);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.7;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  // Hide the native disclosure triangle in favour of the caret icon.
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &:hover {
+    color: var(--accent-color);
+  }
+}
+
+.agent__action-caret {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  transition: transform 150ms ease-in-out;
+
+  .agent__action[open] & {
+    transform: rotate(180deg);
+  }
+}
+
+.agent__action--error .agent__action-label {
+  color: var(--warning-color, #e0a030);
+}
+
+// The revealed technical detail: the tool identifier over its one-line input summary, in mono so a
+// command or path reads as code.
+.agent__action-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-block-start: 0.4rem;
+  padding-inline-start: 0.6rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+}
+
+.agent__action-tech {
+  color: var(--form-muted-foreground-color);
+  letter-spacing: 0.02em;
+}
+
+.agent__action-cmd {
+  padding: 0.4rem 0.6rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
 }
 
 .agent__permission {
@@ -144,6 +261,7 @@
   flex-direction: column;
   gap: 0.6rem;
   max-inline-size: 48rem;
+  margin-block: 0.5rem;
   padding: 0.8rem 1rem;
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--accent-color);
@@ -188,12 +306,14 @@
     background: transparent;
     border: 0.0625rem solid var(--agent-view-border-color);
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 }
 
 .agent__working {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   margin: 0;
   color: var(--body-foreground-color);
   font-size: 0.9rem;
@@ -284,6 +404,15 @@
   opacity: 0.5;
 }
 
+// Groups the markdown-composer trigger with the send/stop control so they sit together at the footer's
+// trailing edge, leaving the hint on the left.
+.agent__composer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .agent__send {
   display: inline-flex;
   flex: 0 0 auto;
@@ -305,6 +434,81 @@
     opacity: 0.5;
     cursor: default;
   }
+}
+
+// A compact, ghost-styled affordance that opens the markdown composer modal. It matches the send
+// button's height so the two sit level, but reads as secondary until hovered.
+.agent__md {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  block-size: 2rem;
+  padding-inline: 0.6rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
+
+  &:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+}
+
+.agent__md-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+// The markdown composer modal: a heading over the editor frame and a trailing action row. It fills
+// the modal panel so that when the panel is expanded to the window, the editor grows to fill it.
+.agent__md-modal {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  min-block-size: 0;
+}
+
+.agent__md-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+// The frame for the embedded markdown editor. The editor fills its host and scrolls internally, so
+// the frame is given a definite height via its flex basis (it collapses to zero otherwise) and grows
+// to fill the extra room when the modal is expanded. It uses the same flex hosting the markdown
+// view's document leaf uses, so the editor lays out identically.
+.agent__md-editor {
+  display: flex;
+  flex: 1 1 28rem;
+  min-block-size: 0;
+  overflow: hidden;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  app-markdown-editor {
+    flex: 1;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+}
+
+.agent__md-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation
@@ -339,4 +543,11 @@
     margin: 0 0 0.6rem;
     padding-inline-start: 1.2rem;
   }
+}
+
+// The user's own bubble sits on the accent colour, where an accent-coloured link would vanish; keep
+// links legible against it.
+:host ::ng-deep .agent__message--user .agent__markdown a {
+  color: var(--gray-100);
+  text-decoration: underline;
 }
