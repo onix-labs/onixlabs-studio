@@ -2,11 +2,21 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
+import {
+  BinaryDocumentEntry,
+  BinaryDocuments,
+  BinarySelection,
+} from '../binary-document/binary-document';
 import { BinaryPanels } from '../binary-panels/binary-panels';
 
 /**
@@ -16,7 +26,15 @@ import { BinaryPanels } from '../binary-panels/binary-panels';
  */
 @Component({
   selector: 'app-binary-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripField],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripColumn,
+    RibbonStripMenuButton,
+    RibbonStripField,
+  ],
   templateUrl: './binary-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -208,30 +226,90 @@ export class BinaryRibbon {
   }
 
   /**
-   * Copies the selected bytes to the clipboard as space-separated hex pairs.
+   * Gets the Cut dropdown variants: cut as hex (the default) or as ASCII.
    */
-  protected async onCopyHex(): Promise<void> {
+  protected readonly cutItems: readonly RibbonMenuItem[] = [
+    { id: 'hex', label: 'Cut Hex', icon: Icon.CUT },
+    { id: 'ascii', label: 'Cut ASCII', icon: Icon.CUT },
+  ];
+
+  /**
+   * Gets the Copy dropdown variants: copy as hex (the default) or as ASCII.
+   */
+  protected readonly copyItems: readonly RibbonMenuItem[] = [
+    { id: 'hex', label: 'Copy Hex', icon: Icon.COPY },
+    { id: 'ascii', label: 'Copy ASCII', icon: Icon.COPY },
+  ];
+
+  /**
+   * Copies the selection as hex (the primary Copy action).
+   */
+  protected async onCopy(): Promise<void> {
+    await this.copySelection('hex');
+  }
+
+  /**
+   * Copies the selection as the chosen Copy dropdown variant.
+   * @param id The chosen variant identifier (`hex` or `ascii`).
+   */
+  protected async onCopyVariant(id: string): Promise<void> {
+    await this.copySelection(id === 'ascii' ? 'ascii' : 'hex');
+  }
+
+  /**
+   * Cuts the selection as hex (the primary Cut action).
+   */
+  protected async onCut(): Promise<void> {
+    await this.cutSelection('hex');
+  }
+
+  /**
+   * Cuts the selection as the chosen Cut dropdown variant.
+   * @param id The chosen variant identifier (`hex` or `ascii`).
+   */
+  protected async onCutVariant(id: string): Promise<void> {
+    await this.cutSelection(id === 'ascii' ? 'ascii' : 'hex');
+  }
+
+  /**
+   * Copies the selected bytes to the clipboard, formatted as hex pairs or printable ASCII.
+   * @param kind Whether to copy the bytes as hex or as ASCII text.
+   */
+  private async copySelection(kind: 'hex' | 'ascii'): Promise<void> {
     const bytes: number[] = this.activeDocument()?.selectedBytes() ?? [];
     if (bytes.length > 0) {
-      await navigator.clipboard.writeText(
-        bytes.map((byte: number): string => byte.toString(16).padStart(2, '0')).join(' '),
-      );
+      await navigator.clipboard.writeText(this.format(bytes, kind));
     }
   }
 
   /**
-   * Copies the selected bytes to the clipboard as printable text (`.` for non-printable bytes).
+   * Cuts the selection: copies it to the clipboard then deletes the selected bytes. Only meaningful in
+   * insert mode (deleting shortens the file), so the Cut button is disabled in overwrite mode.
+   * @param kind Whether to copy the bytes as hex or as ASCII text.
    */
-  protected async onCopyText(): Promise<void> {
-    const bytes: number[] = this.activeDocument()?.selectedBytes() ?? [];
-    if (bytes.length > 0) {
-      await navigator.clipboard.writeText(
-        bytes
-          .map((byte: number): string =>
-            byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.',
-          )
-          .join(''),
-      );
+  private async cutSelection(kind: 'hex' | 'ascii'): Promise<void> {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    const selection: BinarySelection | null | undefined = document?.selection();
+    if (document === undefined || !document.insertMode() || selection === null || selection === undefined) {
+      return;
     }
+    await this.copySelection(kind);
+    document.deleteBytes(selection.start, selection.end - selection.start);
+    document.selection.set(null);
+  }
+
+  /**
+   * Formats bytes as space-separated hex pairs or as printable ASCII (`.` for non-printable bytes).
+   * @param bytes The bytes to format.
+   * @param kind The desired format.
+   * @returns Returns the formatted string.
+   */
+  private format(bytes: readonly number[], kind: 'hex' | 'ascii'): string {
+    if (kind === 'hex') {
+      return bytes.map((byte: number): string => byte.toString(16).padStart(2, '0')).join(' ');
+    }
+    return bytes
+      .map((byte: number): string => (byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.'))
+      .join('');
   }
 }

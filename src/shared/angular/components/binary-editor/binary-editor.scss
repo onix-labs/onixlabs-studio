@@ -1,30 +1,54 @@
 // The Offset · Hex · ASCII grid. Column widths are fixed (in ch) and shared between the header and the
-// body rows, so the header labels always sit exactly above their columns. The header and body share a
-// single scroll container, so the header scrolls horizontally with the body and stays aligned, and
-// sits sticky at the top so it stays visible while the body scrolls vertically.
+// body rows, so the header labels always sit exactly above their columns. The header is a full-width
+// bar styled like the side panels' title area, with its labels centred over the grid; the body scrolls
+// beneath it, centred while it fits and scrolling from the left once it is wider than the viewport.
 
 :host {
   // Column metrics, shared by the header and every row.
   --addr-width: 10ch;
-  --hexcell-width: 2.25ch;
-  --hex-gap: 0.2rem;
+  --hexcell-width: 2.5ch;
+  --hex-gap: 0.35rem;
   --ascii-width: 1ch;
   --column-gap: 1.5rem;
 
-  display: block;
+  // The header bar shares the side panels' (Assembly/Inspector) title-bar surface.
+  --binary-header-background: var(--gray-200);
+  --binary-header-foreground: var(--gray-700);
+
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   background: var(--body-background-color);
   color: var(--body-foreground-color);
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 20px;
+  font-size: 0.85rem;
+  line-height: 22px;
+}
+
+:host-context([data-theme-mode='dark']) {
+  --binary-header-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
+  --binary-header-foreground: var(--gray-400);
+}
+
+// Full-width title bar above the grid, matching the side panels' title area, with its column labels
+// centred over the grid columns.
+.binary-editor__header-bar {
+  display: flex;
+  justify-content: center;
+  padding-block: 0.3rem;
+  background: var(--binary-header-background);
+  color: var(--binary-header-foreground);
+  user-select: none;
 }
 
 .binary-editor {
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  // Reserve the scrollbar gutter symmetrically, so the centred body stays centred in the host and
+  // aligns with the full-width header whether or not a vertical scrollbar is present.
+  scrollbar-gutter: stable both-edges;
   outline: none;
 }
 
@@ -46,17 +70,13 @@
   white-space: nowrap;
 }
 
+// Keeps the body font-size so its `ch`-based column widths match the rows exactly and the labels stay
+// aligned; the uppercase weight distinguishes it as a header.
 .binary-editor__header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding-block: 0.35rem;
-  border-bottom: 1px solid var(--accent-surface-border-color);
-  background: var(--body-background-color);
-  color: var(--form-muted-foreground-color);
+  width: max-content;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  user-select: none;
 }
 
 .binary-editor__sizer {
@@ -91,12 +111,13 @@
   flex: 0 0 var(--hexcell-width);
   width: var(--hexcell-width);
   text-align: center;
-  border-radius: 2px;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: text;
 }
 
 .binary-editor__hexcell--header {
-  color: var(--form-muted-foreground-color);
+  color: inherit;
   cursor: default;
 }
 
@@ -115,10 +136,16 @@
   flex: 0 0 var(--ascii-width);
   width: var(--ascii-width);
   text-align: center;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: text;
 }
 
+// The selection highlight: a padded, rounded rectangle. The row is taller than the glyph, so the
+// vertical padding grows the highlight toward the row edges without shifting the layout; the corner
+// shape follows the app-wide performance gate (falls back to a plain round corner in round mode).
 .binary-editor__cell--selected {
+  padding-block: 0.1rem;
   background: var(--accent-surface-background-color);
   color: var(--accent-surface-foreground-color);
 }

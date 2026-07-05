@@ -22,12 +22,12 @@ interface PanelState {
 }
 
 /**
- * Holds the state assumed for a panel with no entry yet. The disassembly and inspector panels open by
- * default, so a freshly opened binary tab shows both.
+ * Holds the state assumed for a panel with no entry yet. The assembly and inspector panels are closed
+ * by default, so a freshly opened binary tab shows just the hex grid until a panel is toggled on.
  */
 const DEFAULT_STATE: PanelState = {
-  visible: true,
-  mounted: true,
+  visible: false,
+  mounted: false,
 };
 
 /**

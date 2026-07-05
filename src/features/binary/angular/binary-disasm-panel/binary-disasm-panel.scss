@@ -77,7 +77,8 @@
 
 .disasm__editor {
   position: absolute;
-  inset: 0;
+  // 0.5rem of breathing room to the left of the editor, before its first column.
+  inset: 0 0 0 0.5rem;
 }
 
 // Shown over the (empty) editor when the format has no native disassembly.

@@ -9,25 +9,42 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Edit">
-    <app-ribbon-strip-button
-      [icon]="Icon.UNDO"
-      label="Undo"
-      [disabled]="!canUndo()"
-      (action)="onUndo()"
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.CUT"
+      label="Cut"
+      [items]="cutItems"
+      [disabled]="!insertMode()"
+      (action)="onCut()"
+      (selected)="onCutVariant($event)"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.REDO"
-      label="Redo"
-      [disabled]="!canRedo()"
-      (action)="onRedo()"
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.COPY"
+      label="Copy"
+      [items]="copyItems"
+      (action)="onCopy()"
+      (selected)="onCopyVariant($event)"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.PENCIL"
-      label="Insert"
-      [toggle]="true"
-      [pressed]="insertMode()"
-      (action)="onToggleInsertMode()"
-    />
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.UNDO"
+        label="Undo"
+        [disabled]="!canUndo()"
+        (action)="onUndo()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.REDO"
+        label="Redo"
+        [disabled]="!canRedo()"
+        (action)="onRedo()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.PENCIL"
+        label="Insert"
+        [toggle]="true"
+        [pressed]="insertMode()"
+        (action)="onToggleInsertMode()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Navigate">
@@ -36,11 +53,6 @@
     @if (codeAvailable()) {
       <app-ribbon-strip-button [icon]="Icon.CODE" label="Code" (action)="onGoToCode()" />
     }
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Clipboard">
-    <app-ribbon-strip-button [icon]="Icon.COPY" label="Copy Hex" (action)="onCopyHex()" />
-    <app-ribbon-strip-button [icon]="Icon.LIST" label="Copy Text" (action)="onCopyText()" />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Layout">
@@ -56,7 +68,7 @@
   <app-ribbon-strip-group title="Tools">
     <app-ribbon-strip-button
       [icon]="Icon.CODE"
-      label="Disassembly"
+      label="Assembly"
       [toggle]="true"
       [pressed]="disassemblyShown()"
       (action)="onToggleDisassembly()"

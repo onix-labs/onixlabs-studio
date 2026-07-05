@@ -1,3 +1,15 @@
+<div class="binary-editor__header-bar">
+  <div class="binary-editor__header" [style.--bpr]="bytesPerRow()">
+    <span class="binary-editor__addr binary-editor__addr--header">Offset</span>
+    <span class="binary-editor__hex">
+      @for (label of columnLabels(); track $index) {
+        <span class="binary-editor__hexcell binary-editor__hexcell--header">{{ label }}</span>
+      }
+    </span>
+    <span class="binary-editor__ascii binary-editor__ascii--header">ASCII</span>
+  </div>
+</div>
+
 <div
   #scroller
   class="binary-editor"
@@ -5,17 +17,7 @@
   (scroll)="onScroll($event)"
   (keydown)="onKeyDown($event)"
 >
-  <div class="binary-editor__content" [style.--bpr]="bytesPerRow()">
-    <div class="binary-editor__header">
-      <span class="binary-editor__addr binary-editor__addr--header">Offset</span>
-      <span class="binary-editor__hex">
-        @for (label of columnLabels(); track $index) {
-          <span class="binary-editor__hexcell binary-editor__hexcell--header">{{ label }}</span>
-        }
-      </span>
-      <span class="binary-editor__ascii binary-editor__ascii--header">ASCII</span>
-    </div>
-
+  <div class="binary-editor__content">
     <div class="binary-editor__sizer" [style.height.px]="totalHeight()">
       <div class="binary-editor__window" [style.transform]="'translateY(' + offsetY() + 'px)'">
         @for (row of rows(); track row.index) {

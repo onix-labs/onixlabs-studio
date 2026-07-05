@@ -19,7 +19,7 @@ import {
  * Specifies the fixed height, in pixels, of one byte-row. Fixed so the total scroll height is the row
  * count times this, and the visible window maps directly to a scroll offset.
  */
-const ROW_HEIGHT: number = 20;
+const ROW_HEIGHT: number = 26;
 
 /**
  * Specifies how many extra rows are rendered above and below the viewport, so scrolling does not
