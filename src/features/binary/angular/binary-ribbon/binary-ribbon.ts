@@ -72,10 +72,55 @@ export class BinaryRibbon {
   );
 
   /**
+   * Gets whether the active document has an edit to undo.
+   */
+  protected readonly canUndo: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.canUndo() ?? false,
+  );
+
+  /**
+   * Gets whether the active document has an undone edit to redo.
+   */
+  protected readonly canRedo: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.canRedo() ?? false,
+  );
+
+  /**
+   * Gets whether the active document is in insert (rather than overwrite) typing mode.
+   */
+  protected readonly insertMode: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.insertMode() ?? false,
+  );
+
+  /**
    * Saves the active document's edits.
    */
   protected async onSave(): Promise<void> {
     await this.activeDocument()?.save();
+  }
+
+  /**
+   * Undoes the active document's most recent edit.
+   */
+  protected onUndo(): void {
+    this.activeDocument()?.undo();
+  }
+
+  /**
+   * Redoes the active document's most recently undone edit.
+   */
+  protected onRedo(): void {
+    this.activeDocument()?.redo();
+  }
+
+  /**
+   * Toggles the active document between insert and overwrite typing.
+   */
+  protected onToggleInsertMode(): void {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    if (document !== undefined) {
+      document.insertMode.set(!document.insertMode());
+    }
   }
 
   /**

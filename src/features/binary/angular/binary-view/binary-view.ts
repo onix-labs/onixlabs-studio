@@ -12,7 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import {
-  BinaryByteEdit,
+  BinaryEditOp,
   BinaryEditor,
   BinaryRange,
   BinaryVisibleRange,
@@ -137,6 +137,7 @@ export class BinaryView implements OnDestroy {
           size: document.size(),
           format: describeFormat(document.format()),
           dirty: document.dirty(),
+          insertMode: document.insertMode(),
         });
       } else {
         this.binaryStatus.clear(this.tabId());
@@ -231,10 +232,24 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
-   * Applies a typed byte overwrite to the document.
-   * @param edit The overwrite (offset and new value).
+   * Applies a typed edit — overwrite, insert, or delete — to the document.
+   * @param op The edit reported by the editor.
    */
-  protected onEdit(edit: BinaryByteEdit): void {
-    this.document()?.overwrite(edit.offset, edit.value);
+  protected onOp(op: BinaryEditOp): void {
+    const document: BinaryDocumentEntry | undefined = this.document();
+    if (document === undefined) {
+      return;
+    }
+    switch (op.kind) {
+      case 'overwrite':
+        document.overwrite(op.offset, op.value);
+        break;
+      case 'insert':
+        document.insertByte(op.offset, op.value);
+        break;
+      case 'delete':
+        document.deleteBytes(op.offset, op.count);
+        break;
+    }
   }
 }

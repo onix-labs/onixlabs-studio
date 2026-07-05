@@ -9,12 +9,14 @@
         [byteAt]="byteAt"
         [selection]="document.selection()"
         [dataVersion]="document.dataVersion()"
+        [insertMode]="document.insertMode()"
         [revealOffset]="document.revealOffset"
         [revealVersion]="document.revealVersion()"
         (visibleRangeChange)="onVisibleRange($event)"
         (selectionChange)="onSelectionChange($event)"
         (cursorChange)="onCursorChange($event)"
-        (edit)="onEdit($event)"
+        (op)="onOp($event)"
+        (toggleInsertMode)="document.insertMode.set(!document.insertMode())"
       />
 
       @if (disasmMounted()) {

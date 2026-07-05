@@ -8,6 +8,28 @@
     />
   </app-ribbon-strip-group>
 
+  <app-ribbon-strip-group title="Edit">
+    <app-ribbon-strip-button
+      [icon]="Icon.UNDO"
+      label="Undo"
+      [disabled]="!canUndo()"
+      (action)="onUndo()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.REDO"
+      label="Redo"
+      [disabled]="!canRedo()"
+      (action)="onRedo()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.PENCIL"
+      label="Insert"
+      [toggle]="true"
+      [pressed]="insertMode()"
+      (action)="onToggleInsertMode()"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Navigate">
     <app-ribbon-strip-button [icon]="Icon.ARROW_UP" label="Start" (action)="onGoToStart()" />
     <app-ribbon-strip-button [icon]="Icon.ARROW_DOWN" label="End" (action)="onGoToEnd()" />

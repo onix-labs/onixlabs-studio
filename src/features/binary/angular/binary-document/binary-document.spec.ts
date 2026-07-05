@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { BinaryPatch, WorkspaceChannel } from '@shared/api/workspace-channels';
+import { BinaryPatch, BinarySpan, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { BinaryDocumentEntry, BinaryDocuments } from './binary-document';
 
@@ -9,6 +9,12 @@ import { BinaryDocumentEntry, BinaryDocuments } from './binary-document';
  * written. Reset before each test.
  */
 let capturedWrites: { path: string; patches: readonly BinaryPatch[] }[] = [];
+
+/**
+ * Records the spans passed to the fake write-pieces channel, so structural-save tests can assert the
+ * streamed rewrite. Reset before each test.
+ */
+let capturedPieceWrites: { path: string; spans: readonly BinarySpan[]; added: number[] }[] = [];
 
 /**
  * Backing file the fake bridge serves byte windows from: 200 000 bytes (spanning several 64 KiB
@@ -36,6 +42,11 @@ function fakeBridge(): Bridge {
         capturedWrites.push({ path, patches });
         return Promise.resolve(true as T);
       }
+      if (channel === (WorkspaceChannel.WritePieces as string)) {
+        const [path, spans, added] = args as [string, readonly BinarySpan[], Uint8Array];
+        capturedPieceWrites.push({ path, spans, added: Array.from(added) });
+        return Promise.resolve(true as T);
+      }
       return Promise.resolve(null as T);
     },
     send: (): void => undefined,
@@ -57,6 +68,7 @@ describe('BinaryDocuments', () => {
 
   beforeEach(() => {
     capturedWrites = [];
+    capturedPieceWrites = [];
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({});
     documents = TestBed.inject(BinaryDocuments);
@@ -129,15 +141,77 @@ describe('BinaryDocuments', () => {
     expect(entry.dirty()).toBe(true);
   });
 
-  it('overwrite_backToTheOriginalValueClearsTheEditAndDirtyState', async () => {
+  it('overwrite_isUndoneToReturnToACleanDocument', async () => {
     const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
     await flush();
     entry.overwrite(2, 0xab);
+    expect(entry.byteAt(2)).toBe(0xab);
     expect(entry.dirty()).toBe(true);
-    // Byte 2's on-disk value is 2 (offset modulo 256); typing it back should leave the document clean.
-    entry.overwrite(2, 2);
+    expect(entry.canUndo()).toBe(true);
+    entry.undo();
     expect(entry.byteAt(2)).toBe(2);
     expect(entry.dirty()).toBe(false);
+    expect(entry.canRedo()).toBe(true);
+  });
+
+  it('insertByte_growsTheDocumentAndShiftsFollowingBytes', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.insertByte(2, 0xff);
+    expect(entry.size()).toBe(FILE.length + 1);
+    expect(entry.byteAt(1)).toBe(1);
+    expect(entry.byteAt(2)).toBe(0xff);
+    expect(entry.byteAt(3)).toBe(2);
+    expect(entry.byteAt(4)).toBe(3);
+    expect(entry.dirty()).toBe(true);
+  });
+
+  it('deleteBytes_shrinksTheDocumentAndClosesTheGap', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.deleteBytes(2, 1);
+    expect(entry.size()).toBe(FILE.length - 1);
+    expect(entry.byteAt(1)).toBe(1);
+    expect(entry.byteAt(2)).toBe(3);
+    expect(entry.byteAt(3)).toBe(4);
+    expect(entry.dirty()).toBe(true);
+  });
+
+  it('undoAndRedo_stepThroughAnInsert', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.insertByte(2, 0xff);
+    entry.undo();
+    expect(entry.size()).toBe(FILE.length);
+    expect(entry.byteAt(2)).toBe(2);
+    expect(entry.dirty()).toBe(false);
+    entry.redo();
+    expect(entry.size()).toBe(FILE.length + 1);
+    expect(entry.byteAt(2)).toBe(0xff);
+    expect(entry.dirty()).toBe(true);
+  });
+
+  it('save_afterInsertRewritesViaWritePiecesThenClearsDirty', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.insertByte(2, 0xff);
+    const written: boolean = await entry.save();
+    expect(written).toBe(true);
+    // An overwrite-only save patches in place; an insert must stream a full rewrite instead.
+    expect(capturedWrites).toEqual([]);
+    expect(capturedPieceWrites).toEqual([
+      {
+        path: '/ws/blob.bin',
+        spans: [
+          { source: 'original', start: 0, length: 2 },
+          { source: 'added', start: 0, length: 1 },
+          { source: 'original', start: 2, length: FILE.length - 2 },
+        ],
+        added: [0xff],
+      },
+    ]);
+    expect(entry.dirty()).toBe(false);
+    expect(entry.canUndo()).toBe(false);
   });
 
   it('save_writesCoalescedPatchesThenClearsDirty', async () => {

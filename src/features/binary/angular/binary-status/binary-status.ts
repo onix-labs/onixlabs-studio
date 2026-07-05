@@ -45,6 +45,11 @@ export interface BinaryContext {
    * Gets a value indicating whether the document has unsaved edits.
    */
   readonly dirty: boolean;
+
+  /**
+   * Gets a value indicating whether typing inserts (true) or overwrites (false).
+   */
+  readonly insertMode: boolean;
 }
 
 /**
@@ -87,6 +92,7 @@ export class BinaryStatus {
             { id: 'binary-format', text: context.format },
           ],
           trailing: [
+            { id: 'binary-mode', text: context.insertMode ? 'INS' : 'OVR' },
             {
               id: 'binary-offset',
               text: context.offset === null ? 'Offset —' : `Offset ${this.hex(context.offset)}`,

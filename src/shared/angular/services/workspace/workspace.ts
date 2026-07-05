@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import {
   BinaryChunk,
   BinaryPatch,
+  BinarySpan,
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
@@ -219,6 +220,26 @@ export class Workspace {
   public writeBytes(path: string, patches: readonly BinaryPatch[]): Promise<boolean> {
     return (
       this.bridge?.invoke<boolean>(WorkspaceChannel.WriteBytes, path, patches) ??
+      Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Rewrites a file from a list of spans, saving binary/hex edits that insert or delete bytes. The main
+   * process streams the spans (original ranges copied from the file, added ranges from the buffer) to a
+   * temporary file and atomically renames it, so the file's length may change.
+   * @param path The absolute path of the file to rewrite.
+   * @param spans The spans that make up the new file content, in order.
+   * @param added The added buffer the `added` spans index into.
+   * @returns Returns true when the rewrite succeeded, or false when it failed or ran outside Electron.
+   */
+  public writePieces(
+    path: string,
+    spans: readonly BinarySpan[],
+    added: Uint8Array,
+  ): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(WorkspaceChannel.WritePieces, path, spans, added) ??
       Promise.resolve(false)
     );
   }

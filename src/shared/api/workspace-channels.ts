@@ -33,6 +33,13 @@ export enum WorkspaceChannel {
   WriteBytes = 'workspace:write-bytes',
 
   /**
+   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes
+   * (invoke). Honoured only for trusted paths or files within an open workspace. The file is streamed
+   * to a temporary file and atomically renamed, so its length may change.
+   */
+  WritePieces = 'workspace:write-pieces',
+
+  /**
    * Shows an open-folder dialog and sets the chosen folder as the workspace root (invoke).
    */
   OpenFolder = 'workspace:open-folder',
@@ -182,6 +189,28 @@ export interface BinaryPatch {
    * Gets the byte values (0–255) to write at the offset.
    */
   readonly bytes: readonly number[];
+}
+
+/**
+ * Describes one span of a rewritten binary file: a run of bytes taken either from the original file on
+ * disk (`original`, `start` is a file offset) or from the accompanying added buffer (`added`, `start`
+ * is an index into it). Used to stream-rewrite a file when a binary/hex edit changes its length.
+ */
+export interface BinarySpan {
+  /**
+   * Gets which buffer the span's bytes come from.
+   */
+  readonly source: 'original' | 'added';
+
+  /**
+   * Gets the span's start offset within its source buffer.
+   */
+  readonly start: number;
+
+  /**
+   * Gets the span's length in bytes.
+   */
+  readonly length: number;
 }
 
 /**

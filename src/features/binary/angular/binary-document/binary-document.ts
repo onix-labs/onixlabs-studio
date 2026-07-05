@@ -4,6 +4,7 @@ import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { PieceRun, PieceTable, PieceTableSnapshot } from './binary-piece-table';
 import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
 import {
   BinaryFormat,
@@ -71,7 +72,7 @@ export class BinaryDocumentEntry {
   private readonly pending: Set<number> = new Set<number>();
 
   /**
-   * Holds the total file size in bytes, learned from the first read.
+   * Holds the logical size in bytes: the original file size adjusted by any inserts and deletes.
    */
   public readonly size: WritableSignal<number> = signal<number>(0);
 
@@ -97,10 +98,37 @@ export class BinaryDocumentEntry {
   public readonly loadedVersion: WritableSignal<number> = signal<number>(0);
 
   /**
-   * Holds the pending in-place byte overwrites, keyed by absolute offset, layered over the block cache
-   * until saved. Overwrite-only: it never changes the file's length.
+   * Holds the edit model: a piece table over the unchanging original file plus an append-only added
+   * buffer, so overwrite, insert, and delete are all cheap and reads stay windowed.
    */
-  private readonly edits: Map<number, number> = new Map<number, number>();
+  private readonly table: PieceTable = new PieceTable();
+
+  /**
+   * Holds the original file's size in bytes, learned from the first read and updated when a structural
+   * save rewrites the file.
+   */
+  private originalSize: number = 0;
+
+  /**
+   * Holds whether the original size has been learned (and the piece table initialised).
+   */
+  private initialized: boolean = false;
+
+  /**
+   * Holds the last viewport range the view asked to load, so a structural save can re-fetch it after
+   * the block cache is dropped.
+   */
+  private lastRange: { offset: number; length: number } | null = null;
+
+  /**
+   * Holds the undo stack of pre-edit snapshots, most recent last.
+   */
+  private undoStack: PieceTableSnapshot[] = [];
+
+  /**
+   * Holds the redo stack of snapshots undone edits can be reapplied from.
+   */
+  private redoStack: PieceTableSnapshot[] = [];
 
   /**
    * Holds a counter bumped whenever an edit is made or saved, so byte-reading computeds re-run.
@@ -111,6 +139,21 @@ export class BinaryDocumentEntry {
    * Holds whether the document has unsaved edits.
    */
   public readonly dirty: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether typing inserts bytes (true) or overwrites them (false, the default).
+   */
+  public readonly insertMode: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether there is an edit to undo.
+   */
+  public readonly canUndo: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether there is an undone edit to redo.
+   */
+  public readonly canRedo: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets a combined data version that changes when loaded bytes or edits change, so the editor
@@ -211,55 +254,164 @@ export class BinaryDocumentEntry {
    * @returns Returns the byte value (0–255), or null when unavailable.
    */
   public byteAt(offset: number): number | null {
-    const edit: number | undefined = this.edits.get(offset);
-    if (edit !== undefined) {
-      return edit;
+    if (!this.initialized) {
+      return this.cachedByteAt(offset);
     }
-    return this.cachedByteAt(offset);
+    const location: { original: number } | { value: number } | null = this.table.locate(offset);
+    if (location === null) {
+      return null;
+    }
+    return 'value' in location ? location.value : this.cachedByteAt(location.original);
   }
 
   /**
-   * Overwrites the byte at an offset, layering the change over the block cache until saved. A value
-   * equal to the byte already on disk clears any pending edit there, so typing a byte back to its
-   * original leaves the document clean.
-   * @param offset The absolute byte offset to overwrite.
+   * Overwrites the byte at an offset with a new value (leaving the file's length unchanged).
+   * @param offset The logical byte offset to overwrite.
    * @param value The new byte value (0–255).
    */
   public overwrite(offset: number, value: number): void {
-    if (offset < 0 || offset >= this.size()) {
+    if (!this.initialized || offset < 0 || offset >= this.size()) {
       return;
     }
-    const byte: number = value & 0xff;
-    const original: number | null = this.cachedByteAt(offset);
-    if (original !== null && original === byte) {
-      this.edits.delete(offset);
-    } else {
-      this.edits.set(offset, byte);
+    this.applyEdit((): void => this.table.replace(offset, 1, [value & 0xff]));
+  }
+
+  /**
+   * Inserts a byte before an offset, growing the document by one.
+   * @param offset The logical offset to insert before (0 to the end of the document).
+   * @param value The byte value (0–255) to insert.
+   */
+  public insertByte(offset: number, value: number): void {
+    if (!this.initialized || offset < 0 || offset > this.size()) {
+      return;
     }
-    this.dirty.set(this.edits.size > 0);
+    this.applyEdit((): void => this.table.replace(offset, 0, [value & 0xff]));
+  }
+
+  /**
+   * Deletes a run of bytes, shrinking the document.
+   * @param offset The first logical offset to delete.
+   * @param count The number of bytes to delete.
+   */
+  public deleteBytes(offset: number, count: number): void {
+    if (!this.initialized || offset < 0 || offset >= this.size() || count <= 0) {
+      return;
+    }
+    this.applyEdit((): void => this.table.replace(offset, count, []));
+  }
+
+  /**
+   * Undoes the most recent edit, if any.
+   */
+  public undo(): void {
+    if (this.undoStack.length === 0) {
+      return;
+    }
+    this.redoStack.push(this.table.snapshot());
+    this.table.restore(this.undoStack.pop()!);
+    this.afterMutation();
+  }
+
+  /**
+   * Reapplies the most recently undone edit, if any.
+   */
+  public redo(): void {
+    if (this.redoStack.length === 0) {
+      return;
+    }
+    this.undoStack.push(this.table.snapshot());
+    this.table.restore(this.redoStack.pop()!);
+    this.afterMutation();
+  }
+
+  /**
+   * Applies a piece-table edit within an undo transaction: it records the pre-edit state, runs the
+   * edit, discards the redo history, and refreshes the reactive state.
+   * @param edit The edit to apply to the table.
+   */
+  private applyEdit(edit: () => void): void {
+    this.undoStack.push(this.table.snapshot());
+    this.redoStack = [];
+    edit();
+    this.afterMutation();
+  }
+
+  /**
+   * Refreshes the reactive state after the piece table changes: logical size, dirty flag, undo/redo
+   * availability, and the data version that re-renders the grid and re-runs disassembly.
+   */
+  private afterMutation(): void {
+    this.size.set(this.table.length());
+    this.dirty.set(!this.table.isPristine());
+    this.canUndo.set(this.undoStack.length > 0);
+    this.canRedo.set(this.redoStack.length > 0);
     this.editsVersion.update((version: number): number => version + 1);
   }
 
   /**
-   * Saves the pending edits by writing them in place to the file, then folds them into the block cache
-   * and clears the dirty state. Does nothing (and reports success) when there is nothing to save.
+   * Saves the pending edits. Overwrite-only edits are written in place (every offset still maps to its
+   * file offset); once bytes have been inserted or deleted, the file is rewritten by streaming the
+   * pieces in the main process. Either way the model then matches the on-disk file and dirty clears.
    * @returns Returns true when the file was written (or there was nothing to write), false on failure.
    */
   public async save(): Promise<boolean> {
-    if (this.edits.size === 0) {
+    if (!this.dirty()) {
       return true;
     }
-    const patches: BinaryPatch[] = this.buildPatches();
-    const written: boolean = await this.workspace.writeBytes(this.path, patches);
+    const written: boolean = this.table.isStructural()
+      ? await this.saveByRewrite()
+      : await this.saveInPlace();
     if (!written) {
       return false;
     }
-    for (const [offset, value] of this.edits) {
-      this.applyToCache(offset, value);
-    }
-    this.edits.clear();
+    this.undoStack = [];
+    this.redoStack = [];
     this.dirty.set(false);
+    this.canUndo.set(false);
+    this.canRedo.set(false);
     this.editsVersion.update((version: number): number => version + 1);
+    return true;
+  }
+
+  /**
+   * Saves overwrite-only edits in place, then folds them into the block cache so the cache reports the
+   * saved bytes and resets the table to the (same-sized) original.
+   * @returns Returns true when the write succeeded.
+   */
+  private async saveInPlace(): Promise<boolean> {
+    const runs: PieceRun[] = this.table.overwritePatches();
+    const patches: BinaryPatch[] = runs.map(
+      (run: PieceRun): BinaryPatch => ({ offset: run.offset, bytes: run.bytes }),
+    );
+    if (!(await this.workspace.writeBytes(this.path, patches))) {
+      return false;
+    }
+    for (const run of runs) {
+      run.bytes.forEach((value: number, index: number): void =>
+        this.applyToCache(run.offset + index, value),
+      );
+    }
+    this.table.reset();
+    return true;
+  }
+
+  /**
+   * Saves structural edits by streaming the pieces to a rewritten file in the main process, then drops
+   * the now-stale block cache, resets the table to the new file, and re-fetches the visible range.
+   * @returns Returns true when the rewrite succeeded.
+   */
+  private async saveByRewrite(): Promise<boolean> {
+    if (!(await this.workspace.writePieces(this.path, this.table.spans(), this.table.addedBytes()))) {
+      return false;
+    }
+    this.originalSize = this.table.length();
+    this.blocks.clear();
+    this.table.reset(this.originalSize);
+    this.loadedVersion.update((version: number): number => version + 1);
+    this.ensureBlock(0);
+    if (this.lastRange !== null) {
+      this.ensureRange(this.lastRange.offset, this.lastRange.length);
+    }
     return true;
   }
 
@@ -362,8 +514,28 @@ export class BinaryDocumentEntry {
     if (length <= 0) {
       return;
     }
-    const first: number = Math.floor(offset / BLOCK_SIZE);
-    const last: number = Math.floor((offset + length - 1) / BLOCK_SIZE);
+    this.lastRange = { offset, length };
+    // Before the first read the table is empty, so fetch the requested blocks directly; the logical
+    // and file offsets are identical until the first edit anyway.
+    if (!this.initialized) {
+      this.ensureBlocks(offset, length);
+      return;
+    }
+    // Map the logical range to the original-file ranges it overlaps (added spans need no read) and
+    // fetch the blocks spanning each.
+    this.table.forEachOriginalRange(offset, length, (fileStart: number, fileLength: number): void =>
+      this.ensureBlocks(fileStart, fileLength),
+    );
+  }
+
+  /**
+   * Ensures every block spanning an original-file range is cached or being fetched.
+   * @param fileOffset The first file offset.
+   * @param length The number of file bytes.
+   */
+  private ensureBlocks(fileOffset: number, length: number): void {
+    const first: number = Math.floor(fileOffset / BLOCK_SIZE);
+    const last: number = Math.floor((fileOffset + length - 1) / BLOCK_SIZE);
     for (let block: number = first; block <= last; block += 1) {
       this.ensureBlock(block);
     }
@@ -406,35 +578,6 @@ export class BinaryDocumentEntry {
   }
 
   /**
-   * Coalesces the pending edits into contiguous byte runs, so consecutive overwrites are written as one
-   * patch rather than one per byte.
-   * @returns Returns the patches in ascending offset order.
-   */
-  private buildPatches(): BinaryPatch[] {
-    const offsets: number[] = Array.from(this.edits.keys()).sort(
-      (left: number, right: number): number => left - right,
-    );
-    const patches: BinaryPatch[] = [];
-    let runOffset: number = -1;
-    let runBytes: number[] = [];
-    for (const offset of offsets) {
-      if (runBytes.length > 0 && offset === runOffset + runBytes.length) {
-        runBytes.push(this.edits.get(offset) ?? 0);
-      } else {
-        if (runBytes.length > 0) {
-          patches.push({ offset: runOffset, bytes: runBytes });
-        }
-        runOffset = offset;
-        runBytes = [this.edits.get(offset) ?? 0];
-      }
-    }
-    if (runBytes.length > 0) {
-      patches.push({ offset: runOffset, bytes: runBytes });
-    }
-    return patches;
-  }
-
-  /**
    * Writes an edited byte into the block cache, so a saved edit becomes the on-disk baseline the cache
    * reports.
    * @param offset The absolute byte offset.
@@ -469,11 +612,18 @@ export class BinaryDocumentEntry {
         if (chunk === null) {
           return;
         }
-        this.size.set(chunk.size);
         this.blocks.set(block, chunk.bytes);
+        // The first read learns the file size; initialise the piece table (and logical size) to the
+        // whole file once, so later re-fetches after an edit or save do not reset the edit model.
+        if (!this.initialized) {
+          this.originalSize = chunk.size;
+          this.table.init(chunk.size);
+          this.size.set(this.table.length());
+          this.initialized = true;
+        }
         // The first block carries the file header; sniff the container format from it and locate the
         // code, then jump there so the view opens on real instructions rather than the headers.
-        if (block === 0) {
+        if (block === 0 && this.format().kind === 'unknown') {
           this.format.set(sniffFormat(chunk.bytes));
           const code: number | null = codeOffset(chunk.bytes);
           this.codeOffset.set(code);

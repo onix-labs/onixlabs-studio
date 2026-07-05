@@ -14,6 +14,7 @@ import { ProjectChannel } from '@shared/api/project-channels';
 import {
   BinaryChunk,
   BinaryPatch,
+  BinarySpan,
   DirectoryEntry,
   DirectoryListing,
   FileOperationResult,
@@ -114,6 +115,15 @@ export class WorkspaceManager {
       WorkspaceChannel.WriteBytes,
       (_event: IpcMainInvokeEvent, filePath: unknown, patches: unknown): Promise<boolean> =>
         this.writeBytes(filePath, patches),
+    );
+    ipcMain.handle(
+      WorkspaceChannel.WritePieces,
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        spans: unknown,
+        added: unknown,
+      ): Promise<boolean> => this.writePieces(filePath, spans, added),
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFolder,
@@ -379,6 +389,88 @@ export class WorkspaceManager {
       return false;
     } finally {
       await handle?.close();
+    }
+  }
+
+  /**
+   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes. It
+   * streams each span — original ranges copied from the current file, added ranges from the supplied
+   * buffer — to a temporary file, then atomically renames it over the original, so memory stays bounded
+   * however large the file. Honoured only for trusted paths or files within an open workspace.
+   * @param filePath The absolute path of the file to rewrite.
+   * @param spans The spans that make up the new file content, in order.
+   * @param added The added buffer the `added` spans index into.
+   * @returns Returns true when the rewrite succeeded, or false when invalid, untrusted, or on error.
+   */
+  private async writePieces(filePath: unknown, spans: unknown, added: unknown): Promise<boolean> {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      return false;
+    }
+    if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      return false;
+    }
+    if (!Array.isArray(spans) || !(added instanceof Uint8Array)) {
+      return false;
+    }
+    const runs: BinarySpan[] = spans as BinarySpan[];
+    const addedBuffer: Buffer = Buffer.from(added);
+    const resolved: string = path.resolve(filePath);
+    const tempPath: string = `${resolved}.onix-save`;
+    let source: FileHandle | undefined;
+    let temp: FileHandle | undefined;
+    try {
+      source = await fs.open(resolved, 'r');
+      temp = await fs.open(tempPath, 'w');
+      const chunk: Buffer = Buffer.alloc(64 * 1024);
+      for (const run of runs) {
+        if (
+          (run.source !== 'original' && run.source !== 'added') ||
+          typeof run.start !== 'number' ||
+          !Number.isInteger(run.start) ||
+          run.start < 0 ||
+          typeof run.length !== 'number' ||
+          !Number.isInteger(run.length) ||
+          run.length < 0
+        ) {
+          return false;
+        }
+        if (run.source === 'added') {
+          if (run.start + run.length > addedBuffer.length) {
+            return false;
+          }
+          await temp.write(addedBuffer, run.start, run.length);
+        } else {
+          let position: number = run.start;
+          let remaining: number = run.length;
+          while (remaining > 0) {
+            const toRead: number = Math.min(remaining, chunk.length);
+            const { bytesRead }: { bytesRead: number } = await source.read(
+              chunk,
+              0,
+              toRead,
+              position,
+            );
+            if (bytesRead <= 0) {
+              return false;
+            }
+            await temp.write(chunk, 0, bytesRead);
+            position += bytesRead;
+            remaining -= bytesRead;
+          }
+        }
+      }
+      await temp.close();
+      temp = undefined;
+      await source.close();
+      source = undefined;
+      await fs.rename(tempPath, resolved);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      await temp?.close();
+      await source?.close();
+      await fs.rm(tempPath, { force: true }).catch((): void => undefined);
     }
   }
 

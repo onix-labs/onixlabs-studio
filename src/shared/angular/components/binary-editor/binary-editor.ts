@@ -48,19 +48,13 @@ export interface BinaryRange {
 export type BinaryColumn = 'hex' | 'ascii';
 
 /**
- * Represents a single-byte overwrite the user typed: the offset and its new value.
+ * Represents an edit the user typed: overwriting or inserting a byte, or deleting a run. The host
+ * applies it to the document model.
  */
-export interface BinaryByteEdit {
-  /**
-   * Gets the offset of the overwritten byte.
-   */
-  readonly offset: number;
-
-  /**
-   * Gets the new byte value (0–255).
-   */
-  readonly value: number;
-}
+export type BinaryEditOp =
+  | { readonly kind: 'overwrite'; readonly offset: number; readonly value: number }
+  | { readonly kind: 'insert'; readonly offset: number; readonly value: number }
+  | { readonly kind: 'delete'; readonly offset: number; readonly count: number };
 
 /**
  * Represents the byte window the editor currently shows, so the host can load exactly those bytes.
@@ -181,6 +175,11 @@ export class BinaryEditor {
   public readonly revealVersion: InputSignal<number> = input<number>(0);
 
   /**
+   * Gets whether typing inserts bytes (true) or overwrites them (false, the default).
+   */
+  public readonly insertMode: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits the byte window the editor needs loaded whenever the visible range changes.
    */
   public readonly visibleRangeChange: OutputEmitterRef<BinaryVisibleRange> =
@@ -197,9 +196,14 @@ export class BinaryEditor {
   public readonly cursorChange: OutputEmitterRef<number> = output<number>();
 
   /**
-   * Emits a single-byte overwrite as the user types over the hex or ASCII columns.
+   * Emits an edit — overwrite, insert, or delete — as the user types over the hex or ASCII columns.
    */
-  public readonly edit: OutputEmitterRef<BinaryByteEdit> = output<BinaryByteEdit>();
+  public readonly op: OutputEmitterRef<BinaryEditOp> = output<BinaryEditOp>();
+
+  /**
+   * Emits when the user presses Insert to toggle between insert and overwrite typing.
+   */
+  public readonly toggleInsertMode: OutputEmitterRef<void> = output<void>();
 
   /**
    * Holds the scroll container, measured for the viewport height and driven for reveals.
@@ -411,46 +415,52 @@ export class BinaryEditor {
   }
 
   /**
-   * Handles keyboard input: arrow/Home/End move the caret, Tab switches between the hex and ASCII
-   * columns, and hex digits or printable characters overwrite the caret byte (advancing the caret).
+   * Handles keyboard input: arrow/Home/End move the caret, Insert toggles insert mode, Backspace and
+   * Delete remove bytes, Tab switches column, and hex digits or printable characters overwrite (or, in
+   * insert mode, insert) the caret byte.
    * @param event The keyboard event.
    */
   protected onKeyDown(event: KeyboardEvent): void {
     const size: number = this.size();
-    if (size === 0) {
-      return;
-    }
-    const maxOffset: number = size - 1;
+    const insertMode: boolean = this.insertMode();
+    // In insert mode the caret may sit one past the last byte (the append point).
+    const maxCaret: number = insertMode ? size : Math.max(0, size - 1);
     const bytesPerRow: number = this.bytesPerRow();
     const caret: number = this.caret();
     const key: string = event.key;
     let handled: boolean = true;
     if (key === 'ArrowRight') {
-      this.moveCaret(caret + 1, maxOffset);
+      this.moveCaret(caret + 1, maxCaret);
     } else if (key === 'ArrowLeft') {
-      this.moveCaret(caret - 1, maxOffset);
+      this.moveCaret(caret - 1, maxCaret);
     } else if (key === 'ArrowDown') {
-      this.moveCaret(caret + bytesPerRow, maxOffset);
+      this.moveCaret(caret + bytesPerRow, maxCaret);
     } else if (key === 'ArrowUp') {
-      this.moveCaret(caret - bytesPerRow, maxOffset);
+      this.moveCaret(caret - bytesPerRow, maxCaret);
     } else if (key === 'Home') {
-      this.moveCaret(caret - (caret % bytesPerRow), maxOffset);
+      this.moveCaret(caret - (caret % bytesPerRow), maxCaret);
     } else if (key === 'End') {
-      this.moveCaret(caret - (caret % bytesPerRow) + bytesPerRow - 1, maxOffset);
+      this.moveCaret(caret - (caret % bytesPerRow) + bytesPerRow - 1, maxCaret);
+    } else if (key === 'Insert') {
+      this.toggleInsertMode.emit();
+    } else if (key === 'Backspace') {
+      this.deleteAt(caret - 1, maxCaret);
+    } else if (key === 'Delete') {
+      this.deleteAt(caret, maxCaret);
     } else if (key === 'Tab') {
       this.activeColumn.update((column: BinaryColumn): BinaryColumn =>
         column === 'hex' ? 'ascii' : 'hex',
       );
       this.nibbleLow = false;
     } else if (this.activeColumn() === 'hex' && /^[0-9a-fA-F]$/.test(key)) {
-      this.applyHexDigit(parseInt(key, 16), maxOffset);
+      this.applyHexDigit(parseInt(key, 16), maxCaret, insertMode);
     } else if (
       this.activeColumn() === 'ascii' &&
       key.length === 1 &&
       key.charCodeAt(0) >= 0x20 &&
       key.charCodeAt(0) <= 0x7e
     ) {
-      this.applyByte(key.charCodeAt(0), maxOffset);
+      this.typeByte(key.charCodeAt(0), maxCaret, insertMode);
     } else {
       handled = false;
     }
@@ -496,32 +506,52 @@ export class BinaryEditor {
   }
 
   /**
-   * Applies a typed hex digit to the caret byte: the first digit sets the high nibble, the second the
-   * low nibble and then advances the caret.
+   * Applies a typed hex digit to the caret byte, a nibble at a time. In overwrite mode both nibbles
+   * overwrite the byte; in insert mode the first nibble inserts a new byte (high nibble set) and the
+   * second overwrites its low nibble. Completing the second nibble advances the caret.
    * @param digit The hex digit value (0–15).
-   * @param maxOffset The last valid offset.
+   * @param maxCaret The furthest the caret may move.
+   * @param insertMode Whether typing inserts (true) or overwrites (false).
    */
-  private applyHexDigit(digit: number, maxOffset: number): void {
+  private applyHexDigit(digit: number, maxCaret: number, insertMode: boolean): void {
     const offset: number = this.caret();
-    const current: number = this.byteAt()(offset) ?? 0;
     if (this.nibbleLow) {
-      this.edit.emit({ offset, value: (current & 0xf0) | digit });
-      this.moveCaret(offset + 1, maxOffset);
+      const current: number = this.byteAt()(offset) ?? 0;
+      this.op.emit({ kind: 'overwrite', offset, value: (current & 0xf0) | digit });
+      this.moveCaret(offset + 1, insertMode ? maxCaret + 1 : maxCaret);
+    } else if (insertMode) {
+      this.op.emit({ kind: 'insert', offset, value: digit << 4 });
+      this.nibbleLow = true;
     } else {
-      this.edit.emit({ offset, value: (digit << 4) | (current & 0x0f) });
+      const current: number = this.byteAt()(offset) ?? 0;
+      this.op.emit({ kind: 'overwrite', offset, value: (digit << 4) | (current & 0x0f) });
       this.nibbleLow = true;
     }
   }
 
   /**
-   * Overwrites the caret byte with a value and advances the caret. Used for ASCII-column typing.
+   * Overwrites or inserts a byte at the caret and advances it. Used for ASCII-column typing.
    * @param value The byte value.
-   * @param maxOffset The last valid offset.
+   * @param maxCaret The furthest the caret may move.
+   * @param insertMode Whether typing inserts (true) or overwrites (false).
    */
-  private applyByte(value: number, maxOffset: number): void {
+  private typeByte(value: number, maxCaret: number, insertMode: boolean): void {
     const offset: number = this.caret();
-    this.edit.emit({ offset, value });
-    this.moveCaret(offset + 1, maxOffset);
+    this.op.emit({ kind: insertMode ? 'insert' : 'overwrite', offset, value });
+    this.moveCaret(offset + 1, insertMode ? maxCaret + 1 : maxCaret);
+  }
+
+  /**
+   * Deletes the byte at an offset (if any) and places the caret there.
+   * @param offset The offset to delete.
+   * @param maxCaret The furthest the caret may move.
+   */
+  private deleteAt(offset: number, maxCaret: number): void {
+    if (offset < 0 || offset >= this.size()) {
+      return;
+    }
+    this.op.emit({ kind: 'delete', offset, count: 1 });
+    this.moveCaret(offset, maxCaret);
   }
 
   /**

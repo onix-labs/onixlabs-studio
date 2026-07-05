@@ -1,7 +1,7 @@
 export { BinaryEditor } from './binary-editor';
 export type {
-  BinaryByteEdit,
   BinaryColumn,
+  BinaryEditOp,
   BinaryRange,
   BinaryVisibleRange,
 } from './binary-editor';
