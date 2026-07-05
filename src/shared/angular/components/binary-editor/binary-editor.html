@@ -1,5 +1,5 @@
 <div class="binary-editor__header-bar">
-  <div #header class="binary-editor__header" [style.--bpr]="bytesPerRow()">
+  <div class="binary-editor__header" [style.--bpr]="bytesPerRow()">
     <span class="binary-editor__addr binary-editor__addr--header">Offset</span>
     <span class="binary-editor__hex">
       @for (label of columnLabels(); track $index) {

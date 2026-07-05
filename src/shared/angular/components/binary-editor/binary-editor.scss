@@ -31,10 +31,10 @@
   --binary-header-foreground: var(--gray-400);
 }
 
-// Full-width title bar above the grid, matching the side panels' title area. It clips the centred
-// header, which is horizontally synced to the body's scroll so the labels stay above their columns.
+// Full-width title bar above the grid, matching the side panels' title area, with its labels centred.
 .binary-editor__header-bar {
-  overflow: hidden;
+  display: flex;
+  justify-content: center;
   padding-block: 0.3rem;
   background: var(--binary-header-background);
   color: var(--binary-header-foreground);
@@ -48,22 +48,16 @@
   outline: none;
 }
 
+// The rows live in an absolutely positioned window, so nothing in flow sizes the content — give it an
+// explicit width computed from bytes-per-row and the shared column metrics. This is exactly the
+// header's intrinsic width, so both centre with `margin-inline: auto` and the columns line up under the
+// labels.
 .binary-editor__content {
   position: relative;
-}
-
-// The header and body are given the same explicit row width (the rows themselves live in an absolutely
-// positioned window and so cannot size the content), and both centre with `margin-inline: auto`, so the
-// header labels sit exactly above the body columns. When a row is wider than the viewport, `auto`
-// collapses to a left edge and the header follows the body's horizontal scroll (set on scroll).
-.binary-editor__header,
-.binary-editor__content {
-  --row-width: calc(
+  width: calc(
     var(--addr-width) + var(--column-gap) + var(--bpr) * var(--hexcell-width) +
       (var(--bpr) - 1) * var(--hex-gap) + var(--column-gap) + var(--bpr) * var(--ascii-width) + 2rem
   );
-
-  width: var(--row-width);
   margin-inline: auto;
 }
 
@@ -78,8 +72,11 @@
 }
 
 // Keeps the body font-size so its `ch`-based column widths match the rows exactly and the labels stay
-// aligned; the uppercase weight distinguishes it as a header.
+// aligned; the uppercase weight distinguishes it as a header. `flex: none` keeps its intrinsic width
+// (equal to the body content's) so it never shrinks and the labels stay above their columns.
 .binary-editor__header {
+  flex: none;
+  width: max-content;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;

@@ -218,13 +218,6 @@ export class BinaryEditor {
     viewChild<ElementRef<HTMLElement>>('scroller');
 
   /**
-   * Holds the header label row, translated horizontally to follow the body's scroll so the labels stay
-   * above their columns when a row is wider than the viewport.
-   */
-  private readonly headerRow: Signal<ElementRef<HTMLElement> | undefined> =
-    viewChild<ElementRef<HTMLElement>>('header');
-
-  /**
    * Holds the current scroll offset of the grid, in pixels.
    */
   private readonly scrollTop: WritableSignal<number> = signal<number>(0);
@@ -407,10 +400,6 @@ export class BinaryEditor {
     const element: HTMLElement = event.target as HTMLElement;
     this.scrollTop.set(element.scrollTop);
     this.viewportHeight.set(element.clientHeight);
-    const header: HTMLElement | undefined = this.headerRow()?.nativeElement;
-    if (header !== undefined) {
-      header.style.transform = `translateX(${-element.scrollLeft}px)`;
-    }
   }
 
   /**
