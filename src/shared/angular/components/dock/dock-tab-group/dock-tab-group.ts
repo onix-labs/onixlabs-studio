@@ -63,6 +63,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
   host: {
     '[class.dock-tab-group--documents]': 'isDocuments()',
     '[class.dock-tab-group--tool]': '!isDocuments()',
+    '[class.dock-tab-group--empty]': 'isEmpty()',
     '[class.dock-tab-group--focused]': 'isFocused()',
     '[class.dock-tab-group--tabs-fill]': 'tabsFill()',
     '(mousedown)': 'focusPanel()',

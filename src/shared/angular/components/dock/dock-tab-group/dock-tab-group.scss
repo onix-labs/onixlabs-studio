@@ -164,16 +164,6 @@
   }
 }
 
-.dock-tab-group__empty {
-  display: grid;
-  place-items: center;
-  block-size: 100%;
-  padding: 1rem;
-  color: var(--dock-empty-foreground-color);
-  font-style: italic;
-  text-align: center;
-}
-
 // The document well's right-aligned controls (it has no title bar): a compass drag handle and a
 // document picker, pushed to the end of the tab strip.
 .dock-tab-group__strip-controls {
@@ -227,6 +217,12 @@
 
   background: transparent;
   border: none;
+}
+
+// An empty document well is a blank space, not a framed cell: paint the dock container's own colour
+// over the leaf pane's lighter surface so it reads as part of the container until a document opens.
+:host(.dock-tab-group--documents.dock-tab-group--empty) {
+  background: var(--root-content-background-color);
 }
 
 :host(.dock-tab-group--focused) {

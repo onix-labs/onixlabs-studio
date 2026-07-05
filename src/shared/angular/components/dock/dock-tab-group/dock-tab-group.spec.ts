@@ -52,11 +52,13 @@ describe('DockTabGroup', () => {
     expect(element.querySelector('.dock-tab-group__title')).toBeNull();
   });
 
-  it('render_whenEmptyStack_showsTheDropHint', () => {
+  it('render_whenEmptyStack_rendersBlankWithNoContent', () => {
     render(mkStack('document', []));
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('.dock-tab-group__empty')).not.toBeNull();
+    expect(element.querySelector('.dock-tab-group__empty')).toBeNull();
+    expect(element.querySelector('.dock-tab-group__tabstrip')).toBeNull();
+    expect(element.querySelector('.dock-tab-group__body')).toBeNull();
   });
 
   it('requestFloat_whenFloatButtonClicked_floatsTheActivePanel', () => {

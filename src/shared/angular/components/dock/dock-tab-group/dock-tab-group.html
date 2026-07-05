@@ -1,8 +1,4 @@
-@if (isEmpty()) {
-  <div class="dock-tab-group__empty">
-    Drop a document here — documents dock only in document wells.
-  </div>
-} @else {
+@if (!isEmpty()) {
   @if (!isDocuments()) {
     <div class="dock-tab-group__title" (mousedown)="startDrag($event)">
       <span class="dock-tab-group__title-text">{{ activePanel()?.title }}</span>
