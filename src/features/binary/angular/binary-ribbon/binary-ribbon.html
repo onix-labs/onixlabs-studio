@@ -23,17 +23,19 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Tools">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-check
-        label="Disassembly"
-        [checked]="disassemblyShown()"
-        (toggled)="onToggleDisassembly()"
-      />
-      <app-ribbon-strip-check
-        label="Inspector"
-        [checked]="inspectorShown()"
-        (toggled)="onToggleInspector()"
-      />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-button
+      [icon]="Icon.CODE"
+      label="Disassembly"
+      [toggle]="true"
+      [pressed]="disassemblyShown()"
+      (action)="onToggleDisassembly()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.SEARCH"
+      label="Inspector"
+      [toggle]="true"
+      [pressed]="inspectorShown()"
+      (action)="onToggleInspector()"
+    />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

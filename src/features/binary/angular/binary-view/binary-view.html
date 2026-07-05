@@ -24,7 +24,7 @@
           [minSize]="220"
           [maxSize]="900"
         >
-          <app-binary-disasm-panel [document]="document" />
+          <app-binary-disasm-panel [document]="document" (closed)="onHideDisasm()" />
         </app-panel>
       }
     </app-panel-layout>
@@ -37,7 +37,7 @@
         [minSize]="180"
         [maxSize]="600"
       >
-        <app-binary-inspector [document]="document" />
+        <app-binary-inspector [document]="document" (closed)="onHideInspector()" />
       </app-panel>
     }
   </app-panel-layout>

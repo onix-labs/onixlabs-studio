@@ -184,6 +184,20 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
+   * Hides the disassembly panel when it asks to close.
+   */
+  protected onHideDisasm(): void {
+    this.binaryPanels.hide(this.tabId(), 'disassembly');
+  }
+
+  /**
+   * Hides the inspector panel when it asks to close.
+   */
+  protected onHideInspector(): void {
+    this.binaryPanels.hide(this.tabId(), 'inspector');
+  }
+
+  /**
    * Loads the byte window the editor reports visible, and remembers it so disassembly reloads when the
    * format resolves.
    * @param range The visible byte window.

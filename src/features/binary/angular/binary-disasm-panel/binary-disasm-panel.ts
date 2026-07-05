@@ -4,8 +4,12 @@ import {
   computed,
   input,
   InputSignal,
+  output,
+  OutputEmitterRef,
   Signal,
 } from '@angular/core';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
 import { disassemblyArchitecture } from '../binary-format/binary-format';
 
@@ -52,17 +56,28 @@ interface DisasmRow {
  */
 @Component({
   selector: 'app-binary-disasm-panel',
+  imports: [AppIcon],
   templateUrl: './binary-disasm-panel.html',
   styleUrl: './binary-disasm-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BinaryDisasmPanel {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Gets the document whose instructions are shown, or undefined when none is bound.
    */
   public readonly document: InputSignal<BinaryDocumentEntry | undefined> = input<
     BinaryDocumentEntry | undefined
   >(undefined);
+
+  /**
+   * Emits when the panel's close button is pressed.
+   */
+  public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
    * Holds whether the document's format can be natively disassembled (drives the empty note).
@@ -98,6 +113,13 @@ export class BinaryDisasmPanel {
       );
     },
   );
+
+  /**
+   * Emits the close request so the host hides the panel.
+   */
+  protected onClose(): void {
+    this.closed.emit();
+  }
 
   /**
    * Selects an instruction's bytes when it is clicked, so the hex and ASCII columns highlight the

@@ -2,8 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
-import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
@@ -18,14 +16,7 @@ import { BinaryPanels } from '../binary-panels/binary-panels';
  */
 @Component({
   selector: 'app-binary-ribbon',
-  imports: [
-    RibbonStripOverflow,
-    RibbonStripGroup,
-    RibbonStripButton,
-    RibbonStripField,
-    RibbonStripColumn,
-    RibbonStripCheck,
-  ],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripField],
   templateUrl: './binary-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,24 +1,86 @@
 :host {
+  // The bar and body share a single surface color so the whole panel reads as one piece, matching the
+  // code editor's agent panel.
+  --inspector-bar-background: var(--gray-200);
+  --inspector-bar-foreground: var(--gray-700);
+  --inspector-body-background: var(--gray-200);
+
   display: block;
   height: 100%;
-  overflow-y: auto;
-  border-left: 1px solid var(--accent-surface-border-color);
-  background: var(--body-background-color);
+  min-height: 0;
+}
+
+:host-context([data-theme-mode='dark']) {
+  --inspector-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
+  --inspector-bar-foreground: var(--gray-400);
+  --inspector-body-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
 }
 
 .inspector {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.75rem 0.9rem;
-  font-size: 0.78rem;
+  height: 100%;
+  min-height: 0;
 }
 
-.inspector__header {
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--form-muted-foreground-color);
+.inspector__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--inspector-bar-background);
+  color: var(--inspector-bar-foreground);
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 1.5rem;
+    inline-size: 1.5rem;
+    font-size: 0.9rem;
+    color: inherit;
+    background: transparent;
+    border: 0.0625rem solid transparent;
+    border-radius: calc(0.375rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    transition: var(--hover-transition);
+
+    &:hover {
+      color: var(--accent-surface-foreground-color);
+      background: var(--accent-surface-background-color);
+      border-color: var(--accent-surface-border-color);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: -0.125rem;
+    }
+  }
+}
+
+.inspector__icon {
+  font-size: 1rem;
+}
+
+.inspector__title {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.inspector__spacer {
+  flex: 1 1 auto;
+}
+
+.inspector__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  padding: 0.75rem 0.9rem;
+  overflow-y: auto;
+  background: var(--inspector-body-background);
+  font-size: 0.78rem;
 }
 
 .inspector__toggles {

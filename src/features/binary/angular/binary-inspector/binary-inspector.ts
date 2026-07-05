@@ -5,10 +5,14 @@ import {
   effect,
   input,
   InputSignal,
+  output,
+  OutputEmitterRef,
   signal,
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry } from '../binary-document/binary-document';
 import { inspectBytes, InspectorRow } from './binary-inspector-values';
 
@@ -24,18 +28,28 @@ const INSPECT_WIDTH: number = 8;
  */
 @Component({
   selector: 'app-binary-inspector',
-  imports: [],
+  imports: [AppIcon],
   templateUrl: './binary-inspector.html',
   styleUrl: './binary-inspector.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BinaryInspector {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Gets the document whose cursor bytes are inspected, or undefined when none is bound.
    */
   public readonly document: InputSignal<BinaryDocumentEntry | undefined> = input<
     BinaryDocumentEntry | undefined
   >(undefined);
+
+  /**
+   * Emits when the panel's close button is pressed.
+   */
+  public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
    * Holds whether multi-byte values are decoded little-endian.
@@ -79,6 +93,13 @@ export class BinaryInspector {
         document.ensureRange(cursor, INSPECT_WIDTH);
       }
     });
+  }
+
+  /**
+   * Emits the close request so the host hides the panel.
+   */
+  protected onClose(): void {
+    this.closed.emit();
   }
 
   /**
