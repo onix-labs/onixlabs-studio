@@ -2,11 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
+import { BinaryPanels } from '../binary-panels/binary-panels';
 
 /**
  * Represents the contextual ribbon shown when a binary tab is active. Its actions resolve the active
@@ -15,7 +18,14 @@ import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-
  */
 @Component({
   selector: 'app-binary-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripField],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButton,
+    RibbonStripField,
+    RibbonStripColumn,
+    RibbonStripCheck,
+  ],
   templateUrl: './binary-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,6 +45,11 @@ export class BinaryRibbon {
    * Holds the binary document registry the ribbon acts on.
    */
   private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
+
+  /**
+   * Holds the side-panel state the Tools group toggles.
+   */
+  private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
 
   /**
    * Gets the byte-per-row options offered by the layout field.
@@ -65,6 +80,42 @@ export class BinaryRibbon {
     const offset: number | null | undefined = this.activeDocument()?.codeOffset();
     return offset !== null && offset !== undefined;
   });
+
+  /**
+   * Gets whether the active document's disassembly panel is currently shown.
+   */
+  protected readonly disassemblyShown: Signal<boolean> = computed((): boolean => {
+    const id: string | undefined = this.tabs.activeTabId();
+    return id !== undefined && this.binaryPanels.isVisible(id, 'disassembly');
+  });
+
+  /**
+   * Gets whether the active document's inspector panel is currently shown.
+   */
+  protected readonly inspectorShown: Signal<boolean> = computed((): boolean => {
+    const id: string | undefined = this.tabs.activeTabId();
+    return id !== undefined && this.binaryPanels.isVisible(id, 'inspector');
+  });
+
+  /**
+   * Toggles the disassembly panel for the active binary tab.
+   */
+  protected onToggleDisassembly(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.binaryPanels.toggle(id, 'disassembly');
+    }
+  }
+
+  /**
+   * Toggles the inspector panel for the active binary tab.
+   */
+  protected onToggleInspector(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.binaryPanels.toggle(id, 'inspector');
+    }
+  }
 
   /**
    * Scrolls to where the file's code begins (entry point or first code section).

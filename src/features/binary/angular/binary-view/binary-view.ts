@@ -16,59 +16,38 @@ import {
   BinaryRange,
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import {
   BinaryDocumentEntry,
   BinaryDocuments,
   BinarySelection,
 } from '../binary-document/binary-document';
-import { describeFormat, disassemblyArchitecture } from '../binary-format/binary-format';
+import { describeFormat } from '../binary-format/binary-format';
+import { BinaryDisasmPanel } from '../binary-disasm-panel/binary-disasm-panel';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
+import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryStatus } from '../binary-status/binary-status';
 
 /**
- * Describes a single rendered disassembly row.
+ * Holds the initial width, in pixels, of the disassembly panel.
  */
-interface DisasmRow {
-  /**
-   * Gets the absolute file offset of the instruction's first byte (also the render track key).
-   */
-  readonly startOffset: number;
-
-  /**
-   * Gets the instruction's length in bytes.
-   */
-  readonly byteLength: number;
-
-  /**
-   * Gets the instruction address as fixed-width hex.
-   */
-  readonly address: string;
-
-  /**
-   * Gets the instruction mnemonic.
-   */
-  readonly mnemonic: string;
-
-  /**
-   * Gets the instruction operands.
-   */
-  readonly operands: string;
-
-  /**
-   * Gets a value indicating whether the instruction's bytes overlap the current selection.
-   */
-  readonly selected: boolean;
-}
+const DEFAULT_DISASM_SIZE: number = 320;
 
 /**
- * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid over a file's bytes,
- * beside a disassembly column and the data inspector. It owns the binary-tab concerns the grid does
- * not — resolving the backing document, loading the visible byte window and its disassembly, the
- * status segment, and the disassembly/inspector cross-highlight. Read-only for this phase.
+ * Holds the initial width, in pixels, of the inspector panel.
+ */
+const DEFAULT_INSPECTOR_SIZE: number = 260;
+
+/**
+ * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the centre, with
+ * toggleable Disassembly and Inspector panels docked to the side via the shared panel layout. It owns
+ * the binary-tab concerns the grid does not — resolving the backing document, loading the visible byte
+ * window and its disassembly, and the status segment. Read-only for this phase.
  */
 @Component({
   selector: 'app-binary-view',
-  imports: [BinaryEditor, BinaryInspector],
+  imports: [PanelLayout, Panel, BinaryEditor, BinaryDisasmPanel, BinaryInspector],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -83,6 +62,11 @@ export class BinaryView implements OnDestroy {
    * Holds the status service the active view publishes its cursor/selection/size to.
    */
   private readonly binaryStatus: BinaryStatus = inject(BinaryStatus);
+
+  /**
+   * Holds the side-panel state (which of the Disassembly/Inspector panels are shown).
+   */
+  private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
 
   /**
    * Holds the byte window the editor last reported visible, used to (re)load disassembly when the
@@ -102,6 +86,16 @@ export class BinaryView implements OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds the width, in pixels, of the disassembly panel. Two-way bound to the panel's splitter.
+   */
+  protected readonly disasmSize: WritableSignal<number> = signal<number>(DEFAULT_DISASM_SIZE);
+
+  /**
+   * Holds the width, in pixels, of the inspector panel. Two-way bound to the panel's splitter.
+   */
+  protected readonly inspectorSize: WritableSignal<number> = signal<number>(DEFAULT_INSPECTOR_SIZE);
+
+  /**
    * Holds the resolved binary document, or undefined when the tab has none.
    */
   protected readonly document: Signal<BinaryDocumentEntry | undefined> = computed(
@@ -113,41 +107,6 @@ export class BinaryView implements OnDestroy {
    */
   protected readonly byteAt: (offset: number) => number | null = (offset: number): number | null =>
     this.document()?.byteAt(offset) ?? null;
-
-  /**
-   * Holds whether the document's format can be natively disassembled (drives the column's empty note).
-   */
-  protected readonly disassemblable: Signal<boolean> = computed((): boolean => {
-    const document: BinaryDocumentEntry | undefined = this.document();
-    return document !== undefined && disassemblyArchitecture(document.format()) !== null;
-  });
-
-  /**
-   * Holds the disassembly rows for the visible range, with each instruction flagged when its bytes
-   * overlap the current selection (the hex/ASCII↔disassembly cross-highlight).
-   */
-  protected readonly disasmRows: Signal<readonly DisasmRow[]> = computed(
-    (): readonly DisasmRow[] => {
-      const document: BinaryDocumentEntry | undefined = this.document();
-      if (document === undefined) {
-        return [];
-      }
-      const selection: BinarySelection | null = document.selection();
-      return document.instructions().map(
-        (instruction): DisasmRow => ({
-          startOffset: instruction.startOffset,
-          byteLength: instruction.byteLength,
-          address: instruction.startOffset.toString(16).padStart(8, '0').toUpperCase(),
-          mnemonic: instruction.mnemonic,
-          operands: instruction.operands,
-          selected:
-            selection !== null &&
-            instruction.startOffset < selection.end &&
-            instruction.startOffset + instruction.byteLength > selection.start,
-        }),
-      );
-    },
-  );
 
   /**
    * Initializes the view: loads disassembly for the visible range and publishes status while active.
@@ -184,11 +143,44 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
-   * Clears this view's status contribution when the tab closes.
+   * Clears this view's status contribution and panel state when the tab closes.
    */
   public ngOnDestroy(): void {
     this.binaryStatus.clear(this.tabId());
+    this.binaryPanels.remove(this.tabId());
     this.binaryDocuments.release(this.tabId());
+  }
+
+  /**
+   * Gets whether the disassembly panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected disasmMounted(): boolean {
+    return this.binaryPanels.isMounted(this.tabId(), 'disassembly');
+  }
+
+  /**
+   * Gets whether the disassembly panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected disasmVisible(): boolean {
+    return this.binaryPanels.isVisible(this.tabId(), 'disassembly');
+  }
+
+  /**
+   * Gets whether the inspector panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected inspectorMounted(): boolean {
+    return this.binaryPanels.isMounted(this.tabId(), 'inspector');
+  }
+
+  /**
+   * Gets whether the inspector panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected inspectorVisible(): boolean {
+    return this.binaryPanels.isVisible(this.tabId(), 'inspector');
   }
 
   /**
@@ -220,20 +212,5 @@ export class BinaryView implements OnDestroy {
    */
   protected onCursorChange(offset: number): void {
     this.document()?.cursor.set(offset);
-  }
-
-  /**
-   * Selects an instruction's bytes when it is clicked in the disassembly column, so the hex and ASCII
-   * columns highlight the bytes it decodes from.
-   * @param startOffset The instruction's first byte offset.
-   * @param byteLength The instruction's length in bytes.
-   */
-  protected onInstructionClick(startOffset: number, byteLength: number): void {
-    const document: BinaryDocumentEntry | undefined = this.document();
-    if (document === undefined) {
-      return;
-    }
-    document.cursor.set(startOffset);
-    document.selection.set({ start: startOffset, end: startOffset + byteLength });
   }
 }

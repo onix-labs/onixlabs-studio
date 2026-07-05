@@ -1,0 +1,21 @@
+<div class="disasm">
+  <div class="disasm__header">Disassembly</div>
+  @if (disassemblable()) {
+    <div class="disasm__list">
+      @for (row of disasmRows(); track row.startOffset) {
+        <button
+          type="button"
+          class="disasm__row"
+          [class.disasm__row--selected]="row.selected"
+          (click)="onInstructionClick(row.startOffset, row.byteLength)"
+        >
+          <span class="disasm__addr">{{ row.address }}</span>
+          <span class="disasm__mnemonic">{{ row.mnemonic }}</span>
+          <span class="disasm__operands">{{ row.operands }}</span>
+        </button>
+      }
+    </div>
+  } @else {
+    <p class="disasm__empty">No native disassembly for this format.</p>
+  }
+</div>

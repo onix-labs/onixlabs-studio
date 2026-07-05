@@ -1,41 +1,44 @@
 @if (document(); as document) {
-  <div class="binary">
-    <app-binary-editor
-      class="binary__editor"
-      [size]="document.size()"
-      [bytesPerRow]="document.bytesPerRow()"
-      [byteAt]="byteAt"
-      [selection]="document.selection()"
-      [dataVersion]="document.loadedVersion()"
-      [revealOffset]="document.revealOffset"
-      [revealVersion]="document.revealVersion()"
-      (visibleRangeChange)="onVisibleRange($event)"
-      (selectionChange)="onSelectionChange($event)"
-      (cursorChange)="onCursorChange($event)"
-    />
+  <app-panel-layout>
+    <!-- Inner layout: the hex grid in the centre with the disassembly panel docked beside it. -->
+    <app-panel-layout main>
+      <app-binary-editor
+        main
+        [size]="document.size()"
+        [bytesPerRow]="document.bytesPerRow()"
+        [byteAt]="byteAt"
+        [selection]="document.selection()"
+        [dataVersion]="document.loadedVersion()"
+        [revealOffset]="document.revealOffset"
+        [revealVersion]="document.revealVersion()"
+        (visibleRangeChange)="onVisibleRange($event)"
+        (selectionChange)="onSelectionChange($event)"
+        (cursorChange)="onCursorChange($event)"
+      />
 
-    <div class="binary__disasm">
-      <div class="binary__disasm-header">Disassembly</div>
-      @if (disassemblable()) {
-        <div class="binary__disasm-list">
-          @for (row of disasmRows(); track row.startOffset) {
-            <button
-              type="button"
-              class="binary__disasm-row"
-              [class.binary__cell--selected]="row.selected"
-              (click)="onInstructionClick(row.startOffset, row.byteLength)"
-            >
-              <span class="binary__disasm-addr">{{ row.address }}</span>
-              <span class="binary__disasm-mnemonic">{{ row.mnemonic }}</span>
-              <span class="binary__disasm-operands">{{ row.operands }}</span>
-            </button>
-          }
-        </div>
-      } @else {
-        <p class="binary__disasm-empty">No native disassembly for this format.</p>
+      @if (disasmMounted()) {
+        <app-panel
+          edge="right"
+          [visible]="disasmVisible()"
+          [(size)]="disasmSize"
+          [minSize]="220"
+          [maxSize]="900"
+        >
+          <app-binary-disasm-panel [document]="document" />
+        </app-panel>
       }
-    </div>
+    </app-panel-layout>
 
-    <app-binary-inspector class="binary__inspector" [document]="document" />
-  </div>
+    @if (inspectorMounted()) {
+      <app-panel
+        edge="right"
+        [visible]="inspectorVisible()"
+        [(size)]="inspectorSize"
+        [minSize]="180"
+        [maxSize]="600"
+      >
+        <app-binary-inspector [document]="document" />
+      </app-panel>
+    }
+  </app-panel-layout>
 }

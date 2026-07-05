@@ -1,0 +1,75 @@
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.disasm {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid var(--accent-surface-border-color);
+  background: var(--body-background-color);
+  color: var(--body-foreground-color);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.disasm__header {
+  padding: 0.35rem 0.9rem;
+  border-bottom: 1px solid var(--accent-surface-border-color);
+  color: var(--form-muted-foreground-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.disasm__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.disasm__row {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.1rem 0.9rem;
+  border: none;
+  background: transparent;
+  color: var(--body-foreground-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.disasm__row:hover {
+  background: var(--accent-surface-background-color);
+}
+
+.disasm__row--selected {
+  background: var(--accent-surface-background-color);
+  color: var(--accent-surface-foreground-color);
+}
+
+.disasm__addr {
+  flex: 0 0 auto;
+  min-width: 8ch;
+  color: var(--form-muted-foreground-color);
+}
+
+.disasm__mnemonic {
+  flex: 0 0 5ch;
+  color: var(--accent-surface-foreground-color);
+}
+
+.disasm__operands {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.disasm__empty {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  color: var(--form-muted-foreground-color);
+}
