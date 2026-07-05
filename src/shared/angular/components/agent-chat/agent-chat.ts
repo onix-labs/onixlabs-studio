@@ -15,7 +15,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
-import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -24,6 +24,87 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownPipe } from './markdown-pipe';
+import { friendlyToolLabel, technicalToolName } from './tool-summary';
+
+/**
+ * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
+ * `working` row that carries the run's live "Working…" indicator.
+ */
+type TranscriptRowKind = AgentItemKind | 'working';
+
+/**
+ * A transcript entry as it enters the timeline fold: the backing item (null for the synthetic working
+ * row) and its row kind.
+ */
+interface RailEntry {
+  /**
+   * Gets the backing transcript item, or null for the working row.
+   */
+  readonly item: AgentItem | null;
+
+  /**
+   * Gets the row kind.
+   */
+  readonly kind: TranscriptRowKind;
+}
+
+/**
+ * A transcript item prepared for rendering. The agent's own activity (assistant text, reasoning, and
+ * tool calls) plus the live working indicator form a connected timeline down a shared left rail;
+ * {@link connectsUp}/{@link connectsDown} say whether this row's node joins the one above/below so the
+ * rail draws as one continuous line and breaks cleanly around the user's own right-aligned messages.
+ */
+interface TranscriptRow {
+  /**
+   * Gets the row's stable identity for tracking.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the row kind.
+   */
+  readonly kind: TranscriptRowKind;
+
+  /**
+   * Gets the backing transcript item, or null for the synthetic working row.
+   */
+  readonly item: AgentItem | null;
+
+  /**
+   * Gets a value indicating whether this row sits on the agent-activity timeline rail.
+   */
+  readonly timeline: boolean;
+
+  /**
+   * Gets a value indicating whether the rail connects up to the previous row.
+   */
+  readonly connectsUp: boolean;
+
+  /**
+   * Gets a value indicating whether the rail connects down to the next row.
+   */
+  readonly connectsDown: boolean;
+
+  /**
+   * Gets the glyph shown on this row's timeline node.
+   */
+  readonly nodeIcon: Icon;
+
+  /**
+   * Gets a value indicating whether this row's node glyph spins (a live/running state).
+   */
+  readonly nodeSpin: boolean;
+
+  /**
+   * Gets the friendly one-line summary for a tool row (undefined for other kinds).
+   */
+  readonly label?: string;
+
+  /**
+   * Gets the technical tool identifier revealed when a tool row is expanded (undefined otherwise).
+   */
+  readonly tech?: string;
+}
 
 /**
  * Renders one agent conversation as a structured, provider-agnostic transcript above a composer:
@@ -144,6 +225,66 @@ export class AgentChat {
    * Gets the current composer text.
    */
   public readonly draft: Signal<string> = this.draftText.asReadonly();
+
+  /**
+   * Gets the transcript prepared for rendering: each item plus the live working indicator, tagged with
+   * timeline-rail connectivity and, for tool rows, a friendly label and technical name. The agent's
+   * own activity (assistant text, reasoning, tool calls, and the working indicator) forms one
+   * connected rail; the user's messages and permission prompts sit off it and break the line.
+   */
+  protected readonly rows: Signal<readonly TranscriptRow[]> = computed(
+    (): readonly TranscriptRow[] => {
+      const items: readonly AgentItem[] = this.items();
+      const showWorking: boolean = this.isRunning() && !this.awaitingDecision();
+      // Reasoning ('thinking') is streamed but not shown in the transcript.
+      const base: RailEntry[] = items
+        .filter((item: AgentItem): boolean => item.kind !== 'thinking')
+        .map((item: AgentItem): RailEntry => ({ item, kind: item.kind }));
+      const sequence: readonly RailEntry[] = showWorking
+        ? [...base, { item: null, kind: 'working' }]
+        : base;
+
+      const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
+        kind === 'assistant' || kind === 'tool' || kind === 'working';
+
+      const running: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
+        entry.kind === 'tool' && entry.item?.toolState === 'running';
+
+      const nodeIconFor: (entry: RailEntry) => Icon = (entry: RailEntry): Icon => {
+        switch (entry.kind) {
+          case 'assistant':
+            return Icon.AGENT;
+          case 'working':
+            return Icon.SPINNER;
+          case 'tool':
+            if (entry.item?.toolState === 'running') {
+              return Icon.SPINNER;
+            }
+            return entry.item?.toolState === 'error' ? Icon.WARNING : Icon.ACTION;
+          default:
+            return Icon.ACTION;
+        }
+      };
+
+      return sequence.map((row: RailEntry, index: number): TranscriptRow => {
+        const timeline: boolean = onRail(row.kind);
+        const previous: RailEntry | undefined = sequence[index - 1];
+        const next: RailEntry | undefined = sequence[index + 1];
+        return {
+          id: row.item?.id ?? 'working',
+          kind: row.kind,
+          item: row.item,
+          timeline,
+          connectsUp: timeline && previous !== undefined && onRail(previous.kind),
+          connectsDown: timeline && next !== undefined && onRail(next.kind),
+          nodeIcon: nodeIconFor(row),
+          nodeSpin: row.kind === 'working' || running(row),
+          label: row.kind === 'tool' ? friendlyToolLabel(row.item?.toolName) : undefined,
+          tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
+        };
+      });
+    },
+  );
 
   /**
    * Initializes a new instance of the {@link AgentChat} class, publishing this conversation as the
