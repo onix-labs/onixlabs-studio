@@ -1,9 +1,8 @@
 :host {
-  // The bar and body share a single surface color so the whole panel reads as one piece, matching the
-  // code editor's agent panel.
+  // The bar shares the code editor's agent-panel surface color; the body is the Monaco editor's own
+  // themed surface, like the main code editor.
   --disasm-bar-background: var(--gray-200);
   --disasm-bar-foreground: var(--gray-700);
-  --disasm-body-background: var(--gray-200);
 
   display: block;
   height: 100%;
@@ -13,7 +12,6 @@
 :host-context([data-theme-mode='dark']) {
   --disasm-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
   --disasm-bar-foreground: var(--gray-400);
-  --disasm-body-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
 }
 
 .disasm {
@@ -21,8 +19,6 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
 }
 
 .disasm__bar {
@@ -74,59 +70,32 @@
 }
 
 .disasm__body {
-  display: flex;
+  position: relative;
   flex: 1 1 auto;
-  flex-direction: column;
   min-height: 0;
-  background: var(--disasm-body-background);
 }
 
-.disasm__list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+.disasm__editor {
+  position: absolute;
+  inset: 0;
 }
 
-.disasm__row {
-  display: flex;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.1rem 0.9rem;
-  border: none;
-  background: transparent;
-  color: var(--body-foreground-color);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.disasm__row:hover {
-  background: var(--accent-surface-background-color);
-}
-
-.disasm__row--selected {
-  background: var(--accent-surface-background-color);
-  color: var(--accent-surface-foreground-color);
-}
-
-.disasm__addr {
-  flex: 0 0 auto;
-  min-width: 8ch;
-  color: var(--form-muted-foreground-color);
-}
-
-.disasm__mnemonic {
-  flex: 0 0 5ch;
-  color: var(--accent-surface-foreground-color);
-}
-
-.disasm__operands {
-  flex: 1;
-  white-space: nowrap;
-}
-
+// Shown over the (empty) editor when the format has no native disassembly.
 .disasm__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
-  padding: 0.75rem 0.9rem;
+  padding: 1rem;
+  text-align: center;
+  background: var(--body-background-color);
   color: var(--form-muted-foreground-color);
+}
+
+// The cross-highlight for lines whose bytes are selected in the hex grid. Monaco renders the line
+// element outside this component's view encapsulation, so the class is reached through ::ng-deep.
+:host ::ng-deep .disasm-line-highlight {
+  background: var(--accent-surface-background-color);
 }

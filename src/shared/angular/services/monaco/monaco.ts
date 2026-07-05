@@ -18,6 +18,7 @@ import {
   HEURISTIC_SEMANTIC_TOKEN_LEGEND,
 } from './monaco-heuristic-tokens';
 import { defineThemes } from './monaco-themes';
+import { registerAsmLanguage } from './monaco-asm-language';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -291,6 +292,7 @@ export class Monaco {
     window.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
     await this.loadScript();
     defineThemes(window.monaco);
+    registerAsmLanguage(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
   }
