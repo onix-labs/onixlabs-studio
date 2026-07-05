@@ -59,6 +59,25 @@ export class BinaryRibbon {
   );
 
   /**
+   * Gets whether the active document has a known code offset to jump to.
+   */
+  protected readonly codeAvailable: Signal<boolean> = computed((): boolean => {
+    const offset: number | null | undefined = this.activeDocument()?.codeOffset();
+    return offset !== null && offset !== undefined;
+  });
+
+  /**
+   * Scrolls to where the file's code begins (entry point or first code section).
+   */
+  protected onGoToCode(): void {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    const offset: number | null | undefined = document?.codeOffset();
+    if (document !== undefined && offset !== null && offset !== undefined) {
+      document.reveal(offset);
+    }
+  }
+
+  /**
    * Scrolls to the start of the file.
    */
   protected onGoToStart(): void {

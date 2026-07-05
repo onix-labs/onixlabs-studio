@@ -4,6 +4,7 @@
  */
 export type BinaryFormat =
   | { readonly kind: 'pe'; readonly architecture: string; readonly managed: boolean }
+  | { readonly kind: 'mz'; readonly architecture: string }
   | { readonly kind: 'elf'; readonly architecture: string }
   | { readonly kind: 'macho'; readonly architecture: string }
   | { readonly kind: 'jvm' }
@@ -39,12 +40,10 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
   if (matches(bytes, 0, [0xca, 0xfe, 0xba, 0xbe])) {
     return { kind: 'jvm' };
   }
-  // PE: 'MZ' DOS stub, then the PE signature at e_lfanew.
+  // PE: 'MZ' DOS stub, then the PE signature at e_lfanew. A bare MZ with no PE signature is a
+  // real-mode MS-DOS executable (16-bit x86).
   if (matches(bytes, 0, [0x4d, 0x5a])) {
-    const pe: BinaryFormat | null = sniffPe(bytes, view);
-    if (pe !== null) {
-      return pe;
-    }
+    return sniffPe(bytes, view) ?? { kind: 'mz', architecture: 'x86-16' };
   }
   return { kind: 'unknown' };
 }
@@ -52,7 +51,13 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
 /**
  * Holds the architecture labels the native disassembler supports.
  */
-const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>(['x86', 'x64', 'ARM', 'ARM64']);
+const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>([
+  'x86-16',
+  'x86',
+  'x64',
+  'ARM',
+  'ARM64',
+]);
 
 /**
  * Resolves the architecture a format's native code should be disassembled as, or null when native
@@ -65,6 +70,7 @@ export function disassemblyArchitecture(format: BinaryFormat): string | null {
   switch (format.kind) {
     case 'pe':
       return !format.managed && DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
+    case 'mz':
     case 'elf':
     case 'macho':
       return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
@@ -72,6 +78,31 @@ export function disassemblyArchitecture(format: BinaryFormat): string | null {
     case 'unknown':
       return null;
   }
+}
+
+/**
+ * Resolves the file offset where a binary's code begins, so the editor can jump past the headers to
+ * real instructions: the PE entry point (translated through the section table, or the first executable
+ * section), the ELF entry point (translated through the program headers), or the MS-DOS header size.
+ * Returns null when it cannot be determined (Mach-O/JVM/unknown, or a malformed or truncated header).
+ * @param bytes The file's leading bytes (the first block).
+ * @returns Returns the code file offset, or null.
+ */
+export function codeOffset(bytes: Uint8Array): number | null {
+  const view: DataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (matches(bytes, 0, [0x7f, 0x45, 0x4c, 0x46])) {
+    return elfCodeOffset(bytes, view);
+  }
+  if (matches(bytes, 0, [0x4d, 0x5a])) {
+    const peOffset: number | null = readU32(view, 0x3c, true);
+    if (peOffset !== null && matches(bytes, peOffset, [0x50, 0x45, 0x00, 0x00])) {
+      return peCodeOffset(view, peOffset);
+    }
+    // Bare MZ (real-mode MS-DOS): code follows the header, whose size is in paragraphs at offset 8.
+    const headerParagraphs: number | null = readU16(view, 8, true);
+    return headerParagraphs === null ? null : headerParagraphs * 16;
+  }
+  return null;
 }
 
 /**
@@ -83,6 +114,8 @@ export function describeFormat(format: BinaryFormat): string {
   switch (format.kind) {
     case 'pe':
       return format.managed ? `.NET · ${format.architecture}` : `PE · ${format.architecture}`;
+    case 'mz':
+      return `MS-DOS · ${format.architecture}`;
     case 'elf':
       return `ELF · ${format.architecture}`;
     case 'macho':
@@ -168,6 +201,89 @@ function sniffPe(bytes: Uint8Array, view: DataView): BinaryFormat | null {
 }
 
 /**
+ * Resolves a PE file's code offset: the entry point mapped through the section that contains it, or
+ * the first executable section's raw pointer (for DLLs with no entry point).
+ * @param view A view over the file's leading bytes.
+ * @param peOffset The offset of the PE signature.
+ * @returns Returns the code file offset, or null.
+ */
+function peCodeOffset(view: DataView, peOffset: number): number | null {
+  const sectionCount: number | null = readU16(view, peOffset + 6, true);
+  const optionalSize: number | null = readU16(view, peOffset + 20, true);
+  const entryRva: number | null = readU32(view, peOffset + 24 + 16, true);
+  if (sectionCount === null || optionalSize === null) {
+    return null;
+  }
+  const sectionTable: number = peOffset + 24 + optionalSize;
+  let executableFallback: number | null = null;
+  for (let index: number = 0; index < sectionCount; index += 1) {
+    const section: number = sectionTable + index * 40;
+    const virtualSize: number | null = readU32(view, section + 8, true);
+    const virtualAddress: number | null = readU32(view, section + 12, true);
+    const rawPointer: number | null = readU32(view, section + 20, true);
+    const characteristics: number | null = readU32(view, section + 36, true);
+    if (virtualAddress === null || rawPointer === null) {
+      break;
+    }
+    if (
+      entryRva !== null &&
+      entryRva !== 0 &&
+      virtualAddress <= entryRva &&
+      entryRva < virtualAddress + (virtualSize ?? 0)
+    ) {
+      return entryRva - virtualAddress + rawPointer;
+    }
+    // IMAGE_SCN_MEM_EXECUTE (0x20000000): the first executable section, used when there is no entry.
+    if (executableFallback === null && characteristics !== null && (characteristics & 0x20000000) !== 0) {
+      executableFallback = rawPointer;
+    }
+  }
+  return executableFallback;
+}
+
+/**
+ * Resolves an ELF file's code offset: the entry point mapped through the loadable program header that
+ * contains it.
+ * @param bytes The file's leading bytes.
+ * @param view A view over those bytes.
+ * @returns Returns the code file offset, or null.
+ */
+function elfCodeOffset(bytes: Uint8Array, view: DataView): number | null {
+  const is64: boolean = bytes[4] === 2; // EI_CLASS: 1 = 32-bit, 2 = 64-bit.
+  const littleEndian: boolean = bytes[5] !== 2; // EI_DATA: 1 = little, 2 = big.
+  const entry: number | null = is64 ? readU64(view, 24, littleEndian) : readU32(view, 24, littleEndian);
+  const phOffset: number | null = is64
+    ? readU64(view, 32, littleEndian)
+    : readU32(view, 28, littleEndian);
+  const phEntrySize: number | null = readU16(view, is64 ? 54 : 42, littleEndian);
+  const phCount: number | null = readU16(view, is64 ? 56 : 44, littleEndian);
+  if (entry === null || phOffset === null || phEntrySize === null || phCount === null) {
+    return null;
+  }
+  for (let index: number = 0; index < phCount; index += 1) {
+    const header: number = phOffset + index * phEntrySize;
+    const type: number | null = readU32(view, header, littleEndian);
+    const fileOffset: number | null = is64
+      ? readU64(view, header + 8, littleEndian)
+      : readU32(view, header + 4, littleEndian);
+    const virtualAddress: number | null = is64
+      ? readU64(view, header + 16, littleEndian)
+      : readU32(view, header + 8, littleEndian);
+    const fileSize: number | null = is64
+      ? readU64(view, header + 32, littleEndian)
+      : readU32(view, header + 16, littleEndian);
+    if (type === null || fileOffset === null || virtualAddress === null || fileSize === null) {
+      break;
+    }
+    // PT_LOAD (1) segment containing the entry point.
+    if (type === 1 && virtualAddress <= entry && entry < virtualAddress + fileSize) {
+      return fileOffset + (entry - virtualAddress);
+    }
+  }
+  return null;
+}
+
+/**
  * Reads a little/big-endian 16-bit value, or null when out of bounds.
  * @param view The data view.
  * @param offset The byte offset.
@@ -187,6 +303,18 @@ function readU16(view: DataView, offset: number, littleEndian: boolean): number 
  */
 function readU32(view: DataView, offset: number, littleEndian: boolean): number | null {
   return offset + 4 <= view.byteLength ? view.getUint32(offset, littleEndian) : null;
+}
+
+/**
+ * Reads a little/big-endian 64-bit value as a number, or null when out of bounds. File offsets and
+ * virtual addresses in real binaries stay well within a safe integer.
+ * @param view The data view.
+ * @param offset The byte offset.
+ * @param littleEndian Whether to read little-endian.
+ * @returns Returns the value, or null.
+ */
+function readU64(view: DataView, offset: number, littleEndian: boolean): number | null {
+  return offset + 8 <= view.byteLength ? Number(view.getBigUint64(offset, littleEndian)) : null;
 }
 
 /**

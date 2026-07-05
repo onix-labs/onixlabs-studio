@@ -5,7 +5,12 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
-import { BinaryFormat, disassemblyArchitecture, sniffFormat } from '../binary-format/binary-format';
+import {
+  BinaryFormat,
+  codeOffset,
+  disassemblyArchitecture,
+  sniffFormat,
+} from '../binary-format/binary-format';
 
 /**
  * Specifies the size, in bytes, of each block fetched and cached from a file. A multiple of the row
@@ -88,6 +93,12 @@ export class BinaryDocumentEntry {
    * Holds the sniffed container format and architecture, resolved once the first block loads.
    */
   public readonly format: WritableSignal<BinaryFormat> = signal<BinaryFormat>({ kind: 'unknown' });
+
+  /**
+   * Holds the file offset where code begins (entry point or first code section), or null when it
+   * cannot be determined. Drives the ribbon's "Go to Code" action.
+   */
+  public readonly codeOffset: WritableSignal<number | null> = signal<number | null>(null);
 
   /**
    * Holds the decoded instructions for the current viewport range, or an empty list when the format is
@@ -282,9 +293,15 @@ export class BinaryDocumentEntry {
         }
         this.size.set(chunk.size);
         this.blocks.set(block, chunk.bytes);
-        // The first block carries the file header; sniff the container format from it.
+        // The first block carries the file header; sniff the container format from it and locate the
+        // code, then jump there so the view opens on real instructions rather than the headers.
         if (block === 0) {
           this.format.set(sniffFormat(chunk.bytes));
+          const code: number | null = codeOffset(chunk.bytes);
+          this.codeOffset.set(code);
+          if (code !== null) {
+            this.reveal(code);
+          }
         }
         this.loadedVersion.update((version: number): number => version + 1);
       });

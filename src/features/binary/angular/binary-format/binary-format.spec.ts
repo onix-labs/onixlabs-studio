@@ -1,5 +1,6 @@
 import {
   BinaryFormat,
+  codeOffset,
   describeFormat,
   disassemblyArchitecture,
   sniffFormat,
@@ -90,8 +91,66 @@ describe('sniffFormat', () => {
     });
   });
 
+  it('detectsBareMzAsRealModeMsDos', () => {
+    const bytes: Uint8Array = new Uint8Array(64);
+    bytes[0] = 0x4d; // 'M'
+    bytes[1] = 0x5a; // 'Z'
+    // e_lfanew (0x3C) is left zero, so there is no PE signature: a real-mode MS-DOS executable.
+    expect(sniffFormat(bytes)).toEqual({ kind: 'mz', architecture: 'x86-16' });
+  });
+
   it('returnsUnknownForUnrecognisedHeaders', () => {
     expect(sniffFormat(new Uint8Array([0x00, 0x01, 0x02, 0x03]))).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('codeOffset', () => {
+  it('mapsThePeEntryPointThroughItsSection', () => {
+    const peOffset: number = 128;
+    const optionalOffset: number = peOffset + 24;
+    const optionalSize: number = 96;
+    const sectionTable: number = optionalOffset + optionalSize;
+    const { bytes, view } = buffer(sectionTable + 40);
+    bytes[0] = 0x4d;
+    bytes[1] = 0x5a;
+    view.setUint32(0x3c, peOffset, true);
+    bytes[peOffset] = 0x50; // 'P'
+    bytes[peOffset + 1] = 0x45; // 'E'
+    view.setUint16(peOffset + 6, 1, true); // one section
+    view.setUint16(peOffset + 20, optionalSize, true); // size of optional header
+    view.setUint32(optionalOffset + 16, 0x1000, true); // AddressOfEntryPoint
+    view.setUint32(sectionTable + 8, 0x1000, true); // VirtualSize
+    view.setUint32(sectionTable + 12, 0x1000, true); // VirtualAddress
+    view.setUint32(sectionTable + 20, 0x400, true); // PointerToRawData
+    expect(codeOffset(bytes)).toBe(0x400); // 0x1000 - 0x1000 + 0x400
+  });
+
+  it('mapsTheElfEntryPointThroughItsLoadSegment', () => {
+    const { bytes, view } = buffer(128);
+    bytes.set([0x7f, 0x45, 0x4c, 0x46]);
+    bytes[4] = 2; // 64-bit
+    bytes[5] = 1; // little-endian
+    view.setBigUint64(24, 0x401000n, true); // e_entry
+    view.setBigUint64(32, 64n, true); // e_phoff
+    view.setUint16(54, 56, true); // e_phentsize
+    view.setUint16(56, 1, true); // e_phnum
+    view.setUint32(64, 1, true); // p_type = PT_LOAD
+    view.setBigUint64(72, 0n, true); // p_offset
+    view.setBigUint64(80, 0x400000n, true); // p_vaddr
+    view.setBigUint64(96, 0x2000n, true); // p_filesz
+    expect(codeOffset(bytes)).toBe(0x1000); // 0 + (0x401000 - 0x400000)
+  });
+
+  it('usesTheDosHeaderSizeForBareMz', () => {
+    const { bytes, view } = buffer(64);
+    bytes[0] = 0x4d;
+    bytes[1] = 0x5a;
+    view.setUint16(8, 2, true); // header size in paragraphs
+    expect(codeOffset(bytes)).toBe(32); // 2 * 16
+  });
+
+  it('returnsNullForFormatsWithoutAKnownCodeOffset', () => {
+    expect(codeOffset(new Uint8Array([0xca, 0xfe, 0xba, 0xbe]))).toBeNull();
   });
 });
 
@@ -100,6 +159,7 @@ describe('describeFormat', () => {
     const cases: readonly { format: BinaryFormat; label: string }[] = [
       { format: { kind: 'pe', architecture: 'x64', managed: false }, label: 'PE · x64' },
       { format: { kind: 'pe', architecture: 'x86', managed: true }, label: '.NET · x86' },
+      { format: { kind: 'mz', architecture: 'x86-16' }, label: 'MS-DOS · x86-16' },
       { format: { kind: 'elf', architecture: 'ARM64' }, label: 'ELF · ARM64' },
       { format: { kind: 'macho', architecture: 'x64' }, label: 'Mach-O · x64' },
       { format: { kind: 'jvm' }, label: 'JVM class' },
@@ -116,6 +176,7 @@ describe('disassemblyArchitecture', () => {
     expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: false })).toBe('x64');
     expect(disassemblyArchitecture({ kind: 'elf', architecture: 'ARM64' })).toBe('ARM64');
     expect(disassemblyArchitecture({ kind: 'macho', architecture: 'x86' })).toBe('x86');
+    expect(disassemblyArchitecture({ kind: 'mz', architecture: 'x86-16' })).toBe('x86-16');
     // Managed .NET, JVM, unknown, and unsupported architectures have no native disassembly.
     expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: true })).toBeNull();
     expect(disassemblyArchitecture({ kind: 'jvm' })).toBeNull();

@@ -33,6 +33,12 @@ const PAD_AFTER: number = 16;
 const MAX_WINDOW: number = 64 * 1024;
 
 /**
+ * Specifies the largest number of decoded rows a single request returns, bounding a data-heavy window
+ * where the resync path emits one row per undecodable byte.
+ */
+const MAX_ROWS: number = 8192;
+
+/**
  * Maps a sniffed architecture label to a Capstone architecture and mode.
  */
 interface ArchitectureSpec {
@@ -141,25 +147,63 @@ export class BinaryDisassembler {
       const start: number = Math.max(0, offset - PAD_BEFORE);
       const bytes: Uint8Array = await this.readWindow(filePath, start, offset + windowLength + PAD_AFTER);
       const instance: CapstoneInstance = await this.instanceFor(architecture, spec);
-      const decoded: Instruction[] = instance.disassemble(bytes, BigInt(start));
       const end: number = offset + windowLength;
-      return decoded
-        .map(
-          (instruction: Instruction): DecodedInstruction => ({
-            startOffset: Number(instruction.address),
-            byteLength: instruction.size,
-            mnemonic: instruction.mnemonic,
-            operands: instruction.operands,
-            raw: Array.from(instruction.bytes),
-          }),
-        )
-        .filter(
-          (instruction: DecodedInstruction): boolean =>
-            instruction.startOffset >= offset && instruction.startOffset < end,
-        );
+      return this.decodeWithResync(instance, bytes, start).filter(
+        (instruction: DecodedInstruction): boolean =>
+          instruction.startOffset >= offset && instruction.startOffset < end,
+      );
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Disassembles a byte buffer, resyncing past bytes Capstone cannot decode. Capstone stops linear
+   * disassembly at the first invalid opcode; to keep the column populated across data and misaligned
+   * regions, an undecodable byte is emitted as a `.byte` and disassembly resumes at the next byte.
+   * @param instance The Capstone instance.
+   * @param bytes The buffer to decode.
+   * @param baseOffset The absolute file offset of the buffer's first byte.
+   * @returns Returns the decoded instructions and `.byte` fillers in order.
+   */
+  private decodeWithResync(
+    instance: CapstoneInstance,
+    bytes: Uint8Array,
+    baseOffset: number,
+  ): DecodedInstruction[] {
+    const result: DecodedInstruction[] = [];
+    const bufferEnd: number = baseOffset + bytes.length;
+    let position: number = baseOffset;
+    while (position < bufferEnd && result.length < MAX_ROWS) {
+      const decoded: Instruction[] = instance.disassemble(
+        bytes.subarray(position - baseOffset),
+        BigInt(position),
+      );
+      if (decoded.length === 0) {
+        result.push(byteFiller(position, bytes[position - baseOffset]));
+        position += 1;
+        continue;
+      }
+      for (const instruction of decoded) {
+        result.push({
+          startOffset: Number(instruction.address),
+          byteLength: instruction.size,
+          mnemonic: instruction.mnemonic,
+          operands: instruction.operands,
+          raw: Array.from(instruction.bytes),
+        });
+      }
+      const last: Instruction = decoded[decoded.length - 1];
+      const next: number = Number(last.address) + last.size;
+      // Guard against a zero-length decode failing to advance (never expected, but keeps the loop safe).
+      if (next <= position) {
+        result.push(byteFiller(position, bytes[position - baseOffset]));
+        position += 1;
+      } else {
+        position = next;
+      }
+    }
+    return result;
   }
 
   /**
@@ -209,12 +253,30 @@ export class BinaryDisassembler {
 }
 
 /**
+ * Builds a `.byte` filler row for a byte Capstone could not decode.
+ * @param offset The byte's absolute file offset.
+ * @param value The byte value.
+ * @returns Returns the filler instruction.
+ */
+function byteFiller(offset: number, value: number): DecodedInstruction {
+  return {
+    startOffset: offset,
+    byteLength: 1,
+    mnemonic: '.byte',
+    operands: `0x${value.toString(16).padStart(2, '0')}`,
+    raw: [value],
+  };
+}
+
+/**
  * Maps a sniffed architecture label to a Capstone architecture and mode, or null when unsupported.
  * @param architecture The architecture label.
  * @returns Returns the Capstone spec, or null.
  */
 function architectureSpec(architecture: string): ArchitectureSpec | null {
   switch (architecture) {
+    case 'x86-16':
+      return { architecture: Architecture.X86, mode: Mode.Bits16 };
     case 'x86':
       return { architecture: Architecture.X86, mode: Mode.Bits32 };
     case 'x64':
