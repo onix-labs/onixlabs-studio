@@ -1,74 +1,16 @@
 // The editor itself — its scroll container, document-width wrapper, and Milkdown theming — lives in
-// the shared <app-markdown-editor> pane. This stylesheet owns the view's layout: the editor area, the
-// optional tool panel beside it, and the splitter between them.
+// the shared <app-markdown-editor> pane, and the editor/tool-panel layout is owned by the shared
+// <app-panel-layout>. This stylesheet only sizes the view's host and the editor in the main slot.
 
 :host {
-  // The resize splitter rests at the tool panel's own surface color so it reads as part of the panel.
-  --markdown-splitter-background: var(--gray-200);
-
-  // The host is forced to `display: block` by the content host, so the flex layout lives on the inner
-  // `.markdown-layout` wrapper below rather than on the host itself.
+  // The host is forced to `display: block` by the content host.
   block-size: 100%;
   overflow: hidden;
 }
 
-:host-context([data-theme-mode='dark']) {
-  --markdown-splitter-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
-}
-
-// A flex row of the scrolling editor area and an optional tool panel beside it.
-.markdown-layout {
-  display: flex;
-  block-size: 100%;
-  min-block-size: 0;
-}
-
-// The document core (and the editor pane inside it) takes the remaining width beside any tool panel.
+// The document core (and the editor pane inside it) fills the panel layout's centre (main) area.
 app-markdown-document {
-  flex: 1;
+  display: block;
+  block-size: 100%;
   min-inline-size: 0;
-}
-
-// When tool panels open on the left, reverse the row so the panel precedes the editor.
-:host(.panels-left) .markdown-layout {
-  flex-direction: row-reverse;
-}
-
-// The drag handle that resizes the panel. The splitter takes no layout space (the panel sits flush
-// against the editor); its grip is drawn as an overlay over the panel's leading edge — the right edge
-// of the editor when the panel docks right, mirrored to the left when it docks left.
-.markdown-layout__splitter {
-  position: relative;
-  flex: 0 0 0;
-  z-index: 5;
-  cursor: col-resize;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    inline-size: 0.375rem;
-    background: var(--markdown-splitter-background);
-    transition: background 150ms ease-in-out;
-  }
-
-  &:hover::before {
-    background: var(--accent-surface-border-color);
-  }
-}
-
-// When the panel docks on the left, mirror the grip so it overlays the panel's (right) leading edge.
-:host(.panels-left) .markdown-layout__splitter::before {
-  inset-inline-start: auto;
-  inset-inline-end: 0;
-}
-
-// A tool panel (Outline, Review, Agent, Reader) docked beside the editor. Its width comes from the
-// `flex-basis` bound in the template, adjusted by the splitter drag.
-.tool-panel {
-  flex: 0 0 auto;
-  min-inline-size: 0;
-  min-block-size: 0;
-  overflow: hidden;
 }

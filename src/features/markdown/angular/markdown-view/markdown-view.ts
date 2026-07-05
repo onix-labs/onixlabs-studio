@@ -32,6 +32,8 @@ import {
   wrapInWarningAlertCommand,
 } from '@shared/angular/milkdown/github-alert-plugin';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
 import {
   MarkdownBlockType,
@@ -91,16 +93,6 @@ const HEADING_LEVEL_6: number = 6;
 const ROOT_DEPTH: number = 0;
 
 /**
- * Minimum width of a markdown tool panel, in pixels.
- */
-const MIN_PANEL_SIZE: number = 220;
-
-/**
- * Maximum width of a markdown tool panel, in pixels.
- */
-const MAX_PANEL_SIZE: number = 720;
-
-/**
  * Default width of a markdown tool panel, in pixels.
  */
 const DEFAULT_PANEL_SIZE: number = 320;
@@ -115,6 +107,8 @@ const DEFAULT_PANEL_SIZE: number = 320;
 @Component({
   selector: 'app-markdown-view',
   imports: [
+    PanelLayout,
+    Panel,
     MarkdownDocument,
     MarkdownOutlinePanel,
     MarkdownReviewPanel,
@@ -124,9 +118,6 @@ const DEFAULT_PANEL_SIZE: number = 320;
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '[class.panels-left]': 'panelPosition() === "left"',
-  },
 })
 export class MarkdownView implements OnDestroy {
   /**
@@ -232,19 +223,9 @@ export class MarkdownView implements OnDestroy {
   );
 
   /**
-   * Holds the width of the open tool panel, in pixels, adjusted by dragging the splitter.
+   * Holds the width of the open tool panel, in pixels. Two-way bound to the panel's resize splitter.
    */
   protected readonly panelSize: WritableSignal<number> = signal<number>(DEFAULT_PANEL_SIZE);
-
-  /**
-   * Holds the pointer coordinate at the start of a panel-splitter drag.
-   */
-  private panelDragOrigin: number = 0;
-
-  /**
-   * Holds the panel width at the start of a panel-splitter drag.
-   */
-  private panelDragOriginSize: number = 0;
 
   /**
    * Gets the identifier of the tab this view represents, which is also the id of its backing document
@@ -318,31 +299,6 @@ export class MarkdownView implements OnDestroy {
     this.reviewReveal.unregister();
     this.readAlong.unregister();
     this.panels.remove(this.tabId());
-  }
-
-  /**
-   * Begins a splitter drag that resizes the open tool panel. The drag direction is mirrored when the
-   * panel is docked on the left so dragging towards the editor always shrinks the panel.
-   * @param event The originating pointer event.
-   */
-  protected onPanelSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    this.panelDragOrigin = event.clientX;
-    this.panelDragOriginSize = this.panelSize();
-    const sign: number = this.panelPosition() === 'left' ? -1 : 1;
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const delta: number = (this.panelDragOrigin - move.clientX) * sign;
-      this.panelSize.set(
-        Math.min(MAX_PANEL_SIZE, Math.max(MIN_PANEL_SIZE, this.panelDragOriginSize + delta)),
-      );
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
   }
 
   /**

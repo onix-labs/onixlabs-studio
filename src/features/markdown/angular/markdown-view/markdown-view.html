@@ -1,5 +1,6 @@
-<div class="markdown-layout">
+<app-panel-layout>
   <app-markdown-document
+    main
     [documentId]="tabId()"
     [isActive]="isActive()"
     (ready)="onReady()"
@@ -8,13 +9,12 @@
   />
 
   @if (activePanel() !== 'none') {
-    <div
-      class="markdown-layout__splitter"
-      role="separator"
-      aria-orientation="vertical"
-      (mousedown)="onPanelSplitterDown($event)"
-    ></div>
-    <aside class="tool-panel" [style.flex-basis.px]="panelSize()">
+    <app-panel
+      [edge]="panelPosition() === 'left' ? 'left' : 'right'"
+      [(size)]="panelSize"
+      [minSize]="220"
+      [maxSize]="720"
+    >
       @switch (activePanel()) {
         @case ('outline') {
           <app-markdown-outline-panel />
@@ -29,6 +29,6 @@
           <app-markdown-reader-panel />
         }
       }
-    </aside>
+    </app-panel>
   }
-</div>
+</app-panel-layout>
