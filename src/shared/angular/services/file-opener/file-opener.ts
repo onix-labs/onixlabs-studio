@@ -219,7 +219,8 @@ export class FileOpener {
     if (well === null) {
       return false;
     }
-    this.recordRecentFile(fileInfo);
+    // A file opened into a workspace's document well is not itself a recent item — only the workspace
+    // (recorded by openDirectory) is. Recording the file here would surface it on the welcome screen.
     const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
     if (existing !== undefined) {
       this.dockState.setActive(well.id, existing);

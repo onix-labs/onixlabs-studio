@@ -543,10 +543,15 @@ export class Documents {
   }
 
   /**
-   * Records a saved document as a recent item so it surfaces on the welcome screen.
+   * Records a saved document as a recent item so it surfaces on the welcome screen. Skipped for a
+   * per-workspace well model (one with an owning tab): a file living inside a workspace is not itself a
+   * recent item — only the workspace is — so saving it must not surface it on the welcome screen.
    * @param entry The saved document entry.
    */
   private recordRecent(entry: DocumentEntry): void {
+    if (this.owningTabId !== null) {
+      return;
+    }
     const filePath: string | null = entry.filePath();
     if (filePath === null) {
       return;
