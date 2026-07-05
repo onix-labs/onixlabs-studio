@@ -28,14 +28,14 @@
 
   // Modal presentation: a wide, solid dark panel with a soft internal glow, over a dark backdrop.
   --modal-fade-duration: 280ms;
-  --modal-panel-inline-size: min(70rem, 100%);
-  --modal-panel-padding: 1.75rem;
+  --modal-panel-inline-size: min(58rem, 100%);
+  --modal-panel-padding: 1rem;
   --modal-panel-radius: 1.5rem;
   --modal-panel-background:
     radial-gradient(130% 90% at 88% -12%, rgba(139, 92, 246, 0.16), transparent 55%),
     linear-gradient(158deg, #16172a 0%, #0d0e18 62%);
   --modal-panel-backdrop-filter: none;
-  --modal-panel-border-color: rgba(255, 255, 255, 0.09);
+  --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.35);
   --modal-panel-shadow: 0 2rem 4.5rem rgba(0, 0, 0, 0.6);
   --modal-backdrop-color: rgba(6, 7, 16, 0.55);
 }
@@ -219,6 +219,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  // Allow the 1fr grid column to shrink below its content so long rows truncate instead of
+  // overflowing the modal.
+  min-inline-size: 0;
   min-block-size: 22rem;
   padding: 1.1rem 1.15rem;
   background: rgba(255, 255, 255, 0.02);
@@ -227,29 +230,73 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-// Title, filter pills, and search on a single row.
+// The title and the always-open search field share the top row.
 .welcome__recent-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .welcome__recent-title {
   flex: none;
   margin: 0;
-  margin-inline-end: 0.35rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--wl-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wl-muted);
 }
 
-.welcome__filters {
+// The search field fills the remaining width, with a trailing magnifier.
+.welcome__searchbox {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.4rem;
   min-inline-size: 0;
-  overflow: hidden;
+  padding-inline: 0.75rem;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  transition: border-color 120ms ease;
+
+  &:focus-within {
+    border-color: rgba(var(--accent-color-rgb), 0.6);
+  }
+}
+
+.welcome__searchbox-input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding-block: 0.45rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--wl-text);
+  background: transparent;
+  border: none;
+
+  &::placeholder {
+    color: var(--wl-faint);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.welcome__searchbox-icon {
+  flex: none;
+  font-size: 1rem;
+  color: var(--wl-faint);
+}
+
+// The filter pills sit on their own row beneath the title and search field, spread to fill the width.
+.welcome__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
 }
 
 .welcome__filter {
@@ -298,89 +345,16 @@
   }
 }
 
-.welcome__search {
-  display: grid;
-  flex: none;
-  place-items: center;
-  inline-size: 2rem;
-  block-size: 2rem;
-  margin-inline-start: auto;
-  font-size: 1rem;
-  color: var(--wl-muted);
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface-hover);
-  }
-}
-
-// The search field replaces the filter pills while searching, spanning the same row.
-.welcome__searchbox {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  padding-inline: 0.6rem;
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  transition: border-color 120ms ease;
-
-  &:focus-within {
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-  }
-
-  .welcome__search {
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
-    margin-inline-start: 0;
-    background: transparent;
-    border: none;
-  }
-}
-
-.welcome__searchbox-icon {
-  flex: none;
-  font-size: 1rem;
-  color: var(--wl-faint);
-}
-
-.welcome__searchbox-input {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  padding-block: 0.4rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--wl-text);
-  background: transparent;
-  border: none;
-
-  &::placeholder {
-    color: var(--wl-faint);
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
-}
-
 .welcome__recent-list {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 0.15rem;
   margin: 0;
   padding: 0;
+  // Fill the available height and scroll internally, so adding items never grows the modal. A zero
+  // flex-basis keeps the list from contributing its content height to the panel's intrinsic size.
+  min-block-size: 0;
   overflow-y: auto;
   list-style: none;
 }
@@ -441,12 +415,16 @@
   min-inline-size: 0;
 }
 
+// The name and path truncate on the left (keeping the meaningful end, e.g. the file name) via an
+// RTL layout direction, left-aligned so the LTR text still reads normally.
 .welcome__recent-name {
   overflow: hidden;
   font-size: 0.9rem;
   font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
   color: var(--wl-text);
 }
 
@@ -455,6 +433,8 @@
   font-size: 0.76rem;
   white-space: nowrap;
   text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
   color: var(--wl-faint);
 }
 

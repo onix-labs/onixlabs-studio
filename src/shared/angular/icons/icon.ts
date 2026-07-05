@@ -693,6 +693,11 @@ export class Icon {
   public static readonly WELCOME_SOURCE_CONTROL: Icon = new Icon('ph-light ph-git-branch');
 
   /**
+   * Gets the light-weight project (cube) icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_PROJECT: Icon = new Icon('ph-light ph-cube');
+
+  /**
    * Gets the light-weight code icon shown on the welcome screen.
    */
   public static readonly WELCOME_CODE: Icon = new Icon('ph-light ph-brackets-curly');

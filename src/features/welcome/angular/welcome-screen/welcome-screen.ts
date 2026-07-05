@@ -3,12 +3,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
-  ElementRef,
   inject,
   signal,
   Signal,
-  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
@@ -112,12 +109,6 @@ export class WelcomeScreen {
   private readonly shell: Shell = inject(Shell);
 
   /**
-   * Gets the search input, focused when the search field is opened.
-   */
-  private readonly searchInput: Signal<ElementRef<HTMLInputElement> | undefined> =
-    viewChild<ElementRef<HTMLInputElement>>('searchInput');
-
-  /**
    * Gets a value indicating whether any recent items exist at all, regardless of the current filter
    * and search, distinguishing an empty history from a query that matched nothing.
    */
@@ -129,11 +120,11 @@ export class WelcomeScreen {
    * Gets the recent-items filter pills.
    */
   protected readonly filters: readonly RecentFilter[] = [
-    { id: 'all', label: 'All', icon: Icon.GRID_DOTS, kind: null },
-    { id: 'directories', label: 'Directories', icon: Icon.FOLDER, kind: 'directory' },
+    { id: 'all', label: 'Everything', icon: Icon.GRID_DOTS, kind: null },
+    { id: 'directories', label: 'Workspaces', icon: Icon.FOLDER, kind: 'directory' },
     { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL, kind: 'repository' },
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
-    { id: 'code', label: 'Code Files', icon: Icon.CODE, kind: 'code' },
+    { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
   ];
 
   /**
@@ -153,11 +144,6 @@ export class WelcomeScreen {
    * Holds the current search query.
    */
   protected readonly query: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds whether the search field is open in place of the filter pills.
-   */
-  protected readonly searchOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets the recent items to show, narrowed by the active filter and search query and ordered with
@@ -218,14 +204,15 @@ export class WelcomeScreen {
   );
 
   /**
-   * Creates the welcome screen, focusing the search field whenever it is opened.
+   * Prepares a name or path for display in the recent list. The list truncates on the left using an
+   * RTL layout direction, which would otherwise reorder an absolute path's leading slash to the visual
+   * end; prefixing a left-to-right mark keeps it in place. Any trailing slash is trimmed first.
+   * @param value The raw name or path.
+   * @returns Returns the value ready for left-truncated display.
    */
-  public constructor() {
-    effect((): void => {
-      if (this.searchOpen()) {
-        this.searchInput()?.nativeElement.focus();
-      }
-    });
+  protected display(value: string): string {
+    const trimmed: string = value.replace(/\/+$/, '');
+    return `\u200E${trimmed.length > 0 ? trimmed : value}`;
   }
 
   /**
@@ -313,21 +300,6 @@ export class WelcomeScreen {
   }
 
   /**
-   * Opens the search field in place of the filter pills.
-   */
-  protected openSearch(): void {
-    this.searchOpen.set(true);
-  }
-
-  /**
-   * Closes the search field and clears the query.
-   */
-  protected closeSearch(): void {
-    this.searchOpen.set(false);
-    this.query.set('');
-  }
-
-  /**
    * Updates the search query from the input event.
    * @param event The input event carrying the current value.
    */
@@ -344,6 +316,14 @@ export class WelcomeScreen {
     if (await this.fileOpener.openInteractive()) {
       this.welcomeModal.close();
     }
+  }
+
+  /**
+   * Creates a new project workspace. Placeholder pending the project-creation flow; wiring is deferred
+   * until that feature lands, so this currently takes no action.
+   */
+  protected newProject(): void {
+    // No project-creation flow exists yet; this action is a design placeholder.
   }
 
   /**
