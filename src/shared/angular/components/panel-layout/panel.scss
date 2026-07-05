@@ -6,6 +6,7 @@
   // the accent on hover. Consumers can override the colour via this custom property.
   --panel-splitter-color: var(--gray-200);
 
+  position: relative;
   display: flex;
   box-sizing: border-box;
   overflow: hidden;
@@ -40,9 +41,11 @@
   overflow: hidden;
 }
 
+// The splitter is absolutely positioned so it overlaps the panel's inner edge rather than
+// consuming a flex track beside the content. This keeps the grip inset over the panel it resizes,
+// leaving the projected content free to fill the panel's full extent.
 .panel__splitter {
-  position: relative;
-  flex: 0 0 auto;
+  position: absolute;
   background: var(--panel-splitter-color);
   touch-action: none;
   user-select: none;
@@ -56,14 +59,35 @@
 
 :host([data-edge='left']) .panel__splitter,
 :host([data-edge='right']) .panel__splitter {
+  top: 0;
+  bottom: 0;
   width: 0.375rem;
   cursor: col-resize;
 }
 
 :host([data-edge='top']) .panel__splitter,
 :host([data-edge='bottom']) .panel__splitter {
+  left: 0;
+  right: 0;
   height: 0.375rem;
   cursor: row-resize;
+}
+
+// Pin each splitter to the panel's inner edge (the one facing the layout's centre).
+:host([data-edge='right']) .panel__splitter {
+  left: 0;
+}
+
+:host([data-edge='left']) .panel__splitter {
+  right: 0;
+}
+
+:host([data-edge='bottom']) .panel__splitter {
+  top: 0;
+}
+
+:host([data-edge='top']) .panel__splitter {
+  bottom: 0;
 }
 
 // Hidden: the size binding already collapses the host to zero; suppress the splitter so a collapsed
