@@ -683,6 +683,11 @@ export class Icon {
   public static readonly RECENT: Icon = new Icon('ph ph-clock-counter-clockwise');
 
   /**
+   * Gets the thin recent-items glyph shown large in the recent-items empty state.
+   */
+  public static readonly RECENT_EMPTY: Icon = new Icon('ph-thin ph-clock-counter-clockwise');
+
+  /**
    * Gets the light-weight directory icon shown on the welcome screen.
    */
   public static readonly WELCOME_DIRECTORY: Icon = new Icon('ph-light ph-folder-simple');

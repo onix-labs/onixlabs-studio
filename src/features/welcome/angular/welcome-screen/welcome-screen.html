@@ -175,7 +175,7 @@
         </ul>
       } @else {
         <div class="welcome__recent-empty">
-          <app-icon [icon]="Icon.RECENT" />
+          <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
           @if (hasRecent()) {
             <p class="welcome__recent-empty-title">No matching items</p>
             <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
