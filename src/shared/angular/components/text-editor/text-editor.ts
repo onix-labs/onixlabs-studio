@@ -135,6 +135,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private modelUri: string | null = null;
 
   /**
+   * Holds the subscription that re-asserts the bracket-colouring setting whenever Monaco's shared
+   * model service re-seeds the model's options from the global default, or null before creation and
+   * after disposal.
+   */
+  private bracketColorizationGuard: MonacoApi.IDisposable | null = null;
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -178,15 +185,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         // font size Monaco derives it from without any extra scaling here.
         lineHeight: resolved.lineHeight,
       });
-      // Bracket-pair colouring is a model option, not an editor one: in standalone Monaco the per-editor
-      // `bracketPairColorization` option is ignored (the model service seeds every model from global
-      // config), so the toggle must be applied to the model directly to take effect.
-      editor.getModel()?.updateOptions({
-        bracketColorizationOptions: {
-          enabled: resolved.colorBrackets,
-          independentColorPoolPerBracketType: false,
-        },
-      });
+      this.applyBracketColorization();
       this.monaco
         .getMonaco()
         ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
@@ -243,12 +242,34 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Disposes the editor when the pane is torn down.
    */
   public ngOnDestroy(): void {
+    this.bracketColorizationGuard?.dispose();
+    this.bracketColorizationGuard = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
     }
     this.modelUri = null;
     this.editorReady.set(false);
+  }
+
+  /**
+   * Applies the current "coloured brackets" setting to the editor's model. Bracket-pair colourisation
+   * is a model option — the per-editor `bracketPairColorization` option is a no-op in standalone
+   * Monaco — so the resolved value is written to the model directly, and only when it differs so the
+   * self-healing guard cannot recurse.
+   */
+  private applyBracketColorization(): void {
+    const model: MonacoApi.editor.ITextModel | null = this.editor?.getModel() ?? null;
+    if (model === null) {
+      return;
+    }
+    const enabled: boolean = this.settings.resolveSettingsForLanguage(this.language()).colorBrackets;
+    if (model.getOptions().bracketPairColorizationOptions.enabled === enabled) {
+      return;
+    }
+    model.updateOptions({
+      bracketColorizationOptions: { enabled, independentColorPoolPerBracketType: false },
+    });
   }
 
   /**
@@ -388,6 +409,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
 
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;
+
+    // Monaco's shared model service re-seeds every model's bracket-colouring option from the global
+    // default (always on) whenever any editor's configuration changes, which would silently re-enable
+    // colouring behind the setting's back. Re-assert the resolved value each time the model's options
+    // change so the toggle sticks regardless of what triggered the re-seed.
+    this.bracketColorizationGuard =
+      model?.onDidChangeOptions((): void => this.applyBracketColorization()) ?? null;
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();
