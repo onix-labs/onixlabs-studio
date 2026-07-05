@@ -43,6 +43,26 @@ export interface BinaryRange {
 }
 
 /**
+ * Identifies which column the caret edits: the hex pairs or the ASCII characters.
+ */
+export type BinaryColumn = 'hex' | 'ascii';
+
+/**
+ * Represents a single-byte overwrite the user typed: the offset and its new value.
+ */
+export interface BinaryByteEdit {
+  /**
+   * Gets the offset of the overwritten byte.
+   */
+  readonly offset: number;
+
+  /**
+   * Gets the new byte value (0–255).
+   */
+  readonly value: number;
+}
+
+/**
  * Represents the byte window the editor currently shows, so the host can load exactly those bytes.
  */
 export interface BinaryVisibleRange {
@@ -177,6 +197,11 @@ export class BinaryEditor {
   public readonly cursorChange: OutputEmitterRef<number> = output<number>();
 
   /**
+   * Emits a single-byte overwrite as the user types over the hex or ASCII columns.
+   */
+  public readonly edit: OutputEmitterRef<BinaryByteEdit> = output<BinaryByteEdit>();
+
+  /**
    * Holds the scroll container, measured for the viewport height and driven for reveals.
    */
   private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
@@ -201,6 +226,21 @@ export class BinaryEditor {
    * Holds the byte offset a selection drag started from.
    */
   private anchor: number = 0;
+
+  /**
+   * Holds the caret's byte offset, where typed edits are applied. Follows the selection start.
+   */
+  protected readonly caret: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds which column the caret edits (the hex pairs or the ASCII characters).
+   */
+  protected readonly activeColumn: WritableSignal<BinaryColumn> = signal<BinaryColumn>('hex');
+
+  /**
+   * Holds whether the next hex digit typed sets the caret byte's low nibble (the second of the pair).
+   */
+  private nibbleLow: boolean = false;
 
   /**
    * Gets the fixed row height, exposed for the template's inline sizing.
@@ -319,6 +359,15 @@ export class BinaryEditor {
       });
     });
 
+    // Keep the caret on the selection's first byte, so an external selection (a disassembly click)
+    // moves the edit caret with it.
+    effect((): void => {
+      const selection: BinaryRange | null = this.selection();
+      if (selection !== null) {
+        this.caret.set(selection.start);
+      }
+    });
+
     // Scroll to bring a reveal target into view, re-running when the host bumps the reveal version.
     effect((): void => {
       this.revealVersion();
@@ -344,16 +393,71 @@ export class BinaryEditor {
   }
 
   /**
-   * Begins a selection at a byte, moving the cursor there.
+   * Begins a selection at a byte, moving the caret there and focusing the grid so typed edits land.
    * @param offset The byte offset the pointer went down on.
+   * @param column The column that was clicked (hex or ASCII), which the caret then edits.
    * @param event The originating pointer event.
    */
-  protected onCellDown(offset: number, event: PointerEvent): void {
+  protected onCellDown(offset: number, column: BinaryColumn, event: PointerEvent): void {
     event.preventDefault();
     this.selecting = true;
     this.anchor = offset;
+    this.caret.set(offset);
+    this.activeColumn.set(column);
+    this.nibbleLow = false;
+    this.scroller()?.nativeElement.focus();
     this.cursorChange.emit(offset);
     this.selectionChange.emit({ start: offset, end: offset + 1 });
+  }
+
+  /**
+   * Handles keyboard input: arrow/Home/End move the caret, Tab switches between the hex and ASCII
+   * columns, and hex digits or printable characters overwrite the caret byte (advancing the caret).
+   * @param event The keyboard event.
+   */
+  protected onKeyDown(event: KeyboardEvent): void {
+    const size: number = this.size();
+    if (size === 0) {
+      return;
+    }
+    const maxOffset: number = size - 1;
+    const bytesPerRow: number = this.bytesPerRow();
+    const caret: number = this.caret();
+    const key: string = event.key;
+    let handled: boolean = true;
+    if (key === 'ArrowRight') {
+      this.moveCaret(caret + 1, maxOffset);
+    } else if (key === 'ArrowLeft') {
+      this.moveCaret(caret - 1, maxOffset);
+    } else if (key === 'ArrowDown') {
+      this.moveCaret(caret + bytesPerRow, maxOffset);
+    } else if (key === 'ArrowUp') {
+      this.moveCaret(caret - bytesPerRow, maxOffset);
+    } else if (key === 'Home') {
+      this.moveCaret(caret - (caret % bytesPerRow), maxOffset);
+    } else if (key === 'End') {
+      this.moveCaret(caret - (caret % bytesPerRow) + bytesPerRow - 1, maxOffset);
+    } else if (key === 'Tab') {
+      this.activeColumn.update((column: BinaryColumn): BinaryColumn =>
+        column === 'hex' ? 'ascii' : 'hex',
+      );
+      this.nibbleLow = false;
+    } else if (this.activeColumn() === 'hex' && /^[0-9a-fA-F]$/.test(key)) {
+      this.applyHexDigit(parseInt(key, 16), maxOffset);
+    } else if (
+      this.activeColumn() === 'ascii' &&
+      key.length === 1 &&
+      key.charCodeAt(0) >= 0x20 &&
+      key.charCodeAt(0) <= 0x7e
+    ) {
+      this.applyByte(key.charCodeAt(0), maxOffset);
+    } else {
+      handled = false;
+    }
+    if (handled) {
+      event.preventDefault();
+      this.ensureCaretVisible();
+    }
   }
 
   /**
@@ -375,6 +479,67 @@ export class BinaryEditor {
    */
   protected onPointerUp(): void {
     this.selecting = false;
+  }
+
+  /**
+   * Moves the caret to an offset (clamped to the file), resetting the nibble and reporting the new
+   * single-byte selection so the highlight and inspector follow.
+   * @param offset The target offset.
+   * @param maxOffset The last valid offset.
+   */
+  private moveCaret(offset: number, maxOffset: number): void {
+    const clamped: number = Math.max(0, Math.min(offset, maxOffset));
+    this.caret.set(clamped);
+    this.nibbleLow = false;
+    this.cursorChange.emit(clamped);
+    this.selectionChange.emit({ start: clamped, end: clamped + 1 });
+  }
+
+  /**
+   * Applies a typed hex digit to the caret byte: the first digit sets the high nibble, the second the
+   * low nibble and then advances the caret.
+   * @param digit The hex digit value (0–15).
+   * @param maxOffset The last valid offset.
+   */
+  private applyHexDigit(digit: number, maxOffset: number): void {
+    const offset: number = this.caret();
+    const current: number = this.byteAt()(offset) ?? 0;
+    if (this.nibbleLow) {
+      this.edit.emit({ offset, value: (current & 0xf0) | digit });
+      this.moveCaret(offset + 1, maxOffset);
+    } else {
+      this.edit.emit({ offset, value: (digit << 4) | (current & 0x0f) });
+      this.nibbleLow = true;
+    }
+  }
+
+  /**
+   * Overwrites the caret byte with a value and advances the caret. Used for ASCII-column typing.
+   * @param value The byte value.
+   * @param maxOffset The last valid offset.
+   */
+  private applyByte(value: number, maxOffset: number): void {
+    const offset: number = this.caret();
+    this.edit.emit({ offset, value });
+    this.moveCaret(offset + 1, maxOffset);
+  }
+
+  /**
+   * Scrolls the caret's row into view when it moves outside the viewport.
+   */
+  private ensureCaretVisible(): void {
+    const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+    if (element === undefined) {
+      return;
+    }
+    const row: number = Math.floor(this.caret() / this.bytesPerRow());
+    const top: number = row * ROW_HEIGHT;
+    const bottom: number = top + ROW_HEIGHT;
+    if (top < element.scrollTop) {
+      element.scrollTop = top;
+    } else if (bottom > element.scrollTop + element.clientHeight) {
+      element.scrollTop = bottom - element.clientHeight;
+    }
   }
 }
 

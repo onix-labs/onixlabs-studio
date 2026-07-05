@@ -40,6 +40,11 @@ export interface BinaryContext {
    * Gets the sniffed container-format label (for example "PE · x64" or "Binary").
    */
   readonly format: string;
+
+  /**
+   * Gets a value indicating whether the document has unsaved edits.
+   */
+  readonly dirty: boolean;
 }
 
 /**
@@ -78,7 +83,7 @@ export class BinaryStatus {
         STATUS_OWNER,
         {
           leading: [
-            { id: 'binary-path', text: context.path },
+            { id: 'binary-path', text: context.dirty ? `${context.path} ●` : context.path },
             { id: 'binary-format', text: context.format },
           ],
           trailing: [

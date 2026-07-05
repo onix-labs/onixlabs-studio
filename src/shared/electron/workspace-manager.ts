@@ -13,6 +13,7 @@ import { FileInfo } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import {
   BinaryChunk,
+  BinaryPatch,
   DirectoryEntry,
   DirectoryListing,
   FileOperationResult,
@@ -108,6 +109,11 @@ export class WorkspaceManager {
         offset: unknown,
         length: unknown,
       ): Promise<BinaryChunk | null> => this.readBytes(filePath, offset, length),
+    );
+    ipcMain.handle(
+      WorkspaceChannel.WriteBytes,
+      (_event: IpcMainInvokeEvent, filePath: unknown, patches: unknown): Promise<boolean> =>
+        this.writeBytes(filePath, patches),
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFolder,
@@ -325,6 +331,52 @@ export class WorkspaceManager {
       return { size, offset: start, bytes: new Uint8Array(buffer) };
     } catch {
       return null;
+    } finally {
+      await handle?.close();
+    }
+  }
+
+  /**
+   * Writes in-place byte patches to a file, for saving binary/hex edits. Each patch overwrites a run
+   * of bytes at a fixed offset within the file's existing length; the file is never grown or shrunk.
+   * Honoured only for trusted paths or files within an open workspace.
+   * @param filePath The absolute path of the file to write.
+   * @param patches The byte runs to overwrite, each with an offset and byte values.
+   * @returns Returns true when every patch was written, or false when invalid, untrusted, or on error.
+   */
+  private async writeBytes(filePath: unknown, patches: unknown): Promise<boolean> {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      return false;
+    }
+    if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      return false;
+    }
+    if (!Array.isArray(patches)) {
+      return false;
+    }
+    const runs: BinaryPatch[] = patches as BinaryPatch[];
+    const resolved: string = path.resolve(filePath);
+    let handle: FileHandle | undefined;
+    try {
+      handle = await fs.open(resolved, 'r+');
+      const size: number = (await handle.stat()).size;
+      for (const run of runs) {
+        if (
+          typeof run.offset !== 'number' ||
+          !Number.isInteger(run.offset) ||
+          run.offset < 0 ||
+          !Array.isArray(run.bytes) ||
+          run.offset + run.bytes.length > size
+        ) {
+          return false;
+        }
+        if (run.bytes.length > 0) {
+          await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
+        }
+      }
+      return true;
+    } catch {
+      return false;
     } finally {
       await handle?.close();
     }

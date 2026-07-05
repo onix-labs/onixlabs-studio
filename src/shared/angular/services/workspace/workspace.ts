@@ -2,6 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Bridge } from '@shared/api/bridge';
 import {
   BinaryChunk,
+  BinaryPatch,
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
@@ -205,6 +206,20 @@ export class Workspace {
     return (
       this.bridge?.invoke<BinaryChunk | null>(WorkspaceChannel.ReadBytes, path, offset, length) ??
       Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Writes in-place byte patches to a file, saving binary/hex edits without changing the file's
+   * length. The main process honours the write only for trusted or in-workspace paths.
+   * @param path The absolute path of the file to write.
+   * @param patches The byte runs to overwrite, each with an offset and byte values.
+   * @returns Returns true when the write succeeded, or false when it failed or ran outside Electron.
+   */
+  public writeBytes(path: string, patches: readonly BinaryPatch[]): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(WorkspaceChannel.WriteBytes, path, patches) ??
+      Promise.resolve(false)
     );
   }
 

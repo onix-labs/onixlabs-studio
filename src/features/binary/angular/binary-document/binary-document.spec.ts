@@ -1,8 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { WorkspaceChannel } from '@shared/api/workspace-channels';
+import { BinaryPatch, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { BinaryDocumentEntry, BinaryDocuments } from './binary-document';
+
+/**
+ * Records the patches passed to the fake write-bytes channel, so save tests can assert what was
+ * written. Reset before each test.
+ */
+let capturedWrites: { path: string; patches: readonly BinaryPatch[] }[] = [];
 
 /**
  * Backing file the fake bridge serves byte windows from: 200 000 bytes (spanning several 64 KiB
@@ -25,6 +31,11 @@ function fakeBridge(): Bridge {
         const end: number = Math.min(start + length, FILE.length);
         return Promise.resolve({ size: FILE.length, offset: start, bytes: FILE.slice(start, end) } as T);
       }
+      if (channel === (WorkspaceChannel.WriteBytes as string)) {
+        const [path, patches] = args as [string, readonly BinaryPatch[]];
+        capturedWrites.push({ path, patches });
+        return Promise.resolve(true as T);
+      }
       return Promise.resolve(null as T);
     },
     send: (): void => undefined,
@@ -45,6 +56,7 @@ describe('BinaryDocuments', () => {
   let documents: BinaryDocuments;
 
   beforeEach(() => {
+    capturedWrites = [];
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({});
     documents = TestBed.inject(BinaryDocuments);
@@ -105,5 +117,57 @@ describe('BinaryDocuments', () => {
     const first: Tab = documents.open('/ws/blob.bin');
     const second: Tab = documents.open('/ws/blob.bin');
     expect(second.id).toBe(first.id);
+  });
+
+  it('overwrite_overlaysTheByteAndMarksTheDocumentDirty', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(entry.dirty()).toBe(false);
+    entry.overwrite(2, 0xab);
+    expect(entry.byteAt(2)).toBe(0xab);
+    expect(entry.byteAt(3)).toBe(3);
+    expect(entry.dirty()).toBe(true);
+  });
+
+  it('overwrite_backToTheOriginalValueClearsTheEditAndDirtyState', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.overwrite(2, 0xab);
+    expect(entry.dirty()).toBe(true);
+    // Byte 2's on-disk value is 2 (offset modulo 256); typing it back should leave the document clean.
+    entry.overwrite(2, 2);
+    expect(entry.byteAt(2)).toBe(2);
+    expect(entry.dirty()).toBe(false);
+  });
+
+  it('save_writesCoalescedPatchesThenClearsDirty', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.overwrite(2, 0xaa);
+    entry.overwrite(3, 0xbb);
+    entry.overwrite(10, 0xcc);
+    const written: boolean = await entry.save();
+    expect(written).toBe(true);
+    expect(capturedWrites).toEqual([
+      {
+        path: '/ws/blob.bin',
+        patches: [
+          { offset: 2, bytes: [0xaa, 0xbb] },
+          { offset: 10, bytes: [0xcc] },
+        ],
+      },
+    ]);
+    expect(entry.dirty()).toBe(false);
+    // The saved edits are folded into the cache, so they persist after the dirty state clears.
+    expect(entry.byteAt(2)).toBe(0xaa);
+    expect(entry.byteAt(10)).toBe(0xcc);
+  });
+
+  it('save_withNoEditsWritesNothingAndReportsSuccess', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    const written: boolean = await entry.save();
+    expect(written).toBe(true);
+    expect(capturedWrites).toEqual([]);
   });
 });

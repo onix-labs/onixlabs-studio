@@ -65,6 +65,20 @@ export class BinaryRibbon {
   );
 
   /**
+   * Gets whether the active document has unsaved edits, enabling the Save action.
+   */
+  protected readonly dirty: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.dirty() ?? false,
+  );
+
+  /**
+   * Saves the active document's edits.
+   */
+  protected async onSave(): Promise<void> {
+    await this.activeDocument()?.save();
+  }
+
+  /**
    * Gets whether the active document has a known code offset to jump to.
    */
   protected readonly codeAvailable: Signal<boolean> = computed((): boolean => {

@@ -1,4 +1,13 @@
 <app-ribbon-overflow>
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [disabled]="!dirty()"
+      (action)="onSave()"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Navigate">
     <app-ribbon-strip-button [icon]="Icon.ARROW_UP" label="Start" (action)="onGoToStart()" />
     <app-ribbon-strip-button [icon]="Icon.ARROW_DOWN" label="End" (action)="onGoToEnd()" />

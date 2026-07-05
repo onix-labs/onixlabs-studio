@@ -8,12 +8,13 @@
         [bytesPerRow]="document.bytesPerRow()"
         [byteAt]="byteAt"
         [selection]="document.selection()"
-        [dataVersion]="document.loadedVersion()"
+        [dataVersion]="document.dataVersion()"
         [revealOffset]="document.revealOffset"
         [revealVersion]="document.revealVersion()"
         (visibleRangeChange)="onVisibleRange($event)"
         (selectionChange)="onSelectionChange($event)"
         (cursorChange)="onCursorChange($event)"
+        (edit)="onEdit($event)"
       />
 
       @if (disasmMounted()) {

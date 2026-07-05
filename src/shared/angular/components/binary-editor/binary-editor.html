@@ -1,4 +1,10 @@
-<div #scroller class="binary-editor" (scroll)="onScroll($event)">
+<div
+  #scroller
+  class="binary-editor"
+  tabindex="0"
+  (scroll)="onScroll($event)"
+  (keydown)="onKeyDown($event)"
+>
   <div class="binary-editor__content" [style.--bpr]="bytesPerRow()">
     <div class="binary-editor__header">
       <span class="binary-editor__addr binary-editor__addr--header">Offset</span>
@@ -20,7 +26,8 @@
                 <span
                   class="binary-editor__hexcell"
                   [class.binary-editor__cell--selected]="cell.selected"
-                  (pointerdown)="onCellDown(cell.offset, $event)"
+                  [class.binary-editor__cell--caret]="cell.offset === caret() && activeColumn() === 'hex'"
+                  (pointerdown)="onCellDown(cell.offset, 'hex', $event)"
                   (pointerenter)="onCellEnter(cell.offset)"
                   >{{ cell.hex }}</span
                 >
@@ -31,7 +38,8 @@
                 <span
                   class="binary-editor__asciicell"
                   [class.binary-editor__cell--selected]="cell.selected"
-                  (pointerdown)="onCellDown(cell.offset, $event)"
+                  [class.binary-editor__cell--caret]="cell.offset === caret() && activeColumn() === 'ascii'"
+                  (pointerdown)="onCellDown(cell.offset, 'ascii', $event)"
                   (pointerenter)="onCellEnter(cell.offset)"
                   >{{ cell.ascii }}</span
                 >

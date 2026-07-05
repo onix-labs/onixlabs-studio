@@ -26,6 +26,13 @@ export enum WorkspaceChannel {
   ReadBytes = 'workspace:read-bytes',
 
   /**
+   * Writes in-place byte patches to a file, for saving binary/hex edits (invoke). Honoured only for
+   * trusted paths or files within an open workspace. Overwrites bytes at fixed offsets; it never
+   * changes the file's length.
+   */
+  WriteBytes = 'workspace:write-bytes',
+
+  /**
    * Shows an open-folder dialog and sets the chosen folder as the workspace root (invoke).
    */
   OpenFolder = 'workspace:open-folder',
@@ -159,6 +166,22 @@ export interface BinaryChunk {
    * file (and empty when the offset is at or past the end).
    */
   readonly bytes: Uint8Array;
+}
+
+/**
+ * Describes a single in-place byte patch: a run of bytes to overwrite at a fixed file offset. Used to
+ * save binary/hex edits without rewriting the whole file.
+ */
+export interface BinaryPatch {
+  /**
+   * Gets the absolute file offset the run overwrites.
+   */
+  readonly offset: number;
+
+  /**
+   * Gets the byte values (0–255) to write at the offset.
+   */
+  readonly bytes: readonly number[];
 }
 
 /**

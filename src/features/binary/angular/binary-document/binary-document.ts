@@ -1,6 +1,6 @@
-import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { DecodedInstruction } from '@shared/api/binary-channels';
-import { BinaryChunk } from '@shared/api/workspace-channels';
+import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -88,6 +88,30 @@ export class BinaryDocumentEntry {
    * Holds a counter bumped whenever a block arrives, so byte-reading computeds re-run as data loads.
    */
   public readonly loadedVersion: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the pending in-place byte overwrites, keyed by absolute offset, layered over the block cache
+   * until saved. Overwrite-only: it never changes the file's length.
+   */
+  private readonly edits: Map<number, number> = new Map<number, number>();
+
+  /**
+   * Holds a counter bumped whenever an edit is made or saved, so byte-reading computeds re-run.
+   */
+  public readonly editsVersion: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds whether the document has unsaved edits.
+   */
+  public readonly dirty: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets a combined data version that changes when loaded bytes or edits change, so the editor
+   * re-renders on either.
+   */
+  public readonly dataVersion: Signal<number> = computed(
+    (): number => this.loadedVersion() + this.editsVersion(),
+  );
 
   /**
    * Holds the sniffed container format and architecture, resolved once the first block loads.
@@ -180,13 +204,56 @@ export class BinaryDocumentEntry {
    * @returns Returns the byte value (0–255), or null when unavailable.
    */
   public byteAt(offset: number): number | null {
-    const block: number = Math.floor(offset / BLOCK_SIZE);
-    const bytes: Uint8Array | undefined = this.blocks.get(block);
-    if (bytes === undefined) {
-      return null;
+    const edit: number | undefined = this.edits.get(offset);
+    if (edit !== undefined) {
+      return edit;
     }
-    const local: number = offset - block * BLOCK_SIZE;
-    return local < bytes.length ? bytes[local] : null;
+    return this.cachedByteAt(offset);
+  }
+
+  /**
+   * Overwrites the byte at an offset, layering the change over the block cache until saved. A value
+   * equal to the byte already on disk clears any pending edit there, so typing a byte back to its
+   * original leaves the document clean.
+   * @param offset The absolute byte offset to overwrite.
+   * @param value The new byte value (0–255).
+   */
+  public overwrite(offset: number, value: number): void {
+    if (offset < 0 || offset >= this.size()) {
+      return;
+    }
+    const byte: number = value & 0xff;
+    const original: number | null = this.cachedByteAt(offset);
+    if (original !== null && original === byte) {
+      this.edits.delete(offset);
+    } else {
+      this.edits.set(offset, byte);
+    }
+    this.dirty.set(this.edits.size > 0);
+    this.editsVersion.update((version: number): number => version + 1);
+  }
+
+  /**
+   * Saves the pending edits by writing them in place to the file, then folds them into the block cache
+   * and clears the dirty state. Does nothing (and reports success) when there is nothing to save.
+   * @returns Returns true when the file was written (or there was nothing to write), false on failure.
+   */
+  public async save(): Promise<boolean> {
+    if (this.edits.size === 0) {
+      return true;
+    }
+    const patches: BinaryPatch[] = this.buildPatches();
+    const written: boolean = await this.workspace.writeBytes(this.path, patches);
+    if (!written) {
+      return false;
+    }
+    for (const [offset, value] of this.edits) {
+      this.applyToCache(offset, value);
+    }
+    this.edits.clear();
+    this.dirty.set(false);
+    this.editsVersion.update((version: number): number => version + 1);
+    return true;
   }
 
   /**
@@ -272,6 +339,69 @@ export class BinaryDocumentEntry {
       }
     }
     return bytes;
+  }
+
+  /**
+   * Gets the byte at an offset from the block cache alone (ignoring pending edits), or null when its
+   * block has not loaded or the offset is past the end of the file.
+   * @param offset The absolute byte offset.
+   * @returns Returns the on-disk byte value, or null when unavailable.
+   */
+  private cachedByteAt(offset: number): number | null {
+    const block: number = Math.floor(offset / BLOCK_SIZE);
+    const bytes: Uint8Array | undefined = this.blocks.get(block);
+    if (bytes === undefined) {
+      return null;
+    }
+    const local: number = offset - block * BLOCK_SIZE;
+    return local < bytes.length ? bytes[local] : null;
+  }
+
+  /**
+   * Coalesces the pending edits into contiguous byte runs, so consecutive overwrites are written as one
+   * patch rather than one per byte.
+   * @returns Returns the patches in ascending offset order.
+   */
+  private buildPatches(): BinaryPatch[] {
+    const offsets: number[] = Array.from(this.edits.keys()).sort(
+      (left: number, right: number): number => left - right,
+    );
+    const patches: BinaryPatch[] = [];
+    let runOffset: number = -1;
+    let runBytes: number[] = [];
+    for (const offset of offsets) {
+      if (runBytes.length > 0 && offset === runOffset + runBytes.length) {
+        runBytes.push(this.edits.get(offset) ?? 0);
+      } else {
+        if (runBytes.length > 0) {
+          patches.push({ offset: runOffset, bytes: runBytes });
+        }
+        runOffset = offset;
+        runBytes = [this.edits.get(offset) ?? 0];
+      }
+    }
+    if (runBytes.length > 0) {
+      patches.push({ offset: runOffset, bytes: runBytes });
+    }
+    return patches;
+  }
+
+  /**
+   * Writes an edited byte into the block cache, so a saved edit becomes the on-disk baseline the cache
+   * reports.
+   * @param offset The absolute byte offset.
+   * @param value The byte value to store.
+   */
+  private applyToCache(offset: number, value: number): void {
+    const block: number = Math.floor(offset / BLOCK_SIZE);
+    const bytes: Uint8Array | undefined = this.blocks.get(block);
+    if (bytes === undefined) {
+      return;
+    }
+    const local: number = offset - block * BLOCK_SIZE;
+    if (local < bytes.length) {
+      bytes[local] = value & 0xff;
+    }
   }
 
   /**
