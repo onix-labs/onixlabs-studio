@@ -232,6 +232,23 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
+   * Snaps the selection to the whole instruction containing a double-clicked byte, so a double-click
+   * selects an instruction. Falls back to the single byte when no instruction covers the offset.
+   * @param offset The double-clicked byte offset.
+   */
+  protected onUnitSelect(offset: number): void {
+    const document: BinaryDocumentEntry | undefined = this.document();
+    if (document === undefined) {
+      return;
+    }
+    const range: BinarySelection | null = document.instructionRangeAt(offset);
+    if (range !== null) {
+      document.selection.set(range);
+      document.cursor.set(range.start);
+    }
+  }
+
+  /**
    * Applies a typed edit — overwrite, insert, or delete — to the document.
    * @param op The edit reported by the editor.
    */

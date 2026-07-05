@@ -29,6 +29,7 @@
                   [class.binary-editor__cell--caret]="cell.offset === caret() && activeColumn() === 'hex'"
                   (pointerdown)="onCellDown(cell.offset, 'hex', $event)"
                   (pointerenter)="onCellEnter(cell.offset)"
+                  (dblclick)="onCellDouble(cell.offset)"
                   >{{ cell.hex }}</span
                 >
               }
@@ -41,6 +42,7 @@
                   [class.binary-editor__cell--caret]="cell.offset === caret() && activeColumn() === 'ascii'"
                   (pointerdown)="onCellDown(cell.offset, 'ascii', $event)"
                   (pointerenter)="onCellEnter(cell.offset)"
+                  (dblclick)="onCellDouble(cell.offset)"
                   >{{ cell.ascii }}</span
                 >
               }

@@ -21,6 +21,13 @@ import {
 const BLOCK_SIZE: number = 64 * 1024;
 
 /**
+ * Specifies the largest number of file blocks kept resident in the cache. Beyond this the least
+ * recently visited blocks are evicted, so scrolling through a very large file bounds memory (this cap
+ * is ~4 MiB) rather than accumulating every block ever read. Evicted blocks re-fetch on demand.
+ */
+const MAX_RESIDENT_BLOCKS: number = 64;
+
+/**
  * Specifies how long (in milliseconds) viewport-driven disassembly requests are debounced, so a
  * request is issued only once scrolling settles rather than on every intermediate frame.
  */
@@ -455,7 +462,10 @@ export class BinaryDocumentEntry {
         .disassemble(window.bytes, window.base, offset, offset + length, architecture)
         .then((result: readonly DecodedInstruction[]): void => {
           if (this.disassemblyCache.size >= MAX_DISASSEMBLY_CACHE) {
-            this.disassemblyCache.clear();
+            const oldest: string | undefined = this.disassemblyCache.keys().next().value;
+            if (oldest !== undefined) {
+              this.disassemblyCache.delete(oldest);
+            }
           }
           this.disassemblyCache.set(key, result);
           if (token === this.disassemblyToken) {
@@ -601,7 +611,11 @@ export class BinaryDocumentEntry {
    * @param block The block index to fetch.
    */
   private ensureBlock(block: number): void {
-    if (block < 0 || this.blocks.has(block) || this.pending.has(block)) {
+    if (block < 0 || this.pending.has(block)) {
+      return;
+    }
+    if (this.blocks.has(block)) {
+      this.touchBlock(block);
       return;
     }
     this.pending.add(block);
@@ -613,6 +627,7 @@ export class BinaryDocumentEntry {
           return;
         }
         this.blocks.set(block, chunk.bytes);
+        this.evictBlocks();
         // The first read learns the file size; initialise the piece table (and logical size) to the
         // whole file once, so later re-fetches after an edit or save do not reset the edit model.
         if (!this.initialized) {
@@ -633,6 +648,63 @@ export class BinaryDocumentEntry {
         }
         this.loadedVersion.update((version: number): number => version + 1);
       });
+  }
+
+  /**
+   * Marks a block as most recently used, so eviction favours blocks the viewport has moved away from.
+   * @param block The block index that was just accessed.
+   */
+  private touchBlock(block: number): void {
+    const bytes: Uint8Array | undefined = this.blocks.get(block);
+    if (bytes !== undefined) {
+      this.blocks.delete(block);
+      this.blocks.set(block, bytes);
+    }
+  }
+
+  /**
+   * Evicts the least recently used blocks until the cache is within its resident cap, bounding memory
+   * on very large files. The map's insertion order (kept current by {@link touchBlock}) is the LRU
+   * order, so the oldest keys are dropped first.
+   */
+  private evictBlocks(): void {
+    while (this.blocks.size > MAX_RESIDENT_BLOCKS) {
+      const oldest: number | undefined = this.blocks.keys().next().value;
+      if (oldest === undefined) {
+        return;
+      }
+      this.blocks.delete(oldest);
+    }
+  }
+
+  /**
+   * Gets the number of file blocks currently held in the cache. Exposed for diagnostics and tests to
+   * confirm the resident cap bounds memory.
+   * @returns Returns the resident block count.
+   */
+  public residentBlockCount(): number {
+    return this.blocks.size;
+  }
+
+  /**
+   * Gets the byte range of the decoded instruction that covers an offset, for snapping a selection to
+   * whole-instruction boundaries. Resolves only within the currently disassembled (visible) range.
+   * @param offset The logical byte offset.
+   * @returns Returns the instruction's range, or null when no instruction covers the offset.
+   */
+  public instructionRangeAt(offset: number): BinarySelection | null {
+    for (const instruction of this.instructions()) {
+      if (
+        offset >= instruction.startOffset &&
+        offset < instruction.startOffset + instruction.byteLength
+      ) {
+        return {
+          start: instruction.startOffset,
+          end: instruction.startOffset + instruction.byteLength,
+        };
+      }
+    }
+    return null;
   }
 }
 

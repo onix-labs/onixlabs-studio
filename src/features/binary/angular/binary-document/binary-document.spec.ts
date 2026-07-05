@@ -131,6 +131,46 @@ describe('BinaryDocuments', () => {
     expect(second.id).toBe(first.id);
   });
 
+  it('instructionRangeAt_returnsTheRangeOfTheInstructionCoveringAnOffset', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    entry.instructions.set([
+      { startOffset: 10, byteLength: 3, mnemonic: 'mov', operands: 'a, b', raw: [0, 0, 0] },
+      { startOffset: 13, byteLength: 2, mnemonic: 'add', operands: 'c', raw: [0, 0] },
+    ]);
+    expect(entry.instructionRangeAt(11)).toEqual({ start: 10, end: 13 });
+    expect(entry.instructionRangeAt(13)).toEqual({ start: 13, end: 15 });
+    expect(entry.instructionRangeAt(99)).toBeNull();
+  });
+
+  it('blockCache_evictsLeastRecentlyUsedBlocksBeyondTheResidentCap', async () => {
+    const block: number = 64 * 1024;
+    const hugeSize: number = 200 * block;
+    (window as unknown as { bridge: Bridge }).bridge = {
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (WorkspaceChannel.ReadBytes as string)) {
+          const [, offset] = args as [string, number, number];
+          return Promise.resolve({ size: hugeSize, offset, bytes: new Uint8Array(4) } as T);
+        }
+        return Promise.resolve(null as T);
+      },
+      send: (): void => undefined,
+      on: (): (() => void) => (): void => undefined,
+    };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const large: BinaryDocuments = TestBed.inject(BinaryDocuments);
+    const entry: BinaryDocumentEntry = large.get(large.open('/ws/huge.bin').id)!;
+    await flush();
+    // Visit far more distinct blocks than the cache may hold; memory must stay bounded.
+    for (let index: number = 0; index < 120; index += 1) {
+      entry.ensureRange(index * block, 4);
+    }
+    await flush();
+    expect(entry.residentBlockCount()).toBeGreaterThan(0);
+    expect(entry.residentBlockCount()).toBeLessThanOrEqual(64);
+  });
+
   it('overwrite_overlaysTheByteAndMarksTheDocumentDirty', async () => {
     const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
     await flush();

@@ -17,6 +17,7 @@
         (cursorChange)="onCursorChange($event)"
         (op)="onOp($event)"
         (toggleInsertMode)="document.insertMode.set(!document.insertMode())"
+        (unitSelect)="onUnitSelect($event)"
       />
 
       @if (disasmMounted()) {

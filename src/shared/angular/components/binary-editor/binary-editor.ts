@@ -206,6 +206,12 @@ export class BinaryEditor {
   public readonly toggleInsertMode: OutputEmitterRef<void> = output<void>();
 
   /**
+   * Emits the offset of a double-clicked byte, so the host can snap the selection to the whole
+   * instruction (or unit) that contains it.
+   */
+  public readonly unitSelect: OutputEmitterRef<number> = output<number>();
+
+  /**
    * Holds the scroll container, measured for the viewport height and driven for reveals.
    */
   private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
@@ -412,6 +418,14 @@ export class BinaryEditor {
     this.scroller()?.nativeElement.focus();
     this.cursorChange.emit(offset);
     this.selectionChange.emit({ start: offset, end: offset + 1 });
+  }
+
+  /**
+   * Reports a double-clicked byte, so the host can snap the selection to the instruction containing it.
+   * @param offset The byte offset that was double-clicked.
+   */
+  protected onCellDouble(offset: number): void {
+    this.unitSelect.emit(offset);
   }
 
   /**
