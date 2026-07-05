@@ -1,6 +1,7 @@
-<div class="code-shell">
-  <div class="code-layout" [class.code-layout--side]="terminalLayout() === 'side-by-side'">
-    <div class="code-layout__editor">
+<app-panel-layout>
+  <!-- Inner layout: the editor in the centre with the run terminal docked to the side or below it. -->
+  <app-panel-layout main>
+    <div main class="code-layout__editor">
       <app-code-document
         [documentId]="tabId()"
         [removeOnDestroy]="removeOnDestroy()"
@@ -12,33 +13,27 @@
     </div>
 
     @if (terminalMounted()) {
-      <div
-        class="code-layout__splitter"
-        [class.code-layout__splitter--hidden]="!terminalVisible()"
-        (mousedown)="onSplitterDown($event)"
-      ></div>
-      <div
-        class="code-layout__terminal"
-        [class.code-layout__terminal--hidden]="!terminalVisible()"
-        [style.flex-basis.px]="terminalSize()"
+      <app-panel
+        [edge]="terminalLayout() === 'side-by-side' ? 'right' : 'bottom'"
+        [visible]="terminalVisible()"
+        [(size)]="terminalSizeSignal"
+        [minSize]="80"
+        [maxSize]="1600"
       >
         <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
-      </div>
+      </app-panel>
     }
-  </div>
+  </app-panel-layout>
 
   @if (agentMounted()) {
-    <div
-      class="code-shell__splitter"
-      [class.code-shell__splitter--hidden]="!agentVisible()"
-      (mousedown)="onAgentSplitterDown($event)"
-    ></div>
-    <div
-      class="code-shell__agent"
-      [class.code-shell__agent--hidden]="!agentVisible()"
-      [style.flex-basis.px]="agentSize()"
+    <app-panel
+      edge="right"
+      [visible]="agentVisible()"
+      [(size)]="agentSizeSignal"
+      [minSize]="240"
+      [maxSize]="900"
     >
       <app-code-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
-    </div>
+    </app-panel>
   }
-</div>
+</app-panel-layout>

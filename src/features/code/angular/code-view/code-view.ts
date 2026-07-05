@@ -34,33 +34,15 @@ import { Editors, RevealRequest } from '@shared/angular/services/editors/editors
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
-
-/**
- * Holds the minimum size, in pixels, of the docked terminal pane.
- */
-const MIN_TERMINAL_SIZE: number = 80;
-
-/**
- * Holds the maximum size, in pixels, of the docked terminal pane.
- */
-const MAX_TERMINAL_SIZE: number = 1600;
 
 /**
  * Holds the initial size, in pixels, of the docked terminal pane.
  */
 const DEFAULT_TERMINAL_SIZE: number = 260;
-
-/**
- * Holds the minimum size, in pixels, of the docked agent pane.
- */
-const MIN_AGENT_SIZE: number = 240;
-
-/**
- * Holds the maximum size, in pixels, of the docked agent pane.
- */
-const MAX_AGENT_SIZE: number = 900;
 
 /**
  * Holds the initial size, in pixels, of the docked agent pane.
@@ -77,7 +59,7 @@ const DEFAULT_AGENT_SIZE: number = 360;
  */
 @Component({
   selector: 'app-code-view',
-  imports: [CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel],
+  imports: [PanelLayout, Panel, CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -157,25 +139,15 @@ export class CodeView implements OnDestroy {
   private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
 
   /**
-   * Holds the size, in pixels, of the docked terminal pane.
+   * Holds the size, in pixels, of the docked terminal pane. Two-way bound to the panel's splitter.
    */
-  private readonly terminalSizeSignal: WritableSignal<number> =
+  protected readonly terminalSizeSignal: WritableSignal<number> =
     signal<number>(DEFAULT_TERMINAL_SIZE);
 
   /**
-   * Holds the size, in pixels, of the docked agent pane.
+   * Holds the size, in pixels, of the docked agent pane. Two-way bound to the panel's splitter.
    */
-  private readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
-
-  /**
-   * Holds the splitter drag origin (pointer coordinate at drag start).
-   */
-  private dragOrigin: number = 0;
-
-  /**
-   * Holds the pane size at the start of a splitter drag.
-   */
-  private dragOriginSize: number = 0;
+  protected readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
 
   /**
    * Gets the identifier of the owning tab, used to resolve the backing document.
@@ -423,41 +395,6 @@ export class CodeView implements OnDestroy {
   }
 
   /**
-   * Gets the size, in pixels, of the docked terminal pane.
-   * @returns Returns the terminal pane size.
-   */
-  protected terminalSize(): number {
-    return this.terminalSizeSignal();
-  }
-
-  /**
-   * Begins a splitter drag that resizes the docked terminal pane.
-   * @param event The originating pointer event.
-   */
-  protected onSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    const horizontal: boolean = this.terminalLayout() === 'side-by-side';
-    this.dragOrigin = horizontal ? event.clientX : event.clientY;
-    this.dragOriginSize = this.terminalSizeSignal();
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const position: number = horizontal ? move.clientX : move.clientY;
-      const delta: number = this.dragOrigin - position;
-      const next: number = Math.min(
-        MAX_TERMINAL_SIZE,
-        Math.max(MIN_TERMINAL_SIZE, this.dragOriginSize + delta),
-      );
-      this.terminalSizeSignal.set(next);
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
-
-  /**
    * Gets a value indicating whether the docked agent panel is mounted.
    * @returns Returns true when the panel has been shown at least once.
    */
@@ -471,40 +408,6 @@ export class CodeView implements OnDestroy {
    */
   protected agentVisible(): boolean {
     return this.codeAgents.isVisible(this.tabId());
-  }
-
-  /**
-   * Gets the size, in pixels, of the docked agent pane.
-   * @returns Returns the agent pane size.
-   */
-  protected agentSize(): number {
-    return this.agentSizeSignal();
-  }
-
-  /**
-   * Begins a splitter drag that resizes the docked agent pane. The agent always docks to the right,
-   * so the drag is horizontal: moving the splitter left widens the agent.
-   * @param event The originating pointer event.
-   */
-  protected onAgentSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    this.dragOrigin = event.clientX;
-    this.dragOriginSize = this.agentSizeSignal();
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const delta: number = this.dragOrigin - move.clientX;
-      const next: number = Math.min(
-        MAX_AGENT_SIZE,
-        Math.max(MIN_AGENT_SIZE, this.dragOriginSize + delta),
-      );
-      this.agentSizeSignal.set(next);
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
   }
 
   /**
