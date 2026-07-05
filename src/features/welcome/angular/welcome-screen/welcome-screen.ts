@@ -1,20 +1,30 @@
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
   inject,
   signal,
   Signal,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { RecentItem, RecentItems } from '@features/welcome/angular/recent-items/recent-items';
+import {
+  RecentItem,
+  RecentItems,
+  RecentKind,
+} from '@shared/angular/services/recent-items/recent-items';
 import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 
 /**
@@ -35,70 +45,32 @@ interface RecentFilter {
    * Gets the pill's icon.
    */
   readonly icon: Icon;
+
+  /**
+   * Gets the recent-item kind this pill shows, or null for the "all" pill.
+   */
+  readonly kind: RecentKind | null;
 }
 
 /**
- * Holds sample recent items used to preview the redesigned welcome screen. The {@link RecentItems}
- * service is still an empty stub, so these stand in until the real file-open flow populates it; the
- * screen falls back to them whenever the live list is empty.
+ * The ids emitted by the per-row overflow menu.
  */
-const SAMPLE_RECENT: readonly RecentItem[] = [
-  {
-    id: 'sample-my-project',
-    name: 'my-project',
-    detail: '~/Projects/my-project',
-    timestamp: 'Just now',
-    icon: Icon.DIRECTORY,
-  },
-  {
-    id: 'sample-studio-core',
-    name: 'studio-core',
-    detail: 'github.com/onixlabs/studio-core',
-    timestamp: '2h ago',
-    icon: Icon.SOURCE_CONTROL,
-  },
-  {
-    id: 'sample-readme',
-    name: 'README.md',
-    detail: '~/Projects/my-project/README.md',
-    timestamp: '5h ago',
-    icon: Icon.MARKDOWN,
-  },
-  {
-    id: 'sample-main-ts',
-    name: 'main.ts',
-    detail: '~/Projects/studio-core/src/main.ts',
-    timestamp: 'Yesterday',
-    icon: Icon.CODE,
-  },
-  {
-    id: 'sample-design-system',
-    name: 'design-system',
-    detail: '~/Projects/design-system',
-    timestamp: '2 days ago',
-    icon: Icon.DIRECTORY,
-  },
-  {
-    id: 'sample-changelog',
-    name: 'CHANGELOG.md',
-    detail: '~/Projects/studio-core/CHANGELOG.md',
-    timestamp: '3 days ago',
-    icon: Icon.MARKDOWN,
-  },
-];
+const ROW_ACTION_REVEAL: string = 'reveal';
+const ROW_ACTION_REMOVE: string = 'remove';
 
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.
  *
  * It renders full-bleed when no tabs are open, and as a dismissable modal over the existing content
  * when summoned from the title strip's new-tab button. Either way it presents the application
- * identity, the create/open actions, and the list of recent items. The backdrop, dismissal, and
- * animation are provided by the reusable {@link Modal}; the welcome screen overrides its theming for
- * the fixed dark, purple-accented panel and projects a static accent glow behind it.
+ * identity, the create/open actions, and the list of recent items — which can be filtered, searched,
+ * pinned, re-opened, removed, or revealed in the file manager. The backdrop, dismissal, and animation
+ * are provided by the reusable {@link Modal}; the welcome screen overrides its theming for the fixed
+ * dark, purple-accented panel and projects a static accent glow behind it.
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon, Modal],
+  imports: [AppIcon, Modal, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -135,30 +107,89 @@ export class WelcomeScreen {
   private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
-   * Gets the recent items shown in the right-hand panel, falling back to sample items while the
-   * recent-items service is still an empty stub so the panel previews its populated design.
+   * Holds the operating-system shell client, used to reveal an item in the file manager.
    */
-  protected readonly recent: Signal<readonly RecentItem[]> = computed((): readonly RecentItem[] => {
-    const live: readonly RecentItem[] = this.recentItems.items();
-    return live.length > 0 ? live : SAMPLE_RECENT;
-  });
+  private readonly shell: Shell = inject(Shell);
 
   /**
-   * Gets the recent-items filter pills. These are presentational for now: selecting one highlights it
-   * but does not yet filter the list.
+   * Gets the search input, focused when the search field is opened.
+   */
+  private readonly searchInput: Signal<ElementRef<HTMLInputElement> | undefined> =
+    viewChild<ElementRef<HTMLInputElement>>('searchInput');
+
+  /**
+   * Gets a value indicating whether any recent items exist at all, regardless of the current filter
+   * and search, distinguishing an empty history from a query that matched nothing.
+   */
+  protected readonly hasRecent: Signal<boolean> = computed(
+    (): boolean => this.recentItems.items().length > 0,
+  );
+
+  /**
+   * Gets the recent-items filter pills.
    */
   protected readonly filters: readonly RecentFilter[] = [
-    { id: 'all', label: 'All', icon: Icon.GRID_DOTS },
-    { id: 'directories', label: 'Directories', icon: Icon.FOLDER },
-    { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL },
-    { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN },
-    { id: 'code', label: 'Code Files', icon: Icon.CODE },
+    { id: 'all', label: 'All', icon: Icon.GRID_DOTS, kind: null },
+    { id: 'directories', label: 'Directories', icon: Icon.FOLDER, kind: 'directory' },
+    { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL, kind: 'repository' },
+    { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
+    { id: 'code', label: 'Code Files', icon: Icon.CODE, kind: 'code' },
   ];
 
   /**
-   * Holds the currently selected filter pill (presentational only).
+   * Gets the actions shown in each row's overflow menu.
+   */
+  protected readonly rowMenuItems: readonly MenuItem[] = [
+    { id: ROW_ACTION_REVEAL, label: 'Show in Finder', icon: Icon.FOLDER_OPEN },
+    { id: ROW_ACTION_REMOVE, label: 'Remove Item', icon: Icon.TRASH },
+  ];
+
+  /**
+   * Holds the currently selected filter pill.
    */
   protected readonly activeFilter: WritableSignal<string> = signal<string>('all');
+
+  /**
+   * Holds the current search query.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether the search field is open in place of the filter pills.
+   */
+  protected readonly searchOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the recent items to show, narrowed by the active filter and search query and ordered with
+   * pinned items first, then most-recently opened.
+   */
+  protected readonly visibleItems: Signal<readonly RecentItem[]> = computed(
+    (): readonly RecentItem[] => {
+      const kind: RecentKind | null =
+        this.filters.find((filter: RecentFilter): boolean => filter.id === this.activeFilter())
+          ?.kind ?? null;
+      const needle: string = this.query().trim().toLowerCase();
+      const matched: readonly RecentItem[] = this.recentItems
+        .items()
+        .filter((item: RecentItem): boolean => {
+          if (kind !== null && item.kind !== kind) {
+            return false;
+          }
+          if (needle.length === 0) {
+            return true;
+          }
+          return (
+            item.name.toLowerCase().includes(needle) || item.path.toLowerCase().includes(needle)
+          );
+        });
+      return [...matched].sort((a: RecentItem, b: RecentItem): number => {
+        if (a.pinned !== b.pinned) {
+          return a.pinned ? -1 : 1;
+        }
+        return b.openedAt - a.openedAt;
+      });
+    },
+  );
 
   /**
    * Gets a value indicating whether the welcome screen can be dismissed. It can only be dismissed
@@ -185,6 +216,124 @@ export class WelcomeScreen {
   protected readonly ambient: Signal<boolean> = computed(
     (): boolean => this.tabsService.tabs().length === 0,
   );
+
+  /**
+   * Creates the welcome screen, focusing the search field whenever it is opened.
+   */
+  public constructor() {
+    effect((): void => {
+      if (this.searchOpen()) {
+        this.searchInput()?.nativeElement.focus();
+      }
+    });
+  }
+
+  /**
+   * Resolves the icon for a recent item's kind.
+   * @param kind The recent item's kind.
+   * @returns Returns the icon representing the kind.
+   */
+  protected iconFor(kind: RecentKind): Icon {
+    switch (kind) {
+      case 'directory':
+        return Icon.DIRECTORY;
+      case 'repository':
+        return Icon.SOURCE_CONTROL;
+      case 'markdown':
+        return Icon.MARKDOWN;
+      case 'code':
+        return Icon.CODE;
+    }
+  }
+
+  /**
+   * Formats how long ago an item was opened as a short, human-readable label.
+   * @param openedAt The epoch-millisecond timestamp the item was opened at.
+   * @returns Returns a relative-time label such as "Just now", "2h ago", or "3 days ago".
+   */
+  protected relativeTime(openedAt: number): string {
+    const minute: number = 60_000;
+    const hour: number = 60 * minute;
+    const day: number = 24 * hour;
+    const diff: number = Math.max(0, Date.now() - openedAt);
+    if (diff < minute) {
+      return 'Just now';
+    }
+    if (diff < hour) {
+      return `${Math.floor(diff / minute)}m ago`;
+    }
+    if (diff < day) {
+      return `${Math.floor(diff / hour)}h ago`;
+    }
+    const days: number = Math.floor(diff / day);
+    if (days === 1) {
+      return 'Yesterday';
+    }
+    if (days < 7) {
+      return `${days} days ago`;
+    }
+    if (days < 30) {
+      return `${Math.floor(days / 7)}w ago`;
+    }
+    if (days < 365) {
+      return `${Math.floor(days / 30)}mo ago`;
+    }
+    return `${Math.floor(days / 365)}y ago`;
+  }
+
+  /**
+   * Re-opens a recent item and, when it opened, dismisses the welcome screen.
+   * @param item The recent item to open.
+   */
+  protected async openRecent(item: RecentItem): Promise<void> {
+    if (await this.reopen(item)) {
+      this.welcomeModal.close();
+    }
+  }
+
+  /**
+   * Toggles whether a recent item is pinned.
+   * @param item The recent item to pin or unpin.
+   */
+  protected togglePin(item: RecentItem): void {
+    this.recentItems.togglePin(item.path);
+  }
+
+  /**
+   * Handles a selection from a row's overflow menu.
+   * @param item The row the menu belongs to.
+   * @param action The id of the chosen action.
+   */
+  protected onRowAction(item: RecentItem, action: string): void {
+    if (action === ROW_ACTION_REMOVE) {
+      this.recentItems.remove(item.path);
+    } else if (action === ROW_ACTION_REVEAL) {
+      void this.shell.revealPath(item.path);
+    }
+  }
+
+  /**
+   * Opens the search field in place of the filter pills.
+   */
+  protected openSearch(): void {
+    this.searchOpen.set(true);
+  }
+
+  /**
+   * Closes the search field and clears the query.
+   */
+  protected closeSearch(): void {
+    this.searchOpen.set(false);
+    this.query.set('');
+  }
+
+  /**
+   * Updates the search query from the input event.
+   * @param event The input event carrying the current value.
+   */
+  protected onSearchInput(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
+  }
 
   /**
    * Shows the system open dialog and routes the chosen file or folder: a directory opens in the
@@ -223,6 +372,23 @@ export class WelcomeScreen {
   protected close(): void {
     if (this.dismissable()) {
       this.welcomeModal.close();
+    }
+  }
+
+  /**
+   * Re-opens a recent item by routing it to the same surface it was first opened on.
+   * @param item The recent item to open.
+   * @returns Returns true when the item was opened; otherwise, false.
+   */
+  private reopen(item: RecentItem): Promise<boolean> {
+    switch (item.kind) {
+      case 'directory':
+        return this.fileOpener.reopenDirectory(item.path);
+      case 'repository':
+        return this.repositoryOpener.openFolder(item.path);
+      case 'markdown':
+      case 'code':
+        return this.fileOpener.reopenFile(item.path);
     }
   }
 }

@@ -46,6 +46,14 @@ describe('Shell', () => {
     expect(calls).toEqual([{ channel: ShellChannel.OpenPath, args: ['/tmp/file.txt'] }]);
   });
 
+  it('revealPath_whenBridgePresent_invokesTheChannel', async () => {
+    stubBridge();
+
+    await TestBed.inject(Shell).revealPath('/tmp/project/file.txt');
+
+    expect(calls).toEqual([{ channel: ShellChannel.RevealPath, args: ['/tmp/project/file.txt'] }]);
+  });
+
   it('openExternal_whenBridgeAbsent_isASafeNoOp', async () => {
     // No bridge installed; the call must resolve without throwing and reach no transport.
     await TestBed.inject(Shell).openExternal('https://example.com');

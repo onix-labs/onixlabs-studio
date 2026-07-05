@@ -35,6 +35,18 @@ export enum WorkspaceChannel {
   ReadDirectory = 'workspace:read-directory',
 
   /**
+   * Re-opens a previously user-opened folder by path as a workspace root; honoured only for paths the
+   * user has opened through a dialog before (invoke).
+   */
+  ReopenFolder = 'workspace:reopen-folder',
+
+  /**
+   * Re-opens a previously user-opened file by path; honoured only for trusted paths or files within an
+   * open workspace (invoke).
+   */
+  ReopenFile = 'workspace:reopen-file',
+
+  /**
    * Creates an empty file inside a workspace directory (invoke).
    */
   CreateFile = 'workspace:create-file',

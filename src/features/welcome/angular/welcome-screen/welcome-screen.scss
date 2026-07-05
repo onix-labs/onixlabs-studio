@@ -323,6 +323,57 @@
   }
 }
 
+// The search field replaces the filter pills while searching, spanning the same row.
+.welcome__searchbox {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  padding-inline: 0.6rem;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  transition: border-color 120ms ease;
+
+  &:focus-within {
+    border-color: rgba(var(--accent-color-rgb), 0.6);
+  }
+
+  .welcome__search {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    margin-inline-start: 0;
+    background: transparent;
+    border: none;
+  }
+}
+
+.welcome__searchbox-icon {
+  flex: none;
+  font-size: 1rem;
+  color: var(--wl-faint);
+}
+
+.welcome__searchbox-input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding-block: 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--wl-text);
+  background: transparent;
+  border: none;
+
+  &::placeholder {
+    color: var(--wl-faint);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
 .welcome__recent-list {
   display: flex;
   flex: 1 1 auto;
@@ -437,6 +488,21 @@
     color: var(--wl-text);
     background: var(--wl-surface-hover);
   }
+}
+
+// A pinned item's pin control stays lit in the accent colour.
+.welcome__recent-action--on {
+  color: var(--accent-color);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--accent-color);
+  }
+}
+
+// The overflow menu is only a template holder; keep its host out of the row's flex flow.
+.welcome__recent app-menu {
+  display: none;
 }
 
 // The empty state fills the panel and sits centred.

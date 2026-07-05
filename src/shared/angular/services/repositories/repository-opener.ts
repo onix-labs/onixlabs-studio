@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -27,6 +28,11 @@ export class RepositoryOpener {
    * Holds the registry that hands the opened repository to its tab's view.
    */
   private readonly repositories: Repositories = inject(Repositories);
+
+  /**
+   * Holds the recent-items registry, updated whenever a repository is opened.
+   */
+  private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
    * Shows the open-repository dialog and, when a git repository is chosen, opens it in a new tab.
@@ -63,6 +69,7 @@ export class RepositoryOpener {
    * @param info The opened repository's metadata.
    */
   private open(info: RepositoryInfo): void {
+    this.recentItems.record(info.root, info.name, 'repository');
     const existing: Tab | undefined = this.tabs.findByResource('source-control', info.root);
     if (existing !== undefined) {
       this.tabs.activate(existing.id);

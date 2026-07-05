@@ -24,16 +24,26 @@ const ROOT_LISTING: DirectoryListing = {
 let nextSelection: OpenSelection | null;
 
 /**
- * Builds a fake transport whose open/open-file channels resolve with {@link nextSelection}.
+ * Holds the next listing the fake bridge's reopen-folder call resolves with; tests mutate it.
+ */
+let nextListing: DirectoryListing | null;
+
+/**
+ * Builds a fake transport whose open/open-file/reopen-file channels resolve with
+ * {@link nextSelection} and whose reopen-folder channel resolves with {@link nextListing}.
  */
 function fakeBridge(): Bridge {
   return {
     invoke: <T>(channel: string): Promise<T> => {
       if (
         channel === (WorkspaceChannel.Open as string) ||
-        channel === (WorkspaceChannel.OpenFile as string)
+        channel === (WorkspaceChannel.OpenFile as string) ||
+        channel === (WorkspaceChannel.ReopenFile as string)
       ) {
         return Promise.resolve(nextSelection as T);
+      }
+      if (channel === (WorkspaceChannel.ReopenFolder as string)) {
+        return Promise.resolve(nextListing as T);
       }
       return Promise.resolve(null as T);
     },
@@ -58,6 +68,7 @@ describe('FileOpener', () => {
 
   beforeEach(() => {
     nextSelection = null;
+    nextListing = null;
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({});
     opener = TestBed.inject(FileOpener);
@@ -146,5 +157,34 @@ describe('FileOpener', () => {
     await opener.openPath('/ws/main.ts');
     await opener.openPath('/ws/main.ts');
     expect(wellPanels()).toHaveLength(1);
+  });
+
+  it('reopenFile_whenTrustedFile_opensATopLevelTabNotAWellDocument', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/recent/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+    expect(await opener.reopenFile('/recent/main.ts')).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('code');
+    expect(wellPanels()).toHaveLength(0);
+  });
+
+  it('reopenFile_whenUntrusted_opensNothing', async () => {
+    nextSelection = null;
+    expect(await opener.reopenFile('/blocked/secret.ts')).toBe(false);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('reopenDirectory_whenTrustedFolder_opensAWorkspaceTab', async () => {
+    nextListing = ROOT_LISTING;
+    expect(await opener.reopenDirectory('/ws')).toBe(true);
+    expect(tabs.tabs().map((tab: Tab): string => tab.type)).toEqual(['directory']);
+    expect(workspaces.takeInitial(tabs.tabs()[0].id)).toBe(ROOT_LISTING);
+  });
+
+  it('reopenDirectory_whenUntrusted_opensNothing', async () => {
+    nextListing = null;
+    expect(await opener.reopenDirectory('/blocked')).toBe(false);
+    expect(tabs.tabs()).toHaveLength(0);
   });
 });

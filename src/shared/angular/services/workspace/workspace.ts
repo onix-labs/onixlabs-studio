@@ -205,6 +205,33 @@ export class Workspace {
   }
 
   /**
+   * Re-opens a previously user-opened folder by path as a new workspace. The main process honours this
+   * only for folders the user has opened through a dialog before, so an arbitrary path cannot be
+   * registered as a workspace root.
+   * @param path The absolute folder path to re-open.
+   * @returns Returns the root listing, or null when not trusted, unreadable, or outside Electron.
+   */
+  public reopenFolder(path: string): Promise<DirectoryListing | null> {
+    return (
+      this.bridge?.invoke<DirectoryListing | null>(WorkspaceChannel.ReopenFolder, path) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Re-opens a previously user-opened file by path. The main process honours this only for files the
+   * user has opened before or files within an open workspace, so an arbitrary file cannot be read.
+   * @param path The absolute file path to re-open.
+   * @returns Returns the file selection, or null when not trusted, unreadable, or outside Electron.
+   */
+  public reopenFile(path: string): Promise<OpenSelection | null> {
+    return (
+      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.ReopenFile, path) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
    * Opens an already-obtained directory listing as the workspace, seeding the tree from it without
    * showing a dialog. Used when a folder was chosen through the combined open dialog.
    * @param listing The root directory listing to display.

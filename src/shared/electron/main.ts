@@ -27,6 +27,7 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { GitManager } from '@shared/electron/git-manager';
 import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
+import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
 
@@ -221,11 +222,20 @@ class Program {
   private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
+   * Remembers paths the user has opened through a dialog so recent items can be re-opened without
+   * weakening the workspace confinement.
+   */
+  private readonly trustedPaths: TrustedPaths = new TrustedPaths(
+    path.join(app.getPath('userData'), 'trusted-paths.json'),
+  );
+
+  /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
    */
   private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
     (): BrowserWindow | null => this.window,
     this.workspaceContext,
+    this.trustedPaths,
   );
 
   /**
@@ -402,6 +412,12 @@ class Program {
       ShellChannel.OpenExternal,
       (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
     );
+
+    ipcMain.handle(ShellChannel.RevealPath, (_event: IpcMainInvokeEvent, target: unknown): void => {
+      if (typeof target === 'string' && target.length > 0) {
+        shell.showItemInFolder(target);
+      }
+    });
 
     this.securityManager.register();
     this.mediaProtocol.register();

@@ -35,4 +35,14 @@ export class Shell {
   public async openExternal(url: string): Promise<void> {
     await this.bridge?.invoke<void>(ShellChannel.OpenExternal, url);
   }
+
+  /**
+   * Reveals a file-system path in the operating system's file manager, selecting the item within its
+   * containing folder.
+   * @param path The absolute path to reveal.
+   * @returns Returns a promise that resolves once the request has been handed to the main process.
+   */
+  public async revealPath(path: string): Promise<void> {
+    await this.bridge?.invoke<void>(ShellChannel.RevealPath, path);
+  }
 }

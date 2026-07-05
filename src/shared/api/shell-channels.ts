@@ -15,4 +15,10 @@ export enum ShellChannel {
    * honoured, anything else is ignored (invoke).
    */
   OpenExternal = 'shell:open-external',
+
+  /**
+   * Reveals a file-system path in the operating system's file manager, selecting the item within its
+   * containing folder (invoke).
+   */
+  RevealPath = 'shell:reveal-path',
 }

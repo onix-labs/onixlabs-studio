@@ -20,6 +20,7 @@
   "include": ["../**/*.ts"],
   /* Exclude src/shared/angular and src/shared/app: they are renderer (Angular) code that must not be
      compiled by this node-only config; the main and preload processes only consume the shared api
-     types. */
-  "exclude": ["../angular/**", "../app/**"]
+     types. Spec files are type-checked and run by the unit-test runner (tsconfig.spec.json), not the
+     electron build. */
+  "exclude": ["../angular/**", "../app/**", "../**/*.spec.ts"]
 }

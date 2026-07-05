@@ -20,6 +20,7 @@ import {
 } from '@shared/api/workspace-channels';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
+import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
 
 /**
@@ -61,13 +62,24 @@ export class WorkspaceManager {
   private readonly workspace: WorkspaceContext;
 
   /**
+   * Holds the store of paths the user has opened through a dialog, used to authorise re-opens.
+   */
+  private readonly trusted: TrustedPaths;
+
+  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window the dialogs are parented to.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
+   * @param trusted The store recording paths the user has opened, gating path-based re-opens.
    */
-  public constructor(windowGetter: () => BrowserWindow | null, workspace: WorkspaceContext) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    workspace: WorkspaceContext,
+    trusted: TrustedPaths,
+  ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
+    this.trusted = trusted;
   }
 
   /**
@@ -96,6 +108,16 @@ export class WorkspaceManager {
       WorkspaceChannel.ReadDirectory,
       (_event: IpcMainInvokeEvent, directoryPath: unknown): Promise<DirectoryListing | null> =>
         this.readDirectory(directoryPath),
+    );
+    ipcMain.handle(
+      WorkspaceChannel.ReopenFolder,
+      (_event: IpcMainInvokeEvent, folderPath: unknown): Promise<DirectoryListing | null> =>
+        this.reopenFolder(folderPath),
+    );
+    ipcMain.handle(
+      WorkspaceChannel.ReopenFile,
+      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
+        this.reopenFile(filePath),
     );
     ipcMain.handle(
       WorkspaceChannel.CreateFile,
@@ -184,6 +206,7 @@ export class WorkspaceManager {
     }
     const root: string = path.resolve(result.filePaths[0]);
     this.workspace.addRoot(root);
+    this.trusted.remember(root);
     try {
       return await this.readListing(root);
     } catch {
@@ -214,8 +237,10 @@ export class WorkspaceManager {
       const stats: Stats = await fs.stat(selectedPath);
       if (stats.isDirectory()) {
         this.workspace.addRoot(selectedPath);
+        this.trusted.remember(selectedPath);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
+      this.trusted.remember(selectedPath);
       return await this.readFileSelection(selectedPath);
     } catch {
       return null;
@@ -249,6 +274,44 @@ export class WorkspaceManager {
     }
     try {
       return await this.readListing(path.resolve(directoryPath as string));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Re-opens a previously user-opened folder by path as a workspace root. Honoured only for paths the
+   * user has opened through a dialog before, so the renderer cannot register an arbitrary root.
+   * @param folderPath The absolute folder path to re-open.
+   * @returns Returns the root directory listing, or null when untrusted or unreadable.
+   */
+  private async reopenFolder(folderPath: unknown): Promise<DirectoryListing | null> {
+    if (!this.trusted.has(folderPath)) {
+      return null;
+    }
+    const resolved: string = path.resolve(folderPath as string);
+    this.workspace.addRoot(resolved);
+    try {
+      return await this.readListing(resolved);
+    } catch {
+      this.workspace.removeRoot(resolved);
+      return null;
+    }
+  }
+
+  /**
+   * Re-opens a previously user-opened file by path. Honoured for paths the user has opened through a
+   * dialog before, or files already within an open workspace, so the renderer cannot read arbitrary
+   * files.
+   * @param filePath The absolute file path to re-open.
+   * @returns Returns the file selection (text or binary), or null when untrusted or unreadable.
+   */
+  private async reopenFile(filePath: unknown): Promise<OpenSelection | null> {
+    if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      return null;
+    }
+    try {
+      return await this.readFileSelection(path.resolve(filePath as string));
     } catch {
       return null;
     }

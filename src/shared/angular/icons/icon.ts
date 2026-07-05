@@ -503,6 +503,11 @@ export class Icon {
   public static readonly PIN: Icon = new Icon('ph ph-push-pin');
 
   /**
+   * Gets the filled pin icon, used to show an item is pinned.
+   */
+  public static readonly PIN_FILLED: Icon = new Icon('ph-fill ph-push-pin');
+
+  /**
    * Gets the drag-handle (grip) icon.
    */
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');

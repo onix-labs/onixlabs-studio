@@ -10,6 +10,7 @@ import { firstStackOfRole } from '@shared/angular/services/dock/dock-tree';
 import { StackNode } from '@shared/angular/services/dock/dock-node';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '@shared/angular/services/output/output';
+import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -69,6 +70,11 @@ export class FileOpener {
   private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
+   * Holds the recent-items registry, updated whenever a file or folder is opened.
+   */
+  private readonly recentItems: RecentItems = inject(RecentItems);
+
+  /**
    * Shows the combined open dialog (file or folder) and routes the selection.
    * @returns Returns true when something was opened, or false when cancelled or a binary was chosen.
    */
@@ -93,6 +99,36 @@ export class FileOpener {
       return false;
     }
     return this.openInWell(selection.file);
+  }
+
+  /**
+   * Re-opens a previously-opened file by absolute path as a standalone editor tab, choosing the editor
+   * by file type. Unlike {@link openPath}, which opens into a workspace's document well, this opens a
+   * top-level tab and so works from the welcome screen at a cold start. The main process honours only
+   * paths the user has opened before (or files within an open workspace), so this cannot open arbitrary
+   * files.
+   * @param path The absolute path of the file to re-open.
+   * @returns Returns true when the file was opened, or false when untrusted, unreadable, or binary.
+   */
+  public async reopenFile(path: string): Promise<boolean> {
+    return this.route(await this.workspace.reopenFile(path));
+  }
+
+  /**
+   * Re-opens a previously-opened folder by absolute path as a workspace tab. The main process honours
+   * only folders the user has opened before, so this cannot open arbitrary locations; used to re-open a
+   * recent folder from the welcome screen.
+   * @param path The absolute directory path to re-open.
+   * @returns Returns true when the folder was re-opened, or false when untrusted or unreadable.
+   */
+  public async reopenDirectory(path: string): Promise<boolean> {
+    const listing: DirectoryListing | null = await this.workspace.reopenFolder(path);
+    if (listing === null) {
+      return false;
+    }
+    this.openDirectory(listing);
+    this.output.appendLine(`Opened folder ${listing.path}`);
+    return true;
   }
 
   /**
@@ -128,6 +164,7 @@ export class FileOpener {
       case 'file': {
         const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
         this.documents.openFileInfo(selection.file, type);
+        this.recordRecentFile(selection.file);
         this.output.appendLine(`Opened ${selection.file.path}`);
         return true;
       }
@@ -143,6 +180,7 @@ export class FileOpener {
    * @param listing The root directory listing to display.
    */
   private openDirectory(listing: DirectoryListing): void {
+    this.recentItems.record(listing.path, listing.name, 'directory');
     const existing: Tab | undefined = this.tabs.findByResource('directory', listing.path);
     if (existing !== undefined) {
       this.tabs.activate(existing.id);
@@ -164,6 +202,7 @@ export class FileOpener {
     if (well === null) {
       return false;
     }
+    this.recordRecentFile(fileInfo);
     const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
     if (existing !== undefined) {
       this.dockState.setActive(well.id, existing);
@@ -182,6 +221,18 @@ export class FileOpener {
     this.dockFocus.focus(well.id);
     this.output.appendLine(`Opened ${fileInfo.path}`);
     return true;
+  }
+
+  /**
+   * Records an opened file in the recent-items registry, classified as markdown or code by extension.
+   * @param fileInfo The file that was opened.
+   */
+  private recordRecentFile(fileInfo: FileInfo): void {
+    this.recentItems.record(
+      fileInfo.path,
+      fileInfo.name,
+      this.isMarkdown(fileInfo.extension) ? 'markdown' : 'code',
+    );
   }
 
   /**
