@@ -8,6 +8,7 @@ import { DockFocus } from '@shared/angular/services/dock/dock-focus';
 import { DockState } from '@shared/angular/services/dock/dock-state';
 import { firstStackOfRole } from '@shared/angular/services/dock/dock-tree';
 import { StackNode } from '@shared/angular/services/dock/dock-node';
+import { BinaryDocuments } from '@features/binary/angular/binary-document/binary-document';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '@shared/angular/services/output/output';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
@@ -23,9 +24,9 @@ const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.md', '.markd
 
 /**
  * Routes an opened filesystem selection to the right surface: a directory becomes the workspace,
- * a markdown file opens in a markdown tab, and any other text file opens in a code tab. Binary
- * files are recognised but not opened, and a cancelled dialog is a no-op. Shared by the welcome
- * screen and the directory tree so both behave identically.
+ * a markdown file opens in a markdown tab, any other text file opens in a code tab, and a file no
+ * text editor can open (binary) opens in a binary/hex tab. A cancelled dialog is a no-op. Shared by
+ * the welcome screen and the directory tree so both behave identically.
  */
 @Service()
 export class FileOpener {
@@ -38,6 +39,11 @@ export class FileOpener {
    * Holds the document model that backs code and markdown tabs.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the document model that backs binary tabs (files no text editor can open).
+   */
+  private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
 
   /**
    * Holds the top-level tab registry.
@@ -95,8 +101,7 @@ export class FileOpener {
       return false;
     }
     if (selection.kind === 'binary') {
-      this.output.appendLine(`Skipped binary file ${selection.path}`);
-      return false;
+      return this.openBinary(selection.path);
     }
     return this.openInWell(selection.file);
   }
@@ -169,9 +174,21 @@ export class FileOpener {
         return true;
       }
       case 'binary':
-        this.output.appendLine(`Skipped binary file ${selection.path}`);
-        return false;
+        return this.openBinary(selection.path);
     }
+  }
+
+  /**
+   * Opens a binary file (one no text editor can open) in a binary/hex tab and records it as a recent
+   * item. The document reads its bytes lazily, so opening is cheap however large the file.
+   * @param path The absolute path of the binary file to open.
+   * @returns Returns true; the binary editor always accepts the file.
+   */
+  private openBinary(path: string): boolean {
+    const tab: Tab = this.binaryDocuments.open(path);
+    this.recentItems.record(path, tab.title, 'binary');
+    this.output.appendLine(`Opened ${path}`);
+    return true;
   }
 
   /**

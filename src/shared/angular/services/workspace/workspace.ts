@@ -1,6 +1,7 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  BinaryChunk,
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
@@ -187,6 +188,22 @@ export class Workspace {
   public readFile(path: string): Promise<OpenSelection | null> {
     return (
       this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.OpenFile, path) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Reads a window of raw bytes from a file for the binary/hex editor. The main process clamps the
+   * window to the file and bounds its size, and returns the total file size so the caller can size its
+   * virtual scroll without loading the whole file.
+   * @param path The absolute path of the file to read.
+   * @param offset The absolute byte offset to start reading from.
+   * @param length The number of bytes to read.
+   * @returns Returns the byte window and total size, or null when invalid, untrusted, or outside Electron.
+   */
+  public readBytes(path: string, offset: number, length: number): Promise<BinaryChunk | null> {
+    return (
+      this.bridge?.invoke<BinaryChunk | null>(WorkspaceChannel.ReadBytes, path, offset, length) ??
       Promise.resolve(null)
     );
   }

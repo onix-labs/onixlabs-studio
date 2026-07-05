@@ -83,6 +83,15 @@ export class Tabs {
   }
 
   /**
+   * Gets the open tab with the given identifier, or undefined when no such tab exists.
+   * @param id The identifier of the tab to get.
+   * @returns Returns the matching tab, or undefined when none is open.
+   */
+  public get(id: string): Tab | undefined {
+    return this.tabList().find((tab: Tab): boolean => tab.id === id);
+  }
+
+  /**
    * Finds the open tab of a given type that represents a resource, if any. Used by the open flows to
    * keep a resource single-instance per tab type.
    * @param type The tab type to match.

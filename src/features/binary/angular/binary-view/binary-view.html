@@ -1,0 +1,47 @@
+@if (document(); as document) {
+  <div class="binary">
+    <div class="binary__header">
+      <span class="binary__addr binary__addr--header">Offset</span>
+      <span class="binary__hex">
+        @for (label of columnLabels(); track $index) {
+          <span class="binary__hexcell binary__hexcell--header">{{ label }}</span>
+        }
+      </span>
+      <span class="binary__ascii binary__ascii--header">ASCII</span>
+    </div>
+
+    <div #scroller class="binary__scroll" (scroll)="onScroll($event)">
+      <div class="binary__sizer" [style.height.px]="totalHeight()">
+        <div class="binary__window" [style.transform]="'translateY(' + offsetY() + 'px)'">
+          @for (row of rows(); track row.index) {
+            <div class="binary__row" [style.height.px]="rowHeight">
+              <span class="binary__addr">{{ row.address }}</span>
+              <span class="binary__hex">
+                @for (cell of row.cells; track cell.offset) {
+                  <span
+                    class="binary__hexcell"
+                    [class.binary__cell--selected]="cell.selected"
+                    (pointerdown)="onCellDown(cell.offset, $event)"
+                    (pointerenter)="onCellEnter(cell.offset)"
+                    >{{ cell.hex }}</span
+                  >
+                }
+              </span>
+              <span class="binary__ascii">
+                @for (cell of row.cells; track cell.offset) {
+                  <span
+                    class="binary__asciicell"
+                    [class.binary__cell--selected]="cell.selected"
+                    (pointerdown)="onCellDown(cell.offset, $event)"
+                    (pointerenter)="onCellEnter(cell.offset)"
+                    >{{ cell.ascii }}</span
+                  >
+                }
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

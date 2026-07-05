@@ -133,10 +133,11 @@ describe('FileOpener', () => {
     expect(tabs.activeTab()?.type).toBe('code');
   });
 
-  it('openInteractive_whenBinaryChosen_opensNothing', async () => {
+  it('openInteractive_whenBinaryChosen_opensABinaryTab', async () => {
     nextSelection = { kind: 'binary', path: '/ws/image.png' };
-    expect(await opener.openInteractive()).toBe(false);
-    expect(tabs.tabs()).toHaveLength(0);
+    expect(await opener.openInteractive()).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('binary');
+    expect(tabs.activeTab()?.title).toBe('image.png');
   });
 
   it('openPath_whenFileOpened_addsADocumentToTheWellNotATab', async () => {

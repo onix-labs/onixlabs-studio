@@ -87,6 +87,11 @@ export class Icon {
   public static readonly MARKDOWN: Icon = new Icon('ph-duotone ph-markdown-logo');
 
   /**
+   * Gets the binary/hex content icon.
+   */
+  public static readonly BINARY: Icon = new Icon('ph-duotone ph-binary');
+
+  /**
    * Gets the terminal content icon.
    */
   public static readonly TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');

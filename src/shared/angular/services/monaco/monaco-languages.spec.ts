@@ -18,7 +18,7 @@ describe('monaco-languages', () => {
 
   it('extensionForLanguage_returnsTheFirstRegisteredExtensionOrEmpty', () => {
     expect(extensionForLanguage('typescript')).toBe('.ts');
-    expect(extensionForLanguage('plaintext')).toBe('');
+    expect(extensionForLanguage('plaintext')).toBe('.txt');
     expect(extensionForLanguage('nonexistent')).toBe('');
   });
 

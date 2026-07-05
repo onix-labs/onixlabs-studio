@@ -9,6 +9,7 @@ import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
+import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
 import { provideRepositoryFeature } from '@features/repository/angular/repository.feature';
@@ -42,6 +43,8 @@ export const config: ApplicationConfig = {
     provideCodeFeature(),
     // Stand up the markdown feature: register its tab view, ribbon, and the lean document-well panel.
     provideMarkdownFeature(),
+    // Stand up the binary feature: register its hex-editor tab view + ribbon with the shell.
+    provideBinaryFeature(),
     // Stand up the repository feature: register its source-control view + ribbon with the shell.
     provideRepositoryFeature(),
     // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.

@@ -20,6 +20,12 @@ export enum WorkspaceChannel {
   OpenFile = 'workspace:open-file',
 
   /**
+   * Reads a window of raw bytes from a file, for the binary/hex editor (invoke). Honoured only for
+   * trusted paths or files within an open workspace.
+   */
+  ReadBytes = 'workspace:read-bytes',
+
+  /**
    * Shows an open-folder dialog and sets the chosen folder as the workspace root (invoke).
    */
   OpenFolder = 'workspace:open-folder',
@@ -130,6 +136,29 @@ export interface FileOperationResult {
    * Gets the error message, when the operation failed.
    */
   readonly error?: string;
+}
+
+/**
+ * Describes a window of raw bytes read from a file for the binary/hex editor, together with the total
+ * file size so the renderer can size its virtual scroll without loading the whole file.
+ */
+export interface BinaryChunk {
+  /**
+   * Gets the total size of the file, in bytes.
+   */
+  readonly size: number;
+
+  /**
+   * Gets the absolute offset of the first returned byte. Clamped to the file size, so it may be less
+   * than the requested offset when the request began past the end of the file.
+   */
+  readonly offset: number;
+
+  /**
+   * Gets the bytes read. Its length may be shorter than requested when the window meets the end of the
+   * file (and empty when the offset is at or past the end).
+   */
+  readonly bytes: Uint8Array;
 }
 
 /**

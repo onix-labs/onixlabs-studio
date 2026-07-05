@@ -12,12 +12,14 @@ import { ProjectItems, ProjectModel } from '@shared/api/project-system';
 import { FileInfo } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import {
+  BinaryChunk,
   DirectoryEntry,
   DirectoryListing,
   FileOperationResult,
   OpenSelection,
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
+import type { FileHandle } from 'node:fs/promises';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
 import { TrustedPaths } from './trusted-paths';
@@ -43,6 +45,12 @@ const BINARY_SNIFF_LENGTH: number = 8000;
  * Specifies the byte value (NUL) whose presence marks a file as binary.
  */
 const NUL_BYTE: number = 0;
+
+/**
+ * Specifies the largest byte window a single {@link WorkspaceChannel.ReadBytes} request may return,
+ * bounding the IPC payload however large a viewport the renderer asks for.
+ */
+const MAX_READ_BYTES: number = 1024 * 1024;
 
 /**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
@@ -91,6 +99,15 @@ export class WorkspaceManager {
       WorkspaceChannel.OpenFile,
       (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
         this.openFile(filePath),
+    );
+    ipcMain.handle(
+      WorkspaceChannel.ReadBytes,
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        offset: unknown,
+        length: unknown,
+      ): Promise<BinaryChunk | null> => this.readBytes(filePath, offset, length),
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFolder,
@@ -268,6 +285,52 @@ export class WorkspaceManager {
   }
 
   /**
+   * Reads a window of raw bytes from a file for the binary/hex editor. Honoured for files within an
+   * open workspace or paths the user has opened before, so the renderer cannot read arbitrary files.
+   * The window is clamped to the file and bounded by {@link MAX_READ_BYTES}, and the total file size is
+   * returned so the renderer can size its virtual scroll without loading the whole file.
+   * @param filePath The absolute path of the file to read.
+   * @param offset The absolute byte offset to start reading from.
+   * @param length The number of bytes to read.
+   * @returns Returns the byte window and total size, or null when invalid, untrusted, or unreadable.
+   */
+  private async readBytes(
+    filePath: unknown,
+    offset: unknown,
+    length: unknown,
+  ): Promise<BinaryChunk | null> {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      return null;
+    }
+    if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) {
+      return null;
+    }
+    if (typeof length !== 'number' || !Number.isInteger(length) || length <= 0) {
+      return null;
+    }
+    if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      return null;
+    }
+    const resolved: string = path.resolve(filePath);
+    let handle: FileHandle | undefined;
+    try {
+      handle = await fs.open(resolved, 'r');
+      const size: number = (await handle.stat()).size;
+      const start: number = Math.min(offset, size);
+      const toRead: number = Math.min(length, MAX_READ_BYTES, size - start);
+      const buffer: Buffer = Buffer.alloc(Math.max(0, toRead));
+      if (buffer.length > 0) {
+        await handle.read(buffer, 0, buffer.length, start);
+      }
+      return { size, offset: start, bytes: new Uint8Array(buffer) };
+    } catch {
+      return null;
+    } finally {
+      await handle?.close();
+    }
+  }
+
+  /**
    * Reads the immediate children of a directory within the workspace.
    * @param directoryPath The directory to read.
    * @returns Returns the listing, or null when the path is invalid or outside the workspace.
@@ -406,11 +469,34 @@ export class WorkspaceManager {
    * @returns Returns a text-file or binary selection.
    */
   private async readFileSelection(filePath: string): Promise<OpenSelection> {
-    const buffer: Buffer = await fs.readFile(filePath);
-    if (this.isBinary(buffer)) {
+    if (await this.isBinaryFile(filePath)) {
       return { kind: 'binary', path: filePath };
     }
-    return { kind: 'file', file: this.readFileInfo(filePath, buffer.toString('utf-8')) };
+    const content: string = await fs.readFile(filePath, 'utf-8');
+    return { kind: 'file', file: this.readFileInfo(filePath, content) };
+  }
+
+  /**
+   * Determines whether a file is binary by sniffing only its leading bytes, so a large binary is
+   * classified without reading it whole (the binary/hex editor then reads it in windows on demand).
+   * @param filePath The absolute path of the file to sniff.
+   * @returns Returns true when a NUL byte is found within the sniffed header.
+   */
+  private async isBinaryFile(filePath: string): Promise<boolean> {
+    let handle: FileHandle | undefined;
+    try {
+      handle = await fs.open(filePath, 'r');
+      const header: Buffer = Buffer.alloc(BINARY_SNIFF_LENGTH);
+      const { bytesRead }: { bytesRead: number } = await handle.read(
+        header,
+        0,
+        BINARY_SNIFF_LENGTH,
+        0,
+      );
+      return this.isBinary(header.subarray(0, bytesRead));
+    } finally {
+      await handle?.close();
+    }
   }
 
   /**

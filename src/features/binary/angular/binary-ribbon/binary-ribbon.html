@@ -1,0 +1,21 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Navigate">
+    <app-ribbon-strip-button [icon]="Icon.ARROW_UP" label="Start" (action)="onGoToStart()" />
+    <app-ribbon-strip-button [icon]="Icon.ARROW_DOWN" label="End" (action)="onGoToEnd()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Clipboard">
+    <app-ribbon-strip-button [icon]="Icon.COPY" label="Copy Hex" (action)="onCopyHex()" />
+    <app-ribbon-strip-button [icon]="Icon.LIST" label="Copy Text" (action)="onCopyText()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Layout">
+    <app-ribbon-strip-field
+      label="Bytes / Row"
+      [options]="rowWidths"
+      [value]="rowWidthValue()"
+      [fullWidth]="false"
+      (changed)="onRowWidthChange($event)"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

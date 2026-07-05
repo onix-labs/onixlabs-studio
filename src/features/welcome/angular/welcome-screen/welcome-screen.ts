@@ -125,6 +125,7 @@ export class WelcomeScreen {
     { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL, kind: 'repository' },
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
+    { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
   ];
 
   /**
@@ -230,6 +231,8 @@ export class WelcomeScreen {
         return Icon.MARKDOWN;
       case 'code':
         return Icon.CODE;
+      case 'binary':
+        return Icon.BINARY;
     }
   }
 
@@ -368,6 +371,7 @@ export class WelcomeScreen {
         return this.repositoryOpener.openFolder(item.path);
       case 'markdown':
       case 'code':
+      case 'binary':
         return this.fileOpener.reopenFile(item.path);
     }
   }

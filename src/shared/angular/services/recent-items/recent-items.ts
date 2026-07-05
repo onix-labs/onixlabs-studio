@@ -5,7 +5,7 @@ import { SettingsStore } from '@shared/angular/services/settings-store/settings-
  * Names the kinds of thing that can appear in the recent-items list. Each maps to how the item is
  * re-opened and which icon and filter it belongs to.
  */
-export type RecentKind = 'directory' | 'repository' | 'markdown' | 'code';
+export type RecentKind = 'directory' | 'repository' | 'markdown' | 'code' | 'binary';
 
 /**
  * Holds the recognised recent-item kinds, used to reject malformed persisted entries on load.
