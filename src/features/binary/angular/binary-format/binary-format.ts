@@ -50,6 +50,31 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
 }
 
 /**
+ * Holds the architecture labels the native disassembler supports.
+ */
+const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>(['x86', 'x64', 'ARM', 'ARM64']);
+
+/**
+ * Resolves the architecture a format's native code should be disassembled as, or null when native
+ * disassembly does not apply — managed .NET assemblies, JVM class files, and unknown or unsupported
+ * architectures (the managed formats are handled by later phases' sidecars).
+ * @param format The detected format.
+ * @returns Returns the architecture label, or null.
+ */
+export function disassemblyArchitecture(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      return !format.managed && DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
+    case 'elf':
+    case 'macho':
+      return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
+    case 'jvm':
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
  * Formats a detected format for display in the status strip.
  * @param format The detected format.
  * @returns Returns a short human-readable label.

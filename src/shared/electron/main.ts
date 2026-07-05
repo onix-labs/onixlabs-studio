@@ -16,6 +16,7 @@ import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from '@shared/electron/code-runner';
+import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { LspManager } from './lsp/lsp-manager';
@@ -240,6 +241,14 @@ class Program {
   );
 
   /**
+   * Disassembles native machine code for the binary/hex editor, confined to the same trusted paths.
+   */
+  private readonly binaryDisassembler: BinaryDisassembler = new BinaryDisassembler(
+    this.workspaceContext,
+    this.trustedPaths,
+  );
+
+  /**
    * Owns the user's language-server settings (disabled servers, runtime overrides).
    */
   private readonly lspSettingsManager: LspSettingsManager = new LspSettingsManager();
@@ -428,6 +437,7 @@ class Program {
     this.taskRunner.register();
     this.gitManager.register();
     this.workspaceManager.register();
+    this.binaryDisassembler.register();
     this.fileWatcher.register();
     this.aiManager.register();
     this.lspSettingsManager.register();

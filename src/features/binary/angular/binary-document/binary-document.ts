@@ -1,9 +1,11 @@
 import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { DecodedInstruction } from '@shared/api/binary-channels';
 import { BinaryChunk } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { BinaryFormat, sniffFormat } from '../binary-format/binary-format';
+import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
+import { BinaryFormat, disassemblyArchitecture, sniffFormat } from '../binary-format/binary-format';
 
 /**
  * Specifies the size, in bytes, of each block fetched and cached from a file. A multiple of the row
@@ -11,6 +13,18 @@ import { BinaryFormat, sniffFormat } from '../binary-format/binary-format';
  * within a block needs no further reads.
  */
 const BLOCK_SIZE: number = 64 * 1024;
+
+/**
+ * Specifies how long (in milliseconds) viewport-driven disassembly requests are debounced, so a
+ * request is issued only once scrolling settles rather than on every intermediate frame.
+ */
+const DISASSEMBLY_DEBOUNCE_MS: number = 120;
+
+/**
+ * Specifies the largest number of disassembled ranges cached before the cache is cleared, bounding
+ * memory over a long editing session.
+ */
+const MAX_DISASSEMBLY_CACHE: number = 128;
 
 /**
  * Describes a contiguous byte selection within a binary document, as a half-open range `[start, end)`.
@@ -76,6 +90,33 @@ export class BinaryDocumentEntry {
   public readonly format: WritableSignal<BinaryFormat> = signal<BinaryFormat>({ kind: 'unknown' });
 
   /**
+   * Holds the decoded instructions for the current viewport range, or an empty list when the format is
+   * not natively disassemblable (managed/JVM/unknown) or none has been loaded yet.
+   */
+  public readonly instructions: WritableSignal<readonly DecodedInstruction[]> = signal<
+    readonly DecodedInstruction[]
+  >([]);
+
+  /**
+   * Holds disassembled ranges keyed by `arch:offset:length`, so re-visiting a range does not re-invoke
+   * the disassembler.
+   */
+  private readonly disassemblyCache: Map<string, readonly DecodedInstruction[]> = new Map<
+    string,
+    readonly DecodedInstruction[]
+  >();
+
+  /**
+   * Holds the pending debounced disassembly timer, or null when none is scheduled.
+   */
+  private disassemblyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Tracks the latest disassembly request, so a slow earlier request never overwrites a newer result.
+   */
+  private disassemblyToken: number = 0;
+
+  /**
    * Holds a counter bumped by {@link reveal} so the view scrolls to {@link revealOffset} on request.
    */
   public readonly revealVersion: WritableSignal<number> = signal<number>(0);
@@ -97,6 +138,7 @@ export class BinaryDocumentEntry {
     public readonly path: string,
     public readonly fileName: string,
     private readonly workspace: Workspace,
+    private readonly disassembly: BinaryDisassembly,
   ) {}
 
   /**
@@ -134,6 +176,54 @@ export class BinaryDocumentEntry {
     }
     const local: number = offset - block * BLOCK_SIZE;
     return local < bytes.length ? bytes[local] : null;
+  }
+
+  /**
+   * Loads disassembly for a byte range (the visible viewport), debounced so it fires once scrolling
+   * settles, and cached so re-visiting a range does not re-invoke the disassembler. Sets an empty list
+   * immediately when the format is not natively disassemblable.
+   * @param offset The first byte of the range.
+   * @param length The number of bytes in the range.
+   */
+  public loadDisassembly(offset: number, length: number): void {
+    const architecture: string | null = disassemblyArchitecture(this.format());
+    if (architecture === null || length <= 0) {
+      this.instructions.set([]);
+      return;
+    }
+    const key: string = `${architecture}:${offset}:${length}`;
+    const cached: readonly DecodedInstruction[] | undefined = this.disassemblyCache.get(key);
+    if (cached !== undefined) {
+      this.instructions.set(cached);
+      return;
+    }
+    if (this.disassemblyTimer !== null) {
+      clearTimeout(this.disassemblyTimer);
+    }
+    const token: number = (this.disassemblyToken += 1);
+    this.disassemblyTimer = setTimeout((): void => {
+      void this.disassembly
+        .disassemble(this.path, offset, length, architecture)
+        .then((result: readonly DecodedInstruction[]): void => {
+          if (this.disassemblyCache.size >= MAX_DISASSEMBLY_CACHE) {
+            this.disassemblyCache.clear();
+          }
+          this.disassemblyCache.set(key, result);
+          if (token === this.disassemblyToken) {
+            this.instructions.set(result);
+          }
+        });
+    }, DISASSEMBLY_DEBOUNCE_MS);
+  }
+
+  /**
+   * Cancels any pending disassembly request. Called when the document is released.
+   */
+  public dispose(): void {
+    if (this.disassemblyTimer !== null) {
+      clearTimeout(this.disassemblyTimer);
+      this.disassemblyTimer = null;
+    }
   }
 
   /**
@@ -219,6 +309,11 @@ export class BinaryDocuments {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the disassembly client each document decodes its instructions through.
+   */
+  private readonly disassembly: BinaryDisassembly = inject(BinaryDisassembly);
+
+  /**
    * Holds the open documents, keyed by owning tab identifier.
    */
   private readonly entries: Map<string, BinaryDocumentEntry> = new Map<
@@ -241,6 +336,7 @@ export class BinaryDocuments {
         path,
         fileName,
         this.workspace,
+        this.disassembly,
       );
       this.entries.set(tab.id, entry);
       this.tabs.rename(tab.id, fileName);
@@ -266,6 +362,7 @@ export class BinaryDocuments {
    * @param tabId The owning tab identifier.
    */
   public release(tabId: string): void {
+    this.entries.get(tabId)?.dispose();
     this.entries.delete(tabId);
   }
 

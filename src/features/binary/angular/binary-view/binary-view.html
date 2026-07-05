@@ -46,6 +46,28 @@
       </div>
     </div>
 
+    <div class="binary__disasm">
+      <div class="binary__disasm-header">Disassembly</div>
+      @if (disassemblable()) {
+        <div class="binary__disasm-list">
+          @for (row of disasmRows(); track row.startOffset) {
+            <button
+              type="button"
+              class="binary__disasm-row"
+              [class.binary__cell--selected]="row.selected"
+              (click)="onInstructionClick(row.startOffset, row.byteLength)"
+            >
+              <span class="binary__disasm-addr">{{ row.address }}</span>
+              <span class="binary__disasm-mnemonic">{{ row.mnemonic }}</span>
+              <span class="binary__disasm-operands">{{ row.operands }}</span>
+            </button>
+          }
+        </div>
+      } @else {
+        <p class="binary__disasm-empty">No native disassembly for this format.</p>
+      }
+    </div>
+
     <app-binary-inspector class="binary__inspector" [document]="document" />
   </div>
 }
