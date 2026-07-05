@@ -4,6 +4,7 @@ import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { RecentItems, RecentKind } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
@@ -171,6 +172,11 @@ export class Documents {
    * Holds the conflict registry used to prompt when a watched file changes under unsaved edits.
    */
   private readonly fileConflicts: FileConflicts = inject(FileConflicts);
+
+  /**
+   * Holds the recent-items registry used to surface saved documents on the welcome screen.
+   */
+  private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
@@ -501,6 +507,7 @@ export class Documents {
     if (success) {
       entry.original.set(content);
       this.syncTab(id);
+      this.recordRecent(entry);
     }
     return success;
   }
@@ -530,8 +537,22 @@ export class Documents {
       entry.original.set(content);
       this.syncTab(id);
       this.watchEntry(id);
+      this.recordRecent(entry);
     }
     return success;
+  }
+
+  /**
+   * Records a saved document as a recent item so it surfaces on the welcome screen.
+   * @param entry The saved document entry.
+   */
+  private recordRecent(entry: DocumentEntry): void {
+    const filePath: string | null = entry.filePath();
+    if (filePath === null) {
+      return;
+    }
+    const kind: RecentKind = entry.language() === 'markdown' ? 'markdown' : 'code';
+    this.recentItems.record(filePath, entry.fileName(), kind);
   }
 
   /**

@@ -175,8 +175,17 @@ class Program {
   /**
    * Handles file-system operations and dialogs on behalf of the renderer.
    */
+  /**
+   * Remembers paths the user has opened through a dialog so recent items can be re-opened without
+   * weakening the workspace confinement.
+   */
+  private readonly trustedPaths: TrustedPaths = new TrustedPaths(
+    path.join(app.getPath('userData'), 'trusted-paths.json'),
+  );
+
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.window,
+    this.trustedPaths,
   );
 
   /**
@@ -220,14 +229,6 @@ class Program {
    * Tracks the open workspace root and confines filesystem operations to it.
    */
   private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
-
-  /**
-   * Remembers paths the user has opened through a dialog so recent items can be re-opened without
-   * weakening the workspace confinement.
-   */
-  private readonly trustedPaths: TrustedPaths = new TrustedPaths(
-    path.join(app.getPath('userData'), 'trusted-paths.json'),
-  );
 
   /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.

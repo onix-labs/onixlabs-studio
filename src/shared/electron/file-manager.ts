@@ -15,6 +15,7 @@ import {
   FileWriteResult,
   SaveDialogChoice,
 } from '@shared/api/file-channels';
+import { TrustedPaths } from '@shared/electron/trusted-paths';
 
 /**
  * Specifies the UTF-8 byte-order mark, as a string (U+FEFF). Detected and stripped on read, and
@@ -53,11 +54,18 @@ export class FileManager {
   private readonly windowGetter: () => BrowserWindow | null;
 
   /**
+   * Holds the store of paths the user has opened or saved, so they can be re-opened later.
+   */
+  private readonly trusted: TrustedPaths;
+
+  /**
    * Initializes a new instance of the {@link FileManager} class.
    * @param windowGetter A function that returns the window the dialogs are parented to.
+   * @param trusted The store used to remember files chosen through the save dialog.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(windowGetter: () => BrowserWindow | null, trusted: TrustedPaths) {
     this.windowGetter = windowGetter;
+    this.trusted = trusted;
   }
 
   /**
@@ -197,6 +205,8 @@ export class FileManager {
     if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
       return null;
     }
+    // Remember the chosen path so the saved file can be re-opened from the welcome screen later.
+    this.trusted.remember(result.filePath);
     return result.filePath;
   }
 

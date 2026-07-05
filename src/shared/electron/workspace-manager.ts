@@ -257,7 +257,11 @@ export class WorkspaceManager {
       return null;
     }
     try {
-      return await this.readFileSelection(path.resolve(filePath as string));
+      const resolved: string = path.resolve(filePath as string);
+      const selection: OpenSelection = await this.readFileSelection(resolved);
+      // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
+      this.trusted.remember(resolved);
+      return selection;
     } catch {
       return null;
     }
