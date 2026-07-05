@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
 import { BinaryDocuments } from '../binary-document/binary-document';
+import { describeFormat } from '../binary-format/binary-format';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryStatus } from '../binary-status/binary-status';
 
@@ -282,6 +283,7 @@ export class BinaryView implements OnDestroy {
           offset: document.cursor(),
           selectionLength: selection === null ? 0 : selection.end - selection.start,
           size: document.size(),
+          format: describeFormat(document.format()),
         });
       } else {
         this.binaryStatus.clear(this.tabId());

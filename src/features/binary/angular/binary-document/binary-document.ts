@@ -3,6 +3,7 @@ import { BinaryChunk } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { BinaryFormat, sniffFormat } from '../binary-format/binary-format';
 
 /**
  * Specifies the size, in bytes, of each block fetched and cached from a file. A multiple of the row
@@ -68,6 +69,11 @@ export class BinaryDocumentEntry {
    * Holds a counter bumped whenever a block arrives, so byte-reading computeds re-run as data loads.
    */
   public readonly loadedVersion: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the sniffed container format and architecture, resolved once the first block loads.
+   */
+  public readonly format: WritableSignal<BinaryFormat> = signal<BinaryFormat>({ kind: 'unknown' });
 
   /**
    * Holds a counter bumped by {@link reveal} so the view scrolls to {@link revealOffset} on request.
@@ -186,6 +192,10 @@ export class BinaryDocumentEntry {
         }
         this.size.set(chunk.size);
         this.blocks.set(block, chunk.bytes);
+        // The first block carries the file header; sniff the container format from it.
+        if (block === 0) {
+          this.format.set(sniffFormat(chunk.bytes));
+        }
         this.loadedVersion.update((version: number): number => version + 1);
       });
   }

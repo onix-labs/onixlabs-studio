@@ -35,6 +35,11 @@ export interface BinaryContext {
    * Gets the total file size in bytes.
    */
   readonly size: number;
+
+  /**
+   * Gets the sniffed container-format label (for example "PE · x64" or "Binary").
+   */
+  readonly format: string;
 }
 
 /**
@@ -72,7 +77,10 @@ export class BinaryStatus {
       this.statusBar.contribute(
         STATUS_OWNER,
         {
-          leading: [{ id: 'binary-path', text: context.path }],
+          leading: [
+            { id: 'binary-path', text: context.path },
+            { id: 'binary-format', text: context.format },
+          ],
           trailing: [
             {
               id: 'binary-offset',
