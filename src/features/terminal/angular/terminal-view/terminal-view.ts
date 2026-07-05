@@ -14,6 +14,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
@@ -30,16 +32,6 @@ import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel'
 const CWD_POLL_INTERVAL_MS: number = 1500;
 
 /**
- * Holds the minimum size, in pixels, of the docked agent pane.
- */
-const MIN_AGENT_SIZE: number = 240;
-
-/**
- * Holds the maximum size, in pixels, of the docked agent pane.
- */
-const MAX_AGENT_SIZE: number = 900;
-
-/**
  * Holds the initial size, in pixels, of the docked agent pane.
  */
 const DEFAULT_AGENT_SIZE: number = 360;
@@ -52,7 +44,7 @@ const DEFAULT_AGENT_SIZE: number = 360;
  */
 @Component({
   selector: 'app-terminal-view',
-  imports: [Terminal, TerminalAgentPanel],
+  imports: [PanelLayout, Panel, Terminal, TerminalAgentPanel],
   templateUrl: './terminal-view.html',
   styleUrl: './terminal-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -89,19 +81,9 @@ export class TerminalView implements OnDestroy {
   private readonly terminal: Signal<Terminal | undefined> = viewChild<Terminal>(Terminal);
 
   /**
-   * Holds the size, in pixels, of the docked agent pane.
+   * Holds the size, in pixels, of the docked agent pane. Two-way bound to the panel's resize splitter.
    */
-  private readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
-
-  /**
-   * Holds the splitter drag origin (pointer coordinate at drag start).
-   */
-  private dragOrigin: number = 0;
-
-  /**
-   * Holds the pane size at the start of a splitter drag.
-   */
-  private dragOriginSize: number = 0;
+  protected readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
 
   /**
    * Holds a value indicating whether the pane's PTY session is ready.
@@ -167,7 +149,7 @@ export class TerminalView implements OnDestroy {
     // width changes. The fit is deferred so the layout change has applied to the DOM first.
     effect((): void => {
       this.agentVisible();
-      this.agentSize();
+      this.agentSizeSignal();
       const pane: Terminal | undefined = this.terminal();
       if (pane === undefined) {
         return;
@@ -226,40 +208,6 @@ export class TerminalView implements OnDestroy {
    */
   protected agentVisible(): boolean {
     return this.terminalAgents.isVisible(this.tabId());
-  }
-
-  /**
-   * Gets the size, in pixels, of the docked agent pane.
-   * @returns Returns the agent pane size.
-   */
-  protected agentSize(): number {
-    return this.agentSizeSignal();
-  }
-
-  /**
-   * Begins a splitter drag that resizes the docked agent pane. The agent always docks to the right,
-   * so the drag is horizontal: moving the splitter left widens the agent.
-   * @param event The originating pointer event.
-   */
-  protected onAgentSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    this.dragOrigin = event.clientX;
-    this.dragOriginSize = this.agentSizeSignal();
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const delta: number = this.dragOrigin - move.clientX;
-      const next: number = Math.min(
-        MAX_AGENT_SIZE,
-        Math.max(MIN_AGENT_SIZE, this.dragOriginSize + delta),
-      );
-      this.agentSizeSignal.set(next);
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
   }
 
   /**

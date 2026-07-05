@@ -1,5 +1,5 @@
-<div class="terminal-shell">
-  <div class="terminal-main">
+<app-panel-layout>
+  <div main class="terminal-main">
     <app-terminal
       [terminalId]="tabId()"
       [cwd]="cwd()"
@@ -11,17 +11,14 @@
   </div>
 
   @if (agentMounted()) {
-    <div
-      class="terminal-shell__splitter"
-      [class.terminal-shell__splitter--hidden]="!agentVisible()"
-      (mousedown)="onAgentSplitterDown($event)"
-    ></div>
-    <div
-      class="terminal-shell__agent"
-      [class.terminal-shell__agent--hidden]="!agentVisible()"
-      [style.flex-basis.px]="agentSize()"
+    <app-panel
+      edge="right"
+      [visible]="agentVisible()"
+      [(size)]="agentSizeSignal"
+      [minSize]="240"
+      [maxSize]="900"
     >
       <app-terminal-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
-    </div>
+    </app-panel>
   }
-</div>
+</app-panel-layout>
