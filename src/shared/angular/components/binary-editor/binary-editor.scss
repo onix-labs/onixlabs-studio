@@ -1,0 +1,123 @@
+// The Offset · Hex · ASCII grid. Column widths are fixed (in ch) and shared between the header and the
+// body rows, so the header labels always sit exactly above their columns. The header and body share a
+// single scroll container, so the header scrolls horizontally with the body and stays aligned, and
+// sits sticky at the top so it stays visible while the body scrolls vertically.
+
+:host {
+  // Column metrics, shared by the header and every row.
+  --addr-width: 10ch;
+  --hexcell-width: 2.25ch;
+  --hex-gap: 0.2rem;
+  --ascii-width: 1ch;
+  --column-gap: 1.5rem;
+
+  display: block;
+  height: 100%;
+  min-height: 0;
+  background: var(--body-background-color);
+  color: var(--body-foreground-color);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 20px;
+}
+
+.binary-editor {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+// The grid content is exactly as wide as one row. `margin-inline: auto` centres it while it fits and
+// collapses to zero once it is wider than the viewport, so it then scrolls from the left edge.
+.binary-editor__content {
+  position: relative;
+  width: max-content;
+  margin-inline: auto;
+}
+
+// The header and every row share this column layout, guaranteeing the labels align with the columns.
+.binary-editor__header,
+.binary-editor__row {
+  display: flex;
+  align-items: center;
+  gap: var(--column-gap);
+  padding-inline: 1rem;
+  white-space: nowrap;
+}
+
+.binary-editor__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 0.35rem;
+  border-bottom: 1px solid var(--accent-surface-border-color);
+  background: var(--body-background-color);
+  color: var(--form-muted-foreground-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.binary-editor__sizer {
+  position: relative;
+  width: 100%;
+}
+
+.binary-editor__window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.binary-editor__addr {
+  flex: 0 0 var(--addr-width);
+  width: var(--addr-width);
+  color: var(--form-muted-foreground-color);
+  user-select: none;
+}
+
+.binary-editor__addr--header {
+  color: inherit;
+}
+
+.binary-editor__hex {
+  display: inline-flex;
+  gap: var(--hex-gap);
+}
+
+.binary-editor__hexcell {
+  flex: 0 0 var(--hexcell-width);
+  width: var(--hexcell-width);
+  text-align: center;
+  border-radius: 2px;
+  cursor: text;
+}
+
+.binary-editor__hexcell--header {
+  color: var(--form-muted-foreground-color);
+  cursor: default;
+}
+
+.binary-editor__ascii {
+  display: inline-flex;
+}
+
+// The header's ASCII label spans exactly the width of the ASCII column (one ch per byte), so it lines
+// up with the body's ASCII cells.
+.binary-editor__ascii--header {
+  width: calc(var(--bpr) * var(--ascii-width));
+  color: inherit;
+}
+
+.binary-editor__asciicell {
+  flex: 0 0 var(--ascii-width);
+  width: var(--ascii-width);
+  text-align: center;
+  cursor: text;
+}
+
+.binary-editor__cell--selected {
+  background: var(--accent-surface-background-color);
+  color: var(--accent-surface-foreground-color);
+}

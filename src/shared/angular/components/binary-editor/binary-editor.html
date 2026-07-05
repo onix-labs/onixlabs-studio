@@ -1,0 +1,45 @@
+<div #scroller class="binary-editor" (scroll)="onScroll($event)">
+  <div class="binary-editor__content" [style.--bpr]="bytesPerRow()">
+    <div class="binary-editor__header">
+      <span class="binary-editor__addr binary-editor__addr--header">Offset</span>
+      <span class="binary-editor__hex">
+        @for (label of columnLabels(); track $index) {
+          <span class="binary-editor__hexcell binary-editor__hexcell--header">{{ label }}</span>
+        }
+      </span>
+      <span class="binary-editor__ascii binary-editor__ascii--header">ASCII</span>
+    </div>
+
+    <div class="binary-editor__sizer" [style.height.px]="totalHeight()">
+      <div class="binary-editor__window" [style.transform]="'translateY(' + offsetY() + 'px)'">
+        @for (row of rows(); track row.index) {
+          <div class="binary-editor__row" [style.height.px]="rowHeight">
+            <span class="binary-editor__addr">{{ row.address }}</span>
+            <span class="binary-editor__hex">
+              @for (cell of row.cells; track cell.offset) {
+                <span
+                  class="binary-editor__hexcell"
+                  [class.binary-editor__cell--selected]="cell.selected"
+                  (pointerdown)="onCellDown(cell.offset, $event)"
+                  (pointerenter)="onCellEnter(cell.offset)"
+                  >{{ cell.hex }}</span
+                >
+              }
+            </span>
+            <span class="binary-editor__ascii">
+              @for (cell of row.cells; track cell.offset) {
+                <span
+                  class="binary-editor__asciicell"
+                  [class.binary-editor__cell--selected]="cell.selected"
+                  (pointerdown)="onCellDown(cell.offset, $event)"
+                  (pointerenter)="onCellEnter(cell.offset)"
+                  >{{ cell.ascii }}</span
+                >
+              }
+            </span>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

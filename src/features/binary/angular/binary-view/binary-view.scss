@@ -14,15 +14,11 @@
   min-height: 0;
 }
 
-.binary__grid {
-  display: flex;
+// The shared hex editor takes the remaining width beside the disassembly and inspector columns.
+.binary__editor {
   flex: 1;
-  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 20px;
 }
 
 .binary__disasm {
@@ -92,87 +88,6 @@
   flex: 0 0 15rem;
   min-height: 0;
   border-left: 1px solid var(--accent-surface-border-color);
-}
-
-.binary__header {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.35rem 1rem;
-  border-bottom: 1px solid var(--accent-surface-border-color);
-  color: var(--form-muted-foreground-color);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  user-select: none;
-}
-
-.binary__scroll {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
-}
-
-.binary__sizer {
-  position: relative;
-  width: 100%;
-}
-
-.binary__window {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-}
-
-.binary__row {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0 1rem;
-  white-space: nowrap;
-}
-
-.binary__addr {
-  flex: 0 0 auto;
-  min-width: 8ch;
-  color: var(--form-muted-foreground-color);
-  user-select: none;
-}
-
-.binary__addr--header {
-  color: inherit;
-}
-
-.binary__hex {
-  display: inline-flex;
-  gap: 0.15rem;
-}
-
-.binary__ascii {
-  display: inline-flex;
-}
-
-.binary__ascii--header {
-  color: inherit;
-}
-
-.binary__hexcell {
-  padding: 0 0.15rem;
-  border-radius: 2px;
-  cursor: text;
-}
-
-.binary__hexcell--header {
-  color: var(--form-muted-foreground-color);
-  cursor: default;
-}
-
-.binary__asciicell {
-  width: 1ch;
-  text-align: center;
-  cursor: text;
 }
 
 .binary__cell--selected {
