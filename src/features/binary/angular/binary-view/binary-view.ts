@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
 import { BinaryDocuments } from '../binary-document/binary-document';
+import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryStatus } from '../binary-status/binary-status';
 
 /**
@@ -83,7 +84,7 @@ interface BinaryRow {
  */
 @Component({
   selector: 'app-binary-view',
-  imports: [],
+  imports: [BinaryInspector],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

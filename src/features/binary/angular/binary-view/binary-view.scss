@@ -10,11 +10,25 @@
 .binary {
   display: flex;
   flex: 1;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.binary__grid {
+  display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
   line-height: 20px;
+}
+
+.binary__inspector {
+  flex: 0 0 15rem;
+  min-height: 0;
+  border-left: 1px solid var(--accent-surface-border-color);
 }
 
 .binary__header {
