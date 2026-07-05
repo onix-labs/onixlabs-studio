@@ -82,12 +82,33 @@
   }
 }
 
-.modal__close {
+// Expanded: the overlay's inset grows so the panel, sized to fill it, leaves a fixed margin all
+// around between the panel edge and the window edge.
+.modal--expanded {
+  padding: 4rem;
+}
+
+.modal__panel--expanded {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+// The top-trailing cluster of panel controls (expand/restore, then close). Absolutely positioned so
+// it floats over the projected content; opted out of the window-drag region so its buttons stay
+// clickable even when the backdrop is draggable.
+.modal__controls {
   position: absolute;
   inset-block-start: 1rem;
   inset-inline-end: 1rem;
-  // Absolutely-positioned children don't reliably inherit the panel's no-drag, so without this the
-  // button sits in the window-drag region and its clicks are swallowed.
+  z-index: 1;
+  display: flex;
+  gap: 0.25rem;
+  -webkit-app-region: no-drag;
+}
+
+.modal__control {
+  // Absolutely-positioned ancestor doesn't reliably pass down the panel's no-drag, so restate it
+  // here or the buttons sit in the window-drag region and their clicks are swallowed.
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;

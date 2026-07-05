@@ -12,7 +12,7 @@
         @case ('user') {
           <div class="agent__message agent__message--user">
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
-            <p class="agent__bubble">{{ item.text }}</p>
+            <div class="agent__bubble agent__markdown" [innerHTML]="item.text | markdown"></div>
           </div>
         }
         @case ('assistant') {
@@ -103,27 +103,77 @@
         <span>{{ wordCount() }}</span>
       </p>
 
-      @if (isRunning()) {
+      <div class="agent__composer-actions">
         <button
           type="button"
-          class="agent__send agent__send--stop"
-          aria-label="Stop"
-          (click)="stop()"
+          class="agent__md"
+          aria-label="Write in Markdown"
+          title="Write in Markdown"
+          (click)="openMarkdown()"
         >
-          <span class="agent__send-label">Stop</span>
-          <app-icon [icon]="Icon.STOP" />
+          <app-icon [icon]="Icon.MARKDOWN" />
+          <span class="agent__md-label">MD</span>
         </button>
-      } @else {
-        <button
-          type="submit"
-          class="agent__send"
-          aria-label="Send"
-          [disabled]="draft().trim().length === 0"
-        >
-          <span class="agent__send-label">Send</span>
-          <app-icon [icon]="Icon.SEND" />
-        </button>
-      }
+
+        @if (isRunning()) {
+          <button
+            type="button"
+            class="agent__send agent__send--stop"
+            aria-label="Stop"
+            (click)="stop()"
+          >
+            <span class="agent__send-label">Stop</span>
+            <app-icon [icon]="Icon.STOP" />
+          </button>
+        } @else {
+          <button
+            type="submit"
+            class="agent__send"
+            aria-label="Send"
+            [disabled]="draft().trim().length === 0"
+          >
+            <span class="agent__send-label">Send</span>
+            <app-icon [icon]="Icon.SEND" />
+          </button>
+        }
+      </div>
     </div>
   </form>
+
+  <!-- The markdown composer: a modal Milkdown editor whose content is sent to the agent on submit.
+       The editor is only mounted while the modal is open so each session starts fresh and no editor
+       runs in the background. -->
+  <app-modal
+    [open]="markdownOpen()"
+    [width]="52"
+    [expandable]="true"
+    ariaLabel="Write in Markdown"
+    (dismiss)="cancelMarkdown()"
+  >
+    <div class="agent__md-modal">
+      <h2 class="agent__md-title">Write in Markdown</h2>
+      @if (markdownOpen()) {
+        <div class="agent__md-editor">
+          <app-markdown-editor
+            [content]="markdownSeed()"
+            [isActive]="true"
+            (contentChange)="onMarkdownChange($event)"
+          />
+        </div>
+      }
+      <div class="agent__md-actions">
+        <button type="button" class="agent__btn agent__btn--ghost" (click)="cancelMarkdown()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="agent__btn"
+          [disabled]="isRunning() || markdownValue().trim().length === 0"
+          (click)="submitMarkdown()"
+        >
+          Send to agent
+        </button>
+      </div>
+    </div>
+  </app-modal>
 </div>

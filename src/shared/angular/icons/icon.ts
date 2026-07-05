@@ -34,6 +34,16 @@ export class Icon {
    */
   public static readonly CLOSE: Icon = new Icon('ph ph-x');
 
+  /**
+   * Gets the expand icon shown on a modal's expand-to-fill control. Same weight as {@link CLOSE}.
+   */
+  public static readonly ARROWS_OUT: Icon = new Icon('ph ph-arrows-out-simple');
+
+  /**
+   * Gets the restore icon shown on a modal's expand control once expanded. Same weight as {@link CLOSE}.
+   */
+  public static readonly ARROWS_IN: Icon = new Icon('ph ph-arrows-in-simple');
+
   // --- Title strip: window lock ---
 
   /**

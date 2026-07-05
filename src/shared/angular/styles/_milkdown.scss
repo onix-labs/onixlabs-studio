@@ -11,6 +11,11 @@
 // onto the application's `--gray-*` primitives and the active `--accent-color`,
 // keyed off the resolved `data-theme-mode` attribute the Theme service writes to
 // the document root (always `light` or `dark`, never `system`).
+//
+// These rules are scoped to the shared `app-markdown-editor` component (which owns
+// the `.milkdown` element), not to any one feature view, so every embedding of the
+// editor — the markdown tab/well and the agent composer's markdown modal — is
+// themed identically.
 
 // -----------------------------------------------------------------------------
 // Crepe variable mapping
@@ -104,13 +109,13 @@
 // The Theme service resolves `system` to `light`/`dark` and writes the result to
 // `data-theme-mode`, so the light branch is the unscoped default.
 
-app-markdown-view .milkdown {
+app-markdown-editor .milkdown {
   @include milkdown-light-colors;
   @include milkdown-font-vars;
   @include milkdown-base-styles;
 }
 
-[data-theme-mode='dark'] app-markdown-view .milkdown {
+[data-theme-mode='dark'] app-markdown-editor .milkdown {
   @include milkdown-dark-colors;
   @include milkdown-base-styles;
 }
@@ -119,7 +124,7 @@ app-markdown-view .milkdown {
 // ProseMirror editor styles
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   outline: none;
   min-height: 100%;
 
@@ -370,15 +375,15 @@ app-markdown-view .milkdown .ProseMirror {
 // which positions block-level images by their auto margins. HTML image blocks carry their own
 // alignment and are unaffected.
 
-app-markdown-view .image-align-left .milkdown .ProseMirror img {
+app-markdown-editor .image-align-left .milkdown .ProseMirror img {
   margin-inline: 0 auto;
 }
 
-app-markdown-view .image-align-center .milkdown .ProseMirror img {
+app-markdown-editor .image-align-center .milkdown .ProseMirror img {
   margin-inline: auto;
 }
 
-app-markdown-view .image-align-right .milkdown .ProseMirror img {
+app-markdown-editor .image-align-right .milkdown .ProseMirror img {
   margin-inline: auto 0;
 }
 
@@ -386,7 +391,7 @@ app-markdown-view .image-align-right .milkdown .ProseMirror img {
 // List bullet and number styling
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   .label.bullet svg {
     display: none;
   }
@@ -548,7 +553,7 @@ app-markdown-view .milkdown .ProseMirror {
   }
 }
 
-app-markdown-view .milkdown .ProseMirror-placeholder::before {
+app-markdown-editor .milkdown .ProseMirror-placeholder::before {
   color: var(--crepe-color-on-surface-variant);
   font-style: italic;
 }
@@ -557,7 +562,7 @@ app-markdown-view .milkdown .ProseMirror-placeholder::before {
 // GitHub alert styling
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   .github-alert {
     display: flex;
     align-items: flex-start;
@@ -650,7 +655,7 @@ app-markdown-view .milkdown .ProseMirror {
   }
 }
 
-[data-theme-mode='dark'] app-markdown-view .milkdown .ProseMirror {
+[data-theme-mode='dark'] app-markdown-editor .milkdown .ProseMirror {
   hr {
     background: var(--crepe-color-outline) !important;
   }
@@ -682,7 +687,7 @@ app-markdown-view .milkdown .ProseMirror {
 }
 
 // Light theme: rules read better against a lighter outline.
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   hr {
     background: var(--gray-500) !important;
   }
@@ -692,7 +697,7 @@ app-markdown-view .milkdown .ProseMirror {
 // Color preview swatches
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   .color-preview-swatch {
     display: inline-block;
     width: 0.9em;
@@ -729,7 +734,7 @@ app-markdown-view .milkdown .ProseMirror {
 // Mermaid diagram styling
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   .mermaid-block {
     margin: 1em 0;
     border-radius: calc(1rem * var(--border-radius-multiplier));
@@ -804,7 +809,7 @@ app-markdown-view .milkdown .ProseMirror {
 // Math / LaTeX styling
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown {
+app-markdown-editor .milkdown {
   span[data-type='math_inline'] {
     color: var(--crepe-color-on-background) !important;
   }
@@ -814,7 +819,7 @@ app-markdown-view .milkdown {
 // Footnotes styling
 // -----------------------------------------------------------------------------
 
-app-markdown-view .milkdown .ProseMirror {
+app-markdown-editor .milkdown .ProseMirror {
   .footnotes-section {
     margin-top: 2rem;
 
@@ -887,11 +892,11 @@ app-markdown-view .milkdown .ProseMirror {
 // new order and dims the dragged block into a placeholder, suppressing the
 // default drop-cursor line.
 
-app-markdown-view .milkdown.cdk-reordering .crepe-drop-cursor {
+app-markdown-editor .milkdown.cdk-reordering .crepe-drop-cursor {
   display: none !important;
 }
 
-app-markdown-view .milkdown .ProseMirror .cdk-reorder-shift {
+app-markdown-editor .milkdown .ProseMirror .cdk-reorder-shift {
   will-change: transform;
 }
 
@@ -904,7 +909,7 @@ app-markdown-view .milkdown .ProseMirror .cdk-reorder-shift {
 
 // The in-place drop placeholder — the dragged block's slot — shown as a translucent accent fill with
 // a dashed accent border, matching the markdown table's radius and corner shape.
-app-markdown-view .milkdown .ProseMirror .cdk-reorder-dragged {
+app-markdown-editor .milkdown .ProseMirror .cdk-reorder-dragged {
   background: rgb(var(--accent-color-rgb), 0.12) !important;
   border: 0.0625rem dashed var(--accent-color) !important;
   border-radius: calc(1rem * var(--border-radius-multiplier));
@@ -915,13 +920,13 @@ app-markdown-view .milkdown .ProseMirror .cdk-reorder-dragged {
 // Text caret blink: Crepe's `Cursor` feature swaps the native caret for a
 // prosemirror-virtual-cursor element whose default animation fades opacity. A
 // higher-specificity rule replaces it with a hard on/off blink.
-app-markdown-view .milkdown .ProseMirror-focused .prosemirror-virtual-cursor-animation {
+app-markdown-editor .milkdown .ProseMirror-focused .prosemirror-virtual-cursor-animation {
   animation: crepe-virtual-cursor-blink 1.06s step-end infinite;
 }
 
 // Paint the caret white. Crepe's virtual cursor draws as a border, so override its
 // colour; caret-color covers any context that falls back to the native caret.
-app-markdown-view .milkdown {
+app-markdown-editor .milkdown {
   caret-color: #ffffff;
 
   // The cursor is a widget injected at document position 0, so it sits beneath

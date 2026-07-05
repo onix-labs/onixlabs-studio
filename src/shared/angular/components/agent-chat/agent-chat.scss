@@ -188,6 +188,11 @@
     background: transparent;
     border: 0.0625rem solid var(--agent-view-border-color);
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 }
 
 .agent__working {
@@ -284,6 +289,15 @@
   opacity: 0.5;
 }
 
+// Groups the markdown-composer trigger with the send/stop control so they sit together at the footer's
+// trailing edge, leaving the hint on the left.
+.agent__composer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .agent__send {
   display: inline-flex;
   flex: 0 0 auto;
@@ -305,6 +319,81 @@
     opacity: 0.5;
     cursor: default;
   }
+}
+
+// A compact, ghost-styled affordance that opens the markdown composer modal. It matches the send
+// button's height so the two sit level, but reads as secondary until hovered.
+.agent__md {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  block-size: 2rem;
+  padding-inline: 0.6rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
+
+  &:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+}
+
+.agent__md-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+// The markdown composer modal: a heading over the editor frame and a trailing action row. It fills
+// the modal panel so that when the panel is expanded to the window, the editor grows to fill it.
+.agent__md-modal {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  min-block-size: 0;
+}
+
+.agent__md-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+// The frame for the embedded markdown editor. The editor fills its host and scrolls internally, so
+// the frame is given a definite height via its flex basis (it collapses to zero otherwise) and grows
+// to fill the extra room when the modal is expanded. It uses the same flex hosting the markdown
+// view's document leaf uses, so the editor lays out identically.
+.agent__md-editor {
+  display: flex;
+  flex: 1 1 28rem;
+  min-block-size: 0;
+  overflow: hidden;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  app-markdown-editor {
+    flex: 1;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+}
+
+.agent__md-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation
@@ -339,4 +428,11 @@
     margin: 0 0 0.6rem;
     padding-inline-start: 1.2rem;
   }
+}
+
+// The user's own bubble sits on the accent colour, where an accent-coloured link would vanish; keep
+// links legible against it.
+:host ::ng-deep .agent__message--user .agent__markdown a {
+  color: var(--gray-100);
+  text-decoration: underline;
 }

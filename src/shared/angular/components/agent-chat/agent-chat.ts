@@ -21,6 +21,8 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownPipe } from './markdown-pipe';
 
 /**
@@ -34,7 +36,7 @@ import { MarkdownPipe } from './markdown-pipe';
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, MarkdownPipe],
+  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe],
   providers: [Agent],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
@@ -87,6 +89,24 @@ export class AgentChat {
    * Holds the current composer text.
    */
   private readonly draftText: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds a value indicating whether the markdown composer modal is open.
+   */
+  protected readonly markdownOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the markdown the editor is seeded with each time the modal opens. It is set once on open
+   * (from a cut-in plaintext draft, or empty) and only ever changes between opens, so binding it to
+   * the editor's `content` never fights the editor's own live edits.
+   */
+  protected readonly markdownSeed: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the markdown editor's live content, updated as the user types, and read when the modal is
+   * submitted or its content is returned to the plaintext composer on cancel.
+   */
+  protected readonly markdownValue: WritableSignal<string> = signal<string>('');
 
   /**
    * References the composer's text area, so its auto-grown height can be reset after a send.
@@ -176,6 +196,64 @@ export class AgentChat {
     const element: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (element !== undefined) {
       element.style.height = 'auto';
+    }
+  }
+
+  /**
+   * Opens the markdown composer modal. A plaintext draft already in the composer is cut into the
+   * editor so the user can keep building on it in markdown; otherwise the editor starts blank.
+   */
+  public openMarkdown(): void {
+    const existing: string = this.draftText();
+    if (existing.trim().length > 0) {
+      this.markdownSeed.set(existing);
+      this.markdownValue.set(existing);
+      this.draftText.set('');
+      const element: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+      if (element !== undefined) {
+        element.style.height = 'auto';
+      }
+    } else {
+      this.markdownSeed.set('');
+      this.markdownValue.set('');
+    }
+    this.markdownOpen.set(true);
+  }
+
+  /**
+   * Records the markdown editor's live content.
+   * @param markdown The current editor markdown.
+   */
+  public onMarkdownChange(markdown: string): void {
+    this.markdownValue.set(markdown);
+  }
+
+  /**
+   * Sends the markdown composed in the modal straight to the agent and closes the modal. The sent
+   * text appears in the transcript as the user's turn. Blank content and in-flight runs are ignored.
+   */
+  public submitMarkdown(): void {
+    const text: string = this.markdownValue();
+    if (text.trim().length === 0 || this.isRunning()) {
+      return;
+    }
+    this.agent.send(text, this.tabId(), this.surface());
+    this.markdownOpen.set(false);
+    this.markdownSeed.set('');
+    this.markdownValue.set('');
+  }
+
+  /**
+   * Closes the markdown composer modal without sending. Any content the user had written is returned
+   * to the plaintext composer so nothing is lost, especially a draft that was cut in when it opened.
+   */
+  public cancelMarkdown(): void {
+    const text: string = this.markdownValue();
+    this.markdownOpen.set(false);
+    this.markdownSeed.set('');
+    this.markdownValue.set('');
+    if (text.trim().length > 0) {
+      this.draftText.set(text);
     }
   }
 

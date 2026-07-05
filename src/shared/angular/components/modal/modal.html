@@ -7,6 +7,7 @@
   class="modal"
   [class.modal--visible]="open()"
   [class.modal--draggable]="draggableBackdrop()"
+  [class.modal--expanded]="expanded()"
   (click)="onBackdrop($event)"
 >
   <div class="modal__backdrop" aria-hidden="true">
@@ -17,13 +18,33 @@
     class="modal__panel"
     role="dialog"
     aria-modal="true"
+    [class.modal__panel--expanded]="expanded()"
     [attr.aria-label]="ariaLabel()"
     [style.--modal-panel-inline-size]="panelInlineSize()"
   >
-    @if (dismissable() && showClose()) {
-      <button type="button" class="modal__close" aria-label="Close" (click)="requestDismiss()">
-        <app-icon [icon]="Icon.CLOSE" />
-      </button>
+    @if (expandable() || (dismissable() && showClose())) {
+      <div class="modal__controls">
+        @if (expandable()) {
+          <button
+            type="button"
+            class="modal__control"
+            [attr.aria-label]="expanded() ? 'Restore' : 'Expand'"
+            (click)="toggleExpanded()"
+          >
+            <app-icon [icon]="expanded() ? Icon.ARROWS_IN : Icon.ARROWS_OUT" />
+          </button>
+        }
+        @if (dismissable() && showClose()) {
+          <button
+            type="button"
+            class="modal__control"
+            aria-label="Close"
+            (click)="requestDismiss()"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        }
+      </div>
     }
 
     <ng-content />
