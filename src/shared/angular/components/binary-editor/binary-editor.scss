@@ -145,11 +145,11 @@
   cursor: text;
 }
 
-// The selection highlight: a padded, rounded rectangle. The row is taller than the glyph, so the
-// vertical padding grows the highlight toward the row edges without shifting the layout; the corner
-// shape follows the app-wide performance gate (falls back to a plain round corner in round mode).
+// The selection highlight: a rounded rectangle. The row is taller than the glyph and the hex cells are
+// a touch wider than their two digits, so the highlight already reads as padded without growing the
+// cell box (which would push the next row down). The corner shape follows the app-wide performance gate
+// (falling back to a plain round corner in round mode).
 .binary-editor__cell--selected {
-  padding-block: 0.1rem;
   background: var(--accent-surface-background-color);
   color: var(--accent-surface-foreground-color);
 }
