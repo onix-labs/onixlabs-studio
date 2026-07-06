@@ -503,6 +503,20 @@ $agent-node-size: 1.75rem;
     min-inline-size: 0;
     min-block-size: 0;
   }
+
+  // The shared editor stacks two insets: the wrapper's own padding and Crepe's `.ProseMirror` page
+  // padding (60px/120px, from the vendor reset.css) — the latter is the real gutter and dominates the
+  // horizontal space. For the compact composer, collapse the wrapper and shrink the page padding so
+  // the text sits close to the frame. Scoped to this frame only, so the markdown feature view keeps
+  // Crepe's roomy page margins. The child uses emulated encapsulation and Crepe's DOM is global, so
+  // reach both through ::ng-deep.
+  ::ng-deep .editor-wrapper {
+    padding: 0;
+  }
+
+  ::ng-deep .milkdown .ProseMirror {
+    padding: 0.75rem 1rem;
+  }
 }
 
 .agent__md-actions {
