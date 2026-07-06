@@ -20,10 +20,12 @@ import { CodeDocumentEditor } from '@features/code/angular/code-document/code-do
 import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
 import { ChangeMargins } from '@features/code/angular/change-margin/change-margins';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
+import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import {
   EditorCommandHandler,
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { CodeStatus, EndOfLine } from '@features/code/angular/code-status/code-status';
 import {
   EditorTerminals,
@@ -102,6 +104,16 @@ export class CodeView implements OnDestroy {
    * Holds the code command registry the ribbon routes editor commands through.
    */
   private readonly editorCommands: EditorCommands = inject(EditorCommands);
+
+  /**
+   * Holds the application keybinding router this view registers its accelerators with while active.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the code runner the Run accelerator dispatches the active document through.
+   */
+  private readonly codeRunner: CodeRunner = inject(CodeRunner);
 
   /**
    * Holds the docked run-terminal panel state.
@@ -227,6 +239,7 @@ export class CodeView implements OnDestroy {
         }
       } else if (this.commandHandler !== null) {
         this.editorCommands.deactivate(this.tabId());
+        this.keybindings.deactivate(this.tabId());
         this.commandHandler = null;
       }
     });
@@ -313,6 +326,7 @@ export class CodeView implements OnDestroy {
     }
     if (this.commandHandler !== null) {
       this.editorCommands.forget(this.tabId());
+      this.keybindings.forget(this.tabId());
       this.commandHandler = null;
     }
     if (this.modelUri !== null) {
@@ -451,5 +465,31 @@ export class CodeView implements OnDestroy {
     };
 
     this.editorCommands.register(this.tabId(), this.commandHandler);
+    this.registerKeybindings();
+  }
+
+  /**
+   * Registers the code editor's keyboard accelerators for the active tab. Only commands the Monaco
+   * pane does not already bind are registered here — save and save-as, which the pane leaves to the
+   * host — so the editor's own accelerators (find, undo, redo, clipboard) are left to compose.
+   */
+  private registerKeybindings(): void {
+    this.keybindings.register(this.tabId(), [
+      { chord: 'Mod+S', command: (): void => this.editorCommands.save() },
+      { chord: 'Mod+Shift+S', command: (): void => this.editorCommands.saveAs() },
+      { chord: 'Mod+R', command: (): void => this.run() },
+    ]);
+  }
+
+  /**
+   * Runs the active document in its docked terminal, matching the ribbon's Run action. Does nothing
+   * when the document's language has no runner, so the accelerator is a safe no-op there rather than
+   * falling through to the browser reload it overrides.
+   */
+  private run(): void {
+    const document: CodeDocument | null = this.doc();
+    if (document !== null) {
+      void this.codeRunner.run(this.tabId(), document.language(), document.content());
+    }
   }
 }

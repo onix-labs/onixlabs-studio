@@ -174,6 +174,18 @@ honoured by the Angular esbuild builder, `tsc`, and the preload/main esbuild ste
 tsconfig via `--tsconfig`). Use aliases for cross-unit imports; keep `./sibling` relatives only
 within a directory. Aliases make files location-independent, so moves are cheap.
 
+### 4.5 Keybindings (keyboard accelerators)
+
+`shared/angular/services/keybindings` holds a generic `Keybindings` registry that names no feature. A
+view registers its chord→command bindings under its tab id **in the same activation lifecycle where it
+registers its ribbon command handler**, and clears them on deactivation (`deactivate`) and disposal
+(`forget`). Only the active scope dispatches. The shell installs the sole listener: `root` has one
+`window:keydown` HostListener → `keybindings.dispatch`, at the **bubble phase** so an embedded editor
+(Monaco, Milkdown, xterm) consumes the keys it owns first — only chords it leaves unhandled reach the
+router, and the allowlist never intercepts incidental typing. Chords use the platform-neutral `Mod`
+modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift` chords** — a bare
+`Mod` is Ctrl on Windows/Linux and collides with the shell's own control codes.
+
 ---
 
 ## 5. AI agent — access & permission model

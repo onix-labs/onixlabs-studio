@@ -40,6 +40,8 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanel,
@@ -129,6 +131,16 @@ export class MarkdownView implements OnDestroy {
    * Holds the markdown command registry the ribbon routes formatting commands through.
    */
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
+
+  /**
+   * Holds the documents service backing the save accelerators, saving whichever document is active.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the application keybinding router this view registers its accelerators with while active.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds the tool-panel registry tracking which side panel (if any) is open.
@@ -276,6 +288,7 @@ export class MarkdownView implements OnDestroy {
       } else {
         if (this.commandHandler !== null) {
           this.commands.deactivate(this.tabId());
+          this.keybindings.deactivate(this.tabId());
           this.commandHandler = null;
         }
         this.reviewReveal.unregister();
@@ -294,6 +307,7 @@ export class MarkdownView implements OnDestroy {
     this.scrollContainer = null;
     if (this.commandHandler !== null) {
       this.commands.forget(this.tabId());
+      this.keybindings.forget(this.tabId());
       this.commandHandler = null;
     }
     this.reviewReveal.unregister();
@@ -362,6 +376,19 @@ export class MarkdownView implements OnDestroy {
     });
 
     this.commands.register(this.tabId(), this.commandHandler);
+    this.registerKeybindings();
+  }
+
+  /**
+   * Registers the markdown editor's keyboard accelerators for the active tab. Only save and save-as
+   * are bound here — the ones the Crepe editor does not provide — so its own formatting accelerators
+   * (bold, italic, and the rest) are left to compose.
+   */
+  private registerKeybindings(): void {
+    this.keybindings.register(this.tabId(), [
+      { chord: 'Mod+S', command: (): void => void this.documents.saveActive() },
+      { chord: 'Mod+Shift+S', command: (): void => void this.documents.saveActiveAs() },
+    ]);
   }
 
   /**
