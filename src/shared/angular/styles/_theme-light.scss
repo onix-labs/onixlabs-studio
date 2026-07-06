@@ -10,7 +10,6 @@
   --title-strip-background-color: var(--gray-500);
   --title-strip-border-color: var(--gray-600);
 
-  --title-strip-button-background-color: var(--gray-500);
   --title-strip-button-background-color--hover: var(--gray-400);
 
   --title-strip-button-foreground-color: var(--gray-700);
@@ -45,8 +44,6 @@
   --ribbon-control-foreground-color: var(--gray-900);
   --ribbon-control-background-color--hover: var(--gray-200);
   --ribbon-control-border-color--hover: var(--gray-500);
-  --ribbon-control-background-color--active: var(--gray-100);
-  --ribbon-divider-color: var(--gray-500);
 
   --form-control-background-color: var(--gray-100);
   --form-control-background-color--hover: var(--gray-300);
@@ -55,7 +52,7 @@
   --form-track-color: var(--gray-400);
   --form-knob-color: var(--gray-100);
   --form-on-accent-color: var(--gray-100);
-  --form-muted-foreground-color: var(--gray-800);
+  --form-muted-foreground-color: var(--gray-650);
 
   // Dropdown picker menu (rendered by the customizable-select popup). Hover reaches for the accent.
   --dropdown-menu-background-color: var(--gray-100);
@@ -73,9 +70,11 @@
   --settings-button-border-color: var(--gray-500);
   --settings-button-border-color--hover: var(--gray-600);
 
-  --welcome-backdrop-color: rgba(0, 0, 0, 0.35);
   --welcome-backdrop-blur: 0.75rem;
-  --welcome-panel-background-color: var(--gray-100);
+
+  // Scrim tint behind any modal panel; lighter on the light theme so it dims without going murky.
+  --modal-backdrop-color: rgba(0, 0, 0, 0.35);
+
   --welcome-border-color: var(--gray-400);
   --welcome-muted-foreground-color: var(--gray-800);
 
@@ -102,14 +101,16 @@
   --dock-title-foreground-color: var(--gray-700);
   --dock-title-foreground-color--focused: var(--gray-900);
 
-  --dock-tabstrip-background-color: var(--gray-500);
-  --dock-tab-background-color: var(--gray-500);
   --dock-tab-background-color--active: var(--gray-300);
   --dock-tab-foreground-color: var(--gray-700);
   --dock-tab-foreground-color--active: var(--gray-900);
 
   // The pane cell that frames each panel, sitting one shade lighter than the workspace container.
   --dock-pane-background-color: var(--gray-450);
+
+  // Semantic status colour (a darker amber for legibility on the light surface). Add sibling
+  // --error/--success/--info tokens here as consumers appear.
+  --warning-color: #b7791f;
 
   // Monaco change-margin save-state marks: unsaved (yellow), saved-this-session (green), deleted (red).
   --change-margin-unsaved: #d7a824;

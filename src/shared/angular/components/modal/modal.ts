@@ -22,9 +22,11 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
  * (closed by clicking the backdrop, pressing Escape, or using the corner close button) and a blocking
  * modal (closed only by an action the projected content provides).
  *
- * The panel and backdrop are themed through CSS custom properties (`--modal-panel-*`,
- * `--modal-backdrop-*`), consumed with sensible card defaults so a bare modal looks right while a
- * caller such as the welcome screen can override them for a bespoke presentation. A decorative layer
+ * The panel is themed through `--modal-panel-*` properties, consumed with sensible card defaults so
+ * a bare modal looks right. The backdrop reads global/theme tokens instead: the tint from the
+ * theme's `--modal-backdrop-color`, and the blur and fade from the global `--modal-backdrop-blur` /
+ * `--modal-fade-duration`. A caller such as the welcome screen can override any of them for a
+ * bespoke presentation. A decorative layer
  * (for example the welcome screen's drifting orbs) can be projected behind the panel via the
  * `modalBackdrop` slot.
  */

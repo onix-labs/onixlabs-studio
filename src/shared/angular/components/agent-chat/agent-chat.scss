@@ -164,7 +164,7 @@ $agent-node-size: 1.75rem;
   corner-shape: var(--app-corner-shape, squircle);
 
   &--error {
-    color: var(--warning-color, #e0a030);
+    color: var(--warning-color);
   }
 }
 
@@ -225,7 +225,7 @@ $agent-node-size: 1.75rem;
 }
 
 .agent__action--error .agent__action-label {
-  color: var(--warning-color, #e0a030);
+  color: var(--warning-color);
 }
 
 // The revealed technical detail: the tool identifier over its one-line input summary, in mono so a
@@ -236,7 +236,7 @@ $agent-node-size: 1.75rem;
   gap: 0.25rem;
   margin-block-start: 0.4rem;
   padding-inline-start: 0.6rem;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
 }
 
@@ -544,7 +544,7 @@ $agent-node-size: 1.75rem;
   }
 
   code {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 0.85em;
   }
 

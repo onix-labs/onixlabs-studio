@@ -10,7 +10,6 @@
   --title-strip-background-color: var(--gray-900);
   --title-strip-border-color: var(--gray-700);
 
-  --title-strip-button-background-color: var(--gray-900);
   --title-strip-button-background-color--hover: var(--gray-700);
 
   --title-strip-button-foreground-color: var(--gray-500);
@@ -45,8 +44,6 @@
   --ribbon-control-foreground-color: var(--gray-100);
   --ribbon-control-background-color--hover: var(--gray-700);
   --ribbon-control-border-color--hover: var(--gray-600);
-  --ribbon-control-background-color--active: var(--gray-900);
-  --ribbon-divider-color: var(--gray-700);
 
   --form-control-background-color: var(--gray-900);
   --form-control-background-color--hover: var(--gray-700);
@@ -73,9 +70,11 @@
   --settings-button-border-color: var(--gray-600);
   --settings-button-border-color--hover: var(--gray-500);
 
-  --welcome-backdrop-color: rgba(0, 0, 0, 0.35);
   --welcome-backdrop-blur: 0.35rem;
-  --welcome-panel-background-color: var(--gray-800);
+
+  // Scrim tint behind any modal panel; heavier on the dark theme to lift the panel off the backdrop.
+  --modal-backdrop-color: rgba(0, 0, 0, 0.55);
+
   --welcome-border-color: var(--gray-700);
   --welcome-muted-foreground-color: var(--gray-400);
 
@@ -102,14 +101,16 @@
   --dock-title-foreground-color: var(--gray-400);
   --dock-title-foreground-color--focused: var(--gray-100);
 
-  --dock-tabstrip-background-color: var(--gray-900);
-  --dock-tab-background-color: var(--gray-900);
   --dock-tab-background-color--active: var(--gray-800);
   --dock-tab-foreground-color: var(--gray-500);
   --dock-tab-foreground-color--active: var(--gray-200);
 
   // The pane cell that frames each panel: a shade between the dock-area gaps and the panel surface.
   --dock-pane-background-color: color-mix(in srgb, var(--gray-900) 65%, var(--gray-800));
+
+  // Semantic status colour (a brighter amber that reads on the dark surface). Add sibling
+  // --error/--success/--info tokens here as consumers appear.
+  --warning-color: #e0a030;
 
   // Monaco change-margin save-state marks: unsaved (yellow), saved-this-session (green), deleted (red).
   --change-margin-unsaved: #e0b341;

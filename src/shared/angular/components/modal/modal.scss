@@ -23,11 +23,11 @@
 // runs only on entry — dismissing reverts to the (untransitioned) base state instantly, no exit fade.
 .modal--visible {
   display: flex;
-  background: var(--modal-backdrop-color, rgba(0, 0, 0, 0.45));
-  backdrop-filter: blur(var(--modal-backdrop-blur, var(--welcome-backdrop-blur)));
+  background: var(--modal-backdrop-color);
+  backdrop-filter: blur(var(--modal-backdrop-blur));
   transition:
-    background var(--modal-fade-duration, 200ms) ease,
-    backdrop-filter var(--modal-fade-duration, 200ms) ease;
+    background var(--modal-fade-duration) ease,
+    backdrop-filter var(--modal-fade-duration) ease;
 
   @starting-style {
     background: transparent;
@@ -72,8 +72,8 @@
 
   .modal--visible & {
     transition:
-      opacity var(--modal-fade-duration, 200ms) ease,
-      transform var(--modal-fade-duration, 200ms) cubic-bezier(0.22, 1, 0.36, 1);
+      opacity var(--modal-fade-duration) ease,
+      transform var(--modal-fade-duration) cubic-bezier(0.22, 1, 0.36, 1);
 
     @starting-style {
       opacity: 0;

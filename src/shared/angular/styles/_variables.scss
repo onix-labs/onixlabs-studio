@@ -41,6 +41,12 @@
     'Noto Sans', 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
     'Segoe UI Symbol', 'Noto Color Emoji';
 
+  // Shared monospace stack for code surfaces (problems list, agent-chat code, etc.). Leads with
+  // JetBrains Mono to match the editor/terminal, then falls back through the system mono fonts.
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
   --gray-100: #f8f9fa;
   --gray-150: #f1f3f5;
   --gray-200: #e9ecef;
@@ -101,6 +107,12 @@
   --accent-surface-foreground-color: var(--accent-color);
 
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
+
+  // Modal presentation knobs that are pure motion/geometry, not colour, so they stay constant across
+  // themes: the backdrop blur radius and the enter-fade duration. The backdrop *tint* is a theme
+  // token (--modal-backdrop-color) since it must track light/dark.
+  --modal-backdrop-blur: 0.5rem;
+  --modal-fade-duration: 200ms;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
   --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));

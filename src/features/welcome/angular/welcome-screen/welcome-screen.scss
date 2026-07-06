@@ -28,6 +28,9 @@
 
   // Modal presentation: a wide, solid dark panel with a soft internal glow, over a dark backdrop.
   --modal-fade-duration: 280ms;
+  // Keep the welcome's own backdrop blur (the ambient cold-start scene zeroes it out below) rather
+  // than the global modal default.
+  --modal-backdrop-blur: var(--welcome-backdrop-blur);
   --modal-panel-inline-size: min(63rem, 100%);
   --modal-panel-padding: 1rem;
   --modal-panel-radius: 2rem;
