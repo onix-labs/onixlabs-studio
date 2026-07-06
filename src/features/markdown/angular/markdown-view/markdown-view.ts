@@ -380,13 +380,13 @@ export class MarkdownView implements OnDestroy {
   }
 
   /**
-   * Registers the markdown editor's keyboard accelerators for the active tab. Only save and save-as
-   * are bound here — the ones the Crepe editor does not provide — so its own formatting accelerators
-   * (bold, italic, and the rest) are left to compose.
+   * Registers the markdown editor's keyboard accelerators for the active tab. Only save-as is bound
+   * here: Cmd/Ctrl+S is owned by the {@link MarkdownEditor} pane itself (it raises `saveRequested`,
+   * which the document core handles), so binding it again would save twice. The pane's own formatting
+   * accelerators (bold, italic, and the rest) are likewise left to compose.
    */
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [
-      { chord: 'Mod+S', command: (): void => void this.documents.saveActive() },
       { chord: 'Mod+Shift+S', command: (): void => void this.documents.saveActiveAs() },
     ]);
   }

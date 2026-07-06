@@ -592,6 +592,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       return;
     }
     event.preventDefault();
+    // Stop the handled chord here so it does not also reach the application keybinding router on
+    // window (which would save a second time). The editor owns Cmd/Ctrl+S; the host saves via
+    // saveRequested.
+    event.stopPropagation();
     this.zone.run((): void => this.saveRequested.emit());
   }
 
