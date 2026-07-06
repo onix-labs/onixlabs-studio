@@ -532,6 +532,11 @@ export class Icon {
    */
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
 
+  /**
+   * Gets the bold drag-handle (grip) icon, used on the document well's move handle.
+   */
+  public static readonly GRIP_BOLD: Icon = new Icon('ph-bold ph-dots-six');
+
   // --- File Explorer: tree files ---
 
   /**
@@ -770,6 +775,11 @@ export class Icon {
    * Gets the downward caret used on menus and split buttons.
    */
   public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');
+
+  /**
+   * Gets the bold downward caret, used on the document well's document-list menu button.
+   */
+  public static readonly CARET_DOWN_BOLD: Icon = new Icon('ph-bold ph-caret-down');
 
   /**
    * Gets the upward caret used on drop-up menus that open above their trigger.

@@ -200,6 +200,14 @@ export class DockTabGroup {
   );
 
   /**
+   * Gets a value indicating whether the active document can be dragged out of the well into a separate
+   * group: only when the well holds more than one document, so dragging it out leaves the well behind.
+   */
+  protected readonly canDetachActive: Signal<boolean> = computed(
+    (): boolean => this.stack().panels.length > 1,
+  );
+
+  /**
    * Gets a value indicating whether this group is the focused panel.
    */
   protected readonly isFocused: Signal<boolean> = computed(

@@ -92,11 +92,12 @@
       <div class="dock-tab-group__strip-controls">
         <div
           class="dock-tab-group__handle"
+          [class.dock-tab-group__handle--disabled]="!canDetachActive()"
           title="Drag to dock"
           aria-label="Drag to dock"
           (mousedown)="startDrag($event)"
         >
-          <app-icon [icon]="Icon.GRIP" />
+          <app-icon [icon]="Icon.GRIP_BOLD" />
         </div>
         <button
           type="button"
@@ -106,7 +107,7 @@
           [cdkMenuTriggerFor]="documentMenu.panel() ?? null"
           [cdkMenuPosition]="documentMenu.position()"
         >
-          <app-icon [icon]="Icon.CARET_DOWN" />
+          <app-icon [icon]="Icon.CARET_DOWN_BOLD" />
         </button>
       </div>
 

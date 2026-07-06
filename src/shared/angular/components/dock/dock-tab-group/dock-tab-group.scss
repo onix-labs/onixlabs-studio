@@ -198,6 +198,14 @@
   cursor: move;
 }
 
+// The grip greys out and stops responding when the well holds a single document (dragging the only
+// document out would leave the well empty).
+.dock-tab-group__handle--disabled {
+  pointer-events: none;
+  opacity: 0.4;
+  cursor: default;
+}
+
 .dock-tab-group__menu-button {
   padding-inline: 0.5rem;
 }
