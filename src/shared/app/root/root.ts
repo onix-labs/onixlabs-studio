@@ -1,5 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  HostListener,
+  inject,
+  Signal,
+} from '@angular/core';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
@@ -36,6 +44,12 @@ export class Root {
   private readonly registry: FeatureRegistry = inject(FeatureRegistry);
 
   /**
+   * Holds the application keybinding router, consulted for keyboard accelerators the active view has
+   * registered.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content
    * host are replaced by the welcome screen.
    */
@@ -51,4 +65,17 @@ export class Root {
   protected readonly activeChrome: Signal<FeatureChrome> = computed(
     (): FeatureChrome => this.registry.chromeFor(this.tabsService.activeTab()?.type),
   );
+
+  /**
+   * Routes a window-level key press to the active view's keyboard accelerators, suppressing the
+   * browser default when one handles it. Listening at the window (bubble phase) lets an embedded
+   * editor consume the keys it owns first — only chords it leaves unhandled reach the router.
+   * @param event The keyboard event raised by the window.
+   */
+  @HostListener('window:keydown', ['$event'])
+  protected onWindowKeydown(event: KeyboardEvent): void {
+    if (this.keybindings.dispatch(event)) {
+      event.preventDefault();
+    }
+  }
 }

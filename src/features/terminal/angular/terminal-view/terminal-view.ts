@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -64,6 +65,11 @@ export class TerminalView implements OnDestroy {
    * Holds the terminal commands registry the ribbon drives this terminal through.
    */
   private readonly terminalCommands: TerminalCommands = inject(TerminalCommands);
+
+  /**
+   * Holds the application keybinding router this view registers its accelerators with while active.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds the shell client used to open the working directory in the OS file manager.
@@ -141,6 +147,7 @@ export class TerminalView implements OnDestroy {
         }
       } else if (this.commandHandler !== null) {
         this.terminalCommands.unregister(this.commandHandler);
+        this.keybindings.deactivate(this.tabId());
         this.commandHandler = null;
       }
     });
@@ -165,6 +172,7 @@ export class TerminalView implements OnDestroy {
   public ngOnDestroy(): void {
     if (this.commandHandler !== null) {
       this.terminalCommands.unregister(this.commandHandler);
+      this.keybindings.forget(this.tabId());
       this.commandHandler = null;
     }
     this.stopCwdPolling();
@@ -248,6 +256,18 @@ export class TerminalView implements OnDestroy {
       },
     };
     this.terminalCommands.register(this.commandHandler);
+    this.registerKeybindings();
+  }
+
+  /**
+   * Registers the terminal's keyboard accelerators for the active tab. Only Mod+Shift chords are used:
+   * a bare Mod (Ctrl on Windows and Linux) collides with the shell's own control codes, whereas
+   * Mod+Shift chords are never sent to the pty, so they compose safely with the terminal's input.
+   */
+  private registerKeybindings(): void {
+    this.keybindings.register(this.tabId(), [
+      { chord: 'Mod+Shift+K', command: (): void => this.terminalCommands.clear() },
+    ]);
   }
 
   /**
