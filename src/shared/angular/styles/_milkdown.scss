@@ -924,17 +924,18 @@ app-markdown-editor .milkdown .ProseMirror-focused .prosemirror-virtual-cursor-a
   animation: crepe-virtual-cursor-blink 1.06s step-end infinite;
 }
 
-// Paint the caret white. Crepe's virtual cursor draws as a border, so override its
+// Paint the caret the editor's on-surface colour so it tracks light/dark and matches Monaco's cursor
+// (gray-900 on light, gray-100 on dark). Crepe's virtual cursor draws as a border, so override its
 // colour; caret-color covers any context that falls back to the native caret.
 app-markdown-editor .milkdown {
-  caret-color: #ffffff;
+  caret-color: var(--crepe-color-on-surface);
 
   // The cursor is a widget injected at document position 0, so it sits beneath
   // later block content in paint order. Table header cells set an opaque
   // background that would otherwise paint over it; lift the cursor above them.
   .prosemirror-virtual-cursor {
     z-index: 1;
-    border-color: #ffffff;
+    border-color: var(--crepe-color-on-surface);
   }
 }
 

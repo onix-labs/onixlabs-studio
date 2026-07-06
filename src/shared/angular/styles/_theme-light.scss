@@ -38,8 +38,8 @@
   --view-placeholder-color: var(--gray-300);
 
   --ribbon-strip-background-color: var(--gray-400);
-  --ribbon-group-border-color: var(--gray-600);
-  --ribbon-group-title-background-color: var(--gray-600);
+  --ribbon-group-border-color: var(--gray-550);
+  --ribbon-group-title-background-color: var(--gray-550);
   --ribbon-group-title-foreground-color: var(--gray-300);
   --ribbon-control-foreground-color: var(--gray-900);
   --ribbon-control-background-color--hover: var(--gray-200);
@@ -72,13 +72,17 @@
 
   --welcome-backdrop-blur: 0.75rem;
 
-  // Scrim tint behind any modal panel; lighter on the light theme so it dims without going murky.
-  --modal-backdrop-color: rgba(0, 0, 0, 0.35);
+  // Scrim tint behind any modal panel. Transparent on the light theme for now — the blur alone
+  // separates the panel from the page; revisit with a faint tint once we see how it reads.
+  --modal-backdrop-color: transparent;
+
+  // Modal panel surface: an off-white card that lifts off the page (the body surface is far darker).
+  --modal-panel-background-color: var(--gray-150);
 
   --welcome-border-color: var(--gray-400);
   --welcome-muted-foreground-color: var(--gray-800);
 
-  --agent-view-surface-color: var(--gray-200);
+  --agent-view-surface-color: var(--gray-150);
   --agent-view-border-color: var(--gray-500);
 
   --status-strip-background-color: var(--gray-400);

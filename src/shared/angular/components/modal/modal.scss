@@ -62,7 +62,7 @@
   max-block-size: 100%;
   padding: var(--modal-panel-padding, 1.5rem);
   color: var(--body-foreground-color);
-  background: var(--modal-panel-background, var(--body-background-color));
+  background: var(--modal-panel-background, var(--modal-panel-background-color));
   backdrop-filter: var(--modal-panel-backdrop-filter, none);
   border: 0.0625rem solid var(--modal-panel-border-color, var(--dock-border-color));
   border-radius: calc(var(--modal-panel-radius, 2rem) * var(--border-radius-multiplier));
