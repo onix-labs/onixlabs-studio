@@ -2,12 +2,13 @@
   display: contents;
 }
 
-// Theme the reusable modal for the welcome presentation. The welcome screen is deliberately a fixed
-// dark, purple-accented surface regardless of the app's theme and accent, so it pins its own palette
-// here as scoped custom properties. `--accent-color` (and its RGB triplet), `--body-foreground-color`
-// and `--welcome-muted-foreground-color` are overridden too, so the modal chrome (close button, focus
-// rings) and any inherited defaults adopt the same fixed palette. All of these inherit down into the
-// projected content and into the modal component.
+// Theme the reusable modal for the welcome presentation. The welcome screen pins its own palette here
+// as scoped custom properties rather than following the app's accent. This block is the dark, purple-
+// accented treatment (the default); a clean light-mode variant re-tunes it below via
+// :host-context([data-theme-mode='light']). `--accent-color` (and its RGB triplet),
+// `--body-foreground-color` and `--welcome-muted-foreground-color` are overridden too, so the modal
+// chrome (close button, focus rings) and any inherited defaults adopt the same palette. All of these
+// inherit down into the projected content and into the modal component.
 .welcome-modal {
   // Fixed palette.
   --wl-accent: #8b5cf6;
@@ -48,6 +49,66 @@
 .welcome-modal--ambient {
   --modal-backdrop-color: rgba(5, 6, 14, 0.98);
   --modal-backdrop-blur: 0;
+}
+
+// Light-mode variant (see resources/img.png): a clean, near-white card with dark text and thin gray
+// borders, not a dark hero. The purple only survives in the logo, the active filter pill, and a faint
+// corner glow on the canvas. Additive over the dark defaults above — :host-context outranks each base
+// rule — so the dark design is untouched.
+:host-context([data-theme-mode='light']) {
+  .welcome-modal {
+    --wl-text: var(--gray-900);
+    --wl-muted: var(--gray-700);
+    --wl-faint: var(--gray-600);
+    // Cards and the search box are the panel colour, defined by their border (as in the reference).
+    --wl-surface: transparent;
+    --wl-surface-hover: rgba(var(--accent-color-rgb), 0.1);
+    --wl-surface-border: var(--gray-300);
+    --wl-border: var(--gray-300);
+
+    // A clean near-white panel with a soft, diffuse shadow; no gradient or glow on the panel itself.
+    // The border keeps the accent violet so the panel edge reads purple (as in the dark treatment).
+    --modal-panel-background: var(--gray-100);
+    --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.45);
+    --modal-panel-shadow: 0 1.5rem 3.5rem rgba(30, 27, 60, 0.12);
+
+    // Light scrim when summoned over content (translucent so the blur reads).
+    --modal-backdrop-color: color-mix(in srgb, var(--gray-150) 72%, transparent);
+  }
+
+  // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only violet.
+  .welcome-modal--ambient {
+    --modal-backdrop-color: var(--gray-150);
+  }
+
+  // Dial the corner blooms down to a faint tint on the light canvas.
+  .welcome__glow-blob--a {
+    background: radial-gradient(circle at center, rgba(var(--wl-accent-rgb), 0.16), transparent 68%);
+  }
+
+  .welcome__glow-blob--b {
+    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.1), transparent 70%);
+  }
+
+  // The recent-list surface (a translucent white on dark) becomes the plain panel colour on light.
+  .welcome__recent {
+    background: transparent;
+  }
+
+  // Row and (inactive) filter-pill hovers lift via --wl-surface, which is transparent on the light
+  // card — so give them an explicit subtle-gray hover. The active filter pill keeps its accent fill.
+  .welcome__recent-row:hover,
+  .welcome__filter:not(.welcome__filter--active):hover,
+  .welcome__filter:not(.welcome__filter--active):focus-visible {
+    background: var(--gray-200);
+  }
+
+  // Keep the action icon its normal ink colour on hover (the dark treatment tints it accent; on the
+  // light card we leave it neutral).
+  .welcome__action:hover .welcome__action-icon,
+  .welcome__action:focus-visible .welcome__action-icon {
+    color: var(--wl-text);
+  }
 }
 
 // A calm, static purple glow projected behind the panel. Shown (faded in) only in the ambient
@@ -162,7 +223,8 @@
   transition:
     background 150ms ease,
     border-color 150ms ease,
-    box-shadow 150ms ease;
+    box-shadow 150ms ease,
+    transform 150ms ease;
 
   &:hover,
   &:focus-visible {
@@ -170,6 +232,7 @@
     border-color: rgba(var(--accent-color-rgb), 0.6);
     box-shadow: 0 0.75rem 2rem -0.75rem rgba(var(--accent-color-rgb), 0.55);
     outline: none;
+    transform: scale(1.02);
 
     .welcome__action-icon {
       color: #d9ccff;

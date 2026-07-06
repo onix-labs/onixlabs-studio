@@ -62,8 +62,9 @@ const ROW_ACTION_REMOVE: string = 'remove';
  * when summoned from the title strip's new-tab button. Either way it presents the application
  * identity, the create/open actions, and the list of recent items — which can be filtered, searched,
  * pinned, re-opened, removed, or revealed in the file manager. The backdrop, dismissal, and animation
- * are provided by the reusable {@link Modal}; the welcome screen overrides its theming for the fixed
- * dark, purple-accented panel and projects a static accent glow behind it.
+ * are provided by the reusable {@link Modal}; the welcome screen overrides its theming for a
+ * purple-accented panel (a dark treatment and a clean light-mode variant) and projects a static
+ * accent glow behind it.
  */
 @Component({
   selector: 'app-welcome-screen',
