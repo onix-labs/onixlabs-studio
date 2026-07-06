@@ -79,32 +79,37 @@
   --welcome-border-color: var(--gray-400);
   --welcome-muted-foreground-color: var(--gray-800);
 
-  --agent-view-surface-color: var(--gray-400);
-  --agent-view-border-color: var(--gray-400);
+  --agent-view-surface-color: var(--gray-200);
+  --agent-view-border-color: var(--gray-500);
 
   --status-strip-background-color: var(--gray-400);
   --status-strip-foreground-color: var(--gray-800);
 
+  // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
+  // them). The single knob for the dock container surface; decoupled from --root-content so it can
+  // be retuned without moving the app root.
+  --dock-container-background-color: var(--gray-500);
+
   --dock-background-color: var(--gray-400);
-  --dock-border-color: var(--gray-600);
+  --dock-border-color: var(--gray-550);
 
   --dock-splitter-color: transparent;
   --dock-splitter-color--hover: var(--gray-300);
   --dock-splitter-color--active: var(--accent-color);
 
-  --dock-title-background-color: var(--gray-400);
+  --dock-title-background-color: var(--gray-300);
   --dock-title-background-color--focused: var(--gray-300);
   --dock-title-foreground-color: var(--gray-700);
   --dock-title-foreground-color--focused: var(--gray-900);
 
   --dock-tabstrip-background-color: var(--gray-500);
   --dock-tab-background-color: var(--gray-500);
-  --dock-tab-background-color--active: var(--gray-200);
+  --dock-tab-background-color--active: var(--gray-300);
   --dock-tab-foreground-color: var(--gray-700);
   --dock-tab-foreground-color--active: var(--gray-900);
 
   // The pane cell that frames each panel, sitting one shade lighter than the workspace container.
-  --dock-pane-background-color: var(--gray-400);
+  --dock-pane-background-color: var(--gray-450);
 
   // Monaco change-margin save-state marks: unsaved (yellow), saved-this-session (green), deleted (red).
   --change-margin-unsaved: #d7a824;

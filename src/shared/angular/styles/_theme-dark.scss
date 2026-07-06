@@ -85,6 +85,11 @@
   --status-strip-background-color: var(--gray-800);
   --status-strip-foreground-color: var(--gray-400);
 
+  // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
+  // them). The single knob for the dock container surface; decoupled from --root-content so it can
+  // be retuned without moving the app root.
+  --dock-container-background-color: var(--gray-900);
+
   --dock-background-color: var(--gray-800);
   --dock-border-color: var(--gray-700);
 
