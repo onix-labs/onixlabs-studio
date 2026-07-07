@@ -220,13 +220,10 @@ export class MarkdownRibbon {
   }
 
   /**
-   * Opens the find widget.
-   *
-   * TODO: the markdown editor does not yet provide a find widget; this is a placeholder until one
-   * lands (the Monaco-backed code editor has its own).
+   * Toggles the Find tool panel on the active document.
    */
   protected onFind(): void {
-    // Intentionally empty until the markdown editor exposes a find command.
+    this.panels.toggle('find');
   }
 
   /**

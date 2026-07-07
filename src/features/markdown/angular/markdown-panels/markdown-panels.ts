@@ -3,7 +3,7 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 /**
  * Identifies a markdown editor tool panel, or `none` when no panel is open.
  */
-export type MarkdownPanel = 'none' | 'outline' | 'review' | 'agent' | 'reader';
+export type MarkdownPanel = 'none' | 'outline' | 'review' | 'agent' | 'reader' | 'find';
 
 /**
  * Identifies an openable markdown editor tool panel (every {@link MarkdownPanel} except `none`).

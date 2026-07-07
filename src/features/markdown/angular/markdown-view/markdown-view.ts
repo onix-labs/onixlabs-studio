@@ -32,6 +32,8 @@ import {
   wrapInWarningAlertCommand,
 } from '@shared/angular/milkdown/github-alert-plugin';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
+import { MarkdownFindAdapter } from '@features/markdown/angular/find/markdown-find-adapter';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
@@ -116,6 +118,7 @@ const DEFAULT_PANEL_SIZE: number = 320;
     MarkdownReviewPanel,
     MarkdownAgentPanel,
     MarkdownReaderPanel,
+    FindPanel,
   ],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
@@ -238,6 +241,13 @@ export class MarkdownView implements OnDestroy {
    * Holds the width of the open tool panel, in pixels. Two-way bound to the panel's resize splitter.
    */
   protected readonly panelSize: WritableSignal<number> = signal<number>(DEFAULT_PANEL_SIZE);
+
+  /**
+   * Holds the find adapter the shared find panel drives, bound to this view's ProseMirror editor.
+   */
+  protected readonly findAdapter: MarkdownFindAdapter = new MarkdownFindAdapter(
+    (): EditorView | null => this.pane()?.getEditorView() ?? null,
+  );
 
   /**
    * Gets the identifier of the tab this view represents, which is also the id of its backing document
@@ -388,7 +398,15 @@ export class MarkdownView implements OnDestroy {
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [
       { chord: 'Mod+Shift+S', command: (): void => void this.documents.saveActiveAs() },
+      { chord: 'Mod+F', command: (): void => this.panels.toggle('find') },
     ]);
+  }
+
+  /**
+   * Closes the find panel when the shared panel asks to be dismissed.
+   */
+  protected onFindClosed(): void {
+    this.panels.close();
   }
 
   /**

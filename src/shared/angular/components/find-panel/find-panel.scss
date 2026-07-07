@@ -1,0 +1,131 @@
+:host {
+  display: block;
+  block-size: 100%;
+  // Match the tool-panel surface (and the panel resize grip): a quiet gray that reads as panel
+  // chrome, kept in step with the other side panels across every surface the find panel is hosted in.
+  background: var(--gray-200);
+  color: var(--body-foreground-color);
+}
+
+:host-context([data-theme-mode='dark']) {
+  background: color-mix(in srgb, var(--gray-900), var(--gray-800));
+}
+
+.find-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.find-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.find-panel__title {
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.find-panel__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.find-panel__fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-inline-size: 0;
+}
+
+.find-panel__field {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.find-panel__input {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.find-panel__count {
+  flex: none;
+  min-inline-size: 4.5rem;
+  text-align: end;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.find-panel__icon-button,
+.find-panel__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  background: transparent;
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover:not(:disabled) {
+    background: var(--accent-surface-background-color);
+    color: var(--body-foreground-color);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.find-panel__toggle {
+  margin-block-start: 0.15rem;
+}
+
+.find-panel__text-button {
+  flex: none;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  background: transparent;
+  color: var(--body-foreground-color);
+  font: inherit;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover:not(:disabled) {
+    background: var(--accent-surface-background-color);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.find-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  padding-inline-start: 1.9rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.find-panel__option {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
