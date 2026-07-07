@@ -1,87 +1,65 @@
 <div class="find-panel">
-  <div class="find-panel__header">
-    <span class="find-panel__title">Find</span>
-    <button
-      type="button"
-      class="find-panel__icon-button"
-      (click)="dismiss()"
-      aria-label="Close find"
-    >
-      <app-icon [icon]="closeIcon" />
-    </button>
-  </div>
-
-  <div class="find-panel__body">
-    <button
-      type="button"
-      class="find-panel__toggle"
-      (click)="toggleReplace()"
-      [attr.aria-label]="replaceVisible() ? 'Hide replace' : 'Show replace'"
-      [attr.aria-expanded]="replaceVisible()"
-    >
-      <app-icon [icon]="toggleIcon()" />
-    </button>
-
-    <div class="find-panel__fields">
-      <div class="find-panel__field" #findField>
-        <app-text-field
-          class="find-panel__input"
-          placeholder="Find"
-          [(value)]="findText"
-          (keydown.enter)="next()"
-          (keydown.shift.enter)="previous()"
-          (keydown.escape)="dismiss()"
-        />
-        <span class="find-panel__count">{{ matchLabel() }}</span>
-        <button
-          type="button"
-          class="find-panel__icon-button"
-          (click)="previous()"
-          [disabled]="!hasMatches()"
-          aria-label="Previous match"
-        >
-          <app-icon [icon]="previousIcon" />
-        </button>
-        <button
-          type="button"
-          class="find-panel__icon-button"
-          (click)="next()"
-          [disabled]="!hasMatches()"
-          aria-label="Next match"
-        >
-          <app-icon [icon]="nextIcon" />
-        </button>
-      </div>
-
-      @if (replaceVisible()) {
-        <div class="find-panel__field">
-          <app-text-field
-            class="find-panel__input"
-            placeholder="Replace"
-            [(value)]="replaceText"
-            (keydown.enter)="replaceOne()"
-            (keydown.escape)="dismiss()"
-          />
-          <button
-            type="button"
-            class="find-panel__text-button"
-            (click)="replaceOne()"
-            [disabled]="!hasMatches()"
-          >
-            Replace
-          </button>
-          <button
-            type="button"
-            class="find-panel__text-button"
-            (click)="replaceEvery()"
-            [disabled]="!hasMatches()"
-          >
-            All
-          </button>
-        </div>
-      }
+  @if (showHeader()) {
+    <div class="find-panel__header">
+      <span class="find-panel__title">Find and Replace</span>
+      <button
+        type="button"
+        class="find-panel__icon-button"
+        (click)="dismiss()"
+        aria-label="Close find"
+      >
+        <app-icon [icon]="closeIcon" />
+      </button>
     </div>
+  }
+
+  @if (supportsReplace()) {
+    <div class="find-panel__segmented" role="tablist" aria-label="Find or replace">
+      <button
+        type="button"
+        role="tab"
+        class="find-panel__segment"
+        [class.is-active]="mode() === 'find'"
+        [attr.aria-selected]="mode() === 'find'"
+        (click)="setMode('find')"
+      >
+        Find Only
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="find-panel__segment"
+        [class.is-active]="mode() === 'replace'"
+        [attr.aria-selected]="mode() === 'replace'"
+        (click)="setMode('replace')"
+      >
+        Find and Replace
+      </button>
+    </div>
+  }
+
+  <div class="find-panel__field" #findField>
+    <app-text-field
+      class="find-panel__input"
+      placeholder="Find"
+      [(value)]="findText"
+      (keydown.enter)="next()"
+      (keydown.shift.enter)="previous()"
+      (keydown.escape)="dismiss()"
+    />
   </div>
+
+  @if (mode() === 'replace') {
+    <div class="find-panel__field">
+      <app-text-field
+        class="find-panel__input"
+        placeholder="Replace"
+        [(value)]="replaceText"
+        (keydown.enter)="replaceOne()"
+        (keydown.escape)="dismiss()"
+      />
+    </div>
+  }
 
   <div class="find-panel__options">
     <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
@@ -89,17 +67,79 @@
     <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
     <label class="find-panel__option">
       <app-checkbox [(checked)]="caseSensitive" />
-      <span>Match case</span>
+      <span>Match Case</span>
     </label>
     <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
     <label class="find-panel__option">
       <app-checkbox [(checked)]="wholeWord" />
-      <span>Whole word</span>
+      <span>Match Whole Word</span>
     </label>
     <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
     <label class="find-panel__option">
       <app-checkbox [(checked)]="regexp" />
-      <span>Regex</span>
+      <span>Match Regex</span>
     </label>
+  </div>
+
+  <div class="find-panel__actions">
+    <div class="find-panel__nav">
+      <button
+        type="button"
+        class="find-panel__button"
+        (click)="previous()"
+        [disabled]="!canPrevious()"
+      >
+        <app-icon [icon]="previousIcon" />
+        Previous
+      </button>
+      <button type="button" class="find-panel__button" (click)="next()" [disabled]="!canNext()">
+        Next
+        <app-icon [icon]="nextIcon" />
+      </button>
+      <span class="find-panel__count">{{ matchLabel() }}</span>
+    </div>
+
+    @if (mode() === 'replace') {
+      <div class="find-panel__replace-actions">
+        <button
+          type="button"
+          class="find-panel__button"
+          (click)="replaceOne()"
+          [disabled]="!canReplace()"
+        >
+          Replace
+        </button>
+        <button
+          type="button"
+          class="find-panel__button"
+          (click)="replaceEvery()"
+          [disabled]="!canReplaceAll()"
+        >
+          Replace All
+        </button>
+        <button type="button" class="find-panel__button" (click)="undo()" [disabled]="!canUndo()">
+          Undo
+        </button>
+      </div>
+    }
+  </div>
+
+  <div class="find-panel__results">
+    @for (item of matches(); track $index) {
+      <button
+        type="button"
+        class="find-panel__result"
+        [class.is-active]="$index === activeIndex()"
+        (click)="select($index)"
+        [title]="positionLabel(item)"
+      >
+        <span class="find-panel__result-pos">{{ positionLabel(item) }}</span>
+        <span class="find-panel__result-preview"
+          ><span class="find-panel__result-before">{{ item.before }}</span
+          ><span class="find-panel__result-match">{{ item.text }}</span
+          ><span class="find-panel__result-after">{{ item.after }}</span></span
+        >
+      </button>
+    }
   </div>
 </div>
