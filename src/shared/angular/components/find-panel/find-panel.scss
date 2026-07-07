@@ -97,9 +97,8 @@
 }
 
 .find-panel__count {
-  flex: none;
-  min-inline-size: 4.5rem;
-  text-align: end;
+  // Sits at the end of the nav row, pushed away from the previous/next buttons.
+  margin-inline-start: auto;
   color: var(--form-muted-foreground-color);
   font-variant-numeric: tabular-nums;
 }
@@ -120,12 +119,20 @@
 
 .find-panel__actions {
   display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.find-panel__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.find-panel__replace-actions {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-
-  &--end {
-    justify-content: flex-end;
-  }
 }
 
 .find-panel__button {

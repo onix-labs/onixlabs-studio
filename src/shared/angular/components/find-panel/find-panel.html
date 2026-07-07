@@ -47,7 +47,6 @@
       (keydown.shift.enter)="previous()"
       (keydown.escape)="dismiss()"
     />
-    <span class="find-panel__count">{{ matchLabel() }}</span>
   </div>
 
   @if (mode() === 'replace') {
@@ -82,40 +81,46 @@
     </label>
   </div>
 
-  <div class="find-panel__actions" [class.find-panel__actions--end]="mode() === 'find'">
-    <button
-      type="button"
-      class="find-panel__button"
-      (click)="previous()"
-      [disabled]="!canPrevious()"
-    >
-      <app-icon [icon]="previousIcon" />
-      Previous
-    </button>
-    <button type="button" class="find-panel__button" (click)="next()" [disabled]="!canNext()">
-      Next
-      <app-icon [icon]="nextIcon" />
-    </button>
+  <div class="find-panel__actions">
+    <div class="find-panel__nav">
+      <button
+        type="button"
+        class="find-panel__button"
+        (click)="previous()"
+        [disabled]="!canPrevious()"
+      >
+        <app-icon [icon]="previousIcon" />
+        Previous
+      </button>
+      <button type="button" class="find-panel__button" (click)="next()" [disabled]="!canNext()">
+        Next
+        <app-icon [icon]="nextIcon" />
+      </button>
+      <span class="find-panel__count">{{ matchLabel() }}</span>
+    </div>
+
     @if (mode() === 'replace') {
-      <button
-        type="button"
-        class="find-panel__button"
-        (click)="replaceOne()"
-        [disabled]="!canReplace()"
-      >
-        Replace
-      </button>
-      <button
-        type="button"
-        class="find-panel__button"
-        (click)="replaceEvery()"
-        [disabled]="!canReplaceAll()"
-      >
-        Replace All
-      </button>
-      <button type="button" class="find-panel__button" (click)="undo()" [disabled]="!canUndo()">
-        Undo
-      </button>
+      <div class="find-panel__replace-actions">
+        <button
+          type="button"
+          class="find-panel__button"
+          (click)="replaceOne()"
+          [disabled]="!canReplace()"
+        >
+          Replace
+        </button>
+        <button
+          type="button"
+          class="find-panel__button"
+          (click)="replaceEvery()"
+          [disabled]="!canReplaceAll()"
+        >
+          Replace All
+        </button>
+        <button type="button" class="find-panel__button" (click)="undo()" [disabled]="!canUndo()">
+          Undo
+        </button>
+      </div>
     }
   </div>
 
