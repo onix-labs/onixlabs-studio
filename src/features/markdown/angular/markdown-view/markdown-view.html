@@ -28,6 +28,9 @@
         @case ('reader') {
           <app-markdown-reader-panel />
         }
+        @case ('find') {
+          <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
+        }
       }
     </app-panel>
   }

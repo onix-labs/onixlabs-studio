@@ -35,6 +35,7 @@ import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
 import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
 import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
 import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
+import { searchPlugin } from '@shared/angular/milkdown/search-plugin';
 import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import {
@@ -471,6 +472,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       crepe.editor.use(footnotePlugin);
       crepe.editor.use(emojiPlugin);
       crepe.editor.use(blockReorderPlugin);
+      crepe.editor.use(searchPlugin);
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((_ctx: Ctx, markdown: string): void => {

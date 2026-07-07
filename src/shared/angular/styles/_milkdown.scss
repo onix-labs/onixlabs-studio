@@ -979,3 +979,20 @@ app-markdown-editor .milkdown {
   background-color: rgb(var(--accent-color-rgb), 0.38);
   color: inherit;
 }
+
+// -----------------------------------------------------------------------------
+// Find matches
+// -----------------------------------------------------------------------------
+// The shared find panel's markdown adapter drives the `prosemirror-search` plugin,
+// which decorates every match (and, more strongly, the active one) inside the
+// encapsulation-free `.ProseMirror`. Global, for the same reason as the highlights
+// above.
+.ProseMirror-search-match {
+  border-radius: 0.15rem;
+  background-color: rgb(var(--accent-color-rgb), 0.22);
+}
+
+.ProseMirror-active-search-match {
+  border-radius: 0.15rem;
+  background-color: rgb(var(--accent-color-rgb), 0.5);
+}
