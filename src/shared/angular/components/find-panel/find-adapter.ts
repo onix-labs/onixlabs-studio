@@ -28,65 +28,11 @@ export interface FindQuery {
 }
 
 /**
- * Defines find-and-replace over a single surface's engine — a Monaco editor, a ProseMirror document,
- * or the workspace file set. The shared find panel holds whichever adapter its host surface supplies
- * and drives it; each surface implements the operations against its own engine, so the panel itself
- * contains no engine-specific code.
- *
- * This is the seam the {@link Epic Shared Find & Replace panel} is built on, mirroring the codebase's
- * other per-surface adapters (for example the editor command handlers): one shared consumer, many
- * surface implementations, no duplication.
+ * Describes a single match for the panel's results list: its position, a preview of the matched line
+ * split around the match (so the match can be emphasised), whether it has since been replaced (and so
+ * is shown greyed), and, for a multi-file surface, the file it belongs to.
  */
-export interface FindAdapter {
-  /**
-   * Gets the total number of matches for the active query, or zero when the query is empty or unmatched.
-   */
-  readonly matchCount: Signal<number>;
-
-  /**
-   * Gets the one-based index of the active match within {@link matchCount}, or zero when there is none.
-   */
-  readonly activeMatch: Signal<number>;
-
-  /**
-   * Applies a query, refreshing the match set and its highlights. An empty query clears the matches.
-   * @param query The query to search for.
-   */
-  setQuery(query: FindQuery): void;
-
-  /**
-   * Moves to and reveals the next match, wrapping past the end.
-   */
-  next(): void;
-
-  /**
-   * Moves to and reveals the previous match, wrapping before the start.
-   */
-  previous(): void;
-
-  /**
-   * Replaces the active match with the replacement text, then advances to the next match.
-   * @param replacement The text to replace the active match with.
-   */
-  replace(replacement: string): void;
-
-  /**
-   * Replaces every match with the replacement text.
-   * @param replacement The text to replace each match with.
-   */
-  replaceAll(replacement: string): void;
-
-  /**
-   * Clears the active query and removes its highlights, called when the panel closes.
-   */
-  clear(): void;
-}
-
-/**
- * Describes a single match within a file for the workspace results tree: its one-based line and
- * column and the text of the line it occurs on, for preview.
- */
-export interface FindResultMatch {
+export interface FindResultItem {
   /**
    * Gets the one-based line number of the match.
    */
@@ -98,63 +44,111 @@ export interface FindResultMatch {
   readonly column: number;
 
   /**
-   * Gets the text of the matching line, for preview.
+   * Gets the line text before the match, trimmed to a preview length.
    */
-  readonly preview: string;
+  readonly before: string;
+
+  /**
+   * Gets the matched text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the line text after the match, trimmed to a preview length.
+   */
+  readonly after: string;
+
+  /**
+   * Gets a value indicating whether this match has been replaced, so it is shown greyed and no longer
+   * participates in navigation.
+   */
+  readonly replaced: boolean;
+
+  /**
+   * Gets the file's path relative to the searched root, for a multi-file surface; undefined for a
+   * single-document surface.
+   */
+  readonly file?: string;
 }
 
 /**
- * Describes all matches within a single file for the workspace results tree.
+ * Defines find-and-replace over a single surface's engine — a Monaco editor, a ProseMirror document,
+ * or the workspace file set. The shared find panel holds whichever adapter its host surface supplies
+ * and drives it; each surface implements the operations against its own engine, so the panel itself
+ * contains no engine-specific code.
+ *
+ * The adapter owns all match state: the list, the active index, and the replace/undo history. The
+ * panel is purely presentational — it renders {@link matches} and {@link activeIndex} and calls the
+ * operations. Navigation is bounded (it does not wrap), so the panel can disable the ends.
+ *
+ * This is the seam the {@link Epic Shared Find & Replace panel} is built on, mirroring the codebase's
+ * other per-surface adapters (for example the editor command handlers): one shared consumer, many
+ * surface implementations, no duplication.
  */
-export interface FindResultFile {
+export interface FindAdapter {
   /**
-   * Gets the absolute path of the file, used to open it.
+   * Gets the matches for the active query, in document (or file) order.
    */
-  readonly path: string;
+  readonly matches: Signal<readonly FindResultItem[]>;
 
   /**
-   * Gets the file's path relative to the workspace root, for display.
+   * Gets the zero-based index of the active match within {@link matches}, or -1 when none is active.
    */
-  readonly relativePath: string;
+  readonly activeIndex: Signal<number>;
 
   /**
-   * Gets the matches within the file, in document order.
+   * Gets a value indicating whether this surface supports replace. When false, the panel hides its
+   * replace affordances and offers find only.
    */
-  readonly matches: readonly FindResultMatch[];
-}
-
-/**
- * Extends {@link FindAdapter} for a multi-file surface (the workspace): besides the flat match totals
- * the panel always shows, it exposes the matches grouped by file for the results tree, a busy flag
- * while a search runs, and the ability to open a match in its editor. The panel renders the tree only
- * for adapters that implement this interface, so single-document adapters remain unaffected.
- */
-export interface WorkspaceFindAdapter extends FindAdapter {
-  /**
-   * Gets the current results grouped by file, in the order the search returned them.
-   */
-  readonly results: Signal<readonly FindResultFile[]>;
+  readonly supportsReplace: boolean;
 
   /**
-   * Gets a value indicating whether a search is currently running.
+   * Gets a value indicating whether the last replace can be undone.
    */
-  readonly searching: Signal<boolean>;
+  readonly canUndo: Signal<boolean>;
 
   /**
-   * Opens a match in its editor, revealing the matched line.
-   * @param file The file the match belongs to.
-   * @param match The match to reveal.
+   * Applies a query, refreshing the match set and its highlights. An empty query clears the matches.
+   * @param query The query to search for.
    */
-  openMatch(file: FindResultFile, match: FindResultMatch): void;
-}
+  setQuery(query: FindQuery): void;
 
-/**
- * Determines whether an adapter is a {@link WorkspaceFindAdapter} that backs a results tree.
- * @param adapter The adapter to test, or null.
- * @returns Returns true when the adapter exposes grouped results.
- */
-export function isWorkspaceFindAdapter(
-  adapter: FindAdapter | null,
-): adapter is WorkspaceFindAdapter {
-  return adapter !== null && 'results' in adapter;
+  /**
+   * Selects and reveals the match at the given index (for example when its list row is clicked).
+   * @param index The zero-based index of the match to select.
+   */
+  select(index: number): void;
+
+  /**
+   * Selects and reveals the next match, stopping at the last (no wrap).
+   */
+  next(): void;
+
+  /**
+   * Selects and reveals the previous match, stopping at the first (no wrap).
+   */
+  previous(): void;
+
+  /**
+   * Replaces the active match with the replacement text, marks it replaced, and advances to the next
+   * match.
+   * @param replacement The text to replace the active match with.
+   */
+  replace(replacement: string): void;
+
+  /**
+   * Replaces every not-yet-replaced match with the replacement text.
+   * @param replacement The text to replace each match with.
+   */
+  replaceAll(replacement: string): void;
+
+  /**
+   * Undoes the most recent replace, restoring the text and un-greying the affected match.
+   */
+  undo(): void;
+
+  /**
+   * Clears the active query and removes its highlights, called when the panel closes.
+   */
+  clear(): void;
 }

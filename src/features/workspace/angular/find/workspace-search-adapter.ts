@@ -1,14 +1,13 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import {
+  FindAdapter,
   FindQuery,
-  FindResultFile,
-  FindResultMatch,
-  WorkspaceFindAdapter,
+  FindResultItem,
 } from '@shared/angular/components/find-panel/find-adapter';
 import { Editors, EditorLocation } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
-import { SearchResponse, SearchResultFile } from '@shared/api/search-channels';
+import { SearchMatch, SearchResponse, SearchResultFile } from '@shared/api/search-channels';
 
 /**
  * Debounce applied to the query before a search runs, so typing does not spawn a ripgrep process per
@@ -28,59 +27,44 @@ const REVEAL_POLL_MS: number = 80;
 const REVEAL_POLL_ATTEMPTS: number = 25;
 
 /**
- * Represents a single match flattened out of the grouped results, for next/previous navigation.
+ * Pairs a flattened match with the file it belongs to, for opening and revealing.
  */
 interface FlatMatch {
   /**
-   * Gets the file the match belongs to.
+   * Gets the absolute path of the file the match belongs to.
    */
-  readonly file: FindResultFile;
+  readonly path: string;
 
   /**
-   * Gets the match.
+   * Gets the match item.
    */
-  readonly match: FindResultMatch;
+  readonly item: FindResultItem;
 }
 
 /**
  * Drives workspace-wide find for the shared find panel. It runs a debounced search over the active
- * workspace root through the main-process search manager, exposes the matches grouped by file for the
- * results tree, and opens a match by opening its file and revealing the matched line. Replace across
- * files is not yet supported, so the replace operations are inert and the panel hides the replace
- * affordances for this adapter.
+ * workspace root through the main-process search manager, presents the matches as a flat list labelled
+ * by file, and opens a selected match by opening its file and revealing the matched line. It is
+ * find-only — replace across files is a follow-up — so it reports {@link supportsReplace} false and the
+ * panel hides the replace affordances.
  */
-export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
+export class WorkspaceSearchAdapter implements FindAdapter {
   /**
-   * Holds the total number of matches across every file.
+   * Holds the match list shown by the panel.
    */
-  private readonly matchCountState: WritableSignal<number> = signal<number>(0);
-
-  /**
-   * Holds the one-based index of the active match, or zero when none.
-   */
-  private readonly activeMatchState: WritableSignal<number> = signal<number>(0);
-
-  /**
-   * Holds the results grouped by file.
-   */
-  private readonly resultsState: WritableSignal<readonly FindResultFile[]> = signal<
-    readonly FindResultFile[]
+  private readonly matchesState: WritableSignal<readonly FindResultItem[]> = signal<
+    readonly FindResultItem[]
   >([]);
 
   /**
-   * Holds a value indicating whether a search is running.
+   * Holds the zero-based index of the active match, or -1 when none.
    */
-  private readonly searchingState: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly activeIndexState: WritableSignal<number> = signal<number>(-1);
 
   /**
-   * Holds the flattened match list backing next/previous navigation.
+   * Holds the flattened matches, parallel to the match list, carrying each match's file path.
    */
   private flat: readonly FlatMatch[] = [];
-
-  /**
-   * Holds the zero-based index of the active match within {@link flat}, or -1 when none is active.
-   */
-  private activeIndex: number = -1;
 
   /**
    * Holds the pending debounce timer, or null when none is scheduled.
@@ -94,24 +78,24 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
   private sequence: number = 0;
 
   /**
-   * Gets the total number of matches across every file.
+   * Gets the match list.
    */
-  public readonly matchCount: Signal<number> = this.matchCountState.asReadonly();
+  public readonly matches: Signal<readonly FindResultItem[]> = this.matchesState.asReadonly();
 
   /**
-   * Gets the one-based index of the active match, or zero when there is none.
+   * Gets the zero-based index of the active match, or -1 when there is none.
    */
-  public readonly activeMatch: Signal<number> = this.activeMatchState.asReadonly();
+  public readonly activeIndex: Signal<number> = this.activeIndexState.asReadonly();
 
   /**
-   * Gets the results grouped by file.
+   * Gets a value indicating that workspace search does not yet support replace.
    */
-  public readonly results: Signal<readonly FindResultFile[]> = this.resultsState.asReadonly();
+  public readonly supportsReplace: boolean = false;
 
   /**
-   * Gets a value indicating whether a search is running.
+   * Gets a value indicating that there is nothing to undo (find-only surface).
    */
-  public readonly searching: Signal<boolean> = this.searchingState.asReadonly();
+  public readonly canUndo: Signal<boolean> = signal<boolean>(false).asReadonly();
 
   /**
    * Initializes a new instance of the {@link WorkspaceSearchAdapter} class.
@@ -136,16 +120,11 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    if (query.text.length === 0) {
-      this.reset();
-      return;
-    }
     const root: string | null = this.rootOf();
-    if (root === null) {
+    if (query.text.length === 0 || root === null) {
       this.reset();
       return;
     }
-    this.searchingState.set(true);
     const token: number = ++this.sequence;
     this.timer = setTimeout((): void => {
       void this.execute(query, root, token);
@@ -153,17 +132,35 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
   }
 
   /**
-   * Moves to and opens the next match, wrapping past the end.
+   * Selects and opens the match at the given index.
+   * @param index The zero-based index of the match to select.
    */
-  public next(): void {
-    this.step(1);
+  public select(index: number): void {
+    if (index < 0 || index >= this.flat.length) {
+      return;
+    }
+    this.activeIndexState.set(index);
+    void this.openAndReveal(this.flat[index]);
   }
 
   /**
-   * Moves to and opens the previous match, wrapping before the start.
+   * Selects and opens the next match, stopping at the last.
+   */
+  public next(): void {
+    const index: number = this.activeIndexState() + 1;
+    if (this.flat.length > 0 && index <= this.flat.length - 1) {
+      this.select(index);
+    }
+  }
+
+  /**
+   * Selects and opens the previous match, stopping at the first.
    */
   public previous(): void {
-    this.step(-1);
+    const index: number = this.activeIndexState() - 1;
+    if (index >= 0) {
+      this.select(index);
+    }
   }
 
   /**
@@ -181,6 +178,13 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
   }
 
   /**
+   * No-op: there is nothing to undo on a find-only surface.
+   */
+  public undo(): void {
+    // Intentionally empty; workspace replace (and so undo) is a follow-up.
+  }
+
+  /**
    * Clears the results and cancels any pending search.
    */
   public clear(): void {
@@ -190,15 +194,6 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
     }
     this.sequence += 1;
     this.reset();
-  }
-
-  /**
-   * Opens a match in its editor and reveals the matched line.
-   * @param file The file the match belongs to.
-   * @param match The match to reveal.
-   */
-  public openMatch(file: FindResultFile, match: FindResultMatch): void {
-    void this.openAndReveal(file, match);
   }
 
   /**
@@ -223,57 +218,39 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
     if (token !== this.sequence) {
       return;
     }
-    const files: readonly FindResultFile[] = response.files.map(
-      (file: SearchResultFile): FindResultFile => ({
-        path: file.path,
-        relativePath: file.relativePath,
-        matches: file.matches.map(
-          (match): FindResultMatch => ({
+    const flat: FlatMatch[] = response.files.flatMap((file: SearchResultFile): FlatMatch[] =>
+      file.matches.map(
+        (match: SearchMatch): FlatMatch => ({
+          path: file.path,
+          item: {
             line: match.line,
             column: match.column,
-            preview: match.preview,
-          }),
-        ),
-      }),
+            before: match.before,
+            text: match.text,
+            after: match.after,
+            replaced: false,
+            file: file.relativePath,
+          },
+        }),
+      ),
     );
-    this.resultsState.set(files);
-    this.flat = files.flatMap((file: FindResultFile): FlatMatch[] =>
-      file.matches.map((match: FindResultMatch): FlatMatch => ({ file, match })),
-    );
-    this.activeIndex = -1;
-    this.matchCountState.set(response.total);
-    this.activeMatchState.set(0);
-    this.searchingState.set(false);
-  }
-
-  /**
-   * Advances the active match by the given signed step, wrapping at either end, and opens it.
-   * @param delta The number of matches to move by (1 forward, -1 back).
-   */
-  private step(delta: number): void {
-    if (this.flat.length === 0) {
-      return;
-    }
-    const count: number = this.flat.length;
-    this.activeIndex = (this.activeIndex + delta + count) % count;
-    this.activeMatchState.set(this.activeIndex + 1);
-    const target: FlatMatch = this.flat[this.activeIndex];
-    void this.openAndReveal(target.file, target.match);
+    this.flat = flat;
+    this.matchesState.set(flat.map((entry: FlatMatch): FindResultItem => entry.item));
+    this.activeIndexState.set(-1);
   }
 
   /**
    * Opens a match's file and reveals its line once the editor has registered.
-   * @param file The file to open.
-   * @param match The match to reveal.
+   * @param match The match to open.
    */
-  private async openAndReveal(file: FindResultFile, match: FindResultMatch): Promise<void> {
-    await this.fileOpener.openPath(file.path);
+  private async openAndReveal(match: FlatMatch): Promise<void> {
+    await this.fileOpener.openPath(match.path);
     for (let attempt: number = 0; attempt < REVEAL_POLL_ATTEMPTS; attempt++) {
-      const modelUri: string | undefined = this.editors.modelUriForPath(file.path);
+      const modelUri: string | undefined = this.editors.modelUriForPath(match.path);
       if (modelUri !== undefined) {
         const location: EditorLocation | undefined = this.editors.locate(modelUri);
         if (location !== undefined) {
-          this.editors.requestReveal(location.documentId, match.line, match.column);
+          this.editors.requestReveal(location.documentId, match.item.line, match.item.column);
           return;
         }
       }
@@ -282,15 +259,12 @@ export class WorkspaceSearchAdapter implements WorkspaceFindAdapter {
   }
 
   /**
-   * Resets the results, counts, and navigation state.
+   * Resets the results and navigation state.
    */
   private reset(): void {
     this.flat = [];
-    this.activeIndex = -1;
-    this.resultsState.set([]);
-    this.matchCountState.set(0);
-    this.activeMatchState.set(0);
-    this.searchingState.set(false);
+    this.activeIndexState.set(-1);
+    this.matchesState.set([]);
   }
 
   /**

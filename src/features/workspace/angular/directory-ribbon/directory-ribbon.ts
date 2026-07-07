@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Icon } from '@shared/angular/icons/icon';
@@ -43,6 +44,11 @@ export class DirectoryRibbon {
    * Holds the editor command seam the Edit group dispatches through.
    */
   private readonly commands: EditorCommands = inject(EditorCommands);
+
+  /**
+   * Holds the workspace find seam the Find command reveals the Search panel through.
+   */
+  private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
 
   /**
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
@@ -125,10 +131,10 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Opens the find widget in the focused editor.
+   * Reveals the workspace's multi-file Search panel.
    */
   protected onFind(): void {
-    this.commands.find();
+    this.workspaceFind.reveal();
   }
 
   /**

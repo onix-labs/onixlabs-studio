@@ -417,6 +417,13 @@ export class CodeView implements OnDestroy {
   }
 
   /**
+   * Shows the find panel (used by the ribbon's Find command, which should open rather than toggle it).
+   */
+  protected showFind(): void {
+    this.findVisible.set(true);
+  }
+
+  /**
    * Hides the find panel when the shared panel asks to be dismissed.
    */
   protected onFindClosed(): void {
@@ -511,7 +518,7 @@ export class CodeView implements OnDestroy {
       paste: (): void => pane.paste(),
       undo: (): void => pane.trigger('undo'),
       redo: (): void => pane.trigger('redo'),
-      find: (): void => pane.trigger('actions.find'),
+      find: (): void => this.showFind(),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),

@@ -27,6 +27,7 @@ import { StackNode } from '@shared/angular/services/dock/dock-node';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock/dock-blueprint';
 import { DockPanelRegistry } from '@shared/angular/services/dock/dock-panel-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { DockState } from '@shared/angular/services/dock/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock/dock-tab-context';
 import { collectPanelIds, findStackOfPanel } from '@shared/angular/services/dock/dock-tree';
@@ -198,6 +199,17 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
+   * Holds the workspace find seam the directory ribbon's Find command routes through.
+   */
+  private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
+
+  /**
+   * Holds a stable reveal callback registered with {@link workspaceFind}, so it can be unregistered by
+   * identity.
+   */
+  private readonly revealSearchHandler: () => void = (): void => this.revealSearch();
+
+  /**
    * Holds this tab's dock context, carrying its id and rooted folder to the docked terminal panel.
    */
   private readonly dockTabContext: DockTabContext = inject(DockTabContext);
@@ -307,8 +319,10 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.keybindings.register(this.tabId(), [
           { chord: 'Mod+Shift+F', command: (): void => this.revealSearch() },
         ]);
+        this.workspaceFind.register(this.revealSearchHandler);
       } else {
         this.keybindings.deactivate(this.tabId());
+        this.workspaceFind.unregister(this.revealSearchHandler);
       }
     });
   }
@@ -373,6 +387,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.builds.unregister(this.buildRunner);
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
     this.keybindings.forget(this.tabId());
+    this.workspaceFind.unregister(this.revealSearchHandler);
     this.activeWorkspace.clearRoot(this.tabId());
     this.workspaceGit.dispose();
     if (this.repository.isBound()) {

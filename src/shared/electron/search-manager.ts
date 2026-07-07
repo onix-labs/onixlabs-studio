@@ -45,7 +45,11 @@ interface RipgrepMatchEvent {
     readonly path: { readonly text?: string };
     readonly line_number: number;
     readonly lines: { readonly text?: string };
-    readonly submatches: readonly { readonly start: number }[];
+    readonly submatches: readonly {
+      readonly start: number;
+      readonly end: number;
+      readonly match: { readonly text?: string };
+    }[];
   };
 }
 
@@ -187,11 +191,23 @@ export class SearchManager {
     }
     // ripgrep searches the root as '.', so paths arrive as './src/...'; strip the prefix for display.
     const relativePath: string = raw.startsWith('./') ? raw.slice(2) : raw;
-    const preview: string = (event.data.lines.text ?? '')
-      .replace(/\r?\n$/, '')
-      .slice(0, MAX_PREVIEW_LENGTH);
-    const column: number = (event.data.submatches[0]?.start ?? 0) + 1;
-    const match: SearchMatch = { line: event.data.line_number, column, preview };
+    const lineText: string = (event.data.lines.text ?? '').replace(/\r?\n$/, '');
+    const submatch: { start: number; end: number; match: { text?: string } } | undefined =
+      event.data.submatches[0];
+    const start: number = submatch?.start ?? 0;
+    const end: number = submatch?.end ?? start;
+    // ripgrep offsets are byte offsets into the line; treated here as character indices, which is
+    // exact for ASCII and a harmless preview approximation for multi-byte text.
+    const before: string = lineText.slice(Math.max(0, start - MAX_PREVIEW_LENGTH), start);
+    const text: string = submatch?.match.text ?? lineText.slice(start, end);
+    const after: string = lineText.slice(end, end + MAX_PREVIEW_LENGTH);
+    const match: SearchMatch = {
+      line: event.data.line_number,
+      column: start + 1,
+      before,
+      text,
+      after,
+    };
     let matches: SearchMatch[] | undefined = files.get(relativePath);
     if (matches === undefined) {
       matches = [];

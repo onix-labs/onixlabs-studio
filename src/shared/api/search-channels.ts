@@ -57,9 +57,19 @@ export interface SearchMatch {
   readonly column: number;
 
   /**
-   * Gets the text of the matching line, trimmed to a preview length.
+   * Gets the line text before the match, trimmed to a preview length.
    */
-  readonly preview: string;
+  readonly before: string;
+
+  /**
+   * Gets the matched text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the line text after the match, trimmed to a preview length.
+   */
+  readonly after: string;
 }
 
 /**
