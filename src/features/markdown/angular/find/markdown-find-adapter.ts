@@ -301,7 +301,6 @@ export class MarkdownFindAdapter implements FindAdapter {
       before,
       text,
       after,
-      replaced: false,
     };
   }
 }

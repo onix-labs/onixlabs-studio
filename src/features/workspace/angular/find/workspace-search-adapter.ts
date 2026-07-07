@@ -228,7 +228,6 @@ export class WorkspaceSearchAdapter implements FindAdapter {
             before: match.before,
             text: match.text,
             after: match.after,
-            replaced: false,
             file: file.relativePath,
           },
         }),

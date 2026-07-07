@@ -29,8 +29,9 @@ export interface FindQuery {
 
 /**
  * Describes a single match for the panel's results list: its position, a preview of the matched line
- * split around the match (so the match can be emphasised), whether it has since been replaced (and so
- * is shown greyed), and, for a multi-file surface, the file it belongs to.
+ * split around the match (so the match can be emphasised), and, for a multi-file surface, the file it
+ * belongs to. Replacing a match drops it from the list (consistently across every surface), so there
+ * is no replaced state to model.
  */
 export interface FindResultItem {
   /**
@@ -57,12 +58,6 @@ export interface FindResultItem {
    * Gets the line text after the match, trimmed to a preview length.
    */
   readonly after: string;
-
-  /**
-   * Gets a value indicating whether this match has been replaced, so it is shown greyed and no longer
-   * participates in navigation.
-   */
-  readonly replaced: boolean;
 
   /**
    * Gets the file's path relative to the searched root, for a multi-file surface; undefined for a
@@ -130,14 +125,14 @@ export interface FindAdapter {
   previous(): void;
 
   /**
-   * Replaces the active match with the replacement text, marks it replaced, and advances to the next
-   * match.
+   * Replaces the active match with the replacement text; the replaced match drops from the list and
+   * the selection advances to the match that takes its place.
    * @param replacement The text to replace the active match with.
    */
   replace(replacement: string): void;
 
   /**
-   * Replaces every not-yet-replaced match with the replacement text.
+   * Replaces every match with the replacement text; all replaced matches drop from the list.
    * @param replacement The text to replace each match with.
    */
   replaceAll(replacement: string): void;

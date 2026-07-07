@@ -176,20 +176,17 @@ export class FindPanel implements OnDestroy {
   );
 
   /**
-   * Gets whether the active match can be replaced (one is selected and not already replaced).
+   * Gets whether the active match can be replaced (one is selected).
    */
-  protected readonly canReplace: Signal<boolean> = computed((): boolean => {
-    const item: FindResultItem | null = this.activeItem();
-    return this.supportsReplace() && item !== null && !item.replaced;
-  });
+  protected readonly canReplace: Signal<boolean> = computed(
+    (): boolean => this.supportsReplace() && this.activeItem() !== null,
+  );
 
   /**
    * Gets whether any match remains to be replaced.
    */
   protected readonly canReplaceAll: Signal<boolean> = computed(
-    (): boolean =>
-      this.supportsReplace() &&
-      this.matches().some((item: FindResultItem): boolean => !item.replaced),
+    (): boolean => this.supportsReplace() && this.matchCount() > 0,
   );
 
   /**

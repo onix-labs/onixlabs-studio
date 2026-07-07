@@ -1,9 +1,12 @@
 :host {
   display: inline-flex;
+  // Default width lives on the host so a consumer can stretch the field (for example flex: 1) and the
+  // control fills it, rather than staying pinned to the intrinsic width.
+  inline-size: 12rem;
 }
 
 .text-field {
-  inline-size: 12rem;
+  inline-size: 100%;
   padding: 0.3rem 0.45rem;
   font: inherit;
   font-size: 0.8rem;

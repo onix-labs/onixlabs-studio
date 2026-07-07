@@ -125,7 +125,6 @@
         type="button"
         class="find-panel__result"
         [class.is-active]="$index === activeIndex()"
-        [class.is-replaced]="item.replaced"
         (click)="select($index)"
         [title]="positionLabel(item)"
       >
