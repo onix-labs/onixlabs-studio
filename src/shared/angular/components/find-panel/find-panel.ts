@@ -7,6 +7,7 @@ import {
   ElementRef,
   input,
   InputSignal,
+  OnDestroy,
   output,
   OutputEmitterRef,
   signal,
@@ -33,7 +34,7 @@ import { FindAdapter, FindQuery } from './find-adapter';
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class FindPanel {
+export class FindPanel implements OnDestroy {
   /**
    * Gets the adapter the panel drives, or null before the host binds one.
    */
@@ -187,5 +188,13 @@ export class FindPanel {
   protected dismiss(): void {
     this.adapter()?.clear();
     this.closed.emit();
+  }
+
+  /**
+   * Clears the query highlights when the panel is removed by any means (including a host that closes
+   * it without the close button), so no stale matches remain highlighted.
+   */
+  public ngOnDestroy(): void {
+    this.adapter()?.clear();
   }
 }

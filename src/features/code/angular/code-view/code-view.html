@@ -36,4 +36,10 @@
       <app-code-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
     </app-panel>
   }
+
+  @if (findVisible()) {
+    <app-panel edge="right" [size]="320" [minSize]="260" [maxSize]="520">
+      <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
+    </app-panel>
+  }
 </app-panel-layout>

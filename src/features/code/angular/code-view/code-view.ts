@@ -37,7 +37,11 @@ import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import type * as MonacoApi from 'monaco-editor';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { CodeFindAdapter } from '@features/code/angular/find/code-find-adapter';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
@@ -61,7 +65,7 @@ const DEFAULT_AGENT_SIZE: number = 360;
  */
 @Component({
   selector: 'app-code-view',
-  imports: [PanelLayout, Panel, CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel],
+  imports: [PanelLayout, Panel, CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel, FindPanel],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -114,6 +118,23 @@ export class CodeView implements OnDestroy {
    * Holds the code runner the Run accelerator dispatches the active document through.
    */
   private readonly codeRunner: CodeRunner = inject(CodeRunner);
+
+  /**
+   * Holds the Monaco service, used to resolve the key codes for the find accelerator.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds a value indicating whether the find panel is shown for this editor.
+   */
+  protected readonly findVisible: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the find adapter the shared find panel drives, bound to this view's Monaco editor.
+   */
+  protected readonly findAdapter: CodeFindAdapter = new CodeFindAdapter(
+    () => this.pane()?.getEditor() ?? null,
+  );
 
   /**
    * Holds the docked run-terminal panel state.
@@ -364,8 +385,42 @@ export class CodeView implements OnDestroy {
         document.savedContent(),
         document.filePath() !== null,
       );
+      this.bindFindAccelerator(editor);
     }
     this.paneReady.set(true);
+  }
+
+  /**
+   * Rebinds the editor's Cmd/Ctrl+F to the shared find panel, replacing Monaco's built-in find widget
+   * with the application's consistent panel. Monaco consumes the chord before it can reach the
+   * application keybinding router, so it must be overridden on the editor instance here.
+   * @param editor The Monaco editor to bind.
+   */
+  private bindFindAccelerator(editor: MonacoApi.editor.IStandaloneCodeEditor): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+    editor.addAction({
+      id: 'find-panel.open',
+      label: 'Find',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF],
+      run: (): void => this.toggleFind(),
+    });
+  }
+
+  /**
+   * Shows or hides the find panel.
+   */
+  protected toggleFind(): void {
+    this.findVisible.update((visible: boolean): boolean => !visible);
+  }
+
+  /**
+   * Hides the find panel when the shared panel asks to be dismissed.
+   */
+  protected onFindClosed(): void {
+    this.findVisible.set(false);
   }
 
   /**
