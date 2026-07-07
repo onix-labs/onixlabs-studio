@@ -25,6 +25,7 @@ import {
   BinarySelection,
 } from '../binary-document/binary-document';
 import { describeFormat } from '../binary-format/binary-format';
+import { BinaryAgentPanel } from './binary-agent-panel/binary-agent-panel';
 import { BinaryDisasmPanel } from '../binary-disasm-panel/binary-disasm-panel';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryPanels } from '../binary-panels/binary-panels';
@@ -41,6 +42,11 @@ const DEFAULT_DISASM_SIZE: number = 320;
 const DEFAULT_INSPECTOR_SIZE: number = 260;
 
 /**
+ * Holds the initial width, in pixels, of the agent panel.
+ */
+const DEFAULT_AGENT_SIZE: number = 360;
+
+/**
  * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the centre, with
  * toggleable Disassembly and Inspector panels docked to the side via the shared panel layout. It owns
  * the binary-tab concerns the grid does not — resolving the backing document, loading the visible byte
@@ -48,7 +54,7 @@ const DEFAULT_INSPECTOR_SIZE: number = 260;
  */
 @Component({
   selector: 'app-binary-view',
-  imports: [PanelLayout, Panel, BinaryEditor, BinaryDisasmPanel, BinaryInspector],
+  imports: [PanelLayout, Panel, BinaryEditor, BinaryDisasmPanel, BinaryInspector, BinaryAgentPanel],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -95,6 +101,11 @@ export class BinaryView implements OnDestroy {
    * Holds the width, in pixels, of the inspector panel. Two-way bound to the panel's splitter.
    */
   protected readonly inspectorSize: WritableSignal<number> = signal<number>(DEFAULT_INSPECTOR_SIZE);
+
+  /**
+   * Holds the width, in pixels, of the agent panel. Two-way bound to the panel's splitter.
+   */
+  protected readonly agentSize: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
 
   /**
    * Holds the resolved binary document, or undefined when the tab has none.
@@ -198,6 +209,22 @@ export class BinaryView implements OnDestroy {
    */
   protected onHideInspector(): void {
     this.binaryPanels.hide(this.tabId(), 'inspector');
+  }
+
+  /**
+   * Gets whether the agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.binaryPanels.isMounted(this.tabId(), 'agent');
+  }
+
+  /**
+   * Gets whether the agent panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected agentVisible(): boolean {
+    return this.binaryPanels.isVisible(this.tabId(), 'agent');
   }
 
   /**

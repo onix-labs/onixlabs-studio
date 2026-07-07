@@ -44,5 +44,17 @@
         <app-binary-inspector [document]="document" (closed)="onHideInspector()" />
       </app-panel>
     }
+
+    @if (agentMounted()) {
+      <app-panel
+        edge="right"
+        [visible]="agentVisible()"
+        [(size)]="agentSize"
+        [minSize]="240"
+        [maxSize]="900"
+      >
+        <app-binary-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
+      </app-panel>
+    }
   </app-panel-layout>
 }

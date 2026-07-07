@@ -80,5 +80,12 @@
       [pressed]="inspectorShown()"
       (action)="onToggleInspector()"
     />
+    <app-ribbon-strip-button
+      [icon]="Icon.AGENT"
+      label="Agent"
+      [toggle]="true"
+      [pressed]="agentShown()"
+      (action)="onToggleAgent()"
+    />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

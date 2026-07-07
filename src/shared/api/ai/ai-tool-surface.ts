@@ -23,7 +23,37 @@ export const READ_TERMINAL_OUTPUT: string = 'read_terminal_output';
 export const WRITE_TERMINAL_INPUT: string = 'write_terminal_input';
 
 /**
- * Identifies what an agent run acts on: the open editor document (`editor`) or the owning terminal
- * (`terminal`). It selects the tool set the providers expose for the run.
+ * The in-app capability that returns an overview of the owning binary document (path, size, format,
+ * architecture, whether disassembly is available, and the current cursor/selection).
  */
-export type AgentSurface = 'editor' | 'terminal';
+export const READ_BINARY_OVERVIEW: string = 'read_binary_overview';
+
+/**
+ * The in-app capability that returns a hex + ASCII dump of a byte range of the owning binary document.
+ */
+export const READ_BINARY_BYTES: string = 'read_binary_bytes';
+
+/**
+ * The in-app capability that returns a hex + ASCII dump of the owning binary document's current
+ * selection.
+ */
+export const READ_BINARY_SELECTION: string = 'read_binary_selection';
+
+/**
+ * The in-app capability that returns the disassembly (assembly listing) of a byte range of the owning
+ * binary document, when its format is natively disassemblable.
+ */
+export const READ_BINARY_DISASSEMBLY: string = 'read_binary_disassembly';
+
+/**
+ * The in-app capability that overwrites bytes at an offset in the owning binary document (leaving its
+ * length unchanged), producing an unsaved, undoable edit.
+ */
+export const PATCH_BINARY_BYTES: string = 'patch_binary_bytes';
+
+/**
+ * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
+ * (`terminal`), or the owning binary document (`binary`). It selects the tool set the providers expose
+ * for the run.
+ */
+export type AgentSurface = 'editor' | 'terminal' | 'binary';

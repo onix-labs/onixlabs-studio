@@ -186,6 +186,24 @@ export class BinaryRibbon {
   }
 
   /**
+   * Gets whether the active document's agent panel is currently shown.
+   */
+  protected readonly agentShown: Signal<boolean> = computed((): boolean => {
+    const id: string | undefined = this.tabs.activeTabId();
+    return id !== undefined && this.binaryPanels.isVisible(id, 'agent');
+  });
+
+  /**
+   * Toggles the agent panel for the active binary tab.
+   */
+  protected onToggleAgent(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.binaryPanels.toggle(id, 'agent');
+    }
+  }
+
+  /**
    * Scrolls to where the file's code begins (entry point or first code section).
    */
   protected onGoToCode(): void {

@@ -9,6 +9,11 @@ export {
   REPLACE_ACTIVE_DOCUMENT,
   READ_TERMINAL_OUTPUT,
   WRITE_TERMINAL_INPUT,
+  READ_BINARY_OVERVIEW,
+  READ_BINARY_BYTES,
+  READ_BINARY_SELECTION,
+  READ_BINARY_DISASSEMBLY,
+  PATCH_BINARY_BYTES,
 } from './ai/ai-tool-surface';
 export type { AgentSurface } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';

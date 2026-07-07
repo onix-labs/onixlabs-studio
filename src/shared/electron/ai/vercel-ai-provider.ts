@@ -3,13 +3,12 @@ import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } 
 import type { ToolSet } from 'ai';
 import {
   consumeAgentStream,
-  createStudioTools,
-  createTerminalTools,
   MAX_STEPS,
+  promptForSurface,
+  toolsForSurface,
   type StreamPart,
 } from './ai-sdk-stream';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
-import { STUDIO_PROMPT_APPENDIX, TERMINAL_PROMPT_APPENDIX } from './studio-tools';
 
 /**
  * The Vercel AI SDK implementation of {@link AgentProvider}. It authenticates with an Anthropic API
@@ -68,13 +67,10 @@ export class VercelAiProvider implements AgentProvider {
       apiKey: context.auth.apiKey,
     });
 
-    // Expose the terminal-only tools (and prompt) for a terminal-surface run, otherwise the editor
-    // tools. The AI SDK has no per-tool prompt hook, so terminal commands run without gating.
-    const terminal: boolean = context.surface === 'terminal';
-    const system: string = terminal ? TERMINAL_PROMPT_APPENDIX : STUDIO_PROMPT_APPENDIX;
-    const tools: ToolSet = terminal
-      ? await createTerminalTools(context)
-      : await createStudioTools(context);
+    // Expose the tool set (and prompt) for the run's surface: terminal, binary, or (default) editor.
+    // The AI SDK has no per-tool prompt hook, so tool calls run without gating.
+    const system: string = promptForSurface(context.surface);
+    const tools: ToolSet = await toolsForSurface(context);
 
     const stream: AsyncIterable<StreamPart> = streamText({
       model: anthropic(context.model),

@@ -328,6 +328,7 @@ export class AiManager {
         record['owningTabId'] === undefined) &&
       (record['surface'] === 'editor' ||
         record['surface'] === 'terminal' ||
+        record['surface'] === 'binary' ||
         record['surface'] === undefined)
     );
   }

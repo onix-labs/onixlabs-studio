@@ -8,10 +8,16 @@ import type {
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
+  PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
+  READ_BINARY_BYTES,
+  READ_BINARY_DISASSEMBLY,
+  READ_BINARY_OVERVIEW,
+  READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
+  type AgentSurface,
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
@@ -22,13 +28,23 @@ import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
+  BINARY_PROMPT_APPENDIX,
+  READ_BINARY_BYTES_FQN,
+  READ_BINARY_DISASSEMBLY_FQN,
+  READ_BINARY_OVERVIEW_FQN,
+  READ_BINARY_SELECTION_FQN,
   READ_TERMINAL_FQN,
   READ_TOOL_FQN,
   REPLACE_TOOL_FQN,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
+  patchBinaryBytes,
   readActiveDocument,
+  readBinaryBytes,
+  readBinaryDisassembly,
+  readBinaryOverview,
+  readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
   writeTerminalInput,
@@ -56,6 +72,18 @@ const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
  */
 const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+/**
+ * Holds the read-only binary tools auto-allowed on a binary-surface run, so the agent can inspect the
+ * file without prompting. The byte-patching tool is intentionally excluded: it flows through the
+ * permission broker instead.
+ */
+const BINARY_READ_FQNS: readonly string[] = [
+  READ_BINARY_OVERVIEW_FQN,
+  READ_BINARY_BYTES_FQN,
+  READ_BINARY_SELECTION_FQN,
+  READ_BINARY_DISASSEMBLY_FQN,
+];
 
 /**
  * A loosely-typed content block from an SDK message, covering the fields read here.
@@ -125,12 +153,22 @@ export class ClaudeAgentProvider implements AgentProvider {
     const { query, tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
     const { z } = await import('zod');
     const hasWorkspace: boolean = context.workspaceRoot !== null;
-    const terminal: boolean = context.surface === 'terminal';
+    const surface: AgentSurface = context.surface;
+    const terminal: boolean = surface === 'terminal';
+    const binary: boolean = surface === 'binary';
+
+    // Build a text-content tool result from a handler's rendered string.
+    const text: (
+      value: string,
+    ) => { content: { type: 'text'; text: string }[] } = (value: string) => ({
+      content: [{ type: 'text', text: value }],
+    });
 
     // Expose Studio's in-app capabilities as an in-process MCP server; the tool handlers call back
     // into the renderer over the run context's bridge. A terminal-surface run registers ONLY the two
-    // terminal tools, so the agent acts solely through its terminal; an editor run registers the
-    // editor tools.
+    // terminal tools, so the agent acts solely through its terminal; a binary-surface run registers
+    // the binary inspection/patch tools; an editor run registers the editor tools. Each tool array is
+    // inline so each tool keeps its own input-shape generic.
     const studioServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
       name: 'studio',
       version: '0.0.0',
@@ -140,9 +178,7 @@ export class ClaudeAgentProvider implements AgentProvider {
               READ_TERMINAL_OUTPUT,
               'Read the recent output currently shown in the terminal.',
               {},
-              async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-                content: [{ type: 'text', text: await readTerminalOutput(context) }],
-              }),
+              async () => text(await readTerminalOutput(context)),
             ),
             tool(
               WRITE_TERMINAL_INPUT,
@@ -156,39 +192,86 @@ export class ClaudeAgentProvider implements AgentProvider {
                     'Whether to run the text as a command (append a newline). Defaults to true.',
                   ),
               },
-              async (args: {
-                text: string;
-                submit?: boolean;
-              }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-                content: [
-                  {
-                    type: 'text',
-                    text: await writeTerminalInput(context, args.text, args.submit ?? true),
-                  },
-                ],
-              }),
+              async (args: { text: string; submit?: boolean }) =>
+                text(await writeTerminalInput(context, args.text, args.submit ?? true)),
             ),
           ]
-        : [
-            tool(
-              READ_ACTIVE_DOCUMENT,
-              "Read the active editor document's full text.",
-              {},
-              async (): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-                content: [{ type: 'text', text: await readActiveDocument(context) }],
-              }),
-            ),
-            tool(
-              REPLACE_ACTIVE_DOCUMENT,
-              "Replace the active editor document's entire text.",
-              { text: z.string().describe('The new full text of the document.') },
-              async (args: {
-                text: string;
-              }): Promise<{ content: { type: 'text'; text: string }[] }> => ({
-                content: [{ type: 'text', text: await replaceActiveDocument(context, args.text) }],
-              }),
-            ),
-          ],
+        : binary
+          ? [
+              tool(
+                READ_BINARY_OVERVIEW,
+                'Describe the open binary file: path, size, container format, architecture, whether disassembly is available, and the current cursor/selection.',
+                {},
+                async () => text(await readBinaryOverview(context)),
+              ),
+              tool(
+                READ_BINARY_BYTES,
+                'Return a hex + ASCII dump of a byte range of the open binary file.',
+                {
+                  offset: z.number().int().min(0).describe('The first byte offset to read.'),
+                  length: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .optional()
+                    .describe('The number of bytes to read (bounded; defaults to 256).'),
+                },
+                async (args: { offset: number; length?: number }) =>
+                  text(await readBinaryBytes(context, args.offset, args.length ?? 256)),
+              ),
+              tool(
+                READ_BINARY_SELECTION,
+                'Return a hex + ASCII dump of the bytes the user has selected in the open binary file.',
+                {},
+                async () => text(await readBinarySelection(context)),
+              ),
+              tool(
+                READ_BINARY_DISASSEMBLY,
+                'Return the assembly listing for a byte range of the open binary file, when its format is natively disassemblable.',
+                {
+                  offset: z
+                    .number()
+                    .int()
+                    .min(0)
+                    .describe('The first byte of the range to disassemble.'),
+                  length: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .optional()
+                    .describe('The number of bytes to disassemble (bounded; defaults to 256).'),
+                },
+                async (args: { offset: number; length?: number }) =>
+                  text(await readBinaryDisassembly(context, args.offset, args.length ?? 256)),
+              ),
+              tool(
+                PATCH_BINARY_BYTES,
+                'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
+                {
+                  offset: z.number().int().min(0).describe('The offset to overwrite from.'),
+                  bytes: z
+                    .string()
+                    .describe('The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".'),
+                },
+                async (args: { offset: number; bytes: string }) =>
+                  text(await patchBinaryBytes(context, args.offset, args.bytes)),
+              ),
+            ]
+          : [
+              tool(
+                READ_ACTIVE_DOCUMENT,
+                "Read the active editor document's full text.",
+                {},
+                async () => text(await readActiveDocument(context)),
+              ),
+              tool(
+                REPLACE_ACTIVE_DOCUMENT,
+                "Replace the active editor document's entire text.",
+                { text: z.string().describe('The new full text of the document.') },
+                async (args: { text: string }) =>
+                  text(await replaceActiveDocument(context, args.text)),
+              ),
+            ],
     });
 
     // Apply the permission posture: read-only exploration is always allowed; `auto-all` allows every
@@ -230,16 +313,24 @@ export class ClaudeAgentProvider implements AgentProvider {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: terminal ? TERMINAL_PROMPT_APPENDIX : STUDIO_PROMPT_APPENDIX,
+        append: terminal
+          ? TERMINAL_PROMPT_APPENDIX
+          : binary
+            ? BINARY_PROMPT_APPENDIX
+            : STUDIO_PROMPT_APPENDIX,
       },
       mcpServers: { studio: studioServer },
       // For a terminal run, auto-allow only the read tool; the write tool is intentionally omitted so
-      // it flows through canUseTool (prompting unless the posture auto-allows). For an editor run,
-      // auto-allow the in-app editor tools (the user sees and can undo the change) and read-only
-      // project exploration; canUseTool gates everything else.
+      // it flows through canUseTool (prompting unless the posture auto-allows). For a binary run,
+      // auto-allow the read-only inspection tools (and read-only project exploration); the byte-patch
+      // tool is omitted so it flows through canUseTool. For an editor run, auto-allow the in-app editor
+      // tools (the user sees and can undo the change) and read-only project exploration; canUseTool
+      // gates everything else.
       allowedTools: terminal
         ? [READ_TERMINAL_FQN]
-        : [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
+        : binary
+          ? [...BINARY_READ_FQNS, ...(hasWorkspace ? READ_ONLY_TOOLS : [])]
+          : [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
       canUseTool,
       abortController: controller,
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task

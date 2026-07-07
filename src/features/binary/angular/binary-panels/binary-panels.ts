@@ -3,7 +3,13 @@ import { Service, signal, WritableSignal } from '@angular/core';
 /**
  * Identifies a binary editor side panel.
  */
-export type BinaryPanelKind = 'disassembly' | 'inspector';
+export type BinaryPanelKind = 'disassembly' | 'inspector' | 'agent';
+
+/**
+ * Lists every binary side-panel kind, so state that spans all panels (such as clearing a closed tab)
+ * stays in step as kinds are added.
+ */
+const PANEL_KINDS: readonly BinaryPanelKind[] = ['disassembly', 'inspector', 'agent'];
 
 /**
  * Holds the state of a single binary tab's side panel.
@@ -31,8 +37,9 @@ const DEFAULT_STATE: PanelState = {
 };
 
 /**
- * Owns the docked side-panel state for binary tabs — whether each tab's Disassembly and Inspector
- * panels are shown. Both dock to the side and can be open together, so there is no layout to track.
+ * Owns the docked side-panel state for binary tabs — whether each tab's Disassembly, Inspector, and
+ * Agent panels are shown. All dock to the side and can be open together, so there is no layout to
+ * track.
  *
  * State is read reactively (templates calling these accessors re-evaluate when it changes). A panel
  * stays mounted once first shown so its state is preserved while hidden.
@@ -94,8 +101,9 @@ export class BinaryPanels {
    */
   public remove(id: string): void {
     const next: Map<string, PanelState> = new Map<string, PanelState>(this.states());
-    next.delete(this.key(id, 'disassembly'));
-    next.delete(this.key(id, 'inspector'));
+    for (const kind of PANEL_KINDS) {
+      next.delete(this.key(id, kind));
+    }
     this.states.set(next);
   }
 

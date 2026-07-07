@@ -74,9 +74,10 @@ export class BinaryDocumentEntry {
   private readonly blocks: Map<number, Uint8Array> = new Map<number, Uint8Array>();
 
   /**
-   * Holds the set of block indices whose fetch is in flight, so a block is never fetched twice.
+   * Holds the in-flight fetch for each block index, so a block is never fetched twice and callers can
+   * await a block's arrival (see {@link readBytes}).
    */
-  private readonly pending: Set<number> = new Set<number>();
+  private readonly blockFetches: Map<number, Promise<void>> = new Map<number, Promise<void>>();
 
   /**
    * Holds the logical size in bytes: the original file size adjusted by any inserts and deletes.
@@ -237,7 +238,7 @@ export class BinaryDocumentEntry {
    * Fetches the first block so the file size becomes known and the first screen has data.
    */
   public prime(): void {
-    this.ensureBlock(0);
+    void this.ensureBlock(0);
   }
 
   /**
@@ -415,7 +416,7 @@ export class BinaryDocumentEntry {
     this.blocks.clear();
     this.table.reset(this.originalSize);
     this.loadedVersion.update((version: number): number => version + 1);
-    this.ensureBlock(0);
+    void this.ensureBlock(0);
     if (this.lastRange !== null) {
       this.ensureRange(this.lastRange.offset, this.lastRange.length);
     }
@@ -547,7 +548,7 @@ export class BinaryDocumentEntry {
     const first: number = Math.floor(fileOffset / BLOCK_SIZE);
     const last: number = Math.floor((fileOffset + length - 1) / BLOCK_SIZE);
     for (let block: number = first; block <= last; block += 1) {
-      this.ensureBlock(block);
+      void this.ensureBlock(block);
     }
   }
 
@@ -569,6 +570,132 @@ export class BinaryDocumentEntry {
       }
     }
     return bytes;
+  }
+
+  /**
+   * Ensures the first block has loaded, so the file size and sniffed format are known. Awaited by the
+   * agent read capabilities before they report an overview or disassemble a range.
+   * @returns Returns a promise that settles once the first block is resident.
+   */
+  public async whenReady(): Promise<void> {
+    await this.ensureBlock(0);
+  }
+
+  /**
+   * Reads a contiguous byte range, fetching any blocks it spans and awaiting their arrival, then
+   * reading the bytes through {@link byteAt} so pending edits are reflected. Used by the agent's read
+   * capabilities; unlike the render path it waits for the bytes rather than returning holes. The range
+   * is clamped to the document, and reading stops at the first byte that fails to load.
+   * @param offset The first byte offset to read.
+   * @param length The number of bytes to read.
+   * @returns Returns the loaded bytes in order (shorter than requested at end-of-file or on a read
+   * failure).
+   */
+  public async readBytes(offset: number, length: number): Promise<number[]> {
+    await this.ensureBlock(0);
+    const size: number = this.size();
+    const start: number = Math.max(0, Math.min(offset, size));
+    const end: number = Math.max(start, Math.min(offset + Math.max(0, length), size));
+    if (end <= start) {
+      return [];
+    }
+    await this.loadRange(start, end - start);
+    const bytes: number[] = [];
+    for (let position: number = start; position < end; position += 1) {
+      const value: number | null = this.byteAt(position);
+      if (value === null) {
+        break;
+      }
+      bytes.push(value);
+    }
+    return bytes;
+  }
+
+  /**
+   * Disassembles a byte range on demand for the agent, fetching and awaiting the bytes it spans (padded
+   * so an instruction straddling either edge decodes). Returns null when the format is not natively
+   * disassemblable, so the caller can report that clearly, and an empty list when the range holds no
+   * loadable bytes.
+   * @param offset The first byte of the range.
+   * @param length The number of bytes in the range.
+   * @returns Returns the decoded instructions, or null when disassembly does not apply.
+   */
+  public async disassembleRange(
+    offset: number,
+    length: number,
+  ): Promise<readonly DecodedInstruction[] | null> {
+    await this.ensureBlock(0);
+    const architecture: string | null = disassemblyArchitecture(this.format());
+    if (architecture === null) {
+      return null;
+    }
+    const size: number = this.size();
+    const start: number = Math.max(0, Math.min(offset, size));
+    const end: number = Math.max(start, Math.min(offset + Math.max(0, length), size));
+    if (end <= start) {
+      return [];
+    }
+    const padStart: number = Math.max(0, start - DISASSEMBLY_PAD);
+    await this.loadRange(padStart, end - padStart + DISASSEMBLY_PAD);
+    const window: { bytes: Uint8Array; base: number } | null = this.disassemblyWindow(
+      start,
+      end - start,
+    );
+    if (window === null) {
+      return [];
+    }
+    return this.disassembly.disassemble(window.bytes, window.base, start, end, architecture);
+  }
+
+  /**
+   * Overwrites a run of bytes at an offset with new values in a single undo transaction (leaving the
+   * document's length unchanged). Used by the agent's patch capability; it makes an unsaved, undoable
+   * edit that the user saves through the ribbon. The first block is loaded first so the document size
+   * is known and the range can be validated.
+   * @param offset The logical byte offset to overwrite from.
+   * @param values The new byte values (0–255).
+   * @returns Returns true when the bytes were overwritten, false when the range is out of bounds.
+   */
+  public async patch(offset: number, values: readonly number[]): Promise<boolean> {
+    await this.ensureBlock(0);
+    if (!this.initialized || values.length === 0 || offset < 0 || offset + values.length > this.size()) {
+      return false;
+    }
+    const bytes: number[] = values.map((value: number): number => value & 0xff);
+    this.applyEdit((): void => this.table.replace(offset, bytes.length, bytes));
+    return true;
+  }
+
+  /**
+   * Ensures every block spanning a byte range is cached, awaiting the in-flight fetches so the bytes
+   * are readable when the promise settles. The awaitable counterpart to {@link ensureRange}.
+   * @param offset The first byte of the range.
+   * @param length The number of bytes in the range.
+   * @returns Returns a promise that settles once the range's blocks are resident.
+   */
+  private async loadRange(offset: number, length: number): Promise<void> {
+    if (length <= 0) {
+      return;
+    }
+    const fetches: Promise<void>[] = [];
+    const ensureFileBlocks: (fileOffset: number, fileLength: number) => void = (
+      fileOffset: number,
+      fileLength: number,
+    ): void => {
+      const first: number = Math.floor(fileOffset / BLOCK_SIZE);
+      const last: number = Math.floor((fileOffset + fileLength - 1) / BLOCK_SIZE);
+      for (let block: number = first; block <= last; block += 1) {
+        fetches.push(this.ensureBlock(block));
+      }
+    };
+    // Before the first edit the logical and file offsets are identical; afterwards, map the logical
+    // range to the original-file ranges it overlaps (added spans need no read) and fetch each.
+    if (!this.initialized) {
+      ensureFileBlocks(offset, length);
+    } else {
+      this.table.forEachOriginalRange(offset, length, ensureFileBlocks);
+    }
+    await Promise.all(fetches);
   }
 
   /**
@@ -607,22 +734,26 @@ export class BinaryDocumentEntry {
 
   /**
    * Fetches a single block if it is neither cached nor already in flight, filling the cache and
-   * recording the file size on arrival.
+   * recording the file size on arrival. Returns a promise that resolves once the block is resident (or
+   * immediately when it already is), so callers such as {@link readBytes} can await the bytes.
    * @param block The block index to fetch.
+   * @returns Returns a promise that settles when the block is loaded.
    */
-  private ensureBlock(block: number): void {
-    if (block < 0 || this.pending.has(block)) {
-      return;
+  private ensureBlock(block: number): Promise<void> {
+    if (block < 0) {
+      return Promise.resolve();
     }
     if (this.blocks.has(block)) {
       this.touchBlock(block);
-      return;
+      return Promise.resolve();
     }
-    this.pending.add(block);
-    void this.workspace
+    const existing: Promise<void> | undefined = this.blockFetches.get(block);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const fetch: Promise<void> = this.workspace
       .readBytes(this.path, block * BLOCK_SIZE, BLOCK_SIZE)
       .then((chunk: BinaryChunk | null): void => {
-        this.pending.delete(block);
         if (chunk === null) {
           return;
         }
@@ -647,7 +778,12 @@ export class BinaryDocumentEntry {
           }
         }
         this.loadedVersion.update((version: number): number => version + 1);
+      })
+      .finally((): void => {
+        this.blockFetches.delete(block);
       });
+    this.blockFetches.set(block, fetch);
+    return fetch;
   }
 
   /**
