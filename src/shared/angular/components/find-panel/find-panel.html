@@ -1,26 +1,30 @@
 <div class="find-panel">
-  <div class="find-panel__header">
-    <span class="find-panel__title">Find</span>
-    <button
-      type="button"
-      class="find-panel__icon-button"
-      (click)="dismiss()"
-      aria-label="Close find"
-    >
-      <app-icon [icon]="closeIcon" />
-    </button>
-  </div>
+  @if (showHeader()) {
+    <div class="find-panel__header">
+      <span class="find-panel__title">Find</span>
+      <button
+        type="button"
+        class="find-panel__icon-button"
+        (click)="dismiss()"
+        aria-label="Close find"
+      >
+        <app-icon [icon]="closeIcon" />
+      </button>
+    </div>
+  }
 
   <div class="find-panel__body">
-    <button
-      type="button"
-      class="find-panel__toggle"
-      (click)="toggleReplace()"
-      [attr.aria-label]="replaceVisible() ? 'Hide replace' : 'Show replace'"
-      [attr.aria-expanded]="replaceVisible()"
-    >
-      <app-icon [icon]="toggleIcon()" />
-    </button>
+    @if (canReplace()) {
+      <button
+        type="button"
+        class="find-panel__toggle"
+        (click)="toggleReplace()"
+        [attr.aria-label]="replaceVisible() ? 'Hide replace' : 'Show replace'"
+        [attr.aria-expanded]="replaceVisible()"
+      >
+        <app-icon [icon]="toggleIcon()" />
+      </button>
+    }
 
     <div class="find-panel__fields">
       <div class="find-panel__field" #findField>
@@ -102,4 +106,33 @@
       <span>Regex</span>
     </label>
   </div>
+
+  @if (workspaceAdapter()) {
+    <div class="find-panel__results">
+      @if (searching()) {
+        <div class="find-panel__results-status">Searching…</div>
+      } @else if (findText().length > 0 && results().length === 0) {
+        <div class="find-panel__results-status">No results found</div>
+      }
+      @for (file of results(); track file.path) {
+        <div class="find-panel__result-file">
+          <div class="find-panel__result-path" [title]="file.path">
+            <span class="find-panel__result-name">{{ file.relativePath }}</span>
+            <span class="find-panel__result-count">{{ file.matches.length }}</span>
+          </div>
+          @for (match of file.matches; track $index) {
+            <button
+              type="button"
+              class="find-panel__result-match"
+              (click)="openMatch(file, match)"
+              [title]="match.preview"
+            >
+              <span class="find-panel__result-line">{{ match.line }}</span>
+              <span class="find-panel__result-preview">{{ match.preview }}</span>
+            </button>
+          }
+        </div>
+      }
+    </div>
+  }
 </div>

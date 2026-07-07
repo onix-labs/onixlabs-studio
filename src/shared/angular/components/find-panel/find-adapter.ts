@@ -81,3 +81,80 @@ export interface FindAdapter {
    */
   clear(): void;
 }
+
+/**
+ * Describes a single match within a file for the workspace results tree: its one-based line and
+ * column and the text of the line it occurs on, for preview.
+ */
+export interface FindResultMatch {
+  /**
+   * Gets the one-based line number of the match.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the one-based column at which the match begins.
+   */
+  readonly column: number;
+
+  /**
+   * Gets the text of the matching line, for preview.
+   */
+  readonly preview: string;
+}
+
+/**
+ * Describes all matches within a single file for the workspace results tree.
+ */
+export interface FindResultFile {
+  /**
+   * Gets the absolute path of the file, used to open it.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file's path relative to the workspace root, for display.
+   */
+  readonly relativePath: string;
+
+  /**
+   * Gets the matches within the file, in document order.
+   */
+  readonly matches: readonly FindResultMatch[];
+}
+
+/**
+ * Extends {@link FindAdapter} for a multi-file surface (the workspace): besides the flat match totals
+ * the panel always shows, it exposes the matches grouped by file for the results tree, a busy flag
+ * while a search runs, and the ability to open a match in its editor. The panel renders the tree only
+ * for adapters that implement this interface, so single-document adapters remain unaffected.
+ */
+export interface WorkspaceFindAdapter extends FindAdapter {
+  /**
+   * Gets the current results grouped by file, in the order the search returned them.
+   */
+  readonly results: Signal<readonly FindResultFile[]>;
+
+  /**
+   * Gets a value indicating whether a search is currently running.
+   */
+  readonly searching: Signal<boolean>;
+
+  /**
+   * Opens a match in its editor, revealing the matched line.
+   * @param file The file the match belongs to.
+   * @param match The match to reveal.
+   */
+  openMatch(file: FindResultFile, match: FindResultMatch): void;
+}
+
+/**
+ * Determines whether an adapter is a {@link WorkspaceFindAdapter} that backs a results tree.
+ * @param adapter The adapter to test, or null.
+ * @returns Returns true when the adapter exposes grouped results.
+ */
+export function isWorkspaceFindAdapter(
+  adapter: FindAdapter | null,
+): adapter is WorkspaceFindAdapter {
+  return adapter !== null && 'results' in adapter;
+}

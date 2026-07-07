@@ -1,6 +1,7 @@
 import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
 import { OutputPanel } from '@features/workspace/angular/panels/output-panel/output-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
+import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
@@ -14,7 +15,9 @@ import { defaultLayout } from '@shared/angular/services/dock/dock-tree';
  * Explorer pinned full-height on the left, the agent full-height on the right, and the document well
  * in the centre with Output, the Error List, and a terminal tabbed along the bottom. The Solution
  * Explorer is catalogued but not in the starting layout — the directory view adds it only when the
- * open root has a recognised project system, and removes it otherwise. Every panel is dockable.
+ * open root has a recognised project system, and removes it otherwise. Search is likewise catalogued
+ * but not in the starting layout — the directory view reveals it on the find accelerator. Every panel
+ * is dockable.
  *
  * This is the blueprint the workspace tab provides to the shared dock framework, mirroring the
  * source-control tab's own dock blueprint. It replaces the dock's former built-in default, so the
@@ -41,6 +44,13 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       role: 'tool',
       component: SolutionPanel,
       ownsToolStrip: true,
+    },
+    {
+      id: 'search',
+      title: 'Search',
+      icon: Icon.SEARCH,
+      role: 'tool',
+      component: SearchPanel,
     },
     { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: AgentPanel },
     { id: 'output', title: 'Output', icon: Icon.OUTPUT, role: 'tool', component: OutputPanel },

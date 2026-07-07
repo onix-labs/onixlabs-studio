@@ -19,7 +19,14 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
-import { FindAdapter, FindQuery } from './find-adapter';
+import {
+  FindAdapter,
+  FindQuery,
+  FindResultFile,
+  FindResultMatch,
+  isWorkspaceFindAdapter,
+  WorkspaceFindAdapter,
+} from './find-adapter';
 
 /**
  * Represents the shared find-and-replace panel used across every editing surface. The panel owns the
@@ -39,6 +46,13 @@ export class FindPanel implements OnDestroy {
    * Gets the adapter the panel drives, or null before the host binds one.
    */
   public readonly adapter: InputSignal<FindAdapter | null> = input<FindAdapter | null>(null);
+
+  /**
+   * Gets a value indicating whether the panel shows its own title-and-close header. Hosts that supply
+   * their own chrome (for example a dock panel with a tab and close control) set this false to avoid
+   * doubling it.
+   */
+  public readonly showHeader: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Emits when the user dismisses the panel, so the host can close it.
@@ -111,6 +125,38 @@ export class FindPanel implements OnDestroy {
   );
 
   /**
+   * Gets the adapter as a workspace adapter when it backs a results tree, or null otherwise.
+   */
+  protected readonly workspaceAdapter: Signal<WorkspaceFindAdapter | null> = computed(
+    (): WorkspaceFindAdapter | null => {
+      const adapter: FindAdapter | null = this.adapter();
+      return isWorkspaceFindAdapter(adapter) ? adapter : null;
+    },
+  );
+
+  /**
+   * Gets the workspace results grouped by file, empty for single-document surfaces.
+   */
+  protected readonly results: Signal<readonly FindResultFile[]> = computed(
+    (): readonly FindResultFile[] => this.workspaceAdapter()?.results() ?? [],
+  );
+
+  /**
+   * Gets a value indicating whether a workspace search is currently running.
+   */
+  protected readonly searching: Signal<boolean> = computed(
+    (): boolean => this.workspaceAdapter()?.searching() ?? false,
+  );
+
+  /**
+   * Gets a value indicating whether replace is offered. Workspace search is find-only for now, so the
+   * replace affordances are hidden there.
+   */
+  protected readonly canReplace: Signal<boolean> = computed(
+    (): boolean => this.workspaceAdapter() === null,
+  );
+
+  /**
    * Gets the match summary shown beside the find field ("3 of 12", "No results", or empty when the
    * query is empty).
    */
@@ -180,6 +226,15 @@ export class FindPanel implements OnDestroy {
    */
   protected replaceEvery(): void {
     this.adapter()?.replaceAll(this.replaceText());
+  }
+
+  /**
+   * Opens a workspace match in its editor.
+   * @param file The file the match belongs to.
+   * @param match The match to reveal.
+   */
+  protected openMatch(file: FindResultFile, match: FindResultMatch): void {
+    this.workspaceAdapter()?.openMatch(file, match);
   }
 
   /**

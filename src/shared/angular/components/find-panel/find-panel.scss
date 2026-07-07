@@ -15,6 +15,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  // Fill the host so the workspace results tree can take the remaining height and scroll within it.
+  block-size: 100%;
   padding: 0.6rem 0.7rem;
   font-size: 0.82rem;
 }
@@ -128,4 +130,81 @@
   align-items: center;
   gap: 0.35rem;
   cursor: pointer;
+}
+
+.find-panel__results {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-block-start: 0.4rem;
+  border-block-start: 1px solid var(--dock-border-color);
+}
+
+.find-panel__results-status {
+  padding: 0.3rem 0.2rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.find-panel__result-file {
+  margin-block-end: 0.35rem;
+}
+
+.find-panel__result-path {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.2rem;
+  font-weight: 600;
+}
+
+.find-panel__result-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.find-panel__result-count {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.find-panel__result-match {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.12rem 0.2rem 0.12rem 0.9rem;
+  border: none;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  background: transparent;
+  color: var(--body-foreground-color);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+}
+
+.find-panel__result-line {
+  flex: none;
+  min-inline-size: 2rem;
+  text-align: end;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.find-panel__result-preview {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

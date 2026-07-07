@@ -26,6 +26,7 @@ import { MediaProtocol } from '@shared/electron/media-protocol';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
+import { SearchManager } from '@shared/electron/search-manager';
 import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
@@ -241,6 +242,12 @@ class Program {
   );
 
   /**
+   * Runs workspace text searches by shelling out to the bundled ripgrep binary, confined to the open
+   * workspace roots the {@link workspaceContext} tracks.
+   */
+  private readonly searchManager: SearchManager = new SearchManager(this.workspaceContext);
+
+  /**
    * Disassembles native machine code for the binary/hex editor. It decodes bytes the renderer sends
    * (already obtained through the gated byte-read channel), so it needs no disk access of its own.
    */
@@ -435,6 +442,7 @@ class Program {
     this.taskRunner.register();
     this.gitManager.register();
     this.workspaceManager.register();
+    this.searchManager.register();
     this.binaryDisassembler.register();
     this.fileWatcher.register();
     this.aiManager.register();
