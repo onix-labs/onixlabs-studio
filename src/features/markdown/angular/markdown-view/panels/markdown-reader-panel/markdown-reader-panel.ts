@@ -7,7 +7,8 @@ import {
   HighlightMode,
   VoiceOption,
 } from '@features/markdown/angular/markdown-reader/reader-types';
-import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
+import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * Upper bound of the scrubber range input, giving sub-percent seek granularity.
@@ -51,7 +52,7 @@ const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_F
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [MarkdownToolPanel, AppIcon, Dropdown],
+  imports: [ToolPanel, AppIcon, Dropdown],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-reader-panel.html',
   styleUrl: './markdown-reader-panel.scss',
@@ -61,6 +62,11 @@ export class MarkdownReaderPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
+   */
+  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
    * Holds the reader playback service.

@@ -1,15 +1,16 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock/dock-panel';
-import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
- * Hosts the agent conversation as a dockable IDE panel. It shares the {@link AgentChat} shell and
- * the Agent service with the agent tab, so the same conversation appears wherever the agent is
- * shown. The dock chrome supplies the title bar.
+ * Hosts the agent conversation as a dockable IDE panel. It composes the shared
+ * {@link AgentConversationPanel} (strip + chat + history), whose context resolves from the IDE view's
+ * provided {@link import('../../../services/agent-conversations/agent-conversation-context').AGENT_CONVERSATION_CONTEXT}
+ * resolver (workspace or repository). The dock chrome supplies the title bar.
  */
 @Component({
   selector: 'app-agent-panel',
-  imports: [AgentChat],
+  imports: [AgentConversationPanel],
   templateUrl: './agent-panel.html',
   styleUrl: './agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

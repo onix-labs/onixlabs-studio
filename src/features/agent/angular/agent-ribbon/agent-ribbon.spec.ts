@@ -42,9 +42,11 @@ describe('AgentRibbon', () => {
   let host: HTMLElement;
   let cleared: number;
   let stopped: number;
+  let historyToggles: number;
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
   let running: WritableSignal<boolean>;
+  let historyOpen: WritableSignal<boolean>;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -79,9 +81,11 @@ describe('AgentRibbon', () => {
   beforeEach(async () => {
     cleared = 0;
     stopped = 0;
+    historyToggles = 0;
     providerChoices = [];
     modelChoices = [];
     running = signal<boolean>(false);
+    historyOpen = signal<boolean>(false);
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
       provider: signal<AiProviderId>('claude'),
@@ -92,8 +96,10 @@ describe('AgentRibbon', () => {
     };
     const sessionsStub: Partial<AgentSessions> = {
       isRunning: running,
+      historyOpen,
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
+      toggleHistory: (): void => void (historyToggles += 1),
     };
 
     await TestBed.configureTestingModule({
@@ -150,5 +156,11 @@ describe('AgentRibbon', () => {
     select.dispatchEvent(new Event('change'));
 
     expect(modelChoices).toEqual(['claude-haiku-4-5']);
+  });
+
+  it('history_whenClicked_togglesTheHistoryList', () => {
+    button('History').click();
+
+    expect(historyToggles).toBe(1);
   });
 });

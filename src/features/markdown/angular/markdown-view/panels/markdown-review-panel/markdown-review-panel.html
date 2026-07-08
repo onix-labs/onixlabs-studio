@@ -1,4 +1,4 @@
-<app-markdown-tool-panel title="Review" [icon]="Icon.REVIEW">
+<app-tool-panel title="Review" [icon]="Icon.REVIEW" (closed)="panels.close()">
   @if (hasSession() && ready()) {
     <div class="rv-toolbar">
       <div class="rv-chips" role="group" aria-label="Filter issues">
@@ -80,4 +80,4 @@
   } @else {
     <p class="rv-empty">Open a markdown document to review.</p>
   }
-</app-markdown-tool-panel>
+</app-tool-panel>

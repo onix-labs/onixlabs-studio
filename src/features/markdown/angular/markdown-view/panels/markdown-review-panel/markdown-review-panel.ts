@@ -7,7 +7,8 @@ import {
   ReviewIssue,
   ReviewKind,
 } from '@features/markdown/angular/markdown-review/review-types';
-import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
+import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * A filter chip descriptor.
@@ -40,7 +41,7 @@ const KIND_CHIPS: readonly FilterChip[] = [
  */
 @Component({
   selector: 'app-markdown-review-panel',
-  imports: [MarkdownToolPanel, AppIcon],
+  imports: [ToolPanel, AppIcon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-review-panel.html',
   styleUrl: './markdown-review-panel.scss',
@@ -50,6 +51,11 @@ export class MarkdownReviewPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
+   */
+  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
    * Holds the review service supplying findings and actions.

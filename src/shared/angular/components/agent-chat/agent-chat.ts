@@ -16,7 +16,6 @@ import {
 } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
-import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
@@ -109,16 +108,15 @@ interface TranscriptRow {
 /**
  * Renders one agent conversation as a structured, provider-agnostic transcript above a composer:
  * user/assistant turns (assistant text rendered as markdown), dim reasoning, tool-activity chips, and
- * inline permission prompts. The conversation lives in a per-instance {@link Agent} session provided
- * here, so every agent tab and the dockable agent panel each own an independent transcript. Sending
- * streams a live response; Stop aborts it. The provider/model selection lives in the agent ribbon's
- * Engine group, not the composer. Links in agent output open in the OS browser rather than navigating
- * the app.
+ * inline permission prompts. It is a thin capability wrapper around the {@link Agent} session, which
+ * the host provides (so the host's controls and history list share the same transcript); this
+ * component owns no session controls, history, or persistence. Sending streams a live response; Stop
+ * aborts it. Provider/model selection lives in the agent ribbon or tool strip, not the composer.
+ * Links in agent output open in the OS browser rather than navigating the app.
  */
 @Component({
   selector: 'app-agent-chat',
   imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe],
-  providers: [Agent],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -130,14 +128,10 @@ export class AgentChat {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds this conversation's agent session.
+   * Holds this conversation's agent session, provided by the host so its controls and history share
+   * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
-
-  /**
-   * Holds the registry the active agent tab's session is published to for the ribbon to drive.
-   */
-  private readonly sessions: AgentSessions = inject(AgentSessions);
 
   /**
    * Holds the tab registry, used to light this conversation's tab while it awaits a decision.
@@ -287,22 +281,10 @@ export class AgentChat {
   );
 
   /**
-   * Initializes a new instance of the {@link AgentChat} class, publishing this conversation as the
-   * ribbon's target while its tab is active and lighting the tab's attention dot while it awaits a
-   * decision in the background.
+   * Initializes a new instance of the {@link AgentChat} class, lighting the hosting tab's attention dot
+   * while the conversation awaits a permission decision in the background.
    */
   public constructor() {
-    effect((): void => {
-      const active: boolean = this.isActive();
-      untracked((): void => {
-        if (active) {
-          this.sessions.setActive(this.agent);
-        } else {
-          this.sessions.clearActive(this.agent);
-        }
-      });
-    });
-
     effect((): void => {
       const id: string | undefined = this.tabId();
       const waiting: boolean = this.awaitingDecision();

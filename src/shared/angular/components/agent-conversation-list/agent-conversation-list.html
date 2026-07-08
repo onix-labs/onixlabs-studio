@@ -1,0 +1,63 @@
+<div class="conversations">
+  @if (hasChecked()) {
+    <div class="conversations__actions">
+      <button
+        type="button"
+        class="conversations__delete"
+        (click)="onRequestDelete()"
+        [attr.aria-label]="'Delete ' + checkedCount() + ' conversation(s)'"
+      >
+        <app-icon [icon]="Icon.TRASH" />
+        <span>Delete ({{ checkedCount() }})</span>
+      </button>
+    </div>
+  }
+
+  <div class="conversations__list">
+    @for (summary of summaries(); track summary.id) {
+      <div
+        class="conversations__row"
+        [class.conversations__row--active]="summary.id === activeId()"
+      >
+        <app-checkbox
+          class="conversations__check"
+          [checked]="isChecked(summary.id)"
+          (checkedChange)="onToggle(summary.id, $event)"
+        />
+        <button type="button" class="conversations__open" (click)="onOpen(summary.id)">
+          <span class="conversations__title">{{ summary.title }}</span>
+          <span class="conversations__meta">
+            {{ summary.messageCount }} message{{ summary.messageCount === 1 ? '' : 's' }} ·
+            {{ formatWhen(summary.updatedAt) }}
+          </span>
+        </button>
+      </div>
+    } @empty {
+      <div class="conversations__empty">No saved conversations yet.</div>
+    }
+  </div>
+</div>
+
+<app-modal
+  [open]="confirmOpen()"
+  [dismissable]="true"
+  [width]="26"
+  ariaLabel="Delete conversations"
+  (dismiss)="onCancelDelete()"
+>
+  <h2 class="conversations__confirm-title">Delete conversations?</h2>
+  <p class="conversations__confirm-body">
+    {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
+    deleted. This cannot be undone.
+  </p>
+  <div class="conversations__confirm-actions">
+    <button type="button" class="conversations__button" (click)="onCancelDelete()">Cancel</button>
+    <button
+      type="button"
+      class="conversations__button conversations__button--danger"
+      (click)="onConfirmDelete()"
+    >
+      Delete
+    </button>
+  </div>
+</app-modal>

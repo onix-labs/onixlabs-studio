@@ -10,7 +10,6 @@ import {
 import type { AgentSurface, AiEvent, AiRunState } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
-import { AgentSessionHandle } from '../agent-sessions/agent-sessions';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
@@ -101,7 +100,7 @@ export interface AgentItem {
  * component level so every agent tab and the dockable agent panel each get their own transcript.
  */
 @Service({ autoProvided: false })
-export class Agent implements AgentSessionHandle {
+export class Agent {
   /**
    * Holds the agent runtime the conversation runs through.
    */
@@ -219,6 +218,22 @@ export class Agent implements AgentSessionHandle {
     this.log.set([]);
     this.activeRequestId = null;
     this.busy.set(false);
+  }
+
+  /**
+   * Replaces the transcript with a restored conversation, ending any in-flight run and reseeding the
+   * id counter past the restored items so subsequently appended items keep unique ids. Used to
+   * rehydrate a persisted conversation into this session.
+   * @param items The restored transcript items.
+   */
+  public restore(items: readonly AgentItem[]): void {
+    this.activeRequestId = null;
+    this.busy.set(false);
+    this.sequence = items.reduce((max: number, item: AgentItem): number => {
+      const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
+      return Number.isFinite(parsed) && parsed > max ? parsed : max;
+    }, 0);
+    this.log.set([...items]);
   }
 
   /**

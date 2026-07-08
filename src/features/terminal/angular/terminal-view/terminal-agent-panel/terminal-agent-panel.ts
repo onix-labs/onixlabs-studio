@@ -2,17 +2,17 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
- * Represents the docked agent panel for a terminal tab: a small toolbar over the shared
- * {@link AgentChat} conversation. Each tab gets its own agent session (AgentChat provides the Agent
- * service per instance), and the agent acts only through the owning terminal via the terminal
- * capabilities (the `terminal` surface).
+ * Represents the docked agent panel for a terminal tab: this tab's title bar over the shared
+ * {@link AgentConversationPanel} (strip + chat + history). The panel owns its per-tab conversation
+ * (global context — a terminal has no file), and the agent acts only through the owning terminal via
+ * the terminal capabilities (the `terminal` surface).
  */
 @Component({
   selector: 'app-terminal-agent-panel',
-  imports: [AgentChat, AppIcon],
+  imports: [AgentConversationPanel, AppIcon],
   templateUrl: './terminal-agent-panel.html',
   styleUrl: './terminal-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

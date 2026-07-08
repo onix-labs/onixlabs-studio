@@ -9,7 +9,11 @@
   </div>
   <div class="code-agent__body">
     @if (tabId()) {
-      <app-agent-chat [tabId]="tabId()" [isActive]="isActive()" />
+      <app-agent-conversation-panel
+        [tabId]="tabId()"
+        [isActive]="isActive()"
+        [context]="fileContext()"
+      />
     }
   </div>
 </div>

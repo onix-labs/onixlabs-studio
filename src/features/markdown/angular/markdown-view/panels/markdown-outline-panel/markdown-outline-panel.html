@@ -1,4 +1,4 @@
-<app-markdown-tool-panel title="Outline" [icon]="Icon.OUTLINE">
+<app-tool-panel title="Outline" [icon]="Icon.OUTLINE" (closed)="panels.close()">
   @if (rows().length > 0) {
     <div class="outline">
       <svg class="outline__connector" [style.height.px]="height()" aria-hidden="true">
@@ -31,4 +31,4 @@
   } @else {
     <p class="outline__empty">No headings yet. Add a heading to build the outline.</p>
   }
-</app-markdown-tool-panel>
+</app-tool-panel>

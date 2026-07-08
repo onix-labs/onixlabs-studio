@@ -8,6 +8,13 @@
       (action)="stop()"
     />
     <app-ribbon-strip-button [icon]="Icon.COMPACT" label="Compact" [disabled]="true" />
+    <app-ribbon-strip-button
+      [icon]="Icon.RECENT"
+      label="History"
+      [toggle]="true"
+      [pressed]="historyOpen()"
+      (action)="toggleHistory()"
+    />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Engine">

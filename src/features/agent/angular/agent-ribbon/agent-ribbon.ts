@@ -56,6 +56,11 @@ export class AgentRibbon {
   protected readonly isRunning: Signal<boolean> = this.sessions.isRunning;
 
   /**
+   * Gets a value indicating whether the active tab's conversation-history list is shown.
+   */
+  protected readonly historyOpen: Signal<boolean> = this.sessions.historyOpen;
+
+  /**
    * Gets the provider labels offered by the Provider field.
    */
   protected readonly providerLabels: Signal<readonly string[]> = computed((): readonly string[] =>
@@ -101,6 +106,13 @@ export class AgentRibbon {
    */
   protected stop(): void {
     this.sessions.stop();
+  }
+
+  /**
+   * Toggles the active tab's conversation-history list.
+   */
+  protected toggleHistory(): void {
+    this.sessions.toggleHistory();
   }
 
   /**

@@ -1,0 +1,26 @@
+:host {
+  display: block;
+  flex: 0 0 auto;
+}
+
+// A single compact row of controls; it wraps only when the panel is too narrow to hold the fields on
+// one line, so the fields never grow the control height by wrapping their own label.
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.4rem;
+  min-inline-size: 0;
+}
+
+// The provider/model fields shrink before the action buttons do, and never dominate the strip.
+.strip__field {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+// Pins the history toggle to the far end of the strip, past the provider/model fields.
+.strip__history {
+  margin-inline-start: auto;
+}

@@ -1,4 +1,4 @@
-<app-markdown-tool-panel title="Reader" [icon]="Icon.READER">
+<app-tool-panel title="Reader" [icon]="Icon.READER" (closed)="panels.close()">
   @if (canRead()) {
     <div class="ra-body">
       <div class="ra-transport">
@@ -99,4 +99,4 @@
   } @else {
     <p class="ra-empty">No document to read.</p>
   }
-</app-markdown-tool-panel>
+</app-tool-panel>

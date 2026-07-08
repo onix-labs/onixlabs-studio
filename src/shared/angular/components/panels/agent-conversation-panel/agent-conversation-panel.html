@@ -1,0 +1,12 @@
+<app-agent-tool-strip />
+
+@if (conversation.historyOpen()) {
+  <app-agent-conversation-list class="agent-panel__body" />
+} @else {
+  <app-agent-chat
+    class="agent-panel__body"
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+    [surface]="surface()"
+  />
+}
