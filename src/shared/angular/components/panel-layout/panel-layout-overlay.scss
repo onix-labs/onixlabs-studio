@@ -2,14 +2,14 @@
 // the panels they move, in both themes. The host renders as contents so it never becomes a grid
 // item of the owning layout; the overlay itself is fixed to the viewport.
 :host {
-  --panel-overlay-surface-color: var(--gray-200);
+  // The ghost mirrors the shared panel surface so it reads as the panel it moves.
+  --panel-overlay-surface-color: var(--panel-surface-color);
   --panel-overlay-title-foreground-color: var(--gray-700);
 
   display: contents;
 }
 
 :host-context([data-theme-mode='dark']) {
-  --panel-overlay-surface-color: color-mix(in srgb, var(--gray-900), var(--gray-800));
   --panel-overlay-title-foreground-color: var(--gray-400);
 }
 

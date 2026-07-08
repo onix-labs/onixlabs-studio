@@ -1,6 +1,9 @@
 // A single edge-docked panel: a flex member of its edge's stack, with an optional divider
 // overlapping its leading side so adjacent stack members can be rebalanced. The projected content
 // fills the panel's full extent; hiding collapses the flex track to zero without unmounting.
+// The panel is the chrome for a docked view: it paints the shared panel surface so every panel reads
+// the same across the app. Projected content fills the panel and may leave its background transparent
+// (inheriting this surface) or override it with its own colour (e.g. a terminal or editor body).
 :host {
   position: relative;
   display: flex;
@@ -8,6 +11,7 @@
   overflow: hidden;
   min-width: 0;
   min-height: 0;
+  background: var(--panel-surface-color);
 }
 
 .panel__content {

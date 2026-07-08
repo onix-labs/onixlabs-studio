@@ -1,9 +1,8 @@
 :host {
-  // The bar and body share a single surface color so the whole panel reads as one piece, matching the
-  // code editor's agent panel.
-  --inspector-bar-background: var(--gray-200);
+  // The bar and body stay transparent so the panel container's shared surface shows through and the
+  // whole panel reads as one piece with every other docked panel. Only the bar's muted foreground is
+  // set here.
   --inspector-bar-foreground: var(--gray-700);
-  --inspector-body-background: var(--gray-200);
 
   display: block;
   height: 100%;
@@ -11,9 +10,7 @@
 }
 
 :host-context([data-theme-mode='dark']) {
-  --inspector-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
   --inspector-bar-foreground: var(--gray-400);
-  --inspector-body-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
 }
 
 .inspector {
@@ -28,7 +25,6 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
-  background: var(--inspector-bar-background);
   color: var(--inspector-bar-foreground);
 
   button {
@@ -79,7 +75,6 @@
   min-height: 0;
   padding: 0.75rem 0.9rem;
   overflow-y: auto;
-  background: var(--inspector-body-background);
   font-size: 0.78rem;
 }
 

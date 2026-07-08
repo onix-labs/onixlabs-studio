@@ -1,14 +1,9 @@
 :host {
   display: block;
   block-size: 100%;
-  // Match the tool-panel surface (and the panel resize grip): a quiet gray that reads as panel
-  // chrome, kept in step with the other side panels across every surface the find panel is hosted in.
-  background: var(--gray-200);
+  // Transparent so the host panel's shared surface shows through, keeping the find panel in step with
+  // every other docked panel. Its dock host paints the same surface behind it.
   color: var(--body-foreground-color);
-}
-
-:host-context([data-theme-mode='dark']) {
-  background: color-mix(in srgb, var(--gray-900), var(--gray-800));
 }
 
 .find-panel {

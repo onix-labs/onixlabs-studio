@@ -84,6 +84,11 @@
   --agent-view-surface-color: var(--gray-800);
   --agent-view-border-color: var(--gray-700);
 
+  // The shared surface for every docked panel's chrome. The panel-layout panel container paints this;
+  // panel content draws over it transparent (inheriting it) or overrides with its own colour. Kept in
+  // step across the agent, terminal, find, inspector, disasm, and markdown tool panels.
+  --panel-surface-color: color-mix(in srgb, var(--gray-900), var(--gray-800));
+
   --status-strip-background-color: var(--gray-800);
   --status-strip-foreground-color: var(--gray-400);
 

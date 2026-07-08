@@ -1,6 +1,6 @@
 :host {
-  // The title bar sits a shade above the editor body so it reads as distinct chrome.
-  --code-terminal-bar-background: var(--gray-200);
+  // The title bar stays transparent so the panel container's shared surface shows through as its
+  // chrome; the body sits a shade below it as a distinct editor/terminal surface.
   --code-terminal-bar-foreground: var(--gray-700);
   --code-terminal-body-background: var(--gray-100);
 
@@ -10,7 +10,6 @@
 }
 
 :host-context([data-theme-mode='dark']) {
-  --code-terminal-bar-background: color-mix(in srgb, var(--gray-900), var(--gray-800));
   --code-terminal-bar-foreground: var(--gray-400);
   --code-terminal-body-background: var(--gray-900);
 }
@@ -26,7 +25,6 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  background: var(--code-terminal-bar-background);
   color: var(--code-terminal-bar-foreground);
 
   button {
