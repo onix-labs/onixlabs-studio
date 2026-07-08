@@ -9,7 +9,7 @@ import {
   Signal,
 } from '@angular/core';
 import { PANEL_LAYOUT_CONTEXT, PanelLayoutContext } from './panel-layout-context';
-import { PanelEdge, PanelPlacement } from './panel-types';
+import { clampPanelWidth, PanelEdge, PanelPlacement } from './panel-types';
 
 /**
  * Represents a single edge-docked panel within an {@link PanelLayout}. The panel hosts arbitrary
@@ -19,9 +19,10 @@ import { PanelEdge, PanelPlacement } from './panel-types';
  * another edge. Hiding a panel collapses it without destroying its content, so a hosted session
  * survives being closed and reopened.
  *
- * Panels stacked on one edge share its length; the divider on a panel's leading side (every stack
- * member but the first carries one) rebalances the stack, while the edge's own grip — owned by the
- * layout — resizes the whole stack's cross-axis size.
+ * Panels stacked on one edge tile side by side. On left and right edges each panel keeps its own
+ * width (its leading divider, or the layout's grip for the innermost panel, resizes that one panel,
+ * and the edge grows to the sum). On top and bottom edges the panels share the edge's width and one
+ * resizable height, and their dividers rebalance that shared length.
  */
 @Component({
   selector: 'app-panel',
@@ -118,14 +119,26 @@ export class Panel {
   }
 
   /**
-   * Gets the host's flex value: the panel's share of its edge's length when shown, or a collapsed
-   * zero track when hidden (the content stays mounted).
+   * Gets the host's flex value: a collapsed zero track when hidden (the content stays mounted); a
+   * fixed own width on left and right edges, where panels tile as columns each at their own size;
+   * or a shared grow/shrink share on top and bottom edges, where panels divide the edge's width.
+   * The shares map doubles as the live width override during a left/right resize drag.
    */
   protected readonly flexValue: Signal<string> = computed((): string => {
     if (!this.visible()) {
       return '0 0 0%';
     }
-    const share: number = this.context?.shares()[this.panelId()] ?? 1;
+    const override: number | undefined = this.context?.shares()[this.panelId()];
+    if (this.edge() === 'left' || this.edge() === 'right') {
+      const width: number = clampPanelWidth(
+        override ?? this.placement().size,
+        this.minSize(),
+        this.maxSize(),
+        window.innerWidth,
+      );
+      return `0 0 ${width}px`;
+    }
+    const share: number = override ?? 1;
     return `${share} ${share} 0%`;
   });
 
@@ -148,15 +161,11 @@ export class Panel {
   );
 
   /**
-   * Gets the ARIA orientation of the divider: left and right edges stack panels vertically, so
-   * their dividers are horizontal; top and bottom edges stack horizontally, so theirs are
-   * vertical.
+   * Gets the ARIA orientation of the divider. Every edge now tiles its panels side by side, so
+   * every divider is a vertical strip separating two neighbours horizontally.
    */
   protected readonly dividerOrientation: Signal<'horizontal' | 'vertical'> = computed(
-    (): 'horizontal' | 'vertical' => {
-      const edge: PanelEdge = this.edge();
-      return edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
-    },
+    (): 'horizontal' | 'vertical' => 'vertical',
   );
 
   /**

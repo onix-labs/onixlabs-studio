@@ -128,13 +128,14 @@ describe('PanelLayout', () => {
     });
   });
 
-  it('edgeSizes_clampSideStacksToTheGlobalWidthBounds', async () => {
+  it('edgeSizes_clampSideColumnsPerPanelAndSumTheEdge', async () => {
     const { fixture, host } = await createHost('layout-clamp-spec');
 
-    // Floor: a 200px default renders at the 20rem (320px at jsdom's 16px root) minimum.
-    expect(wrapperOf(host, 'right').style.width).toBe('320px');
+    // A single column renders at its own stored width (its 200px default, above the panel minimum),
+    // and the edge is the sum of its columns.
+    expect(wrapperOf(host, 'right').style.width).toBe('200px');
 
-    TestBed.inject(PanelArrangements).resizeEdge('layout-clamp-spec', 'right', 5000);
+    TestBed.inject(PanelArrangements).resizePanel('layout-clamp-spec', 'side', 5000);
     await fixture.whenStable();
 
     // Cap: half of jsdom's 1024px viewport wins over the oversized stored width.

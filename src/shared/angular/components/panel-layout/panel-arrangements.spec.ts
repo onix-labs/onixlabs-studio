@@ -75,6 +75,18 @@ describe('PanelArrangements', () => {
     expect(store.get<PanelArrangement | null>('panel-layout.spec', null)).toEqual(current);
   });
 
+  it('resizePanel_writesOnlyTheNamedPanelAndPersists', () => {
+    arrangements.initialize('spec', DEFAULTS);
+
+    arrangements.resizePanel('spec', 'agent', 480);
+
+    const current: PanelArrangement = arrangements.arrangement('spec')();
+    expect(current['agent'].size).toBe(480);
+    // A side column keeps its own width; its edge neighbours are untouched.
+    expect(current['terminal'].size).toBe(240);
+    expect(store.get<PanelArrangement | null>('panel-layout.spec', null)).toEqual(current);
+  });
+
   it('arrangement_restoresAPersistedArrangementOnFirstAccess', () => {
     store.set('panel-layout.restored', {
       agent: { edge: 'top', order: 0, size: 200 },

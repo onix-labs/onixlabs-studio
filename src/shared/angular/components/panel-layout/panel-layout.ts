@@ -20,12 +20,14 @@ import { PANEL_LAYOUT_CONTEXT, PanelLayoutContext } from './panel-layout-context
 import { PanelLayoutDrag } from './panel-layout-drag';
 import { PanelLayoutOverlay } from './panel-layout-overlay';
 import {
+  clampPanelWidth,
   movePanel,
   PANEL_EDGES,
   PanelArrangement,
   PanelEdge,
   PanelPlacement,
   resizeEdgePanels,
+  resizePanel,
 } from './panel-types';
 
 /**
@@ -34,15 +36,10 @@ import {
 const MINIMUM_STACK_LENGTH: number = 60;
 
 /**
- * The smallest cross-axis width, in rem, of a left or right stack — 320px at the default root
- * size — so panel toolstrips keep a usable line. Mirrored by the stylesheet's `min-width`.
- */
-const MINIMUM_EDGE_WIDTH_REM: number = 20;
-
-/**
  * Represents the shared panel layout: a central main area surrounded by edge-docked {@link Panel}s.
  * Left and right edges span the full height; top and bottom edges fit between them. Panels sharing
- * an edge stack along it, each keeping its own header.
+ * an edge tile side by side, each keeping its own header: left and right as full-height columns each
+ * at its own width, top and bottom across the shared width.
  *
  * This is the lightweight layout that single-surface feature views compose (an editor or terminal
  * in the centre, with terminal/agent/tool panels on the edges) — a simplified dock: the main
@@ -224,9 +221,10 @@ export class PanelLayout implements PanelLayoutContext {
   );
 
   /**
-   * Gets the rendered cross-axis size of each edge: zero when the edge has no visible panel, the
-   * live grip override while its grip is dragged, and otherwise the stack's stored size clamped to
-   * its members' bounds.
+   * Gets the rendered cross-axis size of each edge: zero when the edge has no visible panel. Left
+   * and right edges are the sum of their columns' own clamped widths, so the edge grows to fit
+   * every panel; top and bottom edges take the stack's shared stored height, or the live grip
+   * override while their grip is dragged, clamped to the members' bounds.
    */
   protected readonly edgeSizes: Signal<Readonly<Record<PanelEdge, number>>> = computed(
     (): Readonly<Record<PanelEdge, number>> => {
@@ -238,15 +236,39 @@ export class PanelLayout implements PanelLayoutContext {
         if (members.length === 0) {
           continue;
         }
+        if (edge === 'left' || edge === 'right') {
+          sizes[edge] = members.reduce(
+            (sum: number, panel: Panel): number => sum + this.panelWidth(panel),
+            0,
+          );
+          continue;
+        }
         const override: number | null = this.draggedGrip() === edge ? this.gripOverride() : null;
         const stored: number = Math.max(
           ...members.map((panel: Panel): number => panel.placement().size),
         );
-        sizes[edge] = this.clampEdgeSize(edge, members, override ?? stored);
+        sizes[edge] = this.clampEdgeSize(members, override ?? stored);
       }
       return sizes;
     },
   );
+
+  /**
+   * Gets a side panel's rendered own width: its live width override while it is being resized, or
+   * its stored width otherwise, clamped to its bounds. Kept in step with {@link Panel.flexValue} so
+   * an edge's summed width matches the total of its columns' flex bases exactly.
+   * @param panel The panel to size.
+   * @returns Returns the panel's clamped width in pixels.
+   */
+  private panelWidth(panel: Panel): number {
+    const override: number | undefined = this.stackShares()[panel.panelId()];
+    return clampPanelWidth(
+      override ?? panel.placement().size,
+      panel.minSize(),
+      panel.maxSize(),
+      window.innerWidth,
+    );
+  }
 
   /**
    * Gets the edges, in render order.
@@ -316,9 +338,10 @@ export class PanelLayout implements PanelLayoutContext {
   }
 
   /**
-   * Begins a divider drag between a panel and its predecessor in the stack, rebalancing the two
-   * panels' main-axis shares as the pointer moves. Every visible member's share is first pinned to
-   * its measured length, so the rest of the stack holds still while the pair rebalances.
+   * Begins a divider drag on a stacked panel. On left and right edges the divider resizes its own
+   * column's width, growing the edge and taking the room from the main content. On top and bottom
+   * edges it rebalances the panel against its predecessor across the shared width, every visible
+   * member's share first pinned to its measured length so the rest of the stack holds still.
    * @param panelId The identifier of the panel whose leading divider was pressed.
    * @param event The originating mouse event.
    */
@@ -338,25 +361,24 @@ export class PanelLayout implements PanelLayoutContext {
     }
     event.preventDefault();
 
-    const vertical: boolean = edge === 'left' || edge === 'right';
-    const lengthOf: (panel: Panel) => number = (panel: Panel): number => {
-      const rect: DOMRect = panel.hostElement.getBoundingClientRect();
-      return vertical ? rect.height : rect.width;
-    };
+    if (edge === 'left' || edge === 'right') {
+      this.beginColumnWidthResize(edge, stack[index], event, false);
+      return;
+    }
+
     const lengths: Record<string, number> = {};
     for (const panel of stack) {
-      lengths[panel.panelId()] = lengthOf(panel);
+      lengths[panel.panelId()] = panel.hostElement.getBoundingClientRect().width;
     }
     const previousId: string = stack[index - 1].panelId();
     const previousLength: number = lengths[previousId];
     const panelLength: number = lengths[panelId];
-    const start: number = vertical ? event.clientY : event.clientX;
+    const start: number = event.clientX;
     this.draggedDivider.set(panelId);
 
     const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const current: number = vertical ? move.clientY : move.clientX;
       const delta: number = clamp(
-        current - start,
+        move.clientX - start,
         MINIMUM_STACK_LENGTH - previousLength,
         panelLength - MINIMUM_STACK_LENGTH,
       );
@@ -376,29 +398,36 @@ export class PanelLayout implements PanelLayoutContext {
   }
 
   /**
-   * Begins an edge grip drag, resizing the whole edge's stack as the pointer moves. The size is
-   * shown live through {@link edgeSizes} and committed to the arrangement once on release. The
-   * drag direction follows the edge so dragging toward the layout's centre always shrinks the
-   * stack.
+   * Begins an edge grip drag. On left and right edges the grip resizes the innermost column (the
+   * one nearest the centre, which has no divider of its own); on top and bottom edges it resizes
+   * the whole stack's shared height. The size is shown live and committed to the arrangement once
+   * on release. The drag direction follows the edge so dragging toward the centre always shrinks.
    * @param edge The edge whose grip was pressed.
    * @param event The pointer-down event that started the drag.
    */
   protected onGripDown(edge: PanelEdge, event: MouseEvent): void {
     event.preventDefault();
-    const vertical: boolean = edge === 'left' || edge === 'right';
-    const grows: number = edge === 'right' || edge === 'bottom' ? -1 : 1;
-    const start: number = vertical ? event.clientX : event.clientY;
-    const startSize: number = this.edgeSizes()[edge];
     const members: readonly Panel[] = this.edgeStacks()[edge].filter((panel: Panel): boolean =>
       panel.visible(),
     );
+
+    if (edge === 'left' || edge === 'right') {
+      const innermost: Panel | undefined = members[0];
+      if (innermost !== undefined) {
+        this.beginColumnWidthResize(edge, innermost, event, true);
+      }
+      return;
+    }
+
+    const grows: number = edge === 'bottom' ? -1 : 1;
+    const start: number = event.clientY;
+    const startSize: number = this.edgeSizes()[edge];
     this.draggedGrip.set(edge);
     this.gripOverride.set(startSize);
 
     const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const current: number = vertical ? move.clientX : move.clientY;
       this.gripOverride.set(
-        this.clampEdgeSize(edge, members, startSize + (current - start) * grows),
+        this.clampEdgeSize(members, startSize + (move.clientY - start) * grows),
       );
     };
     const onUp: () => void = (): void => {
@@ -409,6 +438,72 @@ export class PanelLayout implements PanelLayoutContext {
       this.gripOverride.set(null);
       if (size !== null && size !== startSize) {
         this.resizeEdge(edge, size);
+      }
+    };
+    this.document.addEventListener('mousemove', onMove);
+    this.document.addEventListener('mouseup', onUp);
+  }
+
+  /**
+   * Resizes a single left or right column as the pointer moves horizontally: the panel's live width
+   * is held in the shares map (read back by {@link edgeSizes} and the panel's flex basis), and
+   * committed to the arrangement on release. Dragging toward the centre grows the column, taking
+   * the room from the main content; the outer edge stays pinned. Used for both a column's own
+   * divider and the grip that sizes the innermost column.
+   * @param edge The left or right edge the column belongs to.
+   * @param panel The column being resized.
+   * @param event The pointer-down event that started the drag.
+   * @param asGrip Whether the drag is driven by the edge grip rather than the column's divider,
+   * which selects the active-state signal used for styling.
+   */
+  private beginColumnWidthResize(
+    edge: PanelEdge,
+    panel: Panel,
+    event: MouseEvent,
+    asGrip: boolean,
+  ): void {
+    const panelId: string = panel.panelId();
+    const grows: number = edge === 'right' ? -1 : 1;
+    const start: number = event.clientX;
+    const startWidth: number = panel.hostElement.getBoundingClientRect().width;
+    if (asGrip) {
+      this.draggedGrip.set(edge);
+    } else {
+      this.draggedDivider.set(panelId);
+    }
+
+    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+      const width: number = clampPanelWidth(
+        startWidth + (move.clientX - start) * grows,
+        panel.minSize(),
+        panel.maxSize(),
+        window.innerWidth,
+      );
+      this.stackShares.update(
+        (shares: Readonly<Record<string, number>>): Readonly<Record<string, number>> => ({
+          ...shares,
+          [panelId]: width,
+        }),
+      );
+    };
+    const onUp: () => void = (): void => {
+      this.document.removeEventListener('mousemove', onMove);
+      this.document.removeEventListener('mouseup', onUp);
+      const width: number | undefined = this.stackShares()[panelId];
+      this.stackShares.update(
+        (shares: Readonly<Record<string, number>>): Readonly<Record<string, number>> => {
+          const next: Record<string, number> = { ...shares };
+          delete next[panelId];
+          return next;
+        },
+      );
+      if (asGrip) {
+        this.draggedGrip.set(null);
+      } else {
+        this.draggedDivider.set(null);
+      }
+      if (width !== undefined) {
+        this.resizePanelWidth(panelId, width);
       }
     };
     this.document.addEventListener('mousemove', onMove);
@@ -466,26 +561,35 @@ export class PanelLayout implements PanelLayoutContext {
   }
 
   /**
-   * Clamps an edge size to its bounds: no member is squeezed below its minimum nor stretched past
-   * its maximum, a side stack never drops below the global {@link MINIMUM_EDGE_WIDTH_REM} floor,
-   * and no stack takes more than half the viewport along its axis. The minimum wins when the
-   * bounds conflict. The stylesheet mirrors the global bounds, so a stored size that outgrows a
-   * later, smaller window still renders clamped.
-   * @param edge The edge being sized.
-   * @param members The edge's visible panels.
-   * @param size The candidate size.
-   * @returns Returns the clamped size.
+   * Commits a single left or right column's own width.
+   * @param panelId The identifier of the column to resize.
+   * @param size The new width in pixels.
    */
-  private clampEdgeSize(edge: PanelEdge, members: readonly Panel[], size: number): number {
-    const horizontal: boolean = edge === 'left' || edge === 'right';
-    const viewport: number = horizontal ? window.innerWidth : window.innerHeight;
-    const floor: number = horizontal ? MINIMUM_EDGE_WIDTH_REM * rootFontSize() : 0;
-    const low: number = Math.max(
-      floor,
-      ...members.map((panel: Panel): number => panel.minSize()),
-    );
+  private resizePanelWidth(panelId: string, size: number): void {
+    const key: string | null = this.layoutKey();
+    if (key !== null) {
+      this.arrangements.resizePanel(key, panelId, size);
+    } else {
+      this.localArrangement.update(
+        (current: PanelArrangement): PanelArrangement => resizePanel(current, panelId, size),
+      );
+    }
+  }
+
+  /**
+   * Clamps a top or bottom stack's shared height to its bounds: no member is squeezed below its
+   * minimum nor stretched past its maximum, and the stack never takes more than half the viewport
+   * height so the main content keeps its place. The minimum wins when the bounds conflict. The
+   * stylesheet mirrors the half-viewport cap, so a stored size that outgrows a later, smaller
+   * window still renders clamped. (Left and right columns clamp per panel via {@link clampPanelWidth}.)
+   * @param members The edge's visible panels.
+   * @param size The candidate height.
+   * @returns Returns the clamped height.
+   */
+  private clampEdgeSize(members: readonly Panel[], size: number): number {
+    const low: number = Math.max(0, ...members.map((panel: Panel): number => panel.minSize()));
     const high: number = Math.min(
-      viewport / 2,
+      window.innerHeight / 2,
       ...members.map((panel: Panel): number => panel.maxSize()),
     );
     return Math.max(low, Math.min(high, size));
@@ -535,14 +639,4 @@ function placementOf(panel: Panel, arrangement: PanelArrangement): PanelPlacemen
  */
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
-}
-
-/**
- * Reads the document's root font size, so rem-declared bounds clamp in pixels consistently with
- * the stylesheet.
- * @returns Returns the root font size in pixels.
- */
-function rootFontSize(): number {
-  const size: number = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(size) && size > 0 ? size : 16;
 }

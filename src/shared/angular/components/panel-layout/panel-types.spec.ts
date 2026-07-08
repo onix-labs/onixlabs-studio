@@ -1,4 +1,5 @@
 import {
+  clampPanelWidth,
   movePanel,
   normalizeOrders,
   PANEL_EDGE_GUIDE_INSET,
@@ -9,6 +10,7 @@ import {
   panelEdgePreview,
   PanelRect,
   resizeEdgePanels,
+  resizePanel,
   resolvePanelEdgeGuideTarget,
   resolvePanelEdgeTarget,
   restorePanelArrangement,
@@ -154,6 +156,40 @@ describe('resizeEdgePanels', () => {
     expect(resized['agent'].size).toBe(400);
     expect(resized['find'].size).toBe(400);
     expect(resized['terminal'].size).toBe(240);
+  });
+});
+
+describe('resizePanel', () => {
+  it('resize_writesOnlyTheNamedPanelAndLeavesItsEdgeNeighboursAlone', () => {
+    const resized: PanelArrangement = resizePanel(
+      {
+        agent: { edge: 'right', order: 0, size: 360 },
+        find: { edge: 'right', order: 1, size: 320 },
+      },
+      'agent',
+      480,
+    );
+
+    expect(resized['agent'].size).toBe(480);
+    expect(resized['find'].size).toBe(320);
+  });
+
+  it('resize_ofAnUnplacedPanel_isIgnored', () => {
+    const arrangement: PanelArrangement = { agent: { edge: 'right', order: 0, size: 360 } };
+    expect(resizePanel(arrangement, 'missing', 480)).toBe(arrangement);
+  });
+});
+
+describe('clampPanelWidth', () => {
+  it('clamp_boundsAColumnBetweenItsMinimumMaximumAndHalfTheViewport', () => {
+    // Within bounds: returned unchanged.
+    expect(clampPanelWidth(320, 240, 900, 1600)).toBe(320);
+    // Above the maximum (with viewport room to spare): the maximum wins.
+    expect(clampPanelWidth(2000, 240, 900, 2000)).toBe(900);
+    // Wider than half the viewport: the viewport cap wins over the larger maximum.
+    expect(clampPanelWidth(2000, 240, 900, 1000)).toBe(500);
+    // The minimum wins when it conflicts with the half-viewport cap.
+    expect(clampPanelWidth(100, 240, 900, 300)).toBe(240);
   });
 });
 

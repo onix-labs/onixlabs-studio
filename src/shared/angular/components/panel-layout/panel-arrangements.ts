@@ -7,6 +7,7 @@ import {
   PanelEdge,
   PanelPlacement,
   resizeEdgePanels,
+  resizePanel,
   restorePanelArrangement,
 } from './panel-types';
 
@@ -92,6 +93,18 @@ export class PanelArrangements {
   public resizeEdge(key: string, edge: PanelEdge, size: number): void {
     const current: WritableSignal<PanelArrangement> = this.arrangementOf(key);
     this.commit(key, current, resizeEdgePanels(current(), edge, size));
+  }
+
+  /**
+   * Sets a single panel's own size and persists the result. Left and right edges tile their panels
+   * as columns, each keeping its own width, so a resize writes only the dragged panel.
+   * @param key The layout key.
+   * @param panelId The identifier of the panel to resize.
+   * @param size The panel's new size in pixels.
+   */
+  public resizePanel(key: string, panelId: string, size: number): void {
+    const current: WritableSignal<PanelArrangement> = this.arrangementOf(key);
+    this.commit(key, current, resizePanel(current(), panelId, size));
   }
 
   /**

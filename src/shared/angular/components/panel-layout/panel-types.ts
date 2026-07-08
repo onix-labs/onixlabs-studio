@@ -292,8 +292,9 @@ export function movePanel(
 }
 
 /**
- * Sets the cross-axis size of an edge's stack. The whole stack shares one size, so every panel on
- * the edge is written — a panel dragged away later then keeps the size it last had.
+ * Sets the cross-axis size shared by a whole edge's stack (top and bottom edges, whose panels tile
+ * across the shared width and share one resizable height). Every panel on the edge is written — a
+ * panel dragged away later then keeps the size it last had.
  * @param arrangement The arrangement to mutate.
  * @param edge The edge to resize.
  * @param size The new cross-axis size in pixels.
@@ -311,6 +312,48 @@ export function resizeEdgePanels(
     }
   }
   return next;
+}
+
+/**
+ * Sets a single panel's own size. Left and right edges tile their panels side by side as columns,
+ * each keeping its own width, so a resize writes only the panel that was dragged rather than the
+ * whole edge.
+ * @param arrangement The arrangement to mutate.
+ * @param panelId The identifier of the panel to resize.
+ * @param size The panel's new size in pixels.
+ * @returns Returns the mutated arrangement.
+ */
+export function resizePanel(
+  arrangement: PanelArrangement,
+  panelId: string,
+  size: number,
+): PanelArrangement {
+  const existing: PanelPlacement | undefined = arrangement[panelId];
+  if (existing === undefined) {
+    return arrangement;
+  }
+  return { ...arrangement, [panelId]: { ...existing, size } };
+}
+
+/**
+ * Clamps a single side panel's own width to its bounds: never below its minimum, never past its
+ * maximum, and never wider than half the viewport so the main content always keeps its place. The
+ * minimum wins when the bounds conflict. The stylesheet mirrors the half-viewport cap so a stored
+ * width that outgrows a later, smaller window still renders clamped.
+ * @param width The candidate width in pixels.
+ * @param minSize The panel's minimum width in pixels.
+ * @param maxSize The panel's maximum width in pixels.
+ * @param viewportWidth The viewport width in pixels.
+ * @returns Returns the clamped width.
+ */
+export function clampPanelWidth(
+  width: number,
+  minSize: number,
+  maxSize: number,
+  viewportWidth: number,
+): number {
+  const high: number = Math.min(viewportWidth / 2, maxSize);
+  return Math.max(minSize, Math.min(high, width));
 }
 
 /**

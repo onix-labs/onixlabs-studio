@@ -43,17 +43,11 @@
   }
 }
 
-// Left and right edges stack panels vertically, so the divider is a horizontal strip along the
-// panel's top; top and bottom edges stack horizontally, so it is a vertical strip along the left.
-:host([data-edge='left']) .panel__divider,
-:host([data-edge='right']) .panel__divider {
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 0.375rem;
-  cursor: row-resize;
-}
-
+// Every edge tiles its panels side by side, so every divider is a vertical strip on the panel's
+// leading (centre-facing) side. On the right, top and bottom edges that is the panel's left edge;
+// on the left edge — which lays its columns out reversed so order 0 stays innermost — it is the
+// right edge.
+:host([data-edge='right']) .panel__divider,
 :host([data-edge='top']) .panel__divider,
 :host([data-edge='bottom']) .panel__divider {
   top: 0;
@@ -61,4 +55,19 @@
   left: 0;
   width: 0.375rem;
   cursor: col-resize;
+}
+
+:host([data-edge='left']) .panel__divider {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 0.375rem;
+  cursor: col-resize;
+}
+
+// A side column never exceeds half the viewport, mirroring the resize clamp so a stored width that
+// outgrows a later, smaller window still renders bounded.
+:host([data-edge='left']),
+:host([data-edge='right']) {
+  max-inline-size: 50vw;
 }
