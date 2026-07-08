@@ -58,10 +58,26 @@
     rotate: 180deg;
   }
 
+  // The explicit face button: a bare flex row that inherits the control's typography and leaves
+  // all chrome to the select itself.
+  .dropdown__face {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-inline-size: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    background: none;
+    border: 0;
+  }
+
   // The chosen option's label as shown in the closed control: keep it on a single line and truncate
   // with an ellipsis instead of wrapping, so a long label (such as a voice name) cannot grow the
   // control's height. Shrinks within the flex row, leaving the caret visible.
-  selectedcontent {
+  .dropdown__label {
     flex: 1;
     min-inline-size: 0;
     overflow: hidden;

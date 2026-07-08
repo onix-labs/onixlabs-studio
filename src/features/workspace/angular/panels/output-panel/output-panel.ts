@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
-import { DockPanel } from '@shared/angular/services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Output } from '@shared/angular/services/output/output';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
 

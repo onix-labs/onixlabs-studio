@@ -1,8 +1,8 @@
-<app-panel-layout>
+<app-panel-layout layoutKey="agent">
   <app-agent-chat main [tabId]="tabId()" [isActive]="isActive()" />
 
   @if (conversation.historyOpen()) {
-    <app-panel edge="right" [(size)]="historySize" [minSize]="240" [maxSize]="600">
+    <app-panel panelId="history" defaultEdge="right" [defaultSize]="320" [minSize]="240" [maxSize]="600">
       <app-tool-panel
         title="History"
         [icon]="Icon.RECENT"

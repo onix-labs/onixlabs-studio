@@ -7,7 +7,7 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { DockPanel } from '@shared/angular/services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { DiffView } from '../diff-view/diff-view';

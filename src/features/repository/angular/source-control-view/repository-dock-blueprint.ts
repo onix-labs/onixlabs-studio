@@ -1,8 +1,8 @@
 import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockBlueprint } from '@shared/angular/services/dock/dock-blueprint';
-import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock/dock-node';
+import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { CommitGraph } from './panels/commit-graph/commit-graph';
 import { SourceControlSidebar } from './panels/source-control-sidebar/source-control-sidebar';

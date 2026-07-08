@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
@@ -12,7 +13,7 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
  */
 @Component({
   selector: 'app-terminal-agent-panel',
-  imports: [AgentConversationPanel, AppIcon],
+  imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
   templateUrl: './terminal-agent-panel.html',
   styleUrl: './terminal-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

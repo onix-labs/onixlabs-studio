@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
-import { StackNode } from '@shared/angular/services/dock/dock-node';
-import { DockState } from '@shared/angular/services/dock/dock-state';
-import { firstStackOfRole } from '@shared/angular/services/dock/dock-tree';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspaces } from '../workspaces/workspaces';

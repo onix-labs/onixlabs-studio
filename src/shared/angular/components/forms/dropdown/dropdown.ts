@@ -2,6 +2,7 @@ import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   input,
   InputSignal,
@@ -88,6 +89,17 @@ export class Dropdown {
    */
   private readonly select: Signal<ElementRef<HTMLSelectElement>> =
     viewChild.required<ElementRef<HTMLSelectElement>>('select');
+
+  /**
+   * Gets the selected option's label, shown in the control's face. Rendered by the component
+   * rather than mirrored by the browser, so the face stays a single ellipsized line.
+   */
+  protected readonly selectedLabel: Signal<string> = computed((): string => {
+    const value: string = this.value();
+    return (
+      this.options().find((option: DropdownOption): boolean => option.value === value)?.label ?? ''
+    );
+  });
 
   /**
    * Reflects {@link value} onto the native select after each render so the displayed option stays in

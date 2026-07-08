@@ -6,9 +6,7 @@ import {
   input,
   InputSignal,
   OnDestroy,
-  signal,
   untracked,
-  WritableSignal,
 } from '@angular/core';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
@@ -73,12 +71,6 @@ export class AgentView implements OnDestroy {
    * Gets a value indicating whether the view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
-
-  /**
-   * Holds the width, in pixels, of the docked conversation-history panel. Two-way bound to the panel's
-   * splitter.
-   */
-  protected readonly historySize: WritableSignal<number> = signal<number>(300);
 
   /**
    * Initializes a new instance of the {@link AgentView} class, publishing this tab's conversation to

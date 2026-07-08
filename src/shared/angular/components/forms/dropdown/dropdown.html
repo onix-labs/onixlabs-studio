@@ -5,6 +5,12 @@
   [disabled]="disabled()"
   (change)="onChange($event)"
 >
+  <!-- The explicit customizable-select face: without it the browser renders an implicit button
+       whose text wraps freely. The label is rendered by the component (not <selectedcontent>,
+       whose mirroring the runtime lacks) so the stylesheet can keep it to one ellipsized line. -->
+  <button type="button" class="dropdown__face">
+    <span class="dropdown__label">{{ selectedLabel() }}</span>
+  </button>
   @for (option of options(); track option.value) {
     <option
       [value]="option.value"

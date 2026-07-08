@@ -1,35 +1,34 @@
-<app-panel-layout>
-  <!-- Inner layout: the editor in the centre with the run terminal docked to the side or below it. -->
-  <app-panel-layout main>
-    <div main class="code-layout__editor">
-      <app-code-document
-        [documentId]="tabId()"
-        [removeOnDestroy]="removeOnDestroy()"
-        [isActive]="isActive()"
-        (ready)="onReady()"
-        (cursorChange)="onCursorChange($event)"
-        (eolChange)="onEolChange($event)"
-      />
-    </div>
+<app-panel-layout layoutKey="code">
+  <div main class="code-layout__editor">
+    <app-code-document
+      [documentId]="tabId()"
+      [removeOnDestroy]="removeOnDestroy()"
+      [isActive]="isActive()"
+      (ready)="onReady()"
+      (cursorChange)="onCursorChange($event)"
+      (eolChange)="onEolChange($event)"
+    />
+  </div>
 
-    @if (terminalMounted()) {
-      <app-panel
-        [edge]="terminalLayout() === 'side-by-side' ? 'right' : 'bottom'"
-        [visible]="terminalVisible()"
-        [(size)]="terminalSizeSignal"
-        [minSize]="80"
-        [maxSize]="1600"
-      >
-        <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
-      </app-panel>
-    }
-  </app-panel-layout>
+  @if (terminalMounted()) {
+    <app-panel
+      panelId="terminal"
+      defaultEdge="bottom"
+      [visible]="terminalVisible()"
+      [defaultSize]="260"
+      [minSize]="80"
+      [maxSize]="1600"
+    >
+      <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
+    </app-panel>
+  }
 
   @if (agentMounted()) {
     <app-panel
-      edge="right"
+      panelId="agent"
+      defaultEdge="right"
       [visible]="agentVisible()"
-      [(size)]="agentSizeSignal"
+      [defaultSize]="360"
       [minSize]="240"
       [maxSize]="900"
     >
@@ -38,7 +37,7 @@
   }
 
   @if (findVisible()) {
-    <app-panel edge="right" [size]="320" [minSize]="260" [maxSize]="520">
+    <app-panel panelId="find" defaultEdge="right" [defaultSize]="320" [minSize]="260" [maxSize]="520">
       <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
     </app-panel>
   }

@@ -3,18 +3,25 @@
   flex: 0 0 auto;
 }
 
-// A single compact row of controls; it wraps only when the panel is too narrow to hold the fields on
-// one line, so the fields never grow the control height by wrapping their own label.
+// A single compact row of controls that never wraps: when the panel narrows, the provider/model
+// fields shrink and truncate their labels with an ellipsis instead of growing the strip's height.
 .strip {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.3rem;
   padding: 0.3rem 0.4rem;
   min-inline-size: 0;
 }
 
-// The provider/model fields shrink before the action buttons do, and never dominate the strip.
+// The action buttons hold their size; only the fields give way.
+app-ribbon-strip-button-small {
+  flex: 0 0 auto;
+}
+
+// The provider/model fields size to their content but shrink before anything else does; the
+// dropdowns' full-width variant drops the select's content-width floor so the shrink (and its
+// ellipsis) can actually happen.
 .strip__field {
   flex: 0 1 auto;
   min-inline-size: 0;

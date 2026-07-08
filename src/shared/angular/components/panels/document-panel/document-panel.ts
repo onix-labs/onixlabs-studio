@@ -10,9 +10,9 @@ import {
   Type,
 } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { DockPanel } from '@shared/angular/services/dock/dock-panel';
-import { DockState } from '@shared/angular/services/dock/dock-state';
-import { findStackOfPanel } from '@shared/angular/services/dock/dock-tree';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
 
 /**

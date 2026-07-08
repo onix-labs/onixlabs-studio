@@ -1,8 +1,13 @@
 <div class="code-terminal">
-  <div class="code-terminal__bar">
+  <div class="code-terminal__bar" appPanelDragHandle="Terminal">
     <span class="code-terminal__title">Terminal</span>
     <span class="code-terminal__spacer"></span>
-    <button type="button" aria-label="Toggle layout" title="Toggle layout" (click)="onLayout()">
+    <button
+      type="button"
+      aria-label="Move terminal to side or bottom"
+      title="Move terminal to side or bottom"
+      (click)="onLayout()"
+    >
       <app-icon [icon]="Icon.LAYOUT_SPLIT" />
     </button>
     <button type="button" aria-label="Cut" title="Cut" (click)="onCut()">

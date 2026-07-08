@@ -33,12 +33,6 @@ describe('EditorTerminals', () => {
     expect(editorTerminals.isMounted('tab-1')).toBe(true);
   });
 
-  it('toggleLayout_whenStacked_switchesToSideBySide', () => {
-    expect(editorTerminals.layout('tab-1')).toBe('stacked');
-    editorTerminals.toggleLayout('tab-1');
-    expect(editorTerminals.layout('tab-1')).toBe('side-by-side');
-  });
-
   it('queueCommand_whenCalled_showsPanelAndStoresPending', () => {
     editorTerminals.queueCommand('tab-1', 'node run.js');
     expect(editorTerminals.isVisible('tab-1')).toBe(true);

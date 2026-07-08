@@ -32,24 +32,10 @@ import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryStatus } from '../binary-status/binary-status';
 
 /**
- * Holds the initial width, in pixels, of the disassembly panel.
- */
-const DEFAULT_DISASM_SIZE: number = 320;
-
-/**
- * Holds the initial width, in pixels, of the inspector panel.
- */
-const DEFAULT_INSPECTOR_SIZE: number = 260;
-
-/**
- * Holds the initial width, in pixels, of the agent panel.
- */
-const DEFAULT_AGENT_SIZE: number = 360;
-
-/**
  * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the centre, with
- * toggleable Disassembly and Inspector panels docked to the side via the shared panel layout. It owns
- * the binary-tab concerns the grid does not — resolving the backing document, loading the visible byte
+ * toggleable Disassembly, Inspector and Agent panels docked around it via the shared panel layout —
+ * where each panel lives is the user's choice, dragged and persisted per view type. It owns the
+ * binary-tab concerns the grid does not — resolving the backing document, loading the visible byte
  * window and its disassembly, and the status segment. Read-only for this phase.
  */
 @Component({
@@ -91,21 +77,6 @@ export class BinaryView implements OnDestroy {
    * Gets a value indicating whether this view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
-
-  /**
-   * Holds the width, in pixels, of the disassembly panel. Two-way bound to the panel's splitter.
-   */
-  protected readonly disasmSize: WritableSignal<number> = signal<number>(DEFAULT_DISASM_SIZE);
-
-  /**
-   * Holds the width, in pixels, of the inspector panel. Two-way bound to the panel's splitter.
-   */
-  protected readonly inspectorSize: WritableSignal<number> = signal<number>(DEFAULT_INSPECTOR_SIZE);
-
-  /**
-   * Holds the width, in pixels, of the agent panel. Two-way bound to the panel's splitter.
-   */
-  protected readonly agentSize: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
 
   /**
    * Holds the resolved binary document, or undefined when the tab has none.

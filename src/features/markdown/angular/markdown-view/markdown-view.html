@@ -1,4 +1,4 @@
-<app-panel-layout>
+<app-panel-layout layoutKey="markdown">
   <app-markdown-document
     main
     [documentId]="tabId()"
@@ -9,12 +9,7 @@
   />
 
   @if (activePanel() !== 'none') {
-    <app-panel
-      [edge]="panelPosition() === 'left' ? 'left' : 'right'"
-      [(size)]="panelSize"
-      [minSize]="220"
-      [maxSize]="720"
-    >
+    <app-panel panelId="tools" defaultEdge="right" [defaultSize]="320" [minSize]="220" [maxSize]="720">
       @switch (activePanel()) {
         @case ('outline') {
           <app-markdown-outline-panel />

@@ -1,43 +1,42 @@
 @if (document(); as document) {
-  <app-panel-layout>
-    <!-- Inner layout: the hex grid in the centre with the disassembly panel docked beside it. -->
-    <app-panel-layout main>
-      <app-binary-editor
-        main
-        [size]="document.size()"
-        [bytesPerRow]="document.bytesPerRow()"
-        [byteAt]="byteAt"
-        [selection]="document.selection()"
-        [dataVersion]="document.dataVersion()"
-        [insertMode]="document.insertMode()"
-        [revealOffset]="document.revealOffset"
-        [revealVersion]="document.revealVersion()"
-        (visibleRangeChange)="onVisibleRange($event)"
-        (selectionChange)="onSelectionChange($event)"
-        (cursorChange)="onCursorChange($event)"
-        (op)="onOp($event)"
-        (toggleInsertMode)="document.insertMode.set(!document.insertMode())"
-        (unitSelect)="onUnitSelect($event)"
-      />
+  <app-panel-layout layoutKey="binary">
+    <app-binary-editor
+      main
+      [size]="document.size()"
+      [bytesPerRow]="document.bytesPerRow()"
+      [byteAt]="byteAt"
+      [selection]="document.selection()"
+      [dataVersion]="document.dataVersion()"
+      [insertMode]="document.insertMode()"
+      [revealOffset]="document.revealOffset"
+      [revealVersion]="document.revealVersion()"
+      (visibleRangeChange)="onVisibleRange($event)"
+      (selectionChange)="onSelectionChange($event)"
+      (cursorChange)="onCursorChange($event)"
+      (op)="onOp($event)"
+      (toggleInsertMode)="document.insertMode.set(!document.insertMode())"
+      (unitSelect)="onUnitSelect($event)"
+    />
 
-      @if (disasmMounted()) {
-        <app-panel
-          edge="right"
-          [visible]="disasmVisible()"
-          [(size)]="disasmSize"
-          [minSize]="220"
-          [maxSize]="900"
-        >
-          <app-binary-disasm-panel [document]="document" (closed)="onHideDisasm()" />
-        </app-panel>
-      }
-    </app-panel-layout>
+    @if (disasmMounted()) {
+      <app-panel
+        panelId="disasm"
+        defaultEdge="right"
+        [visible]="disasmVisible()"
+        [defaultSize]="320"
+        [minSize]="220"
+        [maxSize]="900"
+      >
+        <app-binary-disasm-panel [document]="document" (closed)="onHideDisasm()" />
+      </app-panel>
+    }
 
     @if (inspectorMounted()) {
       <app-panel
-        edge="right"
+        panelId="inspector"
+        defaultEdge="right"
         [visible]="inspectorVisible()"
-        [(size)]="inspectorSize"
+        [defaultSize]="260"
         [minSize]="180"
         [maxSize]="600"
       >
@@ -47,9 +46,10 @@
 
     @if (agentMounted()) {
       <app-panel
-        edge="right"
+        panelId="agent"
+        defaultEdge="right"
         [visible]="agentVisible()"
-        [(size)]="agentSize"
+        [defaultSize]="360"
         [minSize]="240"
         [maxSize]="900"
       >

@@ -6,9 +6,9 @@ import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockBlueprint } from '@shared/angular/services/dock/dock-blueprint';
-import { DockNode } from '@shared/angular/services/dock/dock-node';
-import { defaultLayout } from '@shared/angular/services/dock/dock-tree';
+import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
+import { defaultLayout } from '@shared/angular/services/dock-layout/dock-tree';
 
 /**
  * The blueprint specialising a dock instance as a workspace (directory / IDE) surface: the File

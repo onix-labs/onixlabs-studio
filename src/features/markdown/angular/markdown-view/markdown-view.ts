@@ -44,7 +44,7 @@ import {
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
-import { PanelPosition, Settings } from '@shared/angular/services/settings/settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanel,
   MarkdownPanels,
@@ -97,16 +97,12 @@ const HEADING_LEVEL_6: number = 6;
 const ROOT_DEPTH: number = 0;
 
 /**
- * Default width of a markdown tool panel, in pixels.
- */
-const DEFAULT_PANEL_SIZE: number = 320;
-
-/**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
  * document, with optional Outline/Review/Agent/Reader tool panels beside it. It owns the markdown-tab
  * concerns the bare pane does not — the backing document and save target, the ribbon command handler,
- * the outline scroll-spy, the review and read sessions, and the docked tool panels and their splitter
- * — driving the pane through its imperative API.
+ * the outline scroll-spy, the review and read sessions, and the docked tool panels — driving the pane
+ * through its imperative API. Where the tool panel docks is the user's choice, dragged and persisted
+ * through the shared panel layout.
  */
 @Component({
   selector: 'app-markdown-view',
@@ -229,18 +225,6 @@ export class MarkdownView implements OnDestroy {
   protected readonly activePanel: Signal<MarkdownPanel> = computed(
     (): MarkdownPanel => this.panels.activeFor(this.tabId()),
   );
-
-  /**
-   * Gets which side of the editor the tool panels are shown on.
-   */
-  protected readonly panelPosition: Signal<PanelPosition> = computed(
-    (): PanelPosition => this.settings.markdownEditor().panelPosition,
-  );
-
-  /**
-   * Holds the width of the open tool panel, in pixels. Two-way bound to the panel's resize splitter.
-   */
-  protected readonly panelSize: WritableSignal<number> = signal<number>(DEFAULT_PANEL_SIZE);
 
   /**
    * Holds the find adapter the shared find panel drives, bound to this view's ProseMirror editor.
