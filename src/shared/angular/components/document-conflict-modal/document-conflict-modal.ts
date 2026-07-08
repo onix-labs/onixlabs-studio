@@ -79,7 +79,7 @@ import {
         border: 0.0625rem solid var(--dock-border-color);
         border-radius: calc(0.5rem * var(--border-radius-multiplier));
         corner-shape: var(--app-corner-shape, squircle);
-        cursor: pointer;
+        cursor: default;
       }
 
       .btn--danger {

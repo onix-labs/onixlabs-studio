@@ -308,7 +308,7 @@ app-markdown-editor .milkdown .ProseMirror {
     margin: 1em 0;
 
     &.rendered {
-      cursor: pointer;
+      cursor: default;
 
       .html-image-content {
         p[align='center'] {
@@ -742,7 +742,7 @@ app-markdown-editor .milkdown .ProseMirror {
     overflow: hidden;
 
     &.rendered {
-      cursor: pointer;
+      cursor: default;
       background: var(--crepe-color-surface);
       padding: 1rem;
 

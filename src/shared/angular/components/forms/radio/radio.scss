@@ -12,7 +12,7 @@
   background: var(--form-control-background-color);
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: 50%;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 150ms ease-in-out,
     border-color 150ms ease-in-out;

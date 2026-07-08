@@ -56,7 +56,7 @@
   border: none;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {

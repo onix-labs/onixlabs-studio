@@ -45,7 +45,7 @@
   color: inherit;
   background: transparent;
   border: none;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:focus-visible {
@@ -63,7 +63,7 @@
   color: inherit;
   background: transparent;
   border: none;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:focus-visible {

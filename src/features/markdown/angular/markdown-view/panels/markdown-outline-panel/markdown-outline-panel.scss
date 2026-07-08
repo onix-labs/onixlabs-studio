@@ -67,7 +67,7 @@
   border-radius: calc(0.375rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
   transition: color 0.28s ease;
 
   &:hover {

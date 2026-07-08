@@ -68,7 +68,7 @@
   align-items: center;
   gap: 0.35rem;
   font-size: 0.9rem;
-  cursor: pointer;
+  cursor: default;
 }
 
 .insert-modal__actions {
@@ -86,7 +86,7 @@
   border: 0.0625rem solid var(--dock-border-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition:
     var(--hover-transition),
     border-color 150ms ease-in-out;

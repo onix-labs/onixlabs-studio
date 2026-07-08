@@ -14,7 +14,7 @@
   // focus (mirroring the other form controls).
   border: 0.0625rem solid transparent;
   border-radius: 999px;
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 150ms ease-in-out,
     border-color 150ms ease-in-out;

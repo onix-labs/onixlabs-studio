@@ -13,7 +13,7 @@
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: calc(0.3rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition:
     background-color 150ms ease-in-out,
     border-color 150ms ease-in-out;

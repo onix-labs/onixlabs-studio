@@ -89,7 +89,7 @@ import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-d
         border: 0.0625rem solid transparent;
         border-radius: calc(0.375rem * var(--border-radius-multiplier));
         corner-shape: var(--app-corner-shape, squircle);
-        cursor: pointer;
+        cursor: default;
         transition: var(--hover-transition);
 
         &:hover {

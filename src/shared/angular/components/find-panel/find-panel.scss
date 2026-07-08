@@ -40,7 +40,7 @@
   corner-shape: var(--app-corner-shape, squircle);
   background: transparent;
   color: var(--form-muted-foreground-color);
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover:not(:disabled) {
@@ -67,7 +67,7 @@
   background: transparent;
   color: var(--form-muted-foreground-color);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &.is-active {
@@ -109,7 +109,7 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  cursor: pointer;
+  cursor: default;
 }
 
 .find-panel__actions {
@@ -142,7 +142,7 @@
   background: transparent;
   color: var(--body-foreground-color);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover:not(:disabled) {
@@ -179,7 +179,7 @@
   color: var(--body-foreground-color);
   font: inherit;
   text-align: start;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {

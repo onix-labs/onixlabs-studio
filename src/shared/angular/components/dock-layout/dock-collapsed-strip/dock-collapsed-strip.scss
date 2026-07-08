@@ -39,7 +39,7 @@
   border: 0.0625rem solid transparent;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   font: inherit;
   font-size: 0.75rem;
   white-space: nowrap;
@@ -193,7 +193,7 @@
       border: none;
       border-radius: calc(0.25rem * var(--border-radius-multiplier));
       corner-shape: var(--app-corner-shape, squircle);
-      cursor: pointer;
+      cursor: default;
       transition: var(--hover-transition);
 
       &:hover {

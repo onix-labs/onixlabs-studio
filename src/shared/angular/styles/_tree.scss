@@ -28,7 +28,7 @@ app-tree-view {
   color: inherit;
   text-align: start;
   font: inherit;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {
@@ -180,7 +180,7 @@ app-tree-view {
   font: inherit;
   font-size: 0.78rem;
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {

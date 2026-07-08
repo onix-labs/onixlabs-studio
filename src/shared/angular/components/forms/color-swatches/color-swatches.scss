@@ -11,7 +11,7 @@
   border: 0.0625rem solid rgba(0, 0, 0, 0.2);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition: transform 120ms ease-in-out;
 
   &:hover {

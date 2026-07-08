@@ -33,7 +33,7 @@
   border: 0.0625rem solid transparent;
   border-radius: calc(0.375rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {
@@ -88,7 +88,7 @@
   background: transparent;
   border: 0;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
@@ -148,7 +148,7 @@
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: calc(0.375rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {

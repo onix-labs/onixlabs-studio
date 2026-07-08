@@ -59,7 +59,7 @@
   text-align: start;
   font: inherit;
   font-size: 0.8rem;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover:not(:disabled) {

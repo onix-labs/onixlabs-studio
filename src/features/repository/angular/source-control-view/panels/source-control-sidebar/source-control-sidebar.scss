@@ -29,7 +29,7 @@
   font: inherit;
   font-weight: 500;
   text-align: start;
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:hover {
@@ -106,7 +106,7 @@
   corner-shape: var(--app-corner-shape, squircle);
   background: transparent;
   color: var(--form-muted-foreground-color);
-  cursor: pointer;
+  cursor: default;
 
   &:hover,
   &:focus-visible {

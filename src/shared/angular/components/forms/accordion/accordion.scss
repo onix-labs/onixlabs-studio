@@ -22,7 +22,7 @@
   color: inherit;
   background: var(--form-control-background-color);
   border: none;
-  cursor: pointer;
+  cursor: default;
   transition: background-color 150ms ease-in-out;
 
   &:hover {

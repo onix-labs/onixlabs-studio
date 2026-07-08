@@ -210,7 +210,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
         background: transparent;
         border: none;
         border-block-end: 0.125rem solid transparent;
-        cursor: pointer;
+        cursor: default;
         opacity: 0.65;
         transition: var(--hover-transition);
 
@@ -267,7 +267,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
         border: 0.0625rem solid transparent;
         border-radius: calc(0.375rem * var(--border-radius-multiplier));
         corner-shape: var(--app-corner-shape, squircle);
-        cursor: pointer;
+        cursor: default;
         transition: var(--hover-transition);
 
         &:hover,

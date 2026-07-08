@@ -97,7 +97,7 @@
   background: transparent;
   color: var(--body-foreground-color);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .inspector__seg-btn:not(:last-child) {

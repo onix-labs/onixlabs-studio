@@ -201,7 +201,7 @@ $agent-node-size: 1.75rem;
   background: var(--agent-view-surface-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   // Hide the native disclosure triangle in favour of the caret icon.
   list-style: none;
 
@@ -299,7 +299,7 @@ $agent-node-size: 1.75rem;
   border: none;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
 
   &--ghost {
     color: var(--body-foreground-color);
@@ -428,7 +428,7 @@ $agent-node-size: 1.75rem;
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: default;
 
   &:disabled {
     opacity: 0.5;
@@ -451,7 +451,7 @@ $agent-node-size: 1.75rem;
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
   transition:
     color 150ms ease-in-out,
     border-color 150ms ease-in-out;

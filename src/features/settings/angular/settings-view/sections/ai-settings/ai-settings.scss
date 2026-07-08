@@ -42,7 +42,7 @@
   border: 0.0625rem solid var(--settings-button-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition:
     border-color 150ms ease-in-out,
     background-color 150ms ease-in-out;

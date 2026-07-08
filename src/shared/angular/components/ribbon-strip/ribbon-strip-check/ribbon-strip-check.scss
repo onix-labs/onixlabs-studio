@@ -7,7 +7,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
 
   // The box dims itself when disabled; dim the label text to match without compounding opacity.

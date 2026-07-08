@@ -126,7 +126,7 @@
   color: inherit;
   font: inherit;
   text-align: start;
-  cursor: pointer;
+  cursor: default;
 }
 
 .detail__file-action {
@@ -142,7 +142,7 @@
   border-radius: calc(0.3rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   color: var(--form-muted-foreground-color);
-  cursor: pointer;
+  cursor: default;
   opacity: 0;
   transition:
     opacity 120ms ease-in-out,
@@ -199,7 +199,7 @@
   border: 0.0625rem solid var(--accent-surface-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
+  cursor: default;
   transition: var(--hover-transition);
 
   &:disabled {
@@ -222,7 +222,7 @@
   color: var(--accent-surface-foreground-color);
   background: transparent;
   border: 0;
-  cursor: pointer;
+  cursor: default;
 
   &:hover {
     text-decoration: underline;
