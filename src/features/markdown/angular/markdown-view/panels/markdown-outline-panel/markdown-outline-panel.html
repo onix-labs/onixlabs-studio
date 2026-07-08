@@ -1,4 +1,4 @@
-<app-tool-panel title="Outline" [icon]="Icon.OUTLINE" (closed)="panels.close()">
+<app-tool-panel title="Outline" [icon]="Icon.OUTLINE" (closed)="panels.close('outline')">
   @if (rows().length > 0) {
     <div class="outline">
       <svg class="outline__connector" [style.height.px]="height()" aria-hidden="true">

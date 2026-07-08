@@ -127,7 +127,7 @@ describe('MarkdownRibbon', () => {
     const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
     // The ribbon toggles the focused document's panel; simulate an active markdown document.
     panels.setActiveDocument('doc-1');
-    expect(panels.active()).toBe('none');
+    expect(panels.active().has('outline')).toBe(false);
 
     const outline: HTMLButtonElement = Array.from(
       element.querySelectorAll<HTMLButtonElement>('.ribbon-button'),
@@ -137,7 +137,7 @@ describe('MarkdownRibbon', () => {
     )!;
     outline.click();
 
-    expect(panels.active()).toBe('outline');
+    expect(panels.active().has('outline')).toBe(true);
   });
 
   it('imageButton_whenClicked_opensTheImageModal', () => {

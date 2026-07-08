@@ -149,28 +149,28 @@
       [icon]="Icon.OUTLINE"
       label="Outline"
       [toggle]="true"
-      [pressed]="activePanel() === 'outline'"
+      [pressed]="openPanels().has('outline')"
       (action)="onOutline()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.REVIEW"
       label="Review"
       [toggle]="true"
-      [pressed]="activePanel() === 'review'"
+      [pressed]="openPanels().has('review')"
       (action)="onReview()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.READER"
       label="Reader"
       [toggle]="true"
-      [pressed]="activePanel() === 'reader'"
+      [pressed]="openPanels().has('reader')"
       (action)="onReader()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.AGENT"
       label="Agent"
       [toggle]="true"
-      [pressed]="activePanel() === 'agent'"
+      [pressed]="openPanels().has('agent')"
       (action)="onAgent()"
     />
   </app-ribbon-strip-group>

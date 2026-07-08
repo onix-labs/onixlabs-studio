@@ -8,25 +8,35 @@
     (selectionChange)="onSelectionChange($event)"
   />
 
-  @if (activePanel() !== 'none') {
-    <app-panel panelId="tools" defaultEdge="right" [defaultSize]="320" [minSize]="220" [maxSize]="720">
-      @switch (activePanel()) {
-        @case ('outline') {
-          <app-markdown-outline-panel />
-        }
-        @case ('review') {
-          <app-markdown-review-panel />
-        }
-        @case ('agent') {
-          <app-markdown-agent-panel [documentId]="tabId()" />
-        }
-        @case ('reader') {
-          <app-markdown-reader-panel />
-        }
-        @case ('find') {
-          <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
-        }
-      }
+  <!-- Each tool is its own panel so several can be open at once, tiling side by side. Each remembers
+       its own dock placement through the shared panel layout; which are open is per document. -->
+  @if (isOpen('outline')) {
+    <app-panel panelId="outline" defaultEdge="right" [defaultSize]="320" [minSize]="220" [maxSize]="720">
+      <app-markdown-outline-panel />
+    </app-panel>
+  }
+
+  @if (isOpen('review')) {
+    <app-panel panelId="review" defaultEdge="right" [defaultSize]="320" [minSize]="220" [maxSize]="720">
+      <app-markdown-review-panel />
+    </app-panel>
+  }
+
+  @if (isOpen('reader')) {
+    <app-panel panelId="reader" defaultEdge="right" [defaultSize]="320" [minSize]="220" [maxSize]="720">
+      <app-markdown-reader-panel />
+    </app-panel>
+  }
+
+  @if (isOpen('agent')) {
+    <app-panel panelId="agent" defaultEdge="right" [defaultSize]="360" [minSize]="240" [maxSize]="900">
+      <app-markdown-agent-panel [documentId]="tabId()" />
+    </app-panel>
+  }
+
+  @if (isOpen('find')) {
+    <app-panel panelId="find" defaultEdge="right" [defaultSize]="320" [minSize]="260" [maxSize]="520">
+      <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
     </app-panel>
   }
 </app-panel-layout>

@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   effect,
   inject,
   input,
@@ -46,8 +45,8 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
-  MarkdownPanel,
   MarkdownPanels,
+  OpenableMarkdownPanel,
 } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
@@ -218,13 +217,15 @@ export class MarkdownView implements OnDestroy {
   );
 
   /**
-   * Gets the tool panel currently open beside this document's editor, or `none` when none is open.
-   * Read per document so each markdown tab keeps its own open panel (and its live Agent panel)
-   * regardless of which tab is active.
+   * Gets whether a tool panel is open beside this document's editor. Read per document so each
+   * markdown tab keeps its own open panels (and its live Agent panel) regardless of which tab is
+   * active; several may be open at once and tile side by side.
+   * @param panel The tool panel to test.
+   * @returns Returns true when the panel is open for this document.
    */
-  protected readonly activePanel: Signal<MarkdownPanel> = computed(
-    (): MarkdownPanel => this.panels.activeFor(this.tabId()),
-  );
+  protected isOpen(panel: OpenableMarkdownPanel): boolean {
+    return this.panels.openFor(this.tabId()).has(panel);
+  }
 
   /**
    * Holds the find adapter the shared find panel drives, bound to this view's ProseMirror editor.
@@ -390,7 +391,7 @@ export class MarkdownView implements OnDestroy {
    * Closes the find panel when the shared panel asks to be dismissed.
    */
   protected onFindClosed(): void {
-    this.panels.close();
+    this.panels.close('find');
   }
 
   /**

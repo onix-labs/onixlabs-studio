@@ -1,4 +1,4 @@
-<app-tool-panel title="Reader" [icon]="Icon.READER" (closed)="panels.close()">
+<app-tool-panel title="Reader" [icon]="Icon.READER" (closed)="panels.close('reader')">
   @if (canRead()) {
     <div class="ra-body">
       <div class="ra-transport">

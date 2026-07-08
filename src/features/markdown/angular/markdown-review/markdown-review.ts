@@ -160,7 +160,7 @@ export class Review {
    */
   public constructor() {
     effect((): void => {
-      const visible: boolean = this.panels.active() === 'review';
+      const visible: boolean = this.panels.active().has('review');
       this.hasSessionState();
       if (visible && this.session !== null) {
         void this.ensureAnalyzed();
@@ -176,7 +176,7 @@ export class Review {
   public registerSession(session: ReviewSession): void {
     this.session = session;
     this.hasSessionState.set(true);
-    if (this.panels.active() === 'review') {
+    if (this.panels.active().has('review')) {
       void this.ensureAnalyzed();
     }
   }
@@ -198,7 +198,7 @@ export class Review {
    * Schedules a debounced re-analysis after the active document changes, when the panel is open.
    */
   public notifySourceChanged(): void {
-    if (this.panels.active() !== 'review' || this.session === null) {
+    if (!this.panels.active().has('review') || this.session === null) {
       return;
     }
     if (this.analyzeTimer !== null) {

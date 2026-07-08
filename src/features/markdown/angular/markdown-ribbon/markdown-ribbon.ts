@@ -13,8 +13,8 @@ import {
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
 import {
-  MarkdownPanel,
   MarkdownPanels,
+  OpenableMarkdownPanel,
 } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -152,9 +152,10 @@ export class MarkdownRibbon {
   private readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
-   * Gets the tool panel currently open, so the Tools buttons reflect their pressed state.
+   * Gets the tool panels currently open, so each Tools button reflects its own pressed state (more
+   * than one can be open at a time).
    */
-  protected readonly activePanel: Signal<MarkdownPanel> = this.panels.active;
+  protected readonly openPanels: Signal<ReadonlySet<OpenableMarkdownPanel>> = this.panels.active;
 
   /**
    * Gets the variants offered by the File group's Save menu button.

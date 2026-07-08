@@ -1,4 +1,4 @@
-<app-tool-panel title="Review" [icon]="Icon.REVIEW" (closed)="panels.close()">
+<app-tool-panel title="Review" [icon]="Icon.REVIEW" (closed)="panels.close('review')">
   @if (hasSession() && ready()) {
     <div class="rv-toolbar">
       <div class="rv-chips" role="group" aria-label="Filter issues">
