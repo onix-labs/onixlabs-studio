@@ -1,0 +1,76 @@
+// The overlay's chrome surfaces mirror the tool-panel bar so guides and the ghost read as part of
+// the panels they move, in both themes. The host renders as contents so it never becomes a grid
+// item of the owning layout; the overlay itself is fixed to the viewport.
+:host {
+  --panel-overlay-surface-color: var(--gray-200);
+  --panel-overlay-title-foreground-color: var(--gray-700);
+
+  display: contents;
+}
+
+:host-context([data-theme-mode='dark']) {
+  --panel-overlay-surface-color: color-mix(in srgb, var(--gray-900), var(--gray-800));
+  --panel-overlay-title-foreground-color: var(--gray-400);
+}
+
+.panel-layout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.panel-layout-overlay__preview {
+  position: fixed;
+  background: rgba(var(--accent-color-rgb), 0.25);
+  border: 0.125rem solid var(--accent-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.panel-layout-overlay__edge {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  color: var(--accent-color);
+  font-size: 1.625rem;
+  background: var(--panel-overlay-surface-color);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.0625rem 0.25rem rgb(0 0 0 / 40%);
+
+  // The hot edge fills with the accent; its icon flips to the surface colour to stay legible.
+  &--hot {
+    color: var(--panel-overlay-surface-color);
+    background: var(--accent-color);
+  }
+}
+
+.panel-layout-overlay__ghost {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-overlay-surface-color);
+  border: 0.0625rem solid rgba(var(--accent-color-rgb), 0.4);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.625rem 1.875rem rgb(0 0 0 / 50%);
+  opacity: 0.8;
+  overflow: hidden;
+}
+
+.panel-layout-overlay__ghost-title {
+  display: flex;
+  align-items: center;
+  block-size: 1.5rem;
+  padding-inline: 0.5rem;
+  color: var(--panel-overlay-title-foreground-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

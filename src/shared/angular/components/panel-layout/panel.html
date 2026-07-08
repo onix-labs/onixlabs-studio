@@ -1,7 +1,10 @@
-<div
-  class="panel__splitter"
-  role="separator"
-  [attr.aria-orientation]="splitterOrientation()"
-  (mousedown)="onSplitterDown($event)"
-></div>
+@if (dividerVisible()) {
+  <div
+    class="panel__divider"
+    role="separator"
+    [attr.aria-orientation]="dividerOrientation()"
+    [class.panel__divider--active]="dividerActive()"
+    (mousedown)="onDividerDown($event)"
+  ></div>
+}
 <div class="panel__content"><ng-content /></div>

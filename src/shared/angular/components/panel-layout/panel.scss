@@ -1,37 +1,13 @@
-// A single edge-docked panel: a thin resize splitter on the edge facing the layout's centre,
-// followed by the projected content. The flex direction places the splitter on the correct side
-// for each docking edge.
+// A single edge-docked panel: a flex member of its edge's stack, with an optional divider
+// overlapping its leading side so adjacent stack members can be rebalanced. The projected content
+// fills the panel's full extent; hiding collapses the flex track to zero without unmounting.
 :host {
-  // The resize grip rests at a quiet surface colour so it reads as part of the panel, brightening to
-  // the accent on hover. Consumers can override the colour via this custom property.
-  --panel-splitter-color: var(--gray-200);
-
   position: relative;
   display: flex;
   box-sizing: border-box;
   overflow: hidden;
   min-width: 0;
   min-height: 0;
-}
-
-:host-context([data-theme-mode='dark']) {
-  --panel-splitter-color: color-mix(in srgb, var(--gray-900), var(--gray-800));
-}
-
-:host([data-edge='right']) {
-  flex-direction: row;
-}
-
-:host([data-edge='left']) {
-  flex-direction: row-reverse;
-}
-
-:host([data-edge='bottom']) {
-  flex-direction: column;
-}
-
-:host([data-edge='top']) {
-  flex-direction: column-reverse;
 }
 
 .panel__content {
@@ -41,57 +17,44 @@
   overflow: hidden;
 }
 
-// The splitter is absolutely positioned so it overlaps the panel's inner edge rather than
+// The divider is absolutely positioned so it overlaps the panel's leading edge rather than
 // consuming a flex track beside the content. This keeps the grip inset over the panel it resizes,
-// leaving the projected content free to fill the panel's full extent.
-.panel__splitter {
+// leaving the projected content free to fill the panel's full extent. It rests transparent so it
+// reads as part of the panel, surfacing grey on hover and the accent while dragged.
+.panel__divider {
   position: absolute;
-  background: var(--panel-splitter-color);
+  background: transparent;
   touch-action: none;
   user-select: none;
   z-index: 5;
   transition: background 150ms ease-in-out;
+
+  &:hover {
+    background: var(--panel-grip-hover-color);
+  }
+
+  &--active,
+  &--active:hover {
+    background: var(--accent-surface-border-color);
+  }
 }
 
-.panel__splitter:hover {
-  background: var(--accent-surface-border-color);
-}
-
-:host([data-edge='left']) .panel__splitter,
-:host([data-edge='right']) .panel__splitter {
+// Left and right edges stack panels vertically, so the divider is a horizontal strip along the
+// panel's top; top and bottom edges stack horizontally, so it is a vertical strip along the left.
+:host([data-edge='left']) .panel__divider,
+:host([data-edge='right']) .panel__divider {
   top: 0;
-  bottom: 0;
-  width: 0.375rem;
-  cursor: col-resize;
-}
-
-:host([data-edge='top']) .panel__splitter,
-:host([data-edge='bottom']) .panel__splitter {
   left: 0;
   right: 0;
   height: 0.375rem;
   cursor: row-resize;
 }
 
-// Pin each splitter to the panel's inner edge (the one facing the layout's centre).
-:host([data-edge='right']) .panel__splitter {
-  left: 0;
-}
-
-:host([data-edge='left']) .panel__splitter {
-  right: 0;
-}
-
-:host([data-edge='bottom']) .panel__splitter {
+:host([data-edge='top']) .panel__divider,
+:host([data-edge='bottom']) .panel__divider {
   top: 0;
-}
-
-:host([data-edge='top']) .panel__splitter {
   bottom: 0;
-}
-
-// Hidden: the size binding already collapses the host to zero; suppress the splitter so a collapsed
-// panel cannot be grabbed (it is reopened through its owning feature's toggle, not by dragging).
-:host(.panel--hidden) .panel__splitter {
-  display: none;
+  left: 0;
+  width: 0.375rem;
+  cursor: col-resize;
 }

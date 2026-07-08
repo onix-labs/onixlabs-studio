@@ -2,24 +2,26 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
+  inject,
   input,
   InputSignal,
-  model,
-  ModelSignal,
   Signal,
 } from '@angular/core';
-
-/**
- * Specifies the edge of the panel layout a panel docks to.
- */
-export type PanelEdge = 'top' | 'right' | 'bottom' | 'left';
+import { PANEL_LAYOUT_CONTEXT, PanelLayoutContext } from './panel-layout-context';
+import { PanelEdge, PanelPlacement } from './panel-types';
 
 /**
  * Represents a single edge-docked panel within an {@link PanelLayout}. The panel hosts arbitrary
  * projected content (typically a shared capability wrapper such as `<app-terminal>` or
- * `<app-agent>`), docks to a chosen edge, and carries its own resize splitter. Hiding a panel
- * collapses it without destroying its content, so a hosted session survives being closed and
- * reopened.
+ * `<app-agent>`) and declares where it opens by default; where it actually lives is the user's
+ * choice, resolved from the layout's arrangement and changed by dragging the panel's header onto
+ * another edge. Hiding a panel collapses it without destroying its content, so a hosted session
+ * survives being closed and reopened.
+ *
+ * Panels stacked on one edge share its length; the divider on a panel's leading side (every stack
+ * member but the first carries one) rebalances the stack, while the edge's own grip — owned by the
+ * layout — resizes the whole stack's cross-axis size.
  */
 @Component({
   selector: 'app-panel',
@@ -28,16 +30,14 @@ export type PanelEdge = 'top' | 'right' | 'bottom' | 'left';
   host: {
     class: 'panel',
     '[attr.data-edge]': 'edge()',
-    '[style.grid-area]': 'edge()',
     '[class.panel--hidden]': '!visible()',
-    '[style.width.px]': 'widthPx()',
-    '[style.height.px]': 'heightPx()',
+    '[style.flex]': 'flexValue()',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Panel {
   /**
-   * Specifies the default size, in pixels, a panel opens at when none is bound.
+   * Specifies the default size, in pixels, a panel opens at when none is stored.
    */
   private static readonly DEFAULT_SIZE: number = 320;
 
@@ -52,10 +52,33 @@ export class Panel {
   private static readonly DEFAULT_MAX_SIZE: number = 900;
 
   /**
-   * Gets the edge the panel docks to. Left and right panels span the layout's full height; top and
-   * bottom panels fit between them.
+   * Holds the owning layout's context, or null when the panel is hosted outside a layout.
    */
-  public readonly edge: InputSignal<PanelEdge> = input.required<PanelEdge>();
+  private readonly context: PanelLayoutContext | null = inject(PANEL_LAYOUT_CONTEXT, {
+    optional: true,
+  });
+
+  /**
+   * Holds the panel's host element, measured for the drag ghost.
+   */
+  private readonly elementRef: ElementRef<HTMLElement> =
+    inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Gets the stable identifier the panel's placement is stored under.
+   */
+  public readonly panelId: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets the edge the panel docks to when no placement is stored. Left and right panels span the
+   * layout's full height; top and bottom panels fit between them.
+   */
+  public readonly defaultEdge: InputSignal<PanelEdge> = input<PanelEdge>('right');
+
+  /**
+   * Gets the cross-axis size, in pixels, the panel opens at when no placement is stored.
+   */
+  public readonly defaultSize: InputSignal<number> = input<number>(Panel.DEFAULT_SIZE);
 
   /**
    * Gets a value indicating whether the panel is shown. When false the panel collapses to nothing
@@ -64,82 +87,83 @@ export class Panel {
   public readonly visible: InputSignal<boolean> = input<boolean>(true);
 
   /**
-   * Gets or sets the panel's size in pixels along its docking axis (width for left/right, height for
-   * top/bottom). Two-way bindable; the resize splitter updates it.
-   */
-  public readonly size: ModelSignal<number> = model<number>(Panel.DEFAULT_SIZE);
-
-  /**
-   * Gets the smallest size, in pixels, the panel can be dragged to.
+   * Gets the smallest cross-axis size, in pixels, the panel's edge can be dragged to.
    */
   public readonly minSize: InputSignal<number> = input<number>(Panel.DEFAULT_MIN_SIZE);
 
   /**
-   * Gets the largest size, in pixels, the panel can be dragged to.
+   * Gets the largest cross-axis size, in pixels, the panel's edge can be dragged to.
    */
   public readonly maxSize: InputSignal<number> = input<number>(Panel.DEFAULT_MAX_SIZE);
 
   /**
-   * Gets a value indicating whether the panel docks to a vertical edge (left or right), so its size
-   * controls width rather than height.
+   * Gets the panel's resolved placement: its stored placement when one exists, or its declared
+   * defaults.
    */
-  private readonly horizontal: Signal<boolean> = computed(
-    (): boolean => this.edge() === 'left' || this.edge() === 'right',
+  public readonly placement: Signal<PanelPlacement> = computed((): PanelPlacement => {
+    const stored: PanelPlacement | undefined = this.context?.arrangement()[this.panelId()];
+    return stored ?? { edge: this.defaultEdge(), order: 0, size: this.defaultSize() };
+  });
+
+  /**
+   * Gets the edge the panel is docked to.
+   */
+  public readonly edge: Signal<PanelEdge> = computed((): PanelEdge => this.placement().edge);
+
+  /**
+   * Gets the panel's host element, measured for the drag ghost.
+   */
+  public get hostElement(): HTMLElement {
+    return this.elementRef.nativeElement;
+  }
+
+  /**
+   * Gets the host's flex value: the panel's share of its edge's length when shown, or a collapsed
+   * zero track when hidden (the content stays mounted).
+   */
+  protected readonly flexValue: Signal<string> = computed((): string => {
+    if (!this.visible()) {
+      return '0 0 0%';
+    }
+    const share: number = this.context?.shares()[this.panelId()] ?? 1;
+    return `${share} ${share} 0%`;
+  });
+
+  /**
+   * Gets a value indicating whether the panel carries a leading divider: every visible member of
+   * an edge stack but the first does, so adjacent panels can be rebalanced.
+   */
+  protected readonly dividerVisible: Signal<boolean> = computed((): boolean => {
+    if (this.context === null || !this.visible()) {
+      return false;
+    }
+    return this.context.visibleStack(this.edge()).indexOf(this.panelId()) > 0;
+  });
+
+  /**
+   * Gets a value indicating whether the panel's divider is being dragged.
+   */
+  protected readonly dividerActive: Signal<boolean> = computed(
+    (): boolean => this.context?.activeDivider() === this.panelId(),
   );
 
   /**
-   * Gets the panel's effective size: its bound size when shown, or zero when hidden so it collapses.
+   * Gets the ARIA orientation of the divider: left and right edges stack panels vertically, so
+   * their dividers are horizontal; top and bottom edges stack horizontally, so theirs are
+   * vertical.
    */
-  private readonly effectiveSize: Signal<number> = computed((): number =>
-    this.visible() ? this.size() : 0,
+  protected readonly dividerOrientation: Signal<'horizontal' | 'vertical'> = computed(
+    (): 'horizontal' | 'vertical' => {
+      const edge: PanelEdge = this.edge();
+      return edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
+    },
   );
 
   /**
-   * Gets the host width in pixels for a left/right panel, or null when the panel docks top/bottom.
-   */
-  protected readonly widthPx: Signal<number | null> = computed((): number | null =>
-    this.horizontal() ? this.effectiveSize() : null,
-  );
-
-  /**
-   * Gets the host height in pixels for a top/bottom panel, or null when the panel docks left/right.
-   */
-  protected readonly heightPx: Signal<number | null> = computed((): number | null =>
-    this.horizontal() ? null : this.effectiveSize(),
-  );
-
-  /**
-   * Gets the ARIA orientation of the resize splitter: vertical for left/right panels (it resizes
-   * horizontally), horizontal for top/bottom panels.
-   */
-  protected readonly splitterOrientation: Signal<'horizontal' | 'vertical'> = computed(
-    (): 'horizontal' | 'vertical' => (this.horizontal() ? 'vertical' : 'horizontal'),
-  );
-
-  /**
-   * Begins a splitter drag, resizing the panel as the pointer moves until it is released. The drag
-   * direction follows the docking edge so dragging toward the layout's centre always shrinks the
-   * panel, and the result is clamped to the panel's minimum and maximum size.
+   * Begins a divider drag, rebalancing the panel against its predecessor in the stack.
    * @param event The pointer-down event that started the drag.
    */
-  protected onSplitterDown(event: MouseEvent): void {
-    event.preventDefault();
-    const horizontal: boolean = this.horizontal();
-    const grows: number = this.edge() === 'right' || this.edge() === 'bottom' ? -1 : 1;
-    const start: number = horizontal ? event.clientX : event.clientY;
-    const startSize: number = this.size();
-
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
-      const current: number = horizontal ? move.clientX : move.clientY;
-      const delta: number = (current - start) * grows;
-      const next: number = Math.min(this.maxSize(), Math.max(this.minSize(), startSize + delta));
-      this.size.set(next);
-    };
-    const onUp: () => void = (): void => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+  protected onDividerDown(event: MouseEvent): void {
+    this.context?.beginDividerDrag(this.panelId(), event);
   }
 }

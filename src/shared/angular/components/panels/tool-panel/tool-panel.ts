@@ -8,19 +8,23 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 
 /**
  * The shared chrome for an editor tool panel: a titled header with a close button and a scrollable
  * body into which the specific panel projects its content. The header's close button raises
  * {@link closed} so the host decides what closing means (hiding the panel in its own registry/layout);
  * this component names no feature so it can be reused across the app.
+ *
+ * The header doubles as the panel's drag handle: hosted inside a panel layout it drags the panel
+ * onto another edge, and hosted anywhere else (such as the dock) the handle is inert.
  */
 @Component({
   selector: 'app-tool-panel',
-  imports: [AppIcon],
+  imports: [AppIcon, PanelDragHandle],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <header class="tool-panel__header">
+    <header class="tool-panel__header" [appPanelDragHandle]="title()">
       <app-icon class="tool-panel__icon" [icon]="icon()" />
       <h2 class="tool-panel__title">{{ title() }}</h2>
       <button type="button" class="tool-panel__close" aria-label="Close panel" (click)="onClose()">

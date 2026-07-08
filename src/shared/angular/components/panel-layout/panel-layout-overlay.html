@@ -1,0 +1,38 @@
+@if (active()) {
+  <div class="panel-layout-overlay">
+    @if (preview(); as rect) {
+      <div
+        class="panel-layout-overlay__preview"
+        [style.left.px]="rect.left"
+        [style.top.px]="rect.top"
+        [style.width.px]="rect.width"
+        [style.height.px]="rect.height"
+      ></div>
+    }
+
+    @if (workspace(); as ws) {
+      @for (edge of edges; track edge) {
+        <span
+          class="panel-layout-overlay__edge"
+          [class.panel-layout-overlay__edge--hot]="hotEdge() === edge"
+          [style.left.px]="edgePosition(edge, ws).left"
+          [style.top.px]="edgePosition(edge, ws).top"
+        >
+          <app-icon [icon]="guideIcon(edge)" [rotation]="guideRotation(edge)" />
+        </span>
+      }
+    }
+
+    @if (ghost(); as g) {
+      <div
+        class="panel-layout-overlay__ghost"
+        [style.left.px]="g.left"
+        [style.top.px]="g.top"
+        [style.width.px]="g.width"
+        [style.height.px]="g.height"
+      >
+        <span class="panel-layout-overlay__ghost-title">{{ title() }}</span>
+      </div>
+    }
+  </div>
+}

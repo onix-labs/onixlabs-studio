@@ -1,2 +1,71 @@
 <div class="panel-layout__main"><ng-content select="[main]" /></div>
-<ng-content select="app-panel" />
+
+<div
+  class="panel-layout__edge"
+  data-edge="left"
+  #leftWrapper
+  [style.width.px]="edgeSizes().left"
+  [class.panel-layout__edge--collapsed]="edgeSizes().left === 0"
+>
+  <div
+    class="panel-layout__grip"
+    role="separator"
+    aria-orientation="vertical"
+    [class.panel-layout__grip--active]="activeGrip() === 'left'"
+    (mousedown)="onGripDown('left', $event)"
+  ></div>
+</div>
+
+<div
+  class="panel-layout__edge"
+  data-edge="right"
+  #rightWrapper
+  [style.width.px]="edgeSizes().right"
+  [class.panel-layout__edge--collapsed]="edgeSizes().right === 0"
+>
+  <div
+    class="panel-layout__grip"
+    role="separator"
+    aria-orientation="vertical"
+    [class.panel-layout__grip--active]="activeGrip() === 'right'"
+    (mousedown)="onGripDown('right', $event)"
+  ></div>
+</div>
+
+<div
+  class="panel-layout__edge"
+  data-edge="top"
+  #topWrapper
+  [style.height.px]="edgeSizes().top"
+  [class.panel-layout__edge--collapsed]="edgeSizes().top === 0"
+>
+  <div
+    class="panel-layout__grip"
+    role="separator"
+    aria-orientation="horizontal"
+    [class.panel-layout__grip--active]="activeGrip() === 'top'"
+    (mousedown)="onGripDown('top', $event)"
+  ></div>
+</div>
+
+<div
+  class="panel-layout__edge"
+  data-edge="bottom"
+  #bottomWrapper
+  [style.height.px]="edgeSizes().bottom"
+  [class.panel-layout__edge--collapsed]="edgeSizes().bottom === 0"
+>
+  <div
+    class="panel-layout__grip"
+    role="separator"
+    aria-orientation="horizontal"
+    [class.panel-layout__grip--active]="activeGrip() === 'bottom'"
+    (mousedown)="onGripDown('bottom', $event)"
+  ></div>
+</div>
+
+<!-- Panels are projected here once and immediately re-homed into their edge's wrapper; the
+     staging area never renders. -->
+<div class="panel-layout__staging"><ng-content select="app-panel" /></div>
+
+<app-panel-layout-overlay />
