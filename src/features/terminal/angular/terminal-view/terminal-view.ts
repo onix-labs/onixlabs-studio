@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Shell } from '@shared/angular/services/shell/shell';
@@ -33,15 +34,10 @@ import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel'
 const CWD_POLL_INTERVAL_MS: number = 1500;
 
 /**
- * Holds the initial size, in pixels, of the docked agent pane.
- */
-const DEFAULT_AGENT_SIZE: number = 360;
-
-/**
  * Represents the terminal feature view: the shared {@link Terminal} pane in the main area with an
  * optional docked agent panel beside it. It owns the terminal-tab concerns the bare pane does not —
  * the ribbon command handler, the working-directory status segment, the tab title, and the agent
- * panel and its resize splitter — driving the pane through its imperative API.
+ * panel — driving the pane through its imperative API.
  */
 @Component({
   selector: 'app-terminal-view',
@@ -87,9 +83,10 @@ export class TerminalView implements OnDestroy {
   private readonly terminal: Signal<Terminal | undefined> = viewChild<Terminal>(Terminal);
 
   /**
-   * Holds the size, in pixels, of the docked agent pane. Two-way bound to the panel's resize splitter.
+   * Holds the persisted panel arrangements, observed so the pane re-fits when the agent panel
+   * moves or resizes.
    */
-  protected readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
+  private readonly arrangements: PanelArrangements = inject(PanelArrangements);
 
   /**
    * Holds a value indicating whether the pane's PTY session is ready.
@@ -152,11 +149,12 @@ export class TerminalView implements OnDestroy {
       }
     });
 
-    // Re-fit the pane whenever the docked agent panel opens/closes or is resized, since the terminal's
-    // width changes. The fit is deferred so the layout change has applied to the DOM first.
+    // Re-fit the pane whenever the docked agent panel opens/closes, moves edge or is resized, since
+    // the terminal's extent changes. The fit is deferred so the layout change has applied to the DOM
+    // first.
     effect((): void => {
       this.agentVisible();
-      this.agentSizeSignal();
+      this.arrangements.arrangement('terminal')();
       const pane: Terminal | undefined = this.terminal();
       if (pane === undefined) {
         return;
