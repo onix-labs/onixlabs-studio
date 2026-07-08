@@ -1,15 +1,22 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  InputSignal,
+  output,
+  OutputEmitterRef,
+} from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 
 /**
- * The shared chrome for a markdown editor tool panel: a titled header with a close button and a
- * scrollable body into which the specific panel projects its content. Closing routes through the
- * {@link MarkdownPanels} registry.
+ * The shared chrome for an editor tool panel: a titled header with a close button and a scrollable
+ * body into which the specific panel projects its content. The header's close button raises
+ * {@link closed} so the host decides what closing means (hiding the panel in its own registry/layout);
+ * this component names no feature so it can be reused across the app.
  */
 @Component({
-  selector: 'app-markdown-tool-panel',
+  selector: 'app-tool-panel',
   imports: [AppIcon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -109,7 +116,7 @@ import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markd
     `,
   ],
 })
-export class MarkdownToolPanel {
+export class ToolPanel {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -132,14 +139,14 @@ export class MarkdownToolPanel {
   public readonly flush: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds the panel registry the close button routes through.
+   * Emitted when the user activates the header's close button, so the host can hide the panel.
    */
-  private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+  public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Closes the panel.
+   * Raises {@link closed} so the host dismisses the panel.
    */
   protected onClose(): void {
-    this.panels.close();
+    this.closed.emit();
   }
 }

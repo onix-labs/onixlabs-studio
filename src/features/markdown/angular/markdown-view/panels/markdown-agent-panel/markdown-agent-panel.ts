@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
-import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
+import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * The Agent tool panel: an AI agent conversation docked beside the markdown editor. It hosts the
@@ -12,12 +13,12 @@ import { MarkdownToolPanel } from '../markdown-tool-panel/markdown-tool-panel';
  */
 @Component({
   selector: 'app-markdown-agent-panel',
-  imports: [MarkdownToolPanel, AgentChat],
+  imports: [ToolPanel, AgentChat],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-markdown-tool-panel title="Agent" [icon]="Icon.AGENT" [flush]="true">
+    <app-tool-panel title="Agent" [icon]="Icon.AGENT" [flush]="true" (closed)="panels.close()">
       <app-agent-chat [tabId]="documentId()" />
-    </app-markdown-tool-panel>
+    </app-tool-panel>
   `,
 })
 export class MarkdownAgentPanel {
@@ -25,6 +26,11 @@ export class MarkdownAgentPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
+   */
+  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
    * Gets the identifier of the markdown document this agent acts on, so its in-app editor tools target
