@@ -11,12 +11,12 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { DockAutoHide, PeekSize } from '../../../services/dock/dock-auto-hide';
-import { DockFloating } from '../../../services/dock/dock-floating';
-import { Rect } from '../../../services/dock/dock-legality';
-import { DockSide, StackNode } from '../../../services/dock/dock-node';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+import { DockAutoHide, PeekSize } from '../../../services/dock-layout/dock-auto-hide';
+import { DockFloating } from '../../../services/dock-layout/dock-floating';
+import { Rect } from '../../../services/dock-layout/dock-legality';
+import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';

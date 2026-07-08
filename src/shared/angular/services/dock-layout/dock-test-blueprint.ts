@@ -1,5 +1,5 @@
 import { Icon } from '@shared/angular/icons/icon';
-import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { DockPanelPlaceholder } from '../../components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
 import { DockBlueprint } from './dock-blueprint';
 import { DockNode } from './dock-node';
 import { DockPanel } from './dock-panel';

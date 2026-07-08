@@ -1,9 +1,9 @@
 import { Component, input, InputSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
-import { DOCK_BLUEPRINT, DockBlueprint } from '../../../services/dock/dock-blueprint';
-import { DockNode, mkStack } from '../../../services/dock/dock-node';
-import { DockPanel } from '../../../services/dock/dock-panel';
+import { DOCK_BLUEPRINT, DockBlueprint } from '../../../services/dock-layout/dock-blueprint';
+import { DockNode, mkStack } from '../../../services/dock-layout/dock-node';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelOutlet } from './dock-panel-outlet';
 
 /**

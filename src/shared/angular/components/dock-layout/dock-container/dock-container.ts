@@ -7,11 +7,11 @@ import {
   inject,
   Signal,
 } from '@angular/core';
-import { DockFocus } from '../../../services/dock/dock-focus';
-import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { DockNode as DockTreeNode, StackNode } from '../../../services/dock/dock-node';
-import { DockState } from '../../../services/dock/dock-state';
-import { firstStackOfRole } from '../../../services/dock/dock-tree';
+import { DockFocus } from '../../../services/dock-layout/dock-focus';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
+import { DockNode as DockTreeNode, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockState } from '../../../services/dock-layout/dock-state';
+import { firstStackOfRole } from '../../../services/dock-layout/dock-tree';
 import { DockFloatingLayer } from '../dock-floating-layer/dock-floating-layer';
 import { DockNode } from '../dock-node/dock-node';
 import { DockOverlay } from '../dock-overlay/dock-overlay';

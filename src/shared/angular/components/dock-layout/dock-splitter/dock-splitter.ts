@@ -7,8 +7,8 @@ import {
   input,
   InputSignal,
 } from '@angular/core';
-import { SplitDirection } from '../../../services/dock/dock-node';
-import { DockState } from '../../../services/dock/dock-state';
+import { SplitDirection } from '../../../services/dock-layout/dock-node';
+import { DockState } from '../../../services/dock-layout/dock-state';
 
 /**
  * The minimum pixel size either pane on a splitter may be dragged down to, so a pane is never

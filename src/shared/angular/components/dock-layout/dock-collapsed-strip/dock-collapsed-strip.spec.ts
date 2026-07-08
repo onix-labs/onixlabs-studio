@@ -1,10 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
-import { TEST_DOCK_BLUEPRINT } from '../../../services/dock/dock-test-blueprint';
-import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
-import { StackNode } from '../../../services/dock/dock-node';
-import { DockState } from '../../../services/dock/dock-state';
-import { findStackOfPanel } from '../../../services/dock/dock-tree';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
+import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
+import { StackNode } from '../../../services/dock-layout/dock-node';
+import { DockState } from '../../../services/dock-layout/dock-state';
+import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
 import { DockCollapsedStrip } from './dock-collapsed-strip';
 
 describe('DockCollapsedStrip', () => {

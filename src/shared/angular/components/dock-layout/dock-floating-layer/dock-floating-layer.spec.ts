@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
-import { TEST_DOCK_BLUEPRINT } from '../../../services/dock/dock-test-blueprint';
-import { DockFloating } from '../../../services/dock/dock-floating';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
+import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { DockFloatingLayer } from './dock-floating-layer';
 
 describe('DockFloatingLayer', () => {

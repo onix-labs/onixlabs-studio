@@ -5,9 +5,9 @@ import {
   FloatWindow,
   MINIMUM_HEIGHT,
   MINIMUM_WIDTH,
-} from '../../../services/dock/dock-floating';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+} from '../../../services/dock-layout/dock-floating';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';

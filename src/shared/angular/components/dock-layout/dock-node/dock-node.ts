@@ -7,7 +7,7 @@ import {
   SplitDirection,
   SplitNode,
   StackNode,
-} from '../../../services/dock/dock-node';
+} from '../../../services/dock-layout/dock-node';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
 import { DockSplitter } from '../dock-splitter/dock-splitter';
 import { DockTabGroup } from '../dock-tab-group/dock-tab-group';

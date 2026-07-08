@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DockNode as DockTreeNode, mkSplit, mkStack } from '../../../services/dock/dock-node';
+import { DockNode as DockTreeNode, mkSplit, mkStack } from '../../../services/dock-layout/dock-node';
 import { DockNode } from './dock-node';
 
 describe('DockNode', () => {

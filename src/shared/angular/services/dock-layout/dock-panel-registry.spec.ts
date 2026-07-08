@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { DockPanelPlaceholder } from '../../components/dock/dock-panel-placeholder/dock-panel-placeholder';
+import { DockPanelPlaceholder } from '../../components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
 import { Icon } from '@shared/angular/icons/icon';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, mkStack } from './dock-node';

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockPanel } from '@shared/angular/services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {

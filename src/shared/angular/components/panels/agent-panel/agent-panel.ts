@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
-import { DockPanel } from '@shared/angular/services/dock/dock-panel';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**

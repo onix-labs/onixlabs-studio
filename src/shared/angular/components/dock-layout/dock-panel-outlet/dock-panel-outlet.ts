@@ -9,8 +9,8 @@ import {
   Signal,
   Type,
 } from '@angular/core';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 
 /**
  * Projects a registered dock panel's component into the tab body, resolving it by identifier from

@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
-import { CompassState, DockDrag, GuideKey } from '../../../services/dock/dock-drag';
-import { DockSide } from '../../../services/dock/dock-node';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { edgeGuideRect, Rect } from '../../../services/dock/dock-legality';
+import { CompassState, DockDrag, GuideKey } from '../../../services/dock-layout/dock-drag';
+import { DockSide } from '../../../services/dock-layout/dock-node';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { edgeGuideRect, Rect } from '../../../services/dock-layout/dock-legality';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 

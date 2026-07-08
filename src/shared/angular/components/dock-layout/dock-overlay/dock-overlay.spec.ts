@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DOCK_BLUEPRINT } from '../../../services/dock/dock-blueprint';
-import { TEST_DOCK_BLUEPRINT } from '../../../services/dock/dock-test-blueprint';
-import { DockDrag } from '../../../services/dock/dock-drag';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
+import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockOverlay } from './dock-overlay';
 
 describe('DockOverlay', () => {

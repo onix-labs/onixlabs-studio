@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DockState } from '../../../services/dock/dock-state';
-import { findStackOfPanel } from '../../../services/dock/dock-tree';
+import { DockState } from '../../../services/dock-layout/dock-state';
+import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
 import { DockContainer } from './dock-container';
 
 describe('DockContainer', () => {

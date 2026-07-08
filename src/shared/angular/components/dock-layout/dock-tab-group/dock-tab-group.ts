@@ -16,16 +16,16 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { DockAutoHide } from '../../../services/dock/dock-auto-hide';
-import { DockDrag } from '../../../services/dock/dock-drag';
-import { DockFloating } from '../../../services/dock/dock-floating';
-import { DockFocus } from '../../../services/dock/dock-focus';
-import { DockGeometry } from '../../../services/dock/dock-geometry';
-import { guideLegality, Rect } from '../../../services/dock/dock-legality';
-import { DockPanel } from '../../../services/dock/dock-panel';
-import { DockPanelRegistry } from '../../../services/dock/dock-panel-registry';
-import { DockSide, StackNode } from '../../../services/dock/dock-node';
-import { DockState } from '../../../services/dock/dock-state';
+import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
+import { DockDrag } from '../../../services/dock-layout/dock-drag';
+import { DockFloating } from '../../../services/dock-layout/dock-floating';
+import { DockFocus } from '../../../services/dock-layout/dock-focus';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
+import { guideLegality, Rect } from '../../../services/dock-layout/dock-legality';
+import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
+import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockState } from '../../../services/dock-layout/dock-state';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
