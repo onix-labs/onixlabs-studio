@@ -22,6 +22,7 @@
   <app-dropdown
     class="strip__field"
     ariaLabel="Provider"
+    [fullWidth]="true"
     [options]="providerOptions()"
     [value]="provider()"
     (valueChange)="onProvider($event)"
@@ -29,6 +30,7 @@
   <app-dropdown
     class="strip__field"
     ariaLabel="Model"
+    [fullWidth]="true"
     [options]="modelOptions()"
     [value]="model()"
     (valueChange)="onModel($event)"
