@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -65,7 +66,7 @@ interface DisasmContent {
  */
 @Component({
   selector: 'app-binary-disasm-panel',
-  imports: [AppIcon, TextEditor],
+  imports: [AppIcon, PanelDragHandle, TextEditor],
   templateUrl: './binary-disasm-panel.html',
   styleUrl: './binary-disasm-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -227,7 +228,10 @@ export class BinaryDisasmPanel implements OnDestroy {
     const decorations: MonacoApi.editor.IModelDeltaDecoration[] = [];
     let firstLine: number | null = null;
     this.content().lines.forEach((line: LineInstruction, index: number): void => {
-      if (line.startOffset < selection.end && line.startOffset + line.byteLength > selection.start) {
+      if (
+        line.startOffset < selection.end &&
+        line.startOffset + line.byteLength > selection.start
+      ) {
         const lineNumber: number = index + 1;
         firstLine ??= lineNumber;
         decorations.push({

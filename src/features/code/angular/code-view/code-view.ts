@@ -27,10 +27,7 @@ import {
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { CodeStatus, EndOfLine } from '@features/code/angular/code-status/code-status';
-import {
-  EditorTerminals,
-  TerminalLayout,
-} from '@shared/angular/services/editor-terminals/editor-terminals';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -46,22 +43,13 @@ import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
- * Holds the initial size, in pixels, of the docked terminal pane.
- */
-const DEFAULT_TERMINAL_SIZE: number = 260;
-
-/**
- * Holds the initial size, in pixels, of the docked agent pane.
- */
-const DEFAULT_AGENT_SIZE: number = 360;
-
-/**
  * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
- * text-editor pane wired to its backing document), with optional docked run-terminal and agent panels
- * beside it. It owns the code-tab concerns the core does not — the change-margin save gutter, the
- * model-URI registration, language-server sync, the ribbon command handler, the status segment, and
- * the docked panels and their splitters — reading the core's document and driving its pane through its
- * imperative API.
+ * text-editor pane wired to its backing document), with optional docked run-terminal, agent and find
+ * panels around it. It owns the code-tab concerns the core does not — the change-margin save gutter,
+ * the model-URI registration, language-server sync, the ribbon command handler, the status segment,
+ * and the docked panels — reading the core's document and driving its pane through its imperative
+ * API. Where each panel docks is the user's choice, dragged and persisted through the shared panel
+ * layout.
  */
 @Component({
   selector: 'app-code-view',
@@ -170,17 +158,6 @@ export class CodeView implements OnDestroy {
    * Holds the document's end-of-line sequence, projected to the status strip.
    */
   private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
-
-  /**
-   * Holds the size, in pixels, of the docked terminal pane. Two-way bound to the panel's splitter.
-   */
-  protected readonly terminalSizeSignal: WritableSignal<number> =
-    signal<number>(DEFAULT_TERMINAL_SIZE);
-
-  /**
-   * Holds the size, in pixels, of the docked agent pane. Two-way bound to the panel's splitter.
-   */
-  protected readonly agentSizeSignal: WritableSignal<number> = signal<number>(DEFAULT_AGENT_SIZE);
 
   /**
    * Gets the identifier of the owning tab, used to resolve the backing document.
@@ -460,14 +437,6 @@ export class CodeView implements OnDestroy {
    */
   protected terminalVisible(): boolean {
     return this.editorTerminals.isVisible(this.tabId());
-  }
-
-  /**
-   * Gets the editor/terminal layout for the tab.
-   * @returns Returns the layout.
-   */
-  protected terminalLayout(): TerminalLayout {
-    return this.editorTerminals.layout(this.tabId());
   }
 
   /**

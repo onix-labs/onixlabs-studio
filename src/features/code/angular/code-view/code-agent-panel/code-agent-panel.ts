@@ -12,6 +12,7 @@ import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
@@ -22,7 +23,7 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
  */
 @Component({
   selector: 'app-code-agent-panel',
-  imports: [AgentConversationPanel, AppIcon],
+  imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
   templateUrl: './code-agent-panel.html',
   styleUrl: './code-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -14,6 +14,9 @@ import {
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 
 /**
@@ -27,7 +30,7 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [Terminal, AppIcon],
+  imports: [Terminal, AppIcon, PanelDragHandle],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,6 +45,11 @@ export class CodeTerminalPanel {
    * Holds the docked-terminal panel state.
    */
   private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
+
+  /**
+   * Holds the persisted panel arrangements the layout toggle moves the terminal through.
+   */
+  private readonly arrangements: PanelArrangements = inject(PanelArrangements);
 
   /**
    * Holds the embedded terminal pane this panel drives, or undefined before the view initialises.
@@ -96,10 +104,12 @@ export class CodeTerminalPanel {
   }
 
   /**
-   * Toggles the editor/terminal layout between stacked and side-by-side.
+   * Moves the terminal between the bottom edge (stacked under the editor) and the right edge
+   * (side by side with it) — a one-click shortcut for the same move dragging the header performs.
    */
   protected onLayout(): void {
-    this.editorTerminals.toggleLayout(this.tabId());
+    const edge: PanelEdge | undefined = this.arrangements.arrangement('code')()['terminal']?.edge;
+    this.arrangements.move('code', 'terminal', edge === 'bottom' ? 'right' : 'bottom');
   }
 
   /**

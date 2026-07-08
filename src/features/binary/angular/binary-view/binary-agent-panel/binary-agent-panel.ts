@@ -10,6 +10,7 @@ import {
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { BinaryDocuments } from '../../binary-document/binary-document';
 import { BinaryPanels } from '../../binary-panels/binary-panels';
@@ -22,7 +23,7 @@ import { BinaryPanels } from '../../binary-panels/binary-panels';
  */
 @Component({
   selector: 'app-binary-agent-panel',
-  imports: [AgentConversationPanel, AppIcon],
+  imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
   templateUrl: './binary-agent-panel.html',
   styleUrl: './binary-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

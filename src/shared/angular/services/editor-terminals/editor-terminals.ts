@@ -1,11 +1,6 @@
 import { Service, signal, WritableSignal } from '@angular/core';
 
 /**
- * Identifies how the editor and its docked run terminal are arranged within a code tab.
- */
-export type TerminalLayout = 'stacked' | 'side-by-side';
-
-/**
  * Holds the panel state for a single code tab's docked run terminal.
  */
 interface PanelState {
@@ -21,11 +16,6 @@ interface PanelState {
   readonly mounted: boolean;
 
   /**
-   * Gets the editor/terminal arrangement.
-   */
-  readonly layout: TerminalLayout;
-
-  /**
    * Gets the command queued to run once the terminal is ready, or null when none is pending.
    */
   readonly pending: string | null;
@@ -37,13 +27,13 @@ interface PanelState {
 const DEFAULT_STATE: PanelState = {
   visible: false,
   mounted: false,
-  layout: 'stacked',
   pending: null,
 };
 
 /**
- * Owns the docked run-terminal panel state for code tabs: whether each panel is shown, how it is laid
- * out beside its editor, and any command queued to run once the terminal is ready.
+ * Owns the docked run-terminal panel state for code tabs: whether each panel is shown and any command
+ * queued to run once the terminal is ready. Where the panel docks is not state here — it belongs to
+ * the shared panel layout's persisted arrangement.
  *
  * State is read reactively (templates calling these accessors re-evaluate when it changes). The panel
  * stays mounted once first shown so its terminal session is preserved while hidden.
@@ -76,15 +66,6 @@ export class EditorTerminals {
   }
 
   /**
-   * Returns a tab's editor/terminal layout.
-   * @param id The owning tab identifier.
-   * @returns Returns the layout.
-   */
-  public layout(id: string): TerminalLayout {
-    return this.stateOf(id).layout;
-  }
-
-  /**
    * Toggles the visibility of a tab's terminal panel.
    * @param id The owning tab identifier.
    */
@@ -110,14 +91,6 @@ export class EditorTerminals {
    */
   public hide(id: string): void {
     this.update(id, { visible: false });
-  }
-
-  /**
-   * Switches a tab's layout between stacked and side-by-side.
-   * @param id The owning tab identifier.
-   */
-  public toggleLayout(id: string): void {
-    this.update(id, { layout: this.layout(id) === 'stacked' ? 'side-by-side' : 'stacked' });
   }
 
   /**
