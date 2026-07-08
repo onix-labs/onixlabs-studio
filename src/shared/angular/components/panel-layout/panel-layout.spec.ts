@@ -111,6 +111,36 @@ describe('PanelLayout', () => {
     });
   });
 
+  it('layoutKey_whenAPanelMountsLate_seedsItsBoundDefaultsNotTheClassDefaults', async () => {
+    const { fixture } = await createHost('layout-late-spec');
+    const arrangements: PanelArrangements = TestBed.inject(PanelArrangements);
+    expect(arrangements.arrangement('layout-late-spec')()['extra']).toBeUndefined();
+
+    fixture.componentInstance.extraMounted.set(true);
+    await fixture.whenStable();
+
+    // The seed must reflect the [defaultSize]="240" binding, not Panel's class default — a plain
+    // effect could observe the just-created panel before its dynamic bindings were applied.
+    expect(arrangements.arrangement('layout-late-spec')()['extra']).toEqual({
+      edge: 'right',
+      order: 1,
+      size: 240,
+    });
+  });
+
+  it('edgeSizes_clampSideStacksToTheGlobalWidthBounds', async () => {
+    const { fixture, host } = await createHost('layout-clamp-spec');
+
+    // Floor: a 200px default renders at the 20rem (320px at jsdom's 16px root) minimum.
+    expect(wrapperOf(host, 'right').style.width).toBe('320px');
+
+    TestBed.inject(PanelArrangements).resizeEdge('layout-clamp-spec', 'right', 5000);
+    await fixture.whenStable();
+
+    // Cap: half of jsdom's 1024px viewport wins over the oversized stored width.
+    expect(wrapperOf(host, 'right').style.width).toBe('512px');
+  });
+
   it('grip_whileDragged_carriesTheActiveClass', async () => {
     const { fixture, host } = await createHost();
     const grip: HTMLElement = wrapperOf(host, 'right').querySelector<HTMLElement>(

@@ -5,7 +5,6 @@ import {
   Component,
   computed,
   contentChildren,
-  effect,
   ElementRef,
   inject,
   input,
@@ -33,6 +32,12 @@ import {
  * The smallest main-axis length, in pixels, a divider drag can squeeze a stacked panel to.
  */
 const MINIMUM_STACK_LENGTH: number = 60;
+
+/**
+ * The smallest cross-axis width, in rem, of a left or right stack — 320px at the default root
+ * size — so panel toolstrips keep a usable line. Mirrored by the stylesheet's `min-width`.
+ */
+const MINIMUM_EDGE_WIDTH_REM: number = 20;
 
 /**
  * Represents the shared panel layout: a central main area surrounded by edge-docked {@link Panel}s.
@@ -237,7 +242,7 @@ export class PanelLayout implements PanelLayoutContext {
         const stored: number = Math.max(
           ...members.map((panel: Panel): number => panel.placement().size),
         );
-        sizes[edge] = this.clampEdgeSize(members, override ?? stored);
+        sizes[edge] = this.clampEdgeSize(edge, members, override ?? stored);
       }
       return sizes;
     },
@@ -250,8 +255,11 @@ export class PanelLayout implements PanelLayoutContext {
 
   public constructor() {
     // Declare the mounted panels' defaults into the arrangement whenever the panel set changes, so
-    // panels that mount later (behind an @if) merge in when they first appear.
-    effect((): void => {
+    // panels that mount later (behind an @if) merge in when they first appear. This runs after
+    // render rather than as a plain effect: a plain effect can observe a just-created panel before
+    // its dynamic input bindings ([defaultSize] etc.) are applied, which would seed the class
+    // defaults instead of the bound ones; after render every binding is in place.
+    afterRenderEffect((): void => {
       const defaults: Record<string, PanelPlacement> = {};
       for (const panel of this.panels()) {
         defaults[panel.panelId()] = {
@@ -389,7 +397,9 @@ export class PanelLayout implements PanelLayoutContext {
 
     const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
       const current: number = vertical ? move.clientX : move.clientY;
-      this.gripOverride.set(this.clampEdgeSize(members, startSize + (current - start) * grows));
+      this.gripOverride.set(
+        this.clampEdgeSize(edge, members, startSize + (current - start) * grows),
+      );
     };
     const onUp: () => void = (): void => {
       this.document.removeEventListener('mousemove', onMove);
@@ -456,15 +466,28 @@ export class PanelLayout implements PanelLayoutContext {
   }
 
   /**
-   * Clamps an edge size to its visible members' bounds: no member is squeezed below its minimum
-   * nor stretched past its maximum, with the minimum winning when the two conflict.
+   * Clamps an edge size to its bounds: no member is squeezed below its minimum nor stretched past
+   * its maximum, a side stack never drops below the global {@link MINIMUM_EDGE_WIDTH_REM} floor,
+   * and no stack takes more than half the viewport along its axis. The minimum wins when the
+   * bounds conflict. The stylesheet mirrors the global bounds, so a stored size that outgrows a
+   * later, smaller window still renders clamped.
+   * @param edge The edge being sized.
    * @param members The edge's visible panels.
    * @param size The candidate size.
    * @returns Returns the clamped size.
    */
-  private clampEdgeSize(members: readonly Panel[], size: number): number {
-    const low: number = Math.max(...members.map((panel: Panel): number => panel.minSize()));
-    const high: number = Math.min(...members.map((panel: Panel): number => panel.maxSize()));
+  private clampEdgeSize(edge: PanelEdge, members: readonly Panel[], size: number): number {
+    const horizontal: boolean = edge === 'left' || edge === 'right';
+    const viewport: number = horizontal ? window.innerWidth : window.innerHeight;
+    const floor: number = horizontal ? MINIMUM_EDGE_WIDTH_REM * rootFontSize() : 0;
+    const low: number = Math.max(
+      floor,
+      ...members.map((panel: Panel): number => panel.minSize()),
+    );
+    const high: number = Math.min(
+      viewport / 2,
+      ...members.map((panel: Panel): number => panel.maxSize()),
+    );
     return Math.max(low, Math.min(high, size));
   }
 
@@ -512,4 +535,14 @@ function placementOf(panel: Panel, arrangement: PanelArrangement): PanelPlacemen
  */
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
+}
+
+/**
+ * Reads the document's root font size, so rem-declared bounds clamp in pixels consistently with
+ * the stylesheet.
+ * @returns Returns the root font size in pixels.
+ */
+function rootFontSize(): number {
+  const size: number = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(size) && size > 0 ? size : 16;
 }

@@ -35,6 +35,11 @@
 // Each edge wrapper is a flex stack of the panels docked to it: left and right stack vertically,
 // top and bottom horizontally. The wrapper owns the stack's shared cross-axis size and its resize
 // grip.
+//
+// Global bounds: a side stack is never narrower than 20rem (320px at the default root size) so
+// panel toolstrips keep a usable line, and no stack takes more than half the viewport, so the main
+// content stays front-and-centre even when a stored size outgrows a smaller window. The grip drag
+// clamps to the same bounds; the CSS keeps them honest when the window resizes afterwards.
 .panel-layout__edge {
   position: relative;
   display: flex;
@@ -52,6 +57,15 @@
     flex-direction: column;
   }
 
+  &[data-edge='left'],
+  &[data-edge='right'] {
+    max-width: 50vw;
+
+    &:not(.panel-layout__edge--collapsed) {
+      min-width: 20rem;
+    }
+  }
+
   &[data-edge='top'] {
     grid-area: top;
     flex-direction: row;
@@ -60,6 +74,11 @@
   &[data-edge='bottom'] {
     grid-area: bottom;
     flex-direction: row;
+  }
+
+  &[data-edge='top'],
+  &[data-edge='bottom'] {
+    max-height: 50vh;
   }
 
   &--collapsed .panel-layout__grip {
