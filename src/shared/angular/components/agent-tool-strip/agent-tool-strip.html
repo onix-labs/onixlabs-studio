@@ -1,0 +1,46 @@
+<div class="strip">
+  <app-ribbon-strip-button-small
+    [icon]="Icon.PLUS"
+    label="New chat"
+    [iconOnly]="true"
+    (action)="conversation.newChat()"
+  />
+  <app-ribbon-strip-button-small
+    [icon]="Icon.STOP"
+    label="Stop"
+    [iconOnly]="true"
+    [disabled]="!conversation.isRunning()"
+    (action)="conversation.stop()"
+  />
+  <app-ribbon-strip-button-small
+    [icon]="Icon.COMPACT"
+    label="Compact conversation"
+    [iconOnly]="true"
+    [disabled]="true"
+  />
+
+  <app-dropdown
+    class="strip__field"
+    ariaLabel="Provider"
+    [options]="providerOptions()"
+    [value]="provider()"
+    (valueChange)="onProvider($event)"
+  />
+  <app-dropdown
+    class="strip__field"
+    ariaLabel="Model"
+    [options]="modelOptions()"
+    [value]="model()"
+    (valueChange)="onModel($event)"
+  />
+
+  <app-ribbon-strip-button-small
+    class="strip__history"
+    [icon]="Icon.RECENT"
+    label="Conversation history"
+    [iconOnly]="true"
+    [toggle]="true"
+    [pressed]="conversation.historyOpen()"
+    (action)="conversation.toggleHistory()"
+  />
+</div>

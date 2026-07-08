@@ -11,9 +11,9 @@ export type ConversationContextResolver = () => ConversationContext;
 
 /**
  * The injection token an IDE view provides so the agent panels docked inside it resolve their
- * conversation context. {@link import('../../components/agent-chat/agent-chat').AgentChat} injects it
- * optionally and falls back to the global context when it is absent. A specialized host (a file
- * editor's agent panel) instead passes an explicit context input, which wins over this token.
+ * conversation context. {@link import('../agent-conversation/agent-conversation').AgentConversation}
+ * injects it optionally and falls back to the global context when it is absent. A specialized host (a
+ * file editor's agent panel) instead binds an explicit context signal, which wins over this token.
  */
 export const AGENT_CONVERSATION_CONTEXT: InjectionToken<ConversationContextResolver> =
   new InjectionToken<ConversationContextResolver>('AGENT_CONVERSATION_CONTEXT');

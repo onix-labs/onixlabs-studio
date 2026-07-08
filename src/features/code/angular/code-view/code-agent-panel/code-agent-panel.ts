@@ -1,17 +1,28 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
- * Represents the docked agent panel for a code tab: a small toolbar over the shared {@link AgentChat}
- * conversation. Each tab gets its own agent session (AgentChat provides the Agent service per
- * instance), and the agent reads the active code document through the editor capabilities.
+ * Represents the docked agent panel for a code tab: this tab's title bar over the shared
+ * {@link AgentConversationPanel} (strip + chat + history). The panel owns its per-tab conversation,
+ * scoped to this file's path, and the agent reads the active code document through the editor
+ * capabilities.
  */
 @Component({
   selector: 'app-code-agent-panel',
-  imports: [AgentChat, AppIcon],
+  imports: [AgentConversationPanel, AppIcon],
   templateUrl: './code-agent-panel.html',
   styleUrl: './code-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +39,11 @@ export class CodeAgentPanel {
   private readonly codeAgents: CodeAgents = inject(CodeAgents);
 
   /**
+   * Holds the document registry, used to resolve this tab's file path for the conversation context.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Gets the identifier of the owning code tab. Always supplied by the host; the empty default lets
    * the panel be constructed before its input binding is applied.
    */
@@ -37,6 +53,17 @@ export class CodeAgentPanel {
    * Gets a value indicating whether the panel belongs to the active, visible tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets this tab's conversation context: the code file's path when it is saved, else undefined so
+   * the chat falls back to its workspace/global context.
+   */
+  protected readonly fileContext: Signal<ConversationContext | undefined> = computed(
+    (): ConversationContext | undefined => {
+      const path: string | null = this.documents.get(this.tabId())?.filePath() ?? null;
+      return path === null ? undefined : { kind: 'file', key: path };
+    },
+  );
 
   /**
    * Hides the agent panel, leaving its conversation mounted so it can be reopened.

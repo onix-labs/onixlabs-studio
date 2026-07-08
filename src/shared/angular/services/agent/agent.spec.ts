@@ -238,4 +238,22 @@ describe('Agent', () => {
 
     expect(agent.items()).toHaveLength(0);
   });
+
+  it('restore_whenCalled_replacesTheTranscriptAndReseedsItemIds', () => {
+    const items: AgentItem[] = [
+      { id: 'item-3', kind: 'user', text: 'earlier' },
+      { id: 'item-4', kind: 'assistant', text: 'reply' },
+    ];
+
+    agent.restore(items);
+
+    expect(agent.items()).toHaveLength(2);
+    expect(agent.items()[0].text).toBe('earlier');
+
+    // A subsequent send appends past the restored maximum id (item-4 → item-5), not colliding.
+    agent.send('again');
+
+    expect(lastItem()?.kind).toBe('user');
+    expect(lastItem()?.id).toBe('item-5');
+  });
 });

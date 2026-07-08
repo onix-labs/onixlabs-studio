@@ -10,6 +10,12 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import {
+  AGENT_CONVERSATION_CONTEXT,
+  ConversationContextResolver,
+  GLOBAL_CONVERSATION_CONTEXT,
+} from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
@@ -81,6 +87,18 @@ const STATUS_PRIORITY: number = 30;
     DockAutoHide,
     DockDrag,
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
+    {
+      // Scope agent conversations docked in this repository surface to the git repository root (or the
+      // global bucket before a repository is bound). Resolved lazily so it tracks the repository bind.
+      provide: AGENT_CONVERSATION_CONTEXT,
+      useFactory: (): ConversationContextResolver => {
+        const repository: Repository = inject(Repository);
+        return (): ConversationContext => {
+          const root: string | undefined = repository.info()?.root;
+          return root === undefined ? GLOBAL_CONVERSATION_CONTEXT : { kind: 'repository', key: root };
+        };
+      },
+    },
   ],
 })
 export class SourceControlView implements OnInit, OnDestroy {

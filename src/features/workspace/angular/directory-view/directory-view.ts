@@ -9,6 +9,12 @@ import {
   OnInit,
   untracked,
 } from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import {
+  AGENT_CONVERSATION_CONTEXT,
+  ConversationContextResolver,
+  GLOBAL_CONVERSATION_CONTEXT,
+} from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { ProjectModel } from '@shared/api/project-system';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
@@ -87,6 +93,18 @@ import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
     DockAutoHide,
     DockDrag,
     { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
+    {
+      // Scope agent conversations docked in this IDE to the open workspace root (or the global bucket
+      // when the tab has no folder open yet). Resolved lazily so it tracks the workspace loading.
+      provide: AGENT_CONVERSATION_CONTEXT,
+      useFactory: (): ConversationContextResolver => {
+        const workspace: Workspace = inject(Workspace);
+        return (): ConversationContext => {
+          const path: string | undefined = workspace.root()?.path;
+          return path === undefined ? GLOBAL_CONVERSATION_CONTEXT : { kind: 'workspace', key: path };
+        };
+      },
+    },
   ],
 })
 export class DirectoryView implements OnInit, OnDestroy {

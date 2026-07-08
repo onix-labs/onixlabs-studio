@@ -52,7 +52,14 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       role: 'tool',
       component: SearchPanel,
     },
-    { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: AgentPanel },
+    {
+      id: 'agent',
+      title: 'Agent',
+      icon: Icon.AGENT,
+      role: 'tool',
+      component: AgentPanel,
+      ownsToolStrip: true,
+    },
     { id: 'output', title: 'Output', icon: Icon.OUTPUT, role: 'tool', component: OutputPanel },
     {
       id: 'errors',

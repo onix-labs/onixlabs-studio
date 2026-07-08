@@ -1,23 +1,32 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
-import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
- * The Agent tool panel: an AI agent conversation docked beside the markdown editor. It hosts the
- * shared {@link AgentChat} shell, which provides its own per-instance agent session, so the panel
- * keeps an independent transcript. The panel passes its owning document id to the chat so the agent
- * reads and writes the live markdown document for this tab (including unsaved edits) through the
- * editor's command registry, rather than whichever editor is globally active.
+ * The Agent tool panel: an AI agent conversation docked beside the markdown editor. It frames the
+ * shared {@link AgentConversationPanel} (strip + chat + history) in the shared tool-panel chrome. The
+ * panel owns its per-tab conversation, scoped to this markdown file's path, and passes its document id
+ * to the chat so the agent reads and writes the live document (including unsaved edits) for this tab.
  */
 @Component({
   selector: 'app-markdown-agent-panel',
-  imports: [ToolPanel, AgentChat],
+  imports: [ToolPanel, AgentConversationPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-tool-panel title="Agent" [icon]="Icon.AGENT" [flush]="true" (closed)="panels.close()">
-      <app-agent-chat [tabId]="documentId()" />
+      <app-agent-conversation-panel [tabId]="documentId()" [context]="fileContext()" />
     </app-tool-panel>
   `,
 })
@@ -33,8 +42,24 @@ export class MarkdownAgentPanel {
   protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
+   * Holds the document registry, used to resolve this tab's file path for the conversation context.
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Gets the identifier of the markdown document this agent acts on, so its in-app editor tools target
    * this tab's editor.
    */
   public readonly documentId: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets this tab's conversation context: the markdown file's path when it is saved, else undefined so
+   * the conversation falls back to its workspace/global context.
+   */
+  protected readonly fileContext: Signal<ConversationContext | undefined> = computed(
+    (): ConversationContext | undefined => {
+      const path: string | null = this.documents.get(this.documentId())?.filePath() ?? null;
+      return path === null ? undefined : { kind: 'file', key: path };
+    },
+  );
 }

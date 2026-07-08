@@ -1,1 +1,16 @@
-<app-agent-chat [tabId]="tabId()" [isActive]="isActive()" />
+<app-panel-layout>
+  <app-agent-chat main [tabId]="tabId()" [isActive]="isActive()" />
+
+  @if (conversation.historyOpen()) {
+    <app-panel edge="right" [(size)]="historySize" [minSize]="240" [maxSize]="600">
+      <app-tool-panel
+        title="History"
+        [icon]="Icon.RECENT"
+        [flush]="true"
+        (closed)="conversation.toggleHistory()"
+      >
+        <app-agent-conversation-list />
+      </app-tool-panel>
+    </app-panel>
+  }
+</app-panel-layout>

@@ -1,8 +1,10 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
- * The slice of an agent session the ribbon's Session group drives: whether a run is in flight, and
- * the clear/stop commands. Implemented by the per-tab {@link Agent} session.
+ * The slice of an agent conversation the agent ribbon's Session group drives: whether a run is in
+ * flight, whether the conversation-history list is shown, and the new-chat/stop/history commands.
+ * Provided by the per-conversation {@link import('../../components/agent-chat/agent-chat').AgentChat}
+ * host, which owns both the {@link Agent} session and the history view.
  */
 export interface AgentSessionHandle {
   /**
@@ -11,14 +13,24 @@ export interface AgentSessionHandle {
   readonly isRunning: Signal<boolean>;
 
   /**
-   * Clears the transcript, starting a fresh conversation.
+   * Gets a value indicating whether the conversation-history list is shown.
    */
-  clear(): void;
+  readonly historyOpen: Signal<boolean>;
+
+  /**
+   * Starts a fresh conversation (clearing the transcript and leaving history).
+   */
+  newChat(): void;
 
   /**
    * Stops the in-flight run.
    */
   stop(): void;
+
+  /**
+   * Toggles the conversation-history list.
+   */
+  toggleHistory(): void;
 }
 
 /**
@@ -44,6 +56,13 @@ export class AgentSessions {
   );
 
   /**
+   * Gets a value indicating whether the active agent tab's conversation-history list is shown.
+   */
+  public readonly historyOpen: Signal<boolean> = computed(
+    (): boolean => this.activeSession()?.historyOpen() ?? false,
+  );
+
+  /**
    * Registers the given session as the one the ribbon drives.
    * @param session The active agent tab's session.
    */
@@ -62,10 +81,10 @@ export class AgentSessions {
   }
 
   /**
-   * Starts a fresh conversation in the active agent tab by clearing its transcript.
+   * Starts a fresh conversation in the active agent tab.
    */
   public newChat(): void {
-    this.activeSession()?.clear();
+    this.activeSession()?.newChat();
   }
 
   /**
@@ -73,5 +92,12 @@ export class AgentSessions {
    */
   public stop(): void {
     this.activeSession()?.stop();
+  }
+
+  /**
+   * Toggles the active agent tab's conversation-history list.
+   */
+  public toggleHistory(): void {
+    this.activeSession()?.toggleHistory();
   }
 }

@@ -1,4 +1,8 @@
-// The agent tab fills its content area; the chat shell lives in app-agent-chat.
+// The agent tab fills its content area with a panel layout: the chat shell (app-agent-chat) in the
+// centre and the conversation history docked as a side panel when opened. The layout is a CSS grid
+// that already fills its host, so it must NOT be given a `display` here — a parent-scoped
+// `app-panel-layout` rule outranks the component's own `:host { display: grid }` and would collapse
+// the grid to block flow, stacking the history below the chat instead of docking it to the right.
 :host {
   display: block;
   block-size: 100%;

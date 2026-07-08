@@ -9,7 +9,12 @@
   </div>
   <div class="binary-agent__body">
     @if (tabId()) {
-      <app-agent-chat [tabId]="tabId()" [isActive]="isActive()" surface="binary" />
+      <app-agent-conversation-panel
+        [tabId]="tabId()"
+        [isActive]="isActive()"
+        surface="binary"
+        [context]="fileContext()"
+      />
     }
   </div>
 </div>
