@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
+import { AgentConversationStore } from './ai/agent-conversation-store';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
@@ -259,6 +260,11 @@ class Program {
   private readonly lspSettingsManager: LspSettingsManager = new LspSettingsManager();
 
   /**
+   * Owns the user's persisted agent conversations, scoped by context (workspace/repository/file/global).
+   */
+  private readonly agentConversationStore: AgentConversationStore = new AgentConversationStore();
+
+  /**
    * Resolves language-server identifiers into spawn specifications for the {@link LspManager}.
    */
   private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(
@@ -446,6 +452,7 @@ class Program {
     this.binaryDisassembler.register();
     this.fileWatcher.register();
     this.aiManager.register();
+    this.agentConversationStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();
   }
