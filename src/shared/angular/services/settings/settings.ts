@@ -55,11 +55,6 @@ export type ImageSizing = 'fixed' | 'sizable';
 export type ImageAlignment = 'left' | 'center' | 'right';
 
 /**
- * Identifies which side of the markdown editor the tool panels are shown on.
- */
-export type PanelPosition = 'left' | 'right';
-
-/**
  * Identifies the document type created by default for new documents.
  */
 export type DefaultDocumentType = 'code' | 'markdown';
@@ -272,11 +267,6 @@ export interface MarkdownEditorSettings {
    * Gets the horizontal alignment applied to images.
    */
   readonly imageAlignment: ImageAlignment;
-
-  /**
-   * Gets which side of the editor the tool panels (Outline, Review, Agent, Reader) are shown on.
-   */
-  readonly panelPosition: PanelPosition;
 }
 
 /**
@@ -517,7 +507,6 @@ export class Settings {
       marginSize: this.read('markdownEditor.marginSize'),
       imageSizing: this.read('markdownEditor.imageSizing'),
       imageAlignment: this.read('markdownEditor.imageAlignment'),
-      panelPosition: this.read('markdownEditor.panelPosition'),
     }),
   );
 

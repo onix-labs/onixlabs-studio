@@ -14,7 +14,6 @@ import type {
   ImageSizing,
   MarginSize,
   ModernUiFeatures,
-  PanelPosition,
   RibbonAlignment,
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
@@ -65,7 +64,6 @@ export interface SettingsValues {
   readonly 'markdownEditor.marginSize': MarginSize;
   readonly 'markdownEditor.imageSizing': ImageSizing;
   readonly 'markdownEditor.imageAlignment': ImageAlignment;
-  readonly 'markdownEditor.panelPosition': PanelPosition;
 
   readonly 'ai.provider': AiProviderId;
   readonly 'ai.models': AiModels;
@@ -427,20 +425,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'left',
-      },
-      {
-        key: 'markdownEditor.panelPosition',
-        title: 'Panel position',
-        description:
-          'Which side of the editor the tool panels (Outline, Review, Agent, Reader) are shown on.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'left', label: 'Left' },
-            { value: 'right', label: 'Right' },
-          ],
-        },
-        default: 'right',
       },
     ],
   },
