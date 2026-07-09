@@ -6,6 +6,7 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Printing } from '@shared/angular/services/printing/printing';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -80,6 +81,11 @@ export class CodeRibbon {
    * Holds the tabs registry, used to resolve the active code document.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the printing service backing the Print and Export-to-PDF actions.
+   */
+  private readonly printing: Printing = inject(Printing);
 
   /**
    * Holds the Monaco service supplying the language list.
@@ -215,7 +221,7 @@ export class CodeRibbon {
    * Prints the active document via the browser print dialog.
    */
   protected onPrint(): void {
-    window.print();
+    this.printing.print();
   }
 
   /**
@@ -231,12 +237,10 @@ export class CodeRibbon {
   }
 
   /**
-   * Exports the active document to PDF.
-   *
-   * TODO: PDF export is not yet implemented; this is a stub until that lands.
+   * Exports the active document to PDF, prompting for a destination and opening the result.
    */
   protected onExportPdf(): void {
-    // Intentionally empty until PDF export is implemented.
+    void this.printing.exportPdf(this.activeDocument()?.fileName() ?? '');
   }
 
   /**

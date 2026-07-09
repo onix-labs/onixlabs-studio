@@ -24,6 +24,7 @@ import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
+import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
@@ -227,6 +228,11 @@ class Program {
    * Serves local image files to the markdown editor over the custom media protocol.
    */
   private readonly mediaProtocol: MediaProtocol = new MediaProtocol();
+
+  /**
+   * Exports the current document to a PDF on behalf of the renderer's editors.
+   */
+  private readonly printManager: PrintManager = new PrintManager();
 
   /**
    * Tracks the open workspace root and confines filesystem operations to it.
@@ -442,6 +448,7 @@ class Program {
 
     this.securityManager.register();
     this.mediaProtocol.register();
+    this.printManager.register();
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();

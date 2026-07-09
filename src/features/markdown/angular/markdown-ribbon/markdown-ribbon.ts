@@ -12,6 +12,8 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Printing } from '@shared/angular/services/printing/printing';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   MarkdownPanels,
   OpenableMarkdownPanel,
@@ -145,6 +147,16 @@ export class MarkdownRibbon {
    * Holds the documents service backing the file actions.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the tabs service used to resolve the active document for print and export.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the printing service backing the Print and Export-to-PDF actions.
+   */
+  private readonly printing: Printing = inject(Printing);
 
   /**
    * Holds the tool-panel registry the Tools group toggles.
@@ -352,19 +364,26 @@ export class MarkdownRibbon {
   }
 
   /**
-   * Exports the active document to PDF.
-   *
-   * TODO: PDF export is not yet implemented; this is a stub until that lands.
+   * Exports the active document to PDF, prompting for a destination and opening the result.
    */
   protected onExportPdf(): void {
-    // Intentionally empty until PDF export is implemented.
+    void this.printing.exportPdf(this.activeDocumentName());
   }
 
   /**
    * Prints the active document via the browser print dialog.
    */
   protected onPrint(): void {
-    window.print();
+    this.printing.print();
+  }
+
+  /**
+   * Gets the active document's name, used to seed the export file name.
+   * @returns Returns the active document's name, or an empty string when none is active.
+   */
+  private activeDocumentName(): string {
+    const id: string | undefined = this.tabs.activeTabId();
+    return (id === undefined ? undefined : this.documents.get(id)?.fileName()) ?? '';
   }
 
   /**
