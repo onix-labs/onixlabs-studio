@@ -115,6 +115,13 @@ export interface AgentRunContext {
   readonly contextPaths: readonly AgentContextRef[];
 
   /**
+   * Gets the provider session to resume so the model keeps the conversation's prior context, or null
+   * to start a fresh session (a conversation's first turn). Providers that do not support session
+   * continuation ignore it.
+   */
+  readonly resumeSessionId: string | null;
+
+  /**
    * Gets the credential the run authenticates with.
    */
   readonly auth: AgentAuth;

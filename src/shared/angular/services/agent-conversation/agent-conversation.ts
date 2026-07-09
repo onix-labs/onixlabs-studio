@@ -319,7 +319,7 @@ export class AgentConversation implements AgentSessionHandle {
       return;
     }
     this.cancelScheduledSave();
-    this.agent.restore(record.items as readonly AgentItem[]);
+    this.agent.restore(record.items as readonly AgentItem[], record.sessionId ?? null);
     this.currentIdState.set(record.id);
     this.createdAt = record.createdAt;
     // Capture the restored reference so the autosave effect does not immediately re-save it.
@@ -407,6 +407,7 @@ export class AgentConversation implements AgentSessionHandle {
       updatedAt: Date.now(),
       messageCount,
       items,
+      sessionId: this.agent.sessionId(),
     };
     await this.store.save(record);
     await this.reloadSummaries();

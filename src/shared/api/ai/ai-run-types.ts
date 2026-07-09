@@ -102,4 +102,11 @@ export interface AiRunRequest {
    * agent to read with its own file tools. Empty or absent when nothing is attached.
    */
   readonly contextPaths?: readonly AgentContextRef[];
+
+  /**
+   * Gets the provider session to resume so the model keeps the conversation's prior context, or null/
+   * absent to start a fresh session (the first turn of a conversation). Providers that do not support
+   * session continuation ignore it.
+   */
+  readonly resumeSessionId?: string | null;
 }

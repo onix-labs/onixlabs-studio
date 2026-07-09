@@ -162,6 +162,13 @@ export class Agent {
   private activeRequestId: string | null = null;
 
   /**
+   * Holds the provider session this conversation resumes on its next turn, so the model keeps the
+   * earlier turns' context. Null for a fresh conversation; set from the first run's `session` event and
+   * updated as the session is resumed, reset on {@link clear}, and rehydrated by {@link restore}.
+   */
+  private readonly sessionIdState: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Tracks the running counter used to generate unique item identifiers.
    */
   private sequence: number = 0;
@@ -197,6 +204,12 @@ export class Agent {
    */
   public readonly contextPaths: Signal<readonly AgentContextRef[]> =
     this.contextPathsState.asReadonly();
+
+  /**
+   * Gets the provider session this conversation resumes on its next turn, or null for a fresh
+   * conversation. Persisted with the conversation so its memory survives reopening and restart.
+   */
+  public readonly sessionId: Signal<string | null> = this.sessionIdState.asReadonly();
 
   /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
@@ -243,6 +256,7 @@ export class Agent {
       surface,
       mode: this.modeState(),
       contextPaths: this.contextPathsState(),
+      resumeSessionId: this.sessionIdState(),
     });
   }
 
@@ -322,6 +336,7 @@ export class Agent {
     this.activeRequestId = null;
     this.busy.set(false);
     this.contextPathsState.set([]);
+    this.sessionIdState.set(null);
   }
 
   /**
@@ -329,11 +344,14 @@ export class Agent {
    * id counter past the restored items so subsequently appended items keep unique ids. Used to
    * rehydrate a persisted conversation into this session.
    * @param items The restored transcript items.
+   * @param sessionId The persisted provider session to resume on the next turn, so the restored
+   * conversation keeps its memory; null when the conversation has no session yet.
    */
-  public restore(items: readonly AgentItem[]): void {
+  public restore(items: readonly AgentItem[], sessionId: string | null = null): void {
     this.activeRequestId = null;
     this.busy.set(false);
     this.contextPathsState.set([]);
+    this.sessionIdState.set(sessionId);
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
       const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
@@ -407,6 +425,11 @@ export class Agent {
           permissionDetail: event.detail,
           permissionState: 'pending',
         });
+        break;
+      case 'session':
+        // Remember the session so the next turn resumes it and the model keeps this conversation's
+        // context. A compaction run's session is ignored above (its events never reach here).
+        this.sessionIdState.set(event.sessionId);
         break;
       case 'status':
         this.onStatus(event.state, event.detail);

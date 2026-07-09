@@ -123,6 +123,23 @@ export interface AiPermissionEvent extends AiEventBase {
 }
 
 /**
+ * Reports the provider session the run belongs to, so the renderer can resume it on the next turn and
+ * the model keeps the conversation's context. Emitted for providers that support session continuation
+ * (the Claude Agent SDK); the session id is stable across a resumed conversation.
+ */
+export interface AiSessionEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'session';
+
+  /**
+   * Gets the provider session identifier to resume the conversation with on the next turn.
+   */
+  readonly sessionId: string;
+}
+
+/**
  * Reports a change in the run's lifecycle.
  */
 export interface AiStatusEvent extends AiEventBase {
@@ -152,4 +169,5 @@ export type AiEvent =
   | AiToolStartEvent
   | AiToolEndEvent
   | AiPermissionEvent
+  | AiSessionEvent
   | AiStatusEvent;

@@ -204,6 +204,10 @@ export class AiManager {
       surface: request.surface ?? 'editor',
       mode,
       contextPaths,
+      resumeSessionId:
+        typeof request.resumeSessionId === 'string' && request.resumeSessionId.length > 0
+          ? request.resumeSessionId
+          : null,
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {

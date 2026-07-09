@@ -32,6 +32,7 @@ describe('Agent', () => {
     model: string;
     permissionPosture: AiPermissionPosture;
     tokenCap: number;
+    resumeSessionId: string | null;
   }[];
   let abortCalls: string[];
   let permissionReplies: { permissionId: string; granted: boolean }[];
@@ -67,6 +68,7 @@ describe('Agent', () => {
           model: options.model ?? '',
           permissionPosture: options.permissionPosture ?? 'prompt',
           tokenCap: options.tokenCap ?? 0,
+          resumeSessionId: options.resumeSessionId ?? null,
         });
         return 'run-1';
       },
@@ -237,6 +239,42 @@ describe('Agent', () => {
     agent.clear();
 
     expect(agent.items()).toHaveLength(0);
+  });
+
+  it('send_onAFreshConversation_resumesNoSession', () => {
+    agent.send('hi');
+
+    expect(runCalls[0].resumeSessionId).toBeNull();
+  });
+
+  it('session_whenReceived_isSentAsResumeOnTheNextTurn', () => {
+    agent.send('first');
+    fireEvent({ requestId: 'run-1', kind: 'session', sessionId: 'sess-abc' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.send('second');
+
+    expect(runCalls).toHaveLength(2);
+    expect(runCalls[1].resumeSessionId).toBe('sess-abc');
+  });
+
+  it('clear_whenCalled_forgetsTheSession', () => {
+    agent.send('first');
+    fireEvent({ requestId: 'run-1', kind: 'session', sessionId: 'sess-abc' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.clear();
+    agent.send('fresh');
+
+    expect(runCalls[1].resumeSessionId).toBeNull();
+  });
+
+  it('restore_whenGivenASession_resumesItOnTheNextTurn', () => {
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'earlier' }], 'sess-restored');
+
+    agent.send('again');
+
+    expect(runCalls[0].resumeSessionId).toBe('sess-restored');
   });
 
   it('restore_whenCalled_replacesTheTranscriptAndReseedsItemIds', () => {

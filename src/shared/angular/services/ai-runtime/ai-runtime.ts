@@ -67,6 +67,12 @@ export interface AiRunOptions {
    * with its own file tools. Omitted when nothing is attached.
    */
   readonly contextPaths?: readonly AgentContextRef[];
+
+  /**
+   * Gets the provider session to resume so the model keeps the conversation's prior context, or null/
+   * omitted to start a fresh session (a conversation's first turn).
+   */
+  readonly resumeSessionId?: string | null;
 }
 
 /**
@@ -143,6 +149,7 @@ export class AiRuntime {
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',
       contextPaths: options.contextPaths ?? [],
+      resumeSessionId: options.resumeSessionId ?? null,
     });
     return requestId;
   }

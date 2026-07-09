@@ -374,6 +374,10 @@ export class ClaudeAgentProvider implements AgentProvider {
             ],
       canUseTool,
       abortController: controller,
+      // Resume the conversation's prior session when one exists, so the model keeps the earlier turns'
+      // context (the SDK replays the persisted session transcript, including tool calls and results).
+      // Absent on a conversation's first turn, which starts a fresh session.
+      ...(context.resumeSessionId !== null ? { resume: context.resumeSessionId } : {}),
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task
       // budget so the model paces its tool use and wraps up before the limit.
       ...(context.tokenCap > 0 ? { taskBudget: { total: context.tokenCap } } : {}),
@@ -382,12 +386,30 @@ export class ClaudeAgentProvider implements AgentProvider {
     };
 
     const response: Query = query({ prompt: this.buildPrompt(context), options });
+    let reportedSessionId: string | null = null;
     for await (const message of response) {
       if (context.signal.aborted) {
         break;
       }
+      // Surface the SDK session id so the renderer can resume this conversation on its next turn. Every
+      // message carries it; report it once (and again if it ever changes, e.g. a forked resume).
+      const sessionId: string | null = this.sessionIdOf(message);
+      if (sessionId !== null && sessionId !== reportedSessionId) {
+        reportedSessionId = sessionId;
+        context.emit({ requestId: context.requestId, kind: 'session', sessionId });
+      }
       this.handleMessage(message, context);
     }
+  }
+
+  /**
+   * Reads the session id an SDK message carries, or null when the message has none.
+   * @param message The SDK message.
+   * @returns Returns the session id, or null.
+   */
+  private sessionIdOf(message: SDKMessage): string | null {
+    const value: unknown = (message as { session_id?: unknown }).session_id;
+    return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
   /**

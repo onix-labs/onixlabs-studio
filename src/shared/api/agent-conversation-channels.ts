@@ -150,6 +150,13 @@ export interface StoredAgentConversation {
    * Gets the serialized transcript items (the renderer's `AgentItem[]`, opaque here).
    */
   readonly items: readonly unknown[];
+
+  /**
+   * Gets the provider session to resume so a reopened conversation keeps its memory, or null/absent
+   * when it has no session (e.g. an older conversation saved before session continuation, or one that
+   * never ran).
+   */
+  readonly sessionId?: string | null;
 }
 
 /**
