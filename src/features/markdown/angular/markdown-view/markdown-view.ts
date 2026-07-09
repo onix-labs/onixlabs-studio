@@ -41,6 +41,7 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
+import { MarkdownStatus } from '@features/markdown/angular/markdown-status/markdown-status';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -134,6 +135,11 @@ export class MarkdownView implements OnDestroy {
    * Holds the documents service backing the save accelerators, saving whichever document is active.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the markdown status service this view publishes its live word count to while active.
+   */
+  private readonly markdownStatus: MarkdownStatus = inject(MarkdownStatus);
 
   /**
    * Holds the application keybinding router this view registers its accelerators with while active.
@@ -290,6 +296,18 @@ export class MarkdownView implements OnDestroy {
         this.readAlong.unregister();
       }
     });
+
+    // Publish the live word count to the status strip while this view is active, re-deriving it as the
+    // document is edited (the content signal is tracked here). Inactive views clear their contribution
+    // so the active document's stats are never wiped out.
+    effect((): void => {
+      const id: string = this.tabId();
+      if (this.isActive() && this.paneReady()) {
+        this.markdownStatus.publish(id, this.documents.get(id)?.content() ?? '');
+      } else {
+        this.markdownStatus.clear(id);
+      }
+    });
   }
 
   /**
@@ -307,6 +325,7 @@ export class MarkdownView implements OnDestroy {
     }
     this.reviewReveal.unregister();
     this.readAlong.unregister();
+    this.markdownStatus.clear(this.tabId());
     this.panels.remove(this.tabId());
   }
 
