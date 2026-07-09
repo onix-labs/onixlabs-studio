@@ -7,6 +7,7 @@
       [isActive]="isActive()"
       (ready)="onPaneReady()"
       (shellChange)="onShellChange($event)"
+      (findRequested)="showFind()"
       (exited)="onExited()"
     />
   </div>
@@ -21,6 +22,12 @@
       [maxSize]="900"
     >
       <app-terminal-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
+    </app-panel>
+  }
+
+  @if (findVisible()) {
+    <app-panel panelId="find" defaultEdge="right" [defaultSize]="320" [minSize]="260" [maxSize]="520">
+      <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
     </app-panel>
   }
 </app-panel-layout>

@@ -16,7 +16,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
-import { ITheme, Terminal as Xterm } from '@xterm/xterm';
+import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
+import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
@@ -110,6 +111,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly shellChange: OutputEmitterRef<string> = output<string>();
 
   /**
+   * Emits when the user presses the find chord (Cmd+F on macOS, Ctrl+Shift+F elsewhere) inside the
+   * terminal, so the owning view can open its find panel. The chord is swallowed rather than forwarded
+   * to the shell, so it never collides with the shell's own key bindings.
+   */
+  public readonly findRequested: OutputEmitterRef<void> = output<void>();
+
+  /**
    * Holds the container element that hosts the xterm canvas.
    */
   private readonly container: Signal<ElementRef<HTMLDivElement>> =
@@ -136,6 +144,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds the fit addon used to size the terminal to its container.
    */
   private fitAddon: FitAddon | null = null;
+
+  /**
+   * Holds the search addon used to highlight and navigate find matches across the whole buffer
+   * (including scrollback), or null before initialisation.
+   */
+  private searchAddon: SearchAddon | null = null;
+
+  /**
+   * Holds the listener notified whenever the search results change, or null when no find panel is
+   * observing. The addon reports the active match index (-1 when none) and the total match count.
+   */
+  private searchResultsListener: ((activeIndex: number, count: number) => void) | null = null;
 
   /**
    * Holds the observer that re-fits the terminal when its container resizes.
@@ -204,6 +224,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
+    this.searchAddon = null;
   }
 
   /**
@@ -257,6 +278,76 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public scrollToBottom(): void {
     this.xterm?.scrollToBottom();
     this.xterm?.focus();
+  }
+
+  /**
+   * Highlights every occurrence of the term across the buffer and moves the active match to the next
+   * one after the current selection, scrolling it into view. A find panel drives highlighting and
+   * forward navigation through this method.
+   * @param term The text (or pattern) to search for.
+   * @param options The search options (regex, whole-word, case sensitivity, decorations).
+   */
+  public searchNext(term: string, options: ISearchOptions): void {
+    this.searchAddon?.findNext(term, options);
+  }
+
+  /**
+   * Moves the active match to the previous occurrence of the term, scrolling it into view. Shares the
+   * highlight set established by {@link searchNext}.
+   * @param term The text (or pattern) to search for.
+   * @param options The search options (regex, whole-word, case sensitivity, decorations).
+   */
+  public searchPrevious(term: string, options: ISearchOptions): void {
+    this.searchAddon?.findPrevious(term, options);
+  }
+
+  /**
+   * Clears the search highlights from the buffer.
+   */
+  public clearSearch(): void {
+    this.searchAddon?.clearDecorations();
+  }
+
+  /**
+   * Registers a listener notified whenever the search results change, replacing any previous listener.
+   * The addon reports the active match index (-1 when there is no active match) and the total count.
+   * @param listener The results listener.
+   * @returns Returns a function that removes the listener.
+   */
+  public onSearchResults(listener: (activeIndex: number, count: number) => void): () => void {
+    this.searchResultsListener = listener;
+    return (): void => {
+      if (this.searchResultsListener === listener) {
+        this.searchResultsListener = null;
+      }
+    };
+  }
+
+  /**
+   * Reads the buffer as logical (unwrapped) lines: rows the renderer soft-wrapped are rejoined onto the
+   * line they continue. Used to build the find panel's match previews.
+   * @returns Returns the logical lines of the buffer.
+   */
+  public bufferLines(): readonly string[] {
+    const xterm: Xterm | null = this.xterm;
+    if (xterm === null) {
+      return [];
+    }
+    const buffer: Xterm['buffer']['active'] = xterm.buffer.active;
+    const lines: string[] = [];
+    for (let index: number = 0; index < buffer.length; index++) {
+      const row: IBufferLine | undefined = buffer.getLine(index);
+      if (row === undefined) {
+        continue;
+      }
+      const text: string = row.translateToString(true);
+      if (row.isWrapped && lines.length > 0) {
+        lines[lines.length - 1] += text;
+      } else {
+        lines.push(text);
+      }
+    }
+    return lines;
   }
 
   /**
@@ -369,6 +460,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
+    this.searchAddon = null;
 
     await this.initialize();
   }
@@ -396,9 +488,34 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     const fitAddon: FitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);
+
+    const searchAddon: SearchAddon = new SearchAddon();
+    xterm.loadAddon(searchAddon);
+    searchAddon.onDidChangeResults(({ resultIndex, resultCount }): void =>
+      this.searchResultsListener?.(resultIndex, resultCount),
+    );
+
     xterm.open(host);
     this.xterm = xterm;
     this.fitAddon = fitAddon;
+    this.searchAddon = searchAddon;
+
+    // Intercept the find chord before xterm forwards it to the PTY so it opens the find panel instead
+    // of reaching the shell. Cmd+F on macOS; Ctrl+Shift+F elsewhere (bare Ctrl+F is a shell binding).
+    xterm.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
+      if (event.type !== 'keydown' || event.key.toLowerCase() !== 'f') {
+        return true;
+      }
+      const mac: boolean = window.host?.platform === 'darwin';
+      const chord: boolean = mac
+        ? event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+        : event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+      if (!chord) {
+        return true;
+      }
+      this.findRequested.emit();
+      return false;
+    });
 
     fitAddon.fit();
 

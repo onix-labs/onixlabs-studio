@@ -1,7 +1,7 @@
 <div class="find-panel">
   @if (showHeader()) {
-    <div class="find-panel__header" appPanelDragHandle="Find and Replace">
-      <span class="find-panel__title">Find and Replace</span>
+    <div class="find-panel__header" [appPanelDragHandle]="title()">
+      <span class="find-panel__title">{{ title() }}</span>
       <button
         type="button"
         class="find-panel__icon-button"

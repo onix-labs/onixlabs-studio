@@ -75,6 +75,7 @@
     "@phosphor-icons/web": "^2.1.2",
     "@vscode/ripgrep": "^1.18.0",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-search": "^0.15.0",
     "@xterm/xterm": "^5.5.0",
     "ai": "^6.0.205",
     "an-array-of-english-words": "^2.0.0",

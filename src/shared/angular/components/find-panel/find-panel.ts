@@ -126,6 +126,13 @@ export class FindPanel implements OnDestroy {
   );
 
   /**
+   * Gets the panel's header title, reflecting whether the bound surface offers replace.
+   */
+  protected readonly title: Signal<string> = computed((): string =>
+    this.supportsReplace() ? 'Find and Replace' : 'Find',
+  );
+
+  /**
    * Gets the effective view: the requested one, forced to find when replace is unsupported.
    */
   protected readonly mode: Signal<FindMode> = computed(

@@ -24,6 +24,7 @@ function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
     setScrollLock: (): void => void (calls['setScrollLock'] = true),
     scrollToBottom: (): void => void (calls['scrollToBottom'] = true),
     newSession: (): void => void (calls['newSession'] = true),
+    find: (): void => void (calls['find'] = true),
   };
 }
 
@@ -91,6 +92,16 @@ describe('TerminalCommands', () => {
     commands.newSession('/bin/zsh');
 
     expect(calls['newSession']).toBe(true);
+  });
+
+  it('find_whenHandlerRegistered_forwardsToTheHandler', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    const calls: Record<string, boolean> = {};
+    commands.register(createHandler(calls));
+
+    commands.find();
+
+    expect(calls['find']).toBe(true);
   });
 
   it('open_whenHandlerUnregistered_doesNothing', () => {

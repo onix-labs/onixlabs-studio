@@ -206,4 +206,11 @@ export class TerminalRibbon {
   protected onScrollToBottom(): void {
     this.commands.scrollToBottom();
   }
+
+  /**
+   * Opens the find panel over the active terminal to search its buffer.
+   */
+  protected onFind(): void {
+    this.commands.find();
+  }
 }

@@ -15,6 +15,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -27,6 +28,7 @@ import {
   TerminalCommandHandler,
   TerminalCommands,
 } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import { TerminalFindAdapter } from '@features/terminal/angular/find/terminal-find-adapter';
 import { TerminalStatus } from '@features/terminal/angular/terminal-status/terminal-status';
 import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
@@ -49,7 +51,7 @@ const MAX_TAB_TITLE_LENGTH: number = 24;
  */
 @Component({
   selector: 'app-terminal-view',
-  imports: [PanelLayout, Panel, Terminal, TerminalAgentPanel],
+  imports: [PanelLayout, Panel, Terminal, TerminalAgentPanel, FindPanel],
   templateUrl: './terminal-view.html',
   styleUrl: './terminal-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -123,6 +125,19 @@ export class TerminalView implements OnDestroy {
    * directory does not re-rename the tab.
    */
   private lastTabTitle: string | null = null;
+
+  /**
+   * Holds a value indicating whether the find panel is shown over the terminal.
+   */
+  protected readonly findVisible: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the find adapter that drives the shared find panel against this terminal's buffer. Replace is
+   * unsupported (the buffer is read-only), so the panel shows find only.
+   */
+  protected readonly findAdapter: TerminalFindAdapter = new TerminalFindAdapter(
+    (): Terminal | null => this.terminal() ?? null,
+  );
 
   /**
    * Gets the default shell a new terminal starts with, taken from the persisted setting; an empty
@@ -314,9 +329,25 @@ export class TerminalView implements OnDestroy {
       root: (): void => {
         this.terminal()?.runCommand('cd /');
       },
+      find: (): void => this.showFind(),
     };
     this.terminalCommands.register(this.commandHandler);
     this.registerKeybindings();
+  }
+
+  /**
+   * Shows the find panel over the terminal — used by the ribbon's Find command and the pane's find
+   * chord, both of which should open rather than toggle it.
+   */
+  protected showFind(): void {
+    this.findVisible.set(true);
+  }
+
+  /**
+   * Hides the find panel when the shared panel asks to be dismissed.
+   */
+  protected onFindClosed(): void {
+    this.findVisible.set(false);
   }
 
   /**

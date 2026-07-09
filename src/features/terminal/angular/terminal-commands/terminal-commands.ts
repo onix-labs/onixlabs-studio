@@ -77,6 +77,11 @@ export interface TerminalCommandHandler {
    * Scrolls the terminal viewport to the newest output at the bottom of the buffer.
    */
   scrollToBottom(): void;
+
+  /**
+   * Opens the find panel over the terminal to search its buffer.
+   */
+  find(): void;
 }
 
 /**
@@ -217,5 +222,12 @@ export class TerminalCommands {
    */
   public scrollToBottom(): void {
     this.handler()?.scrollToBottom();
+  }
+
+  /**
+   * Opens the find panel over the active terminal to search its buffer.
+   */
+  public find(): void {
+    this.handler()?.find();
   }
 }
