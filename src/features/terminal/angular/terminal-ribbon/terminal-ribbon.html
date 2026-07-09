@@ -39,14 +39,17 @@
 
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-column>
-      <app-ribbon-strip-check
+      <app-ribbon-strip-button-small
+        [icon]="Icon.LOCK"
         label="Scroll Lock"
-        [checked]="scrollLocked()"
-        (toggled)="onScrollLock($event)"
+        [toggle]="true"
+        [pressed]="scrollLocked()"
+        (action)="onScrollLock(!scrollLocked())"
       />
       <app-ribbon-strip-button-small
         [icon]="Icon.ARROW_DOWN"
-        label="Scroll to Bottom"
+        label="Scroll"
+        [disabled]="scrollLocked()"
         (action)="onScrollToBottom()"
       />
       <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
