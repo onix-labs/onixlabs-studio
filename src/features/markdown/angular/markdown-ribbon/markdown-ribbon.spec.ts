@@ -30,6 +30,7 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     toggleInlineCode: noop,
     toggleBulletList: (): void => void inserted.push('bullet-list'),
     toggleOrderedList: (): void => void inserted.push('ordered-list'),
+    toggleTaskList: (): void => void inserted.push('task-list'),
     insertTable: (): void => void inserted.push('table'),
     insertHorizontalRule: (): void => void inserted.push('divider'),
     insertMarkdown: (markdown: string): void => void inserted.push(`block:${markdown}`),

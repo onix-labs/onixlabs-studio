@@ -24,6 +24,7 @@ function recordingHandler(calls: Set<string>): MarkdownCommandHandler {
     toggleInlineCode: (): void => void calls.add('toggleInlineCode'),
     toggleBulletList: (): void => void calls.add('toggleBulletList'),
     toggleOrderedList: (): void => void calls.add('toggleOrderedList'),
+    toggleTaskList: (): void => void calls.add('toggleTaskList'),
     insertTable: (): void => void calls.add('insertTable'),
     insertHorizontalRule: (): void => void calls.add('insertHorizontalRule'),
     insertMarkdown: (): void => void calls.add('insertMarkdown'),
@@ -123,6 +124,13 @@ describe('MarkdownCommands', () => {
     commands.redo();
     expect(calls.has('undo')).toBe(true);
     expect(calls.has('redo')).toBe(true);
+  });
+
+  it('toggleTaskList_whenHandlerRegistered_forwardsToHandler', () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register('doc-1', recordingHandler(calls));
+    commands.toggleTaskList();
+    expect(calls.has('toggleTaskList')).toBe(true);
   });
 
   it('historyCommands_whenNoHandlerRegistered_doNothing', () => {
