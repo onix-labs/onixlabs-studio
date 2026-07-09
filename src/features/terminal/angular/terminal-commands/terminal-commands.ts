@@ -10,19 +10,22 @@ export interface TerminalCommandHandler {
   readonly scrollLocked: Signal<boolean>;
 
   /**
-   * Gets the shell executable the terminal is currently running, or undefined before it is known.
-   */
-  readonly currentShell: Signal<string | undefined>;
-
-  /**
    * Clears the terminal screen.
    */
   clear(): void;
 
   /**
-   * Destroys the terminal session and respawns a fresh one, keeping the same identifier.
+   * Destroys the terminal session and respawns a fresh one under the current shell, keeping the same
+   * identifier.
    */
   restart(): void;
+
+  /**
+   * Starts a fresh session, respawning under the given shell — or the configured default shell when
+   * none is given — keeping the same identifier.
+   * @param shell The shell executable to run, or undefined for the configured default.
+   */
+  newSession(shell?: string): void;
 
   /**
    * Copies the whole buffer to the clipboard, then clears the screen.
@@ -69,12 +72,6 @@ export interface TerminalCommandHandler {
    * @param value Whether to engage scroll lock.
    */
   setScrollLock(value: boolean): void;
-
-  /**
-   * Switches the terminal to a different shell, respawning its session under it.
-   * @param shell The shell executable to run.
-   */
-  setShell(shell: string): void;
 }
 
 /**
@@ -107,14 +104,6 @@ export class TerminalCommands {
   );
 
   /**
-   * Gets the shell the active terminal is running, or undefined when no terminal is active or its
-   * shell is not yet known.
-   */
-  public readonly currentShell: Signal<string | undefined> = computed(
-    (): string | undefined => this.handler()?.currentShell(),
-  );
-
-  /**
    * Registers the active terminal's command handler.
    * @param handler The handler to register.
    */
@@ -144,6 +133,14 @@ export class TerminalCommands {
    */
   public restart(): void {
     this.handler()?.restart();
+  }
+
+  /**
+   * Starts a fresh session on the active terminal, under the given shell or the configured default.
+   * @param shell The shell executable to run, or undefined for the configured default.
+   */
+  public newSession(shell?: string): void {
+    this.handler()?.newSession(shell);
   }
 
   /**
@@ -208,13 +205,5 @@ export class TerminalCommands {
    */
   public setScrollLock(value: boolean): void {
     this.handler()?.setScrollLock(value);
-  }
-
-  /**
-   * Switches the active terminal to a different shell.
-   * @param shell The shell executable to run.
-   */
-  public setShell(shell: string): void {
-    this.handler()?.setShell(shell);
   }
 }

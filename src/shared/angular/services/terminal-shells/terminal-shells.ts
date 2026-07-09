@@ -37,23 +37,6 @@ export class TerminalShells {
   }
 
   /**
-   * Resolves the display name for a shell path, using the enumerated list when the path is known and
-   * falling back to the path's base name otherwise (so a shell no longer listed still reads sensibly).
-   * @param shellPath The absolute shell path.
-   * @returns Returns the shell's display name.
-   */
-  public nameOf(shellPath: string): string {
-    const known: ShellInfo | undefined = this.shellList().find(
-      (shell: ShellInfo): boolean => shell.path === shellPath,
-    );
-    if (known !== undefined) {
-      return known.name;
-    }
-    const base: string = shellPath.split(/[\\/]/).pop() ?? shellPath;
-    return base.replace(/\.[^.]+$/, '');
-  }
-
-  /**
    * Fetches the installed shells from the main process and caches them.
    */
   private async load(): Promise<void> {

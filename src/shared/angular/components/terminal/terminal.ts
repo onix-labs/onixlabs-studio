@@ -104,12 +104,6 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly exited: OutputEmitterRef<number> = output<number>();
 
   /**
-   * Emits the shell executable the session actually spawned, once it is running (including after a
-   * {@link switchShell} or {@link restart}), so the owning view can reflect the current shell.
-   */
-  public readonly shellChange: OutputEmitterRef<string> = output<string>();
-
-  /**
    * Holds the container element that hosts the xterm canvas.
    */
   private readonly container: Signal<ElementRef<HTMLDivElement>> =
@@ -121,9 +115,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly terminalReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the shell chosen through {@link switchShell}, overriding the {@link shell} input for the next
-   * spawn, or null to use the input (or the main process's default). Kept across a restart so a
-   * switched shell persists.
+   * Holds the shell the next spawn should use, overriding the {@link shell} input. Set to the shell a
+   * new session is started with, and refreshed to the shell actually spawned, so a plain {@link restart}
+   * reuses the current shell. Null falls back to the {@link shell} input (the configured default).
    */
   private overriddenShell: string | null = null;
 
@@ -322,13 +316,14 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Switches the terminal to a different shell, respawning the session under it while keeping the
-   * terminal identifier. The choice persists across later restarts.
-   * @param shell The shell executable to run.
+   * Starts a fresh session, respawning under the given shell — or the configured default when none is
+   * given — while keeping the terminal identifier. Unlike {@link restart}, which reuses the current
+   * shell, this replaces it.
+   * @param shell The shell executable to run, or undefined to use the configured default.
    * @returns Returns a promise that resolves once the new session has spawned.
    */
-  public async switchShell(shell: string): Promise<void> {
-    this.overriddenShell = shell;
+  public async newSession(shell?: string): Promise<void> {
+    this.overriddenShell = shell ?? null;
     await this.restart();
   }
 
@@ -403,9 +398,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
       xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);
       return;
     }
-    if (result.shell !== undefined) {
-      this.shellChange.emit(result.shell);
-    }
+    // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of the
+    // configured default; a New session explicitly resets this first.
+    this.overriddenShell = result.shell ?? this.overriddenShell;
 
     this.cleanupOnData = this.bridge.onData((targetId: string, data: string): void => {
       if (targetId === id) {

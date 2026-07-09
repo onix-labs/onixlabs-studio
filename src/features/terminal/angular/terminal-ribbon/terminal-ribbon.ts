@@ -4,14 +4,22 @@ import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+
+/**
+ * Identifies the Restart entry in the Clear button's dropdown.
+ */
+const VARIANT_RESTART: string = 'restart';
 
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
@@ -27,7 +35,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripCheck,
-    RibbonStripField,
+    RibbonStripMenuButton,
   ],
   templateUrl: './terminal-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -65,33 +73,55 @@ export class TerminalRibbon {
   protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
 
   /**
-   * Gets the display names of the installed shells, offered by the shell picker.
+   * Gets the New button's dropdown items: one per installed shell, each starting a fresh session under
+   * that shell (the button's primary action uses the configured default instead).
    */
-  protected readonly shellOptions: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.terminalShells.shells().map((shell: ShellInfo): string => shell.name),
+  protected readonly newShellItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] =>
+      this.terminalShells
+        .shells()
+        .map((shell: ShellInfo): RibbonMenuItem => ({ id: shell.path, label: shell.name })),
   );
 
   /**
-   * Gets the display name of the active terminal's current shell, selecting it in the picker; empty
-   * when no terminal is active or its shell is not yet known.
+   * Gets the Clear button's dropdown items: Restart, which respawns the current shell.
    */
-  protected readonly currentShellName: Signal<string> = computed((): string => {
-    const shellPath: string | undefined = this.commands.currentShell();
-    return shellPath === undefined ? '' : this.terminalShells.nameOf(shellPath);
-  });
+  protected readonly clearItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_RESTART, label: 'Restart', icon: Icon.RESTART },
+  ];
 
   /**
-   * Clears the active terminal's screen.
+   * Starts a fresh session on the active terminal using the configured default shell — the New
+   * button's primary action.
+   */
+  protected onNew(): void {
+    this.commands.newSession();
+  }
+
+  /**
+   * Starts a fresh session on the active terminal under the shell chosen from the New button's
+   * dropdown.
+   * @param shellPath The chosen shell's executable path (the item's identifier).
+   */
+  protected onNewShell(shellPath: string): void {
+    this.commands.newSession(shellPath);
+  }
+
+  /**
+   * Clears the active terminal's screen — the Clear button's primary action.
    */
   protected onClear(): void {
     this.commands.clear();
   }
 
   /**
-   * Destroys and respawns the active terminal, keeping its identifier.
+   * Runs the action chosen from the Clear button's dropdown.
+   * @param id The chosen variant's identifier.
    */
-  protected onRestart(): void {
-    this.commands.restart();
+  protected onClearVariant(id: string): void {
+    if (id === VARIANT_RESTART) {
+      this.commands.restart();
+    }
   }
 
   /**
@@ -166,18 +196,5 @@ export class TerminalRibbon {
    */
   protected onScrollLock(value: boolean): void {
     this.commands.setScrollLock(value);
-  }
-
-  /**
-   * Switches the active terminal to the shell chosen in the picker, respawning its session.
-   * @param name The display name of the chosen shell.
-   */
-  protected onShellChange(name: string): void {
-    const chosen: ShellInfo | undefined = this.terminalShells
-      .shells()
-      .find((shell: ShellInfo): boolean => shell.name === name);
-    if (chosen !== undefined) {
-      this.commands.setShell(chosen.path);
-    }
   }
 }

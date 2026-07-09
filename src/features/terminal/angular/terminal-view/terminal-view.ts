@@ -107,14 +107,6 @@ export class TerminalView implements OnDestroy {
   private readonly scrollLocked: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the shell this terminal is currently running, surfaced to the ribbon's shell picker through
-   * the command handler. Set once the pane reports the spawned shell (including after a switch).
-   */
-  private readonly currentShell: WritableSignal<string | undefined> = signal<string | undefined>(
-    undefined,
-  );
-
-  /**
    * Gets the default shell a new terminal starts with, taken from the persisted setting; an empty
    * setting means "use the main process's default", surfaced as undefined so the pane falls back.
    */
@@ -237,14 +229,6 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
-   * Records the shell the pane reports it is running, so the ribbon's picker reflects it.
-   * @param shell The spawned shell executable.
-   */
-  protected onShellChange(shell: string): void {
-    this.currentShell.set(shell);
-  }
-
-  /**
    * Gets a value indicating whether the docked agent panel is mounted.
    * @returns Returns true when the panel has been shown at least once.
    */
@@ -268,15 +252,14 @@ export class TerminalView implements OnDestroy {
     this.commandHandler = {
       scrollLocked: this.scrollLocked.asReadonly(),
       setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
-      currentShell: this.currentShell.asReadonly(),
-      setShell: (shell: string): void => {
-        void this.terminal()?.switchShell(shell);
-      },
       clear: (): void => {
         this.terminal()?.clear();
       },
       restart: (): void => {
         void this.terminal()?.restart();
+      },
+      newSession: (shell?: string): void => {
+        void this.terminal()?.newSession(shell);
       },
       cut: (): void => {
         this.terminal()?.cut();

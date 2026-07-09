@@ -25,14 +25,18 @@ describe('TerminalShells', () => {
     expect(service.shells()).toEqual(shells);
   });
 
-  it('nameOf_whenPathIsKnown_returnsTheEnumeratedName', async () => {
-    const service: TerminalShells = await setup([{ name: 'zsh', path: '/bin/zsh' }]);
-    expect(service.nameOf('/bin/zsh')).toBe('zsh');
-  });
-
-  it('nameOf_whenPathIsUnknown_fallsBackToTheBaseName', async () => {
-    const service: TerminalShells = await setup([]);
-    expect(service.nameOf('/opt/homebrew/bin/fish')).toBe('fish');
-    expect(service.nameOf('C:\\Windows\\System32\\cmd.exe')).toBe('cmd');
+  it('beforeTheFetchResolves_reportsAnEmptyList', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: TerminalBridge,
+          useValue: {
+            listShells: (): Promise<readonly ShellInfo[]> =>
+              new Promise((): undefined => undefined),
+          },
+        },
+      ],
+    });
+    expect(TestBed.inject(TerminalShells).shells()).toEqual([]);
   });
 });
