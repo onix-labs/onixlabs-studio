@@ -14,6 +14,7 @@ import type {
   ImageSizing,
   MarginSize,
   ModernUiFeatures,
+  PrintMargin,
   RibbonAlignment,
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
@@ -39,6 +40,7 @@ export interface SettingsValues {
   readonly 'application.defaultDocumentType': DefaultDocumentType;
   readonly 'application.undoStackSize': number;
   readonly 'application.showLauncherActions': boolean;
+  readonly 'application.printMargin': PrintMargin;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
 
@@ -186,6 +188,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Replace the welcome button in the title bar with buttons for opening files and creating new code, markdown, terminal, and agent tabs.',
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'application.printMargin',
+        title: 'Print margins',
+        description:
+          'The page margin applied when printing or exporting a document to PDF. Regular is double Narrow, and Wide is double Regular.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'narrow', label: 'Narrow' },
+            { value: 'regular', label: 'Regular' },
+            { value: 'wide', label: 'Wide' },
+          ],
+        },
+        default: 'regular',
       },
     ],
   },

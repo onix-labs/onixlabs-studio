@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
+import { Printing } from '@shared/angular/services/printing/printing';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
@@ -33,6 +34,11 @@ export const config: ApplicationConfig = {
     // to the document (corners and decorative effects) before the first view renders.
     provideAppInitializer((): void => {
       inject(Display);
+    }),
+    // Instantiate the Printing service at start-up so the persisted print-margin choice drives the
+    // `@page` rule before the first document is printed or exported.
+    provideAppInitializer((): void => {
+      inject(Printing);
     }),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.

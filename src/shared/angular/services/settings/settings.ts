@@ -60,6 +60,12 @@ export type ImageAlignment = 'left' | 'center' | 'right';
 export type DefaultDocumentType = 'code' | 'markdown';
 
 /**
+ * Identifies the page margin applied when printing or exporting a document: `narrow` is the tightest,
+ * `regular` doubles it, and `wide` doubles it again.
+ */
+export type PrintMargin = 'narrow' | 'regular' | 'wide';
+
+/**
  * Identifies how the ribbon's controls are aligned within the ribbon strip.
  */
 export type RibbonAlignment = 'left' | 'center' | 'right';
@@ -216,6 +222,11 @@ export interface ApplicationSettings {
    * new code/markdown/terminal/agent) in place of the single welcome button.
    */
   readonly showLauncherActions: boolean;
+
+  /**
+   * Gets the page margin applied when printing or exporting a document.
+   */
+  readonly printMargin: PrintMargin;
 }
 
 /**
@@ -411,6 +422,7 @@ export class Settings {
       defaultDocumentType: this.read('application.defaultDocumentType'),
       undoStackSize: this.read('application.undoStackSize'),
       showLauncherActions: this.read('application.showLauncherActions'),
+      printMargin: this.read('application.printMargin'),
     }),
   );
 

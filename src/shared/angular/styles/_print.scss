@@ -11,10 +11,10 @@
 
 @use 'milkdown' as *;
 
-// Give the printed page comfortable margins so the document does not run to the paper's edge.
-@page {
-  margin: 1.5cm 2cm;
-}
+// The printed page margin is owned entirely by the Printing service, which rewrites an `@page` rule
+// from the user's "Print margins" setting (Chromium does not honour a CSS variable inside `@page`, so
+// the value cannot be projected the way the theme colours are). No `@page` margin is declared here so
+// there is a single source of truth.
 
 @media print {
   // --- Hide the application chrome -------------------------------------------
@@ -53,6 +53,33 @@
     max-height: none !important;
     block-size: auto !important;
     background: #fff !important;
+  }
+
+  // --- Fill the page instead of the on-screen reading column -----------------
+  // On screen the editor centres the document in a max-1024px column via a container query and forces
+  // it to at least full height. In print that leaves the page half empty, so collapse the wrapper to a
+  // full-width, natural-height block and disable the container query that drives the column width.
+  app-markdown-editor .editor-scroll {
+    container-type: normal !important;
+  }
+
+  app-markdown-editor .editor-wrapper,
+  app-markdown-editor .editor-container {
+    max-inline-size: none !important;
+    inline-size: 100% !important;
+    min-block-size: 0 !important;
+    margin: 0 !important;
+  }
+
+  app-markdown-editor .editor-wrapper {
+    padding: 0 !important;
+  }
+
+  // The ProseMirror surface carries a large editing padding (>100px per side) for on-screen comfort.
+  // On a printed page that padding crushes the text into a narrow column and wastes the top of the
+  // sheet, so drop it — @page supplies the actual page margins.
+  app-markdown-editor .milkdown .ProseMirror {
+    padding: 0 !important;
   }
 
   // --- Force the editor's LIGHT palette even in a dark-mode session -----------
