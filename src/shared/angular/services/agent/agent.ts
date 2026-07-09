@@ -7,7 +7,13 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AgentSurface, AiEvent, AiRunState } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentMode,
+  AgentSurface,
+  AiEvent,
+  AiRunState,
+} from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -137,6 +143,20 @@ export class Agent {
   private readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
+   * The user's choice persists across new chats within this session.
+   */
+  private readonly modeState: WritableSignal<AgentMode> = signal<AgentMode>('agent');
+
+  /**
+   * Holds the files and folders attached to the conversation's context, passed to each run so the agent
+   * can read them with its own file tools. Cleared when the conversation is cleared or restored.
+   */
+  private readonly contextPathsState: WritableSignal<readonly AgentContextRef[]> = signal<
+    readonly AgentContextRef[]
+  >([]);
+
+  /**
    * Holds the identifier of the in-flight run, or null when none.
    */
   private activeRequestId: string | null = null;
@@ -147,6 +167,17 @@ export class Agent {
   private sequence: number = 0;
 
   /**
+   * Holds a value indicating whether the in-flight run is a compaction run, whose streamed text is
+   * buffered into {@link compactionText} and folded into a single summary item rather than appended.
+   */
+  private compacting: boolean = false;
+
+  /**
+   * Accumulates the summary text streamed by a compaction run.
+   */
+  private compactionText: string = '';
+
+  /**
    * Gets the ordered transcript.
    */
   public readonly items: Signal<readonly AgentItem[]> = this.log.asReadonly();
@@ -155,6 +186,17 @@ export class Agent {
    * Gets a value indicating whether a run is in flight.
    */
   public readonly isRunning: Signal<boolean> = this.busy.asReadonly();
+
+  /**
+   * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
+   */
+  public readonly mode: Signal<AgentMode> = this.modeState.asReadonly();
+
+  /**
+   * Gets the files and folders attached to the conversation's context.
+   */
+  public readonly contextPaths: Signal<readonly AgentContextRef[]> =
+    this.contextPathsState.asReadonly();
 
   /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
@@ -199,7 +241,41 @@ export class Agent {
       tokenCap: this.settings.aiTokenCap(),
       owningTabId,
       surface,
+      mode: this.modeState(),
+      contextPaths: this.contextPathsState(),
     });
+  }
+
+  /**
+   * Sets how much autonomy the conversation's runs use.
+   * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
+   */
+  public setMode(mode: AgentMode): void {
+    this.modeState.set(mode);
+  }
+
+  /**
+   * Attaches a file or folder to the conversation's context, ignoring a path already attached.
+   * @param ref The file or folder to attach.
+   */
+  public attachContext(ref: AgentContextRef): void {
+    if (this.contextPathsState().some((existing: AgentContextRef): boolean => existing.path === ref.path)) {
+      return;
+    }
+    this.contextPathsState.update((refs: readonly AgentContextRef[]): readonly AgentContextRef[] => [
+      ...refs,
+      ref,
+    ]);
+  }
+
+  /**
+   * Removes an attached file or folder from the conversation's context.
+   * @param path The path to detach.
+   */
+  public removeContext(path: string): void {
+    this.contextPathsState.update((refs: readonly AgentContextRef[]): readonly AgentContextRef[] =>
+      refs.filter((ref: AgentContextRef): boolean => ref.path !== path),
+    );
   }
 
   /**
@@ -212,12 +288,40 @@ export class Agent {
   }
 
   /**
+   * Compacts the conversation: runs a read-only summarisation turn over the current transcript, then
+   * replaces the transcript with the single summary it produces. Blank transcripts and concurrent runs
+   * are ignored. The summary streams as a live run (the working indicator shows) and lands as one
+   * assistant item once complete.
+   */
+  public compact(): void {
+    const history: readonly AgentItem[] = this.log();
+    if (this.busy() || history.length === 0) {
+      return;
+    }
+    this.compacting = true;
+    this.compactionText = '';
+    this.busy.set(true);
+    this.activeRequestId = this.runtime.run(
+      this.engine.provider(),
+      this.compactionPrompt(history),
+      {
+        workspaceRoot: this.workspace.root()?.path ?? null,
+        model: this.engine.model(),
+        permissionPosture: 'prompt',
+        tokenCap: this.settings.aiTokenCap(),
+        mode: 'chat',
+      },
+    );
+  }
+
+  /**
    * Clears the transcript.
    */
   public clear(): void {
     this.log.set([]);
     this.activeRequestId = null;
     this.busy.set(false);
+    this.contextPathsState.set([]);
   }
 
   /**
@@ -229,6 +333,7 @@ export class Agent {
   public restore(items: readonly AgentItem[]): void {
     this.activeRequestId = null;
     this.busy.set(false);
+    this.contextPathsState.set([]);
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
       const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
@@ -261,6 +366,16 @@ export class Agent {
    */
   private onEvent(event: AiEvent): void {
     if (event.requestId !== this.activeRequestId) {
+      return;
+    }
+    // A compaction run's output does not join the transcript: its text is buffered and folded into a
+    // single summary item when the run completes.
+    if (this.compacting) {
+      if (event.kind === 'text') {
+        this.compactionText += event.delta;
+      } else if (event.kind === 'status') {
+        this.onCompactionStatus(event.state, event.detail);
+      }
       return;
     }
     switch (event.kind) {
@@ -323,6 +438,57 @@ export class Agent {
     } else if (state === 'completed' && !this.producedReply()) {
       this.push({ kind: 'assistant', text: '_The model returned no output._' });
     }
+  }
+
+  /**
+   * Ends a compaction run. On success the whole transcript is replaced with the single summary the run
+   * produced; a failed or stopped compaction leaves the transcript untouched and notes what happened.
+   * @param state The new state.
+   * @param detail A short description carried by the event (the failure reason on an error).
+   */
+  private onCompactionStatus(state: AiRunState, detail: string): void {
+    if (state === 'started') {
+      return;
+    }
+    this.busy.set(false);
+    this.activeRequestId = null;
+    this.compacting = false;
+    const summary: string = this.compactionText.trim();
+    if (state === 'error') {
+      const reason: string = detail.trim().length > 0 ? detail : 'unknown error';
+      this.push({ kind: 'assistant', text: `_Compaction failed: ${reason}_` });
+    } else if (state === 'aborted') {
+      this.push({ kind: 'assistant', text: '_Compaction stopped._' });
+    } else if (summary.length === 0) {
+      this.push({ kind: 'assistant', text: '_Compaction produced no summary._' });
+    } else {
+      this.sequence += 1;
+      this.log.set([
+        {
+          id: `item-${this.sequence}`,
+          kind: 'assistant',
+          text: `**Conversation summary**\n\n${summary}`,
+        },
+      ]);
+    }
+  }
+
+  /**
+   * Builds the summarisation prompt for a compaction run from the current transcript.
+   * @param history The transcript to summarise.
+   * @returns Returns the prompt.
+   */
+  private compactionPrompt(history: readonly AgentItem[]): string {
+    const transcript: string = history
+      .filter((item: AgentItem): boolean => item.kind === 'user' || item.kind === 'assistant')
+      .map((item: AgentItem): string => `${item.kind === 'user' ? 'User' : 'Assistant'}: ${item.text}`)
+      .join('\n\n');
+    return (
+      'Summarise the following conversation into a concise briefing that preserves the key facts, ' +
+      'decisions, file names, code paths, and any open questions or next steps. Use short markdown ' +
+      'sections. Do not use any tools — just write the summary.\n\n' +
+      transcript
+    );
   }
 
   /**

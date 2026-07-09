@@ -18,7 +18,12 @@ export {
 export type { AgentSurface } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
 export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
-export type { AiPermissionPosture, AiRunRequest } from './ai/ai-run-types';
+export type {
+  AiPermissionPosture,
+  AiRunRequest,
+  AgentMode,
+  AgentContextRef,
+} from './ai/ai-run-types';
 export type {
   AiRunState,
   AiEventBase,

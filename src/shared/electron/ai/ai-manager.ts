@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import type {
+  AgentContextRef,
+  AgentMode,
   AiEvent,
   AiModelInfo,
   AiPermissionPosture,
@@ -187,6 +189,8 @@ export class AiManager {
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
         : 0;
+    const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
+    const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(request.contextPaths);
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const context: AgentRunContext = {
@@ -198,6 +202,8 @@ export class AiManager {
       tokenCap,
       owningTabId: request.owningTabId ?? null,
       surface: request.surface ?? 'editor',
+      mode,
+      contextPaths,
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {
@@ -329,7 +335,32 @@ export class AiManager {
       (record['surface'] === 'editor' ||
         record['surface'] === 'terminal' ||
         record['surface'] === 'binary' ||
-        record['surface'] === undefined)
+        record['surface'] === undefined) &&
+      (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
+      (record['contextPaths'] === undefined || Array.isArray(record['contextPaths']))
     );
+  }
+
+  /**
+   * Validates and normalises the attached context references from an untrusted run request, dropping
+   * any entry that is not a well-formed `{ path, kind }` pair.
+   * @param value The untrusted `contextPaths` value.
+   * @returns Returns the sanitised references (empty when none are valid).
+   */
+  private sanitizeContextPaths(value: unknown): readonly AgentContextRef[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((entry: unknown): entry is AgentContextRef => {
+      if (entry === null || typeof entry !== 'object') {
+        return false;
+      }
+      const record: Record<string, unknown> = entry as Record<string, unknown>;
+      return (
+        typeof record['path'] === 'string' &&
+        record['path'].length > 0 &&
+        (record['kind'] === 'file' || record['kind'] === 'folder')
+      );
+    });
   }
 }

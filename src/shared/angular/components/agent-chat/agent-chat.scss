@@ -361,6 +361,59 @@ $agent-node-size: 1.75rem;
   color: var(--form-muted-foreground-color);
 }
 
+.agent__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent__attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-inline-size: 100%;
+  padding: 0.15rem 0.2rem 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__attachment-icon {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent__attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--body-foreground-color);
+    background: var(--agent-view-border-color);
+  }
+}
+
 .agent__input {
   inline-size: 100%;
   min-block-size: 1.5rem;

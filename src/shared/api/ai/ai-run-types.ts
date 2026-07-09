@@ -14,6 +14,31 @@ import { AiProviderId } from './ai-provider-types';
 export type AiPermissionPosture = 'prompt' | 'auto-edits' | 'auto-all';
 
 /**
+ * Identifies how much autonomy the agent runs with.
+ *
+ * - `agent`: the full tool-using agent — read, edit, and execute (subject to the permission posture).
+ * - `chat`: a read-only conversational assistant — it may inspect the project and the active surface
+ *   but never edits files or runs commands.
+ */
+export type AgentMode = 'agent' | 'chat';
+
+/**
+ * References a file or folder the user attached to the run's context. The path is passed to the run so
+ * the agent can read it with its own file tools; the content is not inlined into the prompt.
+ */
+export interface AgentContextRef {
+  /**
+   * Gets the absolute path of the attached file or folder.
+   */
+  readonly path: string;
+
+  /**
+   * Gets whether the path refers to a single file or a folder.
+   */
+  readonly kind: 'file' | 'folder';
+}
+
+/**
  * Describes a request to run a single agent turn.
  */
 export interface AiRunRequest {
@@ -65,4 +90,16 @@ export interface AiRunRequest {
    * `editor` when absent.
    */
   readonly surface?: AgentSurface;
+
+  /**
+   * Gets how much autonomy the agent runs with. Defaults to `agent` (full tools) when absent; `chat`
+   * runs read-only.
+   */
+  readonly mode?: AgentMode;
+
+  /**
+   * Gets the files and folders the user attached to the run's context, referenced by path for the
+   * agent to read with its own file tools. Empty or absent when nothing is attached.
+   */
+  readonly contextPaths?: readonly AgentContextRef[];
 }

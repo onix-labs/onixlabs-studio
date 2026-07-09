@@ -1,6 +1,7 @@
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import type { AgentContextRef } from '@shared/api/ai-types';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentChat } from './agent-chat';
 
@@ -9,16 +10,22 @@ describe('AgentChat', () => {
   let fixture: ComponentFixture<AgentChat>;
   let sent: string[];
   let stopped: number;
+  let contextPaths: WritableSignal<readonly AgentContextRef[]>;
+  let removed: string[];
 
   beforeEach(async () => {
     sent = [];
     stopped = 0;
+    contextPaths = signal<readonly AgentContextRef[]>([]);
+    removed = [];
     const agentStub: Partial<Agent> = {
       items: signal<readonly AgentItem[]>([]),
       isRunning: signal<boolean>(false),
       awaitingDecision: signal<boolean>(false),
+      contextPaths,
       send: (text: string): void => void sent.push(text),
       stop: (): void => void (stopped += 1),
+      removeContext: (path: string): void => void removed.push(path),
       respondPermission: (): void => undefined,
     };
 
@@ -72,6 +79,27 @@ describe('AgentChat', () => {
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }));
 
     expect(sent).toHaveLength(0);
+  });
+
+  it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {
+    contextPaths.set([{ path: '/repo/src/main.ts', kind: 'file' }]);
+    fixture.detectChanges();
+
+    const chip: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__attachment-name',
+    );
+    expect(chip?.textContent?.trim()).toBe('main.ts');
+  });
+
+  it('removeContext_whenChipRemoveClicked_detachesThePath', () => {
+    contextPaths.set([{ path: '/repo/src/main.ts', kind: 'file' }]);
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.agent__attachment-remove')!
+      .click();
+
+    expect(removed).toEqual(['/repo/src/main.ts']);
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {

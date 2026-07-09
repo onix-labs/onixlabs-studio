@@ -77,6 +77,16 @@ export class FileSystem {
   }
 
   /**
+   * Shows an open dialog for a single file or folder and returns the chosen absolute path, without
+   * reading it.
+   * @param kind Whether to pick a file or a folder.
+   * @returns Returns the chosen path, or null when cancelled or unavailable.
+   */
+  public pickPath(kind: 'file' | 'folder'): Promise<string | null> {
+    return this.bridge?.invoke<string | null>(FileChannel.PickPath, kind) ?? Promise.resolve(null);
+  }
+
+  /**
    * Shows a save-file dialog and returns the chosen path.
    * @param defaultPath The path suggested in the dialog.
    * @returns Returns the chosen path, or null when cancelled or unavailable.

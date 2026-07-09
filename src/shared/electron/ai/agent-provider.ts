@@ -1,4 +1,6 @@
 import type {
+  AgentContextRef,
+  AgentMode,
   AgentSurface,
   AiEvent,
   AiModelInfo,
@@ -99,6 +101,18 @@ export interface AgentRunContext {
    * document (`editor`) or the owning terminal (`terminal`).
    */
   readonly surface: AgentSurface;
+
+  /**
+   * Gets how much autonomy the agent runs with: `agent` (full tools) or `chat` (read-only — it may
+   * inspect but never edits or executes).
+   */
+  readonly mode: AgentMode;
+
+  /**
+   * Gets the files and folders the user attached to the run's context, referenced by path for the
+   * agent to read with its own file tools. Empty when nothing is attached.
+   */
+  readonly contextPaths: readonly AgentContextRef[];
 
   /**
    * Gets the credential the run authenticates with.

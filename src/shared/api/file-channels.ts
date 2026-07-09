@@ -42,6 +42,12 @@ export enum FileChannel {
   PickImage = 'dialog:pick-image',
 
   /**
+   * Shows an open dialog for a single file or folder and returns the chosen path without reading it
+   * (renderer→main, invoke).
+   */
+  PickPath = 'dialog:pick-path',
+
+  /**
    * Shows a save-file dialog and returns the chosen path (renderer→main, invoke).
    */
   SaveFileDialog = 'dialog:save-file',

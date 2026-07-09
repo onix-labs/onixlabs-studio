@@ -1,7 +1,13 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentMode,
+  AiModelInfo,
+  AiProviderId,
+  AiProviderInfo,
+} from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { AgentRibbon } from './agent-ribbon';
@@ -49,6 +55,11 @@ describe('AgentRibbon', () => {
   let historyOpen: WritableSignal<boolean>;
   let autoScroll: WritableSignal<boolean>;
   let autoScrollChoices: boolean[];
+  let mode: WritableSignal<AgentMode>;
+  let modeChoices: AgentMode[];
+  let compacted: number;
+  let attachedFiles: number;
+  let attachedFolders: number;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -90,6 +101,11 @@ describe('AgentRibbon', () => {
     historyOpen = signal<boolean>(false);
     autoScroll = signal<boolean>(true);
     autoScrollChoices = [];
+    mode = signal<AgentMode>('agent');
+    modeChoices = [];
+    compacted = 0;
+    attachedFiles = 0;
+    attachedFolders = 0;
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
       provider: signal<AiProviderId>('claude'),
@@ -102,10 +118,16 @@ describe('AgentRibbon', () => {
       isRunning: running,
       historyOpen,
       autoScroll,
+      mode,
+      contextPaths: signal<readonly AgentContextRef[]>([]),
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
       setAutoScroll: (value: boolean): void => void autoScrollChoices.push(value),
+      setMode: (value: AgentMode): void => void modeChoices.push(value),
+      compact: (): void => void (compacted += 1),
+      attachFile: (): void => void (attachedFiles += 1),
+      attachFolder: (): void => void (attachedFolders += 1),
     };
 
     await TestBed.configureTestingModule({
@@ -179,5 +201,40 @@ describe('AgentRibbon', () => {
     check!.click();
 
     expect(autoScrollChoices).toEqual([false]);
+  });
+
+  it('mode_whenChanged_setsTheChosenMode', () => {
+    const select: HTMLSelectElement = field('Mode');
+    expect(select.value).toBe('Agent');
+
+    select.value = 'Chat';
+    select.dispatchEvent(new Event('change'));
+
+    expect(modeChoices).toEqual(['chat']);
+  });
+
+  it('compact_whenClicked_compactsTheConversation', () => {
+    button('Compact').click();
+
+    expect(compacted).toBe(1);
+  });
+
+  it('compact_whenRunning_isDisabled', () => {
+    running.set(true);
+    fixture.detectChanges();
+
+    expect(button('Compact').disabled).toBe(true);
+  });
+
+  it('attachFile_whenClicked_attachesAFile', () => {
+    button('Attach File').click();
+
+    expect(attachedFiles).toBe(1);
+  });
+
+  it('addFolder_whenClicked_attachesAFolder', () => {
+    button('Add Folder').click();
+
+    expect(attachedFolders).toBe(1);
   });
 });

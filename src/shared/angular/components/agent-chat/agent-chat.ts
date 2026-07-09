@@ -15,7 +15,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { AgentSurface } from '@shared/api/ai-types';
+import type { AgentContextRef, AgentSurface } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -110,6 +110,27 @@ interface TranscriptRow {
    * Gets the technical tool identifier revealed when a tool row is expanded (undefined otherwise).
    */
   readonly tech?: string;
+}
+
+/**
+ * An attached-context entry prepared for the composer's chip row: the reference plus the basename
+ * shown on the chip.
+ */
+interface ContextChip {
+  /**
+   * Gets the attached file or folder's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the basename shown on the chip.
+   */
+  readonly name: string;
+
+  /**
+   * Gets whether the path is a file or a folder.
+   */
+  readonly kind: 'file' | 'folder';
 }
 
 /**
@@ -247,6 +268,22 @@ export class AgentChat {
    * Gets the current composer text.
    */
   public readonly draft: Signal<string> = this.draftText.asReadonly();
+
+  /**
+   * Gets the attached context prepared for the composer's chip row.
+   */
+  public readonly attachments: Signal<readonly ContextChip[]> = computed(
+    (): readonly ContextChip[] =>
+      this.agent
+        .contextPaths()
+        .map(
+          (ref: AgentContextRef): ContextChip => ({
+            path: ref.path,
+            name: this.baseName(ref.path),
+            kind: ref.kind,
+          }),
+        ),
+  );
 
   /**
    * Gets the transcript prepared for rendering: each item plus the live working indicator, tagged with
@@ -452,6 +489,24 @@ export class AgentChat {
    */
   public stop(): void {
     this.agent.stop();
+  }
+
+  /**
+   * Removes an attached file or folder from the conversation's context.
+   * @param path The path to detach.
+   */
+  public removeContext(path: string): void {
+    this.agent.removeContext(path);
+  }
+
+  /**
+   * Gets the trailing path segment of a file or folder path, for a chip's label.
+   * @param path The absolute path.
+   * @returns Returns the basename.
+   */
+  private baseName(path: string): string {
+    const segments: string[] = path.split(/[\\/]/).filter((segment: string): boolean => segment.length > 0);
+    return segments[segments.length - 1] ?? path;
   }
 
   /**

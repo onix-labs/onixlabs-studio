@@ -100,6 +100,30 @@
 
   <form class="agent__composer" (submit)="$event.preventDefault(); send()">
     <span class="agent__composer-label">Message</span>
+
+    @if (attachments().length > 0) {
+      <ul class="agent__attachments" aria-label="Attached context">
+        @for (chip of attachments(); track chip.path) {
+          <li class="agent__attachment">
+            <app-icon
+              class="agent__attachment-icon"
+              [icon]="chip.kind === 'folder' ? Icon.FOLDER : Icon.FILE"
+              aria-hidden="true"
+            />
+            <span class="agent__attachment-name" [title]="chip.path">{{ chip.name }}</span>
+            <button
+              type="button"
+              class="agent__attachment-remove"
+              [attr.aria-label]="'Remove ' + chip.name"
+              (click)="removeContext(chip.path)"
+            >
+              <app-icon [icon]="Icon.CLOSE" />
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
     <textarea
       #input
       class="agent__input"

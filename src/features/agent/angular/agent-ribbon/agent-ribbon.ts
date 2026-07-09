@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
+import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Icon } from '@shared/angular/icons/icon';
@@ -67,6 +67,18 @@ export class AgentRibbon {
   protected readonly autoScroll: Signal<boolean> = this.sessions.autoScroll;
 
   /**
+   * Gets the labels offered by the Mode field.
+   */
+  protected readonly modeLabels: readonly string[] = ['Agent', 'Chat'];
+
+  /**
+   * Gets the label of the active tab's mode, for the Mode field's value.
+   */
+  protected readonly modeLabel: Signal<string> = computed((): string =>
+    this.sessions.mode() === 'chat' ? 'Chat' : 'Agent',
+  );
+
+  /**
    * Gets the provider labels offered by the Provider field.
    */
   protected readonly providerLabels: Signal<readonly string[]> = computed((): readonly string[] =>
@@ -119,6 +131,36 @@ export class AgentRibbon {
    */
   protected toggleHistory(): void {
     this.sessions.toggleHistory();
+  }
+
+  /**
+   * Compacts the active tab's conversation into a summary.
+   */
+  protected compact(): void {
+    this.sessions.compact();
+  }
+
+  /**
+   * Attaches a file to the active tab's conversation context.
+   */
+  protected attachFile(): void {
+    this.sessions.attachFile();
+  }
+
+  /**
+   * Attaches a folder to the active tab's conversation context.
+   */
+  protected attachFolder(): void {
+    this.sessions.attachFolder();
+  }
+
+  /**
+   * Sets the active tab's autonomy mode from the chosen label.
+   * @param label The label emitted by the Mode field.
+   */
+  protected onModeLabel(label: string): void {
+    const mode: AgentMode = label === 'Chat' ? 'chat' : 'agent';
+    this.sessions.setMode(mode);
   }
 
   /**

@@ -1,16 +1,28 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
 
 /**
- * The slice of an agent conversation the agent ribbon's Session group drives: whether a run is in
- * flight, whether the conversation-history list is shown, and the new-chat/stop/history commands.
- * Provided by the per-conversation {@link import('../../components/agent-chat/agent-chat').AgentChat}
- * host, which owns both the {@link Agent} session and the history view.
+ * The slice of an agent conversation the agent ribbon drives: whether a run is in flight, whether the
+ * conversation-history list is shown, the autonomy mode, the attached context, and the
+ * session/context/compact commands. Provided by the per-conversation
+ * {@link import('../agent-conversation/agent-conversation').AgentConversation} host, which owns the
+ * {@link Agent} session and the history view.
  */
 export interface AgentSessionHandle {
   /**
    * Gets a value indicating whether a run is in flight.
    */
   readonly isRunning: Signal<boolean>;
+
+  /**
+   * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
+   */
+  readonly mode: Signal<AgentMode>;
+
+  /**
+   * Gets the files and folders attached to the conversation's context.
+   */
+  readonly contextPaths: Signal<readonly AgentContextRef[]>;
 
   /**
    * Gets a value indicating whether the conversation-history list is shown.
@@ -42,6 +54,33 @@ export interface AgentSessionHandle {
    * @param value The new auto-scroll preference.
    */
   setAutoScroll(value: boolean): void;
+
+  /**
+   * Sets how much autonomy the conversation's runs use.
+   * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
+   */
+  setMode(mode: AgentMode): void;
+
+  /**
+   * Prompts for a file and attaches it to the conversation's context.
+   */
+  attachFile(): void;
+
+  /**
+   * Prompts for a folder and attaches it to the conversation's context.
+   */
+  attachFolder(): void;
+
+  /**
+   * Removes an attached file or folder from the conversation's context.
+   * @param path The path to detach.
+   */
+  removeContext(path: string): void;
+
+  /**
+   * Compacts the conversation, replacing the transcript with a concise summary.
+   */
+  compact(): void;
 }
 
 /**
@@ -79,6 +118,20 @@ export class AgentSessions {
    */
   public readonly autoScroll: Signal<boolean> = computed(
     (): boolean => this.activeSession()?.autoScroll() ?? true,
+  );
+
+  /**
+   * Gets how much autonomy the active agent tab's runs use. Defaults to `agent` when no tab is active.
+   */
+  public readonly mode: Signal<AgentMode> = computed(
+    (): AgentMode => this.activeSession()?.mode() ?? 'agent',
+  );
+
+  /**
+   * Gets the files and folders attached to the active agent tab's context. Empty when no tab is active.
+   */
+  public readonly contextPaths: Signal<readonly AgentContextRef[]> = computed(
+    (): readonly AgentContextRef[] => this.activeSession()?.contextPaths() ?? [],
   );
 
   /**
@@ -126,5 +179,42 @@ export class AgentSessions {
    */
   public setAutoScroll(value: boolean): void {
     this.activeSession()?.setAutoScroll(value);
+  }
+
+  /**
+   * Sets how much autonomy the active agent tab's runs use.
+   * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
+   */
+  public setMode(mode: AgentMode): void {
+    this.activeSession()?.setMode(mode);
+  }
+
+  /**
+   * Prompts for a file and attaches it to the active agent tab's context.
+   */
+  public attachFile(): void {
+    this.activeSession()?.attachFile();
+  }
+
+  /**
+   * Prompts for a folder and attaches it to the active agent tab's context.
+   */
+  public attachFolder(): void {
+    this.activeSession()?.attachFolder();
+  }
+
+  /**
+   * Removes an attached file or folder from the active agent tab's context.
+   * @param path The path to detach.
+   */
+  public removeContext(path: string): void {
+    this.activeSession()?.removeContext(path);
+  }
+
+  /**
+   * Compacts the active agent tab's conversation.
+   */
+  public compact(): void {
+    this.activeSession()?.compact();
   }
 }

@@ -1,6 +1,8 @@
 import { inject, Service } from '@angular/core';
 import type { AiClient } from '@shared/api/ai-channels';
 import type {
+  AgentContextRef,
+  AgentMode,
   AgentSurface,
   AiBridgeRequest,
   AiEvent,
@@ -53,6 +55,18 @@ export interface AiRunOptions {
    * when omitted.
    */
   readonly surface?: AgentSurface;
+
+  /**
+   * Gets how much autonomy the agent runs with. Defaults to `agent` (full tools); `chat` runs
+   * read-only.
+   */
+  readonly mode?: AgentMode;
+
+  /**
+   * Gets the files and folders attached to the run's context, referenced by path for the agent to read
+   * with its own file tools. Omitted when nothing is attached.
+   */
+  readonly contextPaths?: readonly AgentContextRef[];
 }
 
 /**
@@ -127,6 +141,8 @@ export class AiRuntime {
       tokenCap: options.tokenCap ?? 0,
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
+      mode: options.mode ?? 'agent',
+      contextPaths: options.contextPaths ?? [],
     });
     return requestId;
   }

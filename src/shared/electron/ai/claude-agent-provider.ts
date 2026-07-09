@@ -17,6 +17,7 @@ import {
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
+  type AgentContextRef,
   type AgentSurface,
   type AiModelInfo,
   type AiPermissionPosture,
@@ -67,6 +68,15 @@ const VERIFY_TIMEOUT_MS: number = 45_000;
  * These are always allowed regardless of the permission posture.
  */
 const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+
+/**
+ * Holds the system-prompt note appended on a chat-mode (read-only) run, telling the model it may
+ * inspect but must not modify files or run commands.
+ */
+const READ_ONLY_APPENDIX: string =
+  'You are in read-only chat mode. You may inspect the project and the active surface, but you must ' +
+  'not modify files or run commands — editing and executing tools are disabled. Answer, explain, and ' +
+  'advise instead of acting.';
 
 /**
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
@@ -156,6 +166,12 @@ export class ClaudeAgentProvider implements AgentProvider {
     const surface: AgentSurface = context.surface;
     const terminal: boolean = surface === 'terminal';
     const binary: boolean = surface === 'binary';
+    // Chat mode runs read-only: the mutating in-app tool is withheld and every editing/executing tool
+    // is denied, so the agent may inspect the project and the surface but never changes anything.
+    const readOnly: boolean = context.mode === 'chat';
+    // Attached files/folders are readable via the built-in Read/Glob tools even without an open
+    // workspace, so those tools are auto-allowed when either a workspace or attached context is present.
+    const hasReadableContext: boolean = hasWorkspace || context.contextPaths.length > 0;
 
     // Build a text-content tool result from a handler's rendered string.
     const text: (
@@ -180,21 +196,25 @@ export class ClaudeAgentProvider implements AgentProvider {
               {},
               async () => text(await readTerminalOutput(context)),
             ),
-            tool(
-              WRITE_TERMINAL_INPUT,
-              'Type text into the terminal, running it as a command by default, and return the resulting output.',
-              {
-                text: z.string().describe('The text to type into the terminal.'),
-                submit: z
-                  .boolean()
-                  .optional()
-                  .describe(
-                    'Whether to run the text as a command (append a newline). Defaults to true.',
+            ...(readOnly
+              ? []
+              : [
+                  tool(
+                    WRITE_TERMINAL_INPUT,
+                    'Type text into the terminal, running it as a command by default, and return the resulting output.',
+                    {
+                      text: z.string().describe('The text to type into the terminal.'),
+                      submit: z
+                        .boolean()
+                        .optional()
+                        .describe(
+                          'Whether to run the text as a command (append a newline). Defaults to true.',
+                        ),
+                    },
+                    async (args: { text: string; submit?: boolean }) =>
+                      text(await writeTerminalInput(context, args.text, args.submit ?? true)),
                   ),
-              },
-              async (args: { text: string; submit?: boolean }) =>
-                text(await writeTerminalInput(context, args.text, args.submit ?? true)),
-            ),
+                ]),
           ]
         : binary
           ? [
@@ -244,18 +264,24 @@ export class ClaudeAgentProvider implements AgentProvider {
                 async (args: { offset: number; length?: number }) =>
                   text(await readBinaryDisassembly(context, args.offset, args.length ?? 256)),
               ),
-              tool(
-                PATCH_BINARY_BYTES,
-                'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
-                {
-                  offset: z.number().int().min(0).describe('The offset to overwrite from.'),
-                  bytes: z
-                    .string()
-                    .describe('The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".'),
-                },
-                async (args: { offset: number; bytes: string }) =>
-                  text(await patchBinaryBytes(context, args.offset, args.bytes)),
-              ),
+              ...(readOnly
+                ? []
+                : [
+                    tool(
+                      PATCH_BINARY_BYTES,
+                      'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
+                      {
+                        offset: z.number().int().min(0).describe('The offset to overwrite from.'),
+                        bytes: z
+                          .string()
+                          .describe(
+                            'The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".',
+                          ),
+                      },
+                      async (args: { offset: number; bytes: string }) =>
+                        text(await patchBinaryBytes(context, args.offset, args.bytes)),
+                    ),
+                  ]),
             ]
           : [
               tool(
@@ -264,13 +290,17 @@ export class ClaudeAgentProvider implements AgentProvider {
                 {},
                 async () => text(await readActiveDocument(context)),
               ),
-              tool(
-                REPLACE_ACTIVE_DOCUMENT,
-                "Replace the active editor document's entire text.",
-                { text: z.string().describe('The new full text of the document.') },
-                async (args: { text: string }) =>
-                  text(await replaceActiveDocument(context, args.text)),
-              ),
+              ...(readOnly
+                ? []
+                : [
+                    tool(
+                      REPLACE_ACTIVE_DOCUMENT,
+                      "Replace the active editor document's entire text.",
+                      { text: z.string().describe('The new full text of the document.') },
+                      async (args: { text: string }) =>
+                        text(await replaceActiveDocument(context, args.text)),
+                    ),
+                  ]),
             ],
     });
 
@@ -289,6 +319,17 @@ export class ClaudeAgentProvider implements AgentProvider {
       // through to the posture logic below so it prompts unless the posture auto-allows.
       if (terminal && toolName !== READ_TERMINAL_FQN && toolName !== WRITE_TERMINAL_FQN) {
         return { behavior: 'deny', message: 'This agent can only use the terminal.' };
+      }
+      // Chat mode is read-only: allow read-only project exploration, deny anything mutating or
+      // executing outright (no prompting). The read-only in-app tools are auto-allowed via
+      // allowedTools and never reach here, so any tool that does is a write/exec tool to refuse.
+      if (readOnly) {
+        return READ_ONLY_TOOLS.includes(toolName)
+          ? { behavior: 'allow', updatedInput: input }
+          : {
+              behavior: 'deny',
+              message: 'Chat mode is read-only — it can inspect but not modify files or run commands.',
+            };
       }
       const autoAllowed: boolean =
         READ_ONLY_TOOLS.includes(toolName) ||
@@ -313,11 +354,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: terminal
-          ? TERMINAL_PROMPT_APPENDIX
-          : binary
-            ? BINARY_PROMPT_APPENDIX
-            : STUDIO_PROMPT_APPENDIX,
+        append: this.systemAppendix(terminal, binary, readOnly),
       },
       mcpServers: { studio: studioServer },
       // For a terminal run, auto-allow only the read tool; the write tool is intentionally omitted so
@@ -329,8 +366,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       allowedTools: terminal
         ? [READ_TERMINAL_FQN]
         : binary
-          ? [...BINARY_READ_FQNS, ...(hasWorkspace ? READ_ONLY_TOOLS : [])]
-          : [READ_TOOL_FQN, REPLACE_TOOL_FQN, ...(hasWorkspace ? READ_ONLY_TOOLS : [])],
+          ? [...BINARY_READ_FQNS, ...(hasReadableContext ? READ_ONLY_TOOLS : [])]
+          : [
+              READ_TOOL_FQN,
+              ...(readOnly ? [] : [REPLACE_TOOL_FQN]),
+              ...(hasReadableContext ? READ_ONLY_TOOLS : []),
+            ],
       canUseTool,
       abortController: controller,
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task
@@ -340,13 +381,49 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(this.runEnv(context.auth) ?? {}),
     };
 
-    const response: Query = query({ prompt: context.prompt, options });
+    const response: Query = query({ prompt: this.buildPrompt(context), options });
     for await (const message of response) {
       if (context.signal.aborted) {
         break;
       }
       this.handleMessage(message, context);
     }
+  }
+
+  /**
+   * Builds the system-prompt appendix for a run: the surface-specific guidance, plus the read-only note
+   * on a chat-mode run.
+   * @param terminal Whether the run acts on a terminal.
+   * @param binary Whether the run acts on a binary file.
+   * @param readOnly Whether the run is read-only (chat mode).
+   * @returns Returns the combined appendix.
+   */
+  private systemAppendix(terminal: boolean, binary: boolean, readOnly: boolean): string {
+    const base: string = terminal
+      ? TERMINAL_PROMPT_APPENDIX
+      : binary
+        ? BINARY_PROMPT_APPENDIX
+        : STUDIO_PROMPT_APPENDIX;
+    return readOnly ? `${base}\n\n${READ_ONLY_APPENDIX}` : base;
+  }
+
+  /**
+   * Builds the prompt for a run: the user's prompt, preceded by a preamble listing any attached
+   * context so the agent reads those files and folders with its own file tools.
+   * @param context The run context.
+   * @returns Returns the prompt to send.
+   */
+  private buildPrompt(context: AgentRunContext): string {
+    if (context.contextPaths.length === 0) {
+      return context.prompt;
+    }
+    const lines: string = context.contextPaths
+      .map((ref: AgentContextRef): string => ` - ${ref.path} (${ref.kind})`)
+      .join('\n');
+    const preamble: string =
+      'The user attached the following context. Read the files and explore the folders with your ' +
+      `file tools (Read, Glob, Grep) as needed to answer:\n${lines}`;
+    return `${preamble}\n\n${context.prompt}`;
   }
 
   /**

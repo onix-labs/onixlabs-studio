@@ -89,6 +89,11 @@ export class FileManager {
     ipcMain.handle(FileChannel.OpenFileDialog, (): Promise<FileInfo | null> => this.openDialog());
     ipcMain.handle(FileChannel.PickImage, (): Promise<string | null> => this.pickImage());
     ipcMain.handle(
+      FileChannel.PickPath,
+      (_event: IpcMainInvokeEvent, kind: unknown): Promise<string | null> =>
+        this.pickPath(kind === 'folder' ? 'folder' : 'file'),
+    );
+    ipcMain.handle(
       FileChannel.SaveFileDialog,
       (_event: IpcMainInvokeEvent, defaultPath: unknown): Promise<string | null> =>
         this.saveDialog(typeof defaultPath === 'string' ? defaultPath : undefined),
@@ -181,6 +186,26 @@ export class FileManager {
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'] },
         { name: 'All Files', extensions: ['*'] },
       ],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
+  }
+
+  /**
+   * Shows an open dialog for a single file or folder and returns the chosen path, without reading its
+   * contents. Used to attach context to an agent conversation.
+   * @param kind Whether to pick a file or a folder.
+   * @returns Returns the chosen path, or null when cancelled.
+   */
+  private async pickPath(kind: 'file' | 'folder'): Promise<string | null> {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return null;
+    }
+    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+      properties: [kind === 'folder' ? 'openDirectory' : 'openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) {
       return null;

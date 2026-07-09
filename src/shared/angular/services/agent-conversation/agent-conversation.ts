@@ -9,6 +9,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
 import {
   AgentConversationSummary,
   ConversationContext,
@@ -16,6 +17,7 @@ import {
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import {
   AGENT_CONVERSATION_CONTEXT,
@@ -64,6 +66,11 @@ export class AgentConversation implements AgentSessionHandle {
   private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
+   * Holds the file-system client used to prompt for a file or folder when attaching context.
+   */
+  private readonly files: FileSystem = inject(FileSystem);
+
+  /**
    * Holds the destroy notifier used to flush a pending debounced save when the host is torn down.
    */
   private readonly destroyRef: DestroyRef = inject(DestroyRef);
@@ -100,6 +107,17 @@ export class AgentConversation implements AgentSessionHandle {
    * Gets a value indicating whether a run is in flight (part of {@link AgentSessionHandle}).
    */
   public readonly isRunning: Signal<boolean> = this.agent.isRunning;
+
+  /**
+   * Gets how much autonomy the conversation's runs use (part of {@link AgentSessionHandle}).
+   */
+  public readonly mode: Signal<AgentMode> = this.agent.mode;
+
+  /**
+   * Gets the files and folders attached to the conversation's context (part of
+   * {@link AgentSessionHandle}).
+   */
+  public readonly contextPaths: Signal<readonly AgentContextRef[]> = this.agent.contextPaths;
 
   /**
    * Holds whether the conversation-history list is shown.
@@ -237,6 +255,58 @@ export class AgentConversation implements AgentSessionHandle {
    */
   public setAutoScroll(value: boolean): void {
     this.autoScrollState.set(value);
+  }
+
+  /**
+   * Sets how much autonomy the conversation's runs use (part of {@link AgentSessionHandle}).
+   * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
+   */
+  public setMode(mode: AgentMode): void {
+    this.agent.setMode(mode);
+  }
+
+  /**
+   * Prompts for a file and attaches it to the conversation's context (part of
+   * {@link AgentSessionHandle}).
+   */
+  public attachFile(): void {
+    void this.attach('file');
+  }
+
+  /**
+   * Prompts for a folder and attaches it to the conversation's context (part of
+   * {@link AgentSessionHandle}).
+   */
+  public attachFolder(): void {
+    void this.attach('folder');
+  }
+
+  /**
+   * Removes an attached file or folder from the conversation's context (part of
+   * {@link AgentSessionHandle}).
+   * @param path The path to detach.
+   */
+  public removeContext(path: string): void {
+    this.agent.removeContext(path);
+  }
+
+  /**
+   * Compacts the conversation, replacing the transcript with a concise summary (part of
+   * {@link AgentSessionHandle}).
+   */
+  public compact(): void {
+    this.agent.compact();
+  }
+
+  /**
+   * Prompts for a file or folder and attaches the chosen path to the conversation's context.
+   * @param kind Whether to pick a file or a folder.
+   */
+  private async attach(kind: 'file' | 'folder'): Promise<void> {
+    const path: string | null = await this.files.pickPath(kind);
+    if (path !== null) {
+      this.agent.attachContext({ path, kind });
+    }
   }
 
   /**
