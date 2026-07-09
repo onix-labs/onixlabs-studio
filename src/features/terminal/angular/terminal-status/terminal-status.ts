@@ -3,9 +3,9 @@ import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
- * Holds the identifier of the working-directory status segment.
+ * Holds the identifier of the terminal-type (shell) status segment.
  */
-const CWD_SEGMENT_ID: string = 'terminal-cwd';
+const SHELL_SEGMENT_ID: string = 'terminal-shell';
 
 /**
  * Holds the status-bar owner identifier for the terminal's contribution.
@@ -13,57 +13,57 @@ const CWD_SEGMENT_ID: string = 'terminal-cwd';
 const STATUS_OWNER: string = 'terminal';
 
 /**
- * Holds the status-bar priority for the terminal, ordering its trailing working-directory segment
- * after the code editor's cursor/encoding segments.
+ * Holds the status-bar priority for the terminal, ordering its trailing shell segment after the code
+ * editor's cursor/encoding segments.
  */
 const STATUS_PRIORITY: number = 20;
 
 /**
- * Publishes the active terminal's working directory to the status strip.
+ * Publishes the active terminal's shell (its terminal type) to the status strip.
  *
- * The active terminal pushes its current working directory here; an effect projects it as a trailing
- * status segment, clearing the segment when no terminal is active (cwd is null).
+ * The active terminal pushes the shell it is running here; an effect projects it as a trailing status
+ * segment, clearing the segment when no terminal is active (the shell is null).
  */
 @Service()
 export class TerminalStatus {
   /**
-   * Holds the status bar the working directory is published to.
+   * Holds the status bar the shell is published to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
-   * Holds the active terminal's working directory, or null when no terminal is active.
+   * Holds the active terminal's shell name, or null when no terminal is active.
    */
-  private readonly cwdSignal: WritableSignal<string | null> = signal<string | null>(null);
+  private readonly shellSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Gets the active terminal's working directory, or null when no terminal is active.
+   * Gets the active terminal's shell name, or null when no terminal is active.
    */
-  public readonly cwd: Signal<string | null> = this.cwdSignal.asReadonly();
+  public readonly shell: Signal<string | null> = this.shellSignal.asReadonly();
 
   /**
-   * Initializes the service, projecting the working directory as a trailing status segment.
+   * Initializes the service, projecting the shell as a trailing status segment.
    */
   public constructor() {
     effect((): void => {
-      const cwd: string | null = this.cwdSignal();
-      if (cwd === null) {
+      const shell: string | null = this.shellSignal();
+      if (shell === null) {
         this.statusBar.clearOwner(STATUS_OWNER);
         return;
       }
       this.statusBar.contribute(
         STATUS_OWNER,
-        { leading: [], trailing: [{ id: CWD_SEGMENT_ID, text: cwd, icon: Icon.FOLDER }] },
+        { leading: [], trailing: [{ id: SHELL_SEGMENT_ID, text: shell, icon: Icon.TERMINAL }] },
         STATUS_PRIORITY,
       );
     });
   }
 
   /**
-   * Sets the active terminal's working directory.
-   * @param cwd The working directory, or null to clear it.
+   * Sets the active terminal's shell name.
+   * @param shell The shell name, or null to clear it.
    */
-  public setCwd(cwd: string | null): void {
-    this.cwdSignal.set(cwd);
+  public setShell(shell: string | null): void {
+    this.shellSignal.set(shell);
   }
 }

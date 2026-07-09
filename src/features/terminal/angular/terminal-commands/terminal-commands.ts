@@ -72,6 +72,11 @@ export interface TerminalCommandHandler {
    * @param value Whether to engage scroll lock.
    */
   setScrollLock(value: boolean): void;
+
+  /**
+   * Scrolls the terminal viewport to the newest output at the bottom of the buffer.
+   */
+  scrollToBottom(): void;
 }
 
 /**
@@ -205,5 +210,12 @@ export class TerminalCommands {
    */
   public setScrollLock(value: boolean): void {
     this.handler()?.setScrollLock(value);
+  }
+
+  /**
+   * Scrolls the active terminal to the newest output at the bottom of the buffer.
+   */
+  public scrollToBottom(): void {
+    this.handler()?.scrollToBottom();
   }
 }

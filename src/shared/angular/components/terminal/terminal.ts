@@ -104,6 +104,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly exited: OutputEmitterRef<number> = output<number>();
 
   /**
+   * Emits the shell executable the session actually spawned, once it is running (including after a
+   * {@link newSession} or {@link restart}), so the owning view can reflect the terminal type.
+   */
+  public readonly shellChange: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Holds the container element that hosts the xterm canvas.
    */
   private readonly container: Signal<ElementRef<HTMLDivElement>> =
@@ -241,6 +247,15 @@ export class Terminal implements AfterViewInit, OnDestroy {
    */
   public clear(): void {
     this.xterm?.clear();
+    this.xterm?.focus();
+  }
+
+  /**
+   * Scrolls the viewport to the newest output at the bottom of the buffer and returns focus to the
+   * terminal — useful for jumping back to the tail while scroll lock holds the view in place.
+   */
+  public scrollToBottom(): void {
+    this.xterm?.scrollToBottom();
     this.xterm?.focus();
   }
 
@@ -401,6 +416,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of the
     // configured default; a New session explicitly resets this first.
     this.overriddenShell = result.shell ?? this.overriddenShell;
+    if (result.shell !== undefined) {
+      this.shellChange.emit(result.shell);
+    }
 
     this.cleanupOnData = this.bridge.onData((targetId: string, data: string): void => {
       if (targetId === id) {

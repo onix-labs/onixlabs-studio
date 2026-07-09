@@ -14,25 +14,25 @@ describe('TerminalStatus', () => {
     expect(TestBed.inject(TerminalStatus)).toBeTruthy();
   });
 
-  it('setCwd_whenGivenAPath_publishesATrailingStatusSegment', () => {
+  it('setShell_whenGivenAShell_publishesATrailingStatusSegment', () => {
     const status: TerminalStatus = TestBed.inject(TerminalStatus);
     const statusBar: StatusBar = TestBed.inject(StatusBar);
 
-    status.setCwd('/home/user/project');
+    status.setShell('zsh');
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.trailing()).toEqual([
-      { id: 'terminal-cwd', text: '/home/user/project', icon: Icon.FOLDER },
+      { id: 'terminal-shell', text: 'zsh', icon: Icon.TERMINAL },
     ]);
   });
 
-  it('setCwd_whenCleared_removesTheTrailingSegment', () => {
+  it('setShell_whenCleared_removesTheTrailingSegment', () => {
     const status: TerminalStatus = TestBed.inject(TerminalStatus);
     const statusBar: StatusBar = TestBed.inject(StatusBar);
 
-    status.setCwd('/home/user/project');
+    status.setShell('zsh');
     TestBed.inject(ApplicationRef).tick();
-    status.setCwd(null);
+    status.setShell(null);
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.trailing()).toEqual([]);

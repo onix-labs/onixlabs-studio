@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -24,7 +25,7 @@ const VARIANT_RESTART: string = 'restart';
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
  * actions and locations commands drive the active terminal through the {@link TerminalCommands}
- * registry; the AI group's Agent button toggles the active terminal's docked agent panel; the View
+ * registry; the Tools group's Agent button toggles the active terminal's docked agent panel; the View
  * group's Scroll Lock check freezes the active terminal's viewport as output streams in.
  */
 @Component({
@@ -34,6 +35,7 @@ const VARIANT_RESTART: string = 'restart';
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
+    RibbonStripButtonSmall,
     RibbonStripCheck,
     RibbonStripMenuButton,
   ],
@@ -196,5 +198,12 @@ export class TerminalRibbon {
    */
   protected onScrollLock(value: boolean): void {
     this.commands.setScrollLock(value);
+  }
+
+  /**
+   * Scrolls the active terminal to the newest output at the bottom of the buffer.
+   */
+  protected onScrollToBottom(): void {
+    this.commands.scrollToBottom();
   }
 }

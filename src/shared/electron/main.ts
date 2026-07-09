@@ -10,6 +10,7 @@ import {
   WebContents,
   WindowOpenHandlerResponse,
 } from 'electron';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
@@ -403,10 +404,11 @@ class Program {
     });
 
     ipcMain.on(AppChannel.GetDisplayStartup, (event: IpcMainEvent): void => {
-      // Synchronous: both values were resolved before the window (and thus this preload) was created.
+      // Synchronous: every value was resolved before the window (and thus this preload) was created.
       event.returnValue = {
         gpuRendering: this.gpuRendering,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
+        homeDir: os.homedir(),
       };
     });
 

@@ -53,6 +53,11 @@ export interface HostEnv {
   readonly platform: string;
 
   /**
+   * Gets the current user's home directory (absolute), used to abbreviate paths to a leading `~`.
+   */
+  readonly homeDir: string;
+
+  /**
    * Gets the display/GPU startup snapshot resolved before the first paint.
    */
   readonly display: DisplayStartup;

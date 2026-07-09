@@ -36,10 +36,16 @@ import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel'
 const CWD_POLL_INTERVAL_MS: number = 1500;
 
 /**
+ * Holds the maximum length of the working-directory tab title before it is truncated from the left,
+ * keeping the tail (the deepest directories) with a leading ellipsis.
+ */
+const MAX_TAB_TITLE_LENGTH: number = 24;
+
+/**
  * Represents the terminal feature view: the shared {@link Terminal} pane in the main area with an
  * optional docked agent panel beside it. It owns the terminal-tab concerns the bare pane does not —
- * the ribbon command handler, the working-directory status segment, the tab title, and the agent
- * panel — driving the pane through its imperative API.
+ * the ribbon command handler, the shell (terminal type) status segment, the working-directory tab
+ * title, and the agent panel — driving the pane through its imperative API.
  */
 @Component({
   selector: 'app-terminal-view',
@@ -107,6 +113,18 @@ export class TerminalView implements OnDestroy {
   private readonly scrollLocked: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the shell (terminal type) this terminal is running, published to the status strip while
+   * active. Set once the pane reports the spawned shell (including after a New session or restart).
+   */
+  private readonly currentShell: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the last working-directory title applied to the tab, so a poll that finds an unchanged
+   * directory does not re-rename the tab.
+   */
+  private lastTabTitle: string | null = null;
+
+  /**
    * Gets the default shell a new terminal starts with, taken from the persisted setting; an empty
    * setting means "use the main process's default", surfaced as undefined so the pane falls back.
    */
@@ -149,13 +167,20 @@ export class TerminalView implements OnDestroy {
    * Initializes a new instance of the {@link TerminalView} class, wiring the active-tab effects.
    */
   public constructor() {
-    // Poll the working directory and publish it to the status strip while the terminal is active.
+    // Poll the working directory and reflect it in the tab title while the terminal is active.
     effect((): void => {
       if (this.isActive() && this.paneReady()) {
         this.startCwdPolling();
       } else {
         this.stopCwdPolling();
       }
+    });
+
+    // Publish the shell (terminal type) to the status strip while the terminal is active, clearing it
+    // when another view takes over.
+    effect((): void => {
+      const active: boolean = this.isActive() && this.paneReady();
+      this.terminalStatus.setShell(active ? this.currentShell() : null);
     });
 
     // Register the ribbon command handler while the terminal is active so copy/paste/clear act on it.
@@ -214,11 +239,12 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
-   * Renames the owning tab when the shell sets the terminal title.
-   * @param title The new terminal title.
+   * Records the shell the pane reports it is running, deriving its display name for the status strip.
+   * @param shell The spawned shell executable path.
    */
-  protected onTitleChange(title: string): void {
-    this.tabsService.rename(this.tabId(), title);
+  protected onShellChange(shell: string): void {
+    const base: string = shell.split(/[\\/]/).pop() ?? shell;
+    this.currentShell.set(base.replace(/\.[^.]+$/, ''));
   }
 
   /**
@@ -252,6 +278,9 @@ export class TerminalView implements OnDestroy {
     this.commandHandler = {
       scrollLocked: this.scrollLocked.asReadonly(),
       setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
+      scrollToBottom: (): void => {
+        this.terminal()?.scrollToBottom();
+      },
       clear: (): void => {
         this.terminal()?.clear();
       },
@@ -329,19 +358,18 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
-   * Stops polling the working directory and clears the published status segment.
+   * Stops polling the working directory.
    */
   private stopCwdPolling(): void {
     if (this.cwdPollHandle !== null) {
       clearInterval(this.cwdPollHandle);
       this.cwdPollHandle = null;
     }
-    this.terminalStatus.setCwd(null);
   }
 
   /**
-   * Asks the pane for the PTY's working directory and publishes it to the status strip while this
-   * terminal remains active.
+   * Asks the pane for the PTY's working directory and reflects it in the tab title while this terminal
+   * remains active, skipping the rename when the directory is unchanged.
    */
   private async pollCwd(): Promise<void> {
     const pane: Terminal | undefined = this.terminal();
@@ -349,8 +377,31 @@ export class TerminalView implements OnDestroy {
       return;
     }
     const cwd: string | null = await pane.getCwd();
-    if (this.isActive()) {
-      this.terminalStatus.setCwd(cwd);
+    if (cwd === null || !this.isActive()) {
+      return;
     }
+    const title: string = this.formatCwdTitle(cwd);
+    if (title !== this.lastTabTitle) {
+      this.lastTabTitle = title;
+      this.tabsService.rename(this.tabId(), title);
+    }
+  }
+
+  /**
+   * Formats a working directory for the tab title: the home directory is abbreviated to `~`, and an
+   * over-long path is truncated from the left so the tail (the deepest directories) stays visible
+   * behind a leading ellipsis.
+   * @param cwd The absolute working directory.
+   * @returns Returns the formatted tab title.
+   */
+  private formatCwdTitle(cwd: string): string {
+    const home: string | undefined = window.host?.homeDir;
+    const abbreviated: string =
+      home !== undefined && home.length > 0 && (cwd === home || cwd.startsWith(`${home}/`))
+        ? `~${cwd.slice(home.length)}`
+        : cwd;
+    return abbreviated.length > MAX_TAB_TITLE_LENGTH
+      ? `…${abbreviated.slice(abbreviated.length - MAX_TAB_TITLE_LENGTH + 1)}`
+      : abbreviated;
   }
 }

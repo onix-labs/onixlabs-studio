@@ -17,15 +17,19 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Clipboard">
-    <app-ribbon-strip-button [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-    <app-ribbon-strip-button [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-    <app-ribbon-strip-button [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+      <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+      <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Actions">
-    <app-ribbon-strip-button [icon]="Icon.LIST" label="List" (action)="onList()" />
-    <app-ribbon-strip-button [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
-    <app-ribbon-strip-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small [icon]="Icon.LIST" label="List" (action)="onList()" />
+      <app-ribbon-strip-button-small [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
+      <app-ribbon-strip-button-small [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Locations">
@@ -40,10 +44,15 @@
         [checked]="scrollLocked()"
         (toggled)="onScrollLock($event)"
       />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ARROW_DOWN"
+        label="Scroll to Bottom"
+        (action)="onScrollToBottom()"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="AI">
+  <app-ribbon-strip-group title="Tools">
     <app-ribbon-strip-button [icon]="Icon.AGENT" label="Agent" (action)="onAgent()" />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

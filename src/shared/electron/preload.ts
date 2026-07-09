@@ -9,9 +9,9 @@ import type { DisplayStartup, HostEnv } from '@shared/api/host';
  * process resolved these from the active GPU and the persisted startup preferences by the time this
  * preload runs.
  */
-const displayStartup: DisplayStartup = ipcRenderer.sendSync(
+const startup: DisplayStartup & { homeDir: string } = ipcRenderer.sendSync(
   AppChannel.GetDisplayStartup,
-) as DisplayStartup;
+) as DisplayStartup & { homeDir: string };
 
 /**
  * Specifies the static host facts exposed to the renderer under `window.host`: values needed
@@ -19,7 +19,11 @@ const displayStartup: DisplayStartup = ipcRenderer.sendSync(
  */
 const host: HostEnv = {
   platform: process.platform,
-  display: displayStartup,
+  homeDir: startup.homeDir,
+  display: {
+    gpuRendering: startup.gpuRendering,
+    hardwareAccelerationEnabled: startup.hardwareAccelerationEnabled,
+  },
 };
 
 contextBridge.exposeInMainWorld('host', host);

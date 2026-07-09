@@ -22,6 +22,7 @@ function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
     root: (): void => void (calls['root'] = true),
     scrollLocked: signal<boolean>(false),
     setScrollLock: (): void => void (calls['setScrollLock'] = true),
+    scrollToBottom: (): void => void (calls['scrollToBottom'] = true),
     newSession: (): void => void (calls['newSession'] = true),
   };
 }
