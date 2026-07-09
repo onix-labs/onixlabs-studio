@@ -1,5 +1,10 @@
 <app-panel-layout layoutKey="agent">
-  <app-agent-chat main [tabId]="tabId()" [isActive]="isActive()" />
+  <app-agent-chat
+    main
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+    [autoScroll]="conversation.autoScroll()"
+  />
 
   @if (conversation.historyOpen()) {
     <app-panel panelId="history" defaultEdge="right" [defaultSize]="320" [minSize]="240" [maxSize]="600">

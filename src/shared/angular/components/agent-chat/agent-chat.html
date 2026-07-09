@@ -1,5 +1,11 @@
 <div class="agent">
-  <div class="agent__messages" role="log" aria-label="Conversation">
+  <div
+    #messages
+    class="agent__messages"
+    role="log"
+    aria-label="Conversation"
+    (scroll)="onScroll(messages)"
+  >
     @if (items().length === 0) {
       <div class="agent__empty">
         <app-icon class="agent__empty-icon" [icon]="Icon.AGENT_EMPTY" aria-hidden="true" />
