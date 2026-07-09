@@ -55,10 +55,12 @@ export class PrintManager {
       // marginType 'none' removes the print system's own margins, leaving the CSS @page margin (driven
       // by the user's "Print margins" setting) as the sole source — so an export matches a print.
       // Export produces a fixed-size A4 document rather than following the OS print dialog's paper.
+      // printBackground stays off (as a normal print does by default): with it on, the dark-theme page
+      // canvas paints over the @page margin band and frames the document in black.
       const data: Buffer = await event.sender.printToPDF({
         margins: { marginType: 'none' },
         pageSize: 'A4',
-        printBackground: true,
+        printBackground: false,
       });
       await fs.writeFile(result.filePath, data);
       // Open the finished PDF in the default viewer; this is also the "preview" the print dialog lacks.
