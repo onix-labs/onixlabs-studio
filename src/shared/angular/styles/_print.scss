@@ -1,0 +1,82 @@
+// =============================================================================
+// Print styles
+// =============================================================================
+// Printing (and Export-to-PDF, which renders through the same print path) must
+// produce a clean document — not the whole app chrome. These rules hide the shell,
+// collapse the fixed 100vh viewport so the document paginates to its natural height
+// instead of being clipped, and force the editor's light palette so a dark-mode
+// session still prints on white. The Milkdown light-colour mixins are pulled in for
+// the palette override; `@use` loads the already-included module without re-emitting
+// its CSS, so these rules simply layer after it in source order.
+
+@use 'milkdown' as *;
+
+// Give the printed page comfortable margins so the document does not run to the paper's edge.
+@page {
+  margin: 1.5cm 2cm;
+}
+
+@media print {
+  // --- Hide the application chrome -------------------------------------------
+  app-title-strip-container,
+  app-ribbon-strip-container,
+  app-status-strip-container,
+  app-welcome-screen {
+    display: none !important;
+  }
+
+  // Only the active document prints: inactive tab views and any docked tool panels
+  // (outline, review, reader, agent, find) are dropped so the printout is just the
+  // document in the layout's main slot.
+  app-content-host .tab-view--hidden,
+  app-panel {
+    display: none !important;
+  }
+
+  // --- Let content paginate to natural height --------------------------------
+  // On screen the app is a fixed 100vh viewport with overflow:hidden the whole way
+  // down the layout chain; unclamp that chain so the document grows and paginates
+  // rather than clipping at one screen.
+  html,
+  body,
+  main.content,
+  app-content-host,
+  app-content-host .tab-view,
+  app-markdown-view,
+  app-panel-layout,
+  app-markdown-document,
+  app-markdown-editor,
+  app-markdown-editor .editor-scroll,
+  app-markdown-editor .editor-wrapper {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    block-size: auto !important;
+    background: #fff !important;
+  }
+
+  // --- Force the editor's LIGHT palette even in a dark-mode session -----------
+  // Name the plain and dark-scoped selectors together at equal specificity; coming
+  // later in source order, the light variables win over the dark override in print.
+  app-markdown-editor .milkdown,
+  [data-theme-mode='dark'] app-markdown-editor .milkdown {
+    @include milkdown-light-colors;
+    @include milkdown-base-styles;
+
+    background: #fff !important;
+  }
+
+  // --- Drop interactive editor affordances from the printout -----------------
+  app-markdown-editor .milkdown .milkdown-block-handle,
+  app-markdown-editor .milkdown .operation-item,
+  app-markdown-editor .milkdown .crepe-drop-cursor,
+  app-markdown-editor .milkdown .prosemirror-virtual-cursor {
+    display: none !important;
+  }
+
+  // Suppress Crepe's "Start writing…" placeholder (rendered as the generated content of the empty
+  // block's ::before) so it does not print at the end of the document.
+  app-markdown-editor .milkdown .crepe-placeholder::before {
+    content: none !important;
+  }
+}
