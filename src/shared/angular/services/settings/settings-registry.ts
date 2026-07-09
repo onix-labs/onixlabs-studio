@@ -67,6 +67,8 @@ export interface SettingsValues {
   readonly 'markdownEditor.imageSizing': ImageSizing;
   readonly 'markdownEditor.imageAlignment': ImageAlignment;
 
+  readonly 'terminal.defaultShell': string;
+
   readonly 'ai.provider': AiProviderId;
   readonly 'ai.models': AiModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
@@ -442,6 +444,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'left',
+      },
+    ],
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    settings: [
+      {
+        key: 'terminal.defaultShell',
+        title: 'Default shell',
+        description:
+          'The shell a new terminal starts with. Choose from the shells installed on your system, or use the system default.',
+        control: { kind: 'custom', component: 'terminal-default-shell' },
+        default: '',
       },
     ],
   },

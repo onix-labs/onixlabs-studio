@@ -2,6 +2,17 @@
   <app-ribbon-strip-group title="Session">
     <app-ribbon-strip-button [icon]="Icon.CLEAR" label="Clear" (action)="onClear()" />
     <app-ribbon-strip-button [icon]="Icon.TERMINAL" label="Restart" (action)="onRestart()" />
+    @if (shellOptions().length > 0) {
+      <app-ribbon-strip-column>
+        <app-ribbon-strip-field
+          label="Shell"
+          [options]="shellOptions()"
+          [value]="currentShellName()"
+          [fullWidth]="false"
+          (changed)="onShellChange($event)"
+        />
+      </app-ribbon-strip-column>
+    }
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Clipboard">

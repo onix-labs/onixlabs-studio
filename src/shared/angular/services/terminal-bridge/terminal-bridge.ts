@@ -1,6 +1,7 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  ShellInfo,
   TerminalChannel,
   TerminalCreateOptions,
   TerminalCreateResult,
@@ -85,6 +86,16 @@ export class TerminalBridge {
    */
   public getCwd(id: string): Promise<string | null> {
     return this.bridge?.invoke<string | null>(TerminalChannel.GetCwd, id) ?? Promise.resolve(null);
+  }
+
+  /**
+   * Lists the shells installed on the host, for the shell picker.
+   * @returns Returns the installed shells, most-preferred first, or an empty list outside Electron.
+   */
+  public listShells(): Promise<readonly ShellInfo[]> {
+    return (
+      this.bridge?.invoke<readonly ShellInfo[]>(TerminalChannel.ListShells) ?? Promise.resolve([])
+    );
   }
 
   /**

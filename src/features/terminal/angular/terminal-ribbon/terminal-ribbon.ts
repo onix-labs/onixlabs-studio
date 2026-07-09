@@ -1,13 +1,16 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { ShellInfo } from '@shared/api/terminal-channels';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -24,6 +27,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripCheck,
+    RibbonStripField,
   ],
   templateUrl: './terminal-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -51,9 +55,30 @@ export class TerminalRibbon {
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
 
   /**
+   * Holds the installed-shells provider backing the shell picker.
+   */
+  private readonly terminalShells: TerminalShells = inject(TerminalShells);
+
+  /**
    * Gets a value indicating whether the active terminal has scroll lock engaged.
    */
   protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
+
+  /**
+   * Gets the display names of the installed shells, offered by the shell picker.
+   */
+  protected readonly shellOptions: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.terminalShells.shells().map((shell: ShellInfo): string => shell.name),
+  );
+
+  /**
+   * Gets the display name of the active terminal's current shell, selecting it in the picker; empty
+   * when no terminal is active or its shell is not yet known.
+   */
+  protected readonly currentShellName: Signal<string> = computed((): string => {
+    const shellPath: string | undefined = this.commands.currentShell();
+    return shellPath === undefined ? '' : this.terminalShells.nameOf(shellPath);
+  });
 
   /**
    * Clears the active terminal's screen.
@@ -141,5 +166,18 @@ export class TerminalRibbon {
    */
   protected onScrollLock(value: boolean): void {
     this.commands.setScrollLock(value);
+  }
+
+  /**
+   * Switches the active terminal to the shell chosen in the picker, respawning its session.
+   * @param name The display name of the chosen shell.
+   */
+  protected onShellChange(name: string): void {
+    const chosen: ShellInfo | undefined = this.terminalShells
+      .shells()
+      .find((shell: ShellInfo): boolean => shell.name === name);
+    if (chosen !== undefined) {
+      this.commands.setShell(chosen.path);
+    }
   }
 }

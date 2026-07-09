@@ -5,7 +5,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
-import { TerminalChannel, TerminalCreateResult } from '@shared/api/terminal-channels';
+import { readFileSync } from 'node:fs';
+import { ShellInfo, TerminalChannel, TerminalCreateResult } from '@shared/api/terminal-channels';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -78,6 +79,7 @@ export class TerminalManager {
       (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
+    ipcMain.handle(TerminalChannel.ListShells, (): readonly ShellInfo[] => this.listShells());
   }
 
   /**
@@ -106,7 +108,13 @@ export class TerminalManager {
     if (typeof options !== 'object' || options === null) {
       return { success: false, error: 'Invalid terminal options' };
     }
-    const candidate: { id?: unknown; cols?: unknown; rows?: unknown; cwd?: unknown } = options;
+    const candidate: {
+      id?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+      cwd?: unknown;
+      shell?: unknown;
+    } = options;
     if (typeof candidate.id !== 'string' || candidate.id.length === 0) {
       return { success: false, error: 'Invalid terminal options' };
     }
@@ -117,7 +125,13 @@ export class TerminalManager {
       return { success: true, pid: existing.pid, shell: existing.process };
     }
 
-    const shell: string = this.resolveShell();
+    // Honour a caller-chosen shell only when it is a usable executable; otherwise fall back to the
+    // resolved platform default, so a stale or bogus choice never surfaces as a cryptic spawn failure.
+    const shell: string = this.isUsableShell(
+      typeof candidate.shell === 'string' ? candidate.shell : undefined,
+    )
+      ? (candidate.shell as string).trim()
+      : this.resolveShell();
     const cols: number = this.isDimension(candidate.cols) ? candidate.cols : DEFAULT_COLS;
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
@@ -263,6 +277,63 @@ export class TerminalManager {
         },
       );
     });
+  }
+
+  /**
+   * Enumerates the shells installed on the host for the shell picker. On POSIX the canonical list is
+   * `/etc/shells`; on Windows there is no such registry, so a small set of well-known interpreters is
+   * probed. The user's current default (`$SHELL`, or the resolved fallback) is always included and
+   * listed first. Every entry is verified to be an executable, and duplicates are collapsed by path.
+   * @returns Returns the installed shells, most-preferred first.
+   */
+  private listShells(): readonly ShellInfo[] {
+    const candidates: string[] =
+      process.platform === 'win32' ? this.windowsShellCandidates() : this.posixShellCandidates();
+
+    // Lead with the active default so the picker highlights what a new terminal would use.
+    const ordered: string[] = [this.resolveShell(), ...candidates];
+
+    const seen: Set<string> = new Set<string>();
+    const shells: ShellInfo[] = [];
+    for (const candidate of ordered) {
+      const trimmed: string = candidate.trim();
+      if (seen.has(trimmed) || !this.isUsableShell(trimmed)) {
+        continue;
+      }
+      seen.add(trimmed);
+      shells.push({ name: path.basename(trimmed, path.extname(trimmed)), path: trimmed });
+    }
+    return shells;
+  }
+
+  /**
+   * Reads the POSIX shell registry (`/etc/shells`), ignoring comments and blank lines. A missing or
+   * unreadable file yields an empty list, leaving only the resolved default in the picker.
+   * @returns Returns the absolute shell paths listed in `/etc/shells`.
+   */
+  private posixShellCandidates(): string[] {
+    try {
+      return readFileSync('/etc/shells', 'utf-8')
+        .split('\n')
+        .map((line: string): string => line.trim())
+        .filter((line: string): boolean => line.length > 0 && !line.startsWith('#'));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Lists the well-known Windows shell interpreters to probe. Both are given as absolute paths so the
+   * caller's executable check can validate them; PowerShell 7 (`pwsh`) is left out because it needs
+   * PATH resolution the picker cannot safely do here.
+   * @returns Returns the candidate Windows shell paths.
+   */
+  private windowsShellCandidates(): string[] {
+    const system: string = process.env['SystemRoot'] ?? 'C:\\Windows';
+    return [
+      process.env['COMSPEC'] ?? path.join(system, 'System32', 'cmd.exe'),
+      path.join(system, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    ];
   }
 
   /**

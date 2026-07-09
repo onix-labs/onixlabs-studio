@@ -3,10 +3,12 @@
     <app-terminal
       [terminalId]="tabId()"
       [cwd]="cwd()"
+      [shell]="defaultShell()"
       [isActive]="isActive()"
       (ready)="onPaneReady()"
       (titleChange)="onTitleChange($event)"
       (exited)="onExited()"
+      (shellChange)="onShellChange($event)"
     />
   </div>
 

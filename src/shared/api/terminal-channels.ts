@@ -32,6 +32,11 @@ export enum TerminalChannel {
   GetCwd = 'terminal:get-cwd',
 
   /**
+   * Requests the list of shells installed on the host, for the shell picker (renderer→main, invoke).
+   */
+  ListShells = 'terminal:list-shells',
+
+  /**
    * Carries output data from a session to the renderer (main→renderer, send).
    */
   Data = 'terminal:data',
@@ -65,6 +70,27 @@ export interface TerminalCreateOptions {
    * Gets the working directory to start in. Falls back to the user's home directory.
    */
   readonly cwd?: string;
+
+  /**
+   * Gets the shell executable to run. Falls back to the main process's resolved default when absent or
+   * not a usable executable.
+   */
+  readonly shell?: string;
+}
+
+/**
+ * Describes a shell installed on the host, offered by the shell picker.
+ */
+export interface ShellInfo {
+  /**
+   * Gets the display name of the shell (its executable's base name, for example `zsh`).
+   */
+  readonly name: string;
+
+  /**
+   * Gets the absolute path to the shell executable.
+   */
+  readonly path: string;
 }
 
 /**

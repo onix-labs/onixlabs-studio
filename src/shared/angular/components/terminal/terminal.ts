@@ -77,6 +77,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly cwd: InputSignal<string | undefined> = input<string | undefined>(undefined);
 
   /**
+   * Gets the shell executable the session starts with, or undefined to use the main process's default.
+   * Seeds the first spawn; a later {@link switchShell} overrides it for subsequent spawns.
+   */
+  public readonly shell: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
    * Gets a value indicating whether the pane is currently shown. When it becomes active the terminal
    * is re-fitted and focused.
    */
@@ -98,6 +104,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly exited: OutputEmitterRef<number> = output<number>();
 
   /**
+   * Emits the shell executable the session actually spawned, once it is running (including after a
+   * {@link switchShell} or {@link restart}), so the owning view can reflect the current shell.
+   */
+  public readonly shellChange: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Holds the container element that hosts the xterm canvas.
    */
   private readonly container: Signal<ElementRef<HTMLDivElement>> =
@@ -107,6 +119,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds a value indicating whether the xterm instance and PTY session are initialised.
    */
   private readonly terminalReady: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the shell chosen through {@link switchShell}, overriding the {@link shell} input for the next
+   * spawn, or null to use the input (or the main process's default). Kept across a restart so a
+   * switched shell persists.
+   */
+  private overriddenShell: string | null = null;
 
   /**
    * Holds the xterm instance, or null before initialisation.
@@ -303,6 +322,17 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Switches the terminal to a different shell, respawning the session under it while keeping the
+   * terminal identifier. The choice persists across later restarts.
+   * @param shell The shell executable to run.
+   * @returns Returns a promise that resolves once the new session has spawned.
+   */
+  public async switchShell(shell: string): Promise<void> {
+    this.overriddenShell = shell;
+    await this.restart();
+  }
+
+  /**
    * Destroys the current xterm and PTY session and spawns a fresh one in its place, keeping the
    * terminal identifier. The session is disposed before the new one spawns so the main process does
    * not reuse the dying session.
@@ -367,10 +397,14 @@ export class Terminal implements AfterViewInit, OnDestroy {
       cols: xterm.cols,
       rows: xterm.rows,
       cwd: this.cwd(),
+      shell: this.overriddenShell ?? this.shell(),
     });
     if (!result.success) {
       xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);
       return;
+    }
+    if (result.shell !== undefined) {
+      this.shellChange.emit(result.shell);
     }
 
     this.cleanupOnData = this.bridge.onData((targetId: string, data: string): void => {

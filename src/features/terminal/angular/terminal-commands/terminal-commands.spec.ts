@@ -22,6 +22,8 @@ function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
     root: (): void => void (calls['root'] = true),
     scrollLocked: signal<boolean>(false),
     setScrollLock: (): void => void (calls['setScrollLock'] = true),
+    currentShell: signal<string | undefined>(undefined),
+    setShell: (): void => void (calls['setShell'] = true),
   };
 }
 
@@ -79,6 +81,25 @@ describe('TerminalCommands', () => {
     commands.setScrollLock(true);
 
     expect(calls['setScrollLock']).toBe(true);
+  });
+
+  it('setShell_whenHandlerRegistered_forwardsToTheHandler', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    const calls: Record<string, boolean> = {};
+    commands.register(createHandler(calls));
+
+    commands.setShell('/bin/zsh');
+
+    expect(calls['setShell']).toBe(true);
+  });
+
+  it('currentShell_reflectsTheActiveHandlerAndDefaultsUndefined', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    expect(commands.currentShell()).toBeUndefined();
+
+    const shell: WritableSignal<string | undefined> = signal<string | undefined>('/bin/zsh');
+    commands.register({ ...createHandler({}), currentShell: shell });
+    expect(commands.currentShell()).toBe('/bin/zsh');
   });
 
   it('open_whenHandlerUnregistered_doesNothing', () => {

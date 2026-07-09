@@ -10,6 +10,11 @@ export interface TerminalCommandHandler {
   readonly scrollLocked: Signal<boolean>;
 
   /**
+   * Gets the shell executable the terminal is currently running, or undefined before it is known.
+   */
+  readonly currentShell: Signal<string | undefined>;
+
+  /**
    * Clears the terminal screen.
    */
   clear(): void;
@@ -64,6 +69,12 @@ export interface TerminalCommandHandler {
    * @param value Whether to engage scroll lock.
    */
   setScrollLock(value: boolean): void;
+
+  /**
+   * Switches the terminal to a different shell, respawning its session under it.
+   * @param shell The shell executable to run.
+   */
+  setShell(shell: string): void;
 }
 
 /**
@@ -93,6 +104,14 @@ export class TerminalCommands {
    */
   public readonly scrollLocked: Signal<boolean> = computed(
     (): boolean => this.handler()?.scrollLocked() ?? false,
+  );
+
+  /**
+   * Gets the shell the active terminal is running, or undefined when no terminal is active or its
+   * shell is not yet known.
+   */
+  public readonly currentShell: Signal<string | undefined> = computed(
+    (): string | undefined => this.handler()?.currentShell(),
   );
 
   /**
@@ -189,5 +208,13 @@ export class TerminalCommands {
    */
   public setScrollLock(value: boolean): void {
     this.handler()?.setScrollLock(value);
+  }
+
+  /**
+   * Switches the active terminal to a different shell.
+   * @param shell The shell executable to run.
+   */
+  public setShell(shell: string): void {
+    this.handler()?.setShell(shell);
   }
 }

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
@@ -18,6 +19,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
@@ -73,6 +75,11 @@ export class TerminalView implements OnDestroy {
   private readonly shell: Shell = inject(Shell);
 
   /**
+   * Holds the settings service supplying the default shell for a new terminal.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the docked agent-panel state for terminal tabs.
    */
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
@@ -98,6 +105,23 @@ export class TerminalView implements OnDestroy {
    * handler and applied to the pane. Kept for the terminal's lifetime so it survives deactivation.
    */
   private readonly scrollLocked: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the shell this terminal is currently running, surfaced to the ribbon's shell picker through
+   * the command handler. Set once the pane reports the spawned shell (including after a switch).
+   */
+  private readonly currentShell: WritableSignal<string | undefined> = signal<string | undefined>(
+    undefined,
+  );
+
+  /**
+   * Gets the default shell a new terminal starts with, taken from the persisted setting; an empty
+   * setting means "use the main process's default", surfaced as undefined so the pane falls back.
+   */
+  protected readonly defaultShell: Signal<string | undefined> = computed((): string | undefined => {
+    const configured: string = this.settings.get('terminal.defaultShell');
+    return configured.length > 0 ? configured : undefined;
+  });
 
   /**
    * Holds the command handler registered with the ribbon while this terminal is active.
@@ -213,6 +237,14 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
+   * Records the shell the pane reports it is running, so the ribbon's picker reflects it.
+   * @param shell The spawned shell executable.
+   */
+  protected onShellChange(shell: string): void {
+    this.currentShell.set(shell);
+  }
+
+  /**
    * Gets a value indicating whether the docked agent panel is mounted.
    * @returns Returns true when the panel has been shown at least once.
    */
@@ -236,6 +268,10 @@ export class TerminalView implements OnDestroy {
     this.commandHandler = {
       scrollLocked: this.scrollLocked.asReadonly(),
       setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
+      currentShell: this.currentShell.asReadonly(),
+      setShell: (shell: string): void => {
+        void this.terminal()?.switchShell(shell);
+      },
       clear: (): void => {
         this.terminal()?.clear();
       },
