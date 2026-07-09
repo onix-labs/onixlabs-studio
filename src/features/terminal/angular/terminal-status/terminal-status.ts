@@ -3,6 +3,11 @@ import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
+ * Holds the identifier of the terminal address (its prompt title) status segment.
+ */
+const ADDRESS_SEGMENT_ID: string = 'terminal-address';
+
+/**
  * Holds the identifier of the terminal-type (shell) status segment.
  */
 const SHELL_SEGMENT_ID: string = 'terminal-shell';
@@ -19,17 +24,23 @@ const STATUS_OWNER: string = 'terminal';
 const STATUS_PRIORITY: number = 20;
 
 /**
- * Publishes the active terminal's shell (its terminal type) to the status strip.
+ * Publishes the active terminal's address (its full prompt title, e.g. `user@host:~/path`) and shell
+ * (its terminal type) to the status strip.
  *
- * The active terminal pushes the shell it is running here; an effect projects it as a trailing status
- * segment, clearing the segment when no terminal is active (the shell is null).
+ * The active terminal pushes both here; an effect projects the address as a leading segment and the
+ * shell as a trailing segment, clearing the contribution when no terminal is active (both are null).
  */
 @Service()
 export class TerminalStatus {
   /**
-   * Holds the status bar the shell is published to.
+   * Holds the status bar the terminal segments are published to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
+
+  /**
+   * Holds the active terminal's address (its full prompt title), or null when no terminal is active.
+   */
+  private readonly addressSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the active terminal's shell name, or null when no terminal is active.
@@ -37,26 +48,44 @@ export class TerminalStatus {
   private readonly shellSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Gets the active terminal's address (its full prompt title), or null when no terminal is active.
+   */
+  public readonly address: Signal<string | null> = this.addressSignal.asReadonly();
+
+  /**
    * Gets the active terminal's shell name, or null when no terminal is active.
    */
   public readonly shell: Signal<string | null> = this.shellSignal.asReadonly();
 
   /**
-   * Initializes the service, projecting the shell as a trailing status segment.
+   * Initializes the service, projecting the address as a leading segment and the shell as a trailing
+   * segment.
    */
   public constructor() {
     effect((): void => {
+      const address: string | null = this.addressSignal();
       const shell: string | null = this.shellSignal();
-      if (shell === null) {
+      if (address === null && shell === null) {
         this.statusBar.clearOwner(STATUS_OWNER);
         return;
       }
       this.statusBar.contribute(
         STATUS_OWNER,
-        { leading: [], trailing: [{ id: SHELL_SEGMENT_ID, text: shell, icon: Icon.TERMINAL }] },
+        {
+          leading: address === null ? [] : [{ id: ADDRESS_SEGMENT_ID, text: address }],
+          trailing: shell === null ? [] : [{ id: SHELL_SEGMENT_ID, text: shell, icon: Icon.TERMINAL }],
+        },
         STATUS_PRIORITY,
       );
     });
+  }
+
+  /**
+   * Sets the active terminal's address (its full prompt title).
+   * @param address The address, or null to clear it.
+   */
+  public setAddress(address: string | null): void {
+    this.addressSignal.set(address);
   }
 
   /**

@@ -37,4 +37,28 @@ describe('TerminalStatus', () => {
 
     expect(statusBar.trailing()).toEqual([]);
   });
+
+  it('setAddress_whenGivenAnAddress_publishesALeadingStatusSegment', () => {
+    const status: TerminalStatus = TestBed.inject(TerminalStatus);
+    const statusBar: StatusBar = TestBed.inject(StatusBar);
+
+    status.setAddress('john@machine:~/Foo/Bar');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(statusBar.leading()).toEqual([
+      { id: 'terminal-address', text: 'john@machine:~/Foo/Bar' },
+    ]);
+  });
+
+  it('setAddress_whenCleared_removesTheLeadingSegment', () => {
+    const status: TerminalStatus = TestBed.inject(TerminalStatus);
+    const statusBar: StatusBar = TestBed.inject(StatusBar);
+
+    status.setAddress('john@machine:~');
+    TestBed.inject(ApplicationRef).tick();
+    status.setAddress(null);
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(statusBar.leading()).toEqual([]);
+  });
 });

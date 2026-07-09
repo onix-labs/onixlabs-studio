@@ -117,6 +117,14 @@
       text-overflow: ellipsis;
     }
 
+    // A terminal tab's title is a shell prompt/path; truncate it from the left (ellipsis on the
+    // leading edge) so the tail — the current directory — stays visible when the tab is squeezed,
+    // rather than the default right truncation that would keep the user@host head and hide the path.
+    &[data-tab-type='terminal'] .tab-title {
+      direction: rtl;
+      text-align: left;
+    }
+
     .tab-dirty {
       flex-shrink: 0;
       inline-size: 0.5rem;
