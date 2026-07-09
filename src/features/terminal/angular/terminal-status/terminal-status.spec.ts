@@ -14,11 +14,11 @@ describe('TerminalStatus', () => {
     expect(TestBed.inject(TerminalStatus)).toBeTruthy();
   });
 
-  it('setShell_whenGivenAShell_publishesATrailingStatusSegment', () => {
+  it('publish_whenGivenAShell_publishesATrailingStatusSegment', () => {
     const status: TerminalStatus = TestBed.inject(TerminalStatus);
     const statusBar: StatusBar = TestBed.inject(StatusBar);
 
-    status.setShell('zsh');
+    status.publish('tab-1', { address: null, shell: 'zsh' });
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.trailing()).toEqual([
@@ -26,23 +26,11 @@ describe('TerminalStatus', () => {
     ]);
   });
 
-  it('setShell_whenCleared_removesTheTrailingSegment', () => {
+  it('publish_whenGivenAnAddress_publishesALeadingStatusSegment', () => {
     const status: TerminalStatus = TestBed.inject(TerminalStatus);
     const statusBar: StatusBar = TestBed.inject(StatusBar);
 
-    status.setShell('zsh');
-    TestBed.inject(ApplicationRef).tick();
-    status.setShell(null);
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(statusBar.trailing()).toEqual([]);
-  });
-
-  it('setAddress_whenGivenAnAddress_publishesALeadingStatusSegment', () => {
-    const status: TerminalStatus = TestBed.inject(TerminalStatus);
-    const statusBar: StatusBar = TestBed.inject(StatusBar);
-
-    status.setAddress('john@machine:~/Foo/Bar');
+    status.publish('tab-1', { address: 'john@machine:~/Foo/Bar', shell: 'zsh' });
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.leading()).toEqual([
@@ -50,15 +38,35 @@ describe('TerminalStatus', () => {
     ]);
   });
 
-  it('setAddress_whenCleared_removesTheLeadingSegment', () => {
+  it('clear_whenTheClearingTabOwnsTheStatus_removesTheSegments', () => {
     const status: TerminalStatus = TestBed.inject(TerminalStatus);
     const statusBar: StatusBar = TestBed.inject(StatusBar);
 
-    status.setAddress('john@machine:~');
+    status.publish('tab-1', { address: 'john@machine:~', shell: 'zsh' });
     TestBed.inject(ApplicationRef).tick();
-    status.setAddress(null);
+    status.clear('tab-1');
     TestBed.inject(ApplicationRef).tick();
 
     expect(statusBar.leading()).toEqual([]);
+    expect(statusBar.trailing()).toEqual([]);
+  });
+
+  it('clear_whenAnotherTabOwnsTheStatus_leavesTheActiveSegments', () => {
+    const status: TerminalStatus = TestBed.inject(TerminalStatus);
+    const statusBar: StatusBar = TestBed.inject(StatusBar);
+
+    // The active terminal (tab-2) publishes, then the deactivating terminal (tab-1) clears. The clear
+    // must not wipe the active terminal's contribution.
+    status.publish('tab-2', { address: 'john@machine:~/Active', shell: 'zsh' });
+    TestBed.inject(ApplicationRef).tick();
+    status.clear('tab-1');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(statusBar.leading()).toEqual([
+      { id: 'terminal-address', text: 'john@machine:~/Active' },
+    ]);
+    expect(statusBar.trailing()).toEqual([
+      { id: 'terminal-shell', text: 'zsh', icon: Icon.TERMINAL },
+    ]);
   });
 });

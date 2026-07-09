@@ -1,4 +1,4 @@
-import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -24,11 +24,30 @@ const STATUS_OWNER: string = 'terminal';
 const STATUS_PRIORITY: number = 20;
 
 /**
+ * Describes the contextual information the active terminal publishes to the status strip.
+ */
+export interface TerminalContext {
+  /**
+   * Gets the terminal's address (its full prompt title, e.g. `user@host:~/path`), or null when the
+   * shell has not yet reported one.
+   */
+  readonly address: string | null;
+
+  /**
+   * Gets the terminal's shell name (its terminal type), or null when it is not yet known.
+   */
+  readonly shell: string | null;
+}
+
+/**
  * Publishes the active terminal's address (its full prompt title, e.g. `user@host:~/path`) and shell
  * (its terminal type) to the status strip.
  *
- * The active terminal pushes both here; an effect projects the address as a leading segment and the
- * shell as a trailing segment, clearing the contribution when no terminal is active (both are null).
+ * The active terminal pushes its context here; an effect projects the address as a leading segment
+ * and the shell as a trailing segment, clearing the contribution when no terminal is active. The
+ * publishing tab is tracked so a deactivating terminal only clears the strip when it still owns it —
+ * never wiping out the terminal that just became active (which would otherwise leave a stale
+ * contribution lingering as tabs are switched).
  */
 @Service()
 export class TerminalStatus {
@@ -38,24 +57,11 @@ export class TerminalStatus {
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
-   * Holds the active terminal's address (its full prompt title), or null when no terminal is active.
+   * Holds the active terminal's context and the tab that published it, or null when no terminal is
+   * active. The tab is tracked so a deactivating terminal only clears the strip when it still owns it.
    */
-  private readonly addressSignal: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds the active terminal's shell name, or null when no terminal is active.
-   */
-  private readonly shellSignal: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Gets the active terminal's address (its full prompt title), or null when no terminal is active.
-   */
-  public readonly address: Signal<string | null> = this.addressSignal.asReadonly();
-
-  /**
-   * Gets the active terminal's shell name, or null when no terminal is active.
-   */
-  public readonly shell: Signal<string | null> = this.shellSignal.asReadonly();
+  private readonly contextSignal: WritableSignal<{ tabId: string; context: TerminalContext } | null> =
+    signal<{ tabId: string; context: TerminalContext } | null>(null);
 
   /**
    * Initializes the service, projecting the address as a leading segment and the shell as a trailing
@@ -63,17 +69,21 @@ export class TerminalStatus {
    */
   public constructor() {
     effect((): void => {
-      const address: string | null = this.addressSignal();
-      const shell: string | null = this.shellSignal();
-      if (address === null && shell === null) {
+      const current: { tabId: string; context: TerminalContext } | null = this.contextSignal();
+      if (current === null) {
         this.statusBar.clearOwner(STATUS_OWNER);
         return;
       }
+      const context: TerminalContext = current.context;
       this.statusBar.contribute(
         STATUS_OWNER,
         {
-          leading: address === null ? [] : [{ id: ADDRESS_SEGMENT_ID, text: address }],
-          trailing: shell === null ? [] : [{ id: SHELL_SEGMENT_ID, text: shell, icon: Icon.TERMINAL }],
+          leading:
+            context.address === null ? [] : [{ id: ADDRESS_SEGMENT_ID, text: context.address }],
+          trailing:
+            context.shell === null
+              ? []
+              : [{ id: SHELL_SEGMENT_ID, text: context.shell, icon: Icon.TERMINAL }],
         },
         STATUS_PRIORITY,
       );
@@ -81,18 +91,22 @@ export class TerminalStatus {
   }
 
   /**
-   * Sets the active terminal's address (its full prompt title).
-   * @param address The address, or null to clear it.
+   * Publishes the given tab's terminal context as the active status.
+   * @param tabId The identifier of the publishing tab.
+   * @param context The terminal context (its address and shell).
    */
-  public setAddress(address: string | null): void {
-    this.addressSignal.set(address);
+  public publish(tabId: string, context: TerminalContext): void {
+    this.contextSignal.set({ tabId, context });
   }
 
   /**
-   * Sets the active terminal's shell name.
-   * @param shell The shell name, or null to clear it.
+   * Clears the status, but only when the given tab is the one currently shown, so a deactivating
+   * terminal never wipes out the terminal that just became active.
+   * @param tabId The identifier of the deactivating tab.
    */
-  public setShell(shell: string | null): void {
-    this.shellSignal.set(shell);
+  public clear(tabId: string): void {
+    if (this.contextSignal()?.tabId === tabId) {
+      this.contextSignal.set(null);
+    }
   }
 }

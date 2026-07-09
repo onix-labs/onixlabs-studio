@@ -178,8 +178,14 @@ export class TerminalView implements OnDestroy {
     // terminal is active, clearing them when another view takes over.
     effect((): void => {
       const active: boolean = this.isActive() && this.paneReady();
-      this.terminalStatus.setAddress(active ? this.currentTitle() : null);
-      this.terminalStatus.setShell(active ? this.currentShell() : null);
+      if (active) {
+        this.terminalStatus.publish(this.tabId(), {
+          address: this.currentTitle(),
+          shell: this.currentShell(),
+        });
+      } else {
+        this.terminalStatus.clear(this.tabId());
+      }
     });
 
     // Register the ribbon command handler while the terminal is active so copy/paste/clear act on it.
@@ -226,6 +232,7 @@ export class TerminalView implements OnDestroy {
       this.commandHandler = null;
     }
     this.terminalAgents.remove(this.tabId());
+    this.terminalStatus.clear(this.tabId());
   }
 
   /**
