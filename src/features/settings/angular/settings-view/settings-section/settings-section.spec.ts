@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { SettingsSection } from './settings-section';
 
 describe('SettingsSection', () => {
@@ -30,9 +31,10 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasSettings_rendersARowAndControlPerSetting', async () => {
+    const expected: number = findSection('application')?.settings.length ?? 0;
     const element: HTMLElement = await render('application');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(3);
-    expect(element.querySelectorAll('app-setting-control').length).toBe(3);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(expected);
+    expect(element.querySelectorAll('app-setting-control').length).toBe(expected);
   });
 
   it('render_whenSectionHasSettings_labelsEachRowFromTheRegistry', async () => {
