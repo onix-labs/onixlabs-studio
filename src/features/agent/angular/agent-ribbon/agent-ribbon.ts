@@ -16,8 +16,9 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
  * active tab's conversation through {@link AgentSessions} — New Chat clears its transcript and Stop
  * aborts its in-flight run — while the Engine group's Provider and Model fields drive the global
- * selection owned by {@link AgentEngine}. The Context and Options controls are disabled placeholders
- * for capabilities that do not exist yet.
+ * selection owned by {@link AgentEngine}. The Options group's Auto-scroll check drives the active
+ * conversation's follow-the-tail preference; the remaining Context and Options controls are disabled
+ * placeholders for capabilities that do not exist yet.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -59,6 +60,11 @@ export class AgentRibbon {
    * Gets a value indicating whether the active tab's conversation-history list is shown.
    */
   protected readonly historyOpen: Signal<boolean> = this.sessions.historyOpen;
+
+  /**
+   * Gets a value indicating whether the active tab's transcript follows new content as it streams.
+   */
+  protected readonly autoScroll: Signal<boolean> = this.sessions.autoScroll;
 
   /**
    * Gets the provider labels offered by the Provider field.
@@ -113,6 +119,14 @@ export class AgentRibbon {
    */
   protected toggleHistory(): void {
     this.sessions.toggleHistory();
+  }
+
+  /**
+   * Sets the active tab's follow-the-tail preference.
+   * @param value The new checked state emitted by the Auto-scroll check.
+   */
+  protected onAutoScroll(value: boolean): void {
+    this.sessions.setAutoScroll(value);
   }
 
   /**

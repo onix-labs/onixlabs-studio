@@ -53,7 +53,11 @@
         value="Agent"
         [disabled]="true"
       />
-      <app-ribbon-strip-check label="Auto-scroll" [checked]="true" [disabled]="true" />
+      <app-ribbon-strip-check
+        label="Auto-scroll"
+        [checked]="autoScroll()"
+        (toggled)="onAutoScroll($event)"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

@@ -94,6 +94,12 @@ export class TerminalView implements OnDestroy {
   private readonly paneReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether scroll lock is engaged on this terminal, surfaced to the ribbon through the command
+   * handler and applied to the pane. Kept for the terminal's lifetime so it survives deactivation.
+   */
+  private readonly scrollLocked: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the command handler registered with the ribbon while this terminal is active.
    */
   private commandHandler: TerminalCommandHandler | null = null;
@@ -161,6 +167,12 @@ export class TerminalView implements OnDestroy {
       }
       setTimeout((): void => pane.handleResize(), 0);
     });
+
+    // Apply scroll lock to the pane whenever it changes, and once the pane becomes available.
+    effect((): void => {
+      const locked: boolean = this.scrollLocked();
+      this.terminal()?.setScrollLocked(locked);
+    });
   }
 
   /**
@@ -222,6 +234,8 @@ export class TerminalView implements OnDestroy {
    */
   private registerCommandHandler(): void {
     this.commandHandler = {
+      scrollLocked: this.scrollLocked.asReadonly(),
+      setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
       clear: (): void => {
         this.terminal()?.clear();
       },

@@ -16,6 +16,7 @@ import {
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownClipboard } from './markdown-clipboard';
 import { OutlineScrollSpy } from './outline-scroll-spy';
+import { toggleTaskList } from './markdown-task-list';
 
 /**
  * Describes the collaborators a {@link MarkdownCommandHandler} routes the ribbon's commands to. The
@@ -73,6 +74,7 @@ export function buildMarkdownCommandHandler(
     toggleInlineCode: (): void => deps.paneOf()?.run(callCommand(toggleInlineCodeCommand.key)),
     toggleBulletList: (): void => deps.paneOf()?.run(callCommand(wrapInBulletListCommand.key)),
     toggleOrderedList: (): void => deps.paneOf()?.run(callCommand(wrapInOrderedListCommand.key)),
+    toggleTaskList: (): void => deps.paneOf()?.run(toggleTaskList),
     insertTable: (): void => deps.paneOf()?.run(callCommand(insertTableCommand.key)),
     insertHorizontalRule: (): void => deps.paneOf()?.run(callCommand(insertHrCommand.key)),
     insertMarkdown: (markdown: string): void => deps.clipboard.insertParsedBlock(markdown),

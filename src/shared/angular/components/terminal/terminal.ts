@@ -139,6 +139,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private hasExited: boolean = false;
 
   /**
+   * Holds a value indicating whether scroll lock is engaged, freezing the viewport as output streams.
+   */
+  private scrollLocked: boolean = false;
+
+  /**
    * Initializes a new instance of the {@link Terminal} class, wiring the activation and theme effects.
    */
   public constructor() {
@@ -203,6 +208,19 @@ export class Terminal implements AfterViewInit, OnDestroy {
    */
   public focus(): void {
     this.xterm?.focus();
+  }
+
+  /**
+   * Sets whether scroll lock is engaged. While locked the viewport stays where the reader parked it as
+   * new output streams in (rather than following the tail), and user keystrokes no longer jump to the
+   * bottom; unlocking restores the normal follow-the-output behaviour.
+   * @param locked Whether to engage scroll lock.
+   */
+  public setScrollLocked(locked: boolean): void {
+    this.scrollLocked = locked;
+    if (this.xterm !== null) {
+      this.xterm.options.scrollOnUserInput = !locked;
+    }
   }
 
   /**
@@ -357,7 +375,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     this.cleanupOnData = this.bridge.onData((targetId: string, data: string): void => {
       if (targetId === id) {
-        this.xterm?.write(data);
+        this.writeOutput(data);
       }
     });
 
@@ -387,6 +405,25 @@ export class Terminal implements AfterViewInit, OnDestroy {
     setTimeout((): void => xterm.focus(), FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.ready.emit();
+  }
+
+  /**
+   * Writes PTY output to the terminal, honouring scroll lock. While locked the viewport is restored to
+   * its pre-write top line once xterm has parsed the chunk, so streaming output does not drag the view
+   * down to the tail. Content that ages out of the scrollback still scrolls away naturally.
+   * @param data The output chunk from the PTY.
+   */
+  private writeOutput(data: string): void {
+    const xterm: Xterm | null = this.xterm;
+    if (xterm === null) {
+      return;
+    }
+    if (!this.scrollLocked) {
+      xterm.write(data);
+      return;
+    }
+    const top: number = xterm.buffer.active.viewportY;
+    xterm.write(data, (): void => xterm.scrollToLine(top));
   }
 
   /**

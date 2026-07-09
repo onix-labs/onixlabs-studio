@@ -47,6 +47,8 @@ describe('AgentRibbon', () => {
   let modelChoices: string[];
   let running: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
+  let autoScroll: WritableSignal<boolean>;
+  let autoScrollChoices: boolean[];
 
   /**
    * Finds a ribbon button by its visible label.
@@ -86,6 +88,8 @@ describe('AgentRibbon', () => {
     modelChoices = [];
     running = signal<boolean>(false);
     historyOpen = signal<boolean>(false);
+    autoScroll = signal<boolean>(true);
+    autoScrollChoices = [];
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
       provider: signal<AiProviderId>('claude'),
@@ -97,9 +101,11 @@ describe('AgentRibbon', () => {
     const sessionsStub: Partial<AgentSessions> = {
       isRunning: running,
       historyOpen,
+      autoScroll,
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
+      setAutoScroll: (value: boolean): void => void autoScrollChoices.push(value),
     };
 
     await TestBed.configureTestingModule({
@@ -162,5 +168,16 @@ describe('AgentRibbon', () => {
     button('History').click();
 
     expect(historyToggles).toBe(1);
+  });
+
+  it('autoScroll_whenUnchecked_drivesThePreferenceOff', () => {
+    const check: HTMLInputElement | null =
+      host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(check).not.toBeNull();
+    expect(check!.checked).toBe(true);
+
+    check!.click();
+
+    expect(autoScrollChoices).toEqual([false]);
   });
 });

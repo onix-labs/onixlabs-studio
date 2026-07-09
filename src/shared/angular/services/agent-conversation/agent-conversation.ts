@@ -113,6 +113,17 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly historyOpen: Signal<boolean> = this.historyOpenState.asReadonly();
 
   /**
+   * Holds whether the transcript follows new content to the bottom as it streams. On by default.
+   */
+  private readonly autoScrollState: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Gets a value indicating whether the transcript follows new content to the bottom as it streams
+   * (part of {@link AgentSessionHandle}).
+   */
+  public readonly autoScroll: Signal<boolean> = this.autoScrollState.asReadonly();
+
+  /**
    * Holds the id of the conversation currently open, or null for an unsaved/new conversation.
    */
   private readonly currentIdState: WritableSignal<string | null> = signal<string | null>(null);
@@ -217,6 +228,15 @@ export class AgentConversation implements AgentSessionHandle {
    */
   public toggleHistory(): void {
     this.historyOpenState.update((open: boolean): boolean => !open);
+  }
+
+  /**
+   * Sets whether the transcript follows new content to the bottom as it streams (part of
+   * {@link AgentSessionHandle}).
+   * @param value The new auto-scroll preference.
+   */
+  public setAutoScroll(value: boolean): void {
+    this.autoScrollState.set(value);
   }
 
   /**

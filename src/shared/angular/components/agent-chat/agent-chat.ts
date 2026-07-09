@@ -1,4 +1,5 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -24,6 +25,12 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownPipe } from './markdown-pipe';
 import { friendlyToolLabel, technicalToolName } from './tool-summary';
+
+/**
+ * How close (px) to the bottom of the message list still counts as "at the bottom" for follow-the-tail
+ * scrolling, absorbing sub-pixel rounding and the last line's leading so streaming stays pinned.
+ */
+const BOTTOM_THRESHOLD_PX: number = 24;
 
 /**
  * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
@@ -161,6 +168,14 @@ export class AgentChat {
   public readonly surface: InputSignal<AgentSurface> = input<AgentSurface>('editor');
 
   /**
+   * Gets a value indicating whether the transcript follows new content to the bottom as it streams,
+   * the master preference the host drives from the agent ribbon's Auto-scroll check. When on, the
+   * transcript is pinned to the newest content while the reader sits at the bottom; scrolling up pauses
+   * the follow without changing the preference, and scrolling back to the bottom resumes it.
+   */
+  public readonly autoScroll: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Holds the current composer text.
    */
   private readonly draftText: WritableSignal<string> = signal<string>('');
@@ -188,6 +203,19 @@ export class AgentChat {
    */
   private readonly inputRef: Signal<ElementRef<HTMLTextAreaElement> | undefined> =
     viewChild<ElementRef<HTMLTextAreaElement>>('input');
+
+  /**
+   * References the scrolling message list, whose scroll position is followed as content streams in.
+   */
+  private readonly messagesRef: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('messages');
+
+  /**
+   * Holds whether the reader is at (or within {@link BOTTOM_THRESHOLD_PX} of) the bottom of the
+   * message list. Follow-the-tail scrolling only pins while this is true, so scrolling up to read back
+   * pauses it and scrolling back down resumes it. Reset to true on send so a new turn re-pins.
+   */
+  private readonly atBottom: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
    * Gets the composer's live word count, labelled for the hint line.
@@ -295,6 +323,31 @@ export class AgentChat {
         }
       });
     });
+
+    // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
+    // working indicator), pin the list to the bottom while the preference is on and the reader is
+    // already there. Reading rows() re-runs this as the transcript streams.
+    afterRenderEffect((): void => {
+      this.rows();
+      if (!this.autoScroll() || !this.atBottom()) {
+        return;
+      }
+      const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+      if (element !== undefined) {
+        element.scrollTop = element.scrollHeight;
+      }
+    });
+  }
+
+  /**
+   * Records whether the reader is at the bottom of the message list as they scroll, which gates
+   * follow-the-tail pinning. A programmatic pin lands at the bottom and keeps this true; scrolling up
+   * clears it and pauses the follow until the reader returns to the bottom.
+   * @param element The scrolling message list.
+   */
+  public onScroll(element: HTMLElement): void {
+    const distance: number = element.scrollHeight - element.scrollTop - element.clientHeight;
+    this.atBottom.set(distance <= BOTTOM_THRESHOLD_PX);
   }
 
   /**
@@ -315,6 +368,8 @@ export class AgentChat {
     }
     this.agent.send(text, this.tabId(), this.surface());
     this.draftText.set('');
+    // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
+    this.atBottom.set(true);
     // Collapse the auto-grown text area back to a single row now that it is empty.
     const element: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (element !== undefined) {
@@ -361,6 +416,8 @@ export class AgentChat {
       return;
     }
     this.agent.send(text, this.tabId(), this.surface());
+    // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
+    this.atBottom.set(true);
     this.markdownOpen.set(false);
     this.markdownSeed.set('');
     this.markdownValue.set('');

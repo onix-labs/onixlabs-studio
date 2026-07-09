@@ -126,6 +126,15 @@ describe('AgentConversation', () => {
     expect(conversation.historyOpen()).toBe(false);
   });
 
+  it('setAutoScroll_whenToggledOff_updatesThePreference', () => {
+    const conversation: AgentConversation = build();
+    expect(conversation.autoScroll()).toBe(true);
+
+    conversation.setAutoScroll(false);
+
+    expect(conversation.autoScroll()).toBe(false);
+  });
+
   it('open_whenRecordExists_restoresTheTranscriptAndMarksItCurrent', async () => {
     const conversation: AgentConversation = build();
 

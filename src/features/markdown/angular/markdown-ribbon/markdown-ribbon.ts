@@ -368,13 +368,10 @@ export class MarkdownRibbon {
   }
 
   /**
-   * Toggles a task list on the current block(s).
-   *
-   * TODO: the Milkdown task-list command is not yet wired into the editor command handler; this is a
-   * placeholder until that lands.
+   * Toggles a task (checkbox) list on the current block(s).
    */
   protected onTaskList(): void {
-    // Intentionally empty until the editor exposes a task-list command.
+    this.commands.toggleTaskList();
   }
 
   /**

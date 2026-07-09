@@ -131,6 +131,11 @@ export interface MarkdownCommandHandler {
   toggleOrderedList(): void;
 
   /**
+   * Toggles a task (checkbox) list on the current block(s).
+   */
+  toggleTaskList(): void;
+
+  /**
    * Inserts a table at the cursor.
    */
   insertTable(): void;
@@ -536,6 +541,13 @@ export class MarkdownCommands {
    */
   public toggleOrderedList(): void {
     this.handler()?.toggleOrderedList();
+  }
+
+  /**
+   * Invokes the task list command on the active editor.
+   */
+  public toggleTaskList(): void {
+    this.handler()?.toggleTaskList();
   }
 
   /**

@@ -37,6 +37,7 @@ function markdownHandler(initial: string): MarkdownCommandHandler {
     toggleInlineCode: noop,
     toggleBulletList: noop,
     toggleOrderedList: noop,
+    toggleTaskList: noop,
     insertTable: noop,
     insertHorizontalRule: noop,
     insertMarkdown: noop,

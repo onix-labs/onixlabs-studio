@@ -23,8 +23,11 @@
 
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-column>
-      <app-ribbon-strip-check label="Scroll Lock" />
-      <app-ribbon-strip-check label="Word Wrap" [checked]="true" />
+      <app-ribbon-strip-check
+        label="Scroll Lock"
+        [checked]="scrollLocked()"
+        (toggled)="onScrollLock($event)"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
