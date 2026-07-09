@@ -5,6 +5,11 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
  */
 export interface TerminalCommandHandler {
   /**
+   * Gets a value indicating whether scroll lock is engaged, freezing the viewport as output streams.
+   */
+  readonly scrollLocked: Signal<boolean>;
+
+  /**
    * Clears the terminal screen.
    */
   clear(): void;
@@ -53,6 +58,12 @@ export interface TerminalCommandHandler {
    * Changes the terminal's working directory to the file-system root.
    */
   root(): void;
+
+  /**
+   * Sets whether scroll lock is engaged on the terminal.
+   * @param value Whether to engage scroll lock.
+   */
+  setScrollLock(value: boolean): void;
 }
 
 /**
@@ -74,6 +85,14 @@ export class TerminalCommands {
    */
   public readonly hasActiveTerminal: Signal<boolean> = computed(
     (): boolean => this.handler() !== null,
+  );
+
+  /**
+   * Gets a value indicating whether the active terminal has scroll lock engaged. Defaults to false
+   * when no terminal is active.
+   */
+  public readonly scrollLocked: Signal<boolean> = computed(
+    (): boolean => this.handler()?.scrollLocked() ?? false,
   );
 
   /**
@@ -162,5 +181,13 @@ export class TerminalCommands {
    */
   public root(): void {
     this.handler()?.root();
+  }
+
+  /**
+   * Sets whether scroll lock is engaged on the active terminal.
+   * @param value Whether to engage scroll lock.
+   */
+  public setScrollLock(value: boolean): void {
+    this.handler()?.setScrollLock(value);
   }
 }

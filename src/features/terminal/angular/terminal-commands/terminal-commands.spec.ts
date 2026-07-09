@@ -1,3 +1,4 @@
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { TerminalCommandHandler, TerminalCommands } from './terminal-commands';
@@ -19,6 +20,8 @@ function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
     open: (): void => void (calls['open'] = true),
     home: (): void => void (calls['home'] = true),
     root: (): void => void (calls['root'] = true),
+    scrollLocked: signal<boolean>(false),
+    setScrollLock: (): void => void (calls['setScrollLock'] = true),
   };
 }
 
@@ -54,6 +57,28 @@ describe('TerminalCommands', () => {
     commands.listAll();
 
     expect(calls['listAll']).toBe(true);
+  });
+
+  it('scrollLocked_reflectsTheActiveHandlerAndDefaultsFalse', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    expect(commands.scrollLocked()).toBe(false);
+
+    const locked: WritableSignal<boolean> = signal<boolean>(false);
+    commands.register({ ...createHandler({}), scrollLocked: locked });
+    expect(commands.scrollLocked()).toBe(false);
+
+    locked.set(true);
+    expect(commands.scrollLocked()).toBe(true);
+  });
+
+  it('setScrollLock_whenHandlerRegistered_forwardsToTheHandler', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    const calls: Record<string, boolean> = {};
+    commands.register(createHandler(calls));
+
+    commands.setScrollLock(true);
+
+    expect(calls['setScrollLock']).toBe(true);
   });
 
   it('open_whenHandlerUnregistered_doesNothing', () => {

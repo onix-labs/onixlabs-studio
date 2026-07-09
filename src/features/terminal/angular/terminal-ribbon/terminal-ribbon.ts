@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -13,8 +13,8 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 /**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
  * actions and locations commands drive the active terminal through the {@link TerminalCommands}
- * registry; the AI group's Agent button toggles the active terminal's docked agent panel; the view
- * toggles are static scaffolding.
+ * registry; the AI group's Agent button toggles the active terminal's docked agent panel; the View
+ * group's Scroll Lock check freezes the active terminal's viewport as output streams in.
  */
 @Component({
   selector: 'app-terminal-ribbon',
@@ -49,6 +49,11 @@ export class TerminalRibbon {
    * Holds the docked agent-panel state for terminal tabs.
    */
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
+
+  /**
+   * Gets a value indicating whether the active terminal has scroll lock engaged.
+   */
+  protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
 
   /**
    * Clears the active terminal's screen.
@@ -128,5 +133,13 @@ export class TerminalRibbon {
     if (id !== undefined) {
       this.terminalAgents.toggle(id);
     }
+  }
+
+  /**
+   * Sets scroll lock on the active terminal.
+   * @param value The new checked state emitted by the Scroll Lock check.
+   */
+  protected onScrollLock(value: boolean): void {
+    this.commands.setScrollLock(value);
   }
 }
