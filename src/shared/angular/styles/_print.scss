@@ -47,7 +47,10 @@
   app-markdown-document,
   app-markdown-editor,
   app-markdown-editor .editor-scroll,
-  app-markdown-editor .editor-wrapper {
+  app-markdown-editor .editor-wrapper,
+  app-code-view,
+  app-code-view .code-layout__editor,
+  app-code-document {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
@@ -105,5 +108,27 @@
   // block's ::before) so it does not print at the end of the document.
   app-markdown-editor .milkdown .crepe-placeholder::before {
     content: none !important;
+  }
+
+  // --- Code: print the whole file, not just Monaco's rendered viewport --------
+  // Monaco only puts the visible lines in the DOM, so it prints a single screen. Hide the editor and
+  // reveal the plain-text mirror the code document renders, which holds the entire file and paginates
+  // naturally. Long lines wrap rather than run off the page.
+  app-code-document app-text-editor {
+    display: none !important;
+  }
+
+  app-code-document .code-print {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    font-size: 10pt;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 }

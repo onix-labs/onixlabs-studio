@@ -7,3 +7,10 @@
   (cursorChange)="onCursorChange($event)"
   (eolChange)="onEolChange($event)"
 />
+
+<!--
+  Print-only full-file rendering. Monaco is virtualised — only the visible lines exist in the DOM — so
+  it prints just the viewport. This plain-text mirror of the whole document is hidden on screen and
+  swapped in for the editor when printing (see the print stylesheet), so the entire file paginates.
+-->
+<pre class="code-print" aria-hidden="true">{{ doc()?.content() ?? '' }}</pre>

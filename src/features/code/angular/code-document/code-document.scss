@@ -18,3 +18,9 @@ app-text-editor {
   min-inline-size: 0;
   min-block-size: 0;
 }
+
+// The full-file print mirror is inert on screen; the print stylesheet reveals it (and hides the
+// editor) only when printing.
+.code-print {
+  display: none;
+}
