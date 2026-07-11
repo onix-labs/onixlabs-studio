@@ -5,6 +5,7 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
+import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { Printing } from '@shared/angular/services/printing/printing';
@@ -25,6 +26,11 @@ export const config: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
+    // Instantiate the console forwarder first, so the earliest boot logs (including the other
+    // initializers') reach the main-process logger. No-op outside Electron.
+    provideAppInitializer((): void => {
+      inject(ConsoleForwarder);
+    }),
     // Instantiate the Theme service at start-up so the persisted mode and accent are applied to the
     // document before the first view renders.
     provideAppInitializer((): void => {
