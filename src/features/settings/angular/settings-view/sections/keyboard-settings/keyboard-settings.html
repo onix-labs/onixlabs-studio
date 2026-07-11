@@ -1,0 +1,54 @@
+@for (group of groups(); track group.view) {
+  <section class="keyboard__group" [attr.aria-label]="group.view">
+    <h3 class="keyboard__view">{{ group.view }}</h3>
+
+    @for (binding of group.bindings; track binding.id) {
+      <div class="keyboard__row">
+        <span class="keyboard__description">{{ binding.description }}</span>
+
+        <span class="keyboard__controls">
+          @if (binding.overridden) {
+            <button
+              type="button"
+              class="keyboard__reset"
+              [attr.aria-label]="'Reset ' + binding.description + ' to its default shortcut'"
+              (click)="reset(binding.id)"
+            >
+              Reset
+            </button>
+          }
+          <button
+            type="button"
+            class="keyboard__chord"
+            [class.keyboard__chord--editing]="isEditing(binding.id)"
+            [class.keyboard__chord--overridden]="binding.overridden"
+            [attr.aria-label]="'Change the shortcut for ' + binding.description"
+            (click)="beginCapture(binding.id)"
+            (blur)="cancelCapture()"
+            (keydown)="isEditing(binding.id) && onCaptureKeydown($event, binding.id)"
+          >
+            @if (isEditing(binding.id)) {
+              Press a key combination&hellip;
+            } @else {
+              <kbd>{{ format(binding.chord) }}</kbd>
+            }
+          </button>
+        </span>
+      </div>
+
+      @if (rejectionFor(binding.id); as message) {
+        <p class="keyboard__message keyboard__message--error" role="alert">{{ message }}</p>
+      } @else if (conflicts().has(binding.id)) {
+        <p class="keyboard__message keyboard__message--warning" role="status">
+          Another {{ group.view }} shortcut uses this key combination; the first registered command
+          wins.
+        </p>
+      }
+    }
+  </section>
+}
+
+<p class="settings-section__hint">
+  Click a shortcut, then press the new key combination. Press Backspace while capturing to restore
+  the default.
+</p>

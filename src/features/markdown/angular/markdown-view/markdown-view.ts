@@ -401,8 +401,8 @@ export class MarkdownView implements OnDestroy {
    */
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [
-      { chord: 'Mod+Shift+S', command: (): void => void this.documents.saveActiveAs() },
-      { chord: 'Mod+F', command: (): void => this.panels.toggle('find') },
+      { id: 'markdown.saveAs', command: (): void => void this.documents.saveActiveAs() },
+      { id: 'markdown.find', command: (): void => this.panels.toggle('find') },
     ]);
   }
 

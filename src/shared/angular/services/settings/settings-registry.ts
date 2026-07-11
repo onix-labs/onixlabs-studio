@@ -69,6 +69,8 @@ export interface SettingsValues {
 
   readonly 'terminal.defaultShell': string;
 
+  readonly 'keyboard.overrides': Readonly<Record<string, string>>;
+
   readonly 'ai.provider': AiProviderId;
   readonly 'ai.models': AiModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
@@ -458,6 +460,19 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'The shell a new terminal starts with. Choose from the shells installed on your system, or use the system default.',
         control: { kind: 'custom', component: 'terminal-default-shell' },
         default: '',
+      },
+    ],
+  },
+  {
+    id: 'keyboard',
+    label: 'Keyboard',
+    settings: [
+      {
+        key: 'keyboard.overrides',
+        title: 'Shortcuts',
+        description: 'The keyboard shortcuts for each view, customisable per command.',
+        control: { kind: 'custom', component: 'keyboard-bindings' },
+        default: {},
       },
     ],
   },

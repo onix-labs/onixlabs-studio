@@ -337,7 +337,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.isActive()) {
         this.keybindings.register(this.tabId(), [
-          { chord: 'Mod+Shift+F', command: (): void => this.revealSearch() },
+          { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
       } else {

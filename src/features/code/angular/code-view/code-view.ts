@@ -506,9 +506,9 @@ export class CodeView implements OnDestroy {
    */
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [
-      { chord: 'Mod+S', command: (): void => this.editorCommands.save() },
-      { chord: 'Mod+Shift+S', command: (): void => this.editorCommands.saveAs() },
-      { chord: 'Mod+R', command: (): void => this.run() },
+      { id: 'code.save', command: (): void => this.editorCommands.save() },
+      { id: 'code.saveAs', command: (): void => this.editorCommands.saveAs() },
+      { id: 'code.run', command: (): void => this.run() },
     ]);
   }
 

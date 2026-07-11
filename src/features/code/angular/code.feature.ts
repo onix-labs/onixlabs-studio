@@ -1,5 +1,7 @@
 import { EnvironmentProviders, makeEnvironmentProviders } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { CODE_KEYBINDINGS } from './code-keybindings';
 import { CodeDocumentPanel } from './code-document-panel/code-document-panel';
 import { CodeRibbon } from './code-ribbon/code-ribbon';
 import { CodeView } from './code-view/code-view';
@@ -23,5 +25,8 @@ const codeFeature: FeatureDescriptor = {
  * @returns Returns the environment providers that stand the code feature up at start-up.
  */
 export function provideCodeFeature(): EnvironmentProviders {
-  return makeEnvironmentProviders([provideFeature(codeFeature)]);
+  return makeEnvironmentProviders([
+    provideFeature(codeFeature),
+    provideKeybindingCatalogue(CODE_KEYBINDINGS),
+  ]);
 }
