@@ -420,10 +420,11 @@ Security is a first-class quality concern; the process model stays strictly sepa
 
 ### The green gate (run before every commit)
 
-`ng build` + `eslint src` + `prettier --check 'src/**/*.ts'` + `npm run build:electron` +
-`CI=true ng test --watch=false`. There is a **known baseline of pre-existing failures** — treat "no
-_new_ failures and no new prettier warnings" as green; don't chase the baseline. **Green after every
-commit:** if a step can't stay green, it's too big — split it.
+`ng build` + `npm run lint` + `npm run format:check` + `npm run build:electron` +
+`CI=true ng test --watch=false`. Everything is green from a clean checkout — there is no tolerated
+baseline of failures or prettier warnings. GitHub Actions (`.github/workflows/ci.yml`) enforces the
+same gate on every PR and on `main`. **Green after every commit:** if a step can't stay green, it's
+too big — split it.
 
 ### Toolchain facts & gotchas
 

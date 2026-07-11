@@ -1,0 +1,53 @@
+# Continuous integration — runs the green gate (format, lint, test, build) on every PR and on main.
+# Mirrors docs/agents.md §8: prettier --check, eslint, vitest, ng build, electron typecheck+bundle.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per ref: a new push to the same PR cancels the previous, still-running check.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Format · Lint · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Nothing in CI launches Electron (tests are Vitest/jsdom; builds are esbuild/ng),
+      # so skip the ~100 MB Electron binary download during npm ci.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prettier check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --watch=false
+
+      - name: Build renderer (Angular)
+        run: npm run build
+
+      - name: Build Electron main + preload (typecheck + bundle)
+        run: npm run build:electron
