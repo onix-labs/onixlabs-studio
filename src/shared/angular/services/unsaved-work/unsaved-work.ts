@@ -36,6 +36,13 @@ export interface UnsavedWorkSource {
    * example a save-as dialog), so the close can be aborted.
    */
   save(id: string): Promise<boolean>;
+
+  /**
+   * Releases the document backing a tab, if this source holds one; unknown ids are a no-op, so the
+   * tab closer can release every source unconditionally.
+   * @param id The owning tab identifier.
+   */
+  release(id: string): void;
 }
 
 /**
