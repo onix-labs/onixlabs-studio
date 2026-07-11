@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -44,6 +45,11 @@ export class CommitDetail {
   private readonly diffOpener: DiffOpener = inject(DiffOpener);
 
   /**
+   * Holds the file-system service showing the destructive-discard confirmation dialog.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Selects a changed file and opens its diff in the document well.
    * @param file The file to select.
    */
@@ -64,6 +70,32 @@ export class CommitDetail {
    * Stages a changed file.
    * @param file The file to stage.
    */
+  /**
+   * Discards a file's uncommitted changes after an explicit confirmation — a tracked file is
+   * restored to `HEAD`, an untracked one is deleted. The change cannot be recovered.
+   * @param file The file whose changes are discarded.
+   */
+  protected async discard(file: GitFileChange): Promise<void> {
+    const confirmed: boolean = await this.fileSystem.confirmDestructive({
+      title: 'Discard Changes',
+      message: `Discard the changes to "${file.path}"?`,
+      detail:
+        'A tracked file is restored to the last commit; an untracked file is deleted. ' +
+        'This cannot be undone.',
+      confirmLabel: 'Discard',
+    });
+    if (confirmed) {
+      void this.repository.discard(file);
+    }
+  }
+
+  /**
+   * Clears the surfaced error from the most recent operation.
+   */
+  protected dismissError(): void {
+    this.repository.dismissError();
+  }
+
   protected stage(file: GitFileChange): void {
     void this.repository.stage(file);
   }

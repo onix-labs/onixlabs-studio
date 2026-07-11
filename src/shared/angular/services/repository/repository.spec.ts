@@ -87,6 +87,21 @@ class FakeProvider implements SourceControlProvider {
 
   public readonly calls: string[] = [];
 
+  /**
+   * Makes the next discard fail with this message, so error surfacing can be exercised.
+   */
+  public failNextDiscardWith: string | null = null;
+
+  public discard(paths: readonly string[]): Promise<MutationResult> {
+    this.calls.push(`discard:${paths.join(',')}`);
+    if (this.failNextDiscardWith !== null) {
+      const error: string = this.failNextDiscardWith;
+      this.failNextDiscardWith = null;
+      return Promise.resolve({ success: false, error });
+    }
+    return Promise.resolve({ success: true });
+  }
+
   public stage(paths: readonly string[]): Promise<MutationResult> {
     this.calls.push(`stage:${paths.join(',')}`);
     return Promise.resolve({ success: true });
@@ -224,6 +239,32 @@ describe('Repository', () => {
     const diff: FileDiff = await repository.loadDiff(workingFile('staged.ts'));
 
     expect(diff).toEqual({ original: 'before', modified: 'after' });
+  });
+
+  it('discard_callsTheProviderWithTheFilePath', async () => {
+    await repository.discard(workingFile('unstaged.ts'));
+
+    expect(provider.calls).toContain('discard:unstaged.ts');
+    expect(repository.lastError()).toBeNull();
+  });
+
+  it('failedOperation_surfacesLastError_andDismissClears', async () => {
+    provider.failNextDiscardWith = 'Authentication required.';
+
+    await repository.discard(workingFile('unstaged.ts'));
+    expect(repository.lastError()).toBe('Authentication required.');
+
+    repository.dismissError();
+    expect(repository.lastError()).toBeNull();
+  });
+
+  it('successfulOperation_clearsAnEarlierError', async () => {
+    provider.failNextDiscardWith = 'boom';
+    await repository.discard(workingFile('unstaged.ts'));
+    expect(repository.lastError()).toBe('boom');
+
+    await repository.discard(workingFile('unstaged.ts'));
+    expect(repository.lastError()).toBeNull();
   });
 
   it('stageAll_callsTheProviderWithNoPaths', async () => {

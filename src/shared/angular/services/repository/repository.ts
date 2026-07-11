@@ -149,6 +149,12 @@ export class Repository {
   private readonly commitMessageSignal: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds the error message of the most recent failed operation, or null when the last operation
+   * succeeded or the message was dismissed. The source-control view surfaces it as a notice.
+   */
+  private readonly lastErrorSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the bound repository's metadata, or null when none is bound.
    */
   public readonly info: Signal<RepositoryInfo | null> = this.infoSignal.asReadonly();
@@ -287,6 +293,11 @@ export class Repository {
   public readonly commitMessage: Signal<string> = this.commitMessageSignal.asReadonly();
 
   /**
+   * Gets the error message of the most recent failed operation, or null when there is none to show.
+   */
+  public readonly lastError: Signal<string | null> = this.lastErrorSignal.asReadonly();
+
+  /**
    * Binds the repository to an opened root, creating its provider and loading its data.
    * @param info The opened repository's metadata.
    */
@@ -398,6 +409,25 @@ export class Repository {
    */
   public setCommitMessage(message: string): void {
     this.commitMessageSignal.set(message);
+  }
+
+  /**
+   * Discards a single file's uncommitted changes — restoring a tracked file to `HEAD`, deleting an
+   * untracked one — then reloads. Destructive; the caller confirms first.
+   * @param file The file whose changes are discarded.
+   * @returns Returns the outcome.
+   */
+  public discard(file: GitFileChange): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.discard([file.path]),
+    );
+  }
+
+  /**
+   * Clears the surfaced error from the most recent operation.
+   */
+  public dismissError(): void {
+    this.lastErrorSignal.set(null);
   }
 
   /**
@@ -543,6 +573,7 @@ export class Repository {
       return { success: false, error: 'No repository open' };
     }
     const result: MutationResult = await op(provider);
+    this.lastErrorSignal.set(result.success ? null : (result.error ?? 'The operation failed.'));
     if (result.success) {
       await this.refresh();
     }

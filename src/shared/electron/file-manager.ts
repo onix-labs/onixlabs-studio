@@ -10,6 +10,7 @@ import {
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  ConfirmDestructiveRequest,
   FileChannel,
   FileInfo,
   FileWriteResult,
@@ -102,6 +103,11 @@ export class FileManager {
       FileChannel.ConfirmSave,
       (_event: IpcMainInvokeEvent, fileName: unknown): Promise<SaveDialogChoice> =>
         this.confirmSave(typeof fileName === 'string' ? fileName : ''),
+    );
+    ipcMain.handle(
+      FileChannel.ConfirmDestructive,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<boolean> =>
+        this.confirmDestructive(request),
     );
   }
 
@@ -261,6 +267,38 @@ export class FileManager {
       return 'dontSave';
     }
     return 'cancel';
+  }
+
+  /**
+   * Shows a destructive-action confirmation dialog. Cancel is the default and the escape action, so
+   * a stray Return or Escape never confirms the destruction.
+   * @param request The dialog's title, message, detail, and confirm-button label.
+   * @returns Returns true when the user explicitly confirmed.
+   */
+  private async confirmDestructive(request: unknown): Promise<boolean> {
+    const candidate: Partial<ConfirmDestructiveRequest> = request ?? {};
+    if (
+      typeof candidate.title !== 'string' ||
+      typeof candidate.message !== 'string' ||
+      typeof candidate.detail !== 'string' ||
+      typeof candidate.confirmLabel !== 'string'
+    ) {
+      return false;
+    }
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return false;
+    }
+    const result: MessageBoxReturnValue = await dialog.showMessageBox(window, {
+      type: 'warning',
+      buttons: [candidate.confirmLabel, 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: candidate.title,
+      message: candidate.message,
+      detail: candidate.detail,
+    });
+    return result.response === 0;
   }
 
   /**

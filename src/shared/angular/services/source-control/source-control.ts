@@ -33,6 +33,8 @@ function createClient(bridge: Bridge): SourceControlClient {
       bridge.invoke(SourceControlChannel.CommitFiles, root, hash),
     readBlob: (root: string, revision: string, filePath: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.ReadBlob, root, revision, filePath),
+    discard: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Discard, root, paths),
     stage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Stage, root, paths),
     unstage: (root: string, paths: readonly string[]): Promise<GitRunResult> =>

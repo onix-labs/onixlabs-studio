@@ -56,6 +56,12 @@ export enum FileChannel {
    * Shows an unsaved-changes confirmation dialog (renderer→main, invoke).
    */
   ConfirmSave = 'dialog:confirm-save',
+
+  /**
+   * Shows a destructive-action confirmation dialog and resolves whether the user confirmed
+   * (renderer→main, invoke).
+   */
+  ConfirmDestructive = 'dialog:confirm-destructive',
 }
 
 /**
@@ -119,3 +125,29 @@ export interface FileWriteResult {
  * Identifies the user's choice in the unsaved-changes confirmation dialog.
  */
 export type SaveDialogChoice = 'save' | 'dontSave' | 'cancel';
+
+/**
+ * Describes a destructive-action confirmation request: the dialog's title, the question, the
+ * explanatory detail, and the label of the destructive (confirming) button.
+ */
+export interface ConfirmDestructiveRequest {
+  /**
+   * Gets the dialog title.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the question shown as the dialog's message.
+   */
+  readonly message: string;
+
+  /**
+   * Gets the explanatory detail beneath the message.
+   */
+  readonly detail: string;
+
+  /**
+   * Gets the label of the destructive, confirming button (for example `Discard`).
+   */
+  readonly confirmLabel: string;
+}
