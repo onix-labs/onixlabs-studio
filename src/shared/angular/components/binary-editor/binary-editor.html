@@ -15,6 +15,7 @@
   class="binary-editor"
   tabindex="0"
   (scroll)="onScroll($event)"
+  (wheel)="onWheel($event)"
   (keydown)="onKeyDown($event)"
 >
   <div class="binary-editor__content" [style.--bpr]="bytesPerRow()">

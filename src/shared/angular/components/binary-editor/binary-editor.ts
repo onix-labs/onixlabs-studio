@@ -22,6 +22,16 @@ import {
 const ROW_HEIGHT: number = 26;
 
 /**
+ * Caps the scroll sizer's height. Browsers clamp element heights around 33.5 million pixels, so a
+ * gigabyte-scale file's true pixel height (its ~10⁸ rows × {@link ROW_HEIGHT}) cannot be laid out —
+ * beyond the clamp the scrollbar simply could not reach most of the file. Files taller than this cap
+ * switch to a compressed mapping: the sizer stays at the cap, the scrollbar position maps
+ * proportionally onto the row range, and the mouse wheel moves by rows so fine scrolling stays
+ * precise.
+ */
+const MAX_SIZER_HEIGHT: number = 24_000_000;
+
+/**
  * Specifies how many extra rows are rendered above and below the viewport, so scrolling does not
  * reveal blank rows before the next frame renders.
  */
@@ -223,6 +233,21 @@ export class BinaryEditor {
   private readonly scrollTop: WritableSignal<number> = signal<number>(0);
 
   /**
+   * Holds the fractional row index at the top of the viewport — the single authority every row
+   * calculation flows from. Below the sizer cap it mirrors `scrollTop / ROW_HEIGHT`; above the cap
+   * (compressed mapping) it is set directly by wheel steps, reveals and caret moves, and derived
+   * proportionally from the scrollbar when the user drags it.
+   */
+  private readonly anchorRow: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds whether the next scroll event is this component's own `scrollTop` write (a wheel step,
+   * reveal, or caret nudge under the compressed mapping), so it must not re-derive {@link anchorRow}
+   * from the coarse scrollbar position and destroy the precise row it was just given.
+   */
+  private suppressScrollSync: boolean = false;
+
+  /**
    * Holds the measured height of the scroll viewport, in pixels.
    */
   private readonly viewportHeight: WritableSignal<number> = signal<number>(0);
@@ -274,17 +299,34 @@ export class BinaryEditor {
   );
 
   /**
-   * Holds the total scrollable height, in pixels.
+   * Holds the sizer's height, in pixels: the true pixel height below {@link MAX_SIZER_HEIGHT}, the
+   * cap above it (the compressed mapping takes over).
    */
-  protected readonly totalHeight: Signal<number> = computed(
-    (): number => this.rowCount() * ROW_HEIGHT,
+  protected readonly totalHeight: Signal<number> = computed((): number =>
+    Math.min(this.rowCount() * ROW_HEIGHT, MAX_SIZER_HEIGHT),
+  );
+
+  /**
+   * Holds whether the file is too tall for true pixel layout, so scroll positions map
+   * proportionally onto rows instead of one row per {@link ROW_HEIGHT} pixels.
+   */
+  private readonly compressed: Signal<boolean> = computed(
+    (): boolean => this.rowCount() * ROW_HEIGHT > MAX_SIZER_HEIGHT,
+  );
+
+  /**
+   * Holds the largest {@link anchorRow} value: the row index at which the last viewport-full of
+   * rows begins.
+   */
+  private readonly maxAnchorRow: Signal<number> = computed((): number =>
+    Math.max(0, this.rowCount() - this.viewportHeight() / ROW_HEIGHT),
   );
 
   /**
    * Holds the index of the first rendered row (including overscan).
    */
   private readonly firstRow: Signal<number> = computed((): number =>
-    Math.max(0, Math.floor(this.scrollTop() / ROW_HEIGHT) - OVERSCAN),
+    Math.max(0, Math.floor(this.anchorRow()) - OVERSCAN),
   );
 
   /**
@@ -296,9 +338,13 @@ export class BinaryEditor {
   });
 
   /**
-   * Holds the pixel offset the rendered window is translated by, keeping rows at their true position.
+   * Holds the pixel offset the rendered window is translated by. The window is positioned so the
+   * anchor row sits exactly at the scroll offset (the viewport top), with the overscan rows above
+   * it; below the sizer cap this reduces to the classic `firstRow × ROW_HEIGHT`.
    */
-  protected readonly offsetY: Signal<number> = computed((): number => this.firstRow() * ROW_HEIGHT);
+  protected readonly offsetY: Signal<number> = computed(
+    (): number => this.scrollTop() - (this.anchorRow() - this.firstRow()) * ROW_HEIGHT,
+  );
 
   /**
    * Holds the rows currently rendered, built from the loaded byte window and current selection.
@@ -387,19 +433,73 @@ export class BinaryEditor {
         return;
       }
       const targetRow: number = Math.floor(target / this.bytesPerRow());
-      const centred: number = targetRow * ROW_HEIGHT - element.clientHeight / 2;
-      element.scrollTop = Math.max(0, centred);
+      this.scrollToRow(targetRow - element.clientHeight / ROW_HEIGHT / 2, element);
     });
   }
 
   /**
-   * Records the scroll position as the grid scrolls, moving the rendered window.
+   * Records the scroll position as the grid scrolls, moving the rendered window. A scrollbar-driven
+   * scroll re-derives the anchor row (proportionally under the compressed mapping); a scroll this
+   * component itself initiated keeps the precise anchor it was given.
    * @param event The scroll event.
    */
   protected onScroll(event: Event): void {
     const element: HTMLElement = event.target as HTMLElement;
     this.scrollTop.set(element.scrollTop);
     this.viewportHeight.set(element.clientHeight);
+    if (this.suppressScrollSync) {
+      this.suppressScrollSync = false;
+      return;
+    }
+    if (!this.compressed()) {
+      this.anchorRow.set(element.scrollTop / ROW_HEIGHT);
+      return;
+    }
+    const scrollable: number = Math.max(1, element.scrollHeight - element.clientHeight);
+    this.anchorRow.set((element.scrollTop / scrollable) * this.maxAnchorRow());
+  }
+
+  /**
+   * Steps the anchor row by the wheel delta under the compressed mapping, where native pixel
+   * scrolling would jump thousands of rows per pixel. Below the sizer cap native scrolling is
+   * row-accurate and the event is left alone.
+   * @param event The wheel event.
+   */
+  protected onWheel(event: WheelEvent): void {
+    if (!this.compressed()) {
+      return;
+    }
+    const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+    if (element === undefined) {
+      return;
+    }
+    event.preventDefault();
+    this.scrollToRow(this.anchorRow() + event.deltaY / ROW_HEIGHT, element);
+  }
+
+  /**
+   * Moves the viewport so the given (fractional) row sits at its top, clamped to the file, keeping
+   * the anchor row and the scrollbar in agreement under either mapping.
+   * @param row The target anchor row.
+   * @param element The scroll container.
+   */
+  private scrollToRow(row: number, element: HTMLElement): void {
+    const clamped: number = Math.min(Math.max(0, row), this.maxAnchorRow());
+    if (!this.compressed()) {
+      // The scroll event derives the anchor back from this exact pixel position.
+      element.scrollTop = clamped * ROW_HEIGHT;
+      return;
+    }
+    this.anchorRow.set(clamped);
+    const scrollable: number = Math.max(1, element.scrollHeight - element.clientHeight);
+    const top: number =
+      this.maxAnchorRow() === 0 ? 0 : (clamped / this.maxAnchorRow()) * scrollable;
+    // Only suppress the echo when the write will actually raise a scroll event.
+    if (element.scrollTop !== top) {
+      this.suppressScrollSync = true;
+      element.scrollTop = top;
+    }
+    this.scrollTop.set(element.scrollTop);
   }
 
   /**
@@ -577,12 +677,11 @@ export class BinaryEditor {
       return;
     }
     const row: number = Math.floor(this.caret() / this.bytesPerRow());
-    const top: number = row * ROW_HEIGHT;
-    const bottom: number = top + ROW_HEIGHT;
-    if (top < element.scrollTop) {
-      element.scrollTop = top;
-    } else if (bottom > element.scrollTop + element.clientHeight) {
-      element.scrollTop = bottom - element.clientHeight;
+    const viewportRows: number = element.clientHeight / ROW_HEIGHT;
+    if (row < this.anchorRow()) {
+      this.scrollToRow(row, element);
+    } else if (row + 1 > this.anchorRow() + viewportRows) {
+      this.scrollToRow(row + 1 - viewportRows, element);
     }
   }
 }
