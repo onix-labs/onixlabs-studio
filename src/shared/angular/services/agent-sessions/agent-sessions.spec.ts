@@ -1,0 +1,169 @@
+import { signal, WritableSignal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+
+import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
+import { AgentSessionHandle, AgentSessions } from './agent-sessions';
+
+/**
+ * A fake session handle whose signals the tests drive and whose commands record their invocations.
+ */
+interface FakeSession {
+  /**
+   * Gets the handle registered with the service.
+   */
+  readonly handle: AgentSessionHandle;
+
+  /**
+   * Gets the writable run-state signal backing the handle.
+   */
+  readonly running: WritableSignal<boolean>;
+
+  /**
+   * Gets the writable mode signal backing the handle.
+   */
+  readonly modeState: WritableSignal<AgentMode>;
+
+  /**
+   * Gets the recorded command invocations, in order.
+   */
+  readonly calls: string[];
+}
+
+/**
+ * Creates a fake session handle whose signals are writable and whose commands record themselves.
+ * @returns Returns the fake session.
+ */
+function createSession(): FakeSession {
+  const running: WritableSignal<boolean> = signal<boolean>(false);
+  const modeState: WritableSignal<AgentMode> = signal<AgentMode>('chat');
+  const contextPaths: WritableSignal<readonly AgentContextRef[]> = signal<
+    readonly AgentContextRef[]
+  >([{ path: '/ws/readme.md', kind: 'file' }]);
+  const calls: string[] = [];
+  const handle: AgentSessionHandle = {
+    isRunning: running.asReadonly(),
+    mode: modeState.asReadonly(),
+    contextPaths: contextPaths.asReadonly(),
+    historyOpen: signal<boolean>(true).asReadonly(),
+    autoScroll: signal<boolean>(false).asReadonly(),
+    newChat: (): void => {
+      calls.push('newChat');
+    },
+    stop: (): void => {
+      calls.push('stop');
+    },
+    toggleHistory: (): void => {
+      calls.push('toggleHistory');
+    },
+    setAutoScroll: (value: boolean): void => {
+      calls.push(`setAutoScroll:${String(value)}`);
+    },
+    setMode: (mode: AgentMode): void => {
+      calls.push(`setMode:${mode}`);
+    },
+    attachFile: (): void => {
+      calls.push('attachFile');
+    },
+    attachFolder: (): void => {
+      calls.push('attachFolder');
+    },
+    removeContext: (path: string): void => {
+      calls.push(`removeContext:${path}`);
+    },
+    compact: (): void => {
+      calls.push('compact');
+    },
+  };
+  return { handle, running, modeState, calls };
+}
+
+describe('AgentSessions', () => {
+  let service: AgentSessions;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(AgentSessions);
+  });
+
+  it('signals_whenNoSessionIsActive_reportTheDefaults', () => {
+    expect(service.isRunning()).toBe(false);
+    expect(service.historyOpen()).toBe(false);
+    expect(service.autoScroll()).toBe(true);
+    expect(service.mode()).toBe('agent');
+    expect(service.contextPaths()).toEqual([]);
+  });
+
+  it('setActive_whenASessionRegisters_mirrorsItsSignals', () => {
+    const session: FakeSession = createSession();
+    service.setActive(session.handle);
+
+    expect(service.isRunning()).toBe(false);
+    expect(service.historyOpen()).toBe(true);
+    expect(service.autoScroll()).toBe(false);
+    expect(service.mode()).toBe('chat');
+    expect(service.contextPaths()).toEqual([{ path: '/ws/readme.md', kind: 'file' }]);
+
+    session.running.set(true);
+    expect(service.isRunning()).toBe(true);
+  });
+
+  it('commands_whenASessionIsActive_delegateToIt', () => {
+    const session: FakeSession = createSession();
+    service.setActive(session.handle);
+
+    service.newChat();
+    service.stop();
+    service.toggleHistory();
+    service.setAutoScroll(true);
+    service.setMode('agent');
+    service.attachFile();
+    service.attachFolder();
+    service.removeContext('/ws/readme.md');
+    service.compact();
+
+    expect(session.calls).toEqual([
+      'newChat',
+      'stop',
+      'toggleHistory',
+      'setAutoScroll:true',
+      'setMode:agent',
+      'attachFile',
+      'attachFolder',
+      'removeContext:/ws/readme.md',
+      'compact',
+    ]);
+  });
+
+  it('commands_whenNoSessionIsActive_areSilentNoOps', () => {
+    expect((): void => {
+      service.newChat();
+      service.stop();
+      service.setMode('chat');
+      service.compact();
+    }).not.toThrow();
+  });
+
+  it('clearActive_whenGivenTheActiveSession_dropsIt', () => {
+    const session: FakeSession = createSession();
+    service.setActive(session.handle);
+
+    service.clearActive(session.handle);
+
+    expect(service.mode()).toBe('agent');
+    service.stop();
+    expect(session.calls).toEqual([]);
+  });
+
+  it('clearActive_whenANewerSessionRegistered_leavesItIntact', () => {
+    const older: FakeSession = createSession();
+    const newer: FakeSession = createSession();
+    service.setActive(older.handle);
+    service.setActive(newer.handle);
+
+    service.clearActive(older.handle);
+
+    service.stop();
+    expect(newer.calls).toEqual(['stop']);
+    expect(older.calls).toEqual([]);
+  });
+});
