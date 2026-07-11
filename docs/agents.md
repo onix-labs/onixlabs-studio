@@ -430,6 +430,9 @@ too big — split it.
 
 ### Toolchain facts & gotchas
 
+- **node-pty is rebuilt for the Electron ABI on every install** — the `postinstall` hook runs
+  `electron-rebuild --only node-pty` (scoped deliberately: rebuilding everything caused problems).
+  electron-builder rebuilds again at package time, and the CI `pack` job verifies the asar-unpack.
 - **No `baseUrl`** (TS5090) — alias targets in `tsconfig.json` `paths` must be relative (`src/...`).
 - **`tsc` does not rewrite path aliases in emit.** The electron main is **esbuild-bundled** (like
   preload): `--packages=external --tsconfig=tsconfig.json`, so `@shared`/`@features` resolve at
