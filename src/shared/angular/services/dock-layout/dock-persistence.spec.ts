@@ -80,9 +80,14 @@ describe('dock-persistence', () => {
   });
 
   it('restoreLayout_reservesNodeIdentifiersPastTheRestoredTree', () => {
+    // The node-id sequence is process-global and other spec files sharing this worker advance it,
+    // so anchor the reserved id to the live counter rather than a fixed number — an absolute
+    // expectation would depend on test-file execution order.
+    const current: number = Number(/^dock-(\d+)$/.exec(mkStack('tool', ['x']).id)?.[1]);
+    const reserved: number = current + 500;
     const raw: unknown = {
       kind: 'stack',
-      id: 'dock-8000',
+      id: `dock-${reserved}`,
       role: 'document',
       panels: [],
       active: null,
@@ -90,6 +95,6 @@ describe('dock-persistence', () => {
 
     restoreLayout(raw, new Set<string>());
 
-    expect(mkStack('tool', ['a']).id).toBe('dock-8001');
+    expect(mkStack('tool', ['a']).id).toBe(`dock-${reserved + 1}`);
   });
 });
