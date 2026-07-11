@@ -124,8 +124,8 @@ export class AgentView implements OnDestroy {
    */
   private registerKeybindings(id: string): void {
     this.keybindings.register(id, [
-      { chord: 'Mod+.', command: (): void => this.sessions.stop() },
-      { chord: 'Mod+Shift+N', command: (): void => this.sessions.newChat() },
+      { id: 'agent.stop', command: (): void => this.sessions.stop() },
+      { id: 'agent.newChat', command: (): void => this.sessions.newChat() },
     ]);
   }
 }

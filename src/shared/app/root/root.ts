@@ -8,8 +8,10 @@ import {
 } from '@angular/core';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/shortcuts-overlay';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
+import { ShortcutsOverlayPanel } from '@shared/angular/components/shortcuts-overlay/shortcuts-overlay-panel';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
 import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
@@ -27,6 +29,7 @@ import { WelcomeScreen } from '@features/welcome/angular/welcome-screen/welcome-
     TitleStripContainer,
     ContentHost,
     WelcomeScreen,
+    ShortcutsOverlayPanel,
   ],
   templateUrl: './root.html',
   styleUrl: './root.scss',
@@ -48,6 +51,21 @@ export class Root {
    * registered.
    */
   private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the shortcuts-overlay visibility owner, toggled by the shell's global accelerator.
+   */
+  private readonly shortcutsOverlay: ShortcutsOverlay = inject(ShortcutsOverlay);
+
+  /**
+   * Initializes the shell, registering the application-level accelerators that dispatch in every
+   * context after the active view has had first refusal.
+   */
+  public constructor() {
+    this.keybindings.registerGlobal([
+      { id: 'app.shortcuts', command: (): void => this.shortcutsOverlay.toggle() },
+    ]);
+  }
 
   /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content

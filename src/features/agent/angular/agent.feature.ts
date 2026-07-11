@@ -5,6 +5,8 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { AGENT_KEYBINDINGS } from './agent-keybindings';
 import { AgentEditorCapabilities } from './agent-editor-capabilities/agent-editor-capabilities';
 import { AgentRibbon } from './agent-ribbon/agent-ribbon';
 import { AgentView } from './agent-view/agent-view';
@@ -31,6 +33,7 @@ const agentFeature: FeatureDescriptor = {
 export function provideAgentFeature(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideFeature(agentFeature),
+    provideKeybindingCatalogue(AGENT_KEYBINDINGS),
     provideAppInitializer((): void => {
       inject(AgentEditorCapabilities);
     }),

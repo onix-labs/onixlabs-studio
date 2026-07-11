@@ -1,0 +1,102 @@
+.keyboard {
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-block-end: 16px;
+  }
+
+  &__view {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--form-muted-foreground-color);
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+  }
+
+  &__description {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  &__chord {
+    min-inline-size: 128px;
+    padding: 4px 10px;
+    border: 1px solid var(--form-control-border-color);
+    border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    background: var(--form-control-background-color);
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-align: center;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--form-control-border-color--hover);
+    }
+
+    &:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 1px;
+    }
+
+    &--editing {
+      border-color: var(--accent-color);
+      color: var(--form-muted-foreground-color);
+    }
+
+    &--overridden {
+      border-color: var(--accent-surface-border-color);
+    }
+
+    kbd {
+      font-family: inherit;
+    }
+  }
+
+  &__reset {
+    padding: 2px 8px;
+    border: none;
+    border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    background: transparent;
+    color: var(--form-muted-foreground-color);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--body-foreground-color);
+    }
+  }
+
+  &__message {
+    margin: 0 0 6px;
+    font-size: 11px;
+
+    &--error {
+      color: var(--error-foreground-color, #e5484d);
+    }
+
+    &--warning {
+      color: var(--warning-foreground-color, #f5a623);
+    }
+  }
+}

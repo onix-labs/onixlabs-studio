@@ -10,6 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
+import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
 import { SettingsSection } from './settings-section/settings-section';
@@ -26,6 +27,7 @@ type SettingsSectionId =
   | 'text-editor'
   | 'markdown'
   | 'terminal'
+  | 'keyboard'
   | 'ai'
   | 'language-servers'
   | 'security'
@@ -56,7 +58,14 @@ interface SettingsNavSection {
  */
 @Component({
   selector: 'app-settings-view',
-  imports: [EditorProfiles, AiSettingsSection, TerminalSettingsSection, SettingsSection, AppIcon],
+  imports: [
+    EditorProfiles,
+    AiSettingsSection,
+    KeyboardSettingsSection,
+    TerminalSettingsSection,
+    SettingsSection,
+    AppIcon,
+  ],
   templateUrl: './settings-view.html',
   styleUrl: './settings-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -99,6 +108,7 @@ export class SettingsView {
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
     { id: 'terminal', label: 'Terminal', icon: Icon.TERMINAL },
+    { id: 'keyboard', label: 'Keyboard', icon: Icon.KEYBOARD },
     { id: 'ai', label: 'AI', icon: Icon.AGENT },
     { id: 'language-servers', label: 'Language Servers', icon: Icon.CODE_INLINE },
     { id: 'security', label: 'Security', icon: Icon.LOCK },

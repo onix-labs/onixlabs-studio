@@ -359,7 +359,7 @@ export class TerminalView implements OnDestroy {
    */
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [
-      { chord: 'Mod+Shift+K', command: (): void => this.terminalCommands.clear() },
+      { id: 'terminal.clear', command: (): void => this.terminalCommands.clear() },
     ]);
   }
 

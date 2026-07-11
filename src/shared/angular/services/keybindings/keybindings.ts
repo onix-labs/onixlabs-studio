@@ -1,32 +1,82 @@
-import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  CatalogueBinding,
+  KEYBINDING_CATALOGUE,
+  KeybindingCatalogueEntry,
+} from './keybinding-catalogue';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
- * Defines a single keyboard accelerator: a normalized chord and the command it invokes on the scope
- * that registered it.
+ * Defines a single keyboard accelerator registration: the catalogued command identifier and the
+ * handler invoked when its chord is pressed. The chord and description live in the feature's
+ * {@link KeybindingCatalogueEntry}, layered with the user's persisted overrides, so a registration
+ * names only the command it implements.
  */
 export interface Keybinding {
   /**
-   * Gets the key chord that triggers the command, written with the platform-neutral `Mod` modifier
-   * (⌘ on macOS, Ctrl elsewhere) — for example `Mod+S`, `Mod+Shift+F`, or `Mod+Enter`. Modifier
-   * order and casing are not significant; the chord is normalized on registration.
+   * Gets the catalogued command identifier (for example `code.save`).
    */
-  readonly chord: string;
+  readonly id: string;
 
   /**
-   * Invokes the command bound to the chord.
+   * Invokes the command bound to the identifier's effective chord.
    */
   readonly command: () => void;
 }
 
 /**
+ * Describes one resolved accelerator for the discoverability surfaces: its identity, human
+ * description, owning view label, and the chord currently in effect (the user's override when one
+ * is persisted and valid, else the catalogued default).
+ */
+export interface ResolvedBinding {
+  /**
+   * Gets the catalogued command identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the human description of the command.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the label of the view that owns the binding.
+   */
+  readonly view: string;
+
+  /**
+   * Gets the normalized chord currently in effect.
+   */
+  readonly chord: string;
+
+  /**
+   * Gets a value indicating whether the effective chord is a user override rather than the default.
+   */
+  readonly overridden: boolean;
+}
+
+/**
+ * Names the reserved scope the shell's application-level accelerators register under. It dispatches
+ * regardless of which view is active, after the active view has had first refusal.
+ */
+const GLOBAL_SCOPE: string = '__global__';
+
+/**
  * Routes application keyboard accelerators to the active view's commands, without the shell knowing
  * which feature is active.
  *
- * Each view registers its accelerators under its tab id when it activates — exactly as it registers
- * its ribbon command handler — and clears them on deactivation and disposal. Only one scope is active
- * at a time; {@link dispatch} matches an incoming key event against the active scope's bindings. The
- * shell installs a single window-level key listener that calls {@link dispatch}, so accelerators
+ * Features contribute a {@link KeybindingCatalogueEntry} (command ids, descriptions, default chords)
+ * through the `KEYBINDING_CATALOGUE` multi-provider, and each view registers `{id, command}` pairs
+ * under its tab id when it activates — exactly as it registers its ribbon command handler — and
+ * clears them on deactivation and disposal. Only one scope is active at a time; the shell's
+ * application-level accelerators live in a reserved global scope that dispatches after the active
+ * view. Chords resolve at dispatch time as the user's persisted override (from the
+ * `keyboard.overrides` setting) when valid, else the catalogued default — so an override takes
+ * effect immediately, with no re-registration.
+ *
+ * The shell installs a single window-level key listener that calls {@link dispatch}, so accelerators
  * compose with the focused editor: keys an embedded engine (Monaco, Milkdown, xterm) already handles
  * stop propagating and never reach the window, while genuinely-unbound chords bubble up to here.
  */
@@ -39,12 +89,37 @@ export class Keybindings {
   private readonly studio: Studio = inject(Studio);
 
   /**
-   * Holds each scope's normalized bindings, keyed by the owning tab id.
+   * Holds the settings store the user's chord overrides persist in.
    */
-  private readonly scopes: Map<string, ReadonlyMap<string, () => void>> = new Map<
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the feature-contributed keybinding catalogue entries.
+   */
+  private readonly catalogueEntries: readonly KeybindingCatalogueEntry[] =
+    inject(KEYBINDING_CATALOGUE, { optional: true }) ?? [];
+
+  /**
+   * Holds each catalogued binding and its owning entry, keyed by command id.
+   */
+  private readonly catalogueById: Map<
     string,
-    ReadonlyMap<string, () => void>
+    { readonly entry: KeybindingCatalogueEntry; readonly binding: CatalogueBinding }
+  > = new Map<string, { entry: KeybindingCatalogueEntry; binding: CatalogueBinding }>();
+
+  /**
+   * Holds each scope's registered bindings, in registration order, keyed by the owning tab id.
+   */
+  private readonly scopes: Map<string, readonly Keybinding[]> = new Map<
+    string,
+    readonly Keybinding[]
   >();
+
+  /**
+   * Bumps whenever a scope registers or is forgotten, so computed surfaces re-derive from the
+   * non-reactive {@link scopes} map.
+   */
+  private readonly scopesVersion: WritableSignal<number> = signal<number>(0);
 
   /**
    * Holds the id of the active scope, or null when no view has registered accelerators.
@@ -58,17 +133,115 @@ export class Keybindings {
   private readonly isMac: boolean = this.studio.platform === 'darwin';
 
   /**
-   * Registers a scope's accelerators and marks it the active scope.
+   * Gets the user's persisted chord overrides, keyed by command id.
+   */
+  private readonly overrides: Signal<Readonly<Record<string, string>>> =
+    this.settings.value('keyboard.overrides');
+
+  /**
+   * Gets every catalogued binding resolved to its effective chord, in contribution order. This is
+   * the Keyboard settings section's model.
+   */
+  public readonly resolvedCatalogue: Signal<readonly ResolvedBinding[]> = computed(
+    (): readonly ResolvedBinding[] =>
+      this.catalogueEntries.flatMap((entry: KeybindingCatalogueEntry): readonly ResolvedBinding[] =>
+        entry.bindings.map(
+          (binding: CatalogueBinding): ResolvedBinding => this.resolve(binding, entry),
+        ),
+      ),
+  );
+
+  /**
+   * Gets the command ids whose effective chords collide with another binding in the same view. Only
+   * same-view collisions matter — a single scope dispatches at a time — and dispatch resolves a
+   * collision by registration order, so a conflict is surfaced as a warning rather than blocking.
+   */
+  public readonly conflictedIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const conflicted: Set<string> = new Set<string>();
+    for (const entry of this.catalogueEntries) {
+      const byChord: Map<string, string[]> = new Map<string, string[]>();
+      for (const binding of entry.bindings) {
+        const chord: string = this.resolve(binding, entry).chord;
+        byChord.set(chord, [...(byChord.get(chord) ?? []), binding.id]);
+      }
+      for (const ids of byChord.values()) {
+        if (ids.length > 1) {
+          ids.forEach((id: string): void => void conflicted.add(id));
+        }
+      }
+    }
+    return conflicted;
+  });
+
+  /**
+   * Gets the accelerators available right now — the active view's bindings followed by the shell's
+   * global ones — resolved to their effective chords. This is the shortcuts overlay's model.
+   */
+  public readonly activeBindings: Signal<readonly ResolvedBinding[]> = computed(
+    (): readonly ResolvedBinding[] => {
+      this.scopesVersion();
+      const scopes: string[] = [];
+      const active: string | null = this.activeScope();
+      if (active !== null) {
+        scopes.push(active);
+      }
+      scopes.push(GLOBAL_SCOPE);
+      return scopes.flatMap((scope: string): readonly ResolvedBinding[] =>
+        (this.scopes.get(scope) ?? []).flatMap(
+          (registration: Keybinding): readonly ResolvedBinding[] => {
+            const catalogued:
+              | { entry: KeybindingCatalogueEntry; binding: CatalogueBinding }
+              | undefined = this.catalogueById.get(registration.id);
+            return catalogued === undefined
+              ? []
+              : [this.resolve(catalogued.binding, catalogued.entry)];
+          },
+        ),
+      );
+    },
+  );
+
+  /**
+   * Initializes the service, indexing the contributed catalogue by command id.
+   */
+  public constructor() {
+    for (const entry of this.catalogueEntries) {
+      for (const binding of entry.bindings) {
+        this.catalogueById.set(binding.id, { entry, binding });
+      }
+    }
+  }
+
+  /**
+   * Registers a scope's accelerators and marks it the active scope. An id missing from the catalogue
+   * is skipped with a warning — it cannot resolve a chord or appear in the discoverability surfaces.
    * @param scope The owning tab identifier.
    * @param bindings The accelerators the scope contributes while active.
    */
   public register(scope: string, bindings: readonly Keybinding[]): void {
-    const normalized: Map<string, () => void> = new Map<string, () => void>();
+    const known: Keybinding[] = [];
     for (const binding of bindings) {
-      normalized.set(this.normalizeChord(binding.chord), binding.command);
+      if (this.catalogueById.has(binding.id)) {
+        known.push(binding);
+      } else {
+        console.warn(`Keybindings: '${binding.id}' is not in the keybinding catalogue; skipped.`);
+      }
     }
-    this.scopes.set(scope, normalized);
+    this.scopes.set(scope, known);
     this.activeScope.set(scope);
+    this.scopesVersion.update((version: number): number => version + 1);
+  }
+
+  /**
+   * Registers the shell's application-level accelerators, which dispatch in every context after the
+   * active view has had first refusal. Registering again replaces the previous global set; the
+   * active view scope is left untouched.
+   * @param bindings The application-level accelerators.
+   */
+  public registerGlobal(bindings: readonly Keybinding[]): void {
+    const active: string | null = this.activeScope();
+    this.register(GLOBAL_SCOPE, bindings);
+    this.activeScope.set(active);
   }
 
   /**
@@ -91,10 +264,13 @@ export class Keybindings {
     if (this.activeScope() === scope) {
       this.activeScope.set(null);
     }
+    this.scopesVersion.update((version: number): number => version + 1);
   }
 
   /**
-   * Dispatches a key event to the matching accelerator in the active scope.
+   * Dispatches a key event to the matching accelerator — the active scope first, then the shell's
+   * global scope. Within a scope, the first registered binding whose effective chord matches wins,
+   * which is also how a surfaced conflict resolves.
    * @param event The keyboard event to match.
    * @returns Returns true when a bound command was invoked, so the caller can suppress the event's
    * default; false when no accelerator matched.
@@ -104,50 +280,109 @@ export class Keybindings {
     if (chord === null) {
       return false;
     }
-    const scope: string | null = this.activeScope();
-    if (scope === null) {
-      return false;
+    for (const scope of [this.activeScope(), GLOBAL_SCOPE]) {
+      if (scope === null) {
+        continue;
+      }
+      for (const registration of this.scopes.get(scope) ?? []) {
+        if (this.effectiveChord(registration.id) === chord) {
+          registration.command();
+          return true;
+        }
+      }
     }
-    const command: (() => void) | undefined = this.scopes.get(scope)?.get(chord);
-    if (command === undefined) {
-      return false;
-    }
-    command();
-    return true;
+    return false;
   }
 
   /**
-   * Derives the normalized chord for a key event, or null for a bare modifier press that cannot form a
-   * chord on its own.
-   * @param event The keyboard event to read.
-   * @returns Returns the normalized chord, or null when the event is a lone modifier key.
+   * Persists a chord override for a command, replacing its default. The chord is validated first; an
+   * invalid chord is rejected and reported instead of applied.
+   * @param id The catalogued command identifier.
+   * @param chord The chord to bind, in any modifier order or casing.
+   * @returns Returns null when the override was applied, or the human-readable reason it was rejected.
    */
-  private chordFromEvent(event: KeyboardEvent): string | null {
-    const key: string = event.key;
-    if (key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt') {
-      return null;
+  public setOverride(id: string, chord: string): string | null {
+    const error: string | null = this.validateOverride(id, chord);
+    if (error !== null) {
+      return error;
     }
-    const parts: string[] = [];
-    if (this.isMac ? event.metaKey : event.ctrlKey) {
-      parts.push('Mod');
-    }
-    if (event.altKey) {
-      parts.push('Alt');
-    }
-    if (event.shiftKey) {
-      parts.push('Shift');
-    }
-    parts.push(this.normalizeKey(key));
-    return parts.join('+');
+    const next: Record<string, string> = { ...this.overrides() };
+    next[id] = this.normalizeChord(chord);
+    this.settings.set('keyboard.overrides', next);
+    return null;
   }
 
   /**
-   * Normalizes an author-written chord to the canonical modifier order and key casing, so registration
-   * and dispatch compare identically regardless of how the chord was written.
+   * Removes a command's chord override, restoring its catalogued default.
+   * @param id The catalogued command identifier.
+   */
+  public clearOverride(id: string): void {
+    const next: Record<string, string> = { ...this.overrides() };
+    delete next[id];
+    this.settings.set('keyboard.overrides', next);
+  }
+
+  /**
+   * Validates a prospective chord override without applying it.
+   * @param id The catalogued command identifier.
+   * @param chord The chord to validate.
+   * @returns Returns null when the chord is acceptable, or the human-readable reason it is not.
+   */
+  public validateOverride(id: string, chord: string): string | null {
+    const catalogued: { entry: KeybindingCatalogueEntry; binding: CatalogueBinding } | undefined =
+      this.catalogueById.get(id);
+    if (catalogued === undefined) {
+      return 'Unknown command.';
+    }
+    const normalized: string = this.normalizeChord(chord);
+    const key: string = normalized.split('+').pop() ?? '';
+    if (key.length === 0 || key === 'Mod' || key === 'Alt' || key === 'Shift') {
+      return 'A shortcut needs a key in addition to its modifiers.';
+    }
+    if (
+      catalogued.entry.modShiftOnly === true &&
+      !(normalized.includes('Mod+') && normalized.includes('Shift+'))
+    ) {
+      return `${catalogued.entry.view} shortcuts must use both ${this.isMac ? '⌘' : 'Ctrl'} and Shift, so they never collide with the shell's control codes.`;
+    }
+    return null;
+  }
+
+  /**
+   * Formats a normalized chord for display on the current platform: modifier symbols on macOS
+   * (`⌘⇧S`) and `Ctrl+Shift+S` style elsewhere.
+   * @param chord The normalized chord to format.
+   * @returns Returns the platform-formatted chord.
+   */
+  public formatChord(chord: string): string {
+    const parts: string[] = chord.split('+');
+    if (this.isMac) {
+      return parts
+        .map((part: string): string => {
+          if (part === 'Mod') {
+            return '⌘';
+          }
+          if (part === 'Alt') {
+            return '⌥';
+          }
+          if (part === 'Shift') {
+            return '⇧';
+          }
+          return part;
+        })
+        .join('');
+    }
+    return parts.map((part: string): string => (part === 'Mod' ? 'Ctrl' : part)).join('+');
+  }
+
+  /**
+   * Normalizes an author-written chord to the canonical modifier order and key casing, so
+   * registration, overrides and dispatch compare identically regardless of how the chord was
+   * written.
    * @param chord The chord to normalize.
    * @returns Returns the canonical chord string.
    */
-  private normalizeChord(chord: string): string {
+  public normalizeChord(chord: string): string {
     let mod: boolean = false;
     let alt: boolean = false;
     let shift: boolean = false;
@@ -178,6 +413,68 @@ export class Keybindings {
     if (key.length > 0) {
       parts.push(key);
     }
+    return parts.join('+');
+  }
+
+  /**
+   * Resolves a catalogued binding to its effective, display-ready form.
+   * @param binding The catalogued binding.
+   * @param entry The owning catalogue entry.
+   * @returns Returns the resolved binding.
+   */
+  private resolve(binding: CatalogueBinding, entry: KeybindingCatalogueEntry): ResolvedBinding {
+    const chord: string = this.effectiveChord(binding.id);
+    return {
+      id: binding.id,
+      description: binding.description,
+      view: entry.view,
+      chord,
+      overridden: chord !== this.normalizeChord(binding.chord),
+    };
+  }
+
+  /**
+   * Derives the chord currently in effect for a command: the user's persisted override when it is
+   * present and still valid, else the catalogued default.
+   * @param id The catalogued command identifier.
+   * @returns Returns the normalized effective chord, or an empty string for an uncatalogued id.
+   */
+  private effectiveChord(id: string): string {
+    const catalogued: { entry: KeybindingCatalogueEntry; binding: CatalogueBinding } | undefined =
+      this.catalogueById.get(id);
+    if (catalogued === undefined) {
+      return '';
+    }
+    const override: string | undefined = this.overrides()[id];
+    if (override !== undefined && this.validateOverride(id, override) === null) {
+      return this.normalizeChord(override);
+    }
+    return this.normalizeChord(catalogued.binding.chord);
+  }
+
+  /**
+   * Derives the normalized chord for a key event, or null for a bare modifier press that cannot form a
+   * chord on its own. Public so the Keyboard settings section's chord-capture input reads exactly the
+   * chord dispatch would match.
+   * @param event The keyboard event to read.
+   * @returns Returns the normalized chord, or null when the event is a lone modifier key.
+   */
+  public chordFromEvent(event: KeyboardEvent): string | null {
+    const key: string = event.key;
+    if (key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt') {
+      return null;
+    }
+    const parts: string[] = [];
+    if (this.isMac ? event.metaKey : event.ctrlKey) {
+      parts.push('Mod');
+    }
+    if (event.altKey) {
+      parts.push('Alt');
+    }
+    if (event.shiftKey) {
+      parts.push('Shift');
+    }
+    parts.push(this.normalizeKey(key));
     return parts.join('+');
   }
 

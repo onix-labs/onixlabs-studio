@@ -686,6 +686,11 @@ export class Icon {
   public static readonly SETTINGS_MARKDOWN: Icon = new Icon('ph ph-markdown-logo');
 
   /**
+   * Gets the keyboard settings-section icon (regular weight keeps the settings nav uniform).
+   */
+  public static readonly KEYBOARD: Icon = new Icon('ph ph-keyboard');
+
+  /**
    * Gets the light-theme icon.
    */
   public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');

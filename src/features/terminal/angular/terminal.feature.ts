@@ -5,6 +5,8 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { TERMINAL_KEYBINDINGS } from './terminal-keybindings';
 import { AgentTerminalCapabilities } from './agent-terminal-capabilities/agent-terminal-capabilities';
 import { TerminalRibbon } from './terminal-ribbon/terminal-ribbon';
 import { TerminalView } from './terminal-view/terminal-view';
@@ -30,6 +32,7 @@ const terminalFeature: FeatureDescriptor = {
 export function provideTerminalFeature(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideFeature(terminalFeature),
+    provideKeybindingCatalogue(TERMINAL_KEYBINDINGS),
     provideAppInitializer((): void => {
       inject(AgentTerminalCapabilities);
     }),

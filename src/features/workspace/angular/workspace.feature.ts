@@ -1,5 +1,7 @@
 import { EnvironmentProviders, makeEnvironmentProviders } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { WORKSPACE_KEYBINDINGS } from './workspace-keybindings';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
 import { DirectoryView } from './directory-view/directory-view';
 
@@ -22,5 +24,8 @@ const workspaceFeature: FeatureDescriptor = {
  * @returns Returns the environment providers that stand the workspace feature up at start-up.
  */
 export function provideWorkspaceFeature(): EnvironmentProviders {
-  return makeEnvironmentProviders([provideFeature(workspaceFeature)]);
+  return makeEnvironmentProviders([
+    provideFeature(workspaceFeature),
+    provideKeybindingCatalogue(WORKSPACE_KEYBINDINGS),
+  ]);
 }
