@@ -1,8 +1,22 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  EffectRef,
+  inject,
+  Injector,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { DecodedInstruction } from '@shared/api/binary-channels';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import {
+  UnsavedDocument,
+  UnsavedWorkSource,
+} from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { PieceRun, PieceTable, PieceTableSnapshot } from './binary-piece-table';
 import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
@@ -857,7 +871,7 @@ export class BinaryDocumentEntry {
  * status resolve the active document from it — mirroring how {@link Documents} backs code tabs.
  */
 @Service()
-export class BinaryDocuments {
+export class BinaryDocuments implements UnsavedWorkSource {
   /**
    * Holds the tab registry binary tabs are opened in.
    */
@@ -874,12 +888,23 @@ export class BinaryDocuments {
   private readonly disassembly: BinaryDisassembly = inject(BinaryDisassembly);
 
   /**
+   * Holds the injector used to create each document's tab-dirty synchronisation effect (documents
+   * are opened outside a reactive context).
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
    * Holds the open documents, keyed by owning tab identifier.
    */
   private readonly entries: Map<string, BinaryDocumentEntry> = new Map<
     string,
     BinaryDocumentEntry
   >();
+
+  /**
+   * Holds each open document's tab-dirty synchronisation effect, disposed when the tab closes.
+   */
+  private readonly dirtyEffects: Map<string, EffectRef> = new Map<string, EffectRef>();
 
   /**
    * Opens a file in a binary tab, reusing an existing tab for the same path, and returns the tab. The
@@ -900,6 +925,12 @@ export class BinaryDocuments {
       );
       this.entries.set(tab.id, entry);
       this.tabs.rename(tab.id, fileName);
+      // Mirror the document's dirty flag onto its tab, so edited binary files show the same dirty
+      // indicator as edited code and markdown tabs.
+      this.dirtyEffects.set(
+        tab.id,
+        effect((): void => this.tabs.setDirty(tab.id, entry.dirty()), { injector: this.injector }),
+      );
       entry.prime();
     }
     this.tabs.activate(tab.id);
@@ -922,8 +953,40 @@ export class BinaryDocuments {
    * @param tabId The owning tab identifier.
    */
   public release(tabId: string): void {
+    this.dirtyEffects.get(tabId)?.destroy();
+    this.dirtyEffects.delete(tabId);
     this.entries.get(tabId)?.dispose();
     this.entries.delete(tabId);
+  }
+
+  /**
+   * Lists the binary documents with unsaved edits, in insertion order. Part of the unsaved-work
+   * contract the lifecycle walks before the window closes.
+   * @returns Returns each dirty document's owning tab id and display file name.
+   */
+  public dirtyDocuments(): readonly UnsavedDocument[] {
+    const dirty: UnsavedDocument[] = [];
+    for (const entry of this.entries.values()) {
+      if (entry.dirty()) {
+        dirty.push({ id: entry.tabId, name: entry.fileName });
+      }
+    }
+    return dirty;
+  }
+
+  /**
+   * Saves a binary document's pending edits. Part of the unsaved-work contract the lifecycle walks
+   * before the window closes.
+   * @param id The owning tab identifier.
+   * @returns Returns true when the document was saved (or had nothing to save); false when the
+   * write failed, so the close is aborted rather than discarding the edits.
+   */
+  public async save(id: string): Promise<boolean> {
+    const entry: BinaryDocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined) {
+      return true;
+    }
+    return entry.save();
   }
 
   /**

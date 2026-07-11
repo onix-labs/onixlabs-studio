@@ -7,6 +7,10 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { RecentItems, RecentKind } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import {
+  UnsavedDocument,
+  UnsavedWorkSource,
+} from '@shared/angular/services/unsaved-work/unsaved-work';
 
 /**
  * Holds the file name used for a new, unsaved document.
@@ -75,21 +79,6 @@ export interface CodeDocument {
 }
 
 /**
- * Identifies a document with unsaved changes.
- */
-export interface UnsavedDocument {
-  /**
-   * Gets the identifier of the document (its owning tab id, or a well document id).
-   */
-  readonly id: string;
-
-  /**
-   * Gets the document's display file name.
-   */
-  readonly name: string;
-}
-
-/**
  * Holds the mutable backing state for a {@link CodeDocument}.
  */
 interface DocumentEntry {
@@ -147,7 +136,7 @@ interface DocumentEntry {
  * tab's title and dirty indicator in sync.
  */
 @Service()
-export class Documents {
+export class Documents implements UnsavedWorkSource {
   /**
    * Holds the tabs registry the documents are associated with.
    */

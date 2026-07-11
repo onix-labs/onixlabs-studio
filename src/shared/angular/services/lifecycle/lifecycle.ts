@@ -2,8 +2,11 @@ import { inject, Service } from '@angular/core';
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
-import { Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import {
+  UNSAVED_WORK,
+  UnsavedWorkSource,
+} from '@shared/angular/services/unsaved-work/unsaved-work';
 
 /**
  * Answers the main process's request to close the window. When the window is closing, it walks the
@@ -20,9 +23,11 @@ export class Lifecycle {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Holds the documents service tracking unsaved changes.
+   * Holds every contributed store of unsaved work (the text documents, each feature's own document
+   * model), walked in contribution order at close time.
    */
-  private readonly documents: Documents = inject(Documents);
+  private readonly unsavedWork: readonly UnsavedWorkSource[] =
+    inject(UNSAVED_WORK, { optional: true }) ?? [];
 
   /**
    * Holds the file-system service used to prompt for saving.
@@ -54,14 +59,16 @@ export class Lifecycle {
    */
   private async confirmUnsavedChanges(): Promise<boolean> {
     // Prompts are awaited one at a time: each is a modal dialog, and the save follows its own prompt.
-    for (const unsaved of this.documents.dirtyDocuments()) {
-      const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
-      if (choice === 'cancel') {
-        return false;
-      }
-      if (choice === 'save' && !(await this.documents.save(unsaved.id))) {
-        // The user cancelled the save-as dialog; abort the close so the work is not lost.
-        return false;
+    for (const source of this.unsavedWork) {
+      for (const unsaved of source.dirtyDocuments()) {
+        const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
+        if (choice === 'cancel') {
+          return false;
+        }
+        if (choice === 'save' && !(await source.save(unsaved.id))) {
+          // The user cancelled the save-as dialog; abort the close so the work is not lost.
+          return false;
+        }
       }
     }
     return true;

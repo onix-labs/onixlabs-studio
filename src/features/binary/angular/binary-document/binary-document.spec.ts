@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { BinaryPatch, BinarySpan, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { BinaryDocumentEntry, BinaryDocuments } from './binary-document';
 
 /**
@@ -127,6 +128,45 @@ describe('BinaryDocuments', () => {
 
     entry.reveal(FILE.length + 100);
     expect(entry.cursor()).toBe(FILE.length - 1);
+  });
+
+  it('dirtyEdit_marksTheTabDirty_andSaveClearsIt', async () => {
+    const tab: Tab = documents.open('/ws/blob.bin');
+    const entry: BinaryDocumentEntry = documents.get(tab.id)!;
+    const tabs: Tabs = TestBed.inject(Tabs);
+    await flush();
+    TestBed.tick();
+    expect(tabs.get(tab.id)?.dirty ?? false).toBe(false);
+
+    entry.overwrite(0, 0xff);
+    TestBed.tick();
+    expect(tabs.get(tab.id)?.dirty).toBe(true);
+
+    await entry.save();
+    TestBed.tick();
+    expect(tabs.get(tab.id)?.dirty).toBe(false);
+  });
+
+  it('dirtyDocuments_listsOnlyDocumentsWithUnsavedEdits', async () => {
+    const clean: Tab = documents.open('/ws/clean.bin');
+    const edited: Tab = documents.open('/ws/blob.bin');
+    const entry: BinaryDocumentEntry = documents.get(edited.id)!;
+    await flush();
+    entry.overwrite(0, 0xff);
+
+    expect(documents.dirtyDocuments()).toEqual([{ id: edited.id, name: 'blob.bin' }]);
+    expect(clean.id === edited.id).toBe(false);
+  });
+
+  it('save_byId_savesTheDocumentAndUnknownIdsReportSuccess', async () => {
+    const tab: Tab = documents.open('/ws/blob.bin');
+    const entry: BinaryDocumentEntry = documents.get(tab.id)!;
+    await flush();
+    entry.overwrite(0, 0xff);
+
+    expect(await documents.save(tab.id)).toBe(true);
+    expect(entry.dirty()).toBe(false);
+    expect(await documents.save('missing-tab')).toBe(true);
   });
 
   it('open_reusesTheExistingTabAndDocumentForTheSamePath', () => {
