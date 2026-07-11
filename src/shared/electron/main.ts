@@ -36,6 +36,13 @@ import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
 
+// Test seam: point userData at an isolated directory before anything resolves it (localStorage,
+// trusted paths, agent conversations), so E2E runs never read or clobber the real app state.
+const userDataOverride: string | undefined = process.env['STUDIO_USER_DATA_DIR'];
+if (userDataOverride !== undefined) {
+  app.setPath('userData', userDataOverride);
+}
+
 /**
  * Describes a single GPU device reported by {@link Electron.App.getGPUInfo}.
  */

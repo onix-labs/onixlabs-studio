@@ -59,3 +59,44 @@ jobs:
 
       - name: Build Electron main + preload (typecheck + bundle)
         run: npm run build:electron
+
+  e2e:
+    name: E2E (Playwright + Electron)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Unlike the checks job, this job needs the real Electron binary — the suite launches the app.
+      - name: Install dependencies
+        run: npm ci
+
+      # The main process requires node-pty at startup, so it must match the Electron ABI.
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild
+
+      - name: Build renderer (Angular)
+        run: npm run build
+
+      - name: Build Electron main + preload
+        run: npm run build:electron
+
+      - name: Run E2E suite
+        run: xvfb-run --auto-servernum -- npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14

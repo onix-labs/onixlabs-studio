@@ -1,0 +1,10 @@
+/* TypeScript configuration for the Playwright E2E suite. ESLint's projectService resolves e2e
+   sources through this file; Playwright itself transpiles the tests with its own loader. */
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/e2e",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}
