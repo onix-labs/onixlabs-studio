@@ -21,6 +21,7 @@ import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
+import { Logger } from '@shared/electron/logger';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
@@ -263,6 +264,12 @@ class Program {
   private readonly searchManager: SearchManager = new SearchManager(this.workspaceContext);
 
   /**
+   * Writes application log lines — the renderer's forwarded console entries and main's own — to
+   * stdout in development and to rotating files under `userData/logs` in packaged builds.
+   */
+  private readonly logger: Logger = new Logger();
+
+  /**
    * Disassembles native machine code for the binary/hex editor. It decodes bytes the renderer sends
    * (already obtained through the gated byte-read channel), so it needs no disk access of its own.
    */
@@ -455,6 +462,7 @@ class Program {
       }
     });
 
+    this.logger.register();
     this.securityManager.register();
     this.mediaProtocol.register();
     this.printManager.register();
