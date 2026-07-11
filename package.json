@@ -47,6 +47,7 @@
     "rebuild": "electron-rebuild --only node-pty",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:coverage": "ng test --watch=false --coverage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,html,scss,json,md}\"",

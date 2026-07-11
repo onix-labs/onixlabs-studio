@@ -410,13 +410,14 @@ Security is a first-class quality concern; the process model stays strictly sepa
 
 ### Commands
 
-| Task                      | Command                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| Dev server (renderer)     | `ng serve`                                                                       |
-| Renderer production build | `ng build`                                                                       |
-| Electron main + preload   | `npm run build:electron` (`tsc --noEmit` typecheck → esbuild `main` + `preload`) |
-| Tests                     | `CI=true ng test --watch=false`                                                  |
-| Lint / format             | `npm run lint` (`eslint .`) · `npm run format` (Prettier)                        |
+| Task                      | Command                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| Dev server (renderer)     | `ng serve`                                                                           |
+| Renderer production build | `ng build`                                                                           |
+| Electron main + preload   | `npm run build:electron` (`tsc --noEmit` typecheck → esbuild `main` + `preload`)     |
+| Tests                     | `CI=true ng test --watch=false`                                                      |
+| Coverage (thresholds)     | `npm run test:coverage` — enforces the minima in `angular.json` `coverageThresholds` |
+| Lint / format             | `npm run lint` (`eslint .`) · `npm run format` (Prettier)                            |
 
 ### The green gate (run before every commit)
 
