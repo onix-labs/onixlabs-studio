@@ -1,4 +1,8 @@
 import { inject, Service } from '@angular/core';
+import {
+  BINARY_FILE_OPENER,
+  BinaryFileOpener,
+} from '@shared/angular/services/file-opener/binary-file-opener';
 import { FileInfo } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -8,7 +12,6 @@ import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { BinaryDocuments } from '@features/binary/angular/binary-document/binary-document';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '@shared/angular/services/output/output';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
@@ -41,9 +44,12 @@ export class FileOpener {
   private readonly documents: Documents = inject(Documents);
 
   /**
-   * Holds the document model that backs binary tabs (files no text editor can open).
+   * Holds the editor contributed for files no text editor can open, or null when the binary feature
+   * is absent — in which case binary files are skipped, as they were before the editor existed.
    */
-  private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
+  private readonly binaryOpener: BinaryFileOpener | null = inject(BINARY_FILE_OPENER, {
+    optional: true,
+  });
 
   /**
    * Holds the top-level tab registry.
@@ -185,7 +191,11 @@ export class FileOpener {
    * @returns Returns true; the binary editor always accepts the file.
    */
   private openBinary(path: string): boolean {
-    const tab: Tab = this.binaryDocuments.open(path);
+    if (this.binaryOpener === null) {
+      this.output.appendLine(`Skipped binary file ${path}`);
+      return false;
+    }
+    const tab: Tab = this.binaryOpener.open(path);
     this.recentItems.record(path, tab.title, 'binary');
     this.output.appendLine(`Opened ${path}`);
     return true;

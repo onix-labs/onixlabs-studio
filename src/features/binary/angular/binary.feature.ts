@@ -5,6 +5,9 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { BINARY_FILE_OPENER } from '@shared/angular/services/file-opener/binary-file-opener';
+import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
+import { BinaryDocuments } from './binary-document/binary-document';
 import { BinaryAgentCapabilities } from './binary-agent-capabilities/binary-agent-capabilities';
 import { BinaryRibbon } from './binary-ribbon/binary-ribbon';
 import { BinaryView } from './binary-view/binary-view';
@@ -31,6 +34,10 @@ const binaryFeature: FeatureDescriptor = {
 export function provideBinaryFeature(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideFeature(binaryFeature),
+    // Contribute the binary document registry as the opener for files no text editor can open, and
+    // as an unsaved-work source, so the shared FileOpener and Lifecycle never import the feature.
+    { provide: BINARY_FILE_OPENER, useExisting: BinaryDocuments },
+    provideUnsavedWork(BinaryDocuments),
     provideAppInitializer((): void => {
       inject(BinaryAgentCapabilities);
     }),

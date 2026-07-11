@@ -3,8 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
-import { Documents, UnsavedDocument } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import {
+  UNSAVED_WORK,
+  UnsavedDocument,
+  UnsavedWorkSource,
+} from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Lifecycle } from './lifecycle';
 
 describe('Lifecycle', () => {
@@ -12,6 +16,7 @@ describe('Lifecycle', () => {
   let respondedWith: boolean[];
   let savedIds: string[];
   let dirty: UnsavedDocument[];
+  let secondaryDirty: UnsavedDocument[];
   let saveResult: boolean;
   let choices: Map<string, SaveDialogChoice>;
 
@@ -47,21 +52,38 @@ describe('Lifecycle', () => {
     };
     (globalThis as unknown as { bridge: Bridge }).bridge = bridge;
 
-    const documentsStub: Pick<Documents, 'dirtyDocuments' | 'save'> = {
-      dirtyDocuments: (): readonly UnsavedDocument[] => dirty,
-      save: (id: string): Promise<boolean> => {
-        savedIds.push(id);
-        return Promise.resolve(saveResult);
-      },
-    };
     const fileSystemStub: Pick<FileSystem, 'confirmSave'> = {
       confirmSave: (fileName: string): Promise<SaveDialogChoice> =>
         Promise.resolve(choices.get(fileName) ?? 'dontSave'),
     };
 
+    /**
+     * Builds a stub unsaved-work source over the given dirty list.
+     * @param documents Returns the source's dirty documents when called.
+     * @returns Returns the stub source, recording saves into the shared `savedIds`.
+     */
+    const source: (documents: () => readonly UnsavedDocument[]) => UnsavedWorkSource = (
+      documents: () => readonly UnsavedDocument[],
+    ): UnsavedWorkSource => ({
+      dirtyDocuments: documents,
+      save: (id: string): Promise<boolean> => {
+        savedIds.push(id);
+        return Promise.resolve(saveResult);
+      },
+    });
+
     TestBed.configureTestingModule({
       providers: [
-        { provide: Documents, useValue: documentsStub },
+        {
+          provide: UNSAVED_WORK,
+          useValue: source((): readonly UnsavedDocument[] => dirty),
+          multi: true,
+        },
+        {
+          provide: UNSAVED_WORK,
+          useValue: source((): readonly UnsavedDocument[] => secondaryDirty),
+          multi: true,
+        },
         { provide: FileSystem, useValue: fileSystemStub },
       ],
     });
@@ -72,6 +94,7 @@ describe('Lifecycle', () => {
     respondedWith = [];
     savedIds = [];
     dirty = [];
+    secondaryDirty = [];
     saveResult = true;
     choices = new Map<string, SaveDialogChoice>();
   });
@@ -124,6 +147,33 @@ describe('Lifecycle', () => {
 
     expect(respondedWith).toEqual([false]);
     expect(savedIds).toHaveLength(0);
+  });
+
+  it('requestClose_promptsEveryContributedSource', async () => {
+    // A second source (the binary feature's document model, in the app) must be prompted too —
+    // the regression behind #225 was binary documents being invisible to the close prompt.
+    dirty = [{ id: 'a', name: 'a.ts' }];
+    secondaryDirty = [{ id: 'blob', name: 'firmware.bin' }];
+    choices.set('a.ts', 'save');
+    choices.set('firmware.bin', 'save');
+    create();
+
+    requestClose();
+    await flush();
+
+    expect(savedIds).toEqual(['a', 'blob']);
+    expect(respondedWith).toEqual([true]);
+  });
+
+  it('requestClose_whenSecondSourceCancelled_keepsTheWindowOpen', async () => {
+    secondaryDirty = [{ id: 'blob', name: 'firmware.bin' }];
+    choices.set('firmware.bin', 'cancel');
+    create();
+
+    requestClose();
+    await flush();
+
+    expect(respondedWith).toEqual([false]);
   });
 
   it('requestClose_whenSaveAsCancelled_keepsTheWindowOpen', async () => {

@@ -8,6 +8,8 @@ import {
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -70,6 +72,9 @@ export const config: ApplicationConfig = {
     provideWorkspaceFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
+    // Contribute the text-document store to the unsaved-work seam the lifecycle walks at close
+    // time; features with their own document models (binary) contribute themselves alongside.
+    provideUnsavedWork(Documents),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {

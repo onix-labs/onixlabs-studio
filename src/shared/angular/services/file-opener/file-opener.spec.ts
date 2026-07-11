@@ -1,3 +1,4 @@
+import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
@@ -7,6 +8,7 @@ import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspaces } from '../workspaces/workspaces';
+import { BINARY_FILE_OPENER, BinaryFileOpener } from './binary-file-opener';
 import { FileOpener } from './file-opener';
 
 /**
@@ -70,7 +72,26 @@ describe('FileOpener', () => {
     nextSelection = null;
     nextListing = null;
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [
+        // A stand-in for the binary feature's contributed opener: opens a plain binary tab titled
+        // with the file's base name, mirroring the real BinaryDocuments contract.
+        {
+          provide: BINARY_FILE_OPENER,
+          useFactory: (): BinaryFileOpener => {
+            const tabRegistry: Tabs = inject(Tabs);
+            return {
+              open: (path: string): Tab => {
+                const tab: Tab = tabRegistry.open('binary', path);
+                tabRegistry.rename(tab.id, path.split('/').pop() ?? path);
+                tabRegistry.activate(tab.id);
+                return tabRegistry.get(tab.id) ?? tab;
+              },
+            };
+          },
+        },
+      ],
+    });
     opener = TestBed.inject(FileOpener);
     tabs = TestBed.inject(Tabs);
     workspaces = TestBed.inject(Workspaces);
