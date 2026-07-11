@@ -292,3 +292,39 @@
   color: var(--form-muted-foreground-color);
   font-style: italic;
 }
+
+.detail__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--form-control-border-color);
+  border-left: 3px solid #e5484d;
+  border-radius: calc(4px * var(--border-radius-multiplier, 1));
+  background: var(--form-control-background-color);
+  font-size: 12px;
+}
+
+.detail__notice-text {
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail__notice-dismiss {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+}
+
+.detail__file-action--danger:hover {
+  color: #e5484d;
+}

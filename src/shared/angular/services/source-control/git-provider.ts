@@ -143,6 +143,17 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Discards the uncommitted changes to paths (tracked restored to `HEAD`, untracked deleted).
+   * @param paths The repository-relative paths to discard; must not be empty.
+   * @returns Returns the outcome.
+   */
+  public discard(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.discard(this.root, paths),
+    );
+  }
+
+  /**
    * Unstages paths (or the whole index).
    * @param paths The repository-relative paths to unstage, or an empty array for everything.
    * @returns Returns the outcome.

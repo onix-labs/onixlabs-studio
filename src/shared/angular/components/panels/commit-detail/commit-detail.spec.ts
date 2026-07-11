@@ -10,6 +10,7 @@ import {
   GitFileChange,
 } from '@shared/angular/services/repository/repository-data';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { CommitDetail } from './commit-detail';
 
 /**
@@ -58,6 +59,19 @@ function makeFile(path: string, status: GitChangeStatus): GitFileChange {
  */
 class StubRepository {
   public readonly selectedCommit: WritableSignal<GitCommit | null> = signal<GitCommit | null>(null);
+
+  /**
+   * Mirrors the real repository's surfaced-error signal; null when no operation has failed.
+   */
+  public readonly lastError: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Clears the surfaced error, recording the call.
+   */
+  public dismissError(): void {
+    this.lastError.set(null);
+  }
+
   public readonly selectedFiles: WritableSignal<readonly GitFileChange[]> = signal<
     readonly GitFileChange[]
   >([]);
@@ -87,6 +101,11 @@ class StubRepository {
 
   public setCommitMessage(message: string): void {
     this.calls.push(`setCommitMessage:${message}`);
+  }
+
+  public discard(file: GitFileChange): Promise<MutationResult> {
+    this.calls.push(`discard:${file.path}`);
+    return Promise.resolve({ success: true });
   }
 
   public stage(file: GitFileChange): Promise<MutationResult> {
@@ -130,15 +149,23 @@ describe('CommitDetail', () => {
   let fixture: ComponentFixture<CommitDetail>;
   let repository: StubRepository;
   let opened: GitFileChange[];
+  let confirmAnswer: boolean;
   let host: HTMLElement;
 
   beforeEach(async () => {
     repository = new StubRepository();
     opened = [];
+    confirmAnswer = false;
     await TestBed.configureTestingModule({
       imports: [CommitDetail],
       providers: [
         { provide: Repository, useValue: repository },
+        {
+          provide: FileSystem,
+          useValue: {
+            confirmDestructive: (): Promise<boolean> => Promise.resolve(confirmAnswer),
+          },
+        },
         {
           provide: DiffOpener,
           useValue: {
@@ -208,6 +235,42 @@ describe('CommitDetail', () => {
     expect(button.disabled).toBe(false);
     button.click();
     expect(repository.calls).toContain('commit');
+  });
+
+  it('discard_whenConfirmed_delegatesToTheRepository', async () => {
+    confirmAnswer = true;
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Discard changes"]')!.click();
+    await fixture.whenStable();
+
+    expect(repository.calls).toContain('discard:b.ts');
+  });
+
+  it('discard_whenDeclined_doesNothing', async () => {
+    confirmAnswer = false;
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Discard changes"]')!.click();
+    await fixture.whenStable();
+
+    expect(repository.calls).not.toContain('discard:b.ts');
+  });
+
+  it('lastError_rendersADismissibleNotice', async () => {
+    repository.lastError.set('Authentication required.');
+    fixture.detectChanges();
+
+    expect(host.querySelector('.detail__notice')?.textContent).toContain(
+      'Authentication required.',
+    );
+    host.querySelector<HTMLButtonElement>('[aria-label="Dismiss error"]')!.click();
+    await fixture.whenStable();
+    expect(host.querySelector('.detail__notice')).toBeNull();
   });
 
   it('stageAndUnstage_rowAndGroupActionsDelegateToTheRepository', () => {

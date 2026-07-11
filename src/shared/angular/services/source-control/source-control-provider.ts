@@ -84,6 +84,14 @@ export interface SourceControlProvider {
   getFileDiff(file: GitFileChange): Promise<FileDiff>;
 
   /**
+   * Discards the uncommitted changes to paths: tracked files are restored to `HEAD` (index and
+   * working tree), untracked files are deleted. Destructive; the caller confirms first.
+   * @param paths The repository-relative paths to discard; must not be empty.
+   * @returns Returns the outcome.
+   */
+  discard(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
    * Stages paths into the index, or the whole working tree when no paths are given.
    * @param paths The repository-relative paths to stage, or an empty array to stage everything.
    * @returns Returns the outcome.

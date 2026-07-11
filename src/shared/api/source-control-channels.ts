@@ -55,6 +55,12 @@ export enum SourceControlChannel {
   ReadBlob = 'source-control:read-blob',
 
   /**
+   * Discards the uncommitted changes to files: tracked files are restored to `HEAD`, untracked
+   * files are deleted. Destructive; the caller confirms first.
+   */
+  Discard = 'source-control:discard',
+
+  /**
    * Stages files into the index, or the whole working tree when no paths are given.
    */
   Stage = 'source-control:stage',
@@ -212,6 +218,15 @@ export interface SourceControlClient {
    * @returns Returns the raw command result; a missing file yields an empty string.
    */
   readBlob(root: string, revision: string, filePath: string): Promise<GitRunResult>;
+
+  /**
+   * Discards the uncommitted changes to files: tracked files are restored to `HEAD` (index and
+   * working tree), untracked files are deleted from disk. Destructive; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param paths The repository-relative paths to discard; must not be empty.
+   * @returns Returns the raw command result.
+   */
+  discard(root: string, paths: readonly string[]): Promise<GitRunResult>;
 
   /**
    * Stages files into the index, or the whole working tree when no paths are given.

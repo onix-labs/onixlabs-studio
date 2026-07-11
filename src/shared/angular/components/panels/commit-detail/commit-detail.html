@@ -1,3 +1,17 @@
+@if (repository.lastError(); as error) {
+  <div class="detail__notice" role="alert">
+    <span class="detail__notice-text">{{ error }}</span>
+    <button
+      type="button"
+      class="detail__notice-dismiss"
+      aria-label="Dismiss error"
+      (click)="dismissError()"
+    >
+      <app-icon [icon]="Icon.CLOSE" />
+    </button>
+  </div>
+}
+
 @if (repository.selectedCommit(); as commit) {
   <header class="detail__header">
     <h2 class="detail__summary">{{ commit.summary }}</h2>
@@ -130,6 +144,14 @@
                 <span class="detail__file-dir">{{ dir }}</span>
               }
             </span>
+          </button>
+          <button
+            type="button"
+            class="detail__file-action detail__file-action--danger"
+            aria-label="Discard changes"
+            (click)="discard(file)"
+          >
+            <app-icon [icon]="Icon.TRASH" />
           </button>
           <button
             type="button"

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   BrowserWindow,
@@ -132,6 +132,11 @@ export class GitManager {
         revision: unknown,
         filePath: unknown,
       ): Promise<GitRunResult> => this.readBlob(root, revision, filePath),
+    );
+    ipcMain.handle(
+      SourceControlChannel.Discard,
+      (_event: IpcMainInvokeEvent, root: unknown, paths: unknown): Promise<GitRunResult> =>
+        this.discard(root, paths),
     );
     ipcMain.handle(
       SourceControlChannel.Stage,
@@ -356,6 +361,77 @@ export class GitManager {
   }
 
   /**
+   * Discards the uncommitted changes to files — destructive, so the split between restore and
+   * delete is decided here from git's own view of the index, never trusted from the renderer:
+   * paths git tracks are restored to `HEAD` (index and working tree), and paths git reports as
+   * untracked (and not ignored) are deleted from disk. A path that is neither — for example an
+   * ignored file — is left untouched.
+   * @param root The repository root.
+   * @param paths The repository-relative paths to discard; must not be empty.
+   * @returns Returns the raw command result.
+   */
+  private async discard(root: unknown, paths: unknown): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return { success: false, error: 'Repository is not open' };
+    }
+    const resolvedRoot: string = path.resolve(root);
+    const confined: string[] | null = this.confinedPaths(resolvedRoot, paths);
+    if (confined === null || confined.length === 0) {
+      return { success: false, error: 'Invalid path' };
+    }
+    const tracked: Set<string> = await this.listedPaths(resolvedRoot, ['ls-files'], confined);
+    const untracked: Set<string> = await this.listedPaths(
+      resolvedRoot,
+      ['ls-files', '--others', '--exclude-standard'],
+      confined,
+    );
+    const toRestore: string[] = confined.filter((candidate: string): boolean =>
+      tracked.has(candidate),
+    );
+    // An untracked directory is discarded by deleting it; ls-files lists the files inside it, so a
+    // candidate counts as untracked when it is listed itself or is a listed file's ancestor.
+    const toDelete: string[] = confined.filter(
+      (candidate: string): boolean =>
+        !tracked.has(candidate) &&
+        [...untracked].some(
+          (listed: string): boolean => listed === candidate || listed.startsWith(`${candidate}/`),
+        ),
+    );
+    for (const relative of toDelete) {
+      try {
+        await rm(path.resolve(resolvedRoot, relative), { recursive: true, force: true });
+      } catch (error: unknown) {
+        return { success: false, error: `Failed to delete ${relative}: ${String(error)}` };
+      }
+    }
+    if (toRestore.length > 0) {
+      return this.run(resolvedRoot, ['restore', '--staged', '--worktree', '--', ...toRestore]);
+    }
+    return { success: true, stdout: '' };
+  }
+
+  /**
+   * Lists the confined paths a git listing command reports, as a set of repository-relative paths.
+   * @param resolvedRoot The resolved repository root.
+   * @param listing The git listing command (an `ls-files` variant).
+   * @param confined The already-confined candidate paths to scope the listing to.
+   * @returns Returns the listed paths.
+   */
+  private async listedPaths(
+    resolvedRoot: string,
+    listing: readonly string[],
+    confined: readonly string[],
+  ): Promise<Set<string>> {
+    const result: GitRunResult = await this.run(resolvedRoot, [...listing, '--', ...confined]);
+    if (!result.success || result.stdout === undefined) {
+      return new Set<string>();
+    }
+    return new Set<string>(
+      result.stdout.split('\n').filter((line: string): boolean => line.length > 0),
+    );
+  }
+
+  /**
    * Stages files into the index, or the whole working tree when no paths are given.
    * @param root The repository root.
    * @param paths The repository-relative paths to stage, or an empty array to stage everything.
@@ -535,7 +611,48 @@ export class GitManager {
     return this.run(path.resolve(root), args, {
       env: { ...process.env, ...GIT_NETWORK_ENV },
       timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-    });
+    }).then((result: GitRunResult): GitRunResult => this.classifyNetworkFailure(result));
+  }
+
+  /**
+   * Rewrites a failed network operation's raw stderr into an actionable message when it is an
+   * authentication failure. Network git runs are deliberately non-interactive (no terminal or GUI
+   * credential prompts), so missing credentials fail fast — but the raw git error explains neither
+   * why nor what to do about it.
+   * @param result The network operation's result.
+   * @returns Returns the result, with an authentication failure explained.
+   */
+  private classifyNetworkFailure(result: GitRunResult): GitRunResult {
+    if (result.success) {
+      return result;
+    }
+    const error: string = `${result.error ?? ''} ${result.stderr ?? ''}`;
+    if (
+      /could not read username|could not read password|authentication failed|invalid username or password|http.*40[13]|terminal prompts disabled/i.test(
+        error,
+      )
+    ) {
+      return {
+        success: false,
+        stderr: result.stderr,
+        error:
+          'Authentication required. Studio runs git non-interactively, so HTTPS remotes need a ' +
+          'configured git credential helper (for example the OS keychain helper or ' +
+          'git-credential-manager) holding a valid token. Configure one, verify with a git fetch ' +
+          'in a terminal, then retry.',
+      };
+    }
+    if (/permission denied \(publickey\)|host key verification failed/i.test(error)) {
+      return {
+        success: false,
+        stderr: result.stderr,
+        error:
+          'SSH authentication failed. Studio runs git non-interactively, so SSH remotes need a key ' +
+          'loaded in ssh-agent (and the host already in known_hosts). Load your key with ssh-add, ' +
+          'verify with a git fetch in a terminal, then retry.',
+      };
+    }
+    return result;
   }
 
   /**

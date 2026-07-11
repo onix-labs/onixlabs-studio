@@ -1,6 +1,7 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  ConfirmDestructiveRequest,
   FileChannel,
   FileInfo,
   FileWriteResult,
@@ -102,6 +103,18 @@ export class FileSystem {
    * Shows a confirmation dialog asking whether to save unsaved changes.
    * @param fileName The name of the file with unsaved changes.
    * @returns Returns the user's choice; defaults to discarding when unavailable.
+   */
+  public confirmDestructive(request: ConfirmDestructiveRequest): Promise<boolean> {
+    if (this.bridge === undefined) {
+      return Promise.resolve(false);
+    }
+    return this.bridge.invoke<boolean>(FileChannel.ConfirmDestructive, request);
+  }
+
+  /**
+   * Shows a confirmation dialog asking whether to save unsaved changes.
+   * @param fileName The name of the file with unsaved changes.
+   * @returns Returns the user's choice.
    */
   public confirmSave(fileName: string): Promise<SaveDialogChoice> {
     return (
