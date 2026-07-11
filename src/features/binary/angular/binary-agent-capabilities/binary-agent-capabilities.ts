@@ -8,7 +8,11 @@ import {
 } from '@shared/api/ai-types';
 import { DecodedInstruction } from '@shared/api/binary-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
-import { BinaryDocumentEntry, BinaryDocuments, BinarySelection } from '../binary-document/binary-document';
+import {
+  BinaryDocumentEntry,
+  BinaryDocuments,
+  BinarySelection,
+} from '../binary-document/binary-document';
 import { describeFormat, disassemblyArchitecture } from '../binary-format/binary-format';
 
 /**
@@ -286,10 +290,7 @@ export class BinaryAgentCapabilities {
   private listInstructions(instructions: readonly DecodedInstruction[]): string {
     return instructions
       .map((instruction: DecodedInstruction): string => {
-        const address: string = instruction.startOffset
-          .toString(16)
-          .padStart(8, '0')
-          .toUpperCase();
+        const address: string = instruction.startOffset.toString(16).padStart(8, '0').toUpperCase();
         const operands: string = instruction.operands.length > 0 ? ` ${instruction.operands}` : '';
         return `${address}  ${instruction.mnemonic}${operands}`;
       })

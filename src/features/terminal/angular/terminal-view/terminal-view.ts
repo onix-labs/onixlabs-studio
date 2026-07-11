@@ -377,5 +377,4 @@ export class TerminalView implements OnDestroy {
     }
     pane.focus();
   }
-
 }

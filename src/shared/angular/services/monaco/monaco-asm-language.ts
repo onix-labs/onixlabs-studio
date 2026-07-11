@@ -50,7 +50,10 @@ export function registerAsmLanguage(monaco: typeof MonacoApi | undefined): void 
   }
   const registered: boolean = monaco.languages
     .getLanguages()
-    .some((language: MonacoApi.languages.ILanguageExtensionPoint): boolean => language.id === ASM_LANGUAGE_ID);
+    .some(
+      (language: MonacoApi.languages.ILanguageExtensionPoint): boolean =>
+        language.id === ASM_LANGUAGE_ID,
+    );
   if (registered) {
     return;
   }

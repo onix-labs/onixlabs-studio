@@ -273,13 +273,16 @@ export class Agent {
    * @param ref The file or folder to attach.
    */
   public attachContext(ref: AgentContextRef): void {
-    if (this.contextPathsState().some((existing: AgentContextRef): boolean => existing.path === ref.path)) {
+    if (
+      this.contextPathsState().some(
+        (existing: AgentContextRef): boolean => existing.path === ref.path,
+      )
+    ) {
       return;
     }
-    this.contextPathsState.update((refs: readonly AgentContextRef[]): readonly AgentContextRef[] => [
-      ...refs,
-      ref,
-    ]);
+    this.contextPathsState.update(
+      (refs: readonly AgentContextRef[]): readonly AgentContextRef[] => [...refs, ref],
+    );
   }
 
   /**
@@ -504,7 +507,9 @@ export class Agent {
   private compactionPrompt(history: readonly AgentItem[]): string {
     const transcript: string = history
       .filter((item: AgentItem): boolean => item.kind === 'user' || item.kind === 'assistant')
-      .map((item: AgentItem): string => `${item.kind === 'user' ? 'User' : 'Assistant'}: ${item.text}`)
+      .map(
+        (item: AgentItem): string => `${item.kind === 'user' ? 'User' : 'Assistant'}: ${item.text}`,
+      )
       .join('\n\n');
     return (
       'Summarise the following conversation into a concise briefing that preserves the key facts, ' +

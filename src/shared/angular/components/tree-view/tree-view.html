@@ -20,7 +20,10 @@
       } @else {
         <span class="tree-spacer"></span>
       }
-      <ng-container [ngTemplateOutlet]="content() ?? null" [ngTemplateOutletContext]="{ $implicit: row }" />
+      <ng-container
+        [ngTemplateOutlet]="content() ?? null"
+        [ngTemplateOutletContext]="{ $implicit: row }"
+      />
     </div>
   }
 </div>

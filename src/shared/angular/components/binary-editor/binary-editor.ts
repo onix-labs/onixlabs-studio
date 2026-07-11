@@ -462,8 +462,8 @@ export class BinaryEditor {
     } else if (key === 'Delete') {
       this.deleteAt(caret, maxCaret);
     } else if (key === 'Tab') {
-      this.activeColumn.update((column: BinaryColumn): BinaryColumn =>
-        column === 'hex' ? 'ascii' : 'hex',
+      this.activeColumn.update(
+        (column: BinaryColumn): BinaryColumn => (column === 'hex' ? 'ascii' : 'hex'),
       );
       this.nibbleLow = false;
     } else if (this.activeColumn() === 'hex' && /^[0-9a-fA-F]$/.test(key)) {

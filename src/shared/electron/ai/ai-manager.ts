@@ -190,7 +190,9 @@ export class AiManager {
         ? Math.floor(request.tokenCap)
         : 0;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
-    const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(request.contextPaths);
+    const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
+      request.contextPaths,
+    );
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const context: AgentRunContext = {

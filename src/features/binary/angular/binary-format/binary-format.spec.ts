@@ -173,7 +173,9 @@ describe('describeFormat', () => {
 
 describe('disassemblyArchitecture', () => {
   it('returnsTheArchitectureForNativeCodeAndNullForManagedOrUnsupported', () => {
-    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: false })).toBe('x64');
+    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: false })).toBe(
+      'x64',
+    );
     expect(disassemblyArchitecture({ kind: 'elf', architecture: 'ARM64' })).toBe('ARM64');
     expect(disassemblyArchitecture({ kind: 'macho', architecture: 'x86' })).toBe('x86');
     expect(disassemblyArchitecture({ kind: 'mz', architecture: 'x86-16' })).toBe('x86-16');

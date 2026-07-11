@@ -186,9 +186,7 @@ async function readBinary(
     ...range,
   });
   const read: { available?: boolean; text?: string } = result ?? {};
-  return read.available === true
-    ? (read.text ?? '')
-    : 'No binary document is open in this view.';
+  return read.available === true ? (read.text ?? '') : 'No binary document is open in this view.';
 }
 
 /**
@@ -260,5 +258,7 @@ export async function patchBinaryBytes(
     bytes,
   });
   const patch: { ok?: boolean; text?: string } = result ?? {};
-  return patch.text ?? (patch.ok === true ? 'The bytes were patched.' : 'The bytes were not patched.');
+  return (
+    patch.text ?? (patch.ok === true ? 'The bytes were patched.' : 'The bytes were not patched.')
+  );
 }

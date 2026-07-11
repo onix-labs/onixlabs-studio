@@ -50,8 +50,16 @@
 
   <app-ribbon-strip-group title="Target">
     <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-field label="Configuration" [options]="['Debug', 'Release']" value="Debug" />
-      <app-ribbon-strip-field label="Platform" [options]="['Any CPU', 'x64', 'ARM64']" value="Any CPU" />
+      <app-ribbon-strip-field
+        label="Configuration"
+        [options]="['Debug', 'Release']"
+        value="Debug"
+      />
+      <app-ribbon-strip-field
+        label="Platform"
+        [options]="['Any CPU', 'x64', 'ARM64']"
+        value="Any CPU"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 

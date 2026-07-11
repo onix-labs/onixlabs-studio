@@ -11,7 +11,9 @@ function read(table: PieceTable, original: readonly number[]): number[] {
   const bytes: number[] = [];
   for (let offset: number = 0; offset < table.length(); offset += 1) {
     const location: { original: number } | { value: number } | null = table.locate(offset);
-    bytes.push(location === null ? -1 : 'value' in location ? location.value : original[location.original]);
+    bytes.push(
+      location === null ? -1 : 'value' in location ? location.value : original[location.original],
+    );
   }
   return bytes;
 }

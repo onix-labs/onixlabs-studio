@@ -37,7 +37,13 @@
   }
 
   @if (findVisible()) {
-    <app-panel panelId="find" defaultEdge="right" [defaultSize]="320" [minSize]="260" [maxSize]="520">
+    <app-panel
+      panelId="find"
+      defaultEdge="right"
+      [defaultSize]="320"
+      [minSize]="260"
+      [maxSize]="520"
+    >
       <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
     </app-panel>
   }

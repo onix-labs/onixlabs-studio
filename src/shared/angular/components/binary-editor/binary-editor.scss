@@ -55,8 +55,8 @@
 .binary-editor__content {
   position: relative;
   width: calc(
-    var(--addr-width) + var(--column-gap) + var(--bpr) * var(--hexcell-width) +
-      (var(--bpr) - 1) * var(--hex-gap) + var(--column-gap) + var(--bpr) * var(--ascii-width) + 2rem
+    var(--addr-width) + var(--column-gap) + var(--bpr) * var(--hexcell-width) + (var(--bpr) - 1) *
+      var(--hex-gap) + var(--column-gap) + var(--bpr) * var(--ascii-width) + 2rem
   );
   margin-inline: auto;
 }

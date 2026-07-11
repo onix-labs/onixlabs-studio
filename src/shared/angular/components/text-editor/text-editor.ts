@@ -281,7 +281,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     if (model === null) {
       return;
     }
-    const enabled: boolean = this.settings.resolveSettingsForLanguage(this.language()).colorBrackets;
+    const enabled: boolean = this.settings.resolveSettingsForLanguage(
+      this.language(),
+    ).colorBrackets;
     if (model.getOptions().bracketPairColorizationOptions.enabled === enabled) {
       return;
     }

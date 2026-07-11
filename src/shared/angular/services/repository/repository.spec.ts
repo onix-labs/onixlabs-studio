@@ -60,7 +60,9 @@ class FakeProvider implements SourceControlProvider {
 
   public getRefs(): Promise<ParsedRefs> {
     return Promise.resolve({
-      branches: [{ name: 'main', current: true, upstream: this.upstream, ahead: 1, behind: 0, tip: 'c2' }],
+      branches: [
+        { name: 'main', current: true, upstream: this.upstream, ahead: 1, behind: 0, tip: 'c2' },
+      ],
       remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
     });
@@ -125,7 +127,10 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
-  public push(setUpstream?: { readonly remote: string; readonly branch: string }): Promise<MutationResult> {
+  public push(setUpstream?: {
+    readonly remote: string;
+    readonly branch: string;
+  }): Promise<MutationResult> {
     this.calls.push(`push:${setUpstream?.remote ?? ''}/${setUpstream?.branch ?? ''}`);
     return Promise.resolve({ success: true });
   }

@@ -65,7 +65,7 @@ allowed to name features, because it is the composition root:
 
 - `config.ts` — the feature enumeration (seven `provide<F>Feature()` calls; `welcome` is mounted
   directly by `root`). This is the one place that lists features; delete a feature = delete its folder
-  + remove its line here.
+  - remove its line here.
 - `root/` — the `app-root` component that mounts the shell chrome + the active tab's view.
 - `main.ts` — the Angular bootstrap. `global.d.ts` — the ambient `Window.bridge`/`host` types.
   `index.html` — the HTML entry.
@@ -77,12 +77,12 @@ allowed to name features, because it is the composition root:
 The kitchen's capability components are **thin wrappers around exactly one engine each** — no
 splitter, no side panels, no ribbon, no embedded agent:
 
-| Wrapper                 | Wraps                          | Backing plumbing (also in `shared`)                                  |
-| ----------------------- | ------------------------------ | -------------------------------------------------------------------- |
-| `<app-terminal>`        | xterm (node-pty backend)       | pty api contract + electron terminal-manager + terminal-bridge       |
-| `<app-text-editor>`     | Monaco                         | monaco service + `Editors` (model-URI → document registry)           |
-| `<app-markdown-editor>` | Milkdown / ProseMirror         | milkdown service + plugins                                            |
-| `<app-agent>`           | the agent chat UI              | agent-runtime / ai-auth / agent-sessions + the ai bridge             |
+| Wrapper                 | Wraps                    | Backing plumbing (also in `shared`)                            |
+| ----------------------- | ------------------------ | -------------------------------------------------------------- |
+| `<app-terminal>`        | xterm (node-pty backend) | pty api contract + electron terminal-manager + terminal-bridge |
+| `<app-text-editor>`     | Monaco                   | monaco service + `Editors` (model-URI → document registry)     |
+| `<app-markdown-editor>` | Milkdown / ProseMirror   | milkdown service + plugins                                     |
+| `<app-agent>`           | the agent chat UI        | agent-runtime / ai-auth / agent-sessions + the ai bridge       |
 
 Because a shared wrapper depends on its plumbing, the plumbing is shared too — so the terminal
 _feature_ owns little-to-no unique `electron`/`api`; it composes the shared capability.
@@ -205,10 +205,10 @@ agent process and denies any pending permission prompt.
 **Tool permissions (machine).** Built-in tools are gated in main through the Agent SDK's `canUseTool`
 hook:
 
-| Tool class      | Examples             | Policy                                  |
-| --------------- | -------------------- | --------------------------------------- |
-| Read-only       | `Read`, `Glob`, `Grep` | **Auto-allowed** within the run.       |
-| Mutating / exec | `Edit`, `Write`, `Bash` | **Ask the user** before each use.     |
+| Tool class      | Examples                | Policy                            |
+| --------------- | ----------------------- | --------------------------------- |
+| Read-only       | `Read`, `Glob`, `Grep`  | **Auto-allowed** within the run.  |
+| Mutating / exec | `Edit`, `Write`, `Bash` | **Ask the user** before each use. |
 
 A gated tool calls `requestPermission(name, detail)`; `AiManager` emits a `permission` event (tool +
 one-line summary including the target path/command); the renderer surfaces an inline Allow/Deny
@@ -335,16 +335,16 @@ ending with a period, never placeholder). Reference symbols with `{@link Symbol}
 conventional and carry meaning:
 
 | Member                           | Opening phrase                                              |
-| -------------------------------- | ---------------------------------------------------------- |
-| Class                            | `Represents …`                                             |
-| Interface / type / function-type | `Defines …`                                                |
-| Enum                             | `Specifies …`                                              |
-| Constructor                      | `Initializes a new instance of the {@link TypeName} class.`|
-| Read-only property/accessor      | `Gets …`                                                   |
-| Write-only accessor              | `Sets …`                                                   |
-| Read/write property/accessor     | `Gets or sets …`                                           |
-| Boolean property                 | `Gets a value indicating whether …`                        |
-| Method                           | A verb phrase describing the action                        |
+| -------------------------------- | ----------------------------------------------------------- |
+| Class                            | `Represents …`                                              |
+| Interface / type / function-type | `Defines …`                                                 |
+| Enum                             | `Specifies …`                                               |
+| Constructor                      | `Initializes a new instance of the {@link TypeName} class.` |
+| Read-only property/accessor      | `Gets …`                                                    |
+| Write-only accessor              | `Sets …`                                                    |
+| Read/write property/accessor     | `Gets or sets …`                                            |
+| Boolean property                 | `Gets a value indicating whether …`                         |
+| Method                           | A verb phrase describing the action                         |
 
 Required tags: `@param` per parameter; `@returns` (text begins with "Returns") for every non-`void`
 return; `@typeParam` matching each generic; `@throws {@link ErrorType}` per throwable. Avoid empty
@@ -410,20 +410,21 @@ Security is a first-class quality concern; the process model stays strictly sepa
 
 ### Commands
 
-| Task                        | Command                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| Dev server (renderer)       | `ng serve`                                                                     |
-| Renderer production build   | `ng build`                                                                     |
-| Electron main + preload     | `npm run build:electron` (`tsc --noEmit` typecheck → esbuild `main` + `preload`) |
-| Tests                       | `CI=true ng test --watch=false`                                               |
-| Lint / format               | `npm run lint` (`eslint .`) · `npm run format` (Prettier)                      |
+| Task                      | Command                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| Dev server (renderer)     | `ng serve`                                                                       |
+| Renderer production build | `ng build`                                                                       |
+| Electron main + preload   | `npm run build:electron` (`tsc --noEmit` typecheck → esbuild `main` + `preload`) |
+| Tests                     | `CI=true ng test --watch=false`                                                  |
+| Lint / format             | `npm run lint` (`eslint .`) · `npm run format` (Prettier)                        |
 
 ### The green gate (run before every commit)
 
-`ng build` + `eslint src` + `prettier --check 'src/**/*.ts'` + `npm run build:electron` +
-`CI=true ng test --watch=false`. There is a **known baseline of pre-existing failures** — treat "no
-_new_ failures and no new prettier warnings" as green; don't chase the baseline. **Green after every
-commit:** if a step can't stay green, it's too big — split it.
+`ng build` + `npm run lint` + `npm run format:check` + `npm run build:electron` +
+`CI=true ng test --watch=false`. Everything is green from a clean checkout — there is no tolerated
+baseline of failures or prettier warnings. GitHub Actions (`.github/workflows/ci.yml`) enforces the
+same gate on every PR and on `main`. **Green after every commit:** if a step can't stay green, it's
+too big — split it.
 
 ### Toolchain facts & gotchas
 

@@ -95,7 +95,8 @@ describe('Modal', () => {
   });
 
   it('closeButton_whenDismissable_isShownAndEmitsDismiss', () => {
-    const close: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>('.modal__control');
+    const close: HTMLButtonElement | null =
+      host.querySelector<HTMLButtonElement>('.modal__control');
     expect(close).not.toBeNull();
 
     close!.click();

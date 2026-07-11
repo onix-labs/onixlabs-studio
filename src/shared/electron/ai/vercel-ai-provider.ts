@@ -1,5 +1,10 @@
 import { type AiModelInfo, type AiProviderId } from '@shared/api/ai-types';
-import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import type {
+  AgentAuth,
+  AgentProvider,
+  AgentRunContext,
+  ProviderAvailability,
+} from './agent-provider';
 import type { ToolSet } from 'ai';
 import {
   consumeAgentStream,

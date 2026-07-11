@@ -308,7 +308,12 @@ export class BinaryRibbon {
   private async cutSelection(kind: 'hex' | 'ascii'): Promise<void> {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     const selection: BinarySelection | null | undefined = document?.selection();
-    if (document === undefined || !document.insertMode() || selection === null || selection === undefined) {
+    if (
+      document === undefined ||
+      !document.insertMode() ||
+      selection === null ||
+      selection === undefined
+    ) {
       return;
     }
     await this.copySelection(kind);
@@ -327,7 +332,9 @@ export class BinaryRibbon {
       return bytes.map((byte: number): string => byte.toString(16).padStart(2, '0')).join(' ');
     }
     return bytes
-      .map((byte: number): string => (byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.'))
+      .map((byte: number): string =>
+        byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.',
+      )
       .join('');
   }
 }

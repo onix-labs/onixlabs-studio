@@ -12,7 +12,12 @@ describe('TerminalShells', () => {
    */
   async function setup(shells: readonly ShellInfo[]): Promise<TerminalShells> {
     TestBed.configureTestingModule({
-      providers: [{ provide: TerminalBridge, useValue: { listShells: (): Promise<readonly ShellInfo[]> => Promise.resolve(shells) } }],
+      providers: [
+        {
+          provide: TerminalBridge,
+          useValue: { listShells: (): Promise<readonly ShellInfo[]> => Promise.resolve(shells) },
+        },
+      ],
     });
     const service: TerminalShells = TestBed.inject(TerminalShells);
     await Promise.resolve();

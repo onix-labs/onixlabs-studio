@@ -505,9 +505,11 @@ export function defaultLayout(): DockNode {
     'row',
     [
       mkStack('tool', ['files']),
-      mkSplit('col', [mkStack('document', []), mkStack('tool', ['output', 'errors', 'terminal'])], [
-        4, 1.5,
-      ]),
+      mkSplit(
+        'col',
+        [mkStack('document', []), mkStack('tool', ['output', 'errors', 'terminal'])],
+        [4, 1.5],
+      ),
       mkStack('tool', ['agent']),
     ],
     [1.4, 4, 1.6],

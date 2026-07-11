@@ -69,7 +69,9 @@ const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>([
 export function disassemblyArchitecture(format: BinaryFormat): string | null {
   switch (format.kind) {
     case 'pe':
-      return !format.managed && DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
+      return !format.managed && DISASSEMBLABLE.has(format.architecture)
+        ? format.architecture
+        : null;
     case 'mz':
     case 'elf':
     case 'macho':
@@ -138,7 +140,9 @@ function matches(bytes: Uint8Array, offset: number, signature: readonly number[]
   if (offset + signature.length > bytes.length) {
     return false;
   }
-  return signature.every((value: number, index: number): boolean => bytes[offset + index] === value);
+  return signature.every(
+    (value: number, index: number): boolean => bytes[offset + index] === value,
+  );
 }
 
 /**
@@ -234,7 +238,11 @@ function peCodeOffset(view: DataView, peOffset: number): number | null {
       return entryRva - virtualAddress + rawPointer;
     }
     // IMAGE_SCN_MEM_EXECUTE (0x20000000): the first executable section, used when there is no entry.
-    if (executableFallback === null && characteristics !== null && (characteristics & 0x20000000) !== 0) {
+    if (
+      executableFallback === null &&
+      characteristics !== null &&
+      (characteristics & 0x20000000) !== 0
+    ) {
       executableFallback = rawPointer;
     }
   }
@@ -251,7 +259,9 @@ function peCodeOffset(view: DataView, peOffset: number): number | null {
 function elfCodeOffset(bytes: Uint8Array, view: DataView): number | null {
   const is64: boolean = bytes[4] === 2; // EI_CLASS: 1 = 32-bit, 2 = 64-bit.
   const littleEndian: boolean = bytes[5] !== 2; // EI_DATA: 1 = little, 2 = big.
-  const entry: number | null = is64 ? readU64(view, 24, littleEndian) : readU32(view, 24, littleEndian);
+  const entry: number | null = is64
+    ? readU64(view, 24, littleEndian)
+    : readU32(view, 24, littleEndian);
   const phOffset: number | null = is64
     ? readU64(view, 32, littleEndian)
     : readU32(view, 28, littleEndian);

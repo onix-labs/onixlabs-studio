@@ -220,7 +220,9 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
         'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
       inputSchema: z.object({
         offset: z.number().int().min(0).describe('The offset to overwrite from.'),
-        bytes: z.string().describe('The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".'),
+        bytes: z
+          .string()
+          .describe('The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".'),
       }),
       execute: (args: { offset: number; bytes: string }): Promise<string> =>
         patchBinaryBytes(context, args.offset, args.bytes),
