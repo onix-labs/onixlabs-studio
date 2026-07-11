@@ -204,10 +204,12 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   private ignoreNextChange: boolean = false;
 
   /**
-   * Holds a value indicating whether the first `markdownUpdated` event has been received. Milkdown
-   * fires it after parsing the initial content (which may normalise it), so the first is ignored.
+   * Holds a value indicating whether the editor is still being created. Milkdown fires a
+   * `markdownUpdated` while parsing non-empty initial content (which may normalise it), so updates
+   * are ignored until `crepe.create()` resolves — but only until then: a blank document fires no
+   * init update, and a first-event guard would swallow the user's first real edit instead.
    */
-  private hasReceivedFirstUpdate: boolean = false;
+  private isCreatingEditor: boolean = true;
 
   /**
    * Holds a value indicating whether the editor is ready for interaction.
@@ -476,11 +478,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
-          // The very first update fires while the editor is still being created (the initial content
-          // load); doing work here breaks that init, so skip it. The host derives the initial outline
-          // and read model on the deferred ready emit instead.
-          if (!this.hasReceivedFirstUpdate) {
-            this.hasReceivedFirstUpdate = true;
+          // Updates fired while the editor is still being created are the initial content load;
+          // doing work there breaks the init, so they are skipped. The host derives the initial
+          // outline and read model on the deferred ready emit instead.
+          if (this.isCreatingEditor) {
             return;
           }
           this.zone.run((): void => {
@@ -496,6 +497,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       this.crepe = crepe;
       await crepe.create();
+      this.isCreatingEditor = false;
 
       // Capture the editor view so the host can derive the outline from the document model and map
       // screen coordinates to document positions for its scroll-spy.
@@ -560,7 +562,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     }
 
     this.editorView = null;
-    this.hasReceivedFirstUpdate = false;
+    this.isCreatingEditor = true;
   }
 
   /**
