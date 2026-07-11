@@ -31,20 +31,36 @@ interface StudioFixtures {
 }
 
 /**
+ * Provides the per-suite options tests can set through `test.use(...)`.
+ */
+interface StudioOptions {
+  /**
+   * Seeds the isolated userData directory's `trusted-paths.json` before the application launches,
+   * so the main process will honour re-opening the listed fixture files — exactly as a real prior
+   * "open" would have recorded them. Undefined for suites that need no seeding.
+   */
+  readonly trustedPaths: readonly string[] | undefined;
+}
+
+/**
  * Holds the repository root, which is also the Electron application directory (`package.json`
  * `main` points at the bundled `dist-electron/electron/main.js`).
  */
 const REPO_ROOT: string = path.resolve(__dirname, '..');
 
 export const test: TestType<
-  PlaywrightTestArgs & PlaywrightTestOptions & StudioFixtures,
+  PlaywrightTestArgs & PlaywrightTestOptions & StudioFixtures & StudioOptions,
   PlaywrightWorkerArgs & PlaywrightWorkerOptions
-> = base.extend<StudioFixtures>({
-  // Playwright derives a fixture's dependencies from the destructuring pattern, so a dependency-free
-  // fixture takes the empty pattern.
-  // eslint-disable-next-line no-empty-pattern
-  app: async ({}, use: (app: ElectronApplication) => Promise<void>): Promise<void> => {
+> = base.extend<StudioFixtures & StudioOptions>({
+  trustedPaths: [undefined, { option: true }],
+  app: async (
+    { trustedPaths }: { trustedPaths: readonly string[] | undefined },
+    use: (app: ElectronApplication) => Promise<void>,
+  ): Promise<void> => {
     const userDataDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-e2e-'));
+    if (trustedPaths !== undefined) {
+      fs.writeFileSync(path.join(userDataDir, 'trusted-paths.json'), JSON.stringify(trustedPaths));
+    }
     const app: ElectronApplication = await electron.launch({
       args: [
         '.',
