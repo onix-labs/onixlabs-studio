@@ -137,4 +137,27 @@ describe('RecentItems', () => {
 
     expect(service().items()).toEqual([]);
   });
+
+  it('restore_keepsEveryDeclaredKind', () => {
+    // The validation set previously missed 'binary', silently dropping persisted binary recents on
+    // every restart; every kind the type declares must round-trip through storage.
+    const kinds: readonly string[] = ['directory', 'repository', 'markdown', 'code', 'binary'];
+    localStorage.setItem(
+      KEY,
+      JSON.stringify(
+        kinds.map((kind: string, index: number) => ({
+          path: `/${kind}`,
+          name: kind,
+          kind,
+          openedAt: index,
+        })),
+      ),
+    );
+
+    expect(
+      service()
+        .items()
+        .map((item) => item.kind),
+    ).toEqual(kinds);
+  });
 });
