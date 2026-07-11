@@ -75,12 +75,10 @@ jobs:
           cache: npm
 
       # Unlike the checks job, this job needs the real Electron binary — the suite launches the app.
+      # The postinstall hook rebuilds node-pty for the Electron ABI (the main process requires it
+      # at startup), so no explicit rebuild step is needed.
       - name: Install dependencies
         run: npm ci
-
-      # The main process requires node-pty at startup, so it must match the Electron ABI.
-      - name: Rebuild native modules for Electron
-        run: npm run rebuild
 
       - name: Build renderer (Angular)
         run: npm run build
@@ -100,3 +98,38 @@ jobs:
             playwright-report
             test-results
           retention-days: 14
+
+  pack:
+    name: Packaging smoke (electron-builder --dir)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # electron-builder downloads its own Electron dist zip, and electron-rebuild only needs the
+      # headers — neither uses the ~100 MB binary an npm ci would fetch into node_modules.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pack unpackaged app directory
+        run: npm run pack
+
+      # The main process loads node-pty's compiled binary and spawns the agent-sdk/ripgrep
+      # executables at runtime, so they must land outside the asar archive (see #141).
+      - name: Verify native modules are asar-unpacked
+        run: |
+          UNPACKED="release/linux-unpacked/resources/app.asar.unpacked/node_modules"
+          test -d "$UNPACKED/node-pty" || { echo "node-pty not unpacked"; exit 1; }
+          find "$UNPACKED/node-pty" -name "*.node" | grep -q . || { echo "node-pty .node binary missing"; exit 1; }
+          test -d "$UNPACKED/@anthropic-ai" || { echo "claude-agent-sdk not unpacked"; exit 1; }
+          test -d "$UNPACKED/@vscode" || { echo "ripgrep not unpacked"; exit 1; }
+          echo "asar-unpack verified: node-pty (+.node), @anthropic-ai, @vscode present"

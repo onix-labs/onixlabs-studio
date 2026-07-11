@@ -26,6 +26,7 @@
     "build:main": "esbuild src/shared/electron/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-electron/electron/main.js --packages=external --tsconfig=tsconfig.json --sourcemap",
     "build:preload": "esbuild src/shared/electron/preload.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-electron/electron/preload.js --packages=external --tsconfig=tsconfig.json --sourcemap",
     "rebuild": "electron-rebuild --only node-pty",
+    "postinstall": "npm run rebuild",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:coverage": "ng test --watch=false --coverage",
