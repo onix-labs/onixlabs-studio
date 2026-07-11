@@ -159,3 +159,8 @@ vite.config.ts.timestamp-*
 .understand-anything/tmp/
 .understand-anything/intermediate/*
 !.understand-anything/intermediate/scan-result.json
+
+# Playwright E2E output
+/test-results
+/playwright-report
+/e2e/out-tsc
