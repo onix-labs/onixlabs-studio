@@ -2,8 +2,8 @@ import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { Documents } from '@shared/angular/services/documents/documents';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
+import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
@@ -63,9 +63,9 @@ export class TitleStripTabMenu {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Holds the documents registry, used to prompt for unsaved changes when closing a tab.
+   * Holds the tab closer that resolves unsaved changes before removing a tab.
    */
-  private readonly documents: Documents = inject(Documents);
+  private readonly tabCloser: TabCloser = inject(TabCloser);
 
   /**
    * Gets the identifier of the active tab, or undefined when no tab is open.
@@ -105,6 +105,6 @@ export class TitleStripTabMenu {
    * @param tab The tab to close.
    */
   protected onClose(tab: Tab): void {
-    void this.documents.closeTab(tab.id);
+    void this.tabCloser.close(tab.id);
   }
 }

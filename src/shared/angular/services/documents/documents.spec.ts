@@ -5,6 +5,8 @@ import { FileInfo } from '@shared/api/file-channels';
 import { FileSystem } from '../file-system/file-system';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
+import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { CodeDocument, Documents } from './documents';
 
 /**
@@ -20,10 +22,13 @@ const SAMPLE_FILE: FileInfo = {
 describe('Documents', () => {
   let documents: Documents;
   let tabs: Tabs;
+  let closer: TabCloser;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideUnsavedWork(Documents)] });
     documents = TestBed.inject(Documents);
     tabs = TestBed.inject(Tabs);
+    closer = TestBed.inject(TabCloser);
   });
 
   it('ensure_whenNoDocument_createsUntitledPlaintextDocument', () => {
@@ -45,34 +50,34 @@ describe('Documents', () => {
     expect(documents.ensure(tab.id, 'New Document').fileName()).toBe('New Document');
   });
 
-  it('closeTab_whenDocumentClean_closesAndReleasesTheTab', async () => {
+  it('closeViaTabCloser_whenDocumentClean_closesAndReleasesTheTab', async () => {
     const tab: Tab = tabs.open('code');
     documents.ensure(tab.id);
 
-    await documents.closeTab(tab.id);
+    await closer.close(tab.id);
 
     expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
     expect(documents.get(tab.id)).toBeUndefined();
   });
 
-  it('closeTab_whenDirtyAndDiscarded_closesTheTab', async () => {
+  it('closeViaTabCloser_whenDirtyAndDiscarded_closesTheTab', async () => {
     // Outside Electron the confirm-save dialog defaults to discarding, so the dirty tab closes.
     const tab: Tab = tabs.open('code');
     documents.ensure(tab.id);
     documents.setContent(tab.id, 'changed');
 
-    await documents.closeTab(tab.id);
+    await closer.close(tab.id);
 
     expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
   });
 
-  it('closeTab_whenDirtyAndCancelled_keepsTheTabOpen', async () => {
+  it('closeViaTabCloser_whenDirtyAndCancelled_keepsTheTabOpen', async () => {
     vi.spyOn(TestBed.inject(FileSystem), 'confirmSave').mockResolvedValue('cancel');
     const tab: Tab = tabs.open('code');
     documents.ensure(tab.id);
     documents.setContent(tab.id, 'changed');
 
-    await documents.closeTab(tab.id);
+    await closer.close(tab.id);
 
     expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(true);
     expect(documents.get(tab.id)).not.toBeUndefined();

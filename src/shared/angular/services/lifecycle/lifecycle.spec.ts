@@ -70,6 +70,7 @@ describe('Lifecycle', () => {
         savedIds.push(id);
         return Promise.resolve(saveResult);
       },
+      release: (): void => undefined,
     });
 
     TestBed.configureTestingModule({
