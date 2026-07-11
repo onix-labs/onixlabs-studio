@@ -10,6 +10,31 @@ describe('BinaryEditor', () => {
     return fixture;
   }
 
+  it('sizer_capsItsHeightForGigabyteFiles', async () => {
+    // Browsers clamp element heights around 33.5M px; a 2 GiB file's true pixel height (~3.5B px)
+    // would leave most of the file unreachable by scrollbar. Above the cap the compressed mapping
+    // takes over (verified end-to-end against a 2 GiB fixture).
+    const fixture: ComponentFixture<BinaryEditor> = create();
+    fixture.componentRef.setInput('size', 2 * 1024 * 1024 * 1024);
+    await fixture.whenStable();
+
+    const sizer: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.binary-editor__sizer',
+    );
+    expect(sizer?.style.height).toBe('24000000px');
+  });
+
+  it('sizer_usesTheTruePixelHeightForOrdinaryFiles', async () => {
+    const fixture: ComponentFixture<BinaryEditor> = create();
+    await fixture.whenStable();
+
+    // 4096 bytes / 16 per row = 256 rows × 26 px.
+    const sizer: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.binary-editor__sizer',
+    );
+    expect(sizer?.style.height).toBe(`${256 * 26}px`);
+  });
+
   it('render_showsTheColumnHeaderLabelsForEachByteInARow', async () => {
     const fixture: ComponentFixture<BinaryEditor> = create();
     await fixture.whenStable();

@@ -8,14 +8,22 @@ import { SettingsStore } from '@shared/angular/services/settings-store/settings-
 export type RecentKind = 'directory' | 'repository' | 'markdown' | 'code' | 'binary';
 
 /**
+ * Maps every {@link RecentKind} to a marker, so the compiler proves the runtime validation set below
+ * is exhaustive — adding a kind to the type without listing it here is a compile error. (The set
+ * previously missed `binary`, silently dropping persisted binary recents on every restart.)
+ */
+const ALL_RECENT_KINDS: Readonly<Record<RecentKind, true>> = {
+  directory: true,
+  repository: true,
+  markdown: true,
+  code: true,
+  binary: true,
+};
+
+/**
  * Holds the recognised recent-item kinds, used to reject malformed persisted entries on load.
  */
-const RECENT_KINDS: ReadonlySet<string> = new Set<string>([
-  'directory',
-  'repository',
-  'markdown',
-  'code',
-]);
+const RECENT_KINDS: ReadonlySet<string> = new Set<string>(Object.keys(ALL_RECENT_KINDS));
 
 /**
  * The storage key the recent-items list is persisted under.
