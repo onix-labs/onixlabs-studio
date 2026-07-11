@@ -1,12 +1,13 @@
-# electron-builder configuration — produces distributable installers.
+# electron-builder configuration — the single source of truth for packaging (the package.json
+# `build` key was removed; keeping both risks one silently shadowing the other).
 # Docs: https://www.electron.build/configuration
 appId: com.onixlabs.studio
 productName: ONIXLabs Studio
 copyright: Copyright © 2026 ONIXLabs
 
 directories:
-  output: release        # installers are written here (git-ignored)
-  buildResources: build  # optional: put icon.icns / icon.ico / icon.png here
+  output: release # installers are written here (git-ignored)
+  buildResources: build # icon.icns (mac, rounded per Apple style) + icon.png (win/linux, full-bleed)
 
 # Only ship the compiled Electron main/preload and the built Angular app.
 files:
@@ -16,16 +17,29 @@ files:
 
 asar: true
 
+# Native and self-spawning modules must live outside the asar archive: node-pty loads a compiled
+# .node binary, and the Claude Agent SDK / ripgrep spawn bundled executables (validated in #141).
+asarUnpack:
+  - node_modules/node-pty/**
+  - node_modules/@anthropic-ai/claude-agent-sdk/**
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+  - node_modules/@vscode/ripgrep/**
+  - node_modules/@vscode/ripgrep-*/**
+
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
 mac:
   target:
     - dmg
     - zip
+  icon: build/icon.icns
   category: public.app-category.developer-tools
-  identity: null  # disable code signing for local/unsigned builds
+  identity: null # disable code signing for local/unsigned builds
 
 win:
   target:
     - nsis
+  icon: build/icon.png
 
 nsis:
   oneClick: false
@@ -34,4 +48,6 @@ nsis:
 linux:
   target:
     - AppImage
+  icon: build/icon.png
   category: Development
+  synopsis: A modern cross-platform integrated development environment
