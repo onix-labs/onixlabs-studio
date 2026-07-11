@@ -95,7 +95,9 @@ const STATUS_PRIORITY: number = 30;
         const repository: Repository = inject(Repository);
         return (): ConversationContext => {
           const root: string | undefined = repository.info()?.root;
-          return root === undefined ? GLOBAL_CONVERSATION_CONTEXT : { kind: 'repository', key: root };
+          return root === undefined
+            ? GLOBAL_CONVERSATION_CONTEXT
+            : { kind: 'repository', key: root };
         };
       },
     },

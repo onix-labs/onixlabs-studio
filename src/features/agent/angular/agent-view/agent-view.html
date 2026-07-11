@@ -7,7 +7,13 @@
   />
 
   @if (conversation.historyOpen()) {
-    <app-panel panelId="history" defaultEdge="right" [defaultSize]="320" [minSize]="240" [maxSize]="600">
+    <app-panel
+      panelId="history"
+      defaultEdge="right"
+      [defaultSize]="320"
+      [minSize]="240"
+      [maxSize]="600"
+    >
       <app-tool-panel
         title="History"
         [icon]="Icon.RECENT"

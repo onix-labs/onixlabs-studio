@@ -27,7 +27,11 @@
   <app-ribbon-strip-group title="Actions">
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small [icon]="Icon.LIST" label="List" (action)="onList()" />
-      <app-ribbon-strip-button-small [icon]="Icon.LIST_ALL" label="List All" (action)="onListAll()" />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.LIST_ALL"
+        label="List All"
+        (action)="onListAll()"
+      />
       <app-ribbon-strip-button-small [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

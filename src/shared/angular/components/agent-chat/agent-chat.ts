@@ -274,15 +274,13 @@ export class AgentChat {
    */
   public readonly attachments: Signal<readonly ContextChip[]> = computed(
     (): readonly ContextChip[] =>
-      this.agent
-        .contextPaths()
-        .map(
-          (ref: AgentContextRef): ContextChip => ({
-            path: ref.path,
-            name: this.baseName(ref.path),
-            kind: ref.kind,
-          }),
-        ),
+      this.agent.contextPaths().map(
+        (ref: AgentContextRef): ContextChip => ({
+          path: ref.path,
+          name: this.baseName(ref.path),
+          kind: ref.kind,
+        }),
+      ),
   );
 
   /**
@@ -505,7 +503,9 @@ export class AgentChat {
    * @returns Returns the basename.
    */
   private baseName(path: string): string {
-    const segments: string[] = path.split(/[\\/]/).filter((segment: string): boolean => segment.length > 0);
+    const segments: string[] = path
+      .split(/[\\/]/)
+      .filter((segment: string): boolean => segment.length > 0);
     return segments[segments.length - 1] ?? path;
   }
 

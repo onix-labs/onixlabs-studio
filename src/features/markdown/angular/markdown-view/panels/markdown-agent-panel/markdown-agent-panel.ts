@@ -25,7 +25,12 @@ import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-pan
   imports: [ToolPanel, AgentConversationPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-tool-panel title="Agent" [icon]="Icon.AGENT" [flush]="true" (closed)="panels.close('agent')">
+    <app-tool-panel
+      title="Agent"
+      [icon]="Icon.AGENT"
+      [flush]="true"
+      (closed)="panels.close('agent')"
+    >
       <app-agent-conversation-panel [tabId]="documentId()" [context]="fileContext()" />
     </app-tool-panel>
   `,

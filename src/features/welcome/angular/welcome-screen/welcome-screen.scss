@@ -83,7 +83,11 @@
 
   // Dial the corner blooms down to a faint tint on the light canvas.
   .welcome__glow-blob--a {
-    background: radial-gradient(circle at center, rgba(var(--wl-accent-rgb), 0.16), transparent 68%);
+    background: radial-gradient(
+      circle at center,
+      rgba(var(--wl-accent-rgb), 0.16),
+      transparent 68%
+    );
   }
 
   .welcome__glow-blob--b {

@@ -136,7 +136,9 @@ export class PieceTable {
     for (const piece of this.pieces) {
       if (offset < logical + piece.length) {
         const sourcePos: number = piece.start + (offset - logical);
-        return piece.source === 'added' ? { value: this.added[sourcePos] } : { original: sourcePos };
+        return piece.source === 'added'
+          ? { value: this.added[sourcePos] }
+          : { original: sourcePos };
       }
       logical += piece.length;
     }
@@ -304,9 +306,7 @@ export class PieceTable {
     }
     this.added.length = 0;
     this.pieces =
-      this.originalSize === 0
-        ? []
-        : [{ source: 'original', start: 0, length: this.originalSize }];
+      this.originalSize === 0 ? [] : [{ source: 'original', start: 0, length: this.originalSize }];
     this.total = this.originalSize;
     this.structural = false;
   }

@@ -60,8 +60,10 @@ export class TerminalStatus {
    * Holds the active terminal's context and the tab that published it, or null when no terminal is
    * active. The tab is tracked so a deactivating terminal only clears the strip when it still owns it.
    */
-  private readonly contextSignal: WritableSignal<{ tabId: string; context: TerminalContext } | null> =
-    signal<{ tabId: string; context: TerminalContext } | null>(null);
+  private readonly contextSignal: WritableSignal<{
+    tabId: string;
+    context: TerminalContext;
+  } | null> = signal<{ tabId: string; context: TerminalContext } | null>(null);
 
   /**
    * Initializes the service, projecting the address as a leading segment and the shell as a trailing

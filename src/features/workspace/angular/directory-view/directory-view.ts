@@ -101,7 +101,9 @@ import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
         const workspace: Workspace = inject(Workspace);
         return (): ConversationContext => {
           const path: string | undefined = workspace.root()?.path;
-          return path === undefined ? GLOBAL_CONVERSATION_CONTEXT : { kind: 'workspace', key: path };
+          return path === undefined
+            ? GLOBAL_CONVERSATION_CONTEXT
+            : { kind: 'workspace', key: path };
         };
       },
     },

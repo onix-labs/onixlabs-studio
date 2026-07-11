@@ -65,23 +65,25 @@ export class BinaryInspector {
   /**
    * Holds the decoded rows for the bytes at the cursor, or an empty list when there is no cursor.
    */
-  protected readonly rows: Signal<readonly InspectorRow[]> = computed((): readonly InspectorRow[] => {
-    const document: BinaryDocumentEntry | undefined = this.document();
-    if (document === undefined) {
-      return [];
-    }
-    // Re-run when a block arrives so a value completes as its bytes load.
-    document.loadedVersion();
-    const cursor: number | null = document.cursor();
-    if (cursor === null) {
-      return [];
-    }
-    const bytes: (number | null)[] = [];
-    for (let offset: number = 0; offset < INSPECT_WIDTH; offset += 1) {
-      bytes.push(document.byteAt(cursor + offset));
-    }
-    return inspectBytes(bytes, this.littleEndian(), this.signed());
-  });
+  protected readonly rows: Signal<readonly InspectorRow[]> = computed(
+    (): readonly InspectorRow[] => {
+      const document: BinaryDocumentEntry | undefined = this.document();
+      if (document === undefined) {
+        return [];
+      }
+      // Re-run when a block arrives so a value completes as its bytes load.
+      document.loadedVersion();
+      const cursor: number | null = document.cursor();
+      if (cursor === null) {
+        return [];
+      }
+      const bytes: (number | null)[] = [];
+      for (let offset: number = 0; offset < INSPECT_WIDTH; offset += 1) {
+        bytes.push(document.byteAt(cursor + offset));
+      }
+      return inspectBytes(bytes, this.littleEndian(), this.signed());
+    },
+  );
 
   /**
    * Initializes the inspector, ensuring the cursor's bytes are loaded whenever the cursor moves.

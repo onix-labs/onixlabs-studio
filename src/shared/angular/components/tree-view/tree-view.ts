@@ -94,8 +94,7 @@ export class TreeView {
    * Holds the projected row-content template, rendered for each row with the row as its implicit
    * context value.
    */
-  protected readonly content: Signal<TemplateRef<unknown> | undefined> =
-    contentChild(TemplateRef);
+  protected readonly content: Signal<TemplateRef<unknown> | undefined> = contentChild(TemplateRef);
 
   /**
    * Computes the left padding for a row at the given depth.

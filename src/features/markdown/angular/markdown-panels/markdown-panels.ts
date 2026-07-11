@@ -28,11 +28,10 @@ export class MarkdownPanels {
   /**
    * Holds the set of open panels for every markdown document, keyed by document id.
    */
-  private readonly states: WritableSignal<
-    ReadonlyMap<string, ReadonlySet<OpenableMarkdownPanel>>
-  > = signal<ReadonlyMap<string, ReadonlySet<OpenableMarkdownPanel>>>(
-    new Map<string, ReadonlySet<OpenableMarkdownPanel>>(),
-  );
+  private readonly states: WritableSignal<ReadonlyMap<string, ReadonlySet<OpenableMarkdownPanel>>> =
+    signal<ReadonlyMap<string, ReadonlySet<OpenableMarkdownPanel>>>(
+      new Map<string, ReadonlySet<OpenableMarkdownPanel>>(),
+    );
 
   /**
    * Holds the id of the focused markdown document, or null when none is focused. The ribbon's

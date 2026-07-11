@@ -57,7 +57,9 @@ export class AgentConversations implements AgentConversationClient {
    * @param conversation The conversation to store.
    * @returns Returns the stored summary, or null when it could not be stored.
    */
-  public async save(conversation: StoredAgentConversation): Promise<AgentConversationSummary | null> {
+  public async save(
+    conversation: StoredAgentConversation,
+  ): Promise<AgentConversationSummary | null> {
     return (
       (await this.bridge?.invoke<AgentConversationSummary | null>(
         AgentConversationChannel.Save,

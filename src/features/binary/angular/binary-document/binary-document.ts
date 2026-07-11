@@ -409,7 +409,9 @@ export class BinaryDocumentEntry {
    * @returns Returns true when the rewrite succeeded.
    */
   private async saveByRewrite(): Promise<boolean> {
-    if (!(await this.workspace.writePieces(this.path, this.table.spans(), this.table.addedBytes()))) {
+    if (
+      !(await this.workspace.writePieces(this.path, this.table.spans(), this.table.addedBytes()))
+    ) {
       return false;
     }
     this.originalSize = this.table.length();
@@ -658,7 +660,12 @@ export class BinaryDocumentEntry {
    */
   public async patch(offset: number, values: readonly number[]): Promise<boolean> {
     await this.ensureBlock(0);
-    if (!this.initialized || values.length === 0 || offset < 0 || offset + values.length > this.size()) {
+    if (
+      !this.initialized ||
+      values.length === 0 ||
+      offset < 0 ||
+      offset + values.length > this.size()
+    ) {
       return false;
     }
     const bytes: number[] = values.map((value: number): number => value & 0xff);

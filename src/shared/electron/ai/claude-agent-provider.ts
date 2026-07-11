@@ -24,7 +24,12 @@ import {
   type AiProviderId,
   type AiVerifyResult,
 } from '@shared/api/ai-types';
-import type { AgentAuth, AgentProvider, AgentRunContext, ProviderAvailability } from './agent-provider';
+import type {
+  AgentAuth,
+  AgentProvider,
+  AgentRunContext,
+  ProviderAvailability,
+} from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
@@ -174,9 +179,9 @@ export class ClaudeAgentProvider implements AgentProvider {
     const hasReadableContext: boolean = hasWorkspace || context.contextPaths.length > 0;
 
     // Build a text-content tool result from a handler's rendered string.
-    const text: (
+    const text: (value: string) => { content: { type: 'text'; text: string }[] } = (
       value: string,
-    ) => { content: { type: 'text'; text: string }[] } = (value: string) => ({
+    ) => ({
       content: [{ type: 'text', text: value }],
     });
 
@@ -328,7 +333,8 @@ export class ClaudeAgentProvider implements AgentProvider {
           ? { behavior: 'allow', updatedInput: input }
           : {
               behavior: 'deny',
-              message: 'Chat mode is read-only — it can inspect but not modify files or run commands.',
+              message:
+                'Chat mode is read-only — it can inspect but not modify files or run commands.',
             };
       }
       const autoAllowed: boolean =

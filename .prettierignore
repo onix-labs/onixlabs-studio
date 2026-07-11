@@ -7,3 +7,5 @@ package-lock.json
 .claude
 resources
 coverage
+.understand-anything
+.idea

@@ -18,7 +18,10 @@
         @case ('user') {
           <div class="agent__message agent__message--user">
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
-            <div class="agent__bubble agent__markdown" [innerHTML]="row.item!.text | markdown"></div>
+            <div
+              class="agent__bubble agent__markdown"
+              [innerHTML]="row.item!.text | markdown"
+            ></div>
           </div>
         }
         @case ('permission') {
@@ -71,13 +74,19 @@
             <div class="agent__row-content">
               @switch (row.kind) {
                 @case ('assistant') {
-                  <div class="agent__bubble agent__markdown" [innerHTML]="row.item!.text | markdown"></div>
+                  <div
+                    class="agent__bubble agent__markdown"
+                    [innerHTML]="row.item!.text | markdown"
+                  ></div>
                 }
                 @case ('working') {
                   <p class="agent__working" aria-live="polite">Working…</p>
                 }
                 @default {
-                  <details class="agent__action" [class.agent__action--error]="row.item!.toolState === 'error'">
+                  <details
+                    class="agent__action"
+                    [class.agent__action--error]="row.item!.toolState === 'error'"
+                  >
                     <summary class="agent__action-summary">
                       <span class="agent__action-label">{{ row.label }}</span>
                       <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />

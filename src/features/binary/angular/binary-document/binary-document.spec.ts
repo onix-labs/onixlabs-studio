@@ -35,7 +35,11 @@ function fakeBridge(): Bridge {
         const [, offset, length] = args as [string, number, number];
         const start: number = Math.min(offset, FILE.length);
         const end: number = Math.min(start + length, FILE.length);
-        return Promise.resolve({ size: FILE.length, offset: start, bytes: FILE.slice(start, end) } as T);
+        return Promise.resolve({
+          size: FILE.length,
+          offset: start,
+          bytes: FILE.slice(start, end),
+        } as T);
       }
       if (channel === (WorkspaceChannel.WriteBytes as string)) {
         const [path, patches] = args as [string, readonly BinaryPatch[]];

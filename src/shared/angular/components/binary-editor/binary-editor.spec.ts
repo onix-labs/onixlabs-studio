@@ -19,8 +19,22 @@ describe('BinaryEditor', () => {
       host.querySelectorAll('.binary-editor__hexcell--header'),
     ).map((element: Element): string | null => element.textContent);
     expect(labels).toEqual([
-      '00', '01', '02', '03', '04', '05', '06', '07',
-      '08', '09', '0A', '0B', '0C', '0D', '0E', '0F',
+      '00',
+      '01',
+      '02',
+      '03',
+      '04',
+      '05',
+      '06',
+      '07',
+      '08',
+      '09',
+      '0A',
+      '0B',
+      '0C',
+      '0D',
+      '0E',
+      '0F',
     ]);
     expect(host.querySelector('.binary-editor__addr--header')?.textContent).toContain('Offset');
     expect(host.querySelector('.binary-editor__ascii--header')?.textContent).toContain('ASCII');
