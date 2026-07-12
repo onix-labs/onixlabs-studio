@@ -27,6 +27,7 @@ import type { EditorView } from '@milkdown/kit/prose/view';
 import type { ListenerManager } from '@milkdown/plugin-listener';
 import type { Parser } from '@milkdown/transformer';
 import { blockReorderPlugin } from '@shared/angular/milkdown/block-reorder-plugin';
+import { collapsePlugin } from '@shared/angular/milkdown/collapse-plugin';
 import { colorPreviewPlugin } from '@shared/angular/milkdown/color-preview-plugin';
 import { emojiPlugin } from '@shared/angular/milkdown/emoji-plugin';
 import { footnotePlugin } from '@shared/angular/milkdown/footnote-plugin';
@@ -480,6 +481,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       crepe.editor.use(pasteCleanPlugin);
       crepe.editor.use(subscriptSuperscriptPlugin);
       crepe.editor.use(htmlImagePlugin);
+      crepe.editor.use(collapsePlugin);
       crepe.editor.use(githubAlertPlugin);
       crepe.editor.use(colorPreviewPlugin);
       crepe.editor.use(mermaidPlugin);
