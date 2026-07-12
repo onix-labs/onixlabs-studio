@@ -12,6 +12,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
@@ -68,6 +69,12 @@ export const PATCH_BINARY_BYTES_FQN: string = `mcp__studio__${PATCH_BINARY_BYTES
  */
 export const INSERT_BINARY_BYTES_FQN: string = `mcp__studio__${INSERT_BINARY_BYTES}`;
 export const DELETE_BINARY_BYTES_FQN: string = `mcp__studio__${DELETE_BINARY_BYTES}`;
+
+/**
+ * The fully-qualified name the assembly-writing tool is exposed under to the Claude Agent SDK. Like the
+ * other binary write tools it is never auto-allowed: it flows through the permission broker.
+ */
+export const WRITE_BINARY_ASSEMBLY_FQN: string = `mcp__studio__${WRITE_BINARY_ASSEMBLY}`;
 
 /**
  * Appended to the system prompt so the model knows the in-app editor tools exist and when to use them.
@@ -139,6 +146,14 @@ export const BINARY_PROMPT_APPENDIX: string = [
   '  corrupts structured executables (their headers reference absolute offsets) — use them on blobs',
   '  and data files, prefer the overwrite patch for executables, and re-read after any length change',
   '  because earlier offsets are stale. Only edit when the user asks you to.',
+  `- "${WRITE_BINARY_ASSEMBLY}" assembles x86/x64 assembly text (e.g. "mov eax, 1" then "ret", one`,
+  '  instruction per line, Intel syntax) and writes it at an offset, so you edit at the instruction',
+  '  level instead of hand-assembling hex for the patch tool. It keeps the file length unchanged: pass',
+  '  the length of the range you are replacing — shorter code is padded with NOPs, and longer code is',
+  '  rejected (it would shift the following instructions) so you can revise. It reports the bytes',
+  '  written and disassembles them back. Assembly covers x86 and x64 only (ARM/ARM64 can be read but',
+  '  not assembled); code is assembled at address 0, so use PC-relative operands for branches. Prefer',
+  '  it for x86/x64 code edits. Only edit when the user asks you to.',
   'Offsets and lengths are byte counts in the file. Prefer these tools over the file-system tools for',
   'inspecting or editing this file, since it may have unsaved edits held in the editor.',
 ].join('\n');
@@ -412,4 +427,35 @@ export async function deleteBinaryBytes(
   });
   const del: { ok?: boolean; text?: string } = result ?? {};
   return del.text ?? (del.ok === true ? 'The bytes were deleted.' : 'The bytes were not deleted.');
+}
+
+/**
+ * Assembles assembly text and writes it at an offset in the owning binary document through the renderer
+ * bridge, and renders the result for the model. The file length is preserved: shorter output is
+ * NOP-padded and longer output is rejected.
+ * @param context The agent run context.
+ * @param offset The offset to write the assembled bytes at.
+ * @param assembly The assembly text (one or more instructions, e.g. `mov eax, 1; ret`).
+ * @param length The number of bytes the write should occupy (the replaced range); optional, defaulting
+ * to the assembled length.
+ * @returns Returns a confirmation with the bytes written and their disassembly, or the reason the write
+ * was rejected.
+ */
+export async function writeBinaryAssembly(
+  context: AgentRunContext,
+  offset: number,
+  assembly: string,
+  length?: number,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(WRITE_BINARY_ASSEMBLY, {
+    tabId: context.owningTabId,
+    offset,
+    assembly,
+    ...(length === undefined ? {} : { length }),
+  });
+  const write: { ok?: boolean; text?: string } = result ?? {};
+  return (
+    write.text ??
+    (write.ok === true ? 'The assembly was written.' : 'The assembly was not written.')
+  );
 }

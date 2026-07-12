@@ -25,7 +25,7 @@ provider-independent — but permission gating is not (see [Cross-cutting rules]
 | Agent      | `project`  | **none** — the built-in Agent SDK tools are this surface's capability set (see below)                                      | `global`              |
 | Workspace  | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `workspace` (root)    |
 | Repository | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `repository` (root)   |
-| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`, `insert_binary_bytes`, `delete_binary_bytes` | per binary tab        |
+| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`, `insert_binary_bytes`, `delete_binary_bytes`, `write_binary_assembly` | per binary tab        |
 
 The tool name constants live in `src/shared/api/ai/ai-tool-surface.ts`; the conversation-scope
 kinds (`global` / `workspace` / `repository` / `file`) in
@@ -141,8 +141,20 @@ in-app tool set:
   stale; the descriptions warn they typically corrupt structured executables (headers reference
   absolute offsets) and are intended for blobs/data files. Backed by the piece-table document
   model, so they are unsaved, undoable edits like the patch.
-- The four read tools are auto-allowed; the three mutating tools always flow through the
-  permission posture, and Chat mode withholds them.
+- **`write_binary_assembly`** — assembles x86/x64 assembly text (Intel syntax, one instruction
+  per line) and writes it at an offset, so the model edits at the instruction level instead of
+  hand-assembling hex. The file length is never changed: the model passes the length of the range
+  it is replacing — shorter code is padded with NOPs, and longer code is **rejected** (with the
+  assembled size, so it can revise) rather than silently shifting the following instructions. The
+  result echoes the bytes written and the round-trip disassembly of the written range. Assembly
+  runs in the main process through DefAssembler (`@defasm/core`, ISC-licensed pure JavaScript) —
+  covering **x86 and x64 only**. ARM/ARM64 binaries can be disassembled (read) but not assembled;
+  those and any non-disassemblable format report that assembly is unavailable, mirroring the
+  disassembly tool. Code is assembled at address 0 (DefAssembler takes no base address), so
+  absolute-target branches will not resolve — PC-relative operands do.
+- The four read tools are auto-allowed; the four mutating tools (`patch`/`insert`/`delete`/
+  `write_binary_assembly`) always flow through the permission posture, and Chat mode withholds
+  them.
 
 The renderer formats all dumps/listings, so presentation lives in one place; the tools relay the
 rendered text. Read-only project exploration (`Read`/`Glob`/`Grep`) is also auto-allowed when a

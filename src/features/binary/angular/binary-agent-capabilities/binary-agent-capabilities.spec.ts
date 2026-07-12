@@ -7,8 +7,9 @@ import {
   READ_BINARY_DISASSEMBLY,
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
+  WRITE_BINARY_ASSEMBLY,
 } from '@shared/api/ai-types';
-import { DecodedInstruction } from '@shared/api/binary-channels';
+import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import {
   BinaryDocumentEntry,
@@ -66,6 +67,12 @@ interface FakeDocumentState {
    * Gets whether `insertBytes` and `removeBytes` accept the edit.
    */
   readonly resizeOk: boolean;
+
+  /**
+   * Gets the assembler the document delegates to: maps assembly text to the assembled result. The
+   * default assembles `nop` to a single `0x90` and anything else to a three-byte sequence.
+   */
+  readonly assemble: (assembly: string, architecture: string, address: number) => AssembleResult;
 }
 
 /**
@@ -96,6 +103,11 @@ interface FakeDocument {
    * Gets the byte deletions the capabilities applied.
    */
   readonly deletes: { offset: number; count: number }[];
+
+  /**
+   * Gets the assemble requests the capabilities made.
+   */
+  readonly assembles: { assembly: string; architecture: string; address: number }[];
 }
 
 /**
@@ -115,12 +127,17 @@ function fakeDocument(overrides: Partial<FakeDocumentState> = {}): FakeDocument 
     instructions: [],
     patchOk: true,
     resizeOk: true,
+    assemble: (assembly: string): AssembleResult =>
+      assembly.trim() === 'nop'
+        ? { ok: true, bytes: [0x90] }
+        : { ok: true, bytes: [0x48, 0x89, 0xd8] },
     ...overrides,
   };
   const reads: { offset: number; length: number }[] = [];
   const patches: { offset: number; values: readonly number[] }[] = [];
   const inserts: { offset: number; values: readonly number[] }[] = [];
   const deletes: { offset: number; count: number }[] = [];
+  const assembles: { assembly: string; architecture: string; address: number }[] = [];
   const entry: BinaryDocumentEntry = {
     path: '/ws/blob.bin',
     fileName: 'blob.bin',
@@ -148,8 +165,12 @@ function fakeDocument(overrides: Partial<FakeDocumentState> = {}): FakeDocument 
       deletes.push({ offset, count });
       return Promise.resolve(state.resizeOk);
     },
+    assemble: (assembly: string, architecture: string, address: number): Promise<AssembleResult> => {
+      assembles.push({ assembly, architecture, address });
+      return Promise.resolve(state.assemble(assembly, architecture, address));
+    },
   } as unknown as BinaryDocumentEntry;
-  return { entry, reads, patches, inserts, deletes };
+  return { entry, reads, patches, inserts, deletes, assembles };
 }
 
 describe('BinaryAgentCapabilities', () => {
@@ -188,7 +209,7 @@ describe('BinaryAgentCapabilities', () => {
     TestBed.inject(BinaryAgentCapabilities);
   });
 
-  it('constructor_whenInstantiated_registersTheSevenBinaryCapabilities', () => {
+  it('constructor_whenInstantiated_registersTheEightBinaryCapabilities', () => {
     expect(Array.from(registered.keys()).sort()).toEqual(
       [
         DELETE_BINARY_BYTES,
@@ -198,6 +219,7 @@ describe('BinaryAgentCapabilities', () => {
         READ_BINARY_DISASSEMBLY,
         READ_BINARY_OVERVIEW,
         READ_BINARY_SELECTION,
+        WRITE_BINARY_ASSEMBLY,
       ].sort(),
     );
   });
@@ -376,5 +398,130 @@ describe('BinaryAgentCapabilities', () => {
     })) as { ok: boolean; text: string };
     expect(result.ok).toBe(false);
     expect(result.text).toContain('the range is outside the file (size 4 bytes)');
+  });
+
+  it('writeAssembly_whenSizesMatch_writesTheAssembledBytesAndEchoesDisassembly', async () => {
+    const fake: FakeDocument = fakeDocument({
+      instructions: [
+        { startOffset: 16, byteLength: 3, mnemonic: 'mov', operands: 'rax, rbx', raw: [0, 0, 0] },
+      ],
+    });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 16,
+      assembly: 'mov rax, rbx',
+    })) as { ok: boolean; text: string };
+
+    expect(fake.assembles[0]).toEqual({
+      assembly: 'mov rax, rbx',
+      architecture: 'x64',
+      address: 16,
+    });
+    expect(fake.patches).toEqual([{ offset: 16, values: [0x48, 0x89, 0xd8] }]);
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain('Assembled and wrote 3 byte(s) at 0x10');
+    expect(result.text).toContain('48 89 d8');
+    expect(result.text).toContain('00000010  mov rax, rbx');
+  });
+
+  it('writeAssembly_whenShorterThanTheRange_padsWithNops', async () => {
+    const fake: FakeDocument = fakeDocument({
+      assemble: (assembly: string): AssembleResult =>
+        assembly.trim() === 'nop' ? { ok: true, bytes: [0x90] } : { ok: true, bytes: [0xc3] },
+    });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 0,
+      assembly: 'ret',
+      length: 3,
+    })) as { ok: boolean; text: string };
+
+    expect(fake.patches).toEqual([{ offset: 0, values: [0xc3, 0x90, 0x90] }]);
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain('1 assembled + 2 NOP-pad byte(s)');
+  });
+
+  it('writeAssembly_whenLongerThanTheRange_rejectsWithoutWriting', async () => {
+    const fake: FakeDocument = fakeDocument({
+      assemble: (): AssembleResult => ({ ok: true, bytes: [1, 2, 3, 4, 5] }),
+    });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 0,
+      assembly: 'a lot of code',
+      length: 3,
+    })) as { ok: boolean; text: string };
+
+    expect(fake.patches).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.text).toContain('5 byte(s)');
+    expect(result.text).toContain('shift the following code');
+  });
+
+  it('writeAssembly_whenThePadIsNotAWholeNumberOfNops_rejects', async () => {
+    const fake: FakeDocument = fakeDocument({
+      assemble: (assembly: string): AssembleResult =>
+        assembly.trim() === 'nop'
+          ? { ok: true, bytes: [0x1f, 0x20, 0x03, 0xd5] }
+          : { ok: true, bytes: [0xc0, 0x03, 0x5f, 0xd6] },
+      format: { kind: 'macho', architecture: 'ARM64' },
+    });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 0,
+      assembly: 'ret',
+      length: 6,
+    })) as { ok: boolean; text: string };
+
+    expect(fake.patches).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.text).toContain('whole number of NOPs');
+  });
+
+  it('writeAssembly_whenTheAssemblerFails_reportsTheError', async () => {
+    const fake: FakeDocument = fakeDocument({
+      assemble: (): AssembleResult => ({ ok: false, error: 'Invalid mnemonic' }),
+    });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 0,
+      assembly: 'blorp',
+    })) as { ok: boolean; text: string };
+
+    expect(fake.patches).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.text).toContain('Could not assemble the instructions: Invalid mnemonic');
+  });
+
+  it('writeAssembly_whenTheFormatIsNotDisassemblable_explains', async () => {
+    const fake: FakeDocument = fakeDocument({ format: { kind: 'unknown' } });
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean; text: string } = (await run(WRITE_BINARY_ASSEMBLY, {
+      offset: 0,
+      assembly: 'mov rax, rbx',
+    })) as { ok: boolean; text: string };
+
+    expect(fake.assembles).toEqual([]);
+    expect(fake.patches).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.text).toContain('Assembly is not available for this format (Binary).');
+  });
+
+  it('writeAssembly_whenTheAssemblyIsMissing_rejects', async () => {
+    const fake: FakeDocument = fakeDocument();
+    documents.set('tab-1', fake.entry);
+
+    const result: { ok: boolean } = (await run(WRITE_BINARY_ASSEMBLY, { offset: 0 })) as {
+      ok: boolean;
+    };
+
+    expect(fake.assembles).toEqual([]);
+    expect(result.ok).toBe(false);
   });
 });

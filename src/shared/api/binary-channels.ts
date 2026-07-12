@@ -11,7 +11,42 @@ export enum BinaryChannel {
    * the sub-range to return instructions for.
    */
   Disassemble = 'binary:disassemble',
+
+  /**
+   * Assembles a snippet of assembly for the given architecture (invoke). The renderer sends the
+   * assembly text, the architecture label, and the address the code is assembled at (so PC-relative
+   * operands resolve), and receives the assembled machine bytes or the assembler's error.
+   */
+  Assemble = 'binary:assemble',
 }
+
+/**
+ * The result of an assemble request: either the assembled machine bytes, or the reason assembly failed
+ * (an unsupported architecture, or the assembler's diagnostic for invalid assembly).
+ */
+export type AssembleResult =
+  | {
+      /**
+       * Discriminates the success case.
+       */
+      readonly ok: true;
+
+      /**
+       * Gets the assembled machine bytes (0–255).
+       */
+      readonly bytes: readonly number[];
+    }
+  | {
+      /**
+       * Discriminates the failure case.
+       */
+      readonly ok: false;
+
+      /**
+       * Gets a human-readable reason assembly failed, suitable for showing the model.
+       */
+      readonly error: string;
+    };
 
 /**
  * Describes one decoded machine instruction. This is the single contract the disassembly renderer
