@@ -1,7 +1,9 @@
 import type { ToolSet } from 'ai';
 import {
+  DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
+  INSERT_BINARY_BYTES,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
@@ -20,7 +22,9 @@ import {
   PROJECT_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
+  deleteBinaryBytes,
   editActiveDocument,
+  insertBinaryBytes,
   insertIntoActiveDocument,
   patchBinaryBytes,
   readActiveDocument,
@@ -276,6 +280,32 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
       }),
       execute: (args: { offset: number; bytes: string }): Promise<string> =>
         patchBinaryBytes(context, args.offset, args.bytes),
+    }),
+    [INSERT_BINARY_BYTES]: tool({
+      description:
+        'Insert bytes before an offset in the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+      inputSchema: z.object({
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .describe('The offset to insert before (the file size appends).'),
+        bytes: z
+          .string()
+          .describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
+      }),
+      execute: (args: { offset: number; bytes: string }): Promise<string> =>
+        insertBinaryBytes(context, args.offset, args.bytes),
+    }),
+    [DELETE_BINARY_BYTES]: tool({
+      description:
+        'Delete a run of bytes from the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+      inputSchema: z.object({
+        offset: z.number().int().min(0).describe('The first offset to delete.'),
+        length: z.number().int().min(1).describe('The number of bytes to delete.'),
+      }),
+      execute: (args: { offset: number; length: number }): Promise<string> =>
+        deleteBinaryBytes(context, args.offset, args.length),
     }),
   };
 }

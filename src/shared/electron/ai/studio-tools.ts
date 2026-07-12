@@ -1,6 +1,8 @@
 import {
+  DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
+  INSERT_BINARY_BYTES,
   InsertPlacement,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
@@ -59,6 +61,13 @@ export const READ_BINARY_DISASSEMBLY_FQN: string = `mcp__studio__${READ_BINARY_D
  * auto-allowed: it flows through the permission broker so it prompts unless the posture auto-allows.
  */
 export const PATCH_BINARY_BYTES_FQN: string = `mcp__studio__${PATCH_BINARY_BYTES}`;
+
+/**
+ * The fully-qualified names the length-changing byte tools are exposed under to the Claude Agent SDK.
+ * Like the patch tool, they are never auto-allowed: they flow through the permission broker.
+ */
+export const INSERT_BINARY_BYTES_FQN: string = `mcp__studio__${INSERT_BINARY_BYTES}`;
+export const DELETE_BINARY_BYTES_FQN: string = `mcp__studio__${DELETE_BINARY_BYTES}`;
 
 /**
  * Appended to the system prompt so the model knows the in-app editor tools exist and when to use them.
@@ -125,6 +134,11 @@ export const BINARY_PROMPT_APPENDIX: string = [
   '  natively disassemblable; it reports when disassembly is unavailable for the format.',
   `- "${PATCH_BINARY_BYTES}" overwrites bytes at an offset (the length is unchanged). The edit is`,
   '  unsaved and undoable — the user reviews and saves it. Only patch when the user asks you to.',
+  `- "${INSERT_BINARY_BYTES}" inserts bytes before an offset and "${DELETE_BINARY_BYTES}" removes a`,
+  '  byte range. Both CHANGE THE FILE LENGTH and shift every subsequent offset, which typically',
+  '  corrupts structured executables (their headers reference absolute offsets) — use them on blobs',
+  '  and data files, prefer the overwrite patch for executables, and re-read after any length change',
+  '  because earlier offsets are stale. Only edit when the user asks you to.',
   'Offsets and lengths are byte counts in the file. Prefer these tools over the file-system tools for',
   'inspecting or editing this file, since it may have unsaved edits held in the editor.',
 ].join('\n');
@@ -351,4 +365,51 @@ export async function patchBinaryBytes(
   return (
     patch.text ?? (patch.ok === true ? 'The bytes were patched.' : 'The bytes were not patched.')
   );
+}
+
+/**
+ * Inserts bytes before an offset in the owning binary document through the renderer bridge, growing
+ * the file, and renders the result for the model.
+ * @param context The agent run context.
+ * @param offset The offset to insert before (the file size appends).
+ * @param bytes The bytes to insert as a hex string (for example, `4d 5a` or `4D5A`).
+ * @returns Returns a short confirmation, or the reason the insert was rejected.
+ */
+export async function insertBinaryBytes(
+  context: AgentRunContext,
+  offset: number,
+  bytes: string,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(INSERT_BINARY_BYTES, {
+    tabId: context.owningTabId,
+    offset,
+    bytes,
+  });
+  const insert: { ok?: boolean; text?: string } = result ?? {};
+  return (
+    insert.text ??
+    (insert.ok === true ? 'The bytes were inserted.' : 'The bytes were not inserted.')
+  );
+}
+
+/**
+ * Deletes a run of bytes from the owning binary document through the renderer bridge, shrinking the
+ * file, and renders the result for the model.
+ * @param context The agent run context.
+ * @param offset The first offset to delete.
+ * @param length The number of bytes to delete.
+ * @returns Returns a short confirmation, or the reason the delete was rejected.
+ */
+export async function deleteBinaryBytes(
+  context: AgentRunContext,
+  offset: number,
+  length: number,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(DELETE_BINARY_BYTES, {
+    tabId: context.owningTabId,
+    offset,
+    length,
+  });
+  const del: { ok?: boolean; text?: string } = result ?? {};
+  return del.text ?? (del.ok === true ? 'The bytes were deleted.' : 'The bytes were not deleted.');
 }

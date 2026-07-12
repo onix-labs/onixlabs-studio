@@ -261,6 +261,57 @@ describe('BinaryDocuments', () => {
     expect(entry.dirty()).toBe(true);
   });
 
+  it('insertBytes_insertsARunAndReportsSuccess', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(await entry.insertBytes(2, [0xaa, 0xbb])).toBe(true);
+    expect(entry.size()).toBe(FILE.length + 2);
+    expect(entry.byteAt(2)).toBe(0xaa);
+    expect(entry.byteAt(3)).toBe(0xbb);
+    expect(entry.byteAt(4)).toBe(2);
+    expect(entry.dirty()).toBe(true);
+    entry.undo();
+    expect(entry.size()).toBe(FILE.length);
+    expect(entry.dirty()).toBe(false);
+  });
+
+  it('insertBytes_atTheFileSize_appends', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(await entry.insertBytes(FILE.length, [0xee])).toBe(true);
+    expect(entry.size()).toBe(FILE.length + 1);
+    expect(entry.byteAt(FILE.length)).toBe(0xee);
+  });
+
+  it('insertBytes_pastTheFileSize_reportsFailureWithoutEditing', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(await entry.insertBytes(FILE.length + 1, [0xee])).toBe(false);
+    expect(entry.size()).toBe(FILE.length);
+    expect(entry.dirty()).toBe(false);
+  });
+
+  it('removeBytes_deletesARunAndReportsSuccess', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(await entry.removeBytes(1, 2)).toBe(true);
+    expect(entry.size()).toBe(FILE.length - 2);
+    expect(entry.byteAt(0)).toBe(0);
+    expect(entry.byteAt(1)).toBe(3);
+    expect(entry.dirty()).toBe(true);
+    entry.undo();
+    expect(entry.size()).toBe(FILE.length);
+    expect(entry.dirty()).toBe(false);
+  });
+
+  it('removeBytes_rangePastTheEnd_reportsFailureWithoutEditing', async () => {
+    const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
+    await flush();
+    expect(await entry.removeBytes(FILE.length - 1, 2)).toBe(false);
+    expect(entry.size()).toBe(FILE.length);
+    expect(entry.dirty()).toBe(false);
+  });
+
   it('undoAndRedo_stepThroughAnInsert', async () => {
     const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
     await flush();

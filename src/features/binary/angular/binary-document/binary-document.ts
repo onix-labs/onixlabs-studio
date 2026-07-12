@@ -746,6 +746,42 @@ export class BinaryDocumentEntry {
   }
 
   /**
+   * Inserts a run of bytes before an offset in a single undo transaction, growing the document. Used
+   * by the agent's insert capability; it makes an unsaved, undoable edit that the user saves through
+   * the ribbon. The first block is loaded first so the document size is known and the offset can be
+   * validated.
+   * @param offset The logical offset to insert before (0 to the end of the document).
+   * @param values The byte values (0–255) to insert.
+   * @returns Returns true when the bytes were inserted, false when the offset is out of bounds.
+   */
+  public async insertBytes(offset: number, values: readonly number[]): Promise<boolean> {
+    await this.ensureBlock(0);
+    if (!this.initialized || values.length === 0 || offset < 0 || offset > this.size()) {
+      return false;
+    }
+    const bytes: number[] = values.map((value: number): number => value & 0xff);
+    this.applyEdit((): void => this.table.replace(offset, 0, bytes));
+    return true;
+  }
+
+  /**
+   * Deletes a run of bytes in a single undo transaction, shrinking the document. Used by the agent's
+   * delete capability; it makes an unsaved, undoable edit that the user saves through the ribbon. The
+   * first block is loaded first so the document size is known and the range can be validated.
+   * @param offset The first logical offset to delete.
+   * @param count The number of bytes to delete.
+   * @returns Returns true when the bytes were deleted, false when the range is out of bounds.
+   */
+  public async removeBytes(offset: number, count: number): Promise<boolean> {
+    await this.ensureBlock(0);
+    if (!this.initialized || count <= 0 || offset < 0 || offset + count > this.size()) {
+      return false;
+    }
+    this.applyEdit((): void => this.table.replace(offset, count, []));
+    return true;
+  }
+
+  /**
    * Ensures every block spanning a byte range is cached, awaiting the in-flight fetches so the bytes
    * are readable when the promise settles. The awaitable counterpart to {@link ensureRange}.
    * @param offset The first byte of the range.
