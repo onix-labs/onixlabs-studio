@@ -17,6 +17,7 @@ import { LspDocumentRef, LspFeatures } from './lsp-features';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import { semanticLegendOf } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspStatus } from './lsp-status';
@@ -197,6 +198,28 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
 const PROVIDER_ID: string = 'lsp';
 
 /**
+ * The window within which repeated server exits count as a crash loop.
+ */
+const CRASH_WINDOW_MS: number = 60_000;
+
+/**
+ * How many exits within {@link CRASH_WINDOW_MS} stop the automatic restart, so a server that crashes
+ * on startup cannot spin in a spawn/crash cycle. A manual restart clears the count.
+ */
+const MAX_CRASHES_IN_WINDOW: number = 3;
+
+/**
+ * How long a failed start blocks another automatic attempt, so a server that cannot come up is not
+ * re-spawned on every keystroke.
+ */
+const START_RETRY_COOLDOWN_MS: number = 30_000;
+
+/**
+ * How many failed starts are attempted before the server is left unavailable until a manual restart.
+ */
+const MAX_START_ATTEMPTS: number = 3;
+
+/**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
  * first time a document of a supported language opens, mirrors each open document's text to that
  * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
@@ -315,6 +338,26 @@ export class LspClient implements OnDestroy {
   private exitDisposer: (() => void) | null = null;
 
   /**
+   * Holds the disposer for the served-listener subscription, or null when not subscribed.
+   */
+  private servedDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the recent exit timestamps per session, used to detect a crash loop and stop the automatic
+   * restart before it can spin.
+   */
+  private readonly exitTimes: Map<string, number[]> = new Map<string, number[]>();
+
+  /**
+   * Holds the failed-start bookkeeping per session: how many automatic attempts have been made and
+   * when the last one failed, so retries respect a cooldown and eventually stop.
+   */
+  private readonly startFailures: Map<string, { attempts: number; lastAt: number }> = new Map<
+    string,
+    { attempts: number; lastAt: number }
+  >();
+
+  /**
    * Initializes a new instance of the {@link LspClient} class, registering its diagnostics provider
    * and subscribing to server notifications when the bridge is available.
    */
@@ -341,6 +384,44 @@ export class LspClient implements OnDestroy {
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
+    // A server that answers feature requests is demonstrably serving, even when it never sends the
+    // diagnostics or initialisation notifications the status otherwise waits for — without this, such
+    // a server shows as "starting" forever.
+    this.servedDisposer = this.features.registerServedListener((sessionId: string): void => {
+      if (this.ownsSession(sessionId)) {
+        this.markReady(sessionId);
+      }
+    });
+  }
+
+  /**
+   * Flips a session's status to ready when it is not already, and asks Monaco to re-request semantic
+   * tokens for the session's languages. Acting only on the transition keeps the stream of diagnostics
+   * a loading server publishes from firing a full-document token refresh on every push.
+   * @param sessionId The session that has proven ready.
+   */
+  private markReady(sessionId: string): void {
+    if (this.status.stateOf(sessionId) === 'ready') {
+      return;
+    }
+    this.status.setState(sessionId, 'ready');
+    this.features.refreshSemanticTokens(this.sessionLanguages(sessionId));
+  }
+
+  /**
+   * Collects the Monaco language identifiers of the documents a session serves, so a semantic-token
+   * refresh can be scoped to them.
+   * @param sessionId The session whose languages are collected.
+   * @returns Returns the session's distinct document languages.
+   */
+  private sessionLanguages(sessionId: string): readonly string[] {
+    const languages: Set<string> = new Set<string>();
+    for (const tracked of this.tracked.values()) {
+      if (`${tracked.rootPath}::${tracked.serverId}` === sessionId) {
+        languages.add(tracked.languageId);
+      }
+    }
+    return [...languages];
   }
 
   /**
@@ -429,9 +510,13 @@ export class LspClient implements OnDestroy {
   public async restart(sessionId: string): Promise<void> {
     const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
       this.sessionInfo.get(sessionId);
-    if (this.bridge === undefined || !this.sessions.has(sessionId) || info === undefined) {
+    if (this.bridge === undefined || info === undefined) {
       return;
     }
+    // A manual restart is an explicit vote of confidence: clear the crash-loop and failed-start
+    // bookkeeping so the session gets a fresh set of automatic attempts.
+    this.exitTimes.delete(sessionId);
+    this.startFailures.delete(sessionId);
     this.status.setState(sessionId, 'starting');
     await this.bridge.invoke(LspChannel.Stop, sessionId);
     this.sessions.delete(sessionId);
@@ -503,6 +588,7 @@ export class LspClient implements OnDestroy {
     this.notificationDisposer?.();
     this.exitDisposer?.();
     this.featuresDisposer?.();
+    this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
@@ -548,8 +634,9 @@ export class LspClient implements OnDestroy {
       },
     });
     // Monaco asked for semantic tokens before the server was ready and cached the empty result; now
-    // that the document is open against a running server, ask it to request them again so they paint.
-    this.features.refreshSemanticTokens();
+    // that the document is open against a running server, ask it to request them again (for this
+    // document's language only) so they paint.
+    this.features.refreshSemanticTokens([tracked.languageId]);
   }
 
   /**
@@ -603,33 +690,20 @@ export class LspClient implements OnDestroy {
     if (sessionId === null || this.bridge === undefined) {
       return;
     }
+    // Send the smallest single ranged edit that turns the previous text into the new one. The
+    // explicit range is what servers advertising incremental sync require (a range-less full-text
+    // change crashes them), and trimming to the changed span keeps a keystroke in a large file from
+    // shipping — and forcing the server to re-process — the whole document.
+    const edit: LspContentEdit | null = minimalReplaceEdit(tracked.text, content);
+    if (edit === null) {
+      return;
+    }
     tracked.version += 1;
-    // Send the edit as a single change replacing the whole previous document with the new text. This
-    // carries an explicit range, which servers advertising incremental sync require; a range-less
-    // full-text change (valid only under full sync) crashes them.
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didChange', {
       textDocument: { uri: tracked.uri, version: tracked.version },
-      contentChanges: [
-        {
-          range: { start: { line: 0, character: 0 }, end: this.endPosition(tracked.text) },
-          text: content,
-        },
-      ],
+      contentChanges: [edit],
     });
     tracked.text = content;
-  }
-
-  /**
-   * Computes the end position (the position just past the last character) of a document's text, as the
-   * zero-based line and character a server uses to bound a whole-document range.
-   * @param text The document text.
-   * @returns Returns the end position.
-   */
-  private endPosition(text: string): LspPosition {
-    const newline: number = text.lastIndexOf('\n');
-    const line: number = newline < 0 ? 0 : text.slice(0, newline).split('\n').length;
-    const character: number = text.length - (newline + 1);
-    return { line, character };
   }
 
   /**
@@ -695,25 +769,98 @@ export class LspClient implements OnDestroy {
     if (this.bridge === undefined) {
       return Promise.resolve(false);
     }
+    this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
+    // A crash-looping or repeatedly-failing server is left unavailable (with its restart affordance)
+    // rather than re-spawned: without this, a server that dies on startup would spin in a
+    // spawn/crash cycle driven by every document sync.
+    const blockReason: string | null = this.startBlockReason(sessionId);
+    if (blockReason !== null) {
+      this.status.register(sessionId, {
+        serverId,
+        rootPath,
+        restart: (): void => void this.restart(sessionId),
+      });
+      this.status.setState(sessionId, 'unavailable', blockReason);
+      const blocked: Promise<boolean> = Promise.resolve(false);
+      this.sessions.set(sessionId, blocked);
+      return blocked;
+    }
+    // A recent failed start blocks another attempt for a cooldown, without caching the failure, so a
+    // later document sync retries once the cooldown has passed.
+    if (this.inStartCooldown(sessionId)) {
+      return Promise.resolve(false);
+    }
     this.status.register(sessionId, {
       serverId,
       rootPath,
       restart: (): void => void this.restart(sessionId),
     });
-    this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
     const pending: Promise<boolean> = this.bridge
       .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
           this.status.setState(sessionId, 'unavailable', result.error);
+          this.recordStartFailure(sessionId);
+          // Forget the failed session so a sync after the cooldown can try again; the attempt cap in
+          // startBlockReason stops this from retrying forever.
+          this.sessions.delete(sessionId);
         }
         if (result.success) {
+          this.startFailures.delete(sessionId);
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
         }
         return result.success;
       });
     this.sessions.set(sessionId, pending);
     return pending;
+  }
+
+  /**
+   * Determines why a session must not be started automatically, or null when a start is allowed. A
+   * session is blocked once its server has crashed repeatedly within the crash window, or once it has
+   * exhausted its automatic start attempts; a manual restart clears both.
+   * @param sessionId The session about to start.
+   * @returns Returns the human-readable block reason, or null when the start may proceed.
+   */
+  private startBlockReason(sessionId: string): string | null {
+    const now: number = Date.now();
+    const recentExits: number[] = (this.exitTimes.get(sessionId) ?? []).filter(
+      (time: number): boolean => now - time <= CRASH_WINDOW_MS,
+    );
+    if (recentExits.length >= MAX_CRASHES_IN_WINDOW) {
+      return 'The server crashed repeatedly and was stopped. Restart it to try again.';
+    }
+    const failure: { attempts: number; lastAt: number } | undefined =
+      this.startFailures.get(sessionId);
+    if (failure !== undefined && failure.attempts >= MAX_START_ATTEMPTS) {
+      return 'The server failed to start repeatedly. Restart it to try again.';
+    }
+    return null;
+  }
+
+  /**
+   * Determines whether a session's last failed start is recent enough that another automatic attempt
+   * must wait.
+   * @param sessionId The session about to start.
+   * @returns Returns true when the session is within its retry cooldown.
+   */
+  private inStartCooldown(sessionId: string): boolean {
+    const failure: { attempts: number; lastAt: number } | undefined =
+      this.startFailures.get(sessionId);
+    return failure !== undefined && Date.now() - failure.lastAt < START_RETRY_COOLDOWN_MS;
+  }
+
+  /**
+   * Records a failed start attempt for a session, feeding the retry cooldown and the attempt cap.
+   * @param sessionId The session whose start failed.
+   */
+  private recordStartFailure(sessionId: string): void {
+    const failure: { attempts: number; lastAt: number } | undefined =
+      this.startFailures.get(sessionId);
+    this.startFailures.set(sessionId, {
+      attempts: (failure?.attempts ?? 0) + 1,
+      lastAt: Date.now(),
+    });
   }
 
   /**
@@ -729,8 +876,7 @@ export class LspClient implements OnDestroy {
     // before) any diagnostics, so a clean project still flips from starting to ready and paints
     // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
     if (message.method === 'workspace/projectInitializationComplete') {
-      this.status.setState(message.sessionId, 'ready');
-      this.features.refreshSemanticTokens();
+      this.markReady(message.sessionId);
       return;
     }
     if (message.method !== 'textDocument/publishDiagnostics') {
@@ -752,10 +898,10 @@ export class LspClient implements OnDestroy {
     this.setMarkers(tracked, params.diagnostics);
     this.publish();
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
-    // document: flip the indicator from starting to ready, and ask Monaco to re-request semantic
-    // tokens (it cached an empty result earlier, before the server was ready) so highlighting paints.
-    this.status.setState(message.sessionId, 'ready');
-    this.features.refreshSemanticTokens();
+    // document: flip the indicator from starting to ready and re-request semantic tokens — but only
+    // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
+    // files; refreshing on every push would fan token requests out continuously.
+    this.markReady(message.sessionId);
   }
 
   /**
@@ -805,8 +951,16 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    // Remember when the exit happened (trimming entries outside the crash window), so a server that
+    // keeps dying is eventually left stopped instead of respawned forever.
+    const now: number = Date.now();
+    this.exitTimes.set(exit.sessionId, [
+      ...(this.exitTimes.get(exit.sessionId) ?? []).filter(
+        (time: number): boolean => now - time <= CRASH_WINDOW_MS,
+      ),
+      now,
+    ]);
     this.legends.delete(exit.sessionId);
-    this.sessionInfo.delete(exit.sessionId);
     this.status.remove(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
