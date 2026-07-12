@@ -1,19 +1,32 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
- * Describes the status a document contributes to the well status strip: the caret position, the
- * language mode, the end-of-line sequence and the encoding label.
+ * Describes the status a document contributes to the well status strip. Every field beyond the
+ * language is optional because different surfaces publish different shapes: a code document publishes
+ * its caret position, end-of-line sequence and encoding, while a prose (markdown) document publishes
+ * its word count and read time. The strip renders only the segments the publication carries.
  */
 export interface DocumentStatusInfo {
   /**
-   * Gets the one-based line number of the caret.
+   * Gets the one-based line number of the caret, for documents with a line-oriented caret.
    */
-  readonly line: number;
+  readonly line?: number;
 
   /**
-   * Gets the one-based column number of the caret.
+   * Gets the one-based column number of the caret, for documents with a line-oriented caret.
    */
-  readonly column: number;
+  readonly column?: number;
+
+  /**
+   * Gets the number of whitespace-separated words in the document, for prose documents.
+   */
+  readonly words?: number;
+
+  /**
+   * Gets the document's estimated read time in minutes, for prose documents (zero when empty, in
+   * which case no read-time segment is shown).
+   */
+  readonly readMinutes?: number;
 
   /**
    * Gets the document's language identifier (for example "csharp").
@@ -23,12 +36,12 @@ export interface DocumentStatusInfo {
   /**
    * Gets the document's end-of-line sequence (for example "LF" or "CRLF").
    */
-  readonly eol: string;
+  readonly eol?: string;
 
   /**
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
-  readonly encoding: string;
+  readonly encoding?: string;
 }
 
 /**
