@@ -403,6 +403,34 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Replaces a character-offset range of the editor's contents as a single undoable edit, leaving the
+   * rest of the document (and its undo history) untouched. A zero-length range inserts.
+   * @param start The first character offset of the range.
+   * @param length The number of characters to replace.
+   * @param text The replacement text.
+   */
+  public replaceRange(start: number, length: number, text: string): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    if (editor === null || model === null) {
+      return;
+    }
+    const from: MonacoApi.Position = model.getPositionAt(start);
+    const to: MonacoApi.Position = model.getPositionAt(start + length);
+    const range: MonacoApi.IRange = {
+      startLineNumber: from.lineNumber,
+      startColumn: from.column,
+      endLineNumber: to.lineNumber,
+      endColumn: to.column,
+    };
+    // Consecutive executeEdits calls merge into one undo group without explicit stops; each agent
+    // edit must undo on its own.
+    editor.pushUndoStop();
+    editor.executeEdits(COMMAND_SOURCE, [{ range, text, forceMoveMarkers: true }]);
+    editor.pushUndoStop();
+  }
+
+  /**
    * Awaits the Monaco load, then creates the editor.
    * @returns Returns a promise that resolves once the editor has been created.
    */

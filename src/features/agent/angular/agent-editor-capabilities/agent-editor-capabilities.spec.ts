@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 
-import { READ_ACTIVE_DOCUMENT, REPLACE_ACTIVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
+  READ_ACTIVE_DOCUMENT,
+  REPLACE_ACTIVE_DOCUMENT,
+} from '@shared/api/ai-types';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import {
   EditorCommandHandler,
@@ -74,6 +79,9 @@ function textHandler(initial: string): EditorCommandHandler {
     getText: (): string => text,
     replaceText: (value: string): void => {
       text = value;
+    },
+    replaceRange: (start: number, length: number, value: string): void => {
+      text = text.slice(0, start) + value + text.slice(start + length);
     },
   };
 }
@@ -189,5 +197,108 @@ describe('AgentEditorCapabilities', () => {
     const read: AiCapability | undefined = registered.get(READ_ACTIVE_DOCUMENT);
 
     expect(read?.({ tabId: 'missing' })).toEqual({ available: false, text: '' });
+  });
+
+  it('constructor_whenInstantiated_registersEditAndInsertCapabilities', () => {
+    expect(registered.has(EDIT_ACTIVE_DOCUMENT)).toBe(true);
+    expect(registered.has(INSERT_ACTIVE_DOCUMENT)).toBe(true);
+  });
+
+  it('edit_whenUniqueMatch_editsOnlyThatRegion', () => {
+    editorCommands.register('tab-1', textHandler('const a = 1;\nconst b = 2;\n'));
+    const edit: AiCapability | undefined = registered.get(EDIT_ACTIVE_DOCUMENT);
+
+    const result: unknown = edit?.({
+      tabId: 'tab-1',
+      oldString: 'const b = 2;',
+      newString: 'const b = 20;',
+    });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(editorCommands.readText('tab-1')).toBe('const a = 1;\nconst b = 20;\n');
+  });
+
+  it('edit_whenAnchorAmbiguous_failsWithoutChangingTheDocument', () => {
+    editorCommands.register('tab-1', textHandler('aa aa'));
+    const edit: AiCapability | undefined = registered.get(EDIT_ACTIVE_DOCUMENT);
+
+    const result: unknown = edit?.({ tabId: 'tab-1', oldString: 'aa', newString: 'b' });
+
+    expect((result as { ok: boolean; detail: string }).ok).toBe(false);
+    expect((result as { detail: string }).detail).toContain('2 places');
+    expect(editorCommands.readText('tab-1')).toBe('aa aa');
+  });
+
+  it('edit_whenReplaceAll_replacesEveryOccurrence', () => {
+    editorCommands.register('tab-1', textHandler('x = x + x'));
+    const edit: AiCapability | undefined = registered.get(EDIT_ACTIVE_DOCUMENT);
+
+    const result: unknown = edit?.({
+      tabId: 'tab-1',
+      oldString: 'x',
+      newString: 'y',
+      replaceAll: true,
+    });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(editorCommands.readText('tab-1')).toBe('y = y + y');
+  });
+
+  it('edit_whenMarkdownEditorOwnsTheTab_editsTheMarkdownSource', () => {
+    markdownCommands.register('doc-1', markdownHandler('# Title\n\nOld body.\n'));
+    const edit: AiCapability | undefined = registered.get(EDIT_ACTIVE_DOCUMENT);
+
+    const result: unknown = edit?.({
+      tabId: 'doc-1',
+      oldString: 'Old body.',
+      newString: 'New body.',
+    });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(markdownCommands.readDocument('doc-1')).toBe('# Title\n\nNew body.\n');
+  });
+
+  it('insert_afterAnchor_insertsIntoTheDocument', () => {
+    editorCommands.register('tab-1', textHandler('line one\nline three\n'));
+    const insert: AiCapability | undefined = registered.get(INSERT_ACTIVE_DOCUMENT);
+
+    const result: unknown = insert?.({
+      tabId: 'tab-1',
+      text: 'line two\n',
+      placement: 'after',
+      anchor: 'line one\n',
+    });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(editorCommands.readText('tab-1')).toBe('line one\nline two\nline three\n');
+  });
+
+  it('insert_atEnd_appendsToTheDocument', () => {
+    editorCommands.register('tab-1', textHandler('body'));
+    const insert: AiCapability | undefined = registered.get(INSERT_ACTIVE_DOCUMENT);
+
+    const result: unknown = insert?.({ tabId: 'tab-1', text: '!', placement: 'end' });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(editorCommands.readText('tab-1')).toBe('body!');
+  });
+
+  it('insert_whenNoEditor_reportsNoActiveDocument', () => {
+    const insert: AiCapability | undefined = registered.get(INSERT_ACTIVE_DOCUMENT);
+
+    const result: unknown = insert?.({ text: 'x', placement: 'end' });
+
+    expect((result as { ok: boolean; detail: string }).ok).toBe(false);
+    expect((result as { detail: string }).detail).toContain('No active document');
+  });
+
+  it('edit_whenUnscoped_editsTheFocusedEditor', () => {
+    editorCommands.register('tab-1', textHandler('alpha beta'));
+    const edit: AiCapability | undefined = registered.get(EDIT_ACTIVE_DOCUMENT);
+
+    const result: unknown = edit?.({ oldString: 'beta', newString: 'gamma' });
+
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(editorCommands.readActiveText()).toBe('alpha gamma');
   });
 });

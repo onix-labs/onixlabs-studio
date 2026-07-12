@@ -9,7 +9,7 @@ import { EditorCommandHandler, EditorCommands } from './editor-commands';
  */
 function recordingCommands(
   calls: Set<string>,
-): Omit<EditorCommandHandler, 'getText' | 'replaceText'> {
+): Omit<EditorCommandHandler, 'getText' | 'replaceText' | 'replaceRange'> {
   return {
     cut: (): void => void calls.add('cut'),
     copy: (): void => void calls.add('copy'),
@@ -37,6 +37,9 @@ function recordingHandler(calls: Set<string>, initial: string = ''): EditorComma
     getText: (): string => text,
     replaceText: (value: string): void => {
       text = value;
+    },
+    replaceRange: (start: number, length: number, value: string): void => {
+      text = text.slice(0, start) + value + text.slice(start + length);
     },
   };
 }

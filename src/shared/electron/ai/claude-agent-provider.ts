@@ -8,6 +8,8 @@ import type {
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
@@ -17,6 +19,7 @@ import {
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
+  type InsertPlacement,
   type AgentContextRef,
   type AgentSurface,
   type AiModelInfo,
@@ -35,6 +38,8 @@ import { resolveBundledClaudeExecutable } from './claude-executable';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
   BINARY_PROMPT_APPENDIX,
+  EDIT_TOOL_FQN,
+  INSERT_TOOL_FQN,
   READ_BINARY_BYTES_FQN,
   READ_BINARY_DISASSEMBLY_FQN,
   READ_BINARY_OVERVIEW_FQN,
@@ -45,6 +50,8 @@ import {
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
+  editActiveDocument,
+  insertIntoActiveDocument,
   patchBinaryBytes,
   readActiveDocument,
   readBinaryBytes,
@@ -299,8 +306,67 @@ export class ClaudeAgentProvider implements AgentProvider {
                 ? []
                 : [
                     tool(
+                      EDIT_ACTIVE_DOCUMENT,
+                      'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
+                      {
+                        old_string: z
+                          .string()
+                          .min(1)
+                          .describe('The exact text to replace; must match the document verbatim.'),
+                        new_string: z
+                          .string()
+                          .describe('The replacement text (empty deletes the matched text).'),
+                        replace_all: z
+                          .boolean()
+                          .optional()
+                          .describe(
+                            'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+                          ),
+                      },
+                      async (args: {
+                        old_string: string;
+                        new_string: string;
+                        replace_all?: boolean;
+                      }) =>
+                        text(
+                          await editActiveDocument(
+                            context,
+                            args.old_string,
+                            args.new_string,
+                            args.replace_all ?? false,
+                          ),
+                        ),
+                    ),
+                    tool(
+                      INSERT_ACTIVE_DOCUMENT,
+                      "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
+                      {
+                        text: z.string().min(1).describe('The text to insert.'),
+                        placement: z
+                          .enum(['before', 'after', 'start', 'end'])
+                          .describe(
+                            'Where to insert: relative to the anchor, or at a document edge.',
+                          ),
+                        anchor: z
+                          .string()
+                          .optional()
+                          .describe(
+                            'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
+                          ),
+                      },
+                      async (args: { text: string; placement: string; anchor?: string }) =>
+                        text(
+                          await insertIntoActiveDocument(
+                            context,
+                            args.text,
+                            args.placement as InsertPlacement,
+                            args.anchor,
+                          ),
+                        ),
+                    ),
+                    tool(
                       REPLACE_ACTIVE_DOCUMENT,
-                      "Replace the active editor document's entire text.",
+                      "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
                       { text: z.string().describe('The new full text of the document.') },
                       async (args: { text: string }) =>
                         text(await replaceActiveDocument(context, args.text)),
@@ -375,7 +441,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           ? [...BINARY_READ_FQNS, ...(hasReadableContext ? READ_ONLY_TOOLS : [])]
           : [
               READ_TOOL_FQN,
-              ...(readOnly ? [] : [REPLACE_TOOL_FQN]),
+              ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
               ...(hasReadableContext ? READ_ONLY_TOOLS : []),
             ],
       canUseTool,
