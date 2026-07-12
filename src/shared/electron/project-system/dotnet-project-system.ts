@@ -82,6 +82,15 @@ export class DotnetProjectSystem implements ProjectSystem {
   private dotnetProbe: Promise<string | null> | null = null;
 
   /**
+   * Determines whether this provider owns a project file (a .NET project by extension).
+   * @param projectPath The absolute project-file path.
+   * @returns Returns true when the file is a .NET project.
+   */
+  public ownsProject(projectPath: string): boolean {
+    return PROJECT_EXTENSIONS.includes(path.extname(projectPath).toLowerCase());
+  }
+
+  /**
    * Determines whether the root holds a .NET solution or any .NET projects.
    * @param root The absolute workspace root.
    * @returns Returns true when a solution file or at least one project is found.

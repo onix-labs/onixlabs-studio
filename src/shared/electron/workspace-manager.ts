@@ -218,7 +218,7 @@ export class WorkspaceManager {
     if (typeof projectPath !== 'string' || !this.workspace.isWithin(projectPath)) {
       return null;
     }
-    const system: ProjectSystem | undefined = projectSystems.get('dotnet');
+    const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
     return (await system?.loadProjectItems?.(projectPath)) ?? null;
   }
 

@@ -1,13 +1,16 @@
 import { DotnetProjectSystem } from './dotnet-project-system';
+import { NodeProjectSystem } from './node-project-system';
 import { ProjectSystemRegistry } from './project-system';
 
 /**
- * Builds a project-system registry seeded with the built-in providers.
+ * Builds a project-system registry seeded with the built-in providers. Registration order is match
+ * priority: a root holding both a .NET solution and a package.json models as .NET.
  * @returns Returns the registry.
  */
 export function createProjectSystems(): ProjectSystemRegistry {
   const registry: ProjectSystemRegistry = new ProjectSystemRegistry();
   registry.register(new DotnetProjectSystem());
+  registry.register(new NodeProjectSystem());
   return registry;
 }
 
