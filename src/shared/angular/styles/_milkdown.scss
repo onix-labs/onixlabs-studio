@@ -377,6 +377,7 @@ app-markdown-editor .milkdown .ProseMirror {
     padding: 1rem;
     padding-inline-end: 2.5rem;
     border: 1px solid var(--crepe-color-outline);
+    border-inline-start-width: 0.25rem;
     border-radius: calc(1rem * var(--border-radius-multiplier));
     corner-shape: var(--app-corner-shape, squircle);
     background: var(--crepe-color-surface);
