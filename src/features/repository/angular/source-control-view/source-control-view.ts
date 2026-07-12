@@ -11,6 +11,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
   AGENT_CONVERSATION_CONTEXT,
   ConversationContextResolver,
@@ -87,6 +89,11 @@ const STATUS_PRIORITY: number = 30;
     DockAutoHide,
     DockDrag,
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
+    // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
+    // destroy an inactive panel when another activates, and a conversation scoped to the panel would
+    // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
+    Agent,
+    AgentConversation,
     {
       // Scope agent conversations docked in this repository surface to the git repository root (or the
       // global bucket before a repository is bound). Resolved lazily so it tracks the repository bind.
