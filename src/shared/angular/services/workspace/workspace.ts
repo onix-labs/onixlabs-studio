@@ -332,6 +332,57 @@ export class Workspace {
   }
 
   /**
+   * Reveals an entry in the tree: expands (lazily loading where needed) every ancestor directory on
+   * the way down, then selects the entry. Used to keep the explorer's selection following the active
+   * document. Does nothing for a path outside the open root.
+   * @param path The absolute path of the entry to reveal.
+   * @returns Returns a promise that resolves once the entry has been revealed.
+   */
+  public async revealPath(path: string): Promise<void> {
+    const root: string | undefined = this.rootListing()?.path;
+    if (root === undefined || !this.isWithin(path, root)) {
+      return;
+    }
+    // Walk down structurally: at each level, descend into the directory whose path prefixes the
+    // target, expanding it (which lazily loads its children) when collapsed. Matching by the nodes'
+    // own paths avoids reconstructing paths from separators.
+    let nodes: readonly WorkspaceTreeNode[] = this.treeNodes();
+    for (;;) {
+      const ancestor: WorkspaceTreeNode | undefined = nodes.find(
+        (node: WorkspaceTreeNode): boolean =>
+          node.type === 'directory' && this.isWithin(path, node.path),
+      );
+      if (ancestor === undefined) {
+        break;
+      }
+      if (!ancestor.expanded) {
+        await this.toggleDirectory(ancestor.path);
+      }
+      const loaded: WorkspaceTreeNode | null = this.find(this.treeNodes(), ancestor.path);
+      if (loaded?.children == null) {
+        break;
+      }
+      nodes = loaded.children;
+    }
+    this.selection.set(path);
+  }
+
+  /**
+   * Determines whether a path lies strictly within a directory (it extends the directory's path
+   * across a separator).
+   * @param path The absolute path to test.
+   * @param directory The absolute directory path.
+   * @returns Returns true when the path is inside the directory.
+   */
+  private isWithin(path: string, directory: string): boolean {
+    return (
+      path.length > directory.length &&
+      path.startsWith(directory) &&
+      /[\\/]/.test(path.charAt(directory.length))
+    );
+  }
+
+  /**
    * Sets the search query that filters the tree, or clears it when empty.
    * @param value The query text.
    */

@@ -1,4 +1,4 @@
-import { Component, signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { TreeRow, TreeView } from './tree-view';
 
@@ -113,5 +113,25 @@ describe('TreeView', () => {
     expect(rows[1].getAttribute('aria-selected')).toBe('true');
     expect(rows[0].classList).not.toContain('active');
     expect(rows[0].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('selectedId_whenSetFromOutside_scrollsTheSelectedRowIntoView', async () => {
+    // jsdom has no scrollIntoView; install a recording one on the selected row's prototype.
+    const scrolled: string[] = [];
+    (
+      Element.prototype as unknown as { scrollIntoView: (options?: unknown) => void }
+    ).scrollIntoView = function (this: Element): void {
+      scrolled.push(this.getAttribute('data-tree-id') ?? '');
+    };
+    try {
+      component.selectedId.set('collapsed');
+      // afterRender hooks run on application ticks, not on the fixture's local change detection.
+      TestBed.inject(ApplicationRef).tick();
+      await fixture.whenStable();
+
+      expect(scrolled).toContain('collapsed');
+    } finally {
+      delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 });

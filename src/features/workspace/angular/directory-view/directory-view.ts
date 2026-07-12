@@ -38,7 +38,11 @@ import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
-import { collectPanelIds, findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  collectPanelIds,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -337,6 +341,24 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (model?.kind === 'dotnet') {
         untracked((): void => this.lspClient.prestartServer('csharp', model.root));
       }
+    });
+
+    // Focus follows the active document: when a document in the well becomes active, reveal and
+    // select it in the File Explorer and the Solution Explorer, expanding the folders on the way.
+    effect((): void => {
+      const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+      const activeId: string | null = well?.active ?? null;
+      if (activeId === null) {
+        return;
+      }
+      const path: string | null = this.documents.get(activeId)?.filePath() ?? null;
+      if (path === null) {
+        return;
+      }
+      untracked((): void => {
+        void this.workspace.revealPath(path);
+        this.solutionModel.revealPath(path);
+      });
     });
 
     // Register the workspace find accelerator while active, so Cmd/Ctrl+Shift+F reveals the Search

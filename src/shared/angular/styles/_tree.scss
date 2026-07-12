@@ -35,10 +35,9 @@ app-tree-view {
     background: var(--dock-title-background-color--focused);
   }
 
-  // The full-width selection treatment: an accent-tinted fill with an inset accent bar on the left.
+  // The full-width selection treatment: an accent-tinted fill across the row.
   &.active {
     background: color-mix(in srgb, var(--accent-color) 22%, transparent);
-    box-shadow: inset 0.125rem 0 0 var(--accent-color);
   }
 
   &:focus-visible {

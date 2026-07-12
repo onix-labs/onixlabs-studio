@@ -4,6 +4,7 @@
       class="tree-row"
       role="treeitem"
       tabindex="0"
+      [attr.data-tree-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
       [style.padding-left.px]="indentFor(row.depth)"
       [attr.aria-expanded]="row.expandable ? row.expanded : null"

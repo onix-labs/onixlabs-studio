@@ -21,7 +21,19 @@ const ROOT_LISTING: DirectoryListing = {
 const SRC_LISTING: DirectoryListing = {
   path: '/ws/src',
   name: 'src',
-  entries: [{ name: 'main.ts', path: '/ws/src/main.ts', type: 'file' }],
+  entries: [
+    { name: 'app', path: '/ws/src/app', type: 'directory' },
+    { name: 'main.ts', path: '/ws/src/main.ts', type: 'file' },
+  ],
+};
+
+/**
+ * Grandchild listing returned when the fake bridge reads `/ws/src/app`.
+ */
+const APP_LISTING: DirectoryListing = {
+  path: '/ws/src/app',
+  name: 'app',
+  entries: [{ name: 'app.ts', path: '/ws/src/app/app.ts', type: 'file' }],
 };
 
 /**
@@ -36,7 +48,13 @@ function fakeBridge(): Bridge {
         case WorkspaceChannel.OpenFolder as string:
           return Promise.resolve(ROOT_LISTING as T);
         case WorkspaceChannel.ReadDirectory as string:
-          return Promise.resolve((args[0] === '/ws/src' ? SRC_LISTING : null) as T);
+          return Promise.resolve(
+            (args[0] === '/ws/src'
+              ? SRC_LISTING
+              : args[0] === '/ws/src/app'
+                ? APP_LISTING
+                : null) as T,
+          );
         default:
           return Promise.resolve(null as T);
       }
@@ -76,6 +94,7 @@ describe('Workspace', () => {
     await service.toggleDirectory('/ws/src');
     expect(service.rows().map((row) => row.node.path)).toEqual([
       '/ws/src',
+      '/ws/src/app',
       '/ws/src/main.ts',
       '/ws/README.md',
     ]);
@@ -105,6 +124,49 @@ describe('Workspace', () => {
     await service.closeFolder();
     expect(service.hasWorkspace()).toBe(false);
     expect(service.rows()).toHaveLength(0);
+    expect(service.selectedPath()).toBeNull();
+  });
+
+  it('revealPath_expandsEveryAncestorAndSelectsTheEntry', async () => {
+    await service.openFolder();
+
+    await service.revealPath('/ws/src/app/app.ts');
+
+    // Both ancestor directories were lazily loaded and expanded on the way down.
+    expect(service.rows().map((row) => row.node.path)).toEqual([
+      '/ws/src',
+      '/ws/src/app',
+      '/ws/src/app/app.ts',
+      '/ws/src/main.ts',
+      '/ws/README.md',
+    ]);
+    expect(service.selectedPath()).toBe('/ws/src/app/app.ts');
+  });
+
+  it('revealPath_keepsAlreadyExpandedAncestorsExpanded', async () => {
+    await service.openFolder();
+    await service.toggleDirectory('/ws/src');
+
+    await service.revealPath('/ws/src/main.ts');
+
+    expect(service.rows().map((row) => row.node.path)).toContain('/ws/src/main.ts');
+    expect(service.selectedPath()).toBe('/ws/src/main.ts');
+  });
+
+  it('revealPath_outsideTheRoot_doesNothing', async () => {
+    await service.openFolder();
+
+    await service.revealPath('/elsewhere/file.ts');
+
+    expect(service.selectedPath()).toBeNull();
+  });
+
+  it('revealPath_forARootPrefixThatIsNotAncestor_doesNothing', async () => {
+    await service.openFolder();
+
+    // '/ws-other' shares the '/ws' prefix but is not inside the root.
+    await service.revealPath('/ws-other/file.ts');
+
     expect(service.selectedPath()).toBeNull();
   });
 });

@@ -76,6 +76,11 @@ export class SolutionPanel {
   protected readonly query: Signal<string> = this.solution.query;
 
   /**
+   * Gets the key of the selected row, or null when nothing is selected.
+   */
+  protected readonly selectedKey: Signal<string | null> = this.solution.selectedKey;
+
+  /**
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
@@ -165,6 +170,7 @@ export class SolutionPanel {
     if (row.expandable) {
       this.solution.toggle(row);
     } else if (row.path !== null) {
+      this.solution.select(row.key);
       void this.fileOpener.openPath(row.path);
     }
   }
