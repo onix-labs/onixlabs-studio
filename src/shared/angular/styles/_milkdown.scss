@@ -367,21 +367,24 @@ app-markdown-editor .milkdown .ProseMirror {
     }
   }
 
-  // Collapsible sections (<details>/<summary>): a bordered block whose header row holds the toggle
-  // chevron and the editable summary, above the ordinary editable body. While closed, everything in
-  // the inner region except the summary (its first child) is hidden.
+  // Collapsible sections (<details>/<summary>): styled like the blockquote callout box (same
+  // surface fill, outline border, and radius), with the toggle chevron on the right edge of the
+  // header row. While closed, everything in the inner region except the summary (its first child)
+  // is hidden.
   .collapse-block {
     position: relative;
-    margin: 1em 0;
-    padding: 0.25em 0.75em 0.25em 2.25em;
+    margin: 1rem 0;
+    padding: 1rem;
+    padding-inline-end: 2.5rem;
     border: 1px solid var(--crepe-color-outline);
-    border-radius: calc(0.5em * var(--border-radius-multiplier));
+    border-radius: calc(1rem * var(--border-radius-multiplier));
     corner-shape: var(--app-corner-shape, squircle);
+    background: var(--crepe-color-surface);
 
     .collapse-toggle {
       position: absolute;
-      inset-block-start: 0.55em;
-      inset-inline-start: 0.6em;
+      inset-block-start: 1.15rem;
+      inset-inline-end: 1rem;
       inline-size: 1.25em;
       block-size: 1.25em;
       padding: 0;
@@ -411,7 +414,14 @@ app-markdown-editor .milkdown .ProseMirror {
 
     .collapse-summary {
       font-weight: 600;
-      padding-block: 0.35em;
+    }
+
+    .collapse-inner > *:first-child {
+      margin-top: 0;
+    }
+
+    .collapse-inner > *:last-child {
+      margin-bottom: 0;
     }
 
     &[data-open='false'] .collapse-inner > *:not(.collapse-summary) {
