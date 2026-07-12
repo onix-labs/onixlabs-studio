@@ -211,7 +211,7 @@ describe('CommitDetail', () => {
     repository.selectedFiles.set([makeFile('src/app/main.ts', 'modified')]);
     fixture.detectChanges();
 
-    host.querySelector<HTMLButtonElement>('.detail__file-main')!.click();
+    host.querySelector<HTMLElement>('.tree-row')!.click();
 
     expect(repository.calls).toContain('selectFile:src/app/main.ts');
     expect(opened.length).toBe(1);
@@ -317,12 +317,13 @@ describe('CommitDetail', () => {
     repository.isWorkingSelected.set(true);
     repository.unstaged.set([makeFile('b.ts', 'modified')]);
     fixture.detectChanges();
-    expect(host.querySelectorAll('.detail__file')).toHaveLength(1);
+    expect(host.querySelectorAll('.detail__file-check')).toHaveLength(1);
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Toggle tracked files"]')!.click();
+    // Clicking the group's tree row toggles its expansion.
+    host.querySelector<HTMLElement>('.tree-row')!.click();
     fixture.detectChanges();
 
-    expect(host.querySelectorAll('.detail__file')).toHaveLength(0);
+    expect(host.querySelectorAll('.detail__file-check')).toHaveLength(0);
   });
 
   it('userChoices_surviveARefreshWhileNewFilesGetDefaults', () => {
