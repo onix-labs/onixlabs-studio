@@ -70,8 +70,10 @@
   flex: 1 1 auto;
   min-block-size: 0;
 
+  // Do not set `display` here: styling the child by tag outweighs its own `:host { display: flex }`
+  // (higher specificity), which would collapse the panel's flex column and let the chat overflow the
+  // tool strip. Sizing only.
   app-agent-conversation-panel {
-    display: block;
     block-size: 100%;
   }
 }
