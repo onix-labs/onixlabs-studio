@@ -212,6 +212,18 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   private isCreatingEditor: boolean = true;
 
   /**
+   * Holds the serialised markdown captured immediately after the editor is created, or null once the
+   * content has first diverged from it. The listener plugin debounces `markdownUpdated`, so the update
+   * fired while parsing non-empty initial content lands after `crepe.create()` resolves, past the
+   * {@link isCreatingEditor} guard. When parsing normalised the source (say, re-styling list markers),
+   * that update carries content that differs from the file without the user having edited anything;
+   * reporting it would falsely dirty the document and rewrite the file on a no-edit save. Updates are
+   * dropped while the serialised markdown still equals this baseline; the first divergence is a real
+   * edit and stops the check.
+   */
+  private postCreateMarkdown: string | null = null;
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly isEditorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -484,6 +496,15 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
           if (this.isCreatingEditor) {
             return;
           }
+          // The debounced init update arrives here, after creation: it is the parse normalising the
+          // initial content, not an edit, so updates matching the post-create serialisation are
+          // dropped until the content first diverges.
+          if (this.postCreateMarkdown !== null) {
+            if (markdown === this.postCreateMarkdown) {
+              return;
+            }
+            this.postCreateMarkdown = null;
+          }
           this.zone.run((): void => {
             this.ignoreNextChange = true;
             this.contentChange.emit(markdown);
@@ -498,6 +519,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       this.crepe = crepe;
       await crepe.create();
       this.isCreatingEditor = false;
+      this.postCreateMarkdown = crepe.getMarkdown();
 
       // Capture the editor view so the host can derive the outline from the document model and map
       // screen coordinates to document positions for its scroll-spy.
@@ -563,6 +585,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
     this.editorView = null;
     this.isCreatingEditor = true;
+    this.postCreateMarkdown = null;
   }
 
   /**
