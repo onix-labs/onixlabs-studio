@@ -1,5 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import {
   BinaryChunk,
   BinaryPatch,
@@ -10,6 +11,7 @@ import {
   OpenSelection,
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
@@ -87,6 +89,17 @@ export class Workspace {
    * Holds the settings service, consulted for how "Expand All" should behave.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the directory-watch service the open root is subscribed to, so on-disk changes made outside
+   * the application are reflected in the tree.
+   */
+  private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the disposer of the open root's directory watch, or null when no folder is open.
+   */
+  private watchDisposer: (() => void) | null = null;
 
   /**
    * Holds the open root listing, or null when no folder is open.
@@ -302,6 +315,8 @@ export class Workspace {
     if (root !== undefined) {
       await (this.bridge?.invoke<void>(WorkspaceChannel.CloseFolder, root) ?? Promise.resolve());
     }
+    this.watchDisposer?.();
+    this.watchDisposer = null;
     this.rootListing.set(null);
     this.treeNodes.set([]);
     this.selection.set(null);
@@ -396,16 +411,124 @@ export class Workspace {
   }
 
   /**
-   * Replaces the open root listing and seeds the tree with its children.
+   * Replaces the open root listing and seeds the tree with its children, re-pointing the directory
+   * watch at the new root so external changes keep the tree current.
    * @param listing The root directory listing.
    */
   private setListing(listing: DirectoryListing): void {
+    this.watchDisposer?.();
+    this.watchDisposer = this.directoryWatch.watch(
+      listing.path,
+      (event: DirectoryChangeEvent): void => void this.onDirectoryChanged(event),
+    );
     this.rootListing.set(listing);
     this.treeNodes.set(
       listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry)),
     );
     this.selection.set(null);
     this.searchQuery.set('');
+  }
+
+  /**
+   * Handles a burst of external on-disk changes under the open root, re-reading the affected
+   * directories the tree has loaded and reconciling their entries in place. Directories the tree has
+   * not loaded yet need nothing: they read fresh from disk when first expanded.
+   * @param event The change burst.
+   * @returns Returns a promise that resolves once the affected directories have been refreshed.
+   */
+  private async onDirectoryChanged(event: DirectoryChangeEvent): Promise<void> {
+    const root: string | undefined = this.rootListing()?.path;
+    if (root === undefined || event.root !== root) {
+      return;
+    }
+    const targets: readonly string[] = event.overflow
+      ? this.loadedDirectories()
+      : event.directories.filter(
+          (directory: string): boolean => directory === root || this.isLoadedDirectory(directory),
+        );
+    await Promise.all(targets.map((directory: string): Promise<void> => this.refresh(directory)));
+  }
+
+  /**
+   * Lists the root and every directory whose children the tree has loaded, the set an overflowing
+   * change burst refreshes.
+   * @returns Returns the loaded directories' absolute paths.
+   */
+  private loadedDirectories(): readonly string[] {
+    const root: string | undefined = this.rootListing()?.path;
+    const paths: string[] = root === undefined ? [] : [root];
+    const walk: (nodes: readonly WorkspaceTreeNode[]) => void = (
+      nodes: readonly WorkspaceTreeNode[],
+    ): void => {
+      for (const node of nodes) {
+        if (node.type === 'directory' && node.children !== null) {
+          paths.push(node.path);
+          walk(node.children);
+        }
+      }
+    };
+    walk(this.treeNodes());
+    return paths;
+  }
+
+  /**
+   * Determines whether a path is a directory whose children the tree has loaded.
+   * @param path The absolute path to test.
+   * @returns Returns true when the path is a loaded directory node.
+   */
+  private isLoadedDirectory(path: string): boolean {
+    const node: WorkspaceTreeNode | null = this.find(this.treeNodes(), path);
+    return node?.type === 'directory' && node.children !== null;
+  }
+
+  /**
+   * Re-reads one directory's listing and reconciles its loaded children against it: entries that
+   * survive keep their node (and with it their expansion and loaded subtree), added entries appear as
+   * collapsed unloaded nodes, and removed entries drop out. A directory that can no longer be read
+   * (deleted, or the root changed while the read was in flight) is left alone — its parent's refresh
+   * removes its node.
+   * @param path The absolute path of the directory to refresh.
+   * @returns Returns a promise that resolves once the directory has been reconciled.
+   */
+  private async refresh(path: string): Promise<void> {
+    const root: string | undefined = this.rootListing()?.path;
+    const listing: DirectoryListing | null = await this.readDirectoryListing(path);
+    if (listing === null || this.rootListing()?.path !== root) {
+      return;
+    }
+    if (path === root) {
+      this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+        this.reconcile(nodes, listing.entries),
+      );
+      return;
+    }
+    this.update(
+      path,
+      (current: WorkspaceTreeNode): WorkspaceTreeNode =>
+        current.children === null
+          ? current
+          : { ...current, children: this.reconcile(current.children, listing.entries) },
+    );
+  }
+
+  /**
+   * Reconciles a loaded child list against a directory's fresh entries, preserving the node (and so
+   * the expansion state and loaded subtree) of every entry that survives.
+   * @param existing The currently loaded child nodes.
+   * @param entries The directory's fresh entries, in listing order.
+   * @returns Returns the reconciled child list.
+   */
+  private reconcile(
+    existing: readonly WorkspaceTreeNode[],
+    entries: readonly DirectoryEntry[],
+  ): readonly WorkspaceTreeNode[] {
+    const byPath: Map<string, WorkspaceTreeNode> = new Map<string, WorkspaceTreeNode>(
+      existing.map((node: WorkspaceTreeNode): [string, WorkspaceTreeNode] => [node.path, node]),
+    );
+    return entries.map((entry: DirectoryEntry): WorkspaceTreeNode => {
+      const current: WorkspaceTreeNode | undefined = byPath.get(entry.path);
+      return current?.type === entry.type ? current : this.toNode(entry);
+    });
   }
 
   /**

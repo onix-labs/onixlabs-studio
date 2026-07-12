@@ -21,6 +21,7 @@ import {AgentConversationStore} from './ai/agent-conversation-store';
 import {AiManager} from './ai/ai-manager';
 import {CodeRunner} from '@shared/electron/code-runner';
 import {BinaryDisassembler} from '@shared/electron/binary-disassembler';
+import {DirectoryWatcher} from '@shared/electron/directory-watcher';
 import {FileManager} from '@shared/electron/file-manager';
 import {FileWatcher} from '@shared/electron/file-watcher';
 import {Logger} from '@shared/electron/logger';
@@ -222,6 +223,14 @@ class Program {
    * Watches open documents on disk and notifies the renderer when they change.
    */
   private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null => this.window);
+
+  /**
+   * Watches directory trees on disk and notifies the renderer when their entries change, feeding the
+   * explorers' live refresh and the source-control view's automatic git status.
+   */
+  private readonly directoryWatcher: DirectoryWatcher = new DirectoryWatcher(
+    (): BrowserWindow | null => this.window,
+  );
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
@@ -481,6 +490,7 @@ class Program {
     this.searchManager.register();
     this.binaryDisassembler.register();
     this.fileWatcher.register();
+    this.directoryWatcher.register();
     this.aiManager.register();
     this.agentConversationStore.register();
     this.lspSettingsManager.register();
@@ -691,6 +701,7 @@ class Program {
     this.codeRunner.dispose();
     this.taskRunner.disposeAll();
     this.fileWatcher.disposeAll();
+    this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();
     this.lspManager.disposeAll();
   }
