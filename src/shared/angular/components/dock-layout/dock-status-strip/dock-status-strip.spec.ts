@@ -81,6 +81,33 @@ describe('DockStatusStrip', () => {
     expect(text).toContain('100%');
   });
 
+  it('render_whenAProseDocumentPublishes_showsWordCountAndReadTimeWithoutCodeSegments', () => {
+    documentStatus.set('owner', {
+      words: 532,
+      readMinutes: 3,
+      language: 'markdown',
+      encoding: 'UTF-8',
+    });
+    fixture.detectChanges();
+
+    const text: string = host.textContent ?? '';
+    expect(text).toContain('532 words');
+    expect(text).toContain('3 min read');
+    expect(text).toContain('markdown');
+    expect(text).toContain('UTF-8');
+    expect(text).not.toContain('Ln ');
+    expect(text).not.toContain('100%');
+  });
+
+  it('render_whenAProseDocumentIsEmpty_hidesTheReadTime', () => {
+    documentStatus.set('owner', { words: 0, readMinutes: 0, language: 'markdown' });
+    fixture.detectChanges();
+
+    const text: string = host.textContent ?? '';
+    expect(text).toContain('0 words');
+    expect(text).not.toContain('min read');
+  });
+
   it('setZoom_setsTheGlobalEditorZoomAndTheShownPercentage', () => {
     documentStatus.set('owner', info);
     fixture.detectChanges();

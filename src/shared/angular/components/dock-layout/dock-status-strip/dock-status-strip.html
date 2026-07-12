@@ -8,27 +8,46 @@
 </div>
 @if (status(); as document) {
   <div class="dock-status-strip__group">
-    <button type="button" class="dock-status-strip__segment" title="Go to line and column">
-      Ln {{ document.line }}, Col {{ document.column }}
-    </button>
+    @if (document.line !== undefined && document.column !== undefined) {
+      <button type="button" class="dock-status-strip__segment" title="Go to line and column">
+        Ln {{ document.line }}, Col {{ document.column }}
+      </button>
+    }
+    @if (document.words !== undefined) {
+      <button type="button" class="dock-status-strip__segment" title="Word count">
+        {{ document.words }} {{ document.words === 1 ? 'word' : 'words' }}
+      </button>
+    }
+    @if (document.readMinutes) {
+      <button type="button" class="dock-status-strip__segment" title="Estimated read time">
+        {{ document.readMinutes }} min read
+      </button>
+    }
     <button type="button" class="dock-status-strip__segment" title="Language mode">
       {{ document.language }}
     </button>
-    <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
-      {{ document.eol }}
-    </button>
-    <button type="button" class="dock-status-strip__segment" title="Select encoding">
-      {{ document.encoding }}
-    </button>
-    <button
-      type="button"
-      class="dock-status-strip__segment"
-      title="Select zoom level"
-      [cdkMenuTriggerFor]="zoomMenu.panel() ?? null"
-      [cdkMenuPosition]="zoomMenu.position()"
-    >
-      {{ zoom() }}%
-    </button>
+    @if (document.eol) {
+      <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
+        {{ document.eol }}
+      </button>
+    }
+    @if (document.encoding) {
+      <button type="button" class="dock-status-strip__segment" title="Select encoding">
+        {{ document.encoding }}
+      </button>
+    }
+    <!-- The zoom only reaches Monaco text editors, so prose documents omit the segment. -->
+    @if (document.line !== undefined) {
+      <button
+        type="button"
+        class="dock-status-strip__segment"
+        title="Select zoom level"
+        [cdkMenuTriggerFor]="zoomMenu.panel() ?? null"
+        [cdkMenuPosition]="zoomMenu.position()"
+      >
+        {{ zoom() }}%
+      </button>
+    }
   </div>
 }
 

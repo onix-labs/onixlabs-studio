@@ -2,25 +2,29 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
   inject,
   input,
   InputSignal,
   Signal,
 } from '@angular/core';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
-
-/**
- * Sentinel word count for an empty document.
- */
-const NO_WORDS: number = 0;
+import {
+  computeMarkdownStats,
+  MarkdownStats,
+} from '@features/markdown/angular/markdown-status/markdown-status';
 
 /**
  * Represents the lean markdown surface mounted in a workspace document well: the shared
- * {@link MarkdownDocument} core with a compact toolstrip (document name, unsaved indicator, save) and
- * a status strip (word count). It is deliberately spare — unlike the full markdown tab view it carries
- * no ribbon and no outline/review/reader tool panels — because the well is a secondary editing surface
- * beside the workspace tree. The editor is fully editable, as in a tab.
+ * {@link MarkdownDocument} core. Unlike the full markdown tab view it carries no ribbon and no
+ * outline/review/reader tool panels — because the well is a secondary editing surface beside the
+ * workspace tree — and it shows neither a file toolstrip nor an inline status strip: the dock supplies
+ * the tab header and, while this panel is the active document, it publishes its word count, read time,
+ * language and encoding to the shared {@link DocumentStatus} so the well's status strip renders them.
+ * The editor is fully editable, as in a tab.
  */
 @Component({
   selector: 'app-markdown-document-panel',
@@ -31,9 +35,14 @@ const NO_WORDS: number = 0;
 })
 export class MarkdownDocumentPanel {
   /**
-   * Holds the documents service backing the hosted document's name, dirty state, content and save.
+   * Holds the documents service backing the hosted document's content, language and encoding.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the well status strip this panel publishes to while it is the active document.
+   */
+  private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
 
   /**
    * Gets the identifier of the document this panel displays (the well panel's id).
@@ -59,31 +68,30 @@ export class MarkdownDocumentPanel {
   );
 
   /**
-   * Gets the hosted document's display file name.
+   * Initializes a new instance of the {@link MarkdownDocumentPanel} class, publishing its status to
+   * the well status strip while it is the active document and clearing it when it is not or is
+   * destroyed.
    */
-  protected readonly fileName: Signal<string> = computed(
-    (): string => this.document()?.fileName() ?? '',
-  );
+  public constructor() {
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    effect((): void => {
+      const document: CodeDocument | undefined = this.document();
+      if (!this.isActive() || document === undefined) {
+        this.documentStatus.clear(this.documentId());
+        return;
+      }
+      const stats: MarkdownStats = computeMarkdownStats(document.content());
+      const encoding: string = document.encoding();
+      this.documentStatus.set(this.documentId(), {
+        words: stats.words,
+        readMinutes: stats.readMinutes,
+        language: document.language(),
+        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+      });
+    });
 
-  /**
-   * Gets a value indicating whether the document has unsaved changes.
-   */
-  protected readonly dirty: Signal<boolean> = computed(
-    (): boolean => this.document()?.dirty() ?? false,
-  );
-
-  /**
-   * Gets the number of whitespace-separated words in the document's markdown source.
-   */
-  protected readonly wordCount: Signal<number> = computed((): number => {
-    const content: string = this.document()?.content()?.trim() ?? '';
-    return content.length === 0 ? NO_WORDS : content.split(/\s+/).length;
-  });
-
-  /**
-   * Saves the hosted document, prompting for a path when it has never been saved.
-   */
-  protected onSave(): void {
-    void this.documents.save(this.documentId());
+    destroyRef.onDestroy((): void => {
+      this.documentStatus.clear(this.documentId());
+    });
   }
 }
