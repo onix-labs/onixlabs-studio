@@ -235,10 +235,12 @@ export class Agent {
   /**
    * Sends a user message, starting a run. Blank messages and concurrent sends are ignored.
    * @param text The user's message.
-   * @param owningTabId The identifier of the editor or terminal tab hosting this agent, so its in-app
-   * tools act on that tab; omitted for the standalone agent tab.
+   * @param owningTabId The identifier of the tab hosting this agent (every host passes its tab id —
+   * the content host sets one on each view), so a surface's in-app tools act on that tab; absent only
+   * for hosts with no owning tab, such as the Workspace and Repository agent panels, whose editor
+   * tools fall back to the focused editor.
    * @param surface What this run acts on, which selects the tool set the providers expose; omitted
-   * for the editor surface.
+   * for the editor surface. The standalone agent tab passes `project`, which exposes no in-app tools.
    */
   public send(text: string, owningTabId?: string, surface?: AgentSurface): void {
     const trimmed: string = text.trim();

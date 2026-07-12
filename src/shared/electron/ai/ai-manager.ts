@@ -341,6 +341,7 @@ export class AiManager {
       (record['surface'] === 'editor' ||
         record['surface'] === 'terminal' ||
         record['surface'] === 'binary' ||
+        record['surface'] === 'project' ||
         record['surface'] === undefined) &&
       (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
       (record['contextPaths'] === undefined || Array.isArray(record['contextPaths']))

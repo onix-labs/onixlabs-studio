@@ -83,6 +83,18 @@ export const STUDIO_PROMPT_APPENDIX: string = [
 ].join('\n');
 
 /**
+ * Appended to the system prompt for a project-surface run (the standalone agent tab), which has no
+ * owning document: the agent works through the provider's built-in tools alone.
+ */
+export const PROJECT_PROMPT_APPENDIX: string = [
+  'You are running inside ONIXLabs Studio as a standalone agent. You are not docked to any editor,',
+  'terminal, or document — work through your file-system and shell tools on the project itself.',
+  'The working directory is the open workspace root (or the home directory when no workspace is',
+  'open). Changes you make to files on disk appear in the IDE: open editors follow external file',
+  'changes, and the explorers refresh live.',
+].join('\n');
+
+/**
  * Appended to the system prompt for a terminal-surface run, so the model knows it acts only through
  * the owning terminal.
  */

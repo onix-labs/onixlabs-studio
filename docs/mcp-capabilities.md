@@ -7,7 +7,8 @@ main process's own state: each call is bridged back into the renderer
 on the live editor/terminal state — including unsaved edits — exactly as the user sees it.
 
 Which tools the server registers is decided per run by the **surface** the hosting tab declares
-(`AgentSurface = 'editor' | 'terminal' | 'binary'`, `src/shared/api/ai/ai-tool-surface.ts`), and
+(`AgentSurface = 'editor' | 'terminal' | 'binary' | 'project'`,
+`src/shared/api/ai/ai-tool-surface.ts`), and
 each tool is bound to the **owning tab** (`owningTabId`), so an agent docked to one tab cannot
 act on another. The Claude (Agent SDK) provider registers the tools as a real MCP server
 (`mcp__studio__<tool>`); the Vercel AI SDK and Ollama providers expose the identical tool set as
@@ -21,7 +22,7 @@ provider-independent — but permission gating is not (see [Cross-cutting rules]
 | Code       | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                  | `file` (document id)  |
 | Markdown   | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                  | `file` (document id)  |
 | Terminal   | `terminal` | `read_terminal_output`, `write_terminal_input` — **all other tools denied**                                                | per terminal tab      |
-| Agent      | `editor`   | editor tools (report "no document" — see below)                                                                            | `global`              |
+| Agent      | `project`  | **none** — the built-in Agent SDK tools are this surface's capability set (see below)                                      | `global`              |
 | Workspace  | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `workspace` (root)    |
 | Repository | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `repository` (root)   |
 | Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`      | per binary tab        |
@@ -81,15 +82,17 @@ most confined surface — the agent is deliberately locked to its terminal:
 ## Agent (standalone tab)
 
 The standalone Agent tab (`agent-view`) is a full-page chat with a `global` conversation scope
-and the default `editor` surface. It has no document of its own: the run still carries the agent
-tab's own id as `owningTabId`, so the editor tools resolve against a tab with no editor and
-report "No active document is open in the editor."
-
-In practice the standalone agent works through the **built-in Agent SDK tools** instead: with a
+and the dedicated `project` surface. It has no document of its own, so **no studio MCP server is
+registered at all** — the run's capability set is the **built-in Agent SDK tools**: with a
 workspace open (or files/folders attached), `Read`/`Glob`/`Grep` are auto-allowed, and edits,
 shell, and other built-ins are available subject to the permission posture, with the workspace
-root as the working directory (falling back to the home directory). This is the surface for
-project-wide work, where the in-app tools matter least.
+root as the working directory (falling back to the home directory). The prompt appendix
+(`PROJECT_PROMPT_APPENDIX`) tells the model it is undocked and that on-disk changes surface in
+the IDE (editors follow external changes; explorers refresh live). This is the surface for
+project-wide work.
+
+Note the provider caveat below: on the Vercel AI SDK and Ollama engines — which have no built-in
+tools — a `project` run carries no tools at all.
 
 ## Workspace
 
@@ -156,7 +159,8 @@ These apply to every tab type:
   are enforced by the **Claude Agent SDK provider**. The Vercel AI SDK and Ollama providers
   expose the same surface-selected tool set but have no per-tool permission hook, so their tool
   calls run ungated (`ai-sdk-stream.ts`); they also have no built-in file/shell tools, so their
-  reach is limited to the studio tools themselves.
+  reach is limited to the studio tools themselves — and on the `project` surface (which has no
+  studio tools) they have no tools at all.
 - **Attached context** — Attach File / Add Folder pass paths by reference (`contextPaths`); the
   prompt preamble lists them and the built-in `Read`/`Glob` tools are auto-allowed so the agent
   can read them even without an open workspace.
