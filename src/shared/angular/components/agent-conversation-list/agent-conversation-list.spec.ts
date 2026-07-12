@@ -48,15 +48,40 @@ describe('AgentConversationList', () => {
   });
 
   it('render_whenEmpty_showsTheEmptyMessage', () => {
-    expect(host.querySelector('.conversations__empty')?.textContent).toContain('No saved');
+    expect(host.querySelector('.list-empty')?.textContent).toContain('No saved');
+  });
+
+  it('render_listsEachSummaryAsASharedListViewRow', () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+
+    const row: HTMLElement | null = host.querySelector<HTMLElement>('.list-row');
+    expect(row).not.toBeNull();
+    expect(row?.textContent).toContain('From east to west');
+    expect(row?.textContent).toContain('4 messages');
   });
 
   it('open_whenRowClicked_rehydratesThatConversation', () => {
     summaries.set([SUMMARY]);
     fixture.detectChanges();
 
-    host.querySelector<HTMLButtonElement>('.conversations__open')!.click();
+    host.querySelector<HTMLElement>('.list-row')!.click();
 
     expect(opened).toEqual(['c1']);
+  });
+
+  it('checkbox_click_togglesWithoutOpeningTheConversation', () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+
+    const check: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      '.conversations__check input[type="checkbox"]',
+    )!;
+    check.click();
+    fixture.detectChanges();
+
+    expect(opened).toEqual([]);
+    // Checking a row reveals the delete action.
+    expect(host.querySelector('.conversations__delete')).not.toBeNull();
   });
 });

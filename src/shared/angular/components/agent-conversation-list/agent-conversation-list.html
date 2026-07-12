@@ -13,29 +13,29 @@
     </div>
   }
 
-  <div class="conversations__list">
-    @for (summary of summaries(); track summary.id) {
-      <div
-        class="conversations__row"
-        [class.conversations__row--active]="summary.id === activeId()"
-      >
-        <app-checkbox
-          class="conversations__check"
-          [checked]="isChecked(summary.id)"
-          (checkedChange)="onToggle(summary.id, $event)"
-        />
-        <button type="button" class="conversations__open" (click)="onOpen(summary.id)">
-          <span class="conversations__title">{{ summary.title }}</span>
-          <span class="conversations__meta">
-            {{ summary.messageCount }} message{{ summary.messageCount === 1 ? '' : 's' }} ·
-            {{ formatWhen(summary.updatedAt) }}
-          </span>
-        </button>
-      </div>
-    } @empty {
-      <div class="conversations__empty">No saved conversations yet.</div>
-    }
-  </div>
+  <app-list-view
+    [rows]="rows()"
+    [selectedId]="activeId()"
+    emptyText="No saved conversations yet."
+    (rowClick)="onRowClick($event)"
+  >
+    <ng-template let-row>
+      @let summary = summaryOf(row);
+      <app-checkbox
+        class="conversations__check"
+        [checked]="isChecked(summary.id)"
+        (checkedChange)="onToggle(summary.id, $event)"
+        (click)="$event.stopPropagation()"
+      />
+      <span class="conversations__text">
+        <span class="conversations__title">{{ summary.title }}</span>
+        <span class="conversations__meta">
+          {{ summary.messageCount }} message{{ summary.messageCount === 1 ? '' : 's' }} ·
+          {{ formatWhen(summary.updatedAt) }}
+        </span>
+      </span>
+    </ng-template>
+  </app-list-view>
 </div>
 
 <app-modal
