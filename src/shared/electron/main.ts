@@ -6,6 +6,8 @@ import {
   ipcMain,
   IpcMainEvent,
   IpcMainInvokeEvent,
+  Menu,
+  MenuItemConstructorOptions,
   shell,
   WebContents,
   WindowOpenHandlerResponse,
@@ -364,6 +366,12 @@ class Program {
     });
 
     window.once('ready-to-show', (): void => window.show());
+    // Page zoom is disabled (the application menu omits the zoom roles), but Chromium persists zoom
+    // levels per-origin in the session, so a level set before zoom was disabled would silently apply
+    // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
+    window.webContents.on('did-finish-load', (): void => {
+      window.webContents.setZoomLevel(0);
+    });
     window.on('close', this.onWindowClose.bind(this));
     window.on('closed', (): void => {
       this.window = null;
@@ -551,9 +559,39 @@ class Program {
   }
 
   /**
+   * Installs the application menu: the default menu minus the View menu's zoom items (Zoom In,
+   * Zoom Out, Actual Size). Page zoom is disabled in the application — the UI is designed for a
+   * fixed scale, and the editors provide their own content zoom — so the menu omits the zoom roles,
+   * which also unregisters their Cmd/Ctrl+=, - and 0 accelerators.
+   */
+  private installApplicationMenu(): void {
+    const template: MenuItemConstructorOptions[] = [];
+    if (process.platform === 'darwin') {
+      template.push({ role: 'appMenu' });
+    }
+    template.push(
+      { role: 'fileMenu' },
+      { role: 'editMenu' },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
+      { role: 'windowMenu' },
+    );
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  }
+
+  /**
    * Handles the app whenReady event.
    */
   private async onReady(): Promise<void> {
+    this.installApplicationMenu();
     this.registerIpcHandlers();
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
     // the renderer's preload reads it synchronously (before the first paint).
