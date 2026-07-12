@@ -12,6 +12,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type AgentSurface,
   type InsertPlacement,
@@ -34,6 +35,7 @@ import {
   readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
+  writeBinaryAssembly,
   writeTerminalInput,
 } from './studio-tools';
 
@@ -306,6 +308,24 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
       }),
       execute: (args: { offset: number; length: number }): Promise<string> =>
         deleteBinaryBytes(context, args.offset, args.length),
+    }),
+    [WRITE_BINARY_ASSEMBLY]: tool({
+      description:
+        'Assemble x86/x64 assembly text (Intel syntax, one instruction per line) and write it at an offset in the open binary file, editing at the instruction level. The file length is unchanged: pass the length of the range being replaced — shorter code is NOP-padded, longer code is rejected so it never shifts the following instructions. Covers x86 and x64 only (ARM/ARM64 cannot be assembled); code is assembled at address 0, so use PC-relative operands for branches. Reports the bytes written and their disassembly. Produces an unsaved, undoable edit.',
+      inputSchema: z.object({
+        offset: z.number().int().min(0).describe('The offset to write the assembled bytes at.'),
+        assembly: z.string().min(1).describe('The assembly to write, e.g. "mov eax, 1; ret".'),
+        length: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            'The number of bytes the write should occupy (the replaced range); defaults to the assembled length. Shorter assembly is NOP-padded to this; longer is rejected.',
+          ),
+      }),
+      execute: (args: { offset: number; assembly: string; length?: number }): Promise<string> =>
+        writeBinaryAssembly(context, args.offset, args.assembly, args.length),
     }),
   };
 }

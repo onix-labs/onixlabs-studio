@@ -22,6 +22,7 @@ import {AgentConversationStore} from './ai/agent-conversation-store';
 import {AiManager} from './ai/ai-manager';
 import {CodeRunner} from '@shared/electron/code-runner';
 import {BinaryDisassembler} from '@shared/electron/binary-disassembler';
+import {BinaryAssembler} from '@shared/electron/binary-assembler';
 import {DirectoryWatcher} from '@shared/electron/directory-watcher';
 import {FileManager} from '@shared/electron/file-manager';
 import {FileWatcher} from '@shared/electron/file-watcher';
@@ -301,6 +302,13 @@ class Program {
   private readonly binaryDisassembler: BinaryDisassembler = new BinaryDisassembler();
 
   /**
+   * Assembles machine code for the binary/hex editor's agent, the write-side counterpart to the
+   * disassembler. It turns assembly text the renderer sends into bytes, needing no disk access of its
+   * own.
+   */
+  private readonly binaryAssembler: BinaryAssembler = new BinaryAssembler();
+
+  /**
    * Owns the user's language-server settings (disabled servers, runtime overrides).
    */
   private readonly lspSettingsManager: LspSettingsManager = new LspSettingsManager();
@@ -572,6 +580,7 @@ class Program {
     this.workspaceManager.register();
     this.searchManager.register();
     this.binaryDisassembler.register();
+    this.binaryAssembler.register();
     this.fileWatcher.register();
     this.directoryWatcher.register();
     this.aiManager.register();

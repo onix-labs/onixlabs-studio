@@ -18,6 +18,7 @@ export {
   PATCH_BINARY_BYTES,
   INSERT_BINARY_BYTES,
   DELETE_BINARY_BYTES,
+  WRITE_BINARY_ASSEMBLY,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';

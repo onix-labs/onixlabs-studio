@@ -55,6 +55,7 @@
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
     "@anthropic-ai/claude-agent-sdk": "^0.3.177",
+    "@defasm/core": "^2.4.5",
     "@milkdown/crepe": "^7.21.2",
     "@phosphor-icons/web": "^2.1.2",
     "@vscode/ripgrep": "^1.18.0",

@@ -81,6 +81,13 @@ export const INSERT_BINARY_BYTES: string = 'insert_binary_bytes';
 export const DELETE_BINARY_BYTES: string = 'delete_binary_bytes';
 
 /**
+ * The in-app capability that assembles assembly text and writes it over a byte range of the owning
+ * binary document, leaving the length unchanged (shorter output is NOP-padded, longer is rejected).
+ * Produces an unsaved, undoable edit.
+ */
+export const WRITE_BINARY_ASSEMBLY: string = 'write_binary_assembly';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
  * standalone agent tab, which has no owning document and works through the provider's built-in tools

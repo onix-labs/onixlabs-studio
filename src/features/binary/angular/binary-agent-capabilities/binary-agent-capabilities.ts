@@ -7,8 +7,9 @@ import {
   READ_BINARY_DISASSEMBLY,
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
+  WRITE_BINARY_ASSEMBLY,
 } from '@shared/api/ai-types';
-import { DecodedInstruction } from '@shared/api/binary-channels';
+import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import {
   BinaryDocumentEntry,
@@ -112,6 +113,10 @@ export class BinaryAgentCapabilities {
     this.runtime.registerCapability(
       DELETE_BINARY_BYTES,
       (input: unknown): Promise<PatchResult> => this.delete(input),
+    );
+    this.runtime.registerCapability(
+      WRITE_BINARY_ASSEMBLY,
+      (input: unknown): Promise<PatchResult> => this.writeAssembly(input),
     );
   }
 
@@ -301,6 +306,144 @@ export class BinaryAgentCapabilities {
       ok: true,
       text: `Deleted ${length} byte(s) at ${this.hexOffset(offset)}. The file is now ${document.size()} bytes and every offset at or after ${this.hexOffset(offset)} has shifted by -${length} — earlier reads are stale. The change is unsaved and undoable.`,
     };
+  }
+
+  /**
+   * Assembles assembly text and writes it over a byte range from a `{ tabId, offset, assembly, length? }`
+   * input. The file length is never changed: when the assembled bytes are shorter than the replaced
+   * range they are padded with architecture-appropriate NOPs, and when they are longer the write is
+   * rejected (growing the file would shift the following code). Produces an unsaved, undoable edit and
+   * echoes the round-trip disassembly of what landed.
+   * @param input The capability input.
+   * @returns Returns the {@link PatchResult}.
+   */
+  private async writeAssembly(input: unknown): Promise<PatchResult> {
+    const document: BinaryDocumentEntry | undefined = this.resolve(input);
+    if (document === undefined) {
+      return { ok: false, text: 'No binary document is open in this view.' };
+    }
+    await document.whenReady();
+    const offset: number | null = this.extractNumber(input, 'offset');
+    const assembly: string | null = this.extractString(input, 'assembly');
+    const length: number | null = this.extractNumber(input, 'length');
+    if (offset === null || offset < 0) {
+      return { ok: false, text: 'A non-negative byte offset is required.' };
+    }
+    if (assembly === null || assembly.trim().length === 0) {
+      return {
+        ok: false,
+        text: 'The assembly must be a non-empty string, e.g. "mov eax, 1; ret".',
+      };
+    }
+    if (length !== null && (!Number.isInteger(length) || length <= 0)) {
+      return { ok: false, text: 'When given, length must be a positive whole number of bytes.' };
+    }
+    const architecture: string | null = disassemblyArchitecture(document.format());
+    if (architecture === null) {
+      return {
+        ok: false,
+        text: `Assembly is not available for this format (${describeFormat(document.format())}).`,
+      };
+    }
+    const assembled: AssembleResult = await document.assemble(assembly, architecture, offset);
+    if (!assembled.ok) {
+      return { ok: false, text: `Could not assemble the instructions: ${assembled.error}` };
+    }
+    const written: number[] | string = await this.fit(
+      document,
+      architecture,
+      offset,
+      [...assembled.bytes],
+      length ?? assembled.bytes.length,
+    );
+    if (typeof written === 'string') {
+      return { ok: false, text: written };
+    }
+    const ok: boolean = await document.patch(offset, written);
+    if (!ok) {
+      return {
+        ok: false,
+        text: `Cannot write ${written.length} byte(s) at ${this.hexOffset(offset)}: the range is outside the file (size ${document.size()} bytes). Assembly cannot change the file length.`,
+      };
+    }
+    return { ok: true, text: await this.describeWrite(document, offset, assembled.bytes, written) };
+  }
+
+  /**
+   * Fits assembled bytes to the replaced range without changing the file length: returns them unchanged
+   * when they match, NOP-padded when shorter, or an explanatory rejection string when they are longer
+   * than the range or cannot be padded to it in whole NOPs.
+   * @param document The binary document.
+   * @param architecture The architecture label (for the NOP encoding).
+   * @param offset The write offset (the NOP is assembled at it; its encoding is address-independent).
+   * @param assembled The assembled bytes.
+   * @param replaced The number of bytes the write must occupy.
+   * @returns Returns the fitted bytes, or a rejection message.
+   */
+  private async fit(
+    document: BinaryDocumentEntry,
+    architecture: string,
+    offset: number,
+    assembled: number[],
+    replaced: number,
+  ): Promise<number[] | string> {
+    if (assembled.length > replaced) {
+      return `The assembly is ${assembled.length} byte(s) but the target range is ${replaced} byte(s); assembly cannot grow the file (it would shift the following code). Shorten the instructions, or widen the range to at least ${assembled.length} bytes if the following bytes are expendable.`;
+    }
+    if (assembled.length === replaced) {
+      return assembled;
+    }
+    const nop: AssembleResult = await document.assemble('nop', architecture, offset);
+    if (!nop.ok || nop.bytes.length === 0) {
+      return `Cannot pad the ${replaced - assembled.length} spare byte(s): no NOP encoding is available for the ${architecture} architecture.`;
+    }
+    const gap: number = replaced - assembled.length;
+    if (gap % nop.bytes.length !== 0) {
+      return `Cannot pad ${gap} spare byte(s) with ${nop.bytes.length}-byte NOPs; choose a range length that leaves a whole number of NOPs (a multiple of ${nop.bytes.length} bytes after the instructions).`;
+    }
+    const padded: number[] = [...assembled];
+    for (let count: number = 0; count < gap / nop.bytes.length; count += 1) {
+      padded.push(...nop.bytes);
+    }
+    return padded;
+  }
+
+  /**
+   * Describes a successful assembly write for the model: the bytes that landed (noting any NOP
+   * padding) and the round-trip disassembly of the written range, so the model sees exactly what it
+   * wrote.
+   * @param document The binary document.
+   * @param offset The write offset.
+   * @param assembled The bytes the assembler produced (before any padding).
+   * @param written The bytes actually written (assembled plus any NOP padding).
+   * @returns Returns the confirmation text.
+   */
+  private async describeWrite(
+    document: BinaryDocumentEntry,
+    offset: number,
+    assembled: readonly number[],
+    written: readonly number[],
+  ): Promise<string> {
+    const hex: string = written
+      .map((value: number): string => value.toString(16).padStart(2, '0'))
+      .join(' ');
+    const padding: number = written.length - assembled.length;
+    const note: string =
+      padding > 0 ? ` (${assembled.length} assembled + ${padding} NOP-pad byte(s))` : '';
+    const instructions: readonly DecodedInstruction[] | null = await document.disassembleRange(
+      offset,
+      written.length,
+    );
+    const listing: string =
+      instructions !== null && instructions.length > 0
+        ? this.listInstructions(instructions)
+        : '(the written range did not disassemble)';
+    return [
+      `Assembled and wrote ${written.length} byte(s) at ${this.hexOffset(offset)}${note}: ${hex}.`,
+      'The written range now disassembles as:',
+      listing,
+      'The change is unsaved and undoable; the user can save it to write it to disk.',
+    ].join('\n');
   }
 
   /**

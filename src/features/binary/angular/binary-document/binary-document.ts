@@ -9,7 +9,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { DecodedInstruction } from '@shared/api/binary-channels';
+import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
@@ -22,6 +22,7 @@ import {
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { PieceRun, PieceTable, PieceTableSnapshot } from './binary-piece-table';
 import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
+import { BinaryAssembly } from '../binary-assembly/binary-assembly';
 import {
   BinaryFormat,
   codeOffset,
@@ -254,6 +255,8 @@ export class BinaryDocumentEntry {
    * @param path The absolute path of the file.
    * @param fileName The file's base name.
    * @param workspace The workspace client used to read byte windows from the main process.
+   * @param disassembly The disassembly client used to decode instructions.
+   * @param assembly The assembly client used to assemble instructions the agent writes.
    */
   public constructor(
     public readonly tabId: string,
@@ -261,6 +264,7 @@ export class BinaryDocumentEntry {
     public readonly fileName: string,
     private readonly workspace: Workspace,
     private readonly disassembly: BinaryDisassembly,
+    private readonly assembly: BinaryAssembly,
   ) {}
 
   /**
@@ -722,6 +726,24 @@ export class BinaryDocumentEntry {
   }
 
   /**
+   * Assembles a snippet of assembly into machine bytes for this document's architecture, so the agent
+   * can write at the instruction level. The caller resolves the architecture (from the sniffed format)
+   * and supplies the address the code lands at, so PC-relative operands resolve; the assembled bytes
+   * are written back through {@link patch}, which keeps the file length unchanged.
+   * @param assembly The assembly text (one or more instructions).
+   * @param architecture The architecture label the code is assembled for.
+   * @param address The absolute file offset the first instruction is assembled at.
+   * @returns Returns the assembled bytes, or the reason assembly failed.
+   */
+  public assemble(
+    assembly: string,
+    architecture: string,
+    address: number,
+  ): Promise<AssembleResult> {
+    return this.assembly.assemble(assembly, architecture, address);
+  }
+
+  /**
    * Overwrites a run of bytes at an offset with new values in a single undo transaction (leaving the
    * document's length unchanged). Used by the agent's patch capability; it makes an unsaved, undoable
    * edit that the user saves through the ribbon. The first block is loaded first so the document size
@@ -982,6 +1004,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
   private readonly disassembly: BinaryDisassembly = inject(BinaryDisassembly);
 
   /**
+   * Holds the assembly client each document assembles the agent's instruction-level edits through.
+   */
+  private readonly assembly: BinaryAssembly = inject(BinaryAssembly);
+
+  /**
    * Holds the file-watch service each document's file is subscribed to, so external on-disk changes
    * re-render the document.
    */
@@ -1033,6 +1060,7 @@ export class BinaryDocuments implements UnsavedWorkSource {
         fileName,
         this.workspace,
         this.disassembly,
+        this.assembly,
       );
       this.entries.set(tab.id, entry);
       this.tabs.rename(tab.id, fileName);
