@@ -1,4 +1,7 @@
 import {
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
+  InsertPlacement,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
@@ -21,6 +24,16 @@ export const READ_TOOL_FQN: string = `mcp__studio__${READ_ACTIVE_DOCUMENT}`;
  * The fully-qualified name the replace tool is exposed under to the Claude Agent SDK.
  */
 export const REPLACE_TOOL_FQN: string = `mcp__studio__${REPLACE_ACTIVE_DOCUMENT}`;
+
+/**
+ * The fully-qualified name the string-anchored edit tool is exposed under to the Claude Agent SDK.
+ */
+export const EDIT_TOOL_FQN: string = `mcp__studio__${EDIT_ACTIVE_DOCUMENT}`;
+
+/**
+ * The fully-qualified name the insert tool is exposed under to the Claude Agent SDK.
+ */
+export const INSERT_TOOL_FQN: string = `mcp__studio__${INSERT_ACTIVE_DOCUMENT}`;
 
 /**
  * The fully-qualified name the read-terminal tool is exposed under to the Claude Agent SDK.
@@ -54,11 +67,19 @@ export const STUDIO_PROMPT_APPENDIX: string = [
   'You are running inside ONIXLabs Studio, docked to a specific editor tab, and you can act on that',
   "tab's open document:",
   `- "${READ_ACTIVE_DOCUMENT}" reads this tab's editor document text.`,
-  `- "${REPLACE_ACTIVE_DOCUMENT}" replaces this tab's editor document with new text.`,
-  'When the user asks you to write, generate, or edit code or content for this tab, put the result in',
-  'the editor with these tools rather than writing a file to disk — the document may be unsaved/in',
-  'memory, and the user wants to see it in their editor. Use the file-system tools for broader project',
-  'work (creating other files, reading the repo) and to save/run when the user asks you to execute.',
+  `- "${EDIT_ACTIVE_DOCUMENT}" replaces one exact occurrence of a string with new text (or every`,
+  '  occurrence with replace_all). The old string must match the document exactly and uniquely —',
+  '  include surrounding context to disambiguate. Delete text by replacing it with an empty string.',
+  `- "${INSERT_ACTIVE_DOCUMENT}" inserts text before/after an anchor string, or at the document's`,
+  '  start or end.',
+  `- "${REPLACE_ACTIVE_DOCUMENT}" replaces this tab's editor document with new text in full.`,
+  `For targeted changes, prefer "${EDIT_ACTIVE_DOCUMENT}" and "${INSERT_ACTIVE_DOCUMENT}" over`,
+  `"${REPLACE_ACTIVE_DOCUMENT}" — they only touch the region you name. Reserve the full replace for`,
+  'rewriting most of a document. When the user asks you to write, generate, or edit code or content',
+  'for this tab, put the result in the editor with these tools rather than writing a file to disk —',
+  'the document may be unsaved/in memory, and the user wants to see it in their editor. Use the',
+  'file-system tools for broader project work (creating other files, reading the repo) and to',
+  'save/run when the user asks you to execute.',
 ].join('\n');
 
 /**
@@ -165,6 +186,63 @@ export async function replaceActiveDocument(
   return replace.ok === true
     ? 'The active document was updated.'
     : 'There is no active document to update.';
+}
+
+/**
+ * Applies a string-anchored edit to the owning tab's editor document through the renderer bridge and
+ * renders the result. The renderer reports anchor failures (not found, ambiguous) in `detail` so the
+ * model can re-read and disambiguate.
+ * @param context The agent run context (carries the bridge and the owning tab id).
+ * @param oldString The exact text to replace (must match once, unless replacing all).
+ * @param newString The replacement text (empty deletes the matched text).
+ * @param replaceAll Whether to replace every occurrence instead of requiring a unique match.
+ * @returns Returns a short confirmation, or the reason the edit was not applied.
+ */
+export async function editActiveDocument(
+  context: AgentRunContext,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean = false,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(EDIT_ACTIVE_DOCUMENT, {
+    tabId: context.owningTabId,
+    oldString,
+    newString,
+    replaceAll,
+  });
+  const edit: { ok?: boolean; detail?: string } = result ?? {};
+  return (
+    edit.detail ??
+    (edit.ok === true ? 'The edit was applied.' : 'There is no active document to edit.')
+  );
+}
+
+/**
+ * Inserts text into the owning tab's editor document through the renderer bridge and renders the
+ * result.
+ * @param context The agent run context (carries the bridge and the owning tab id).
+ * @param text The text to insert.
+ * @param placement Where to insert: before/after an anchor, or at the document start/end.
+ * @param anchor The anchor text for before/after placements (must match exactly once).
+ * @returns Returns a short confirmation, or the reason the insert was not applied.
+ */
+export async function insertIntoActiveDocument(
+  context: AgentRunContext,
+  text: string,
+  placement: InsertPlacement,
+  anchor?: string,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(INSERT_ACTIVE_DOCUMENT, {
+    tabId: context.owningTabId,
+    text,
+    placement,
+    anchor,
+  });
+  const insert: { ok?: boolean; detail?: string } = result ?? {};
+  return (
+    insert.detail ??
+    (insert.ok === true ? 'The text was inserted.' : 'There is no active document to insert into.')
+  );
 }
 
 /**

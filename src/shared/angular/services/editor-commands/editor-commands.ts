@@ -60,6 +60,15 @@ export interface EditorCommandHandler {
    * @param text The new text.
    */
   replaceText(text: string): void;
+
+  /**
+   * Replaces a character-offset range of the editor's text (as a single undoable edit that leaves the
+   * rest of the document untouched). A zero-length range inserts.
+   * @param start The first character offset of the range.
+   * @param length The number of characters to replace.
+   * @param text The replacement text.
+   */
+  replaceRange(start: number, length: number, text: string): void;
 }
 
 /**
@@ -162,6 +171,23 @@ export class EditorCommands {
   }
 
   /**
+   * Replaces a character-offset range of a specific tab's editor text.
+   * @param id The owning tab identifier.
+   * @param start The first character offset of the range.
+   * @param length The number of characters to replace.
+   * @param text The replacement text.
+   * @returns Returns true when an editor was registered for the tab and updated.
+   */
+  public replaceRange(id: string, start: number, length: number, text: string): boolean {
+    const handler: EditorCommandHandler | undefined = this.handlers.get(id);
+    if (handler === undefined) {
+      return false;
+    }
+    handler.replaceRange(start, length, text);
+    return true;
+  }
+
+  /**
    * Reads the full text of the editor the unscoped agent should act on (the active editor, or the last
    * one the user worked in). Used when a run carries no owning tab.
    * @returns Returns the text, or null when no code editor is available.
@@ -181,6 +207,22 @@ export class EditorCommands {
       return false;
     }
     target.replaceText(text);
+    return true;
+  }
+
+  /**
+   * Replaces a character-offset range of the editor the unscoped agent should act on.
+   * @param start The first character offset of the range.
+   * @param length The number of characters to replace.
+   * @param text The replacement text.
+   * @returns Returns true when an editor was available and updated.
+   */
+  public replaceActiveRange(start: number, length: number, text: string): boolean {
+    const target: EditorCommandHandler | null = this.fallbackTarget();
+    if (target === null) {
+      return false;
+    }
+    target.replaceRange(start, length, text);
     return true;
   }
 

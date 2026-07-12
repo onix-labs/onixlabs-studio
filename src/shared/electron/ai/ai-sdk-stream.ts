@@ -1,5 +1,7 @@
 import type { ToolSet } from 'ai';
 import {
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
@@ -10,12 +12,15 @@ import {
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
   type AgentSurface,
+  type InsertPlacement,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
 import {
   BINARY_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
+  editActiveDocument,
+  insertIntoActiveDocument,
   patchBinaryBytes,
   readActiveDocument,
   readBinaryBytes,
@@ -119,8 +124,52 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
       inputSchema: z.object({}),
       execute: (): Promise<string> => readActiveDocument(context),
     }),
+    [EDIT_ACTIVE_DOCUMENT]: tool({
+      description:
+        'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
+      inputSchema: z.object({
+        old_string: z
+          .string()
+          .min(1)
+          .describe('The exact text to replace; must match the document verbatim.'),
+        new_string: z
+          .string()
+          .describe('The replacement text (empty deletes the matched text).'),
+        replace_all: z
+          .boolean()
+          .optional()
+          .describe(
+            'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+          ),
+      }),
+      execute: (args: {
+        old_string: string;
+        new_string: string;
+        replace_all?: boolean;
+      }): Promise<string> =>
+        editActiveDocument(context, args.old_string, args.new_string, args.replace_all ?? false),
+    }),
+    [INSERT_ACTIVE_DOCUMENT]: tool({
+      description:
+        "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
+      inputSchema: z.object({
+        text: z.string().min(1).describe('The text to insert.'),
+        placement: z
+          .enum(['before', 'after', 'start', 'end'])
+          .describe('Where to insert: relative to the anchor, or at a document edge.'),
+        anchor: z
+          .string()
+          .optional()
+          .describe(
+            'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
+          ),
+      }),
+      execute: (args: { text: string; placement: string; anchor?: string }): Promise<string> =>
+        insertIntoActiveDocument(context, args.text, args.placement as InsertPlacement, args.anchor),
+    }),
     [REPLACE_ACTIVE_DOCUMENT]: tool({
-      description: "Replace the active editor document's entire text.",
+      description:
+        "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
       inputSchema: z.object({ text: z.string().describe('The new full text of the document.') }),
       execute: (args: { text: string }): Promise<string> =>
         replaceActiveDocument(context, args.text),

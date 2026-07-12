@@ -7,6 +7,8 @@
 export {
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
   READ_TERMINAL_OUTPUT,
   WRITE_TERMINAL_INPUT,
   READ_BINARY_OVERVIEW,
@@ -15,7 +17,7 @@ export {
   READ_BINARY_DISASSEMBLY,
   PATCH_BINARY_BYTES,
 } from './ai/ai-tool-surface';
-export type { AgentSurface } from './ai/ai-tool-surface';
+export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
 export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
 export type {

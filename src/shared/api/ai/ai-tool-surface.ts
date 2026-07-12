@@ -13,6 +13,23 @@ export const READ_ACTIVE_DOCUMENT: string = 'read_active_document';
 export const REPLACE_ACTIVE_DOCUMENT: string = 'replace_active_document';
 
 /**
+ * The in-app capability that applies a string-anchored edit to the active editor document: the given
+ * text is located (it must match exactly once, unless replacing every occurrence) and replaced.
+ */
+export const EDIT_ACTIVE_DOCUMENT: string = 'edit_active_document';
+
+/**
+ * The in-app capability that inserts text into the active editor document, relative to an anchor
+ * string or at the document's start or end.
+ */
+export const INSERT_ACTIVE_DOCUMENT: string = 'insert_into_active_document';
+
+/**
+ * The placements the insert capability accepts: relative to an anchor string, or at a document edge.
+ */
+export type InsertPlacement = 'before' | 'after' | 'start' | 'end';
+
+/**
  * The in-app capability that returns the recent output of the owning terminal.
  */
 export const READ_TERMINAL_OUTPUT: string = 'read_terminal_output';
