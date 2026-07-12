@@ -159,6 +159,16 @@ export class LspStatus {
   }
 
   /**
+   * Gets a tracked server's current lifecycle state, so a client can act only on state transitions
+   * (for example refreshing semantic tokens once, when a server first becomes ready).
+   * @param sessionId The session whose state is read.
+   * @returns Returns the server's state, or null when the session is not tracked.
+   */
+  public stateOf(sessionId: string): LspServerState | null {
+    return this.entries().get(sessionId)?.state ?? null;
+  }
+
+  /**
    * Restarts a tracked server through the callback its owning client registered.
    * @param sessionId The session to restart.
    */

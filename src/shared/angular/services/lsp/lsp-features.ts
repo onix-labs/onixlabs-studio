@@ -9,6 +9,10 @@ import {
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import {
+  buildHeuristicSemanticTokens,
+  HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
+} from '@shared/angular/services/monaco/monaco-heuristic-tokens';
 
 /**
  * References the language-server document an editor model maps to: which session owns it and the
@@ -147,6 +151,22 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The fixed-legend index the heuristic scan's `type` classification maps to.
+ */
+const FIXED_TYPE_INDEX: number = SEMANTIC_TOKEN_TYPES.indexOf('type');
+
+/**
+ * The fixed-legend index the heuristic scan's `function` classification maps to.
+ */
+const FIXED_FUNCTION_INDEX: number = SEMANTIC_TOKEN_TYPES.indexOf('function');
+
+/**
+ * Bounds the heuristic-token cache: past this many models the cache is simply cleared, so it can
+ * never grow without bound across many opened documents.
+ */
+const HEURISTIC_CACHE_LIMIT: number = 64;
+
+/**
  * Registers Monaco language features (completion, hover, go-to-definition, references) backed by the
  * application's language servers. Monaco's providers are global per language, so this root service
  * owns them and routes each request to the workspace whose client owns the model — clients register a
@@ -182,11 +202,43 @@ export class LspFeatures {
   private registered: boolean = false;
 
   /**
-   * Fires to ask Monaco to re-request semantic tokens. Monaco requests them when a document first
-   * opens — before its language server has started — and caches the empty result; firing this once the
-   * server is ready makes it ask again so the tokens actually paint.
+   * Fires to ask Monaco to re-request semantic tokens, one emitter per registered language. Monaco
+   * requests tokens when a document first opens — before its language server has started — and caches
+   * the empty result; firing a language's emitter once its server is ready makes Monaco ask again so
+   * the tokens actually paint. Emitters are per-language so one server becoming ready does not fan a
+   * full-document token request out to every open model of every other language.
    */
-  private semanticTokensChanged: MonacoApi.Emitter<void> | null = null;
+  private readonly semanticTokensChanged: Map<string, MonacoApi.Emitter<void>> = new Map<
+    string,
+    MonacoApi.Emitter<void>
+  >();
+
+  /**
+   * Holds the listeners notified when a server demonstrably serves a session (a request returns a
+   * useful result). Clients use this to flip a session's status to ready even when the server never
+   * sends the diagnostics or initialisation notifications the status otherwise waits for.
+   */
+  private readonly servedListeners: Set<(sessionId: string) => void> = new Set<
+    (sessionId: string) => void
+  >();
+
+  /**
+   * Holds the in-flight semantic-token request per model URI, so bursts of refreshes coalesce into a
+   * single server round-trip instead of piling requests onto a slow server.
+   */
+  private readonly pendingTokenRequests: Map<
+    string,
+    Promise<MonacoApi.languages.SemanticTokens | undefined>
+  > = new Map<string, Promise<MonacoApi.languages.SemanticTokens | undefined>>();
+
+  /**
+   * Caches the heuristic fallback tokens per model URI and version, so repeated fallback passes while
+   * a server is still loading do not re-tokenize the whole document each time.
+   */
+  private readonly heuristicCache: Map<string, { version: number; data: Uint32Array }> = new Map<
+    string,
+    { version: number; data: Uint32Array }
+  >();
 
   /**
    * Initializes the service, registering the Monaco providers once Monaco has loaded.
@@ -211,6 +263,30 @@ export class LspFeatures {
   }
 
   /**
+   * Registers a listener notified with a session id whenever that session's server demonstrably
+   * serves (a semantic-token or feature request returns a useful result). Clients use this as a
+   * readiness signal for servers that never send diagnostics or an initialisation notification.
+   * @param listener The listener to add.
+   * @returns Returns a function that removes the listener.
+   */
+  public registerServedListener(listener: (sessionId: string) => void): () => void {
+    this.servedListeners.add(listener);
+    return (): void => {
+      this.servedListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Notifies the served listeners that a session's server answered a request with a useful result.
+   * @param sessionId The session whose server served.
+   */
+  private notifyServed(sessionId: string): void {
+    for (const listener of this.servedListeners) {
+      listener(sessionId);
+    }
+  }
+
+  /**
    * Registers the Monaco feature providers for every supported language.
    */
   private registerProviders(): void {
@@ -219,7 +295,6 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
-    this.semanticTokensChanged = new monaco.Emitter<void>();
     // Suppress Monaco's heuristic semantic tokens for any model a language server can serve, so the
     // server's accurate tokens are the sole source and the heuristic does no redundant work.
     this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
@@ -257,8 +332,10 @@ export class LspFeatures {
             context: { includeDeclaration: true },
           }),
       });
+      const semanticTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
+      this.semanticTokensChanged.set(language, semanticTokensChanged);
       monaco.languages.registerDocumentSemanticTokensProvider(language, {
-        onDidChange: this.semanticTokensChanged.event,
+        onDidChange: semanticTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
         provideDocumentSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
@@ -270,20 +347,21 @@ export class LspFeatures {
   }
 
   /**
-   * Asks Monaco to re-request semantic tokens for every open model. Called when a language server
-   * becomes ready, so a document opened before its server started gets coloured without an edit.
+   * Asks Monaco to re-request semantic tokens for the open models of the given languages (or of every
+   * registered language when none are given). Called when a language server becomes ready, so a
+   * document opened before its server started gets coloured without an edit. Scoping to the ready
+   * server's languages keeps a slow server's readiness from fanning full-document token requests out
+   * to every other language's models.
+   * @param languages The Monaco language identifiers to refresh, or undefined for all.
    */
-  public refreshSemanticTokens(): void {
-    this.semanticTokensChanged?.fire();
+  public refreshSemanticTokens(languages?: readonly string[]): void {
+    for (const [language, emitter] of this.semanticTokensChanged) {
+      if (languages === undefined || languages.includes(language)) {
+        emitter.fire();
+      }
+    }
   }
 
-  /**
-   * Handles a document semantic-tokens request, fetching the server's tokens and mapping its legend
-   * onto the fixed Monaco legend so types, members, and parameters are coloured.
-   * @param model The model the tokens are requested for.
-   * @returns Returns the semantic tokens, or undefined when no server owns the model or it provides
-   * none.
-   */
   /**
    * Gets whether a language server can serve semantic tokens for a model: it owns the model and has
    * reported a token legend. Used to suppress Monaco's heuristic tokens for documents the server
@@ -297,7 +375,42 @@ export class LspFeatures {
     return legend !== undefined && legend !== null;
   }
 
-  private async provideSemanticTokens(
+  /**
+   * Handles a document semantic-tokens request, coalescing concurrent requests for the same model
+   * into a single fetch so refresh bursts do not pile requests onto a slow server.
+   * @param model The model the tokens are requested for.
+   * @returns Returns the semantic tokens, or undefined when no server owns the model and no heuristic
+   * applies.
+   */
+  private provideSemanticTokens(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
+    const key: string = model.uri.toString();
+    const pending: Promise<MonacoApi.languages.SemanticTokens | undefined> | undefined =
+      this.pendingTokenRequests.get(key);
+    if (pending !== undefined) {
+      return pending;
+    }
+    const request: Promise<MonacoApi.languages.SemanticTokens | undefined> =
+      this.fetchSemanticTokens(model).finally((): void => {
+        this.pendingTokenRequests.delete(key);
+      });
+    this.pendingTokenRequests.set(key, request);
+    return request;
+  }
+
+  /**
+   * Fetches a model's semantic tokens from its server, remapping the server's legend onto the fixed
+   * one. While the server yields nothing useful — it errors, returns no data, or returns an empty set
+   * (heavy servers such as Roslyn advertise semantic tokens at the handshake but serve none until the
+   * whole project has loaded) — the heuristic tokens are returned instead, so the colouring a document
+   * had before its server started is never torn down during the load window. Once the server returns
+   * real tokens they win, and the served listeners are notified.
+   * @param model The model the tokens are requested for.
+   * @returns Returns the semantic tokens, or undefined when no server owns the model and no heuristic
+   * applies.
+   */
+  private async fetchSemanticTokens(
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
     const ref: LspDocumentRef | null = this.resolve(model);
@@ -319,13 +432,68 @@ export class LspFeatures {
         },
       );
     } catch {
-      return undefined;
+      return this.heuristicFallback(model);
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
     if (!Array.isArray(data)) {
+      return this.heuristicFallback(model);
+    }
+    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
+    if (remapped.length === 0) {
+      return this.heuristicFallback(model);
+    }
+    this.notifyServed(ref.sessionId);
+    return { data: remapped };
+  }
+
+  /**
+   * Builds the heuristic semantic tokens for a model whose server cannot serve tokens yet, re-based
+   * onto the fixed legend the LSP provider declares. Results are cached per model version so repeated
+   * fallback passes while a server loads do not re-tokenize the document each time.
+   * @param model The model the tokens are built for.
+   * @returns Returns the heuristic tokens, or undefined for a language the heuristic does not cover.
+   */
+  private heuristicFallback(
+    model: MonacoApi.editor.ITextModel,
+  ): MonacoApi.languages.SemanticTokens | undefined {
+    const languageId: string = model.getLanguageId();
+    if (!HEURISTIC_SEMANTIC_TOKEN_LANGUAGES.includes(languageId)) {
       return undefined;
     }
-    return { data: this.remapSemanticTokens(data as number[], legend) };
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return undefined;
+    }
+    const key: string = model.uri.toString();
+    const version: number = model.getVersionId();
+    const cached: { version: number; data: Uint32Array } | undefined = this.heuristicCache.get(key);
+    if (cached?.version === version) {
+      return { data: cached.data };
+    }
+    const source: string = model.getValue();
+    const monarchLines: MonacoApi.Token[][] = monaco.editor.tokenize(source, languageId);
+    const data: Uint32Array = this.rebaseHeuristicTokens(
+      buildHeuristicSemanticTokens(source, monarchLines),
+    );
+    if (this.heuristicCache.size >= HEURISTIC_CACHE_LIMIT) {
+      this.heuristicCache.clear();
+    }
+    this.heuristicCache.set(key, { version, data });
+    return { data };
+  }
+
+  /**
+   * Re-bases heuristic token data (whose legend is `['type', 'function']`) onto the fixed legend the
+   * LSP semantic-tokens provider declares, so the fallback paints with the same theme rules.
+   * @param data The heuristic delta-packed token data.
+   * @returns Returns the re-based token data.
+   */
+  private rebaseHeuristicTokens(data: Uint32Array): Uint32Array {
+    const rebased: Uint32Array = new Uint32Array(data);
+    for (let index: number = 3; index < rebased.length; index += 5) {
+      rebased[index] = rebased[index] === 0 ? FIXED_TYPE_INDEX : FIXED_FUNCTION_INDEX;
+    }
+    return rebased;
   }
 
   /**
@@ -515,7 +683,18 @@ export class LspFeatures {
       ...extra,
     };
     try {
-      return await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, params);
+      const result: unknown = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        method,
+        params,
+      );
+      // A useful answer proves the server is serving; surface that to the readiness listeners, since
+      // some servers never send the diagnostics the status indicator otherwise waits for.
+      if (result !== null && result !== undefined) {
+        this.notifyServed(ref.sessionId);
+      }
+      return result;
     } catch {
       return null;
     }

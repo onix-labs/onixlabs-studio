@@ -6,6 +6,19 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { LspFeatures } from './lsp-features';
 
 /**
+ * A fake Monaco emitter that records how often it fired, so refresh scoping can be asserted.
+ */
+class FakeEmitter {
+  public fired: number = 0;
+  public readonly event: () => { dispose(): void } = (): { dispose(): void } => ({
+    dispose: (): void => undefined,
+  });
+  public fire(): void {
+    this.fired += 1;
+  }
+}
+
+/**
  * Captures the providers registered against the fake Monaco namespace, so the test can invoke them.
  */
 interface CapturedProviders {
@@ -15,6 +28,8 @@ interface CapturedProviders {
     getLegend(): { tokenTypes: string[]; tokenModifiers: string[] };
     provideDocumentSemanticTokens(model: unknown): Promise<{ data: Uint32Array } | undefined>;
   };
+  /** The semantic-token change emitter per registered language, in registration order. */
+  semanticEmitters: Map<string, FakeEmitter>;
 }
 
 /**
@@ -36,7 +51,19 @@ interface MappedHover {
  * A minimal fake of the Monaco namespace covering only what the feature providers use.
  */
 function fakeMonacoNamespace(captured: CapturedProviders): unknown {
+  const created: FakeEmitter[] = [];
+  const emitterClass: new () => FakeEmitter = class extends FakeEmitter {
+    public constructor() {
+      super();
+      created.push(this);
+    }
+  };
   return {
+    editor: {
+      // The heuristic fallback tokenizes with Monarch only to skip strings/comments/keywords; an
+      // empty token line means nothing is skipped, which is what these tests want.
+      tokenize: (): unknown[][] => [],
+    },
     languages: {
       CompletionItemKind: { Method: 0, Function: 1, Text: 18 },
       CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
@@ -48,19 +75,33 @@ function fakeMonacoNamespace(captured: CapturedProviders): unknown {
       },
       registerDefinitionProvider: (): void => undefined,
       registerReferenceProvider: (): void => undefined,
-      registerDocumentSemanticTokensProvider: (_language: string, provider: unknown): void => {
+      registerDocumentSemanticTokensProvider: (language: string, provider: unknown): void => {
         captured.semantic = provider as CapturedProviders['semantic'];
+        const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
+        if (lastEmitter !== undefined) {
+          captured.semanticEmitters.set(language, lastEmitter);
+        }
       },
     },
-    Emitter: class {
-      public readonly event: () => { dispose(): void } = (): { dispose(): void } => ({
-        dispose: (): void => undefined,
-      });
-      public fire(): void {
-        // No subscribers in tests.
-      }
-    },
+    Emitter: emitterClass,
     Uri: { parse: (value: string): unknown => ({ value }) },
+  };
+}
+
+/**
+ * Builds a fake Monaco text model exposing what the semantic-token path reads: its URI, language,
+ * version, and text.
+ * @param uri The model URI.
+ * @param languageId The model's language identifier.
+ * @param value The model text.
+ * @returns Returns the fake model.
+ */
+function fakeModel(uri: string, languageId: string = 'typescript', value: string = ''): unknown {
+  return {
+    uri: { toString: (): string => uri },
+    getLanguageId: (): string => languageId,
+    getVersionId: (): number => 1,
+    getValue: (): string => value,
   };
 }
 
@@ -76,7 +117,7 @@ function flush(): Promise<void> {
 
 describe('LspFeatures', () => {
   const MODEL_URI: string = 'inmemory://model/1';
-  const captured: CapturedProviders = {};
+  const captured: CapturedProviders = { semanticEmitters: new Map<string, FakeEmitter>() };
   let requests: { sessionId: string; method: string; params: unknown }[];
   let responses: Record<string, unknown>;
   let semanticLegend: LspSemanticTokensLegend | null;
@@ -86,6 +127,7 @@ describe('LspFeatures', () => {
     captured.completion = undefined;
     captured.hover = undefined;
     captured.semantic = undefined;
+    captured.semanticEmitters = new Map<string, FakeEmitter>();
     requests = [];
     responses = {};
     semanticLegend = null;
@@ -271,5 +313,98 @@ describe('LspFeatures', () => {
 
     expect(requests).toHaveLength(0);
     expect(tokens).toBeUndefined();
+  });
+
+  it('semanticTokens_emptyServerResult_fallsBackToHeuristicTokens', async () => {
+    // Roslyn advertises a legend at the handshake but serves an empty set until the solution loads;
+    // the fallback must keep the heuristic colouring alive instead of letting Monaco clear it.
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [] };
+    await build();
+    const model: unknown = fakeModel(MODEL_URI, 'csharp', 'Widget Run()');
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // 'Widget' is PascalCase -> type (fixed index 1); 'Run(' -> function (fixed index 12).
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+  });
+
+  it('semanticTokens_serverRequestFailure_fallsBackToHeuristicTokens', async () => {
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    await build();
+    responses['textDocument/semanticTokens/full'] = undefined;
+    const failing: unknown = fakeModel(MODEL_URI, 'csharp', 'Widget Run()');
+    // Make the bridge reject for this request.
+    (window as unknown as { bridge: Bridge }).bridge.invoke = <T>(): Promise<T> =>
+      Promise.reject(new Error('gone'));
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(failing);
+
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+  });
+
+  it('semanticTokens_emptyServerResult_forNonHeuristicLanguage_returnsUndefined', async () => {
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [] };
+    await build();
+    const model: unknown = fakeModel(MODEL_URI, 'typescript', 'const x = 1;');
+    const tokens: unknown = await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens).toBeUndefined();
+  });
+
+  it('servedListener_firesOnRealTokens_notOnEmptyOnes', async () => {
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [] };
+    const features: LspFeatures = await build();
+    const served: string[] = [];
+    features.registerServedListener((sessionId: string): void => {
+      served.push(sessionId);
+    });
+    const model: unknown = fakeModel(MODEL_URI, 'csharp', 'Widget Run()');
+
+    await captured.semantic?.provideDocumentSemanticTokens(model);
+    expect(served).toHaveLength(0);
+
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 6, 0, 0] };
+    await captured.semantic?.provideDocumentSemanticTokens(model);
+    expect(served).toEqual(['/root::typescript']);
+  });
+
+  it('refreshSemanticTokens_scopedToALanguage_firesOnlyThatLanguagesEmitter', async () => {
+    const features: LspFeatures = await build();
+    features.refreshSemanticTokens(['csharp']);
+
+    expect(captured.semanticEmitters.get('csharp')?.fired).toBe(1);
+    expect(captured.semanticEmitters.get('typescript')?.fired).toBe(0);
+    expect(captured.semanticEmitters.get('java')?.fired).toBe(0);
+
+    features.refreshSemanticTokens();
+    for (const emitter of captured.semanticEmitters.values()) {
+      expect(emitter.fired).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('semanticTokens_concurrentRequestsForOneModel_coalesceIntoASingleFetch', async () => {
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    let release: (value: unknown) => void = (): void => undefined;
+    responses['textDocument/semanticTokens/full'] = new Promise<unknown>(
+      (resolve: (value: unknown) => void): void => {
+        release = resolve;
+      },
+    );
+    await build();
+    const model: unknown = fakeModel(MODEL_URI, 'csharp', 'Widget Run()');
+
+    const first: Promise<{ data: Uint32Array } | undefined> | undefined =
+      captured.semantic?.provideDocumentSemanticTokens(model);
+    const second: Promise<{ data: Uint32Array } | undefined> | undefined =
+      captured.semantic?.provideDocumentSemanticTokens(model);
+    expect(requests).toHaveLength(1);
+
+    release({ data: [0, 0, 6, 0, 0] });
+    const [firstTokens, secondTokens] = await Promise.all([first, second]);
+    expect([...(firstTokens?.data ?? [])]).toEqual([...(secondTokens?.data ?? [])]);
+    expect(requests).toHaveLength(1);
   });
 });

@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
@@ -12,6 +13,7 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
+import { LspFeatures } from './lsp-features';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspServer, LspStatus } from './lsp-status';
 
@@ -128,6 +130,34 @@ class FakeMonaco {
 }
 
 /**
+ * A fake features registry that records semantic-token refreshes and lets a test fire the served
+ * signal a real server would trigger by answering a request.
+ */
+class FakeFeatures {
+  public readonly refreshes: (readonly string[] | undefined)[] = [];
+  private servedListener: ((sessionId: string) => void) | null = null;
+
+  public registerDocuments(): () => void {
+    return (): void => undefined;
+  }
+
+  public registerServedListener(listener: (sessionId: string) => void): () => void {
+    this.servedListener = listener;
+    return (): void => {
+      this.servedListener = null;
+    };
+  }
+
+  public refreshSemanticTokens(languages?: readonly string[]): void {
+    this.refreshes.push(languages);
+  }
+
+  public served(sessionId: string): void {
+    this.servedListener?.(sessionId);
+  }
+}
+
+/**
  * Resolves pending promise-queue microtasks and timers so the client's deferred sends run.
  * @returns Returns a promise that resolves on the next macrotask.
  */
@@ -148,7 +178,7 @@ describe('LspClient', () => {
    * Builds the client under test with the fakes wired in.
    * @returns Returns the client.
    */
-  function build(): LspClient {
+  function build(features?: FakeFeatures): LspClient {
     TestBed.configureTestingModule({
       providers: [
         LspClient,
@@ -159,6 +189,9 @@ describe('LspClient', () => {
           provide: LspSettings,
           useValue: { isDisabled: (serverId: string): boolean => disabledServers.has(serverId) },
         },
+        ...(features === undefined
+          ? []
+          : [{ provide: LspFeatures, useValue: features as unknown as LspFeatures }]),
       ],
     });
     return TestBed.inject(LspClient);
@@ -253,14 +286,41 @@ describe('LspClient', () => {
 
     const changes: { sessionId: string; params: unknown }[] = lsp.notificationsTo('didChange');
     expect(changes).toHaveLength(1);
-    // The change replaces the whole previous document ('a', ending at line 0 character 1) with the new
-    // text, so it carries the range incremental-sync servers require.
+    // The change is the minimal ranged edit ('b' appended after the existing 'a'), so it carries the
+    // range incremental-sync servers require without shipping the whole document.
     expect(changes[0].params).toEqual({
       textDocument: { uri: 'file:///root/a.ts', version: 2 },
       contentChanges: [
         {
-          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-          text: 'ab',
+          range: { start: { line: 0, character: 1 }, end: { line: 0, character: 1 } },
+          text: 'b',
+        },
+      ],
+    });
+  });
+
+  it('syncDocument_editInsideALargeDocument_sendsOnlyTheChangedSpan', async () => {
+    const client: LspClient = build();
+    const before: string = `class A {\n  void One() {}\n  void Two() {}\n}\n`;
+    const after: string = `class A {\n  void One() {}\n  void Two2() {}\n}\n`;
+    const base: { documentId: string; path: string; languageId: string } = {
+      documentId: 'doc-1',
+      path: '/root/A.cs',
+      languageId: 'csharp',
+    };
+    client.syncDocument({ ...base, content: before });
+    await flush();
+    client.syncDocument({ ...base, content: after });
+    await flush();
+
+    const changes: { sessionId: string; params: unknown }[] = lsp.notificationsTo('didChange');
+    expect(changes).toHaveLength(1);
+    expect(changes[0].params).toEqual({
+      textDocument: { uri: 'file:///root/A.cs', version: 2 },
+      contentChanges: [
+        {
+          range: { start: { line: 2, character: 10 }, end: { line: 2, character: 10 } },
+          text: '2',
         },
       ],
     });
@@ -500,5 +560,181 @@ describe('LspClient', () => {
       .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
     expect(server).toBeDefined();
     expect(server?.state).toBe('ready');
+  });
+
+  it('publishDiagnostics_streamedRepeatedly_refreshesSemanticTokensOnlyOnTheReadyTransition', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    const refreshesAfterOpen: number = features.refreshes.length;
+
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', []);
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', []);
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', []);
+
+    // Only the first push transitions starting -> ready; the rest must not fan out refreshes.
+    expect(features.refreshes.length).toBe(refreshesAfterOpen + 1);
+    expect(features.refreshes[features.refreshes.length - 1]).toEqual(['typescript']);
+  });
+
+  it('openDocument_refreshesSemanticTokensScopedToItsOwnLanguage', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/A.java',
+      languageId: 'java',
+      content: 'class A {}',
+    });
+    await flush();
+
+    expect(features.refreshes).toContainEqual(['java']);
+    expect(features.refreshes).not.toContainEqual(undefined);
+  });
+
+  it('servedSignal_flipsTheSessionToReady', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    expect(status.stateOf('/root::typescript')).toBe('starting');
+
+    features.served('/root::typescript');
+
+    expect(status.stateOf('/root::typescript')).toBe('ready');
+  });
+
+  it('servedSignal_forAnUnownedSession_isIgnored', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    features.served('/elsewhere::typescript');
+
+    expect(status.stateOf('/root::typescript')).toBe('starting');
+  });
+
+  it('crashLoop_threeExitsInAWindow_stopsTheAutomaticRestart', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    const base: { documentId: string; path: string; languageId: string; content: string } = {
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    };
+    for (let crash: number = 0; crash < 3; crash += 1) {
+      client.syncDocument(base);
+      await flush();
+      lsp.exit('/root::typescript');
+    }
+    expect(lsp.starts).toHaveLength(3);
+
+    client.syncDocument(base);
+    await flush();
+
+    expect(lsp.starts).toHaveLength(3);
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    const server: LspServer | undefined = status
+      .servers()
+      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    expect(server?.detail).toContain('crashed repeatedly');
+  });
+
+  it('crashLoop_manualRestart_clearsTheBreakerAndStartsAfresh', async () => {
+    const client: LspClient = build();
+    const base: { documentId: string; path: string; languageId: string; content: string } = {
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    };
+    for (let crash: number = 0; crash < 3; crash += 1) {
+      client.syncDocument(base);
+      await flush();
+      lsp.exit('/root::typescript');
+    }
+    client.syncDocument(base);
+    await flush();
+    expect(lsp.starts).toHaveLength(3);
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(4);
+    expect(lsp.notificationsTo('didOpen').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {
+    lsp.startResult = { success: false, error: 'no server' };
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(1);
+
+      // Within the cooldown: no new attempt.
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(1);
+
+      // Past the cooldown: a second attempt is made.
+      now += 31_000;
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(2);
+
+      // Third attempt exhausts the cap; afterwards the session is blocked until a manual restart.
+      now += 31_000;
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(3);
+
+      now += 31_000;
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(3);
+      const status: LspStatus = TestBed.inject(LspStatus);
+      expect(status.stateOf('/root::typescript')).toBe('unavailable');
+
+      // A manual restart clears the bookkeeping and tries again; with a document open the session
+      // then waits in its starting state for the server's first useful answer.
+      lsp.startResult = { success: true };
+      await client.restart('/root::typescript');
+      await flush();
+      expect(lsp.starts).toHaveLength(4);
+      expect(status.stateOf('/root::typescript')).toBe('starting');
+      expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

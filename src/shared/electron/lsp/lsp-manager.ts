@@ -28,9 +28,11 @@ import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-re
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
- * and tearing the session down.
+ * and tearing the session down. Heavy servers (jdtls warming a JVM, Roslyn restoring a solution on a
+ * cold start) can legitimately take well over twenty seconds, so this errs long: a slow-but-alive
+ * server that gets torn down mid-handshake would otherwise be re-spawned only to time out again.
  */
-const INITIALIZE_TIMEOUT_MS: number = 20000;
+const INITIALIZE_TIMEOUT_MS: number = 60000;
 
 /**
  * Holds a running language-server session: its message connection, child process, and workspace root.
