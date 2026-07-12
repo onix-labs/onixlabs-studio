@@ -12,18 +12,20 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Modal } from '@shared/angular/components/modal/modal';
 
 /**
- * Lists the persisted conversations of the host's {@link AgentConversation}, newest first. Clicking a
- * conversation rehydrates it; each row carries a checkbox, and checking one or more reveals a Delete
- * action that confirms before deleting. It is a pure list with no chrome of its own — the host (a tool
- * panel or a docked strip) supplies the surface and title — and drives everything through the injected
- * {@link AgentConversation}, so it stays in step with the conversation the chat shows.
+ * Lists the persisted conversations of the host's {@link AgentConversation}, newest first, through
+ * the shared {@link ListView}. Clicking a conversation rehydrates it; each row carries a checkbox,
+ * and checking one or more reveals a Delete action that confirms before deleting. It is a pure list
+ * with no chrome of its own — the host (a tool panel or a docked strip) supplies the surface and
+ * title — and drives everything through the injected {@link AgentConversation}, so it stays in step
+ * with the conversation the chat shows.
  */
 @Component({
   selector: 'app-agent-conversation-list',
-  imports: [AppIcon, Checkbox, Modal],
+  imports: [AppIcon, Checkbox, ListView, Modal],
   templateUrl: './agent-conversation-list.html',
   styleUrl: './agent-conversation-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -49,6 +51,15 @@ export class AgentConversationList {
    * Gets the id of the conversation currently open, highlighted in the list (or null).
    */
   protected readonly activeId: Signal<string | null> = this.conversation.currentId;
+
+  /**
+   * Gets the summaries mapped to list rows for the shared {@link ListView}.
+   */
+  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.summaries().map(
+      (summary: AgentConversationSummary): ListRow => ({ id: summary.id, data: summary }),
+    ),
+  );
 
   /**
    * Holds the ids the user has checked for deletion.
@@ -97,11 +108,20 @@ export class AgentConversationList {
   }
 
   /**
-   * Rehydrates the chosen conversation into the session.
-   * @param id The conversation id.
+   * Unwraps a list row's conversation-summary payload.
+   * @param row The list row.
+   * @returns Returns the summary.
    */
-  protected onOpen(id: string): void {
-    void this.conversation.open(id);
+  protected summaryOf(row: ListRow): AgentConversationSummary {
+    return row.data as AgentConversationSummary;
+  }
+
+  /**
+   * Rehydrates the clicked row's conversation into the session.
+   * @param row The clicked list row.
+   */
+  protected onRowClick(row: ListRow): void {
+    void this.conversation.open(row.id);
   }
 
   /**

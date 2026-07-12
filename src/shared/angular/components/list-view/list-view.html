@@ -1,0 +1,24 @@
+<div class="list-rows" role="listbox">
+  @for (row of rows(); track row.id) {
+    <div
+      class="list-row"
+      role="option"
+      tabindex="0"
+      [attr.data-list-id]="row.id"
+      [class.active]="selectedId() !== null && row.id === selectedId()"
+      [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
+      (click)="rowClick.emit(row)"
+      (keydown.enter)="activate($event, row)"
+      (keydown.space)="activate($event, row)"
+    >
+      <ng-container
+        [ngTemplateOutlet]="content() ?? null"
+        [ngTemplateOutletContext]="{ $implicit: row }"
+      />
+    </div>
+  } @empty {
+    @if (emptyText().length > 0) {
+      <div class="list-empty">{{ emptyText() }}</div>
+    }
+  }
+</div>
