@@ -45,146 +45,83 @@
       <span>Changed files</span>
       <span class="detail__files-count">{{ repository.selectedFiles().length }}</span>
     </header>
-    @for (file of repository.selectedFiles(); track file.path) {
-      <div
-        class="detail__file"
-        [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
+    @if (repository.selectedFiles().length > 0) {
+      <app-tree-view
+        [rows]="commitRows()"
+        [selectedId]="repository.selectedFile()?.path ?? null"
+        (rowClick)="onCommitRowClick($event)"
       >
-        <button type="button" class="detail__file-main" (click)="selectFile(file)">
+        <ng-template let-row>
+          @let file = fileOf(row);
           <span class="detail__status" [class]="'detail__status--' + file.status">
             {{ statusLetter(file.status) }}
           </span>
-          <span class="detail__file-name">
+          <span class="tree-name detail__file-name">
             {{ fileName(file.path) }}
             @if (fileDir(file.path); as dir) {
               <span class="detail__file-dir">{{ dir }}</span>
             }
           </span>
-        </button>
-      </div>
-    } @empty {
+        </ng-template>
+      </app-tree-view>
+    } @else {
       <p class="detail__empty">No file changes.</p>
     }
   </div>
 } @else if (repository.isWorkingSelected()) {
   <div class="detail__files">
-    <div class="detail__group">
-      <button
-        type="button"
-        class="detail__group-toggle"
-        aria-label="Toggle tracked files"
-        [attr.aria-expanded]="trackedExpanded()"
-        (click)="trackedExpanded.set(!trackedExpanded())"
-      >
-        <app-icon [icon]="trackedExpanded() ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL" />
-      </button>
-      <app-checkbox
-        class="detail__group-check"
-        [checked]="trackedState().all"
-        [indeterminate]="trackedState().mixed"
-        (checkedChange)="setGroupChecked(trackedFiles(), $event)"
-      />
-      <button
-        type="button"
-        class="detail__group-name"
-        (click)="trackedExpanded.set(!trackedExpanded())"
-      >
-        Tracked Files
-      </button>
-      <span class="detail__files-count">{{ trackedFiles().length }}</span>
-    </div>
-    @if (trackedExpanded()) {
-      @for (file of trackedFiles(); track file.path) {
-        <div
-          class="detail__file"
-          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
-        >
+    <app-tree-view
+      [rows]="workingRows()"
+      [selectedId]="repository.selectedFile()?.path ?? null"
+      (rowClick)="onWorkingRowClick($event)"
+    >
+      <ng-template let-row>
+        @let entry = workingRowOf(row);
+        @if (entry.kind === 'group') {
+          <app-checkbox
+            class="detail__group-check"
+            [checked]="entry.group === 'tracked' ? trackedState().all : untrackedState().all"
+            [indeterminate]="
+              entry.group === 'tracked' ? trackedState().mixed : untrackedState().mixed
+            "
+            (checkedChange)="
+              setGroupChecked(entry.group === 'tracked' ? trackedFiles() : untrackedFiles(), $event)
+            "
+            (click)="$event.stopPropagation()"
+          />
+          <span class="tree-name detail__group-name">
+            {{ entry.group === 'tracked' ? 'Tracked Files' : 'Untracked Files' }}
+          </span>
+          <span class="detail__files-count">
+            {{ entry.group === 'tracked' ? trackedFiles().length : untrackedFiles().length }}
+          </span>
+        } @else {
           <app-checkbox
             class="detail__file-check"
-            [checked]="isChecked(file.path)"
-            (checkedChange)="setFileChecked(file, $event)"
+            [checked]="isChecked(entry.file.path)"
+            (checkedChange)="setFileChecked(entry.file, $event)"
+            (click)="$event.stopPropagation()"
           />
-          <button type="button" class="detail__file-main" (click)="selectFile(file)">
-            <span class="detail__status" [class]="'detail__status--' + file.status">
-              {{ statusLetter(file.status) }}
-            </span>
-            <span class="detail__file-name">
-              {{ fileName(file.path) }}
-              @if (fileDir(file.path); as dir) {
-                <span class="detail__file-dir">{{ dir }}</span>
-              }
-            </span>
-          </button>
+          <span class="detail__status" [class]="'detail__status--' + entry.file.status">
+            {{ statusLetter(entry.file.status) }}
+          </span>
+          <span class="tree-name detail__file-name">
+            {{ fileName(entry.file.path) }}
+            @if (fileDir(entry.file.path); as dir) {
+              <span class="detail__file-dir">{{ dir }}</span>
+            }
+          </span>
           <button
             type="button"
-            class="detail__file-action detail__file-action--danger"
+            class="tree-row-action detail__file-action detail__file-action--danger"
             aria-label="Discard changes"
-            (click)="discard(file)"
+            (click)="$event.stopPropagation(); discard(entry.file)"
           >
             <app-icon [icon]="Icon.TRASH" />
           </button>
-        </div>
-      }
-    }
-
-    <div class="detail__group">
-      <button
-        type="button"
-        class="detail__group-toggle"
-        aria-label="Toggle untracked files"
-        [attr.aria-expanded]="untrackedExpanded()"
-        (click)="untrackedExpanded.set(!untrackedExpanded())"
-      >
-        <app-icon [icon]="untrackedExpanded() ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL" />
-      </button>
-      <app-checkbox
-        class="detail__group-check"
-        [checked]="untrackedState().all"
-        [indeterminate]="untrackedState().mixed"
-        (checkedChange)="setGroupChecked(untrackedFiles(), $event)"
-      />
-      <button
-        type="button"
-        class="detail__group-name"
-        (click)="untrackedExpanded.set(!untrackedExpanded())"
-      >
-        Untracked Files
-      </button>
-      <span class="detail__files-count">{{ untrackedFiles().length }}</span>
-    </div>
-    @if (untrackedExpanded()) {
-      @for (file of untrackedFiles(); track file.path) {
-        <div
-          class="detail__file"
-          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
-        >
-          <app-checkbox
-            class="detail__file-check"
-            [checked]="isChecked(file.path)"
-            (checkedChange)="setFileChecked(file, $event)"
-          />
-          <button type="button" class="detail__file-main" (click)="selectFile(file)">
-            <span class="detail__status detail__status--added">
-              {{ statusLetter(file.status) }}
-            </span>
-            <span class="detail__file-name">
-              {{ fileName(file.path) }}
-              @if (fileDir(file.path); as dir) {
-                <span class="detail__file-dir">{{ dir }}</span>
-              }
-            </span>
-          </button>
-          <button
-            type="button"
-            class="detail__file-action detail__file-action--danger"
-            aria-label="Discard changes"
-            (click)="discard(file)"
-          >
-            <app-icon [icon]="Icon.TRASH" />
-          </button>
-        </div>
-      }
-    }
+        }
+      </ng-template>
+    </app-tree-view>
 
     @if (repository.changeCount() === 0) {
       <p class="detail__empty">No uncommitted changes.</p>

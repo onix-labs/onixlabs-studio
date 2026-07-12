@@ -90,45 +90,6 @@
   background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
 }
 
-.detail__file {
-  display: flex;
-  align-items: center;
-  inline-size: 100%;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-
-  &:hover {
-    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
-  }
-
-  &--selected {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-  }
-
-  // The action button is revealed on row hover.
-  &:hover .detail__file-action,
-  &:focus-within .detail__file-action {
-    opacity: 1;
-  }
-}
-
-.detail__file-main {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  padding: 0.35rem 0.5rem;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: default;
-}
-
 .detail__file-action {
   flex: 0 0 auto;
   display: inline-flex;
@@ -143,47 +104,16 @@
   corner-shape: var(--app-corner-shape, squircle);
   color: var(--form-muted-foreground-color);
   cursor: default;
-  opacity: 0;
-  transition:
-    opacity 120ms ease-in-out,
-    var(--hover-transition);
 
   &:hover,
   &:focus-visible {
     background: var(--accent-surface-background-color);
     color: var(--accent-surface-foreground-color);
-    opacity: 1;
     outline: none;
   }
 }
 
 // Group header rows (Tracked Files / Untracked Files): chevron, tri-state checkbox, name, count.
-.detail__group {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.25rem;
-
-  & + & {
-    margin-block-start: 0.35rem;
-  }
-}
-
-.detail__group-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.1rem;
-  block-size: 1.1rem;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.65rem;
-  cursor: default;
-}
-
 .detail__group-check {
   flex: 0 0 auto;
 }
@@ -204,7 +134,6 @@
 
 .detail__file-check {
   flex: 0 0 auto;
-  margin-inline-start: 1.75rem;
 }
 
 // The boxed commit-message composer docked beneath the file groups.

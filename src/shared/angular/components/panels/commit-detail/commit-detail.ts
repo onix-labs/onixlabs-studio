@@ -22,6 +22,7 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -39,6 +40,18 @@ interface GroupCheckState {
 }
 
 /**
+ * Identifies the two working-tree groups.
+ */
+type WorkingGroup = 'tracked' | 'untracked';
+
+/**
+ * The payload a working-tree row carries: a group header, or one changed file.
+ */
+type WorkingRowData =
+  | { readonly kind: 'group'; readonly group: WorkingGroup }
+  | { readonly kind: 'file'; readonly file: GitFileChange };
+
+/**
  * Renders the source-control view's commit pane: metadata for the selected commit above its changed
  * files, or — when the working tree is selected — the commit composer. The composer groups the
  * working tree into Tracked Files and Untracked Files, each with a tri-state group checkbox and
@@ -49,7 +62,7 @@ interface GroupCheckState {
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [AppIcon, Checkbox],
+  imports: [AppIcon, Checkbox, TreeView],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -181,6 +194,66 @@ export class CommitDetail {
   );
 
   /**
+   * Gets the working-tree rows for the shared tree view: the Tracked Files and Untracked Files group
+   * headers, each followed (while expanded) by its file rows.
+   */
+  protected readonly workingRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const rows: TreeRow[] = [];
+    rows.push({
+      id: 'group:tracked',
+      depth: 0,
+      expandable: true,
+      expanded: this.trackedExpanded(),
+      data: { kind: 'group', group: 'tracked' } satisfies WorkingRowData,
+    });
+    if (this.trackedExpanded()) {
+      for (const file of this.trackedFiles()) {
+        rows.push({
+          id: file.path,
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: { kind: 'file', file } satisfies WorkingRowData,
+        });
+      }
+    }
+    rows.push({
+      id: 'group:untracked',
+      depth: 0,
+      expandable: true,
+      expanded: this.untrackedExpanded(),
+      data: { kind: 'group', group: 'untracked' } satisfies WorkingRowData,
+    });
+    if (this.untrackedExpanded()) {
+      for (const file of this.untrackedFiles()) {
+        rows.push({
+          id: file.path,
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: { kind: 'file', file } satisfies WorkingRowData,
+        });
+      }
+    }
+    return rows;
+  });
+
+  /**
+   * Gets the selected commit's changed files as flat rows for the shared tree view.
+   */
+  protected readonly commitRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
+    this.repository.selectedFiles().map(
+      (file: GitFileChange): TreeRow => ({
+        id: file.path,
+        depth: 0,
+        expandable: false,
+        expanded: false,
+        data: file,
+      }),
+    ),
+  );
+
+  /**
    * Initializes a new instance of the {@link CommitDetail} class, keeping the checked set in step
    * with the working tree: a still-present path keeps the user's choice, a newly-appeared tracked
    * file defaults to checked, a newly-appeared untracked file defaults to unchecked, and a vanished
@@ -253,6 +326,50 @@ export class CommitDetail {
       }
       return next;
     });
+  }
+
+  /**
+   * Unwraps a working-tree row's payload.
+   * @param row The tree row.
+   * @returns Returns the row's group or file payload.
+   */
+  protected workingRowOf(row: TreeRow): WorkingRowData {
+    return row.data as WorkingRowData;
+  }
+
+  /**
+   * Unwraps a commit-files row's payload.
+   * @param row The tree row.
+   * @returns Returns the changed file.
+   */
+  protected fileOf(row: TreeRow): GitFileChange {
+    return row.data as GitFileChange;
+  }
+
+  /**
+   * Handles a click on a working-tree row: a group header toggles its expansion; a file row selects
+   * the file and opens its diff.
+   * @param row The clicked tree row.
+   */
+  protected onWorkingRowClick(row: TreeRow): void {
+    const entry: WorkingRowData = this.workingRowOf(row);
+    if (entry.kind === 'group') {
+      if (entry.group === 'tracked') {
+        this.trackedExpanded.set(!this.trackedExpanded());
+      } else {
+        this.untrackedExpanded.set(!this.untrackedExpanded());
+      }
+      return;
+    }
+    this.selectFile(entry.file);
+  }
+
+  /**
+   * Handles a click on a commit-files row: selects the file and opens its diff.
+   * @param row The clicked tree row.
+   */
+  protected onCommitRowClick(row: TreeRow): void {
+    this.selectFile(this.fileOf(row));
   }
 
   /**
