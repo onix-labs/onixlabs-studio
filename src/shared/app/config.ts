@@ -11,6 +11,7 @@ import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
+import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
@@ -79,6 +80,11 @@ export const config: ApplicationConfig = {
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {
       inject(Lifecycle);
+    }),
+    // Instantiate the open-with service at start-up so files the operating system asks the app to
+    // open (file-type associations) are drained and routed to the right editor tabs.
+    provideAppInitializer((): void => {
+      inject(OpenWith);
     }),
   ],
 };

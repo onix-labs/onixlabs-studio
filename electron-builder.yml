@@ -28,6 +28,61 @@ asarUnpack:
 
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
+# Register the app with the operating system as an editor for the file types its editors handle
+# (macOS: CFBundleDocumentTypes; Windows: NSIS registry associations; Linux: MimeType entries in the
+# .desktop file). Registration makes the app available in "Open with" and eligible to be chosen as
+# the default; it does not forcibly steal existing defaults. Keep this list in step with the
+# renderer's extension→editor routing (monaco-languages EXTENSION_TO_LANGUAGE + the markdown editor).
+fileAssociations:
+  - ext: [md, markdown]
+    name: Markdown Document
+    role: Editor
+  - ext:
+      [
+        txt,
+        js,
+        mjs,
+        cjs,
+        jsx,
+        ts,
+        tsx,
+        json,
+        html,
+        htm,
+        css,
+        scss,
+        sass,
+        less,
+        xml,
+        yaml,
+        yml,
+        py,
+        rb,
+        java,
+        c,
+        cpp,
+        h,
+        cs,
+        go,
+        rs,
+        php,
+        sql,
+        sh,
+        bash,
+        zsh,
+        ps1,
+        swift,
+        kt,
+        r,
+        lua,
+        pl,
+        graphql,
+        vue,
+        svelte,
+      ]
+    name: Source File
+    role: Editor
+
 mac:
   target:
     - dmg

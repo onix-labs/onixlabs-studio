@@ -33,4 +33,19 @@ export enum AppChannel {
    * Relaunches the application so a startup-only preference change can take effect (send).
    */
   Relaunch = 'app:relaunch',
+
+  /**
+   * Pushes a file path the operating system asked the application to open (a Finder/Explorer
+   * double-click or "Open with"), for the renderer to route to the right editor tab
+   * (main→renderer, send). Only sent once the renderer has drained the pending queue via
+   * {@link AppChannel.TakePendingOpenPaths}.
+   */
+  OpenPath = 'app:open-path',
+
+  /**
+   * Drains the file paths the operating system asked the application to open before the renderer
+   * was ready to receive them (launch arguments, or an open-file event during startup), and marks
+   * the renderer ready for direct {@link AppChannel.OpenPath} pushes (invoke).
+   */
+  TakePendingOpenPaths = 'app:take-pending-open-paths',
 }

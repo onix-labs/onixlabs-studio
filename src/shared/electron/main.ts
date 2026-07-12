@@ -12,6 +12,7 @@ import {
   WebContents,
   WindowOpenHandlerResponse,
 } from 'electron';
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {AppChannel} from '@shared/api/app-channels';
@@ -29,6 +30,7 @@ import {LspManager} from './lsp/lsp-manager';
 import {LspServerRegistry} from './lsp/lsp-server-registry';
 import {LspSettingsManager} from './lsp/lsp-settings';
 import {MediaProtocol} from '@shared/electron/media-protocol';
+import {openFilePathsFromArgv} from '@shared/electron/open-with-paths';
 import {PrintManager} from '@shared/electron/print-manager';
 import {SecurityManager} from '@shared/electron/security-manager';
 import {StartupPreferences, StartupPreferencesStore} from './startup-preferences';
@@ -180,6 +182,20 @@ class Program {
    * Holds the resolver for the in-flight close request, or null when none is pending.
    */
   private pendingClose: ((proceed: boolean) => void) | null = null;
+
+  /**
+   * Holds the file paths the operating system asked the application to open before the renderer was
+   * ready to receive them (launch arguments, or open-file events during startup). Drained by the
+   * renderer over {@link AppChannel.TakePendingOpenPaths} once it is listening.
+   */
+  private readonly pendingOpenPaths: string[] = [];
+
+  /**
+   * Holds a value indicating whether the renderer has drained the pending open paths and is ready to
+   * receive direct open-path pushes. Reset whenever the page (re)loads, since a reloading renderer
+   * loses its listeners and must drain again.
+   */
+  private openPathsReady: boolean = false;
 
   /**
    * Manages pseudo-terminal sessions on behalf of the renderer.
@@ -350,7 +366,66 @@ class Program {
     // registered here; its request handler is installed once ready (see registerIpcHandlers).
     MediaProtocol.registerScheme();
 
+    // File-type associations route through a single instance: a second launch (double-clicking a
+    // file while the app runs on Windows/Linux) forwards its arguments here and exits.
+    if (!app.requestSingleInstanceLock()) {
+      app.quit();
+      return;
+    }
+    app.on('second-instance', (_event: ElectronEvent, argv: string[]): void =>
+      this.onSecondInstance(argv),
+    );
+    // macOS delivers OS-opened files as open-file events (never argv). Registered before the app is
+    // ready so a double-click that launches the app is captured and queued for the renderer.
+    app.on('open-file', (event: ElectronEvent, filePath: string): void => {
+      event.preventDefault();
+      this.dispatchOpenPath(filePath);
+    });
+
     void app.whenReady().then(this.onReady.bind(this));
+  }
+
+  /**
+   * Handles a second application instance launching (a Windows/Linux file association or a repeat
+   * launch): opens any files its command line names and brings the existing window to the front.
+   * @param argv The second instance's command-line arguments.
+   */
+  private onSecondInstance(argv: string[]): void {
+    for (const filePath of openFilePathsFromArgv(argv, process.defaultApp === true)) {
+      this.dispatchOpenPath(filePath);
+    }
+    const window: BrowserWindow | null = this.window;
+    if (window === null) {
+      return;
+    }
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.focus();
+  }
+
+  /**
+   * Routes a file path the operating system asked the application to open: verifies it names a real
+   * file, remembers it as user-vouched (the OS action is equivalent to picking it in an open dialog,
+   * and the confined read path honours only trusted or in-workspace files), and hands it to the
+   * renderer — directly when it is listening, otherwise queued until it drains the pending set.
+   * @param filePath The absolute path the operating system supplied.
+   */
+  private dispatchOpenPath(filePath: string): void {
+    try {
+      if (!fs.statSync(filePath).isFile()) {
+        return;
+      }
+    } catch {
+      return;
+    }
+    this.trustedPaths.remember(filePath);
+    const window: BrowserWindow | null = this.window;
+    if (this.openPathsReady && window !== null && !window.isDestroyed()) {
+      window.webContents.send(AppChannel.OpenPath, filePath);
+      return;
+    }
+    this.pendingOpenPaths.push(filePath);
   }
 
   /**
@@ -380,6 +455,9 @@ class Program {
     // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
     window.webContents.on('did-finish-load', (): void => {
       window.webContents.setZoomLevel(0);
+      // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
+      // drains them over TakePendingOpenPaths.
+      this.openPathsReady = false;
     });
     window.on('close', this.onWindowClose.bind(this));
     window.on('closed', (): void => {
@@ -450,6 +528,11 @@ class Program {
         StartupPreferencesStore.write({hardwareAcceleration: enabled});
       },
     );
+
+    ipcMain.handle(AppChannel.TakePendingOpenPaths, (): string[] => {
+      this.openPathsReady = true;
+      return this.pendingOpenPaths.splice(0, this.pendingOpenPaths.length);
+    });
 
     ipcMain.on(AppChannel.Relaunch, (): void => {
       // Relaunch then quit through the normal close path, so the renderer's unsaved-work confirmation
@@ -607,6 +690,11 @@ class Program {
     // the renderer's preload reads it synchronously (before the first paint).
     await this.resolveGpuRenderingRecommendation();
     this.createWindow();
+    // Windows/Linux deliver OS-opened files as launch arguments (macOS sends open-file events,
+    // handled in initialize); queue them for the renderer to drain once it is listening.
+    for (const filePath of openFilePathsFromArgv(process.argv, process.defaultApp === true)) {
+      this.dispatchOpenPath(filePath);
+    }
     app.on('activate', this.onActivate.bind(this));
     app.on('window-all-closed', this.onWindowAllClosed.bind(this));
     app.on('before-quit', this.onBeforeQuit.bind(this));
