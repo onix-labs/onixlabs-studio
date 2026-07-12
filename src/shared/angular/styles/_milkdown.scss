@@ -366,6 +366,58 @@ app-markdown-editor .milkdown .ProseMirror {
       }
     }
   }
+
+  // Collapsible sections (<details>/<summary>): a bordered block whose header row holds the toggle
+  // chevron and the editable summary, above the ordinary editable body. While closed, everything in
+  // the inner region except the summary (its first child) is hidden.
+  .collapse-block {
+    position: relative;
+    margin: 1em 0;
+    padding: 0.25em 0.75em 0.25em 2.25em;
+    border: 1px solid var(--crepe-color-outline);
+    border-radius: calc(0.5em * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+
+    .collapse-toggle {
+      position: absolute;
+      inset-block-start: 0.55em;
+      inset-inline-start: 0.6em;
+      inline-size: 1.25em;
+      block-size: 1.25em;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      color: var(--crepe-color-on-surface);
+      cursor: default;
+
+      // The chevron, drawn as two borders of a rotated box so no icon font is needed here.
+      &::before {
+        content: '';
+        position: absolute;
+        inset-block-start: 0.3em;
+        inset-inline-start: 0.35em;
+        inline-size: 0.45em;
+        block-size: 0.45em;
+        border-inline-end: 0.125em solid currentColor;
+        border-block-end: 0.125em solid currentColor;
+        transform: rotate(45deg);
+        transition: transform 120ms ease-in-out;
+      }
+    }
+
+    &[data-open='false'] .collapse-toggle::before {
+      transform: rotate(-45deg);
+    }
+
+    .collapse-summary {
+      font-weight: 600;
+      padding-block: 0.35em;
+    }
+
+    &[data-open='false'] .collapse-inner > *:not(.collapse-summary) {
+      display: none;
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
