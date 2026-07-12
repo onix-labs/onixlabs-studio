@@ -102,8 +102,18 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Makes the next stage fail with this message, so the selective-commit abort path can be exercised.
+   */
+  public failNextStageWith: string | null = null;
+
   public stage(paths: readonly string[]): Promise<MutationResult> {
     this.calls.push(`stage:${paths.join(',')}`);
+    if (this.failNextStageWith !== null) {
+      const error: string = this.failNextStageWith;
+      this.failNextStageWith = null;
+      return Promise.resolve({ success: false, error });
+    }
     return Promise.resolve({ success: true });
   }
 
@@ -318,5 +328,68 @@ describe('Repository', () => {
     await repository.push();
 
     expect(provider.calls).toContain('push:origin/main');
+  });
+
+  it('commitFiles_resetsTheIndexStagesExactlyTheGivenFilesAndCommits', async () => {
+    repository.setCommitMessage('feat: selected files');
+    provider.calls.length = 0;
+
+    const result: MutationResult = await repository.commitFiles(['a.ts', 'new.ts']);
+
+    expect(result.success).toBe(true);
+    expect(provider.calls.slice(0, 3)).toEqual([
+      'unstage:',
+      'stage:a.ts,new.ts',
+      'commit:feat: selected files',
+    ]);
+    expect(repository.commitMessage()).toBe('');
+  });
+
+  it('commitFiles_withNoFiles_failsWithoutTouchingTheProvider', async () => {
+    provider.calls.length = 0;
+
+    const result: MutationResult = await repository.commitFiles([]);
+
+    expect(result.success).toBe(false);
+    expect(provider.calls).toEqual([]);
+  });
+
+  it('commitFiles_whenStagingFails_surfacesTheErrorAndSkipsTheCommit', async () => {
+    repository.setCommitMessage('feat: will fail');
+    provider.failNextStageWith = 'index locked';
+
+    const result: MutationResult = await repository.commitFiles(['a.ts']);
+
+    expect(result.success).toBe(false);
+    expect(repository.lastError()).toBe('index locked');
+    expect(provider.calls.some((call: string): boolean => call.startsWith('commit:'))).toBe(false);
+    expect(repository.commitMessage()).toBe('feat: will fail');
+  });
+
+  it('commitAndPushFiles_pushesOnlyAfterASuccessfulCommit', async () => {
+    repository.setCommitMessage('feat: ship it');
+    provider.calls.length = 0;
+
+    const result: MutationResult = await repository.commitAndPushFiles(['a.ts']);
+
+    expect(result.success).toBe(true);
+    const commitIndex: number = provider.calls.findIndex((call: string): boolean =>
+      call.startsWith('commit:'),
+    );
+    const pushIndex: number = provider.calls.findIndex((call: string): boolean =>
+      call.startsWith('push:'),
+    );
+    expect(commitIndex).toBeGreaterThanOrEqual(0);
+    expect(pushIndex).toBeGreaterThan(commitIndex);
+  });
+
+  it('commitAndPushFiles_whenTheCommitFails_doesNotPush', async () => {
+    repository.setCommitMessage('feat: no push');
+    provider.failNextStageWith = 'boom';
+
+    const result: MutationResult = await repository.commitAndPushFiles(['a.ts']);
+
+    expect(result.success).toBe(false);
+    expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
   });
 });

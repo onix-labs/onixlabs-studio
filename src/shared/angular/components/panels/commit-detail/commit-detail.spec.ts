@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
   GitChangeStatus,
@@ -39,9 +40,10 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
  * Builds a changed file with embedded diff content.
  * @param path The file path.
  * @param status How the file changed.
+ * @param untracked Whether the file is untracked.
  * @returns Returns the file change.
  */
-function makeFile(path: string, status: GitChangeStatus): GitFileChange {
+function makeFile(path: string, status: GitChangeStatus, untracked?: boolean): GitFileChange {
   return {
     path,
     status,
@@ -50,7 +52,23 @@ function makeFile(path: string, status: GitChangeStatus): GitFileChange {
     language: 'typescript',
     original: 'a',
     modified: 'b',
+    untracked,
   };
+}
+
+/**
+ * A controllable stand-in for the AI commit-message generator.
+ */
+class StubGenerator {
+  public isAvailable: boolean = true;
+  public readonly generating: WritableSignal<boolean> = signal<boolean>(false);
+  public result: string | null = 'feat: generated message';
+  public generatedFor: readonly GitFileChange[][] = [];
+
+  public generate(files: readonly GitFileChange[]): Promise<string | null> {
+    this.generatedFor = [...this.generatedFor, [...files]];
+    return Promise.resolve(this.result);
+  }
 }
 
 /**
@@ -108,28 +126,13 @@ class StubRepository {
     return Promise.resolve({ success: true });
   }
 
-  public stage(file: GitFileChange): Promise<MutationResult> {
-    this.calls.push(`stage:${file.path}`);
+  public commitFiles(paths: readonly string[]): Promise<MutationResult> {
+    this.calls.push(`commitFiles:${paths.join(',')}`);
     return Promise.resolve({ success: true });
   }
 
-  public unstage(file: GitFileChange): Promise<MutationResult> {
-    this.calls.push(`unstage:${file.path}`);
-    return Promise.resolve({ success: true });
-  }
-
-  public stageAll(): Promise<MutationResult> {
-    this.calls.push('stageAll');
-    return Promise.resolve({ success: true });
-  }
-
-  public unstageAll(): Promise<MutationResult> {
-    this.calls.push('unstageAll');
-    return Promise.resolve({ success: true });
-  }
-
-  public commit(): Promise<MutationResult> {
-    this.calls.push('commit');
+  public commitAndPushFiles(paths: readonly string[]): Promise<MutationResult> {
+    this.calls.push(`commitAndPushFiles:${paths.join(',')}`);
     return Promise.resolve({ success: true });
   }
 }
@@ -148,18 +151,21 @@ const PANEL: DockPanel = {
 describe('CommitDetail', () => {
   let fixture: ComponentFixture<CommitDetail>;
   let repository: StubRepository;
+  let generator: StubGenerator;
   let opened: GitFileChange[];
   let confirmAnswer: boolean;
   let host: HTMLElement;
 
   beforeEach(async () => {
     repository = new StubRepository();
+    generator = new StubGenerator();
     opened = [];
     confirmAnswer = false;
     await TestBed.configureTestingModule({
       imports: [CommitDetail],
       providers: [
         { provide: Repository, useValue: repository },
+        { provide: CommitMessageGenerator, useValue: generator },
         {
           provide: FileSystem,
           useValue: {
@@ -212,29 +218,155 @@ describe('CommitDetail', () => {
     expect(opened[0].path).toBe('src/app/main.ts');
   });
 
-  it('render_whenWorkingTreeSelected_showsCommitBoxWithStagedAndUnstagedGroupsAndGatesTheCommit', () => {
+  it('render_whenWorkingTreeSelected_groupsTrackedAndUntrackedWithDefaultChecks', () => {
     repository.isWorkingSelected.set(true);
-    repository.staged.set([makeFile('a.ts', 'added')]);
-    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    repository.staged.set([makeFile('a.ts', 'modified')]);
+    repository.unstaged.set([makeFile('b.ts', 'modified'), makeFile('new.ts', 'added', true)]);
     fixture.detectChanges();
 
-    const headers: (string | null)[] = Array.from(
-      host.querySelectorAll('.detail__files-header'),
-    ).map((element: Element): string | null => element.textContent);
-    expect(headers.join(' ')).toContain('Staged');
-    expect(headers.join(' ')).toContain('Changes');
+    const groups: (string | null)[] = Array.from(host.querySelectorAll('.detail__group-name')).map(
+      (element: Element): string | null => element.textContent,
+    );
+    expect(groups.join(' ')).toContain('Tracked Files');
+    expect(groups.join(' ')).toContain('Untracked Files');
 
-    // With no draft message the commit button is disabled; a message enables it and commits.
+    // Tracked files default to checked, untracked to unchecked.
+    const checks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+    );
+    expect(checks).toHaveLength(3);
+    expect(checks[0].checked).toBe(true); // a.ts (tracked)
+    expect(checks[1].checked).toBe(true); // b.ts (tracked)
+    expect(checks[2].checked).toBe(false); // new.ts (untracked)
+  });
+
+  it('commit_isGatedOnAMessageAndChecks_thenCommitsExactlyTheCheckedFiles', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified'), makeFile('new.ts', 'added', true)]);
+    fixture.detectChanges();
+
     const button: HTMLButtonElement =
       host.querySelector<HTMLButtonElement>('.detail__commit-button')!;
     expect(button.disabled).toBe(true);
 
     repository.commitMessage.set('feat: add a thing');
     fixture.detectChanges();
+    expect(button.disabled).toBe(false);
 
+    button.click();
+    expect(repository.calls).toContain('commitFiles:b.ts');
+  });
+
+  it('commitAndPush_commitsTheCheckedFilesThenPushes', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    repository.commitMessage.set('feat: push it');
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('.detail__commit-button--secondary')!.click();
+
+    expect(repository.calls).toContain('commitAndPushFiles:b.ts');
+  });
+
+  it('groupCheckbox_checksAndUnchecksEveryChildInTheGroup', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([
+      makeFile('new1.ts', 'added', true),
+      makeFile('new2.ts', 'added', true),
+    ]);
+    repository.commitMessage.set('feat: add news');
+    fixture.detectChanges();
+
+    // The second group checkbox is Untracked Files; checking it selects both children.
+    const groupChecks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__group-check input[type="checkbox"]'),
+    );
+    expect(groupChecks).toHaveLength(2);
+    groupChecks[1].click();
+    fixture.detectChanges();
+
+    const fileChecks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+    );
+    expect(fileChecks.every((check: HTMLInputElement): boolean => check.checked)).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('.detail__commit-button')!.click();
+    expect(repository.calls).toContain('commitFiles:new1.ts,new2.ts');
+  });
+
+  it('groupCheckbox_showsTheMixedStateWhenOnlySomeChildrenAreChecked', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('a.ts', 'modified'), makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+
+    // Uncheck one tracked file: the tracked group checkbox turns indeterminate.
+    const fileChecks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+    );
+    fileChecks[0].click();
+    fixture.detectChanges();
+
+    const groupCheck: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      '.detail__group-check input[type="checkbox"]',
+    )!;
+    expect(groupCheck.indeterminate).toBe(true);
+    expect(groupCheck.checked).toBe(false);
+  });
+
+  it('groupHeader_collapsesAndExpandsItsRows', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+    expect(host.querySelectorAll('.detail__file')).toHaveLength(1);
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Toggle tracked files"]')!.click();
+    fixture.detectChanges();
+
+    expect(host.querySelectorAll('.detail__file')).toHaveLength(0);
+  });
+
+  it('userChoices_surviveARefreshWhileNewFilesGetDefaults', () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('kept.ts', 'modified')]);
+    fixture.detectChanges();
+
+    // Uncheck the tracked file, then simulate a refresh that adds another tracked file.
+    host.querySelector<HTMLInputElement>('.detail__file-check input[type="checkbox"]')!.click();
+    fixture.detectChanges();
+    repository.unstaged.set([makeFile('kept.ts', 'modified'), makeFile('fresh.ts', 'modified')]);
+    fixture.detectChanges();
+
+    const checks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+    );
+    expect(checks[0].checked).toBe(false); // kept.ts keeps the user's choice
+    expect(checks[1].checked).toBe(true); // fresh.ts gets the tracked default
+  });
+
+  it('generateMessage_putsTheGeneratedDraftIntoTheRepository', async () => {
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+
+    const button: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.detail__ai')!;
     expect(button.disabled).toBe(false);
     button.click();
-    expect(repository.calls).toContain('commit');
+    await fixture.whenStable();
+
+    expect(generator.generatedFor).toHaveLength(1);
+    expect(generator.generatedFor[0].map((file: GitFileChange): string => file.path)).toEqual([
+      'b.ts',
+    ]);
+    expect(repository.calls).toContain('setCommitMessage:feat: generated message');
+  });
+
+  it('generateMessage_whenUnavailable_disablesTheAffordance', () => {
+    generator.isAvailable = false;
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified')]);
+    fixture.detectChanges();
+
+    expect(host.querySelector<HTMLButtonElement>('.detail__ai')!.disabled).toBe(true);
   });
 
   it('discard_whenConfirmed_delegatesToTheRepository', async () => {
@@ -271,25 +403,6 @@ describe('CommitDetail', () => {
     host.querySelector<HTMLButtonElement>('[aria-label="Dismiss error"]')!.click();
     await fixture.whenStable();
     expect(host.querySelector('.detail__notice')).toBeNull();
-  });
-
-  it('stageAndUnstage_rowAndGroupActionsDelegateToTheRepository', () => {
-    repository.isWorkingSelected.set(true);
-    repository.staged.set([makeFile('a.ts', 'added')]);
-    repository.unstaged.set([makeFile('b.ts', 'modified')]);
-    fixture.detectChanges();
-
-    host.querySelector<HTMLButtonElement>('[aria-label="Stage file"]')!.click();
-    host.querySelector<HTMLButtonElement>('[aria-label="Unstage file"]')!.click();
-    const groupActions: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.detail__group-action'),
-    );
-    groupActions.forEach((action: HTMLButtonElement): void => action.click());
-
-    expect(repository.calls).toContain('stage:b.ts');
-    expect(repository.calls).toContain('unstage:a.ts');
-    expect(repository.calls).toContain('stageAll');
-    expect(repository.calls).toContain('unstageAll');
   });
 
   it('onMessageInput_whenTheUserTypes_forwardsTheDraftMessage', () => {

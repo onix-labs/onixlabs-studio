@@ -539,6 +539,51 @@ export class Repository {
   }
 
   /**
+   * Commits exactly the given files with the draft message: the index is reset, the files are staged
+   * (adding any untracked ones), and the result is committed. The draft is cleared on success. A
+   * failure part-way leaves the index reflecting the attempted selection; the surfaced error explains
+   * what failed and a refresh keeps the panel truthful.
+   * @param paths The repository-relative paths to commit; must not be empty.
+   * @returns Returns the outcome.
+   */
+  public async commitFiles(paths: readonly string[]): Promise<MutationResult> {
+    if (paths.length === 0) {
+      return { success: false, error: 'No files are selected to commit' };
+    }
+    const result: MutationResult = await this.mutate(
+      async (provider: SourceControlProvider): Promise<MutationResult> => {
+        const reset: MutationResult = await provider.unstage([]);
+        if (!reset.success) {
+          return reset;
+        }
+        const add: MutationResult = await provider.stage([...paths]);
+        if (!add.success) {
+          return add;
+        }
+        return provider.commit(this.commitMessageSignal());
+      },
+    );
+    if (result.success) {
+      this.commitMessageSignal.set('');
+    }
+    return result;
+  }
+
+  /**
+   * Commits exactly the given files with the draft message, then pushes the current branch. The push
+   * only runs when the commit succeeded.
+   * @param paths The repository-relative paths to commit; must not be empty.
+   * @returns Returns the outcome of the push, or of the commit when it failed.
+   */
+  public async commitAndPushFiles(paths: readonly string[]): Promise<MutationResult> {
+    const committed: MutationResult = await this.commitFiles(paths);
+    if (!committed.success) {
+      return committed;
+    }
+    return this.push();
+  }
+
+  /**
    * Stashes the working-tree changes, then reloads.
    * @returns Returns the outcome.
    */

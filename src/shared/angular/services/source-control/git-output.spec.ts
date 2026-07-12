@@ -42,6 +42,10 @@ describe('git-output', () => {
         'src/untracked.ts',
       ]);
       expect(status.unstaged[1].status).toBe('added');
+      // Only the `?` entry is flagged untracked; ordinary worktree changes are tracked.
+      expect(status.unstaged[1].untracked).toBe(true);
+      expect(status.unstaged[0].untracked).toBeUndefined();
+      expect(status.staged[0].untracked).toBeUndefined();
     });
 
     it('parseStatus_withRenameEntry_consumesTheSecondPathToken', () => {

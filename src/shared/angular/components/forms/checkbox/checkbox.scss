@@ -45,6 +45,22 @@
     }
   }
 
+  // The mixed-state dash, shown when a group checkbox has only some children checked.
+  &:indeterminate {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+
+    &::before {
+      inset-block-start: 50%;
+      inset-inline-start: 50%;
+      inline-size: 0.55rem;
+      block-size: 0;
+      border-inline-end: 0;
+      border-block-end: 0.13rem solid var(--form-on-accent-color);
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
   // Form controls signal focus by recolouring their border to the accent, not with an outline ring.
   &:focus-visible {
     outline: none;

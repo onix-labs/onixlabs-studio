@@ -25,6 +25,13 @@ export class Checkbox {
   public readonly checked: ModelSignal<boolean> = model<boolean>(false);
 
   /**
+   * Gets a value indicating whether the checkbox is in the mixed (indeterminate) state, used by a
+   * group checkbox when only some of its children are checked. Purely visual: toggling still flips
+   * {@link checked}.
+   */
+  public readonly indeterminate: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets a value indicating whether the checkbox is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
