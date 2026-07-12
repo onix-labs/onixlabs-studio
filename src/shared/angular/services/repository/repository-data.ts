@@ -125,6 +125,13 @@ export interface GitFileChange {
    * a provider. Omitted for mock changes, which embed {@link original} and {@link modified} directly.
    */
   readonly target?: DiffTarget;
+
+  /**
+   * Gets a value indicating whether the file is untracked (new to the repository, a git `?` entry).
+   * Untracked files are surfaced in their own commit-panel group and are only added to the repository
+   * when explicitly included in a commit. Omitted (falsy) for tracked changes.
+   */
+  readonly untracked?: boolean;
 }
 
 /**

@@ -67,73 +67,43 @@
     }
   </div>
 } @else if (repository.isWorkingSelected()) {
-  <div class="detail__commit-box">
-    <textarea
-      class="detail__message"
-      rows="3"
-      placeholder="Commit message"
-      [value]="repository.commitMessage()"
-      (input)="onMessageInput($event)"
-    ></textarea>
-    <button
-      type="button"
-      class="detail__commit-button"
-      [disabled]="
-        repository.staged().length === 0 || repository.commitMessage().trim().length === 0
-      "
-      (click)="commit()"
-    >
-      <app-icon [icon]="Icon.GIT_COMMIT" />
-      Commit {{ repository.staged().length }} file{{ repository.staged().length === 1 ? '' : 's' }}
-    </button>
-  </div>
-
   <div class="detail__files">
-    @if (repository.staged().length > 0) {
-      <header class="detail__files-header">
-        <span>Staged</span>
-        <button type="button" class="detail__group-action" (click)="unstageAll()">
-          Unstage all
-        </button>
-      </header>
-      @for (file of repository.staged(); track file.path) {
+    <div class="detail__group">
+      <button
+        type="button"
+        class="detail__group-toggle"
+        aria-label="Toggle tracked files"
+        [attr.aria-expanded]="trackedExpanded()"
+        (click)="trackedExpanded.set(!trackedExpanded())"
+      >
+        <app-icon [icon]="trackedExpanded() ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL" />
+      </button>
+      <app-checkbox
+        class="detail__group-check"
+        [checked]="trackedState().all"
+        [indeterminate]="trackedState().mixed"
+        (checkedChange)="setGroupChecked(trackedFiles(), $event)"
+      />
+      <button
+        type="button"
+        class="detail__group-name"
+        (click)="trackedExpanded.set(!trackedExpanded())"
+      >
+        Tracked Files
+      </button>
+      <span class="detail__files-count">{{ trackedFiles().length }}</span>
+    </div>
+    @if (trackedExpanded()) {
+      @for (file of trackedFiles(); track file.path) {
         <div
           class="detail__file"
           [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
         >
-          <button type="button" class="detail__file-main" (click)="selectFile(file)">
-            <span class="detail__status" [class]="'detail__status--' + file.status">
-              {{ statusLetter(file.status) }}
-            </span>
-            <span class="detail__file-name">
-              {{ fileName(file.path) }}
-              @if (fileDir(file.path); as dir) {
-                <span class="detail__file-dir">{{ dir }}</span>
-              }
-            </span>
-          </button>
-          <button
-            type="button"
-            class="detail__file-action"
-            aria-label="Unstage file"
-            (click)="unstage(file)"
-          >
-            <app-icon [icon]="Icon.DIVIDER" />
-          </button>
-        </div>
-      }
-    }
-
-    @if (repository.unstaged().length > 0) {
-      <header class="detail__files-header">
-        <span>Changes</span>
-        <button type="button" class="detail__group-action" (click)="stageAll()">Stage all</button>
-      </header>
-      @for (file of repository.unstaged(); track file.path) {
-        <div
-          class="detail__file"
-          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
-        >
+          <app-checkbox
+            class="detail__file-check"
+            [checked]="isChecked(file.path)"
+            (checkedChange)="setFileChecked(file, $event)"
+          />
           <button type="button" class="detail__file-main" (click)="selectFile(file)">
             <span class="detail__status" [class]="'detail__status--' + file.status">
               {{ statusLetter(file.status) }}
@@ -153,13 +123,64 @@
           >
             <app-icon [icon]="Icon.TRASH" />
           </button>
+        </div>
+      }
+    }
+
+    <div class="detail__group">
+      <button
+        type="button"
+        class="detail__group-toggle"
+        aria-label="Toggle untracked files"
+        [attr.aria-expanded]="untrackedExpanded()"
+        (click)="untrackedExpanded.set(!untrackedExpanded())"
+      >
+        <app-icon [icon]="untrackedExpanded() ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL" />
+      </button>
+      <app-checkbox
+        class="detail__group-check"
+        [checked]="untrackedState().all"
+        [indeterminate]="untrackedState().mixed"
+        (checkedChange)="setGroupChecked(untrackedFiles(), $event)"
+      />
+      <button
+        type="button"
+        class="detail__group-name"
+        (click)="untrackedExpanded.set(!untrackedExpanded())"
+      >
+        Untracked Files
+      </button>
+      <span class="detail__files-count">{{ untrackedFiles().length }}</span>
+    </div>
+    @if (untrackedExpanded()) {
+      @for (file of untrackedFiles(); track file.path) {
+        <div
+          class="detail__file"
+          [class.detail__file--selected]="file.path === repository.selectedFile()?.path"
+        >
+          <app-checkbox
+            class="detail__file-check"
+            [checked]="isChecked(file.path)"
+            (checkedChange)="setFileChecked(file, $event)"
+          />
+          <button type="button" class="detail__file-main" (click)="selectFile(file)">
+            <span class="detail__status detail__status--added">
+              {{ statusLetter(file.status) }}
+            </span>
+            <span class="detail__file-name">
+              {{ fileName(file.path) }}
+              @if (fileDir(file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+          </button>
           <button
             type="button"
-            class="detail__file-action"
-            aria-label="Stage file"
-            (click)="stage(file)"
+            class="detail__file-action detail__file-action--danger"
+            aria-label="Discard changes"
+            (click)="discard(file)"
           >
-            <app-icon [icon]="Icon.PLUS" />
+            <app-icon [icon]="Icon.TRASH" />
           </button>
         </div>
       }
@@ -168,6 +189,49 @@
     @if (repository.changeCount() === 0) {
       <p class="detail__empty">No uncommitted changes.</p>
     }
+  </div>
+
+  <div class="detail__composer">
+    <header class="detail__composer-header">
+      <span class="detail__composer-title">Commit Message</span>
+      <button
+        type="button"
+        class="detail__ai"
+        aria-label="Generate commit message"
+        title="Generate a commit message from the checked changes"
+        [disabled]="!canGenerate()"
+        (click)="generateMessage()"
+      >
+        <app-icon [icon]="Icon.SPARKLE" />
+      </button>
+    </header>
+    <textarea
+      class="detail__message"
+      rows="4"
+      placeholder="Commit message"
+      [value]="repository.commitMessage()"
+      (input)="onMessageInput($event)"
+    ></textarea>
+    <div class="detail__composer-actions">
+      <button
+        type="button"
+        class="detail__commit-button"
+        [disabled]="!canCommit()"
+        (click)="commit()"
+      >
+        <app-icon [icon]="Icon.GIT_COMMIT" />
+        Commit
+      </button>
+      <button
+        type="button"
+        class="detail__commit-button detail__commit-button--secondary"
+        [disabled]="!canCommit()"
+        (click)="commitAndPush()"
+      >
+        <app-icon [icon]="Icon.ARROW_UP" />
+        Commit and Push
+      </button>
+    </div>
   </div>
 } @else {
   <header class="detail__header">

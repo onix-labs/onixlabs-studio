@@ -157,14 +157,119 @@
   }
 }
 
-// Commit composer shown above the working-tree changes.
-.detail__commit-box {
+// Group header rows (Tracked Files / Untracked Files): chevron, tri-state checkbox, name, count.
+.detail__group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.25rem;
+
+  & + & {
+    margin-block-start: 0.35rem;
+  }
+}
+
+.detail__group-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.65rem;
+  cursor: default;
+}
+
+.detail__group-check {
+  flex: 0 0 auto;
+}
+
+.detail__group-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--body-foreground-color);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: start;
+  cursor: default;
+}
+
+.detail__file-check {
+  flex: 0 0 auto;
+  margin-inline-start: 1.75rem;
+}
+
+// The boxed commit-message composer docked beneath the file groups.
+.detail__composer {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.75rem;
-  border-block-end: 0.0625rem solid var(--dock-border-color);
+  margin: 0.5rem;
+  padding: 0.6rem;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.detail__composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail__composer-title {
+  color: var(--form-muted-foreground-color);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail__ai {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  color: var(--accent-color);
+  cursor: default;
+  transition: var(--hover-transition);
+
+  &:not(:disabled):hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    outline: none;
+  }
+
+  &:disabled {
+    color: var(--form-muted-foreground-color);
+    opacity: 0.5;
+  }
+}
+
+.detail__composer-actions {
+  display: flex;
+  gap: 0.5rem;
+
+  .detail__commit-button {
+    flex: 1 1 0;
+  }
 }
 
 .detail__message {
@@ -174,7 +279,7 @@
   font: inherit;
   font-size: 0.8rem;
   color: var(--body-foreground-color);
-  background: var(--form-control-background-color);
+  background: var(--body-background-color, transparent);
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
@@ -210,22 +315,15 @@
   &:not(:disabled):hover {
     background: color-mix(in srgb, var(--accent-color), white 10%);
   }
-}
 
-.detail__group-action {
-  padding: 0;
-  font: inherit;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent-surface-foreground-color);
-  background: transparent;
-  border: 0;
-  cursor: default;
+  &--secondary {
+    color: var(--accent-surface-foreground-color);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
 
-  &:hover {
-    text-decoration: underline;
+    &:not(:disabled):hover {
+      background: color-mix(in srgb, var(--accent-surface-background-color), white 6%);
+    }
   }
 }
 

@@ -117,6 +117,11 @@ export class Icon {
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');
 
   /**
+   * Gets the sparkle glyph marking an AI-assisted action (for example generating a commit message).
+   */
+  public static readonly SPARKLE: Icon = new Icon('ph ph-sparkle');
+
+  /**
    * Gets the generic action glyph shown on an agent tool-call timeline node.
    */
   public static readonly ACTION: Icon = new Icon('ph ph-lightning');

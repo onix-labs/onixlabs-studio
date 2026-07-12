@@ -86,6 +86,7 @@ function mapStatus(letter: string): GitChangeStatus {
  * @param status The change status.
  * @param staged Whether the change is staged.
  * @param previousPath The pre-rename path, when renamed.
+ * @param untracked Whether the file is untracked (a `?` entry).
  * @returns Returns the file change.
  */
 function workingChange(
@@ -93,6 +94,7 @@ function workingChange(
   status: GitChangeStatus,
   staged: boolean,
   previousPath?: string,
+  untracked?: boolean,
 ): GitFileChange {
   return {
     path,
@@ -104,6 +106,7 @@ function workingChange(
     original: '',
     modified: '',
     target: { kind: 'working', staged },
+    untracked,
   };
 }
 
@@ -167,7 +170,7 @@ export function parseStatus(output: string): ParsedStatus {
     }
 
     if (token.startsWith('? ')) {
-      unstaged.push(workingChange(token.slice(2), 'added', false));
+      unstaged.push(workingChange(token.slice(2), 'added', false, undefined, true));
     }
     // '! ' (ignored) and 'u ' (unmerged) entries are skipped in this read-only slice.
   }
