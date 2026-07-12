@@ -334,12 +334,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       untracked((): void => this.syncSolutionPanel(hasModel));
     });
 
-    // Start the language server as soon as a .NET solution opens, rather than on the first file, so it
-    // begins loading the workspace up front.
+    // Start the structure-aware language server as soon as a recognised project model opens, rather
+    // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
+    // solution, the TypeScript server for a Node/npm workspace.
     effect((): void => {
       const model: ProjectModel | null = this.solutionModel.model();
-      if (model?.kind === 'dotnet') {
-        untracked((): void => this.lspClient.prestartServer('csharp', model.root));
+      const serverId: string | null =
+        model?.kind === 'dotnet' ? 'csharp' : model?.kind === 'node' ? 'typescript' : null;
+      if (model !== null && serverId !== null) {
+        untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
     });
 

@@ -33,6 +33,15 @@ export interface ProjectSystem {
    * @returns Returns the contents, or null when they could not be loaded.
    */
   loadProjectItems?(projectPath: string): Promise<ProjectItems | null>;
+
+  /**
+   * Determines whether a project file belongs to this provider (by its manifest shape), so a
+   * contents request can be routed to the provider that produced the project. Optional: a provider
+   * without it is never matched by project file.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns true when this provider owns the project file.
+   */
+  ownsProject?(projectPath: string): boolean;
 }
 
 /**
@@ -71,6 +80,21 @@ export class ProjectSystemRegistry {
   public async match(root: string): Promise<ProjectSystem | null> {
     for (const system of this.systems.values()) {
       if (await system.detect(root)) {
+        return system;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolves the registered project system that owns a project file, so a contents request reaches
+   * the provider that produced the project rather than a hard-coded ecosystem.
+   * @param projectPath The absolute project-file path.
+   * @returns Returns the owning project system, or null when none claims the file.
+   */
+  public matchProject(projectPath: string): ProjectSystem | null {
+    for (const system of this.systems.values()) {
+      if (system.ownsProject?.(projectPath) === true) {
         return system;
       }
     }
