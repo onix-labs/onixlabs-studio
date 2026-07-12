@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -19,6 +21,9 @@ describe('AgentPanel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AgentPanel],
+      // In the application the hosting IDE view (workspace / source control) provides the pair, so
+      // the conversation outlives the dock's destroy-on-switch of this panel; the test plays host.
+      providers: [Agent, AgentConversation],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AgentPanel);

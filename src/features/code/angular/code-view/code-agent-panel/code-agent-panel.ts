@@ -8,6 +8,8 @@ import {
   Signal,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
@@ -24,6 +26,9 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
 @Component({
   selector: 'app-code-agent-panel',
   imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
+  // The conversation is provided here, not by the shared conversation panel: the side-panel system
+  // keeps this host mounted while hidden, so the conversation (and an in-flight run) spans hide/show.
+  providers: [Agent, AgentConversation],
   templateUrl: './code-agent-panel.html',
   styleUrl: './code-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -14,6 +16,9 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
 @Component({
   selector: 'app-terminal-agent-panel',
   imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
+  // The conversation is provided here, not by the shared conversation panel: the side-panel system
+  // keeps this host mounted while hidden, so the conversation (and an in-flight run) spans hide/show.
+  providers: [Agent, AgentConversation],
   templateUrl: './terminal-agent-panel.html',
   styleUrl: './terminal-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
