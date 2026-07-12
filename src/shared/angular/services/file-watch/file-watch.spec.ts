@@ -111,4 +111,33 @@ describe('FileWatch', () => {
 
     expect(unwatched).toEqual([]);
   });
+
+  it('watchPath_whenFileChanges_notifiesWithoutReadingTheFile', async () => {
+    let notified: boolean = false;
+    let contentRead: boolean = false;
+    TestBed.inject(FileSystem).read = (): Promise<FileInfo> => {
+      contentRead = true;
+      return Promise.resolve(REREAD);
+    };
+    fileWatch.watchPath('/ws/app.bin', (): void => {
+      notified = true;
+    });
+
+    fireChange('/ws/app.bin');
+    await flush();
+
+    expect(notified).toBe(true);
+    expect(contentRead).toBe(false);
+  });
+
+  it('watchPath_whenContentSubscriberSharesThePath_keepsWatchingUntilBothDispose', () => {
+    const disposePath: () => void = fileWatch.watchPath('/ws/main.ts', (): void => undefined);
+    const disposeContent: () => void = fileWatch.watch('/ws/main.ts', (): void => undefined);
+
+    disposePath();
+    expect(unwatched).toEqual([]);
+
+    disposeContent();
+    expect(unwatched).toEqual(['/ws/main.ts']);
+  });
 });

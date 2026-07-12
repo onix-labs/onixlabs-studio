@@ -1,5 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RepositoryInfo } from '@shared/api/source-control-channels';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import {
   FileDiff,
   MutationResult,
@@ -29,6 +30,12 @@ export const WORKING_NODE_ID: string = 'working';
 const LOG_LIMIT: number = 500;
 
 /**
+ * How long, in milliseconds, external on-disk changes are debounced before the repository refreshes,
+ * so a burst (a checkout, a build touching many files) refreshes once rather than per file.
+ */
+const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
+
+/**
  * The lane colours, cycled by lane index, that tint the commit-graph edges and nodes. Drawn from the
  * accent palette in `_variables.scss` so the graph reads as part of the application's colour world.
  */
@@ -56,6 +63,22 @@ export class Repository {
    * Holds the provider factory used to create a backend for an opened repository root.
    */
   private readonly providers: SourceControlProviders = inject(SourceControlProviders);
+
+  /**
+   * Holds the directory-watch service the bound root is subscribed to, so changes made to the working
+   * tree (or the repository itself) outside the application refresh the model.
+   */
+  private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
+   */
+  private watchDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the pending debounced external-refresh timer, or null when none is scheduled.
+   */
+  private externalRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the active provider, or null when no repository is bound.
@@ -298,7 +321,8 @@ export class Repository {
   public readonly lastError: Signal<string | null> = this.lastErrorSignal.asReadonly();
 
   /**
-   * Binds the repository to an opened root, creating its provider and loading its data.
+   * Binds the repository to an opened root, creating its provider, loading its data, and watching the
+   * root so on-disk changes made outside the application keep the status current.
    * @param info The opened repository's metadata.
    */
   public bind(info: RepositoryInfo): void {
@@ -306,7 +330,28 @@ export class Repository {
     this.infoSignal.set(info);
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
+    this.watchDisposer?.();
+    this.watchDisposer = this.directoryWatch.watch(info.root, (): void =>
+      this.scheduleExternalRefresh(),
+    );
     void this.refresh();
+  }
+
+  /**
+   * Schedules a coalesced refresh in response to external on-disk changes, so a burst of changes (a
+   * checkout, a build) refreshes the repository once rather than per file. The window is not extended
+   * by further events — continuous churn refreshes at this cadence instead of starving. The
+   * application's own git reads never re-enter here: the main process runs them with optional index
+   * writes disabled, so a refresh leaves the repository untouched on disk.
+   */
+  private scheduleExternalRefresh(): void {
+    if (this.externalRefreshTimer !== null) {
+      return;
+    }
+    this.externalRefreshTimer = setTimeout((): void => {
+      this.externalRefreshTimer = null;
+      void this.refresh();
+    }, EXTERNAL_REFRESH_DEBOUNCE_MS);
   }
 
   /**
@@ -314,6 +359,12 @@ export class Repository {
    * @returns Returns a promise that resolves once the repository has been released.
    */
   public async close(): Promise<void> {
+    this.watchDisposer?.();
+    this.watchDisposer = null;
+    if (this.externalRefreshTimer !== null) {
+      clearTimeout(this.externalRefreshTimer);
+      this.externalRefreshTimer = null;
+    }
     const provider: SourceControlProvider | null = this.provider;
     this.provider = null;
     this.infoSignal.set(null);

@@ -11,6 +11,8 @@ import {
 } from '@angular/core';
 import { DecodedInstruction } from '@shared/api/binary-channels';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
+import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
+import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
@@ -53,6 +55,12 @@ const DISASSEMBLY_DEBOUNCE_MS: number = 120;
  * instruction.
  */
 const DISASSEMBLY_PAD: number = 16;
+
+/**
+ * Specifies the window, in milliseconds, within which a file-watch notification after the document's
+ * own save is treated as that save's echo rather than an external change.
+ */
+const SAVE_ECHO_WINDOW_MS: number = 2000;
 
 /**
  * Specifies the largest number of disassembled ranges cached before the cache is cleared, bounding
@@ -141,6 +149,13 @@ export class BinaryDocumentEntry {
    * the block cache is dropped.
    */
   private lastRange: { offset: number; length: number } | null = null;
+
+  /**
+   * Holds when the document last wrote itself to disk, so the file-watch echo of the application's
+   * own save is not mistaken for an external change (which would needlessly reload — or, had the user
+   * already typed again, raise a conflict against their own save).
+   */
+  private lastSavedAt: number = 0;
 
   /**
    * Holds the undo stack of pre-edit snapshots, most recent last.
@@ -386,6 +401,7 @@ export class BinaryDocumentEntry {
     if (!written) {
       return false;
     }
+    this.lastSavedAt = Date.now();
     this.undoStack = [];
     this.redoStack = [];
     this.dirty.set(false);
@@ -415,6 +431,48 @@ export class BinaryDocumentEntry {
     }
     this.table.reset();
     return true;
+  }
+
+  /**
+   * Determines whether the document wrote itself to disk within the given window, so the watch echo
+   * of the application's own save can be told apart from an external change.
+   * @param withinMs The window, in milliseconds.
+   * @returns Returns true when the document saved within the window.
+   */
+  public recentlySaved(withinMs: number): boolean {
+    return Date.now() - this.lastSavedAt < withinMs;
+  }
+
+  /**
+   * Reloads the document from the file after it changed on disk outside the application: pending
+   * edits and their undo history are discarded, the stale block cache is dropped, and the first block
+   * plus the visible range are re-fetched. The first read re-learns the file's (possibly changed)
+   * size before the model resets to it, so the grid never sizes itself from a stale length.
+   * @returns Returns a promise that resolves once the reload has been applied.
+   */
+  public async reloadFromDisk(): Promise<void> {
+    const chunk: BinaryChunk | null = await this.workspace.readBytes(this.path, 0, BLOCK_SIZE);
+    if (chunk === null) {
+      return;
+    }
+    this.blocks.clear();
+    this.blocks.set(0, chunk.bytes);
+    this.originalSize = chunk.size;
+    this.table.reset(chunk.size);
+    this.initialized = true;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.afterMutation();
+    // Clamp the cursor and selection into the (possibly shrunken) file.
+    const cursor: number | null = this.cursor();
+    if (cursor !== null && cursor >= this.size()) {
+      this.cursor.set(this.size() > 0 ? this.size() - 1 : null);
+      this.selection.set(null);
+    }
+    this.loadedVersion.update((version: number): number => version + 1);
+    if (this.lastRange !== null) {
+      this.ensureRange(this.lastRange.offset, this.lastRange.length);
+    }
   }
 
   /**
@@ -888,6 +946,18 @@ export class BinaryDocuments implements UnsavedWorkSource {
   private readonly disassembly: BinaryDisassembly = inject(BinaryDisassembly);
 
   /**
+   * Holds the file-watch service each document's file is subscribed to, so external on-disk changes
+   * re-render the document.
+   */
+  private readonly fileWatch: FileWatch = inject(FileWatch);
+
+  /**
+   * Holds the file-conflict registry a dirty document's external change is raised on, deferring the
+   * keep-or-reload decision to the user.
+   */
+  private readonly fileConflicts: FileConflicts = inject(FileConflicts);
+
+  /**
    * Holds the injector used to create each document's tab-dirty synchronisation effect (documents
    * are opened outside a reactive context).
    */
@@ -905,6 +975,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
    * Holds each open document's tab-dirty synchronisation effect, disposed when the tab closes.
    */
   private readonly dirtyEffects: Map<string, EffectRef> = new Map<string, EffectRef>();
+
+  /**
+   * Holds each open document's file-watch disposer, disposed when the tab closes.
+   */
+  private readonly watchDisposers: Map<string, () => void> = new Map<string, () => void>();
 
   /**
    * Opens a file in a binary tab, reusing an existing tab for the same path, and returns the tab. The
@@ -931,6 +1006,10 @@ export class BinaryDocuments implements UnsavedWorkSource {
         tab.id,
         effect((): void => this.tabs.setDirty(tab.id, entry.dirty()), { injector: this.injector }),
       );
+      this.watchDisposers.set(
+        tab.id,
+        this.fileWatch.watchPath(path, (): void => this.onDiskChange(tab.id)),
+      );
       entry.prime();
     }
     this.tabs.activate(tab.id);
@@ -955,8 +1034,35 @@ export class BinaryDocuments implements UnsavedWorkSource {
   public release(tabId: string): void {
     this.dirtyEffects.get(tabId)?.destroy();
     this.dirtyEffects.delete(tabId);
+    this.watchDisposers.get(tabId)?.();
+    this.watchDisposers.delete(tabId);
+    this.fileConflicts.clear(tabId);
     this.entries.get(tabId)?.dispose();
     this.entries.delete(tabId);
+  }
+
+  /**
+   * Handles a document's file changing on disk. The echo of the application's own save is ignored; an
+   * external change reloads a clean document in place, and raises a keep-or-reload conflict for a
+   * dirty one so the user's unsaved edits are never silently discarded.
+   * @param tabId The owning tab identifier.
+   */
+  private onDiskChange(tabId: string): void {
+    const entry: BinaryDocumentEntry | undefined = this.entries.get(tabId);
+    if (entry === undefined || entry.recentlySaved(SAVE_ECHO_WINDOW_MS)) {
+      return;
+    }
+    if (!entry.dirty()) {
+      void entry.reloadFromDisk();
+      return;
+    }
+    this.fileConflicts.raise(
+      { documentId: tabId, tabId, name: entry.fileName },
+      {
+        keep: (): void => undefined,
+        reload: (): void => void entry.reloadFromDisk(),
+      },
+    );
   }
 
   /**

@@ -32,6 +32,22 @@ export enum FileChannel {
   Changed = 'file:changed',
 
   /**
+   * Starts watching a directory tree recursively for on-disk changes (renderer→main, invoke).
+   */
+  WatchDirectory = 'file:watch-directory',
+
+  /**
+   * Stops watching a directory tree (renderer→main, invoke).
+   */
+  UnwatchDirectory = 'file:unwatch-directory',
+
+  /**
+   * Notifies the renderer that entries changed somewhere under a watched directory tree
+   * (main→renderer, send), carrying a {@link DirectoryChangeEvent}.
+   */
+  DirectoryChanged = 'file:directory-changed',
+
+  /**
    * Shows an open-file dialog and reads the chosen file (renderer→main, invoke).
    */
   OpenFileDialog = 'dialog:open-file',
@@ -62,6 +78,30 @@ export enum FileChannel {
    * (renderer→main, invoke).
    */
   ConfirmDestructive = 'dialog:confirm-destructive',
+}
+
+/**
+ * Describes a burst of on-disk changes under a watched directory tree, coalesced by the main-process
+ * watcher. Changes are reported as the set of directories whose listings may have changed (the parent
+ * directory of each added, updated, or deleted entry), so subscribers re-read only what they show.
+ */
+export interface DirectoryChangeEvent {
+  /**
+   * Gets the absolute path of the watched root the changes occurred under.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the absolute paths of the directories whose entries changed. Empty when {@link overflow} is
+   * set, in which case the whole tree should be treated as changed.
+   */
+  readonly directories: readonly string[];
+
+  /**
+   * Gets a value indicating whether the burst was too large to report per-directory (or the platform
+   * withheld the changed paths); subscribers should refresh everything they have loaded.
+   */
+  readonly overflow: boolean;
 }
 
 /**

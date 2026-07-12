@@ -1,5 +1,6 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import {
   ProjectEntry,
@@ -8,6 +9,7 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
@@ -25,6 +27,12 @@ const ROOT_KEY: string = 'solution-root';
  * concurrent `dotnet` evaluations.
  */
 const LOAD_CONCURRENCY: number = 4;
+
+/**
+ * How long, in milliseconds, external on-disk changes are debounced before the model reloads, so a
+ * burst (a build, a checkout) reloads once rather than per file.
+ */
+const RELOAD_DEBOUNCE_MS: number = 300;
 
 /**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
@@ -88,6 +96,17 @@ export class SolutionModel {
    * Holds this tab's workspace, whose root the model is built for.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the directory-watch service the root is subscribed to, so external on-disk changes reload
+   * the model.
+   */
+  private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the pending debounced reload timer, or null when none is scheduled.
+   */
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -174,12 +193,24 @@ export class SolutionModel {
 
   /**
    * Initializes a new instance of the {@link SolutionModel} class, refreshing the model whenever the
-   * open root changes.
+   * open root changes and reloading it (preserving expansion) when the root's contents change on disk
+   * outside the application.
    */
   public constructor() {
-    effect((): void => {
+    effect((onCleanup: (fn: () => void) => void): void => {
       const root: string | null = this.workspace.root()?.path ?? null;
       void this.refresh(root);
+      if (root === null) {
+        return;
+      }
+      const dispose: () => void = this.directoryWatch.watch(
+        root,
+        (event: DirectoryChangeEvent): void => this.onTreeChanged(root, event),
+      );
+      onCleanup((): void => {
+        dispose();
+        this.cancelReload();
+      });
     });
   }
 
@@ -250,6 +281,87 @@ export class SolutionModel {
     if (model !== null) {
       void this.loadAllContents(model, generation);
     }
+  }
+
+  /**
+   * Handles a burst of external on-disk changes under the root, scheduling a debounced reload. Bursts
+   * confined to the repository's `.git` directory are ignored: they change no project structure, and
+   * every git operation would otherwise re-evaluate the solution.
+   * @param root The workspace root the changes occurred under.
+   * @param event The change burst.
+   */
+  private onTreeChanged(root: string, event: DirectoryChangeEvent): void {
+    if (!event.overflow && event.directories.every(this.isGitInternal.bind(this, root))) {
+      return;
+    }
+    this.cancelReload();
+    this.reloadTimer = setTimeout((): void => {
+      this.reloadTimer = null;
+      void this.reload(root);
+    }, RELOAD_DEBOUNCE_MS);
+  }
+
+  /**
+   * Cancels any pending debounced reload.
+   */
+  private cancelReload(): void {
+    if (this.reloadTimer !== null) {
+      clearTimeout(this.reloadTimer);
+      this.reloadTimer = null;
+    }
+  }
+
+  /**
+   * Determines whether a directory lies within the root's `.git` directory.
+   * @param root The workspace root.
+   * @param directory The absolute directory path to test.
+   * @returns Returns true when the directory is the `.git` directory or inside it.
+   */
+  private isGitInternal(root: string, directory: string): boolean {
+    const normalizedRoot: string = root.replaceAll('\\', '/');
+    const normalized: string = directory.replaceAll('\\', '/');
+    const gitDirectory: string = `${normalizedRoot}/.git`;
+    return normalized === gitDirectory || normalized.startsWith(`${gitDirectory}/`);
+  }
+
+  /**
+   * Reloads the model for the current root after its contents changed on disk, preserving the
+   * expansion state (unlike {@link refresh}, which resets it for a newly-opened root). Projects whose
+   * contents were already loaded keep showing them until their fresh contents arrive, so the tree does
+   * not flash back to spinners on every external change. A stale response is discarded.
+   * @param root The workspace root to reload.
+   * @returns Returns a promise that resolves once the model has been reloaded.
+   */
+  private async reload(root: string): Promise<void> {
+    const generation: number = ++this.generation;
+    if (this.bridge === undefined) {
+      return;
+    }
+    const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
+      ProjectChannel.ModelLoad,
+      root,
+    );
+    if (generation !== this.generation) {
+      return;
+    }
+    this.current.set(model);
+    if (model === null) {
+      this.itemsByProject.set(new Map<string, ProjectItems>());
+      this.loadingProjects.set(new Set<string>());
+      this.expandedKeys.set(new Set<string>());
+      return;
+    }
+    // Spinners only for projects the cache knows nothing about; known projects keep their previous
+    // contents visible until the fresh contents replace them below.
+    const cache: ReadonlyMap<string, ProjectItems> = this.itemsByProject();
+    const loading: Set<string> = new Set<string>();
+    for (const project of model.projects) {
+      if (!cache.has(project.path)) {
+        loading.add(project.path);
+      }
+    }
+    this.loadingProjects.set(loading);
+    void this.loadAllContents(model, generation);
   }
 
   /**

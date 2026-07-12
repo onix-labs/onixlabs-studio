@@ -11,6 +11,13 @@ interface PathWatchers {
    * Gets the callbacks invoked when the file changes, each receiving the freshly-read file.
    */
   readonly callbacks: Set<(info: FileInfo) => void>;
+
+  /**
+   * Gets the callbacks invoked when the file changes that want only the notification, not the file's
+   * text. Used by consumers of non-text files (the binary editor), whose bytes must not be read as
+   * text and who re-fetch what they need themselves.
+   */
+  readonly pathCallbacks: Set<() => void>;
 }
 
 /**
@@ -53,40 +60,76 @@ export class FileWatch {
    * @returns Returns a function that stops this subscription.
    */
   public watch(path: string, onChange: (info: FileInfo) => void): () => void {
+    const entry: PathWatchers = this.ensureWatched(path);
+    entry.callbacks.add(onChange);
+    return (): void => {
+      entry.callbacks.delete(onChange);
+      this.releaseIfUnused(path);
+    };
+  }
+
+  /**
+   * Watches a file, invoking the callback whenever it changes on disk without reading its contents.
+   * For consumers of non-text files (the binary editor), whose bytes must not be read as text and who
+   * re-fetch what they need themselves.
+   * @param path The absolute path to watch.
+   * @param onChange Invoked on each change.
+   * @returns Returns a function that stops this subscription.
+   */
+  public watchPath(path: string, onChange: () => void): () => void {
+    const entry: PathWatchers = this.ensureWatched(path);
+    entry.pathCallbacks.add(onChange);
+    return (): void => {
+      entry.pathCallbacks.delete(onChange);
+      this.releaseIfUnused(path);
+    };
+  }
+
+  /**
+   * Gets the subscriber entry for a path, starting the OS watch when it is the path's first.
+   * @param path The absolute path to watch.
+   * @returns Returns the path's subscriber entry.
+   */
+  private ensureWatched(path: string): PathWatchers {
     let entry: PathWatchers | undefined = this.watchers.get(path);
     if (entry === undefined) {
-      entry = { callbacks: new Set<(info: FileInfo) => void>() };
+      entry = {
+        callbacks: new Set<(info: FileInfo) => void>(),
+        pathCallbacks: new Set<() => void>(),
+      };
       this.watchers.set(path, entry);
       void this.bridge?.invoke(FileChannel.Watch, path);
     }
-    entry.callbacks.add(onChange);
-    return (): void => this.unwatch(path, onChange);
+    return entry;
   }
 
   /**
-   * Removes a subscription, stopping the OS watch when the path has no subscribers left.
+   * Stops the OS watch for a path once it has no subscribers of either kind left.
    * @param path The watched path.
-   * @param onChange The callback to remove.
    */
-  private unwatch(path: string, onChange: (info: FileInfo) => void): void {
+  private releaseIfUnused(path: string): void {
     const entry: PathWatchers | undefined = this.watchers.get(path);
-    if (entry === undefined) {
+    if (entry === undefined || entry.callbacks.size > 0 || entry.pathCallbacks.size > 0) {
       return;
     }
-    entry.callbacks.delete(onChange);
-    if (entry.callbacks.size === 0) {
-      this.watchers.delete(path);
-      void this.bridge?.invoke(FileChannel.Unwatch, path);
-    }
+    this.watchers.delete(path);
+    void this.bridge?.invoke(FileChannel.Unwatch, path);
   }
 
   /**
-   * Re-reads a changed file once and notifies its subscribers.
+   * Notifies a changed path's subscribers, re-reading the file once when any subscriber wants its
+   * contents.
    * @param path The path that changed.
    */
   private async onChanged(path: string): Promise<void> {
     const entry: PathWatchers | undefined = this.watchers.get(path);
     if (entry === undefined) {
+      return;
+    }
+    for (const callback of entry.pathCallbacks) {
+      callback();
+    }
+    if (entry.callbacks.size === 0) {
       return;
     }
     const info: FileInfo | null = await this.fileSystem.read(path);

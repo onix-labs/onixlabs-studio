@@ -686,7 +686,10 @@ export class GitManager {
           timeout: options?.timeoutMs ?? GIT_TIMEOUT_MS,
           maxBuffer: GIT_MAX_BUFFER,
           windowsHide: true,
-          ...(options?.env !== undefined ? { env: options.env } : {}),
+          // Read commands (status in particular) must not opportunistically write the index: the
+          // repository root is watched for on-disk changes, and a status that refreshed the index
+          // would trigger the watcher that triggered it.
+          env: { ...(options?.env ?? process.env), GIT_OPTIONAL_LOCKS: '0' },
         },
         (error: Error | null, stdout: string, stderr: string): void => {
           if (error !== null) {
