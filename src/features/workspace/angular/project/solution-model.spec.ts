@@ -272,4 +272,42 @@ describe('SolutionModel', () => {
 
     expect(labels(model)).toEqual(['MySolution']);
   });
+
+  it('revealPath_expandsTheChainToTheFileAndSelectsIt', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+
+    const revealed: boolean = model.revealPath('/root/A/Sub/f.cs');
+
+    // The solution folder, the project, and the item folder all expanded, so the file is visible.
+    expect(revealed).toBe(true);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'Sub', 'f.cs', 'g.cs', 'B']);
+    expect(model.selectedKey()).toBe('file:/root/A/Sub/f.cs');
+  });
+
+  it('revealPath_forAFileOutsideTheSolution_returnsFalseAndKeepsState', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+
+    const revealed: boolean = model.revealPath('/elsewhere/x.cs');
+
+    expect(revealed).toBe(false);
+    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
+    expect(model.selectedKey()).toBeNull();
+  });
+
+  it('select_marksTheRowSelected', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+
+    model.select('file:/root/A/g.cs');
+
+    expect(model.selectedKey()).toBe('file:/root/A/g.cs');
+  });
 });

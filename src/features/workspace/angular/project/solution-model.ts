@@ -148,6 +148,11 @@ export class SolutionModel {
   private readonly searchQuery: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds the key of the selected row, or null when nothing is selected.
+   */
+  private readonly selectedKeySignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
    * does not apply its results.
    */
@@ -162,6 +167,11 @@ export class SolutionModel {
    * Gets the active search query, exposed so the panel can highlight the matched text.
    */
   public readonly query: Signal<string> = this.searchQuery.asReadonly();
+
+  /**
+   * Gets the key of the selected row, or null when nothing is selected.
+   */
+  public readonly selectedKey: Signal<string | null> = this.selectedKeySignal.asReadonly();
 
   /**
    * Gets the flattened, visible rows of the solution tree.
@@ -237,6 +247,110 @@ export class SolutionModel {
    */
   public setQuery(value: string): void {
     this.searchQuery.set(value);
+  }
+
+  /**
+   * Selects a row by key.
+   * @param key The key of the row to select.
+   */
+  public select(key: string): void {
+    this.selectedKeySignal.set(key);
+  }
+
+  /**
+   * Reveals a file in the tree: expands the chain of rows leading to it (the root, its solution
+   * folders, its project, and its item folders) and selects its row. Used to keep the Solution
+   * Explorer's selection following the active document. Does nothing when the file is not part of a
+   * loaded project (its contents may still be loading, or the file lies outside the solution).
+   * @param path The absolute path of the file to reveal.
+   * @returns Returns true when the file was found and revealed.
+   */
+  public revealPath(path: string): boolean {
+    const model: ProjectModel | null = this.current();
+    if (model === null) {
+      return false;
+    }
+    const chain: readonly string[] | null = this.keysToFile(model, path);
+    if (chain === null) {
+      return false;
+    }
+    this.expandedKeys.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      for (const key of chain) {
+        next.add(key);
+      }
+      return next;
+    });
+    this.selectedKeySignal.set(`file:${path}`);
+    return true;
+  }
+
+  /**
+   * Finds the chain of expandable keys leading to a file: the solution root, the solution folders
+   * above its project, the project itself, and the item folders above the file.
+   * @param model The model to walk.
+   * @param path The absolute file path to find.
+   * @returns Returns the ancestor keys, or null when the file is not in a loaded project.
+   */
+  private keysToFile(model: ProjectModel, path: string): readonly string[] | null {
+    const walkItems: (
+      nodes: readonly ProjectItemNode[],
+      parentKey: string,
+      ancestors: readonly string[],
+    ) => readonly string[] | null = (
+      nodes: readonly ProjectItemNode[],
+      parentKey: string,
+      ancestors: readonly string[],
+    ): readonly string[] | null => {
+      for (const node of nodes) {
+        if (node.type === 'folder') {
+          const key: string = `${parentKey}/${node.name}`;
+          const found: readonly string[] | null = walkItems(node.children, key, [
+            ...ancestors,
+            key,
+          ]);
+          if (found !== null) {
+            return found;
+          }
+        } else if (node.path === path) {
+          return ancestors;
+        }
+      }
+      return null;
+    };
+    const walkNodes: (
+      nodes: readonly ProjectNode[],
+      parentKey: string,
+      ancestors: readonly string[],
+    ) => readonly string[] | null = (
+      nodes: readonly ProjectNode[],
+      parentKey: string,
+      ancestors: readonly string[],
+    ): readonly string[] | null => {
+      for (const node of nodes) {
+        if (node.type === 'folder') {
+          const key: string = `${parentKey}/${node.name}`;
+          const found: readonly string[] | null = walkNodes(node.children, key, [
+            ...ancestors,
+            key,
+          ]);
+          if (found !== null) {
+            return found;
+          }
+        } else {
+          const key: string = `project:${node.path}`;
+          const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
+          if (items !== undefined) {
+            const found: readonly string[] | null = walkItems(items.tree, key, [...ancestors, key]);
+            if (found !== null) {
+              return found;
+            }
+          }
+        }
+      }
+      return null;
+    };
+    return walkNodes(model.tree, '', [ROOT_KEY]);
   }
 
   /**
@@ -374,6 +488,7 @@ export class SolutionModel {
     this.current.set(model);
     this.itemsByProject.set(new Map<string, ProjectItems>());
     this.searchQuery.set('');
+    this.selectedKeySignal.set(null);
     // Start collapsed to just the solution root; every project shows its own spinner while it loads.
     const loading: Set<string> = new Set<string>();
     const expanded: Set<string> = new Set<string>();

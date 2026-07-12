@@ -1,8 +1,11 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   contentChild,
+  ElementRef,
+  inject,
   input,
   InputSignal,
   output,
@@ -95,6 +98,36 @@ export class TreeView {
    * context value.
    */
   protected readonly content: Signal<TemplateRef<unknown> | undefined> = contentChild(TemplateRef);
+
+  /**
+   * Holds the component's host element, used to scroll the selected row into view.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Initializes a new instance of the {@link TreeView} class, keeping the selected row scrolled into
+   * view: whenever the selection (or the row set it lives in) changes after render, the selected
+   * row is brought into the scrollport — so selection driven from outside (an explorer following the
+   * active document) is always visible.
+   */
+  public constructor() {
+    afterRenderEffect((): void => {
+      const id: string | null = this.selectedId();
+      this.rows();
+      if (id === null) {
+        return;
+      }
+      // Row ids are arbitrary strings (file paths, composed keys), so match by attribute value
+      // rather than baking the id into a selector.
+      const row: HTMLElement | undefined = Array.from(
+        this.host.nativeElement.querySelectorAll<HTMLElement>('[data-tree-id]'),
+      ).find((candidate: HTMLElement): boolean => candidate.getAttribute('data-tree-id') === id);
+      // scrollIntoView is missing under jsdom; guard so unit tests of consumers never throw.
+      if (row !== undefined && typeof row.scrollIntoView === 'function') {
+        row.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
 
   /**
    * Computes the left padding for a row at the given depth.

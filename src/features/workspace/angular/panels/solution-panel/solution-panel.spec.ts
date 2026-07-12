@@ -15,6 +15,7 @@ class FakeSolutionModel {
   public readonly model: WritableSignal<ProjectModel | null> = signal<ProjectModel | null>(null);
   public readonly rows: WritableSignal<readonly SolutionRow[]> = signal<readonly SolutionRow[]>([]);
   public readonly query: WritableSignal<string> = signal<string>('');
+  public readonly selectedKey: WritableSignal<string | null> = signal<string | null>(null);
   public readonly toggled: SolutionRow[] = [];
   public readonly queries: string[] = [];
   public expandAllCount: number = 0;
@@ -22,6 +23,10 @@ class FakeSolutionModel {
 
   public toggle(row: SolutionRow): void {
     this.toggled.push(row);
+  }
+
+  public select(key: string): void {
+    this.selectedKey.set(key);
   }
 
   public setQuery(value: string): void {
