@@ -12,30 +12,30 @@ import {
 } from 'electron';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AppChannel } from '@shared/api/app-channels';
-import { ShellChannel } from '@shared/api/shell-channels';
-import { WindowChannel } from '@shared/api/window-channels';
-import { AgentConversationStore } from './ai/agent-conversation-store';
-import { AiManager } from './ai/ai-manager';
-import { CodeRunner } from '@shared/electron/code-runner';
-import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
-import { FileManager } from '@shared/electron/file-manager';
-import { FileWatcher } from '@shared/electron/file-watcher';
-import { Logger } from '@shared/electron/logger';
-import { LspManager } from './lsp/lsp-manager';
-import { LspServerRegistry } from './lsp/lsp-server-registry';
-import { LspSettingsManager } from './lsp/lsp-settings';
-import { MediaProtocol } from '@shared/electron/media-protocol';
-import { PrintManager } from '@shared/electron/print-manager';
-import { SecurityManager } from '@shared/electron/security-manager';
-import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
-import { GitManager } from '@shared/electron/git-manager';
-import { SearchManager } from '@shared/electron/search-manager';
-import { TaskRunner } from '@shared/electron/task-runner';
-import { TerminalManager } from '@shared/electron/terminal-manager';
-import { TrustedPaths } from './trusted-paths';
-import { WorkspaceContext } from './workspace-context';
-import { WorkspaceManager } from './workspace-manager';
+import {AppChannel} from '@shared/api/app-channels';
+import {ShellChannel} from '@shared/api/shell-channels';
+import {WindowChannel} from '@shared/api/window-channels';
+import {AgentConversationStore} from './ai/agent-conversation-store';
+import {AiManager} from './ai/ai-manager';
+import {CodeRunner} from '@shared/electron/code-runner';
+import {BinaryDisassembler} from '@shared/electron/binary-disassembler';
+import {FileManager} from '@shared/electron/file-manager';
+import {FileWatcher} from '@shared/electron/file-watcher';
+import {Logger} from '@shared/electron/logger';
+import {LspManager} from './lsp/lsp-manager';
+import {LspServerRegistry} from './lsp/lsp-server-registry';
+import {LspSettingsManager} from './lsp/lsp-settings';
+import {MediaProtocol} from '@shared/electron/media-protocol';
+import {PrintManager} from '@shared/electron/print-manager';
+import {SecurityManager} from '@shared/electron/security-manager';
+import {StartupPreferences, StartupPreferencesStore} from './startup-preferences';
+import {GitManager} from '@shared/electron/git-manager';
+import {SearchManager} from '@shared/electron/search-manager';
+import {TaskRunner} from '@shared/electron/task-runner';
+import {TerminalManager} from '@shared/electron/terminal-manager';
+import {TrustedPaths} from './trusted-paths';
+import {WorkspaceContext} from './workspace-context';
+import {WorkspaceManager} from './workspace-manager';
 
 // Test seam: point userData at an isolated directory before anything resolves it (localStorage,
 // trusted paths, agent conversations), so E2E runs never read or clobber the real app state.
@@ -219,9 +219,7 @@ class Program {
   /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
-  private readonly fileWatcher: FileWatcher = new FileWatcher(
-    (): BrowserWindow | null => this.window,
-  );
+  private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null => this.window);
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
@@ -356,13 +354,13 @@ class Program {
       minHeight: 600,
       show: false,
       titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      trafficLightPosition: {x: 14, y: 14},
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-      },
+      }
     });
 
     window.once('ready-to-show', (): void => window.show());
@@ -432,7 +430,7 @@ class Program {
         if (typeof enabled !== 'boolean') {
           return;
         }
-        StartupPreferencesStore.write({ hardwareAcceleration: enabled });
+        StartupPreferencesStore.write({hardwareAcceleration: enabled});
       },
     );
 
@@ -497,7 +495,7 @@ class Program {
 
     contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
       void this.openExternalUrl(details.url);
-      return { action: 'deny' };
+      return {action: 'deny'};
     });
   }
 
@@ -589,7 +587,7 @@ class Program {
       console.warn(`[startup] weak GPU detected ('${description}'); recommending reduced effects`);
     }
 
-    this.gpuRendering = { recommendReducedEffects, description };
+    this.gpuRendering = {recommendReducedEffects, description};
   }
 
   /**
