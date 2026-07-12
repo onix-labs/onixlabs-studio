@@ -16,7 +16,8 @@ import {
  * from the active surface via the shared {@link DocumentStatus} service, whichever segments the
  * surface publishes — the caret line and column, the end-of-line sequence and the encoding for a code
  * document; the word count and read time for a prose document — plus the language mode. The zoom
- * segment is a drop-up that shows and sets the global {@link EditorZoom} level.
+ * segment is a drop-up that shows and sets the global {@link EditorZoom} level; it accompanies only
+ * code-shaped publications, because the zoom reaches Monaco text editors and not the prose editor.
  */
 @Component({
   selector: 'app-dock-status-strip',

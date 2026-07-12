@@ -36,15 +36,18 @@
         {{ document.encoding }}
       </button>
     }
-    <button
-      type="button"
-      class="dock-status-strip__segment"
-      title="Select zoom level"
-      [cdkMenuTriggerFor]="zoomMenu.panel() ?? null"
-      [cdkMenuPosition]="zoomMenu.position()"
-    >
-      {{ zoom() }}%
-    </button>
+    <!-- The zoom only reaches Monaco text editors, so prose documents omit the segment. -->
+    @if (document.line !== undefined) {
+      <button
+        type="button"
+        class="dock-status-strip__segment"
+        title="Select zoom level"
+        [cdkMenuTriggerFor]="zoomMenu.panel() ?? null"
+        [cdkMenuPosition]="zoomMenu.position()"
+      >
+        {{ zoom() }}%
+      </button>
+    }
   </div>
 }
 

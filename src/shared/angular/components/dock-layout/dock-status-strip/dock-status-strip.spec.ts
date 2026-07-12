@@ -96,6 +96,7 @@ describe('DockStatusStrip', () => {
     expect(text).toContain('markdown');
     expect(text).toContain('UTF-8');
     expect(text).not.toContain('Ln ');
+    expect(text).not.toContain('100%');
   });
 
   it('render_whenAProseDocumentIsEmpty_hidesTheReadTime', () => {
