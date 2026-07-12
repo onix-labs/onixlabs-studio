@@ -40,6 +40,7 @@ import {
   BINARY_PROMPT_APPENDIX,
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
+  PROJECT_PROMPT_APPENDIX,
   READ_BINARY_BYTES_FQN,
   READ_BINARY_DISASSEMBLY_FQN,
   READ_BINARY_OVERVIEW_FQN,
@@ -178,6 +179,9 @@ export class ClaudeAgentProvider implements AgentProvider {
     const surface: AgentSurface = context.surface;
     const terminal: boolean = surface === 'terminal';
     const binary: boolean = surface === 'binary';
+    // The standalone agent tab has no owning document: no in-app studio tools are registered, and the
+    // run works through the SDK's built-in tools alone (gated by the permission posture as usual).
+    const project: boolean = surface === 'project';
     // Chat mode runs read-only: the mutating in-app tool is withheld and every editing/executing tool
     // is denied, so the agent may inspect the project and the surface but never changes anything.
     const readOnly: boolean = context.mode === 'chat';
@@ -200,7 +204,9 @@ export class ClaudeAgentProvider implements AgentProvider {
     const studioServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
       name: 'studio',
       version: '0.0.0',
-      tools: terminal
+      tools: project
+        ? []
+        : terminal
         ? [
             tool(
               READ_TERMINAL_OUTPUT,
@@ -426,24 +432,28 @@ export class ClaudeAgentProvider implements AgentProvider {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: this.systemAppendix(terminal, binary, readOnly),
+        append: this.systemAppendix(surface, readOnly),
       },
-      mcpServers: { studio: studioServer },
+      // A project-surface run registers no in-app server at all — the standalone agent works through
+      // the SDK's built-in tools alone.
+      ...(project ? {} : { mcpServers: { studio: studioServer } }),
       // For a terminal run, auto-allow only the read tool; the write tool is intentionally omitted so
       // it flows through canUseTool (prompting unless the posture auto-allows). For a binary run,
       // auto-allow the read-only inspection tools (and read-only project exploration); the byte-patch
       // tool is omitted so it flows through canUseTool. For an editor run, auto-allow the in-app editor
       // tools (the user sees and can undo the change) and read-only project exploration; canUseTool
-      // gates everything else.
+      // gates everything else. A project run auto-allows read-only exploration only.
       allowedTools: terminal
         ? [READ_TERMINAL_FQN]
         : binary
           ? [...BINARY_READ_FQNS, ...(hasReadableContext ? READ_ONLY_TOOLS : [])]
-          : [
-              READ_TOOL_FQN,
-              ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
-              ...(hasReadableContext ? READ_ONLY_TOOLS : []),
-            ],
+          : project
+            ? [...(hasReadableContext ? READ_ONLY_TOOLS : [])]
+            : [
+                READ_TOOL_FQN,
+                ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
+                ...(hasReadableContext ? READ_ONLY_TOOLS : []),
+              ],
       canUseTool,
       abortController: controller,
       // Resume the conversation's prior session when one exists, so the model keeps the earlier turns'
@@ -487,17 +497,19 @@ export class ClaudeAgentProvider implements AgentProvider {
   /**
    * Builds the system-prompt appendix for a run: the surface-specific guidance, plus the read-only note
    * on a chat-mode run.
-   * @param terminal Whether the run acts on a terminal.
-   * @param binary Whether the run acts on a binary file.
+   * @param surface The surface the run acts on.
    * @param readOnly Whether the run is read-only (chat mode).
    * @returns Returns the combined appendix.
    */
-  private systemAppendix(terminal: boolean, binary: boolean, readOnly: boolean): string {
-    const base: string = terminal
-      ? TERMINAL_PROMPT_APPENDIX
-      : binary
-        ? BINARY_PROMPT_APPENDIX
-        : STUDIO_PROMPT_APPENDIX;
+  private systemAppendix(surface: AgentSurface, readOnly: boolean): string {
+    const base: string =
+      surface === 'terminal'
+        ? TERMINAL_PROMPT_APPENDIX
+        : surface === 'binary'
+          ? BINARY_PROMPT_APPENDIX
+          : surface === 'project'
+            ? PROJECT_PROMPT_APPENDIX
+            : STUDIO_PROMPT_APPENDIX;
     return readOnly ? `${base}\n\n${READ_ONLY_APPENDIX}` : base;
   }
 

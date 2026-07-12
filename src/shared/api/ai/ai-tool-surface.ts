@@ -70,7 +70,8 @@ export const PATCH_BINARY_BYTES: string = 'patch_binary_bytes';
 
 /**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
- * (`terminal`), or the owning binary document (`binary`). It selects the tool set the providers expose
- * for the run.
+ * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
+ * standalone agent tab, which has no owning document and works through the provider's built-in tools
+ * alone). It selects the tool set the providers expose for the run.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary';
+export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'project';

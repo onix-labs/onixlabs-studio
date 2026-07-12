@@ -17,6 +17,7 @@ import {
 import type { AgentRunContext } from './agent-provider';
 import {
   BINARY_PROMPT_APPENDIX,
+  PROJECT_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   editActiveDocument,
@@ -291,6 +292,8 @@ export function promptForSurface(surface: AgentSurface): string {
       return TERMINAL_PROMPT_APPENDIX;
     case 'binary':
       return BINARY_PROMPT_APPENDIX;
+    case 'project':
+      return PROJECT_PROMPT_APPENDIX;
     case 'editor':
       return STUDIO_PROMPT_APPENDIX;
   }
@@ -308,6 +311,10 @@ export function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
       return createTerminalTools(context);
     case 'binary':
       return createBinaryTools(context);
+    // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
+    // so a project run carries no tools at all (a documented limitation of those providers).
+    case 'project':
+      return Promise.resolve({});
     case 'editor':
       return createStudioTools(context);
   }
