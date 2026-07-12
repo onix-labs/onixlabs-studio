@@ -8,8 +8,10 @@ import type {
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
+  DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
+  INSERT_BINARY_BYTES,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
@@ -51,7 +53,9 @@ import {
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
+  deleteBinaryBytes,
   editActiveDocument,
+  insertBinaryBytes,
   insertIntoActiveDocument,
   patchBinaryBytes,
   readActiveDocument,
@@ -298,6 +302,36 @@ export class ClaudeAgentProvider implements AgentProvider {
                       },
                       async (args: { offset: number; bytes: string }) =>
                         text(await patchBinaryBytes(context, args.offset, args.bytes)),
+                    ),
+                    tool(
+                      INSERT_BINARY_BYTES,
+                      'Insert bytes before an offset in the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+                      {
+                        offset: z
+                          .number()
+                          .int()
+                          .min(0)
+                          .describe('The offset to insert before (the file size appends).'),
+                        bytes: z
+                          .string()
+                          .describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
+                      },
+                      async (args: { offset: number; bytes: string }) =>
+                        text(await insertBinaryBytes(context, args.offset, args.bytes)),
+                    ),
+                    tool(
+                      DELETE_BINARY_BYTES,
+                      'Delete a run of bytes from the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+                      {
+                        offset: z.number().int().min(0).describe('The first offset to delete.'),
+                        length: z
+                          .number()
+                          .int()
+                          .min(1)
+                          .describe('The number of bytes to delete.'),
+                      },
+                      async (args: { offset: number; length: number }) =>
+                        text(await deleteBinaryBytes(context, args.offset, args.length)),
                     ),
                   ]),
             ]

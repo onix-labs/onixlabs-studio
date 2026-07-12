@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  DELETE_BINARY_BYTES,
+  INSERT_BINARY_BYTES,
   PATCH_BINARY_BYTES,
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
@@ -59,6 +61,11 @@ interface FakeDocumentState {
    * Gets whether `patch` accepts the write.
    */
   readonly patchOk: boolean;
+
+  /**
+   * Gets whether `insertBytes` and `removeBytes` accept the edit.
+   */
+  readonly resizeOk: boolean;
 }
 
 /**
@@ -79,6 +86,16 @@ interface FakeDocument {
    * Gets the byte patches the capabilities applied.
    */
   readonly patches: { offset: number; values: readonly number[] }[];
+
+  /**
+   * Gets the byte insertions the capabilities applied.
+   */
+  readonly inserts: { offset: number; values: readonly number[] }[];
+
+  /**
+   * Gets the byte deletions the capabilities applied.
+   */
+  readonly deletes: { offset: number; count: number }[];
 }
 
 /**
@@ -97,10 +114,13 @@ function fakeDocument(overrides: Partial<FakeDocumentState> = {}): FakeDocument 
     bytes: [],
     instructions: [],
     patchOk: true,
+    resizeOk: true,
     ...overrides,
   };
   const reads: { offset: number; length: number }[] = [];
   const patches: { offset: number; values: readonly number[] }[] = [];
+  const inserts: { offset: number; values: readonly number[] }[] = [];
+  const deletes: { offset: number; count: number }[] = [];
   const entry: BinaryDocumentEntry = {
     path: '/ws/blob.bin',
     fileName: 'blob.bin',
@@ -120,8 +140,16 @@ function fakeDocument(overrides: Partial<FakeDocumentState> = {}): FakeDocument 
       patches.push({ offset, values });
       return Promise.resolve(state.patchOk);
     },
+    insertBytes: (offset: number, values: readonly number[]): Promise<boolean> => {
+      inserts.push({ offset, values });
+      return Promise.resolve(state.resizeOk);
+    },
+    removeBytes: (offset: number, count: number): Promise<boolean> => {
+      deletes.push({ offset, count });
+      return Promise.resolve(state.resizeOk);
+    },
   } as unknown as BinaryDocumentEntry;
-  return { entry, reads, patches };
+  return { entry, reads, patches, inserts, deletes };
 }
 
 describe('BinaryAgentCapabilities', () => {
@@ -160,9 +188,11 @@ describe('BinaryAgentCapabilities', () => {
     TestBed.inject(BinaryAgentCapabilities);
   });
 
-  it('constructor_whenInstantiated_registersTheFiveBinaryCapabilities', () => {
+  it('constructor_whenInstantiated_registersTheSevenBinaryCapabilities', () => {
     expect(Array.from(registered.keys()).sort()).toEqual(
       [
+        DELETE_BINARY_BYTES,
+        INSERT_BINARY_BYTES,
         PATCH_BINARY_BYTES,
         READ_BINARY_BYTES,
         READ_BINARY_DISASSEMBLY,
@@ -170,6 +200,68 @@ describe('BinaryAgentCapabilities', () => {
         READ_BINARY_SELECTION,
       ].sort(),
     );
+  });
+
+  it('insert_parsesHexAndInsertsAtTheOffset', async () => {
+    const fake: FakeDocument = fakeDocument({ size: 8 });
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(INSERT_BINARY_BYTES, { offset: 4, bytes: '0xDE AD' });
+
+    expect(fake.inserts).toEqual([{ offset: 4, values: [0xde, 0xad] }]);
+    expect((result as { ok: boolean; text: string }).ok).toBe(true);
+    expect((result as { text: string }).text).toContain('shifted by +2');
+  });
+
+  it('insert_whenOffsetOutOfBounds_reportsTheFailure', async () => {
+    const fake: FakeDocument = fakeDocument({ size: 8, resizeOk: false });
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(INSERT_BINARY_BYTES, { offset: 99, bytes: 'ff' });
+
+    expect((result as { ok: boolean; text: string }).ok).toBe(false);
+    expect((result as { text: string }).text).toContain('outside the file');
+  });
+
+  it('insert_whenBytesMalformed_rejectsWithoutEditing', async () => {
+    const fake: FakeDocument = fakeDocument();
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(INSERT_BINARY_BYTES, { offset: 0, bytes: 'zz' });
+
+    expect(fake.inserts).toEqual([]);
+    expect((result as { ok: boolean }).ok).toBe(false);
+  });
+
+  it('delete_removesTheRangeAndWarnsAboutTheShift', async () => {
+    const fake: FakeDocument = fakeDocument({ size: 32 });
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(DELETE_BINARY_BYTES, { offset: 8, length: 4 });
+
+    expect(fake.deletes).toEqual([{ offset: 8, count: 4 }]);
+    expect((result as { ok: boolean; text: string }).ok).toBe(true);
+    expect((result as { text: string }).text).toContain('shifted by -4');
+  });
+
+  it('delete_whenLengthNotPositive_rejectsWithoutEditing', async () => {
+    const fake: FakeDocument = fakeDocument();
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(DELETE_BINARY_BYTES, { offset: 0, length: 0 });
+
+    expect(fake.deletes).toEqual([]);
+    expect((result as { ok: boolean }).ok).toBe(false);
+  });
+
+  it('delete_whenRangeOutOfBounds_reportsTheFailure', async () => {
+    const fake: FakeDocument = fakeDocument({ size: 8, resizeOk: false });
+    documents.set('tab-1', fake.entry);
+
+    const result: unknown = await run(DELETE_BINARY_BYTES, { offset: 6, length: 4 });
+
+    expect((result as { ok: boolean; text: string }).ok).toBe(false);
+    expect((result as { text: string }).text).toContain('outside the file');
   });
 
   it('overview_whenTabUnknown_reportsUnavailable', async () => {

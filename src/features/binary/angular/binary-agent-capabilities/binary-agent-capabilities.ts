@@ -1,5 +1,7 @@
 import { inject, Service } from '@angular/core';
 import {
+  DELETE_BINARY_BYTES,
+  INSERT_BINARY_BYTES,
   PATCH_BINARY_BYTES,
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
@@ -102,6 +104,14 @@ export class BinaryAgentCapabilities {
     this.runtime.registerCapability(
       PATCH_BINARY_BYTES,
       (input: unknown): Promise<PatchResult> => this.patch(input),
+    );
+    this.runtime.registerCapability(
+      INSERT_BINARY_BYTES,
+      (input: unknown): Promise<PatchResult> => this.insert(input),
+    );
+    this.runtime.registerCapability(
+      DELETE_BINARY_BYTES,
+      (input: unknown): Promise<PatchResult> => this.delete(input),
     );
   }
 
@@ -226,6 +236,70 @@ export class BinaryAgentCapabilities {
     return {
       ok: true,
       text: `Overwrote ${values.length} byte(s) at ${this.hexOffset(offset)}. The change is unsaved and undoable; the user can save it to write it to disk.`,
+    };
+  }
+
+  /**
+   * Inserts bytes before an offset from a `{ tabId, offset, bytes }` input, where `bytes` is a hex
+   * string. Grows the document and shifts every subsequent offset; produces an unsaved, undoable edit.
+   * @param input The capability input.
+   * @returns Returns the {@link PatchResult}.
+   */
+  private async insert(input: unknown): Promise<PatchResult> {
+    const document: BinaryDocumentEntry | undefined = this.resolve(input);
+    if (document === undefined) {
+      return { ok: false, text: 'No binary document is open in this view.' };
+    }
+    const offset: number | null = this.extractNumber(input, 'offset');
+    const values: number[] | null = this.parseHex(this.extractString(input, 'bytes'));
+    if (offset === null || offset < 0) {
+      return { ok: false, text: 'A non-negative byte offset is required.' };
+    }
+    if (values === null || values.length === 0) {
+      return { ok: false, text: 'The bytes must be a non-empty hex string, e.g. "4d 5a".' };
+    }
+    const ok: boolean = await document.insertBytes(offset, values);
+    if (!ok) {
+      return {
+        ok: false,
+        text: `Cannot insert at ${this.hexOffset(offset)}: the offset is outside the file (size ${document.size()} bytes; inserting at the size appends).`,
+      };
+    }
+    return {
+      ok: true,
+      text: `Inserted ${values.length} byte(s) at ${this.hexOffset(offset)}. The file is now ${document.size()} bytes and every offset at or after ${this.hexOffset(offset)} has shifted by +${values.length} — earlier reads are stale. The change is unsaved and undoable.`,
+    };
+  }
+
+  /**
+   * Deletes a run of bytes from a `{ tabId, offset, length }` input. Shrinks the document and shifts
+   * every subsequent offset; produces an unsaved, undoable edit.
+   * @param input The capability input.
+   * @returns Returns the {@link PatchResult}.
+   */
+  private async delete(input: unknown): Promise<PatchResult> {
+    const document: BinaryDocumentEntry | undefined = this.resolve(input);
+    if (document === undefined) {
+      return { ok: false, text: 'No binary document is open in this view.' };
+    }
+    const offset: number | null = this.extractNumber(input, 'offset');
+    const length: number | null = this.extractNumber(input, 'length');
+    if (offset === null || offset < 0) {
+      return { ok: false, text: 'A non-negative byte offset is required.' };
+    }
+    if (length === null || length <= 0 || !Number.isInteger(length)) {
+      return { ok: false, text: 'A positive whole number of bytes to delete is required.' };
+    }
+    const ok: boolean = await document.removeBytes(offset, length);
+    if (!ok) {
+      return {
+        ok: false,
+        text: `Cannot delete ${length} byte(s) at ${this.hexOffset(offset)}: the range is outside the file (size ${document.size()} bytes).`,
+      };
+    }
+    return {
+      ok: true,
+      text: `Deleted ${length} byte(s) at ${this.hexOffset(offset)}. The file is now ${document.size()} bytes and every offset at or after ${this.hexOffset(offset)} has shifted by -${length} — earlier reads are stale. The change is unsaved and undoable.`,
     };
   }
 

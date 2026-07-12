@@ -69,6 +69,18 @@ export const READ_BINARY_DISASSEMBLY: string = 'read_binary_disassembly';
 export const PATCH_BINARY_BYTES: string = 'patch_binary_bytes';
 
 /**
+ * The in-app capability that inserts bytes before an offset in the owning binary document, growing it
+ * and shifting every subsequent offset; produces an unsaved, undoable edit.
+ */
+export const INSERT_BINARY_BYTES: string = 'insert_binary_bytes';
+
+/**
+ * The in-app capability that deletes a run of bytes from the owning binary document, shrinking it and
+ * shifting every subsequent offset; produces an unsaved, undoable edit.
+ */
+export const DELETE_BINARY_BYTES: string = 'delete_binary_bytes';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
  * standalone agent tab, which has no owning document and works through the provider's built-in tools

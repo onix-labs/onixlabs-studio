@@ -25,7 +25,7 @@ provider-independent — but permission gating is not (see [Cross-cutting rules]
 | Agent      | `project`  | **none** — the built-in Agent SDK tools are this surface's capability set (see below)                                      | `global`              |
 | Workspace  | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `workspace` (root)    |
 | Repository | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `repository` (root)   |
-| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`      | per binary tab        |
+| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`, `insert_binary_bytes`, `delete_binary_bytes` | per binary tab        |
 
 The tool name constants live in `src/shared/api/ai/ai-tool-surface.ts`; the conversation-scope
 kinds (`global` / `workspace` / `repository` / `file`) in
@@ -134,8 +134,15 @@ in-app tool set:
 - **`read_binary_disassembly`** — assembly listing for a byte range when the format is natively
   disassemblable.
 - **`patch_binary_bytes`** — overwrites bytes at an offset (length unchanged) as an unsaved,
-  undoable edit the user reviews. The four read tools are auto-allowed; the patch tool always
-  flows through the permission posture, and Chat mode withholds it.
+  undoable edit the user reviews.
+- **`insert_binary_bytes` / `delete_binary_bytes`** — length-changing edits: insert a hex run
+  before an offset (the file size appends) or remove a byte range. Both shift every subsequent
+  offset — the tool results state the new size and the shift, and warn that earlier reads are
+  stale; the descriptions warn they typically corrupt structured executables (headers reference
+  absolute offsets) and are intended for blobs/data files. Backed by the piece-table document
+  model, so they are unsaved, undoable edits like the patch.
+- The four read tools are auto-allowed; the three mutating tools always flow through the
+  permission posture, and Chat mode withholds them.
 
 The renderer formats all dumps/listings, so presentation lives in one place; the tools relay the
 rendered text. Read-only project exploration (`Read`/`Glob`/`Grep`) is also auto-allowed when a
