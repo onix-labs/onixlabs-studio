@@ -29,6 +29,12 @@ const MAX_TOTAL_MATCHES: number = 5000;
 const MAX_PREVIEW_LENGTH: number = 240;
 
 /**
+ * Caps the number of file paths a listing returns, so an enormous workspace cannot flood the
+ * renderer's mention picker.
+ */
+const MAX_LISTED_FILES: number = 20_000;
+
+/**
  * Describes the shape of the ripgrep `--json` match event this manager consumes. Only the fields the
  * results tree needs are modelled.
  */
@@ -75,6 +81,57 @@ export class SearchManager {
       SearchChannel.Run,
       (_event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => this.run(request),
     );
+    ipcMain.handle(
+      SearchChannel.ListFiles,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[]> =>
+        this.listFiles(root),
+    );
+  }
+
+  /**
+   * Lists a workspace root's files as gitignore-aware relative paths, confined to an open root and
+   * capped at {@link MAX_LISTED_FILES}.
+   * @param root The candidate workspace root.
+   * @returns Returns the relative paths (empty for an invalid or unknown root).
+   */
+  private listFiles(root: unknown): Promise<readonly string[]> {
+    if (typeof root !== 'string' || root.length === 0 || !this.workspace.isRoot(root)) {
+      return Promise.resolve([]);
+    }
+    return new Promise<readonly string[]>((resolve: (value: readonly string[]) => void): void => {
+      const child: ChildProcessWithoutNullStreams = spawn(rgPath, ['--files'], { cwd: root });
+      const paths: string[] = [];
+      let buffer: string = '';
+      let settled: boolean = false;
+
+      const finish: () => void = (): void => {
+        if (!settled) {
+          settled = true;
+          resolve(paths);
+        }
+      };
+
+      child.stdout.on('data', (chunk: Buffer): void => {
+        buffer += chunk.toString();
+        let newline: number = buffer.indexOf('\n');
+        while (newline !== -1) {
+          const line: string = buffer.slice(0, newline).replace(/\r$/, '');
+          buffer = buffer.slice(newline + 1);
+          if (line.length > 0) {
+            paths.push(line.startsWith('./') ? line.slice(2) : line);
+            if (paths.length >= MAX_LISTED_FILES) {
+              child.kill();
+              finish();
+              return;
+            }
+          }
+          newline = buffer.indexOf('\n');
+        }
+      });
+
+      child.on('error', (): void => finish());
+      child.on('close', (): void => finish());
+    });
   }
 
   /**

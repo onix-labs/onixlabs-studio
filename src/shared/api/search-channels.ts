@@ -9,6 +9,12 @@ export enum SearchChannel {
    * Runs a workspace search and returns the grouped matches (renderer→main, invoke).
    */
   Run = 'search:run',
+
+  /**
+   * Lists a workspace root's files (gitignore-aware relative paths, capped), for the composer's
+   * `@`-mention picker (renderer→main, invoke).
+   */
+  ListFiles = 'search:list-files',
 }
 
 /**
@@ -123,4 +129,11 @@ export interface SearchClient {
    * @returns Returns the grouped matches.
    */
   run(request: SearchRequest): Promise<SearchResponse>;
+
+  /**
+   * Lists a workspace root's files as gitignore-aware relative paths, capped.
+   * @param root The absolute path of the workspace root; must be an open workspace root.
+   * @returns Returns the relative paths (empty for an unknown root).
+   */
+  listFiles(root: string): Promise<readonly string[]>;
 }

@@ -30,4 +30,16 @@ export class Search implements SearchClient {
     }
     return this.bridge.invoke<SearchResponse>(SearchChannel.Run, request);
   }
+
+  /**
+   * Lists a workspace root's files as gitignore-aware relative paths, capped.
+   * @param root The absolute path of the workspace root.
+   * @returns Returns the relative paths, or empty when the bridge is absent.
+   */
+  public async listFiles(root: string): Promise<readonly string[]> {
+    if (this.bridge === undefined) {
+      return [];
+    }
+    return this.bridge.invoke<readonly string[]>(SearchChannel.ListFiles, root);
+  }
 }

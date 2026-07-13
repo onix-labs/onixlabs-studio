@@ -549,6 +549,34 @@
       </div>
     }
 
+    @if (suggestions().length > 0) {
+      <!-- The `/` command and `@` mention popup: keyboard-navigable (arrows + Enter/Tab), rows
+           accept on click without stealing the textarea's focus. -->
+      <ul class="agent__suggest" role="listbox" aria-label="Suggestions">
+        @for (option of suggestions(); track option.kind + option.value; let index = $index) {
+          <li>
+            <button
+              type="button"
+              class="agent__suggest-item"
+              [class.agent__suggest-item--active]="index === suggestIndex()"
+              role="option"
+              [attr.aria-selected]="index === suggestIndex()"
+              (pointerdown)="$event.preventDefault()"
+              (click)="acceptSuggestion(option)"
+            >
+              <app-icon
+                class="agent__suggest-icon"
+                [icon]="suggestIcon(option)"
+                aria-hidden="true"
+              />
+              <span class="agent__suggest-label">{{ option.label }}</span>
+              <span class="agent__suggest-hint">{{ option.hint }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
     <textarea
       #input
       class="agent__input"
@@ -556,7 +584,7 @@
       [placeholder]="pendingInput() ? 'Answer the agent…' : 'Ask the agent to do something…'"
       [attr.aria-label]="pendingInput() ? 'Answer the agent' : 'Message the agent'"
       [value]="draft()"
-      (input)="onInput(input.value); autoGrow(input)"
+      (input)="onInput(input.value); autoGrow(input); updateSuggest(input)"
       (keydown)="onKeydown($event)"
       (paste)="onPaste($event)"
     ></textarea>
@@ -623,6 +651,67 @@
       </div>
     </div>
   </form>
+
+  <!-- The prompt-library manager: save the reusable prompts offered by the composer's `/` popup. -->
+  <app-modal
+    [open]="managePromptsOpen()"
+    [width]="36"
+    ariaLabel="Manage prompts"
+    (dismiss)="closeManagePrompts()"
+  >
+    <div class="agent__prompts">
+      <h2 class="agent__md-title">Reusable prompts</h2>
+      @if (libraryPrompts().length === 0) {
+        <p class="agent__prompts-empty">No prompts yet. Save one below and invoke it with /name.</p>
+      } @else {
+        <ul class="agent__prompts-list">
+          @for (prompt of libraryPrompts(); track prompt.id) {
+            <li class="agent__prompts-item">
+              <span class="agent__prompts-name">/{{ prompt.name }}</span>
+              <span class="agent__prompts-text" [title]="prompt.text">{{ prompt.text }}</span>
+              <button
+                type="button"
+                class="agent__queue-btn"
+                [attr.aria-label]="'Delete /' + prompt.name"
+                (click)="deletePrompt(prompt.id)"
+              >
+                <app-icon [icon]="Icon.CLOSE" />
+              </button>
+            </li>
+          }
+        </ul>
+      }
+      <input
+        class="agent__prompts-field"
+        type="text"
+        placeholder="Name (invoked as /name)"
+        aria-label="Prompt name"
+        [value]="newPromptName()"
+        (input)="newPromptName.set($any($event.target).value)"
+      />
+      <textarea
+        class="agent__prompts-field agent__prompts-area"
+        rows="4"
+        placeholder="Prompt text…"
+        aria-label="Prompt text"
+        [value]="newPromptText()"
+        (input)="newPromptText.set($any($event.target).value)"
+      ></textarea>
+      <div class="agent__md-actions">
+        <button type="button" class="agent__btn agent__btn--ghost" (click)="closeManagePrompts()">
+          Close
+        </button>
+        <button
+          type="button"
+          class="agent__btn"
+          [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
+          (click)="savePrompt()"
+        >
+          Save prompt
+        </button>
+      </div>
+    </div>
+  </app-modal>
 
   <!-- The markdown composer: a modal Milkdown editor whose content is sent to the agent on submit.
        The editor is only mounted while the modal is open so each session starts fresh and no editor

@@ -32,7 +32,10 @@ import {
   AgentToolState,
 } from '@shared/angular/services/agent/agent';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { AgentPrompt, AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
+import { Search } from '@shared/angular/services/search/search';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -74,6 +77,58 @@ const MAX_IMAGE_BYTES: number = 4 * 1024 * 1024;
  * The image media types accepted by the composer (the types the providers accept).
  */
 const IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+/**
+ * The most rows the composer's suggestion popup shows at once.
+ */
+const MAX_SUGGESTIONS: number = 8;
+
+/**
+ * An entry in the composer's suggestion popup: a built-in slash command, a library prompt, a
+ * workspace file for an `@`-mention, or the manage-prompts affordance.
+ */
+interface ComposerSuggestion {
+  /**
+   * Gets what accepting the entry does.
+   */
+  readonly kind: 'command' | 'prompt' | 'mention' | 'manage';
+
+  /**
+   * Gets the row's primary label (`/compact`, a relative path, …).
+   */
+  readonly label: string;
+
+  /**
+   * Gets the row's muted description.
+   */
+  readonly hint: string;
+
+  /**
+   * Gets the value accepting the entry acts with (command name, prompt id, or relative path).
+   */
+  readonly value: string;
+}
+
+/**
+ * The token the suggestion popup is anchored to: the trigger character, the query typed after it,
+ * and where the token starts in the draft.
+ */
+interface SuggestToken {
+  /**
+   * Gets the trigger character.
+   */
+  readonly trigger: '/' | '@';
+
+  /**
+   * Gets the query typed after the trigger.
+   */
+  readonly query: string;
+
+  /**
+   * Gets the index of the trigger character in the draft.
+   */
+  readonly start: number;
+}
 
 /**
  * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
@@ -300,6 +355,21 @@ export class AgentChat {
   private readonly agentEngine: AgentEngine = inject(AgentEngine);
 
   /**
+   * Holds the user's reusable-prompt library, offered by the `/` popup.
+   */
+  private readonly promptLibrary: AgentPrompts = inject(AgentPrompts);
+
+  /**
+   * Holds the search client, the source of the workspace file list for `@`-mentions.
+   */
+  private readonly search: Search = inject(Search);
+
+  /**
+   * Holds the workspace, whose root scopes the `@`-mention file list.
+   */
+  private readonly workspaceService: Workspace = inject(Workspace);
+
+  /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
    * (e.g. the dockable agent panel).
    */
@@ -496,6 +566,105 @@ export class AgentChat {
    * Holds the transient image-input hint (unsupported provider, oversize file, …), or null.
    */
   protected readonly imageHint: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the token the suggestion popup is anchored to, or null while no popup is open.
+   */
+  private readonly suggestToken: WritableSignal<SuggestToken | null> = signal<SuggestToken | null>(
+    null,
+  );
+
+  /**
+   * Holds the index of the highlighted suggestion row.
+   */
+  protected readonly suggestIndex: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the workspace file list backing `@`-mentions (gitignore-aware relative paths), refreshed
+   * when the mention popup opens.
+   */
+  private readonly workspaceFiles: WritableSignal<readonly string[]> = signal<readonly string[]>(
+    [],
+  );
+
+  /**
+   * Holds a value indicating whether the manage-prompts modal is open.
+   */
+  protected readonly managePromptsOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the manage-prompts modal's name field.
+   */
+  protected readonly newPromptName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the manage-prompts modal's text field.
+   */
+  protected readonly newPromptText: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the user's reusable prompts, for the manage-prompts modal.
+   */
+  protected readonly libraryPrompts: Signal<readonly AgentPrompt[]> = this.promptLibrary.prompts;
+
+  /**
+   * Gets the rows of the composer's suggestion popup: for `/`, the built-in commands and library
+   * prompts matching the query plus the manage affordance; for `@`, the workspace files matching the
+   * query. Empty while no popup is open.
+   */
+  protected readonly suggestions: Signal<readonly ComposerSuggestion[]> = computed(
+    (): readonly ComposerSuggestion[] => {
+      const token: SuggestToken | null = this.suggestToken();
+      if (token === null) {
+        return [];
+      }
+      if (token.trigger === '@') {
+        return this.filterFiles(token.query).map(
+          (path: string): ComposerSuggestion => ({
+            kind: 'mention',
+            label: path,
+            hint: 'Attach file',
+            value: path,
+          }),
+        );
+      }
+      const query: string = token.query.toLowerCase();
+      const builtins: readonly ComposerSuggestion[] = [
+        {
+          kind: 'command',
+          label: '/compact',
+          hint: 'Summarise the conversation',
+          value: 'compact',
+        },
+        { kind: 'command', label: '/clear', hint: 'Start a new conversation', value: 'clear' },
+        { kind: 'command', label: '/mode', hint: 'Toggle Agent / Chat mode', value: 'mode' },
+      ];
+      const commands: ComposerSuggestion[] = builtins.filter(
+        (entry: ComposerSuggestion): boolean => entry.value.startsWith(query) || query.length === 0,
+      );
+      const prompts: ComposerSuggestion[] = this.promptLibrary
+        .prompts()
+        .filter((prompt: AgentPrompt): boolean => prompt.name.includes(query))
+        .map(
+          (prompt: AgentPrompt): ComposerSuggestion => ({
+            kind: 'prompt',
+            label: `/${prompt.name}`,
+            hint: prompt.text.length > 60 ? `${prompt.text.slice(0, 57)}…` : prompt.text,
+            value: prompt.id,
+          }),
+        );
+      return [
+        ...commands,
+        ...prompts.slice(0, MAX_SUGGESTIONS),
+        {
+          kind: 'manage',
+          label: 'Manage prompts…',
+          hint: 'Add or remove reusable prompts',
+          value: '',
+        },
+      ];
+    },
+  );
 
   /**
    * Holds the timer that clears the transient image hint, or null when none is pending.
@@ -861,6 +1030,7 @@ export class AgentChat {
       this.agent.send(text, this.tabId(), this.surface(), this.pendingImages());
       this.pendingImages.set([]);
     }
+    this.suggestToken.set(null);
     this.draftText.set('');
     this.historyIndex = null;
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
@@ -1023,6 +1193,204 @@ export class AgentChat {
    */
   public stop(): void {
     this.agent.stop();
+  }
+
+  /**
+   * Re-anchors the suggestion popup after composer input: a `/` starting the draft opens the
+   * command/prompt popup, a `@` token opens the workspace-file mention popup, and anything else
+   * closes it. Called on every input alongside {@link onInput}.
+   * @param area The composer text area (its caret position anchors the token scan).
+   */
+  public updateSuggest(area: HTMLTextAreaElement): void {
+    const caret: number = area.selectionStart ?? area.value.length;
+    const value: string = area.value;
+    // Scan back from the caret to the token start (whitespace boundary).
+    let start: number = caret;
+    while (start > 0 && !/\s/.test(value[start - 1])) {
+      start -= 1;
+    }
+    const token: string = value.slice(start, caret);
+    const previous: SuggestToken | null = this.suggestToken();
+    let next: SuggestToken | null = null;
+    if (token.startsWith('/') && start === 0) {
+      next = { trigger: '/', query: token.slice(1), start };
+    } else if (token.startsWith('@') && token.length >= 1) {
+      next = { trigger: '@', query: token.slice(1), start };
+    }
+    this.suggestToken.set(next);
+    if (next === null) {
+      return;
+    }
+    if (previous?.trigger !== next.trigger || previous.start !== next.start) {
+      this.suggestIndex.set(0);
+    } else {
+      // Keep the highlight in range as the query narrows the list.
+      this.suggestIndex.update((index: number): number =>
+        Math.min(index, Math.max(0, this.suggestions().length - 1)),
+      );
+    }
+    if (next.trigger === '@') {
+      void this.loadWorkspaceFiles();
+    }
+  }
+
+  /**
+   * Loads the workspace file list backing `@`-mentions (a no-op without a workspace; refreshed once
+   * per popup opening).
+   */
+  private async loadWorkspaceFiles(): Promise<void> {
+    const root: string | undefined = this.workspaceService.root()?.path;
+    if (root === undefined || this.workspaceFiles().length > 0) {
+      return;
+    }
+    this.workspaceFiles.set(await this.search.listFiles(root));
+  }
+
+  /**
+   * Filters the workspace files against a mention query: basename prefix matches rank first, then
+   * basename substrings, then path substrings, shortest path first within a rank.
+   * @param query The typed query.
+   * @returns Returns the top matches.
+   */
+  private filterFiles(query: string): readonly string[] {
+    const files: readonly string[] = this.workspaceFiles();
+    const lower: string = query.toLowerCase();
+    if (lower.length === 0) {
+      return files.slice(0, MAX_SUGGESTIONS);
+    }
+    const scored: { path: string; score: number }[] = [];
+    for (const path of files) {
+      const lowerPath: string = path.toLowerCase();
+      const base: string = lowerPath.slice(lowerPath.lastIndexOf('/') + 1);
+      const score: number = base.startsWith(lower)
+        ? 0
+        : base.includes(lower)
+          ? 1
+          : lowerPath.includes(lower)
+            ? 2
+            : -1;
+      if (score >= 0) {
+        scored.push({ path, score });
+      }
+    }
+    scored.sort(
+      (a: { path: string; score: number }, b: { path: string; score: number }): number =>
+        a.score - b.score || a.path.length - b.path.length,
+    );
+    return scored.slice(0, MAX_SUGGESTIONS).map((entry: { path: string }): string => entry.path);
+  }
+
+  /**
+   * Gets the glyph for a suggestion row.
+   * @param option The suggestion.
+   * @returns Returns the icon.
+   */
+  protected suggestIcon(option: ComposerSuggestion): Icon {
+    switch (option.kind) {
+      case 'command':
+        return Icon.ACTION;
+      case 'prompt':
+        return Icon.SPARKLE;
+      case 'manage':
+        return Icon.SETTINGS;
+      default:
+        return Icon.FILE;
+    }
+  }
+
+  /**
+   * Accepts a suggestion: a built-in command executes, a library prompt's text replaces the token, a
+   * mention attaches the file and leaves a readable `@basename` in the draft, and the manage entry
+   * opens the prompt-library modal.
+   * @param option The accepted suggestion.
+   */
+  public acceptSuggestion(option: ComposerSuggestion): void {
+    const token: SuggestToken | null = this.suggestToken();
+    if (token === null) {
+      return;
+    }
+    const end: number = token.start + 1 + token.query.length;
+    if (option.kind === 'command') {
+      this.replaceComposerRange(token.start, end, '');
+      this.runCommand(option.value);
+    } else if (option.kind === 'prompt') {
+      const prompt: AgentPrompt | undefined = this.promptLibrary
+        .prompts()
+        .find((candidate: AgentPrompt): boolean => candidate.id === option.value);
+      this.replaceComposerRange(token.start, end, prompt?.text ?? '');
+    } else if (option.kind === 'mention') {
+      const base: string = option.value.slice(option.value.lastIndexOf('/') + 1);
+      this.replaceComposerRange(token.start, end, `@${base} `);
+      const root: string | undefined = this.workspaceService.root()?.path;
+      if (root !== undefined) {
+        this.agent.attachContext({ path: `${root}/${option.value}`, kind: 'file' });
+      }
+    } else {
+      this.replaceComposerRange(token.start, end, '');
+      this.managePromptsOpen.set(true);
+    }
+    this.suggestToken.set(null);
+  }
+
+  /**
+   * Runs a built-in slash command against the conversation.
+   * @param command The command name.
+   */
+  private runCommand(command: string): void {
+    if (command === 'compact') {
+      this.agent.compact();
+    } else if (command === 'clear') {
+      this.agent.clear();
+    } else if (command === 'mode') {
+      this.agent.setMode(this.agent.mode() === 'chat' ? 'agent' : 'chat');
+    }
+  }
+
+  /**
+   * Replaces a range of the composer draft, syncing the text area, caret, and height.
+   * @param start The first character of the range.
+   * @param end The character after the range.
+   * @param text The replacement text.
+   */
+  private replaceComposerRange(start: number, end: number, text: string): void {
+    const current: string = this.draftText();
+    const next: string = current.slice(0, start) + text + current.slice(end);
+    this.draftText.set(next);
+    const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+    if (area !== undefined) {
+      area.value = next;
+      const caret: number = start + text.length;
+      area.setSelectionRange(caret, caret);
+      this.autoGrow(area);
+      area.focus();
+    }
+  }
+
+  /**
+   * Saves the manage-prompts modal's draft prompt into the library, clearing the form on success.
+   */
+  public savePrompt(): void {
+    if (this.promptLibrary.save(this.newPromptName(), this.newPromptText())) {
+      this.newPromptName.set('');
+      this.newPromptText.set('');
+    }
+  }
+
+  /**
+   * Deletes a prompt from the library.
+   * @param id The prompt's identifier.
+   */
+  public deletePrompt(id: string): void {
+    this.promptLibrary.delete(id);
+  }
+
+  /**
+   * Closes the manage-prompts modal.
+   */
+  public closeManagePrompts(): void {
+    this.managePromptsOpen.set(false);
+    this.newPromptName.set('');
+    this.newPromptText.set('');
   }
 
   /**
@@ -1370,6 +1738,28 @@ export class AgentChat {
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
+    // The suggestion popup owns the navigation keys while it is open.
+    const options: readonly ComposerSuggestion[] = this.suggestions();
+    if (options.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step: number = event.key === 'ArrowDown' ? 1 : -1;
+        this.suggestIndex.update(
+          (index: number): number => (index + step + options.length) % options.length,
+        );
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        this.acceptSuggestion(options[this.suggestIndex()]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.suggestToken.set(null);
+        return;
+      }
+    }
     if (event.key === 'Escape' && this.editing() !== null) {
       event.preventDefault();
       this.cancelEdit();
