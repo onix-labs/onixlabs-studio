@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
-import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -70,63 +69,6 @@ export class AgentToolStrip {
    * Gets the selected model id, for the Model field's value.
    */
   protected readonly model: Signal<string> = computed((): string => this.engine.model());
-
-  /**
-   * Gets the tokens the conversation currently occupies in the context window.
-   */
-  protected readonly contextTokens: Signal<number> = computed((): number =>
-    this.conversation.contextTokens(),
-  );
-
-  /**
-   * Gets the selected model's context window in tokens, the denominator of the meter, or zero when it
-   * is unknown (an unrecognised model id).
-   */
-  protected readonly contextWindow: Signal<number> = computed((): number => {
-    const id: string = this.engine.model();
-    return this.engine.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0;
-  });
-
-  /**
-   * Gets the compact used-token label shown beside the meter (for example, `12.3k`).
-   */
-  protected readonly contextLabel: Signal<string> = computed((): string =>
-    formatTokens(this.contextTokens()),
-  );
-
-  /**
-   * Gets how full the context window is, 0–100, for the meter fill. Zero when the window is unknown.
-   */
-  protected readonly contextPercent: Signal<number> = computed((): number => {
-    const window: number = this.contextWindow();
-    return window > 0 ? Math.min(100, Math.round((this.contextTokens() / window) * 100)) : 0;
-  });
-
-  /**
-   * Gets the fill level of the meter, driving its colour so a near-full context is a visible cue to
-   * compact: `ok` below 75%, `warn` from 75%, `high` from 90%.
-   */
-  protected readonly contextLevel: Signal<'ok' | 'warn' | 'high'> = computed(
-    (): 'ok' | 'warn' | 'high' => {
-      const percent: number = this.contextPercent();
-      return percent >= 90 ? 'high' : percent >= 75 ? 'warn' : 'ok';
-    },
-  );
-
-  /**
-   * Gets the full tooltip for the context readout: used and total tokens, the percentage, and the
-   * accumulated cost when the provider reports one.
-   */
-  protected readonly contextTitle: Signal<string> = computed((): string => {
-    const used: string = this.contextTokens().toLocaleString();
-    const window: number = this.contextWindow();
-    const base: string =
-      window > 0
-        ? `${used} / ${window.toLocaleString()} tokens (${this.contextPercent()}%)`
-        : `${used} tokens`;
-    const cost: number = this.conversation.costUsd();
-    return cost > 0 ? `${base} · ${formatCost(cost)}` : base;
-  });
 
   /**
    * Selects the provider with the chosen id.

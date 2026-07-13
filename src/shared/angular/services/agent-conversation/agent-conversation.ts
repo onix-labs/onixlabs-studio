@@ -120,17 +120,6 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly contextPaths: Signal<readonly AgentContextRef[]> = this.agent.contextPaths;
 
   /**
-   * Gets the tokens the conversation currently occupies in the context window, for the tool strip's
-   * context readout.
-   */
-  public readonly contextTokens: Signal<number> = this.agent.contextTokens;
-
-  /**
-   * Gets the conversation's accumulated cost in US dollars (zero when the provider reports no cost).
-   */
-  public readonly costUsd: Signal<number> = this.agent.costUsd;
-
-  /**
    * Gets a value indicating whether the conversation has any messages, so controls that act on the
    * transcript (such as Compact) can disable on an empty conversation.
    */

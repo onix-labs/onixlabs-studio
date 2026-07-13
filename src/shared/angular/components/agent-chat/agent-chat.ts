@@ -17,7 +17,7 @@ import {
 } from '@angular/core';
 import type { AgentContextRef, AgentSurface } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
-import { formatTokens } from '@shared/angular/services/agent/token-format';
+import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
@@ -251,12 +251,52 @@ export class AgentChat {
   });
 
   /**
-   * Gets the compact context-token figure for the composer hint (for example, `12.3k`), or an empty
-   * string before the conversation has reported any usage.
+   * Gets a value indicating whether the conversation has reported any usage yet, so the composer's
+   * context meter only appears once there is something to show.
    */
-  protected readonly contextLabel: Signal<string> = computed((): string => {
-    const tokens: number = this.agent.contextTokens();
-    return tokens > 0 ? formatTokens(tokens) : '';
+  protected readonly hasContext: Signal<boolean> = computed(
+    (): boolean => this.agent.contextTokens() > 0,
+  );
+
+  /**
+   * Gets the compact context-token figure for the composer meter (for example, `12.3k`).
+   */
+  protected readonly contextLabel: Signal<string> = computed((): string =>
+    formatTokens(this.agent.contextTokens()),
+  );
+
+  /**
+   * Gets how full the context window is, 0–100, for the meter fill; zero when the window is unknown.
+   */
+  protected readonly contextPercent: Signal<number> = computed((): number => {
+    const window: number = this.agent.contextWindow();
+    return window > 0 ? Math.min(100, Math.round((this.agent.contextTokens() / window) * 100)) : 0;
+  });
+
+  /**
+   * Gets the meter's fill level, driving its colour so a near-full context is a visible cue to
+   * compact: `ok` below 75%, `warn` from 75%, `high` from 90%.
+   */
+  protected readonly contextLevel: Signal<'ok' | 'warn' | 'high'> = computed(
+    (): 'ok' | 'warn' | 'high' => {
+      const percent: number = this.contextPercent();
+      return percent >= 90 ? 'high' : percent >= 75 ? 'warn' : 'ok';
+    },
+  );
+
+  /**
+   * Gets the full tooltip for the context meter: used and total tokens, the percentage, and the
+   * accumulated cost when the provider reports one.
+   */
+  protected readonly contextTitle: Signal<string> = computed((): string => {
+    const used: string = this.agent.contextTokens().toLocaleString();
+    const window: number = this.agent.contextWindow();
+    const base: string =
+      window > 0
+        ? `${used} / ${window.toLocaleString()} tokens (${this.contextPercent()}%)`
+        : `${used} tokens`;
+    const cost: number = this.agent.costUsd();
+    return cost > 0 ? `${base} · ${formatCost(cost)}` : base;
   });
 
   /**
