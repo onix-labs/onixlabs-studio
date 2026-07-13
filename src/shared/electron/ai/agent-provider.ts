@@ -130,6 +130,18 @@ export interface AgentRunContext {
   readonly resumeSessionId: string | null;
 
   /**
+   * Gets the provider message to resume up to (and including) when branching a conversation, or null
+   * to resume the whole session. Used with {@link resumeSessionId} and {@link forkSession}.
+   */
+  readonly resumeSessionAt: string | null;
+
+  /**
+   * Gets a value indicating whether the resumed session forks to a new session id rather than
+   * continuing, so a branch leaves the original session untouched.
+   */
+  readonly forkSession: boolean;
+
+  /**
    * Gets the credential the run authenticates with.
    */
   readonly auth: AgentAuth;

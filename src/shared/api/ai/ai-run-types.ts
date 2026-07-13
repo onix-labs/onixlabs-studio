@@ -109,4 +109,19 @@ export interface AiRunRequest {
    * session continuation ignore it.
    */
   readonly resumeSessionId?: string | null;
+
+  /**
+   * Gets the provider message to resume up to (and including) when branching a conversation: the
+   * resumed session is replayed only to this point, so the discarded turns never reach the model.
+   * Used with {@link resumeSessionId} and {@link forkSession}; null/absent to resume the whole
+   * session.
+   */
+  readonly resumeSessionAt?: string | null;
+
+  /**
+   * Gets a value indicating whether the resumed session forks to a new session id rather than
+   * continuing (a branch keeps the original session untouched, so the original conversation stays
+   * resumable). Defaults to false.
+   */
+  readonly forkSession?: boolean;
 }

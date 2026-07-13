@@ -36,6 +36,13 @@ export interface AiTextEvent extends AiEventBase {
    * Gets the text chunk.
    */
   readonly delta: string;
+
+  /**
+   * Gets the provider's identifier for the assistant message this chunk belongs to, when the
+   * provider assigns one (the Claude Agent SDK's message uuid). It anchors conversation branching:
+   * a rewound conversation forks its session resumed up to this message.
+   */
+  readonly messageUuid?: string;
 }
 
 /**

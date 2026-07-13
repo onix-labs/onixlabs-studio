@@ -229,6 +229,13 @@ export interface AgentItem {
   readonly errorRetried?: boolean;
 
   /**
+   * Gets the provider's identifier for an assistant item's message (the Claude SDK message uuid),
+   * anchoring conversation branching: a rewind forks the session resumed up to the last anchored
+   * assistant item it keeps. Absent for providers without sessions.
+   */
+  readonly providerMessageId?: string;
+
+  /**
    * Gets the identifier of the sub-agent this item belongs to — the {@link toolId} of the Task tool
    * item that spawned it — so it renders nested under that lane. Absent for top-level items.
    */
@@ -244,6 +251,28 @@ export interface AgentItem {
    * turns), shown on its lane's status line. Task tool items only.
    */
   readonly agentTokens?: number;
+}
+
+/**
+ * A conversation branch point: bumped each time the user rewinds (edit-and-resend or retry), carrying
+ * the full original transcript so the hosting conversation can preserve the original line as its own
+ * reachable record before the edited line continues under a new one.
+ */
+export interface AgentBranchPoint {
+  /**
+   * Gets the branch counter (0 before any branch).
+   */
+  readonly epoch: number;
+
+  /**
+   * Gets the full transcript as it stood before the rewind (empty before any branch).
+   */
+  readonly origin: readonly AgentItem[];
+
+  /**
+   * Gets the provider session the original line was on, so its record stays resumable.
+   */
+  readonly originSessionId: string | null;
 }
 
 /**
@@ -366,6 +395,21 @@ export class Agent {
   >([]);
 
   /**
+   * Holds the latest branch point (see {@link AgentBranchPoint}).
+   */
+  private readonly branchState: WritableSignal<AgentBranchPoint> = signal<AgentBranchPoint>({
+    epoch: 0,
+    origin: [],
+    originSessionId: null,
+  });
+
+  /**
+   * Holds the branch anchor the next run forks the resumed session at, or null for an ordinary run.
+   * Set by {@link rewind} and consumed by the next {@link startRun}.
+   */
+  private forkAt: string | null = null;
+
+  /**
    * Tracks the counter that makes queued-message identifiers unique.
    */
   private queueSequence: number = 0;
@@ -415,6 +459,12 @@ export class Agent {
    * Gets the messages waiting to dispatch once the running turn completes.
    */
   public readonly queued: Signal<readonly AgentQueuedMessage[]> = this.queueState.asReadonly();
+
+  /**
+   * Gets the latest branch point, watched by the hosting conversation so a rewind's original line is
+   * preserved as its own record.
+   */
+  public readonly branch: Signal<AgentBranchPoint> = this.branchState.asReadonly();
 
   /**
    * Gets a value indicating whether a run is in flight.
@@ -611,8 +661,62 @@ export class Agent {
   }
 
   /**
+   * Rewinds the conversation to a prior user message and re-runs it with new text (unchanged text is
+   * a retry of that turn). The transcript truncates to the messages before the rewind point — after
+   * publishing the original line as a branch point so the hosting conversation preserves it — and
+   * the run forks the provider session resumed up to the last kept assistant message, so discarded
+   * turns never reach the model and the original session stays resumable. Without an anchor (no
+   * session, or nothing kept) the branch starts a fresh session.
+   * @param item The user item to rewind to.
+   * @param text The message to resend from that point.
+   * @param owningTabId The owning tab (as for {@link send}).
+   * @param surface The run surface (as for {@link send}).
+   */
+  public rewind(item: AgentItem, text: string, owningTabId?: string, surface?: AgentSurface): void {
+    const trimmed: string = text.trim();
+    if (item.kind !== 'user' || trimmed.length === 0 || this.busy()) {
+      return;
+    }
+    const items: readonly AgentItem[] = this.log();
+    const index: number = items.findIndex(
+      (candidate: AgentItem): boolean => candidate.id === item.id,
+    );
+    if (index < 0) {
+      return;
+    }
+    const kept: readonly AgentItem[] = items.slice(0, index);
+    this.branchState.update(
+      (branch: AgentBranchPoint): AgentBranchPoint => ({
+        epoch: branch.epoch + 1,
+        origin: items,
+        originSessionId: this.sessionIdState(),
+      }),
+    );
+    const anchor: string | undefined = [...kept]
+      .reverse()
+      .find(
+        (candidate: AgentItem): boolean =>
+          candidate.kind === 'assistant' &&
+          candidate.parentToolId === undefined &&
+          candidate.providerMessageId !== undefined,
+      )?.providerMessageId;
+    this.log.set(kept);
+    if (anchor === undefined) {
+      // Nothing to fork at: the branch starts a fresh session rather than resuming one that still
+      // contains the discarded turns.
+      this.sessionIdState.set(null);
+      this.forkAt = null;
+    } else {
+      this.forkAt = anchor;
+    }
+    this.push({ kind: 'user', text: trimmed });
+    this.startRun(trimmed, owningTabId, surface);
+  }
+
+  /**
    * Starts a run with the current engine selection and settings, recording the turn for retry and
-   * queued-dispatch fallbacks.
+   * queued-dispatch fallbacks. A pending branch anchor (set by {@link rewind}) forks the resumed
+   * session at that message, once.
    * @param prompt The prompt to run.
    * @param owningTabId The owning tab (as for {@link send}).
    * @param surface The run surface (as for {@link send}).
@@ -621,6 +725,8 @@ export class Agent {
     this.lastPrompt = prompt;
     this.lastOwningTabId = owningTabId;
     this.lastSurface = surface;
+    const forkAt: string | null = this.forkAt;
+    this.forkAt = null;
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.engine.provider(), prompt, {
       workspaceRoot: this.workspace.root()?.path ?? null,
@@ -632,6 +738,7 @@ export class Agent {
       mode: this.modeState(),
       contextPaths: this.contextPathsState(),
       resumeSessionId: this.sessionIdState(),
+      ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
     });
   }
 
@@ -864,7 +971,7 @@ export class Agent {
     }
     switch (event.kind) {
       case 'text':
-        this.appendText('assistant', event.delta, event.parentToolId);
+        this.appendText('assistant', event.delta, event.parentToolId, event.messageUuid);
         break;
       case 'thinking':
         this.appendText('thinking', event.delta, event.parentToolId);
@@ -1116,8 +1223,15 @@ export class Agent {
    * @param kind The text item kind.
    * @param delta The text chunk.
    * @param parentToolId The sub-agent the text belongs to, or undefined for the top-level stream.
+   * @param messageUuid The provider's message id the chunk belongs to (assistant chunks from
+   * providers with sessions); the latest one folded into an item is its branch anchor.
    */
-  private appendText(kind: 'assistant' | 'thinking', delta: string, parentToolId?: string): void {
+  private appendText(
+    kind: 'assistant' | 'thinking',
+    delta: string,
+    parentToolId?: string,
+    messageUuid?: string,
+  ): void {
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
     if (last?.kind === kind && last.parentToolId === parentToolId) {
@@ -1126,6 +1240,7 @@ export class Agent {
         (existing: AgentItem): AgentItem => ({
           ...existing,
           text: existing.text + delta,
+          ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
         }),
       );
     } else {
@@ -1133,6 +1248,7 @@ export class Agent {
         kind,
         text: delta,
         ...(parentToolId === undefined ? {} : { parentToolId }),
+        ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
       });
     }
   }
