@@ -12,6 +12,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiEvent,
+  AiModelInfo,
   AiRunState,
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
@@ -229,6 +230,17 @@ export class Agent {
    * input plus output). Zero for a fresh conversation and immediately after a compaction.
    */
   public readonly contextTokens: Signal<number> = this.contextTokensState.asReadonly();
+
+  /**
+   * Gets the selected model's context window in tokens (the readout's denominator), or zero when it is
+   * unknown. Sourced from the global engine selection the run goes through.
+   */
+  public readonly contextWindow: Signal<number> = computed((): number => {
+    const id: string = this.engine.model();
+    return (
+      this.engine.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0
+    );
+  });
 
   /**
    * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.

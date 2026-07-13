@@ -23,6 +23,7 @@ describe('AgentChat', () => {
       isRunning: signal<boolean>(false),
       awaitingDecision: signal<boolean>(false),
       contextTokens: signal<number>(0),
+      contextWindow: signal<number>(0),
       costUsd: signal<number>(0),
       contextPaths,
       send: (text: string): void => void sent.push(text),

@@ -352,6 +352,16 @@ $agent-node-size: 1.75rem;
   }
 }
 
+// The composer's header row: the MESSAGE label on the left, the live word count and context meter on
+// the right.
+.agent__composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-inline-size: 0;
+}
+
 .agent__composer-label {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.625rem;
@@ -359,6 +369,82 @@ $agent-node-size: 1.75rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--form-muted-foreground-color);
+}
+
+// The right side of the header row: word count, a separator, then the context meter and its token
+// label. It gives way (shrinking, then hiding its label) before the MESSAGE label does.
+.agent__composer-meta {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agent__composer-words {
+  flex: 0 0 auto;
+}
+
+.agent__context {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.35rem;
+  min-inline-size: 0;
+}
+
+.agent__meter {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: 3rem;
+  block-size: 0.35rem;
+  overflow: hidden;
+  background: var(--gray-200);
+  border-radius: 0.2rem;
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+:host-context([data-theme-mode='dark']) .agent__meter {
+  background: var(--gray-800);
+}
+
+.agent__meter-fill {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 0.2rem;
+  background: var(--accent-color);
+  border-radius: inherit;
+  transition: inline-size 0.2s ease;
+}
+
+.agent__context-label {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// As the window fills, the meter and label shift to warning then critical colours — the cue to compact.
+.agent__context--warn {
+  color: var(--accent-orange);
+
+  .agent__meter-fill {
+    background: var(--accent-orange);
+  }
+}
+
+.agent__context--high {
+  color: var(--accent-coral);
+
+  .agent__meter-fill {
+    background: var(--accent-coral);
+  }
 }
 
 .agent__attachments {

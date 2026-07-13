@@ -108,7 +108,26 @@
   </div>
 
   <form class="agent__composer" (submit)="$event.preventDefault(); send()">
-    <span class="agent__composer-label">Message</span>
+    <div class="agent__composer-head">
+      <span class="agent__composer-label">Message</span>
+      <span class="agent__composer-meta">
+        <span class="agent__composer-words">{{ wordCount() }}</span>
+        @if (hasContext()) {
+          <span class="agent__composer-sep">|</span>
+          <span
+            class="agent__context"
+            [class.agent__context--warn]="contextLevel() === 'warn'"
+            [class.agent__context--high]="contextLevel() === 'high'"
+            [title]="contextTitle()"
+          >
+            <span class="agent__meter">
+              <span class="agent__meter-fill" [style.inline-size.%]="contextPercent()"></span>
+            </span>
+            <span class="agent__context-label">{{ contextLabel() }}</span>
+          </span>
+        }
+      </span>
+    </div>
 
     @if (attachments().length > 0) {
       <ul class="agent__attachments" aria-label="Attached context">
@@ -147,16 +166,8 @@
     <div class="agent__composer-footer">
       <p class="agent__composer-hint" aria-hidden="true">
         <span>↵ to send</span>
-        <span class="agent__composer-sep">·</span>
+        <span class="agent__composer-sep">|</span>
         <span>⇧↵ for new line</span>
-        <span class="agent__composer-sep">·</span>
-        <span>{{ wordCount() }}</span>
-        @if (contextLabel()) {
-          <span class="agent__composer-sep">·</span>
-          <span title="Tokens this conversation occupies in the context window">
-            {{ contextLabel() }} ctx
-          </span>
-        }
       </p>
 
       <div class="agent__composer-actions">
