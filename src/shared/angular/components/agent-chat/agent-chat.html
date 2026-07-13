@@ -353,15 +353,20 @@
                       class="agent__action agent__lane"
                       [class.agent__action--error]="row.item!.toolState === 'error'"
                     >
-                      <summary class="agent__action-summary">
+                      <summary class="agent__action-summary agent__lane-summary">
+                        <app-icon
+                          class="agent__lane-icon"
+                          [icon]="Icon.SUBAGENT"
+                          aria-hidden="true"
+                        />
                         <span class="agent__action-label">{{ lane.title }}</span>
-                        <span class="agent__lane-status">· {{ lane.status }}</span>
+                        <span class="agent__lane-status">{{ lane.status }}</span>
                         @if (lane.meta) {
                           <span class="agent__lane-meta">{{ lane.meta }}</span>
                         }
                         <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
                       </summary>
-                      <div class="agent__action-detail">
+                      <div class="agent__action-detail agent__lane-body">
                         @if (row.item!.toolDetail) {
                           <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
                         }

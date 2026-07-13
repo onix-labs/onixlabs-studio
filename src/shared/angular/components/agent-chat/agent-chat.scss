@@ -274,6 +274,7 @@ $agent-node-size: 1.75rem;
 }
 
 .agent__action-tech {
+  font-family: var(--font-mono);
   color: var(--form-muted-foreground-color);
   letter-spacing: 0.02em;
 }
@@ -533,37 +534,98 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// A sub-agent lane rides the action-chip chrome; its summary adds the live status and a muted
-// tools/tokens readout, and its expanded body lists the nested activity.
+// A sub-agent lane rides the action-chip chrome but reads as its own actor: an accent edge and
+// robot glyph on the summary (bold title · live status · muted meta, dot-separated), and the
+// expanded body indented behind a sub-rail line, in prose type rather than the tool chips' mono.
+.agent__lane-summary {
+  gap: 0.45rem;
+  border-inline-start: 0.125rem solid var(--accent-color);
+
+  .agent__action-label {
+    font-weight: 600;
+  }
+}
+
+.agent__lane-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  color: var(--accent-color);
+}
+
 .agent__lane-status {
   color: var(--body-foreground-color);
   opacity: 0.75;
+
+  &::before {
+    margin-inline-end: 0.45rem;
+    content: '·';
+    opacity: 0.6;
+  }
 }
 
 .agent__lane-meta {
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   color: var(--form-muted-foreground-color);
+
+  &::before {
+    margin-inline-end: 0.45rem;
+    content: '·';
+  }
+}
+
+// The expanded lane body: the sub-agent's own activity, inset behind a sub-rail line and set in
+// prose type (the mono of ordinary tool details is reset; the tech line keeps its own mono).
+.agent__lane-body {
+  gap: 0.45rem;
+  margin-inline-start: 0.55rem;
+  padding-inline-start: 0.75rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  border-inline-start: 0.0625rem solid var(--agent-view-border-color);
 }
 
 .agent__lane-tool {
   display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+
+  app-icon {
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  // A live tool's spinner reads as activity.
+  .agent__spin {
+    color: var(--accent-color);
+  }
 }
 
 .agent__lane-tool--error {
   color: var(--warning-color);
+
+  app-icon {
+    color: var(--warning-color);
+  }
 }
 
 .agent__lane-tool-detail {
   overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   color: var(--form-muted-foreground-color);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .agent__lane-text {
+  max-inline-size: 100%;
+  padding: 0.45rem 0.6rem;
   font-size: 0.85rem;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
 }
 
 .agent__working {
@@ -1244,6 +1306,7 @@ $agent-node-size: 1.75rem;
 .agent__edit-banner,
 .agent__image-thumb,
 .agent__bubble-image,
+.agent__lane-text,
 .agent__suggest,
 .agent__suggest-item,
 .agent__prompts-item,

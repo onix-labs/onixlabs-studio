@@ -132,6 +132,11 @@ export class Icon {
   public static readonly SELECTION: Icon = new Icon('ph ph-selection');
 
   /**
+   * Gets the glyph marking a sub-agent lane (a Task spawning nested work) in the agent transcript.
+   */
+  public static readonly SUBAGENT: Icon = new Icon('ph-duotone ph-robot');
+
+  /**
    * Gets the sparkle glyph marking an AI-assisted action (for example generating a commit message).
    */
   public static readonly SPARKLE: Icon = new Icon('ph ph-sparkle');
