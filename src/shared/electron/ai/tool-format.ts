@@ -20,7 +20,8 @@ export function summarizeToolInput(input: unknown): string {
   }
   const record: Record<string, unknown> = input as Record<string, unknown>;
   // `description` precedes `prompt` so a Task (sub-agent) call summarises as its short description
-  // rather than its full delegated prompt.
+  // rather than its full delegated prompt. The trailing keys cover the studio tools: terminal input,
+  // binary bytes/assembly, and the ask-user question.
   for (const key of [
     'file_path',
     'path',
@@ -30,6 +31,10 @@ export function summarizeToolInput(input: unknown): string {
     'url',
     'description',
     'prompt',
+    'text',
+    'bytes',
+    'assembly',
+    'question',
   ]) {
     const value: unknown = record[key];
     if (typeof value === 'string' && value.length > 0) {

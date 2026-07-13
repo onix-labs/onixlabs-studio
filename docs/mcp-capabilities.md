@@ -12,8 +12,9 @@ Which tools the server registers is decided per run by the **surface** the hosti
 each tool is bound to the **owning tab** (`owningTabId`), so an agent docked to one tab cannot
 act on another. The Claude (Agent SDK) provider registers the tools as a real MCP server
 (`mcp__studio__<tool>`); the Vercel AI SDK and Ollama providers expose the identical tool set as
-plain AI-SDK tools (`src/shared/electron/ai/ai-sdk-stream.ts`), so capabilities are
-provider-independent — but permission gating is not (see [Cross-cutting rules](#cross-cutting-rules)).
+plain AI-SDK tools (`src/shared/electron/ai/ai-sdk-stream.ts`) with the same mode and posture
+rules enforced in the executors, so both capabilities and permission gating are
+provider-independent (see [Cross-cutting rules](#cross-cutting-rules)).
 
 ## Summary
 
@@ -183,12 +184,14 @@ These apply to every tab type:
   before anything mutating or executing. In-app editor tools are auto-allowed in Agent mode
   regardless of posture because the result is visible and undoable in the editor; the terminal
   write and binary patch tools are the deliberate exceptions and follow the posture.
-- **Provider parity caveat** — the permission broker (`canUseTool`) and the terminal confinement
-  are enforced by the **Claude Agent SDK provider**. The Vercel AI SDK and Ollama providers
-  expose the same surface-selected tool set but have no per-tool permission hook, so their tool
-  calls run ungated (`ai-sdk-stream.ts`); they also have no built-in file/shell tools, so their
-  reach is limited to the studio tools themselves — and on the `project` surface (whose only
-  studio tool is `ask_user`) they can do nothing but converse and ask.
+- **Provider parity** — the Claude provider enforces mode/posture through the SDK's `canUseTool`
+  hook. The AI SDK has no such hook, so the Vercel and Ollama providers enforce the same rules in
+  the tool set itself (`ai-sdk-stream.ts`): chat mode registers only the read tools, and the
+  gated executors (terminal write, binary writes) ask through the shared permission round-trip
+  unless the posture is `auto-all` — so the posture selector means the same thing on every
+  provider. Those providers still have no built-in file/shell tools, so their reach is limited to
+  the studio tools — and on the `project` surface (whose only studio tool is `ask_user`) they can
+  do nothing but converse and ask.
 - **Interactive input** — `ask_user` blocks the run on the user's answer through the same
   main-process round-trip as permissions (`AiManager.requestInput` → `input-request` event →
   `resolveInput`). Declining ("Skip") or stopping the run resolves the question with no answer,

@@ -42,7 +42,9 @@ import {
   replaceActiveDocument,
   writeBinaryAssembly,
   writeTerminalInput,
+  READ_ONLY_APPENDIX,
 } from './studio-tools';
+import { summarizeToolInput } from './tool-format';
 
 /**
  * The maximum number of steps (model turns plus tool round-trips) a single run may take before the
@@ -172,8 +174,37 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
 }
 
 /**
+ * Wraps a mutating tool's executor in the shared permission round-trip, applying the run's posture
+ * exactly as the Claude path's `canUseTool` does for the same tools: `auto-all` runs straight
+ * through; every other posture asks the user first (these tools are not in the auto-edits set), and
+ * a refusal is reported back to the model instead of running the tool. This closes the gap where the
+ * AI-SDK providers executed tools with no gating hook at all.
+ * @param context The run context (carries the posture and the permission round-trip).
+ * @param name The tool name shown on the permission prompt.
+ * @param execute The gated executor.
+ * @returns Returns the wrapped executor.
+ */
+function gated<TArgs>(
+  context: AgentRunContext,
+  name: string,
+  execute: (args: TArgs) => Promise<string>,
+): (args: TArgs) => Promise<string> {
+  return async (args: TArgs): Promise<string> => {
+    if (context.permissionPosture !== 'auto-all') {
+      const granted: boolean = await context.requestPermission(name, summarizeToolInput(args));
+      if (!granted) {
+        return 'The user declined to run this tool.';
+      }
+    }
+    return execute(args);
+  };
+}
+
+/**
  * Builds the in-app editor tools every AI-SDK-backed provider exposes, bridged to the renderer through
- * the run context. The `ai` and `zod` packages are imported dynamically to match the providers' own
+ * the run context. A chat-mode (read-only) run carries only the read tool, matching the Claude path;
+ * the mutating editor tools are auto-allowed in agent mode because the change is visible and undoable
+ * in the editor. The `ai` and `zod` packages are imported dynamically to match the providers' own
  * dynamic-import (ESM-compatibility) convention.
  * @param context The run context the tools act through.
  * @returns Returns the tool set keyed by tool name, ready to pass to `streamText`.
@@ -181,12 +212,18 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
 export async function createStudioTools(context: AgentRunContext): Promise<ToolSet> {
   const { tool } = await import('ai');
   const { z } = await import('zod');
-  return {
+  const readTool: ToolSet = {
     [READ_ACTIVE_DOCUMENT]: tool({
       description: "Read the active editor document's full text.",
       inputSchema: z.object({}),
       execute: (): Promise<string> => readActiveDocument(context),
     }),
+  };
+  if (context.mode === 'chat') {
+    return readTool;
+  }
+  return {
+    ...readTool,
     [EDIT_ACTIVE_DOCUMENT]: tool({
       description:
         'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
@@ -246,7 +283,9 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
 /**
  * Builds the terminal-surface tools every AI-SDK-backed provider exposes for a terminal-scoped run,
  * bridged to the renderer through the run context. The agent acts only through these two tools: it
- * reads the terminal's recent output and types input/commands into it. The `ai` and `zod` packages are
+ * reads the terminal's recent output and types input/commands into it. A chat-mode run carries only
+ * the read tool, and the write tool asks through the permission round-trip unless the posture
+ * auto-allows everything — the same rules the Claude path enforces. The `ai` and `zod` packages are
  * imported dynamically to match the providers' own dynamic-import (ESM-compatibility) convention.
  * @param context The run context the tools act through.
  * @returns Returns the tool set keyed by tool name, ready to pass to `streamText`.
@@ -254,12 +293,18 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
 export async function createTerminalTools(context: AgentRunContext): Promise<ToolSet> {
   const { tool } = await import('ai');
   const { z } = await import('zod');
-  return {
+  const readTool: ToolSet = {
     [READ_TERMINAL_OUTPUT]: tool({
       description: 'Read the recent output currently shown in the terminal.',
       inputSchema: z.object({}),
       execute: (): Promise<string> => readTerminalOutput(context),
     }),
+  };
+  if (context.mode === 'chat') {
+    return readTool;
+  }
+  return {
+    ...readTool,
     [WRITE_TERMINAL_INPUT]: tool({
       description:
         'Type text into the terminal, running it as a command by default, and return the resulting output.',
@@ -270,8 +315,12 @@ export async function createTerminalTools(context: AgentRunContext): Promise<Too
           .optional()
           .describe('Whether to run the text as a command (append a newline). Defaults to true.'),
       }),
-      execute: (args: { text: string; submit?: boolean }): Promise<string> =>
-        writeTerminalInput(context, args.text, args.submit ?? true),
+      execute: gated(
+        context,
+        WRITE_TERMINAL_INPUT,
+        (args: { text: string; submit?: boolean }): Promise<string> =>
+          writeTerminalInput(context, args.text, args.submit ?? true),
+      ),
     }),
   };
 }
@@ -280,15 +329,17 @@ export async function createTerminalTools(context: AgentRunContext): Promise<Too
  * Builds the binary-surface tools every AI-SDK-backed provider exposes for a binary-scoped run,
  * bridged to the renderer through the run context. The agent inspects the open binary file (overview,
  * hex/ASCII windows, the selection, and disassembly) and can patch bytes; the renderer formats the
- * dumps, so the tools relay the rendered text. The `ai` and `zod` packages are imported dynamically to
- * match the providers' own dynamic-import (ESM-compatibility) convention.
+ * dumps, so the tools relay the rendered text. A chat-mode run carries only the read tools, and every
+ * write tool asks through the permission round-trip unless the posture auto-allows everything — the
+ * same rules the Claude path enforces. The `ai` and `zod` packages are imported dynamically to match
+ * the providers' own dynamic-import (ESM-compatibility) convention.
  * @param context The run context the tools act through.
  * @returns Returns the tool set keyed by tool name, ready to pass to `streamText`.
  */
 export async function createBinaryTools(context: AgentRunContext): Promise<ToolSet> {
   const { tool } = await import('ai');
   const { z } = await import('zod');
-  return {
+  const readTools: ToolSet = {
     [READ_BINARY_OVERVIEW]: tool({
       description:
         'Describe the open binary file: path, size, container format, architecture, whether disassembly is available, and the current cursor/selection.',
@@ -330,6 +381,12 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
       execute: (args: { offset: number; length?: number }): Promise<string> =>
         readBinaryDisassembly(context, args.offset, args.length ?? 256),
     }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
     [PATCH_BINARY_BYTES]: tool({
       description:
         'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
@@ -339,8 +396,12 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
           .string()
           .describe('The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".'),
       }),
-      execute: (args: { offset: number; bytes: string }): Promise<string> =>
-        patchBinaryBytes(context, args.offset, args.bytes),
+      execute: gated(
+        context,
+        PATCH_BINARY_BYTES,
+        (args: { offset: number; bytes: string }): Promise<string> =>
+          patchBinaryBytes(context, args.offset, args.bytes),
+      ),
     }),
     [INSERT_BINARY_BYTES]: tool({
       description:
@@ -353,8 +414,12 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
           .describe('The offset to insert before (the file size appends).'),
         bytes: z.string().describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
       }),
-      execute: (args: { offset: number; bytes: string }): Promise<string> =>
-        insertBinaryBytes(context, args.offset, args.bytes),
+      execute: gated(
+        context,
+        INSERT_BINARY_BYTES,
+        (args: { offset: number; bytes: string }): Promise<string> =>
+          insertBinaryBytes(context, args.offset, args.bytes),
+      ),
     }),
     [DELETE_BINARY_BYTES]: tool({
       description:
@@ -363,8 +428,12 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
         offset: z.number().int().min(0).describe('The first offset to delete.'),
         length: z.number().int().min(1).describe('The number of bytes to delete.'),
       }),
-      execute: (args: { offset: number; length: number }): Promise<string> =>
-        deleteBinaryBytes(context, args.offset, args.length),
+      execute: gated(
+        context,
+        DELETE_BINARY_BYTES,
+        (args: { offset: number; length: number }): Promise<string> =>
+          deleteBinaryBytes(context, args.offset, args.length),
+      ),
     }),
     [WRITE_BINARY_ASSEMBLY]: tool({
       description:
@@ -381,20 +450,26 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
             'The number of bytes the write should occupy (the replaced range); defaults to the assembled length. Shorter assembly is NOP-padded to this; longer is rejected.',
           ),
       }),
-      execute: (args: { offset: number; assembly: string; length?: number }): Promise<string> =>
-        writeBinaryAssembly(context, args.offset, args.assembly, args.length),
+      execute: gated(
+        context,
+        WRITE_BINARY_ASSEMBLY,
+        (args: { offset: number; assembly: string; length?: number }): Promise<string> =>
+          writeBinaryAssembly(context, args.offset, args.assembly, args.length),
+      ),
     }),
   };
 }
 
 /**
- * Selects the system-prompt appendix for a run's surface: the terminal, binary, or (default) editor
- * appendix, plus the ask-user guidance every surface carries. Shared by the AI-SDK-backed providers so
- * the surface-to-prompt mapping lives in one place.
- * @param surface The run's surface.
+ * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
+ * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
+ * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
+ * matches the Claude path.
+ * @param context The run context (carries the surface and mode).
  * @returns Returns the prompt appendix text.
  */
-export function promptForSurface(surface: AgentSurface): string {
+export function promptForSurface(context: AgentRunContext): string {
+  const surface: AgentSurface = context.surface;
   const base: string = ((): string => {
     switch (surface) {
       case 'terminal':
@@ -407,7 +482,8 @@ export function promptForSurface(surface: AgentSurface): string {
         return STUDIO_PROMPT_APPENDIX;
     }
   })();
-  return `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
+  const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
+  return context.mode === 'chat' ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
 }
 
 /**

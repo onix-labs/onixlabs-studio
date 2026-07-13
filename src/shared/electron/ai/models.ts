@@ -26,12 +26,17 @@ export const DEFAULT_ANTHROPIC_MODEL: string = 'claude-opus-4-8';
  * The Ollama models a turn can run with, in display order (most to least capable).
  */
 export const OLLAMA_MODELS: readonly AiModelInfo[] = [
+  // Qwen3 leads and is the default: verified (2026-07-13, Ollama 0.30) to emit structured tool
+  // calls over the OpenAI-compatible endpoint, streaming included. The Qwen2.5 Coder models decide
+  // to call tools but print the call JSON as prose instead of their template's <tool_call> tokens
+  // (verified on 7B; no prompt fixes it), so agent-mode tool use silently fails on them — they
+  // remain useful for chat-mode Q&A.
+  { id: 'qwen3:8b', label: 'Qwen3 8B', contextWindow: 40_960 },
   { id: 'qwen2.5-coder:14b', label: 'Qwen2.5 Coder 14B', contextWindow: 32_768 },
   { id: 'qwen2.5-coder:7b', label: 'Qwen2.5 Coder 7B', contextWindow: 32_768 },
-  { id: 'qwen3:8b', label: 'Qwen3 8B', contextWindow: 40_960 },
 ];
 
 /**
  * The identifier of the default Ollama model (always present in {@link OLLAMA_MODELS}).
  */
-export const DEFAULT_OLLAMA_MODEL: string = 'qwen2.5-coder:7b';
+export const DEFAULT_OLLAMA_MODEL: string = 'qwen3:8b';

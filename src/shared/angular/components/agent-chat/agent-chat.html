@@ -18,10 +18,21 @@
         @case ('user') {
           <div class="agent__message agent__message--user">
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
-            <div
-              class="agent__bubble agent__markdown"
-              [innerHTML]="row.item!.text | markdown"
-            ></div>
+            <div class="agent__message-body">
+              <div
+                class="agent__bubble agent__markdown"
+                [innerHTML]="row.item!.text | markdown"
+              ></div>
+              <button
+                type="button"
+                class="agent__copy"
+                aria-label="Copy message"
+                (click)="copy(row.item!)"
+              >
+                <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
+                <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
+              </button>
+            </div>
           </div>
         }
         @case ('input-request') {
@@ -144,6 +155,15 @@
                     class="agent__bubble agent__markdown"
                     [innerHTML]="row.item!.text | markdown"
                   ></div>
+                  <button
+                    type="button"
+                    class="agent__copy"
+                    aria-label="Copy response"
+                    (click)="copy(row.item!)"
+                  >
+                    <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
+                    <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
+                  </button>
                 }
                 @case ('working') {
                   <p class="agent__working" aria-live="polite">Working…</p>

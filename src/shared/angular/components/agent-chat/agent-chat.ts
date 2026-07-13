@@ -404,6 +404,29 @@ export class AgentChat {
   protected readonly selectedChoice: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the id of the transcript item whose text was just copied, driving the transient "Copied"
+   * feedback on its button; null when none.
+   */
+  protected readonly copiedId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the timer that clears the transient copied feedback, or null when none is pending.
+   */
+  private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the position in the sent-prompt history while the user arrows through it from the composer
+   * (0 = the most recent prompt), or null when not navigating.
+   */
+  private historyIndex: number | null = null;
+
+  /**
+   * Holds the draft that was in the composer when history navigation began, restored when the user
+   * arrows back past the most recent prompt.
+   */
+  private stashedDraft: string = '';
+
+  /**
    * Gets the current composer text.
    */
   public readonly draft: Signal<string> = this.draftText.asReadonly();
@@ -601,11 +624,28 @@ export class AgentChat {
   }
 
   /**
-   * Records composer input.
+   * Records composer input. Typing ends any prompt-history navigation, so the next ArrowUp starts
+   * again from the most recent prompt.
    * @param value The new composer text.
    */
   public onInput(value: string): void {
     this.draftText.set(value);
+    this.historyIndex = null;
+  }
+
+  /**
+   * Copies a transcript item's raw text (the markdown source, not the rendered HTML) to the
+   * clipboard, flashing a transient "Copied" state on its button.
+   * @param item The user or assistant item to copy.
+   */
+  public copy(item: AgentItem): void {
+    void navigator.clipboard.writeText(item.text).then((): void => {
+      this.copiedId.set(item.id);
+      if (this.copiedTimer !== null) {
+        clearTimeout(this.copiedTimer);
+      }
+      this.copiedTimer = setTimeout((): void => this.copiedId.set(null), 1500);
+    });
   }
 
   /**
@@ -624,6 +664,7 @@ export class AgentChat {
       this.agent.send(text, this.tabId(), this.surface());
     }
     this.draftText.set('');
+    this.historyIndex = null;
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
     this.atBottom.set(true);
     // Collapse the auto-grown text area back to a single row now that it is empty.
@@ -768,15 +809,79 @@ export class AgentChat {
   }
 
   /**
-   * Handles composer key presses: sends on Enter, but leaves Shift+Enter to insert a newline.
+   * Handles composer key presses: sends on Enter (Shift+Enter inserts a newline), and recalls the
+   * sent-prompt history on ArrowUp/ArrowDown.
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      this.onHistoryKey(event);
+      return;
+    }
     if (event.key !== 'Enter' || event.shiftKey) {
       return;
     }
     event.preventDefault();
     this.send();
+  }
+
+  /**
+   * Recalls previously sent prompts into the composer, shell-style: ArrowUp steps to older prompts,
+   * ArrowDown back to newer ones, and stepping past the most recent restores whatever draft was
+   * being written when navigation began. Only engages while the caret is on the first (Up) or last
+   * (Down) line, so the arrows still move the caret inside a multi-line draft.
+   * @param event The keyboard event (its target is the composer text area).
+   */
+  private onHistoryKey(event: KeyboardEvent): void {
+    const area: HTMLTextAreaElement = event.target as HTMLTextAreaElement;
+    const history: readonly string[] = this.items()
+      .filter((item: AgentItem): boolean => item.kind === 'user')
+      .map((item: AgentItem): string => item.text);
+    if (history.length === 0) {
+      return;
+    }
+    const caretStart: number = area.selectionStart ?? 0;
+    const caretEnd: number = area.selectionEnd ?? caretStart;
+    if (event.key === 'ArrowUp') {
+      if (area.value.slice(0, caretStart).includes('\n')) {
+        return;
+      }
+      const next: number = this.historyIndex === null ? 0 : this.historyIndex + 1;
+      if (next >= history.length) {
+        return;
+      }
+      if (this.historyIndex === null) {
+        this.stashedDraft = area.value;
+      }
+      this.historyIndex = next;
+      event.preventDefault();
+      this.recall(area, history[history.length - 1 - next]);
+    } else {
+      if (this.historyIndex === null || area.value.slice(caretEnd).includes('\n')) {
+        return;
+      }
+      event.preventDefault();
+      if (this.historyIndex === 0) {
+        this.historyIndex = null;
+        this.recall(area, this.stashedDraft);
+      } else {
+        this.historyIndex -= 1;
+        this.recall(area, history[history.length - 1 - this.historyIndex]);
+      }
+    }
+  }
+
+  /**
+   * Puts a recalled prompt into the composer: the text area is set directly (so the caret and height
+   * update deterministically) and the draft signal keeps the binding in agreement.
+   * @param area The composer text area.
+   * @param text The recalled text.
+   */
+  private recall(area: HTMLTextAreaElement, text: string): void {
+    area.value = text;
+    this.draftText.set(text);
+    area.setSelectionRange(text.length, text.length);
+    this.autoGrow(area);
   }
 
   /**

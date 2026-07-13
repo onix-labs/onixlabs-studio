@@ -72,9 +72,10 @@ export class VercelAiProvider implements AgentProvider {
       apiKey: context.auth.apiKey,
     });
 
-    // Expose the tool set (and prompt) for the run's surface: terminal, binary, or (default) editor.
-    // The AI SDK has no per-tool prompt hook, so tool calls run without gating.
-    const system: string = promptForSurface(context.surface);
+    // Expose the tool set (and prompt) for the run's surface and mode: chat runs read-only, and the
+    // mutating tools' executors ask through the shared permission round-trip per the posture, so the
+    // safety rails match the Claude path despite the AI SDK having no per-tool permission hook.
+    const system: string = promptForSurface(context);
     const tools: ToolSet = await toolsForSurface(context);
 
     const stream: AsyncIterable<StreamPart> = streamText({

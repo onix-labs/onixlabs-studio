@@ -14,6 +14,7 @@ describe('AgentChat', () => {
   let removed: string[];
   let pendingInput: WritableSignal<AgentItem | undefined>;
   let inputAnswers: { id: string; answer: string | null }[];
+  let items: WritableSignal<readonly AgentItem[]>;
 
   beforeEach(async () => {
     sent = [];
@@ -22,8 +23,9 @@ describe('AgentChat', () => {
     removed = [];
     pendingInput = signal<AgentItem | undefined>(undefined);
     inputAnswers = [];
+    items = signal<readonly AgentItem[]>([]);
     const agentStub: Partial<Agent> = {
-      items: signal<readonly AgentItem[]>([]),
+      items,
       isRunning: signal<boolean>(false),
       awaitingDecision: signal<boolean>(false),
       pendingInput,
@@ -157,6 +159,71 @@ describe('AgentChat', () => {
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }));
 
     expect(sent).toHaveLength(0);
+  });
+
+  it('historyKeys_whenArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'first prompt' },
+      { id: 'item-2', kind: 'assistant', text: 'reply' },
+      { id: 'item-3', kind: 'user', text: 'second prompt' },
+    ]);
+    const area: HTMLTextAreaElement = document.createElement('textarea');
+    const key: (name: string) => KeyboardEvent = (name: string): KeyboardEvent => {
+      const event: KeyboardEvent = new KeyboardEvent('keydown', { key: name });
+      Object.defineProperty(event, 'target', { value: area });
+      return event;
+    };
+
+    area.value = 'a draft';
+    component.onInput('a draft');
+    component.onKeydown(key('ArrowUp'));
+    expect(component.draft()).toBe('second prompt');
+
+    component.onKeydown(key('ArrowUp'));
+    expect(component.draft()).toBe('first prompt');
+
+    // Past the oldest prompt there is nothing further; the composer keeps the oldest.
+    component.onKeydown(key('ArrowUp'));
+    expect(component.draft()).toBe('first prompt');
+
+    component.onKeydown(key('ArrowDown'));
+    expect(component.draft()).toBe('second prompt');
+
+    component.onKeydown(key('ArrowDown'));
+    expect(component.draft()).toBe('a draft');
+  });
+
+  it('historyKeys_whenCaretIsInsideAMultiLineDraft_leaveTheCaretAlone', () => {
+    items.set([{ id: 'item-1', kind: 'user', text: 'previous' }]);
+    const area: HTMLTextAreaElement = document.createElement('textarea');
+    area.value = 'line one\nline two';
+    area.setSelectionRange(area.value.length, area.value.length);
+    component.onInput(area.value);
+    const event: KeyboardEvent = new KeyboardEvent('keydown', { key: 'ArrowUp' });
+    Object.defineProperty(event, 'target', { value: area });
+
+    component.onKeydown(event);
+
+    // The caret sits on the second line, so ArrowUp is caret movement, not history recall.
+    expect(component.draft()).toBe('line one\nline two');
+  });
+
+  it('copy_whenClicked_writesTheItemTextToTheClipboard', async () => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: (text: string): Promise<void> => {
+          writes.push(text);
+          return Promise.resolve();
+        },
+      },
+      configurable: true,
+    });
+
+    component.copy({ id: 'item-1', kind: 'assistant', text: 'the answer' });
+    await Promise.resolve();
+
+    expect(writes).toEqual(['the answer']);
   });
 
   it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {
