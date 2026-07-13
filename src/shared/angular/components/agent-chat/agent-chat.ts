@@ -16,12 +16,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type {
-  AgentContextRef,
-  AgentSurface,
-  AiEditDecision,
-  AiPermissionRemember,
-} from '@shared/api/ai-types';
+import type { AgentContextRef, AgentSurface, AiEditDecision } from '@shared/api/ai-types';
 import {
   Agent,
   AgentItem,
@@ -877,9 +872,7 @@ export class AgentChat {
     this.agent.respondPermission(
       item,
       granted,
-      scope === 'session' || scope === 'workspace' || scope === 'always'
-        ? (scope as AiPermissionRemember)
-        : undefined,
+      scope === 'session' || scope === 'workspace' || scope === 'always' ? scope : undefined,
     );
   }
 
