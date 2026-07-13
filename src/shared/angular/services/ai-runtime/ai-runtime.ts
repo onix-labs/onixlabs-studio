@@ -184,6 +184,15 @@ export class AiRuntime {
   }
 
   /**
+   * Answers an input request (an agent question) raised during a run.
+   * @param inputId The identifier carried by the input-request event.
+   * @param answer The user's answer, or null when they declined to answer.
+   */
+  public respondInput(inputId: string, answer: string | null): void {
+    this.api?.respondInput({ inputId, answer });
+  }
+
+  /**
    * Registers an in-app capability the agent can invoke through the bridge.
    * @param name The capability name.
    * @param handler The handler invoked with the request input.

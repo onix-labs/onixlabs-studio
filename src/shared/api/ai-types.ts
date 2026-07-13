@@ -19,6 +19,7 @@ export {
   INSERT_BINARY_BYTES,
   DELETE_BINARY_BYTES,
   WRITE_BINARY_ASSEMBLY,
+  ASK_USER,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
@@ -37,8 +38,15 @@ export type {
   AiToolStartEvent,
   AiToolEndEvent,
   AiPermissionEvent,
+  AiInputChoice,
+  AiInputRequestEvent,
   AiStatusEvent,
   AiUsageEvent,
   AiEvent,
 } from './ai/ai-event-types';
-export type { AiBridgeRequest, AiBridgeReply, AiPermissionReply } from './ai/ai-bridge-types';
+export type {
+  AiBridgeRequest,
+  AiBridgeReply,
+  AiPermissionReply,
+  AiInputReply,
+} from './ai/ai-bridge-types';

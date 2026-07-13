@@ -256,7 +256,10 @@ $agent-node-size: 1.75rem;
   user-select: text;
 }
 
-.agent__permission {
+// The permission and question cards share one off-rail card shell; a card awaiting the user is
+// outlined in the accent colour.
+.agent__permission,
+.agent__ask {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -264,9 +267,14 @@ $agent-node-size: 1.75rem;
   margin-block: 0.5rem;
   padding: 0.8rem 1rem;
   background: var(--agent-view-surface-color);
-  border: 0.0625rem solid var(--accent-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__permission,
+.agent__ask--pending {
+  border-color: var(--accent-color);
 }
 
 .agent__permission-text {
@@ -281,14 +289,78 @@ $agent-node-size: 1.75rem;
   opacity: 0.7;
 }
 
-.agent__permission-actions {
+.agent__permission-actions,
+.agent__ask-actions {
   display: flex;
+  flex: none;
   gap: 0.5rem;
 }
 
-.agent__permission-state {
+.agent__permission-state,
+.agent__ask-state,
+.agent__ask-hint {
   font-size: 0.85rem;
   opacity: 0.7;
+}
+
+.agent__ask-question {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// The suggested answers as a radio list: each row pairs the radio dial atom with a bold label and a
+// muted colon-separated description ("orders-db: the store the order service already uses").
+.agent__ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agent__ask-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.agent__ask-option-dial {
+  flex: none;
+  margin-block-start: 0.05rem;
+}
+
+.agent__ask-option-text {
+  min-inline-size: 0;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.agent__ask-option-label {
+  font-weight: 600;
+}
+
+.agent__ask-option-desc {
+  color: var(--form-muted-foreground-color);
+
+  &::before {
+    content: ': ';
+  }
+}
+
+.agent__ask-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent__ask-answer {
+  font-size: 0.9rem;
+  word-break: break-word;
+
+  &::before {
+    content: '→ ';
+    color: var(--accent-color);
+  }
 }
 
 .agent__btn {

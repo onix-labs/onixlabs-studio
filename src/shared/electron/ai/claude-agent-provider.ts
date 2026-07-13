@@ -8,6 +8,7 @@ import type {
   SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
+  ASK_USER,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -25,6 +26,7 @@ import {
   type InsertPlacement,
   type AgentContextRef,
   type AgentSurface,
+  type AiInputChoice,
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
@@ -40,6 +42,9 @@ import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
+  ASK_USER_DESCRIPTION,
+  ASK_USER_FQN,
+  ASK_USER_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
@@ -54,6 +59,7 @@ import {
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
+  askUser,
   deleteBinaryBytes,
   editActiveDocument,
   insertBinaryBytes,
@@ -185,8 +191,9 @@ export class ClaudeAgentProvider implements AgentProvider {
     const surface: AgentSurface = context.surface;
     const terminal: boolean = surface === 'terminal';
     const binary: boolean = surface === 'binary';
-    // The standalone agent tab has no owning document: no in-app studio tools are registered, and the
-    // run works through the SDK's built-in tools alone (gated by the permission posture as usual).
+    // The standalone agent tab has no owning document: beyond the ask-user tool, no in-app studio
+    // tools are registered, and the run works through the SDK's built-in tools alone (gated by the
+    // permission posture as usual).
     const project: boolean = surface === 'project';
     // Chat mode runs read-only: the mutating in-app tool is withheld and every editing/executing tool
     // is denied, so the agent may inspect the project and the surface but never changes anything.
@@ -203,250 +210,292 @@ export class ClaudeAgentProvider implements AgentProvider {
     });
 
     // Expose Studio's in-app capabilities as an in-process MCP server; the tool handlers call back
-    // into the renderer over the run context's bridge. A terminal-surface run registers ONLY the two
-    // terminal tools, so the agent acts solely through its terminal; a binary-surface run registers
-    // the binary inspection/patch tools; an editor run registers the editor tools. Each tool array is
-    // inline so each tool keeps its own input-shape generic.
+    // into the renderer over the run context's bridge. Every surface registers the ask-user tool (the
+    // input round-trip that lets the agent ask instead of guessing). Beyond that, a terminal-surface
+    // run registers ONLY the two terminal tools, so the agent acts solely through its terminal; a
+    // binary-surface run registers the binary inspection/patch tools; an editor run registers the
+    // editor tools; a project run registers nothing further (the standalone agent works through the
+    // SDK's built-in tools). Each tool array is inline so each tool keeps its own input-shape generic.
     const studioServer: McpSdkServerConfigWithInstance = createSdkMcpServer({
       name: 'studio',
       version: '0.0.0',
-      tools: project
-        ? []
-        : terminal
-        ? [
-            tool(
-              READ_TERMINAL_OUTPUT,
-              'Read the recent output currently shown in the terminal.',
-              {},
-              async () => text(await readTerminalOutput(context)),
-            ),
-            ...(readOnly
-              ? []
+      tools: [
+        tool(
+          ASK_USER,
+          ASK_USER_DESCRIPTION,
+          {
+            question: z.string().min(1).describe('The question to ask the user.'),
+            choices: z
+              .array(
+                z.object({
+                  label: z
+                    .string()
+                    .min(1)
+                    .describe(
+                      'The short answer label; sent back verbatim as the answer when picked.',
+                    ),
+                  description: z
+                    .string()
+                    .optional()
+                    .describe(
+                      'An explanation of this choice: what picking it means, its trade-offs, and "(recommended)" when it is your recommendation.',
+                    ),
+                }),
+              )
+              .optional()
+              .describe(
+                'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
+              ),
+          },
+          async (args: { question: string; choices?: AiInputChoice[] }) =>
+            text(await askUser(context, args.question, args.choices ?? [])),
+        ),
+        ...(project
+          ? []
+          : terminal
+            ? [
+                tool(
+                  READ_TERMINAL_OUTPUT,
+                  'Read the recent output currently shown in the terminal.',
+                  {},
+                  async () => text(await readTerminalOutput(context)),
+                ),
+                ...(readOnly
+                  ? []
+                  : [
+                      tool(
+                        WRITE_TERMINAL_INPUT,
+                        'Type text into the terminal, running it as a command by default, and return the resulting output.',
+                        {
+                          text: z.string().describe('The text to type into the terminal.'),
+                          submit: z
+                            .boolean()
+                            .optional()
+                            .describe(
+                              'Whether to run the text as a command (append a newline). Defaults to true.',
+                            ),
+                        },
+                        async (args: { text: string; submit?: boolean }) =>
+                          text(await writeTerminalInput(context, args.text, args.submit ?? true)),
+                      ),
+                    ]),
+              ]
+            : binary
+              ? [
+                  tool(
+                    READ_BINARY_OVERVIEW,
+                    'Describe the open binary file: path, size, container format, architecture, whether disassembly is available, and the current cursor/selection.',
+                    {},
+                    async () => text(await readBinaryOverview(context)),
+                  ),
+                  tool(
+                    READ_BINARY_BYTES,
+                    'Return a hex + ASCII dump of a byte range of the open binary file.',
+                    {
+                      offset: z.number().int().min(0).describe('The first byte offset to read.'),
+                      length: z
+                        .number()
+                        .int()
+                        .min(1)
+                        .optional()
+                        .describe('The number of bytes to read (bounded; defaults to 256).'),
+                    },
+                    async (args: { offset: number; length?: number }) =>
+                      text(await readBinaryBytes(context, args.offset, args.length ?? 256)),
+                  ),
+                  tool(
+                    READ_BINARY_SELECTION,
+                    'Return a hex + ASCII dump of the bytes the user has selected in the open binary file.',
+                    {},
+                    async () => text(await readBinarySelection(context)),
+                  ),
+                  tool(
+                    READ_BINARY_DISASSEMBLY,
+                    'Return the assembly listing for a byte range of the open binary file, when its format is natively disassemblable.',
+                    {
+                      offset: z
+                        .number()
+                        .int()
+                        .min(0)
+                        .describe('The first byte of the range to disassemble.'),
+                      length: z
+                        .number()
+                        .int()
+                        .min(1)
+                        .optional()
+                        .describe('The number of bytes to disassemble (bounded; defaults to 256).'),
+                    },
+                    async (args: { offset: number; length?: number }) =>
+                      text(await readBinaryDisassembly(context, args.offset, args.length ?? 256)),
+                  ),
+                  ...(readOnly
+                    ? []
+                    : [
+                        tool(
+                          PATCH_BINARY_BYTES,
+                          'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
+                          {
+                            offset: z
+                              .number()
+                              .int()
+                              .min(0)
+                              .describe('The offset to overwrite from.'),
+                            bytes: z
+                              .string()
+                              .describe(
+                                'The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".',
+                              ),
+                          },
+                          async (args: { offset: number; bytes: string }) =>
+                            text(await patchBinaryBytes(context, args.offset, args.bytes)),
+                        ),
+                        tool(
+                          INSERT_BINARY_BYTES,
+                          'Insert bytes before an offset in the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+                          {
+                            offset: z
+                              .number()
+                              .int()
+                              .min(0)
+                              .describe('The offset to insert before (the file size appends).'),
+                            bytes: z
+                              .string()
+                              .describe(
+                                'The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".',
+                              ),
+                          },
+                          async (args: { offset: number; bytes: string }) =>
+                            text(await insertBinaryBytes(context, args.offset, args.bytes)),
+                        ),
+                        tool(
+                          DELETE_BINARY_BYTES,
+                          'Delete a run of bytes from the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
+                          {
+                            offset: z.number().int().min(0).describe('The first offset to delete.'),
+                            length: z
+                              .number()
+                              .int()
+                              .min(1)
+                              .describe('The number of bytes to delete.'),
+                          },
+                          async (args: { offset: number; length: number }) =>
+                            text(await deleteBinaryBytes(context, args.offset, args.length)),
+                        ),
+                        tool(
+                          WRITE_BINARY_ASSEMBLY,
+                          'Assemble x86/x64 assembly text (Intel syntax, one instruction per line) and write it at an offset in the open binary file, editing at the instruction level. The file length is unchanged: pass the length of the range being replaced — shorter code is NOP-padded, longer code is rejected so it never shifts the following instructions. Covers x86 and x64 only (ARM/ARM64 cannot be assembled); code is assembled at address 0, so use PC-relative operands for branches. Reports the bytes written and their disassembly. Produces an unsaved, undoable edit.',
+                          {
+                            offset: z
+                              .number()
+                              .int()
+                              .min(0)
+                              .describe('The offset to write the assembled bytes at.'),
+                            assembly: z
+                              .string()
+                              .min(1)
+                              .describe('The assembly to write, e.g. "mov eax, 1; ret".'),
+                            length: z
+                              .number()
+                              .int()
+                              .min(1)
+                              .optional()
+                              .describe(
+                                'The number of bytes the write should occupy (the replaced range); defaults to the assembled length. Shorter assembly is NOP-padded to this; longer is rejected.',
+                              ),
+                          },
+                          async (args: { offset: number; assembly: string; length?: number }) =>
+                            text(
+                              await writeBinaryAssembly(
+                                context,
+                                args.offset,
+                                args.assembly,
+                                args.length,
+                              ),
+                            ),
+                        ),
+                      ]),
+                ]
               : [
                   tool(
-                    WRITE_TERMINAL_INPUT,
-                    'Type text into the terminal, running it as a command by default, and return the resulting output.',
-                    {
-                      text: z.string().describe('The text to type into the terminal.'),
-                      submit: z
-                        .boolean()
-                        .optional()
-                        .describe(
-                          'Whether to run the text as a command (append a newline). Defaults to true.',
-                        ),
-                    },
-                    async (args: { text: string; submit?: boolean }) =>
-                      text(await writeTerminalInput(context, args.text, args.submit ?? true)),
+                    READ_ACTIVE_DOCUMENT,
+                    "Read the active editor document's full text.",
+                    {},
+                    async () => text(await readActiveDocument(context)),
                   ),
+                  ...(readOnly
+                    ? []
+                    : [
+                        tool(
+                          EDIT_ACTIVE_DOCUMENT,
+                          'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
+                          {
+                            old_string: z
+                              .string()
+                              .min(1)
+                              .describe(
+                                'The exact text to replace; must match the document verbatim.',
+                              ),
+                            new_string: z
+                              .string()
+                              .describe('The replacement text (empty deletes the matched text).'),
+                            replace_all: z
+                              .boolean()
+                              .optional()
+                              .describe(
+                                'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+                              ),
+                          },
+                          async (args: {
+                            old_string: string;
+                            new_string: string;
+                            replace_all?: boolean;
+                          }) =>
+                            text(
+                              await editActiveDocument(
+                                context,
+                                args.old_string,
+                                args.new_string,
+                                args.replace_all ?? false,
+                              ),
+                            ),
+                        ),
+                        tool(
+                          INSERT_ACTIVE_DOCUMENT,
+                          "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
+                          {
+                            text: z.string().min(1).describe('The text to insert.'),
+                            placement: z
+                              .enum(['before', 'after', 'start', 'end'])
+                              .describe(
+                                'Where to insert: relative to the anchor, or at a document edge.',
+                              ),
+                            anchor: z
+                              .string()
+                              .optional()
+                              .describe(
+                                'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
+                              ),
+                          },
+                          async (args: { text: string; placement: string; anchor?: string }) =>
+                            text(
+                              await insertIntoActiveDocument(
+                                context,
+                                args.text,
+                                args.placement as InsertPlacement,
+                                args.anchor,
+                              ),
+                            ),
+                        ),
+                        tool(
+                          REPLACE_ACTIVE_DOCUMENT,
+                          "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
+                          { text: z.string().describe('The new full text of the document.') },
+                          async (args: { text: string }) =>
+                            text(await replaceActiveDocument(context, args.text)),
+                        ),
+                      ]),
                 ]),
-          ]
-        : binary
-          ? [
-              tool(
-                READ_BINARY_OVERVIEW,
-                'Describe the open binary file: path, size, container format, architecture, whether disassembly is available, and the current cursor/selection.',
-                {},
-                async () => text(await readBinaryOverview(context)),
-              ),
-              tool(
-                READ_BINARY_BYTES,
-                'Return a hex + ASCII dump of a byte range of the open binary file.',
-                {
-                  offset: z.number().int().min(0).describe('The first byte offset to read.'),
-                  length: z
-                    .number()
-                    .int()
-                    .min(1)
-                    .optional()
-                    .describe('The number of bytes to read (bounded; defaults to 256).'),
-                },
-                async (args: { offset: number; length?: number }) =>
-                  text(await readBinaryBytes(context, args.offset, args.length ?? 256)),
-              ),
-              tool(
-                READ_BINARY_SELECTION,
-                'Return a hex + ASCII dump of the bytes the user has selected in the open binary file.',
-                {},
-                async () => text(await readBinarySelection(context)),
-              ),
-              tool(
-                READ_BINARY_DISASSEMBLY,
-                'Return the assembly listing for a byte range of the open binary file, when its format is natively disassemblable.',
-                {
-                  offset: z
-                    .number()
-                    .int()
-                    .min(0)
-                    .describe('The first byte of the range to disassemble.'),
-                  length: z
-                    .number()
-                    .int()
-                    .min(1)
-                    .optional()
-                    .describe('The number of bytes to disassemble (bounded; defaults to 256).'),
-                },
-                async (args: { offset: number; length?: number }) =>
-                  text(await readBinaryDisassembly(context, args.offset, args.length ?? 256)),
-              ),
-              ...(readOnly
-                ? []
-                : [
-                    tool(
-                      PATCH_BINARY_BYTES,
-                      'Overwrite bytes at an offset in the open binary file (the length is unchanged). Produces an unsaved, undoable edit the user reviews and saves.',
-                      {
-                        offset: z.number().int().min(0).describe('The offset to overwrite from.'),
-                        bytes: z
-                          .string()
-                          .describe(
-                            'The replacement bytes as a hex string, e.g. "4d 5a" or "4D5A".',
-                          ),
-                      },
-                      async (args: { offset: number; bytes: string }) =>
-                        text(await patchBinaryBytes(context, args.offset, args.bytes)),
-                    ),
-                    tool(
-                      INSERT_BINARY_BYTES,
-                      'Insert bytes before an offset in the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
-                      {
-                        offset: z
-                          .number()
-                          .int()
-                          .min(0)
-                          .describe('The offset to insert before (the file size appends).'),
-                        bytes: z
-                          .string()
-                          .describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
-                      },
-                      async (args: { offset: number; bytes: string }) =>
-                        text(await insertBinaryBytes(context, args.offset, args.bytes)),
-                    ),
-                    tool(
-                      DELETE_BINARY_BYTES,
-                      'Delete a run of bytes from the open binary file. CHANGES THE FILE LENGTH: every subsequent offset shifts, which typically corrupts structured executables — intended for blobs and data files. Produces an unsaved, undoable edit.',
-                      {
-                        offset: z.number().int().min(0).describe('The first offset to delete.'),
-                        length: z
-                          .number()
-                          .int()
-                          .min(1)
-                          .describe('The number of bytes to delete.'),
-                      },
-                      async (args: { offset: number; length: number }) =>
-                        text(await deleteBinaryBytes(context, args.offset, args.length)),
-                    ),
-                    tool(
-                      WRITE_BINARY_ASSEMBLY,
-                      'Assemble x86/x64 assembly text (Intel syntax, one instruction per line) and write it at an offset in the open binary file, editing at the instruction level. The file length is unchanged: pass the length of the range being replaced — shorter code is NOP-padded, longer code is rejected so it never shifts the following instructions. Covers x86 and x64 only (ARM/ARM64 cannot be assembled); code is assembled at address 0, so use PC-relative operands for branches. Reports the bytes written and their disassembly. Produces an unsaved, undoable edit.',
-                      {
-                        offset: z
-                          .number()
-                          .int()
-                          .min(0)
-                          .describe('The offset to write the assembled bytes at.'),
-                        assembly: z
-                          .string()
-                          .min(1)
-                          .describe('The assembly to write, e.g. "mov eax, 1; ret".'),
-                        length: z
-                          .number()
-                          .int()
-                          .min(1)
-                          .optional()
-                          .describe(
-                            'The number of bytes the write should occupy (the replaced range); defaults to the assembled length. Shorter assembly is NOP-padded to this; longer is rejected.',
-                          ),
-                      },
-                      async (args: { offset: number; assembly: string; length?: number }) =>
-                        text(
-                          await writeBinaryAssembly(
-                            context,
-                            args.offset,
-                            args.assembly,
-                            args.length,
-                          ),
-                        ),
-                    ),
-                  ]),
-            ]
-          : [
-              tool(
-                READ_ACTIVE_DOCUMENT,
-                "Read the active editor document's full text.",
-                {},
-                async () => text(await readActiveDocument(context)),
-              ),
-              ...(readOnly
-                ? []
-                : [
-                    tool(
-                      EDIT_ACTIVE_DOCUMENT,
-                      'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
-                      {
-                        old_string: z
-                          .string()
-                          .min(1)
-                          .describe('The exact text to replace; must match the document verbatim.'),
-                        new_string: z
-                          .string()
-                          .describe('The replacement text (empty deletes the matched text).'),
-                        replace_all: z
-                          .boolean()
-                          .optional()
-                          .describe(
-                            'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
-                          ),
-                      },
-                      async (args: {
-                        old_string: string;
-                        new_string: string;
-                        replace_all?: boolean;
-                      }) =>
-                        text(
-                          await editActiveDocument(
-                            context,
-                            args.old_string,
-                            args.new_string,
-                            args.replace_all ?? false,
-                          ),
-                        ),
-                    ),
-                    tool(
-                      INSERT_ACTIVE_DOCUMENT,
-                      "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
-                      {
-                        text: z.string().min(1).describe('The text to insert.'),
-                        placement: z
-                          .enum(['before', 'after', 'start', 'end'])
-                          .describe(
-                            'Where to insert: relative to the anchor, or at a document edge.',
-                          ),
-                        anchor: z
-                          .string()
-                          .optional()
-                          .describe(
-                            'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
-                          ),
-                      },
-                      async (args: { text: string; placement: string; anchor?: string }) =>
-                        text(
-                          await insertIntoActiveDocument(
-                            context,
-                            args.text,
-                            args.placement as InsertPlacement,
-                            args.anchor,
-                          ),
-                        ),
-                    ),
-                    tool(
-                      REPLACE_ACTIVE_DOCUMENT,
-                      "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
-                      { text: z.string().describe('The new full text of the document.') },
-                      async (args: { text: string }) =>
-                        text(await replaceActiveDocument(context, args.text)),
-                    ),
-                  ]),
-            ],
+      ],
     });
 
     // Apply the permission posture: read-only exploration is always allowed; `auto-all` allows every
@@ -459,6 +508,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       toolName: string,
       input: Record<string, unknown>,
     ): Promise<PermissionResult> => {
+      // The ask-user tool is allowed on every surface and in every mode (asking is read-only, and the
+      // user's answer is itself the gate). It is normally short-circuited by allowedTools; this keeps
+      // the confinement and read-only branches below from denying it if it ever lands here.
+      if (toolName === ASK_USER_FQN) {
+        return { behavior: 'allow', updatedInput: input };
+      }
       // A terminal-surface run is confined to its terminal: deny every tool that is not one of the two
       // terminal tools, blocking all built-ins (file system, shell, editor). The write tool then falls
       // through to the posture logic below so it prompts unless the posture auto-allows.
@@ -502,26 +557,32 @@ export class ClaudeAgentProvider implements AgentProvider {
         preset: 'claude_code',
         append: this.systemAppendix(surface, readOnly),
       },
-      // A project-surface run registers no in-app server at all — the standalone agent works through
-      // the SDK's built-in tools alone.
-      ...(project ? {} : { mcpServers: { studio: studioServer } }),
-      // For a terminal run, auto-allow only the read tool; the write tool is intentionally omitted so
-      // it flows through canUseTool (prompting unless the posture auto-allows). For a binary run,
-      // auto-allow the read-only inspection tools (and read-only project exploration); the byte-patch
-      // tool is omitted so it flows through canUseTool. For an editor run, auto-allow the in-app editor
-      // tools (the user sees and can undo the change) and read-only project exploration; canUseTool
-      // gates everything else. A project run auto-allows read-only exploration only.
-      allowedTools: terminal
-        ? [READ_TERMINAL_FQN]
-        : binary
-          ? [...BINARY_READ_FQNS, ...(hasReadableContext ? READ_ONLY_TOOLS : [])]
-          : project
-            ? [...(hasReadableContext ? READ_ONLY_TOOLS : [])]
-            : [
-                READ_TOOL_FQN,
-                ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
-                ...(hasReadableContext ? READ_ONLY_TOOLS : []),
-              ],
+      // Every surface registers the in-app server: at minimum it carries the ask-user tool, and a
+      // project run carries only that (the standalone agent otherwise works through the SDK's
+      // built-in tools alone).
+      mcpServers: { studio: studioServer },
+      // The ask-user tool is auto-allowed on every surface: asking is not a mutation, and the user's
+      // answer is itself the gate. For a terminal run, auto-allow only the read tool beyond that; the
+      // write tool is intentionally omitted so it flows through canUseTool (prompting unless the
+      // posture auto-allows). For a binary run, auto-allow the read-only inspection tools (and
+      // read-only project exploration); the byte-patch tool is omitted so it flows through canUseTool.
+      // For an editor run, auto-allow the in-app editor tools (the user sees and can undo the change)
+      // and read-only project exploration; canUseTool gates everything else. A project run auto-allows
+      // read-only exploration only.
+      allowedTools: [
+        ASK_USER_FQN,
+        ...(terminal
+          ? [READ_TERMINAL_FQN]
+          : binary
+            ? [...BINARY_READ_FQNS, ...(hasReadableContext ? READ_ONLY_TOOLS : [])]
+            : project
+              ? [...(hasReadableContext ? READ_ONLY_TOOLS : [])]
+              : [
+                  READ_TOOL_FQN,
+                  ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
+                  ...(hasReadableContext ? READ_ONLY_TOOLS : []),
+                ]),
+      ],
       canUseTool,
       abortController: controller,
       // Resume the conversation's prior session when one exists, so the model keeps the earlier turns'
@@ -578,7 +639,9 @@ export class ClaudeAgentProvider implements AgentProvider {
           : surface === 'project'
             ? PROJECT_PROMPT_APPENDIX
             : STUDIO_PROMPT_APPENDIX;
-    return readOnly ? `${base}\n\n${READ_ONLY_APPENDIX}` : base;
+    // Every surface learns it can ask the user questions instead of guessing.
+    const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
+    return readOnly ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
   }
 
   /**
@@ -725,12 +788,14 @@ export class ClaudeAgentProvider implements AgentProvider {
       };
       total_cost_usd?: number;
     } = message as never;
-    const usage: {
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_read_input_tokens?: number;
-      cache_creation_input_tokens?: number;
-    } | undefined = result.usage;
+    const usage:
+      | {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        }
+      | undefined = result.usage;
     if (usage === undefined) {
       return;
     }

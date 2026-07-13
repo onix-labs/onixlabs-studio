@@ -88,6 +88,13 @@ export const DELETE_BINARY_BYTES: string = 'delete_binary_bytes';
 export const WRITE_BINARY_ASSEMBLY: string = 'write_binary_assembly';
 
 /**
+ * The in-app tool that asks the user a question (free-form or with suggested choices) and blocks the
+ * run until they answer. Exposed on every surface so asking is a deliberate action rather than a
+ * heuristic parse of assistant prose.
+ */
+export const ASK_USER: string = 'ask_user';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
  * standalone agent tab, which has no owning document and works through the provider's built-in tools
