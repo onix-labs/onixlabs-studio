@@ -113,9 +113,15 @@ interface TranscriptRow {
   readonly nodeSpin: boolean;
 
   /**
-   * Gets the friendly one-line summary for a tool row (undefined for other kinds).
+   * Gets the friendly one-line summary for a tool row, or the disclosure label of a thinking row
+   * (undefined for other kinds).
    */
   readonly label?: string;
+
+  /**
+   * Gets the muted meta readout beside a thinking row's label (its word count), or undefined.
+   */
+  readonly meta?: string;
 
   /**
    * Gets the technical tool identifier revealed when a tool row is expanded (undefined otherwise).
@@ -326,13 +332,23 @@ export class AgentChat {
   /**
    * Gets the composer's live word count, labelled for the hint line.
    */
-  protected readonly wordCount: Signal<string> = computed((): string => {
-    const words: number = this.draftText()
+  protected readonly wordCount: Signal<string> = computed((): string =>
+    this.wordCountOf(this.draftText()),
+  );
+
+  /**
+   * Renders a labelled word count for a block of text (also the composer's counter and a thinking
+   * disclosure's progress readout).
+   * @param text The text to count.
+   * @returns Returns the labelled count (for example, `12 words`).
+   */
+  private wordCountOf(text: string): string {
+    const words: number = text
       .trim()
       .split(/\s+/)
       .filter((word: string): boolean => word.length > 0).length;
     return words === 1 ? '1 word' : `${words} words`;
-  });
+  }
 
   /**
    * Gets a value indicating whether the conversation has reported any usage yet, so the composer's
@@ -481,18 +497,22 @@ export class AgentChat {
           children.set(item.parentToolId, list);
         }
       }
-      // Reasoning ('thinking') is streamed but not shown in the transcript.
       const base: RailEntry[] = items
-        .filter(
-          (item: AgentItem): boolean => item.kind !== 'thinking' && item.parentToolId === undefined,
-        )
+        .filter((item: AgentItem): boolean => item.parentToolId === undefined)
         .map((item: AgentItem): RailEntry => ({ item, kind: item.kind }));
       const sequence: readonly RailEntry[] = showWorking
         ? [...base, { item: null, kind: 'working' }]
         : base;
+      // A thinking row is live while the run is still producing it (it is the newest item); it
+      // streams into its disclosure and its collapsed summary reads as progress.
+      const lastItemId: string | undefined = items[items.length - 1]?.id;
+      const thinking: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
+        entry.kind === 'thinking';
+      const thinkingLive: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
+        thinking(entry) && this.isRunning() && entry.item?.id === lastItemId;
 
       const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
-        kind === 'assistant' || kind === 'tool' || kind === 'working';
+        kind === 'assistant' || kind === 'thinking' || kind === 'tool' || kind === 'working';
 
       const running: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
         entry.kind === 'tool' && entry.item?.toolState === 'running';
@@ -501,6 +521,8 @@ export class AgentChat {
         switch (entry.kind) {
           case 'assistant':
             return Icon.AGENT;
+          case 'thinking':
+            return thinkingLive(entry) ? Icon.SPINNER : Icon.THINKING;
           case 'working':
             return Icon.SPINNER;
           case 'tool':
@@ -529,8 +551,16 @@ export class AgentChat {
           connectsUp: timeline && previous !== undefined && onRail(previous.kind),
           connectsDown: timeline && next !== undefined && onRail(next.kind),
           nodeIcon: nodeIconFor(row),
-          nodeSpin: row.kind === 'working' || running(row),
-          label: row.kind === 'tool' ? friendlyToolLabel(row.item?.toolName) : undefined,
+          nodeSpin: row.kind === 'working' || running(row) || thinkingLive(row),
+          label:
+            row.kind === 'tool'
+              ? friendlyToolLabel(row.item?.toolName)
+              : thinking(row)
+                ? thinkingLive(row)
+                  ? 'Thinking…'
+                  : 'Thought process'
+                : undefined,
+          meta: thinking(row) ? this.wordCountOf(row.item?.text ?? '') : undefined,
           tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
           lane,
         };

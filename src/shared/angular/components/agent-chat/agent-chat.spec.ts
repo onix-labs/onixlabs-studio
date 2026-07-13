@@ -15,6 +15,7 @@ describe('AgentChat', () => {
   let pendingInput: WritableSignal<AgentItem | undefined>;
   let inputAnswers: { id: string; answer: string | null }[];
   let items: WritableSignal<readonly AgentItem[]>;
+  let running: WritableSignal<boolean>;
   let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
   beforeEach(async () => {
@@ -26,9 +27,10 @@ describe('AgentChat', () => {
     pendingInput = signal<AgentItem | undefined>(undefined);
     inputAnswers = [];
     items = signal<readonly AgentItem[]>([]);
+    running = signal<boolean>(false);
     const agentStub: Partial<Agent> = {
       items,
-      isRunning: signal<boolean>(false),
+      isRunning: running,
       awaitingDecision: signal<boolean>(false),
       pendingInput,
       contextTokens: signal<number>(0),
@@ -290,6 +292,55 @@ describe('AgentChat', () => {
       .click();
 
     expect(removed).toEqual(['/repo/src/main.ts']);
+  });
+
+  it('thinking_whenSettled_rendersACollapsedDisclosureWithItsWordCount', () => {
+    items.set([
+      { id: 'item-1', kind: 'thinking', text: 'weighing the two options carefully' },
+      { id: 'item-2', kind: 'assistant', text: 'Done.' },
+    ]);
+    fixture.detectChanges();
+
+    const disclosure: HTMLDetailsElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLDetailsElement>('.agent__thinking');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure!.open).toBe(false);
+    expect(disclosure!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
+      'Thought process',
+    );
+    expect(disclosure!.querySelector('.agent__lane-meta')?.textContent?.trim()).toBe('5 words');
+    expect(disclosure!.querySelector('.agent__thinking-body')?.textContent).toContain(
+      'weighing the two options',
+    );
+  });
+
+  it('thinking_whileTheRunStreamsIt_readsAsLiveProgress', () => {
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'go' },
+      { id: 'item-2', kind: 'thinking', text: 'first pass' },
+    ]);
+    running.set(true);
+    fixture.detectChanges();
+
+    const label: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__thinking .agent__action-label',
+    );
+    expect(label?.textContent?.trim()).toBe('Thinking…');
+
+    // A later item ends the stream: the disclosure settles even while the run continues.
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'go' },
+      { id: 'item-2', kind: 'thinking', text: 'first pass' },
+      { id: 'item-3', kind: 'assistant', text: 'Now doing it.' },
+    ]);
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.agent__thinking .agent__action-label')
+        ?.textContent?.trim(),
+    ).toBe('Thought process');
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {
