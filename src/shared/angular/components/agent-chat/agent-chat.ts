@@ -849,7 +849,12 @@ export class AgentChat {
             if (entry.item?.toolState === 'running') {
               return Icon.SPINNER;
             }
-            return entry.item?.toolState === 'error' ? Icon.WARNING : Icon.ACTION;
+            if (entry.item?.toolState === 'error') {
+              return Icon.WARNING;
+            }
+            // A settled sub-agent (Task) row wears the sub-agent glyph, so lanes read differently
+            // from ordinary tool chips on the rail.
+            return entry.item?.agentType !== undefined ? Icon.SUBAGENT : Icon.ACTION;
           default:
             return Icon.ACTION;
         }
@@ -912,8 +917,8 @@ export class AgentChat {
       item.toolState === 'running'
         ? `${active !== undefined ? friendlyToolLabel(active.toolName) : 'Working'}…`
         : item.toolState === 'error'
-          ? 'failed'
-          : 'done';
+          ? 'Failed'
+          : 'Done';
     const meta: string[] = [];
     if (tools.length > 0) {
       meta.push(tools.length === 1 ? '1 tool' : `${tools.length} tools`);
