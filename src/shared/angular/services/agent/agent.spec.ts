@@ -40,7 +40,7 @@ describe('Agent', () => {
     resumeSessionId: string | null;
   }[];
   let abortCalls: string[];
-  let permissionReplies: { permissionId: string; granted: boolean }[];
+  let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
   let inputReplies: { inputId: string; answer: string | null }[];
   let fireEvent: (event: AiEvent) => void;
 
@@ -83,8 +83,10 @@ describe('Agent', () => {
         abortCalls.push(requestId);
       },
       listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
-      respondPermission: (permissionId: string, granted: boolean): void => {
-        permissionReplies.push({ permissionId, granted });
+      respondPermission: (permissionId: string, granted: boolean, remember?: string): void => {
+        permissionReplies.push(
+          remember === undefined ? { permissionId, granted } : { permissionId, granted, remember },
+        );
       },
       respondInput: (inputId: string, answer: string | null): void => {
         inputReplies.push({ inputId, answer });
@@ -171,6 +173,7 @@ describe('Agent', () => {
       permissionId: 'p1',
       name: 'Write',
       detail: 'x',
+      hasWorkspace: true,
     });
     expect(agent.awaitingDecision()).toBe(true);
 
@@ -183,6 +186,52 @@ describe('Agent', () => {
     expect(permissionReplies).toEqual([{ permissionId: 'p1', granted: true }]);
     expect(agent.awaitingDecision()).toBe(false);
     expect(lastItem()?.permissionState).toBe('allowed');
+    expect(lastItem()?.permissionHasWorkspace).toBe(true);
+  });
+
+  it('permission_whenGrantedWithARememberScope_forwardsAndRecordsIt', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Bash',
+      detail: 'ls',
+      hasWorkspace: true,
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondPermission(item, true, 'workspace');
+    }
+
+    expect(permissionReplies).toEqual([
+      { permissionId: 'p1', granted: true, remember: 'workspace' },
+    ]);
+    expect(lastItem()?.permissionRemember).toBe('workspace');
+  });
+
+  it('permission_whenDeniedWithARememberScope_dropsTheScope', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Bash',
+      detail: 'ls',
+      hasWorkspace: false,
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondPermission(item, false, 'always');
+    }
+
+    expect(permissionReplies).toEqual([{ permissionId: 'p1', granted: false }]);
+    expect(lastItem()?.permissionState).toBe('denied');
+    expect(lastItem()?.permissionRemember).toBeUndefined();
   });
 
   it('inputRequest_whenRaised_pushesAPendingQuestionAndAwaitsTheUser', () => {

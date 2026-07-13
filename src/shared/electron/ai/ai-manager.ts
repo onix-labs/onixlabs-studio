@@ -30,8 +30,30 @@ import type {
 import { AiAuthManager } from './ai-auth-manager';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { OllamaProvider } from './ollama-provider';
+import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { VercelAiProvider } from './vercel-ai-provider';
+
+/**
+ * A pending permission prompt: the resolver, plus the tool and workspace the request was for so a
+ * remembered grant can be recorded when the reply arrives.
+ */
+interface PendingPermission {
+  /**
+   * Settles the prompt.
+   */
+  readonly settle: (granted: boolean) => void;
+
+  /**
+   * Gets the display name of the tool that asked.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the workspace root of the asking run, or null for none.
+   */
+  readonly workspaceRoot: string | null;
+}
 
 /**
  * Coordinates the agent subsystem in the main process: authentication (delegated to
@@ -71,12 +93,22 @@ export class AiManager {
   private readonly bridge: RendererBridge;
 
   /**
-   * Holds the resolvers of pending permission prompts, keyed by permission id.
+   * Holds the pending permission prompts, keyed by permission id.
    */
-  private readonly permissions: Map<string, (granted: boolean) => void> = new Map<
+  private readonly permissions: Map<string, PendingPermission> = new Map<
     string,
-    (granted: boolean) => void
+    PendingPermission
   >();
+
+  /**
+   * Holds the persisted permission rules (the broker's workspace/always grants).
+   */
+  private readonly rules: PermissionRuleStore = new PermissionRuleStore();
+
+  /**
+   * Holds the tools granted for the rest of this app session, dying with the process.
+   */
+  private readonly sessionAllowed: Set<string> = new Set<string>();
 
   /**
    * Holds the resolvers of pending input requests (agent questions), keyed by input id.
@@ -232,7 +264,13 @@ export class AiManager {
           this.bridge.request(capability, input),
       },
       requestPermission: (name: string, detail: string): Promise<boolean> =>
-        this.requestPermission(request.requestId, controller.signal, name, detail),
+        this.requestPermission(
+          request.requestId,
+          controller.signal,
+          request.workspaceRoot,
+          name,
+          detail,
+        ),
       requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
       emit: (event: AiEvent): void => this.emit(event),
@@ -285,20 +323,27 @@ export class AiManager {
   }
 
   /**
-   * Asks the user to permit a gated action by emitting a permission event and awaiting the renderer's
-   * answer. Resolves to false if the run aborts before the user answers.
+   * Asks the user to permit a gated action, first consulting the permission broker: a session grant
+   * or a persisted workspace/always rule resolves immediately with no prompt. Otherwise a permission
+   * event is emitted and the renderer's answer awaited. Resolves to false if the run aborts before
+   * the user answers.
    * @param requestId The run the prompt belongs to.
    * @param signal The run's abort signal.
+   * @param workspaceRoot The run's workspace root, or null for none.
    * @param name The display name of the action.
    * @param detail A one-line summary of the action.
-   * @returns Returns true when the user grants permission.
+   * @returns Returns true when the user grants permission (or a remembered rule already does).
    */
   private requestPermission(
     requestId: string,
     signal: AbortSignal,
+    workspaceRoot: string | null,
     name: string,
     detail: string,
   ): Promise<boolean> {
+    if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
+      return Promise.resolve(true);
+    }
     const permissionId: string = randomUUID();
     return new Promise<boolean>((resolve: (granted: boolean) => void): void => {
       const settle: (granted: boolean) => void = (granted: boolean): void => {
@@ -306,22 +351,41 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, settle);
+      this.permissions.set(permissionId, { settle, name, workspaceRoot });
       if (signal.aborted) {
         settle(false);
         return;
       }
       signal.addEventListener('abort', (): void => settle(false), { once: true });
-      this.emit({ requestId, kind: 'permission', permissionId, name, detail });
+      this.emit({
+        requestId,
+        kind: 'permission',
+        permissionId,
+        name,
+        detail,
+        hasWorkspace: workspaceRoot !== null,
+      });
     });
   }
 
   /**
-   * Resolves the pending permission prompt matching a reply.
+   * Resolves the pending permission prompt matching a reply, recording a remembered grant with the
+   * broker first. Only grants are remembered — a denial's remember scope is ignored.
    * @param reply The renderer's reply.
    */
   private resolvePermission(reply: AiPermissionReply): void {
-    this.permissions.get(reply.permissionId)?.(reply.granted);
+    const pending: PendingPermission | undefined = this.permissions.get(reply.permissionId);
+    if (pending === undefined) {
+      return;
+    }
+    if (reply.granted && reply.remember !== undefined) {
+      if (reply.remember === 'session') {
+        this.sessionAllowed.add(pending.name);
+      } else {
+        this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
+      }
+    }
+    pending.settle(reply.granted);
   }
 
   /**
@@ -390,7 +454,14 @@ export class AiManager {
       return false;
     }
     const record: Record<string, unknown> = value as Record<string, unknown>;
-    return typeof record['permissionId'] === 'string' && typeof record['granted'] === 'boolean';
+    return (
+      typeof record['permissionId'] === 'string' &&
+      typeof record['granted'] === 'boolean' &&
+      (record['remember'] === undefined ||
+        record['remember'] === 'session' ||
+        record['remember'] === 'workspace' ||
+        record['remember'] === 'always')
+    );
   }
 
   /**

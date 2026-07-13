@@ -7,6 +7,7 @@ import type {
   AiBridgeRequest,
   AiEvent,
   AiPermissionPosture,
+  AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
 } from '@shared/api/ai-types';
@@ -178,9 +179,14 @@ export class AiRuntime {
    * Answers a permission request raised during a run.
    * @param permissionId The identifier carried by the permission event.
    * @param granted Whether the user granted permission.
+   * @param remember How long the broker remembers a grant, or undefined for this one use only.
    */
-  public respondPermission(permissionId: string, granted: boolean): void {
-    this.api?.respondPermission({ permissionId, granted });
+  public respondPermission(
+    permissionId: string,
+    granted: boolean,
+    remember?: AiPermissionRemember,
+  ): void {
+    this.api?.respondPermission({ permissionId, granted, remember });
   }
 
   /**

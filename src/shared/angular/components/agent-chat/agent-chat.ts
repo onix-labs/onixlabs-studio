@@ -15,7 +15,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { AgentContextRef, AgentSurface } from '@shared/api/ai-types';
+import type { AgentContextRef, AgentSurface, AiPermissionRemember } from '@shared/api/ai-types';
 import {
   Agent,
   AgentItem,
@@ -30,6 +30,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { MarkdownPipe } from './markdown-pipe';
 import { friendlyToolLabel, technicalToolName } from './tool-summary';
 
@@ -220,7 +221,7 @@ interface ContextChip {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, Radio],
+  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, Radio, Dropdown],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -402,6 +403,14 @@ export class AgentChat {
    * or null when none is selected yet. Reset whenever the pending question changes.
    */
   protected readonly selectedChoice: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the remember scope selected on each pending permission card, keyed by item id ('once' when
+   * unset). Parallel sub-agents can raise concurrent prompts, so the selection is per card.
+   */
+  protected readonly rememberChoice: WritableSignal<Readonly<Record<string, string>>> = signal<
+    Readonly<Record<string, string>>
+  >({});
 
   /**
    * Holds the id of the transcript item whose text was just copied, driving the transient "Copied"
@@ -800,12 +809,71 @@ export class AgentChat {
   }
 
   /**
-   * Answers a pending permission prompt.
+   * Builds the remember-scope options for a pending permission card. The workspace option is only
+   * offered when the asking run is workspace-scoped.
+   * @param item The permission item.
+   * @returns Returns the dropdown options.
+   */
+  public rememberOptions(item: AgentItem): readonly DropdownOption[] {
+    return [
+      { value: 'once', label: 'Just this once' },
+      { value: 'session', label: 'For this session' },
+      ...(item.permissionHasWorkspace === true
+        ? [{ value: 'workspace', label: 'For this workspace' }]
+        : []),
+      { value: 'always', label: 'Always' },
+    ];
+  }
+
+  /**
+   * Records the remember scope picked on a pending permission card.
+   * @param itemId The permission item's id.
+   * @param scope The picked scope value.
+   */
+  public setRemember(itemId: string, scope: string): void {
+    this.rememberChoice.update(
+      (choices: Readonly<Record<string, string>>): Readonly<Record<string, string>> => ({
+        ...choices,
+        [itemId]: scope,
+      }),
+    );
+  }
+
+  /**
+   * Answers a pending permission prompt, carrying the card's remember scope on a grant.
    * @param item The permission item.
    * @param granted Whether the user granted permission.
    */
   public respond(item: AgentItem, granted: boolean): void {
-    this.agent.respondPermission(item, granted);
+    const scope: string = this.rememberChoice()[item.id] ?? 'once';
+    this.agent.respondPermission(
+      item,
+      granted,
+      scope === 'session' || scope === 'workspace' || scope === 'always'
+        ? (scope as AiPermissionRemember)
+        : undefined,
+    );
+  }
+
+  /**
+   * Renders the settled state line of a permission card, including the remembered scope on a grant.
+   * @param item The permission item.
+   * @returns Returns the state label.
+   */
+  public permissionStateLabel(item: AgentItem): string {
+    if (item.permissionState !== 'allowed') {
+      return 'Denied';
+    }
+    switch (item.permissionRemember) {
+      case 'session':
+        return 'Allowed for this session';
+      case 'workspace':
+        return 'Allowed for this workspace';
+      case 'always':
+        return 'Always allowed';
+      default:
+        return 'Allowed';
+    }
   }
 
   /**

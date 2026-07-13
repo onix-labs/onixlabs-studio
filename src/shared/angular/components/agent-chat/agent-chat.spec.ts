@@ -1,7 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef } from '@shared/api/ai-types';
+import type { AgentContextRef, AiPermissionRemember } from '@shared/api/ai-types';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentChat } from './agent-chat';
 
@@ -15,8 +15,10 @@ describe('AgentChat', () => {
   let pendingInput: WritableSignal<AgentItem | undefined>;
   let inputAnswers: { id: string; answer: string | null }[];
   let items: WritableSignal<readonly AgentItem[]>;
+  let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
   beforeEach(async () => {
+    permissionResponses = [];
     sent = [];
     stopped = 0;
     contextPaths = signal<readonly AgentContextRef[]>([]);
@@ -36,7 +38,14 @@ describe('AgentChat', () => {
       send: (text: string): void => void sent.push(text),
       stop: (): void => void (stopped += 1),
       removeContext: (path: string): void => void removed.push(path),
-      respondPermission: (): void => undefined,
+      respondPermission: (
+        item: AgentItem,
+        granted: boolean,
+        remember?: AiPermissionRemember,
+      ): void =>
+        void permissionResponses.push(
+          remember === undefined ? { id: item.id, granted } : { id: item.id, granted, remember },
+        ),
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
     };
@@ -224,6 +233,42 @@ describe('AgentChat', () => {
     await Promise.resolve();
 
     expect(writes).toEqual(['the answer']);
+  });
+
+  it('respond_whenARememberScopeIsPicked_carriesItOnAGrantOnly', () => {
+    const item: AgentItem = {
+      id: 'item-9',
+      kind: 'permission',
+      text: '',
+      permissionId: 'p1',
+      permissionName: 'Bash',
+      permissionState: 'pending',
+      permissionHasWorkspace: true,
+    };
+
+    component.setRemember('item-9', 'session');
+    component.respond(item, true);
+    component.respond(item, false);
+
+    expect(permissionResponses).toEqual([
+      { id: 'item-9', granted: true, remember: 'session' },
+      { id: 'item-9', granted: false, remember: 'session' },
+    ]);
+  });
+
+  it('rememberOptions_whenTheRunHasNoWorkspace_omitTheWorkspaceScope', () => {
+    const values: (hasWorkspace: boolean) => string[] = (hasWorkspace: boolean): string[] =>
+      component
+        .rememberOptions({
+          id: 'item-9',
+          kind: 'permission',
+          text: '',
+          permissionHasWorkspace: hasWorkspace,
+        })
+        .map((option: { value: string }): string => option.value);
+
+    expect(values(true)).toEqual(['once', 'session', 'workspace', 'always']);
+    expect(values(false)).toEqual(['once', 'session', 'always']);
   });
 
   it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {

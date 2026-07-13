@@ -152,6 +152,7 @@ describe('CommitMessageGenerator', () => {
       permissionId: 'p1',
       name: '',
       detail: '',
+      hasWorkspace: false,
     });
     runtime.emit({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
     await pending;

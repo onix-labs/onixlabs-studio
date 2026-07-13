@@ -14,6 +14,7 @@ import type {
   AiEvent,
   AiInputChoice,
   AiModelInfo,
+  AiPermissionRemember,
   AiRunState,
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
@@ -107,6 +108,18 @@ export interface AgentItem {
    * Gets the permission request's state.
    */
   readonly permissionState?: AgentPermissionState;
+
+  /**
+   * Gets a value indicating whether the asking run is workspace-scoped, so the prompt can offer a
+   * workspace-remember option.
+   */
+  readonly permissionHasWorkspace?: boolean;
+
+  /**
+   * Gets how long the broker remembers the grant (granted permission items only; undefined for a
+   * one-off grant).
+   */
+  readonly permissionRemember?: AiPermissionRemember;
 
   /**
    * Gets the id used to answer an input request (an agent question).
@@ -494,20 +507,28 @@ export class Agent {
   }
 
   /**
-   * Answers a pending permission request.
+   * Answers a pending permission request, optionally telling the broker to remember a grant.
    * @param item The permission item.
    * @param granted Whether the user granted permission.
+   * @param remember How long the broker remembers a grant (undefined for this one use only; ignored
+   * on a denial).
    */
-  public respondPermission(item: AgentItem, granted: boolean): void {
+  public respondPermission(
+    item: AgentItem,
+    granted: boolean,
+    remember?: AiPermissionRemember,
+  ): void {
     if (item.permissionId === undefined || item.permissionState !== 'pending') {
       return;
     }
-    this.runtime.respondPermission(item.permissionId, granted);
+    const scope: AiPermissionRemember | undefined = granted ? remember : undefined;
+    this.runtime.respondPermission(item.permissionId, granted, scope);
     this.update(
       item.id,
       (existing: AgentItem): AgentItem => ({
         ...existing,
         permissionState: granted ? 'allowed' : 'denied',
+        ...(scope === undefined ? {} : { permissionRemember: scope }),
       }),
     );
   }
@@ -580,6 +601,7 @@ export class Agent {
           permissionName: event.name,
           permissionDetail: event.detail,
           permissionState: 'pending',
+          permissionHasWorkspace: event.hasWorkspace,
         });
         break;
       case 'input-request':
