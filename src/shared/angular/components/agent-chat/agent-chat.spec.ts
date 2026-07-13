@@ -9,8 +9,12 @@ import type {
   AiProviderId,
   AiProviderInfo,
 } from '@shared/api/ai-types';
+import type { AgentMode } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
+import { Search } from '@shared/angular/services/search/search';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentChat } from './agent-chat';
 
 describe('AgentChat', () => {
@@ -33,8 +37,17 @@ describe('AgentChat', () => {
   let sentImages: (readonly AiImageRef[])[];
   let providers: WritableSignal<readonly AiProviderInfo[]>;
   let pendingContextTokens: WritableSignal<number>;
+  let compacted: number;
+  let clearedChats: number;
+  let modeChanges: AgentMode[];
+  let attachedContext: AgentContextRef[];
 
   beforeEach(async () => {
+    localStorage.clear();
+    compacted = 0;
+    clearedChats = 0;
+    modeChanges = [];
+    attachedContext = [];
     retried = [];
     rewinds = [];
     sentImages = [];
@@ -94,6 +107,11 @@ describe('AgentChat', () => {
         void inputAnswers.push({ id: item.id, answer }),
       retry: (item: AgentItem): void => void retried.push(item.id),
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
+      mode: signal<AgentMode>('agent'),
+      compact: (): void => void (compacted += 1),
+      clear: (): void => void (clearedChats += 1),
+      setMode: (value: AgentMode): void => void modeChanges.push(value),
+      attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       queued,
       removeQueued: (id: string): void => void removedQueued.push(id),
       takeQueued: (id: string): string | null => {
@@ -115,9 +133,19 @@ describe('AgentChat', () => {
       provider: signal<AiProviderId>('claude'),
     };
 
+    const workspaceStub: unknown = { root: signal<{ path: string } | null>({ path: '/repo' }) };
+    const searchStub: Partial<Search> = {
+      listFiles: (): Promise<readonly string[]> =>
+        Promise.resolve(['src/main.ts', 'README.md', 'src/app/main-menu.ts']),
+    };
+
     await TestBed.configureTestingModule({
       imports: [AgentChat],
-      providers: [{ provide: AgentEngine, useValue: engineStub }],
+      providers: [
+        { provide: AgentEngine, useValue: engineStub },
+        { provide: Workspace, useValue: workspaceStub },
+        { provide: Search, useValue: searchStub },
+      ],
     })
       .overrideComponent(AgentChat, {
         set: { providers: [{ provide: Agent, useValue: agentStub }] },
@@ -691,6 +719,93 @@ describe('AgentChat', () => {
     fixture.detectChanges();
     expect(host.querySelector('.agent__image-thumb')).toBeNull();
     expect(host.querySelector('.agent__image-hint')?.textContent).toContain('PNG, JPEG');
+  });
+
+  /**
+   * Types a value into the composer text area with the caret at its end, driving the input and
+   * suggestion hooks like real typing.
+   * @param value The draft to type.
+   * @returns Returns the text area.
+   */
+  function type(value: string): HTMLTextAreaElement {
+    const area: HTMLTextAreaElement = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLTextAreaElement>('.agent__input')!;
+    area.value = value;
+    area.setSelectionRange(value.length, value.length);
+    component.onInput(value);
+    component.updateSuggest(area);
+    fixture.detectChanges();
+    return area;
+  }
+
+  it('slashPopup_whenTypingSlash_offersBuiltinsAndEnterRunsThem', () => {
+    type('/comp');
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const labels: string[] = Array.from(host.querySelectorAll('.agent__suggest-label')).map(
+      (label: Element): string => label.textContent?.trim() ?? '',
+    );
+    expect(labels[0]).toBe('/compact');
+    expect(labels).toContain('Manage prompts…');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(compacted).toBe(1);
+    expect(component.draft()).toBe('');
+    // Accepting closed the popup; Enter no longer sends.
+    expect(sent).toEqual([]);
+  });
+
+  it('slashPopup_whenALibraryPromptMatches_insertsItsText', () => {
+    TestBed.inject(AgentPrompts).save('review', 'Review this code carefully.');
+    type('/rev');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(component.draft()).toBe('Review this code carefully.');
+    expect(sent).toEqual([]);
+  });
+
+  it('mentionPopup_whenTypingAt_listsFilesAndAttachesTheChosenOne', async () => {
+    type('@main');
+    // The file list loads asynchronously on first open; re-anchor once it lands.
+    await fixture.whenStable();
+    const area: HTMLTextAreaElement = type('@main');
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const labels: string[] = Array.from(host.querySelectorAll('.agent__suggest-label')).map(
+      (label: Element): string => label.textContent?.trim() ?? '',
+    );
+    expect(labels[0]).toBe('src/main.ts');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(attachedContext).toEqual([{ path: '/repo/src/main.ts', kind: 'file' }]);
+    expect(component.draft()).toBe('@main.ts ');
+    expect(area.value).toBe('@main.ts ');
+  });
+
+  it('suggestPopup_whenNavigatingWithArrows_movesTheHighlightAndEscapeCloses', () => {
+    type('/');
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const activeLabel: () => string = (): string =>
+      host
+        .querySelector('.agent__suggest-item--active .agent__suggest-label')
+        ?.textContent?.trim() ?? '';
+    expect(activeLabel()).toBe('/compact');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    fixture.detectChanges();
+    expect(activeLabel()).toBe('/clear');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    fixture.detectChanges();
+    expect(activeLabel()).toBe('/compact');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(host.querySelector('.agent__suggest')).toBeNull();
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {

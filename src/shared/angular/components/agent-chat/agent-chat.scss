@@ -884,6 +884,133 @@ $agent-node-size: 1.75rem;
   min-inline-size: 0;
 }
 
+// The `/` command and `@` mention popup: a compact keyboard-navigable list above the input.
+.agent__suggest {
+  display: flex;
+  flex-direction: column;
+  max-block-size: 14rem;
+  margin: 0;
+  padding: 0.2rem;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
+.agent__suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  inline-size: 100%;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: start;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  cursor: default;
+
+  &--active,
+  &:hover {
+    background: var(--agent-view-surface-color);
+    color: var(--accent-color);
+  }
+}
+
+.agent__suggest-icon {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__suggest-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.agent__suggest-hint {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+  text-align: end;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// The prompt-library manager modal: the saved list over the add form.
+.agent__prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.agent__prompts-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__prompts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-block-size: 12rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.agent__prompts-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
+.agent__prompts-name {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  color: var(--accent-color);
+}
+
+.agent__prompts-text {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.agent__prompts-field {
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+
+  &:focus-visible {
+    border-color: var(--accent-color);
+    outline: none;
+  }
+}
+
+.agent__prompts-area {
+  resize: vertical;
+}
+
 .agent__input {
   inline-size: 100%;
   min-block-size: 1.5rem;
@@ -1107,6 +1234,10 @@ $agent-node-size: 1.75rem;
 .agent__edit-banner,
 .agent__image-thumb,
 .agent__bubble-image,
+.agent__suggest,
+.agent__suggest-item,
+.agent__prompts-item,
+.agent__prompts-field,
 .agent__send,
 .agent__md,
 .agent__md-editor {
