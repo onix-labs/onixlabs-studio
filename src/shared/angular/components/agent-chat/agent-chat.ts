@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   HostListener,
@@ -15,12 +16,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type {
-  AgentContextRef,
-  AgentSurface,
-  AiEditDecision,
-  AiPermissionRemember,
-} from '@shared/api/ai-types';
+import type { AgentContextRef, AgentSurface, AiEditDecision } from '@shared/api/ai-types';
 import {
   Agent,
   AgentItem,
@@ -28,7 +24,9 @@ import {
   AgentToolState,
 } from '@shared/angular/services/agent/agent';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
+import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -252,6 +250,11 @@ export class AgentChat {
    * Holds the shell client, used to open link clicks in the operating system's default browser.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the app-wide agent-requests registry this conversation reports its pending requests to.
+   */
+  private readonly requests: AgentRequests = inject(AgentRequests);
 
   /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
@@ -593,6 +596,21 @@ export class AgentChat {
    * while the conversation awaits a permission decision in the background.
    */
   public constructor() {
+    // Report this conversation's pending requests to the app-wide registry (the title strip's
+    // agent-requests bell), attributed to the hosting tab when there is one.
+    const unregister: () => void = this.requests.register({
+      agent: this.agent,
+      tabId: (): string | null => this.tabId() ?? null,
+      label: (): string => {
+        const id: string | undefined = this.tabId();
+        if (id !== undefined) {
+          return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id)?.title ?? 'Agent';
+        }
+        return 'Agent panel';
+      },
+    });
+    inject(DestroyRef).onDestroy(unregister);
+
     effect((): void => {
       const id: string | undefined = this.tabId();
       const waiting: boolean = this.awaitingDecision();
@@ -854,9 +872,7 @@ export class AgentChat {
     this.agent.respondPermission(
       item,
       granted,
-      scope === 'session' || scope === 'workspace' || scope === 'always'
-        ? (scope as AiPermissionRemember)
-        : undefined,
+      scope === 'session' || scope === 'workspace' || scope === 'always' ? scope : undefined,
     );
   }
 

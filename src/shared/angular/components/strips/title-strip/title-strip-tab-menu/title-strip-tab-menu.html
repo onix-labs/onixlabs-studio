@@ -1,12 +1,13 @@
 <button
   type="button"
   class="title-strip-tab-menu__trigger"
-  title="Open tabs"
-  aria-label="Open tabs"
+  [class.title-strip-tab-menu__trigger--alert]="requestCount() > 0"
+  [title]="triggerTitle()"
+  [attr.aria-label]="triggerTitle()"
   [cdkMenuTriggerFor]="menu"
   [cdkMenuPosition]="menuPosition"
 >
-  <app-icon [icon]="Icon.CARET_DOWN" />
+  <app-icon [icon]="requestCount() > 0 ? Icon.BELL : Icon.CARET_DOWN" />
 </button>
 
 <ng-template #menu>
@@ -29,6 +30,13 @@
             @if (tab.dirty) {
               <span class="title-strip-tab-menu__item-dirty" aria-label="Unsaved changes"></span>
             }
+            @if (requestTabIds().has(tab.id)) {
+              <app-icon
+                class="title-strip-tab-menu__item-bell"
+                [icon]="Icon.BELL"
+                aria-label="Agent request waiting"
+              />
+            }
           </button>
           <!-- A plain button rather than a cdkMenuItem so closing a tab leaves the menu open, letting
                several be closed in a row; the stopPropagation keeps the click from reaching the menu. -->
@@ -36,10 +44,162 @@
             type="button"
             class="title-strip-tab-menu__close"
             [attr.aria-label]="'Close ' + tab.title"
+            (pointerdown)="$event.preventDefault()"
             (click)="onClose(tab); $event.stopPropagation()"
           >
             <app-icon [icon]="Icon.CLOSE" />
           </button>
+        </div>
+        @for (entry of entriesFor(tab.id); track entry.key) {
+          <div class="title-strip-tab-menu__request title-strip-tab-menu__request--nested">
+            <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
+            @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
+              <code class="title-strip-tab-menu__request-detail">{{
+                entry.item.permissionDetail
+              }}</code>
+            }
+            <!-- Plain buttons (not cdkMenuItems) so answering keeps the menu open; the menu
+                 dismisses itself once the last request settles. -->
+            <div class="title-strip-tab-menu__request-actions">
+              @switch (entry.item.kind) {
+                @case ('permission') {
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onPermission(entry, true); $event.stopPropagation()"
+                  >
+                    Allow
+                  </button>
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onPermission(entry, false); $event.stopPropagation()"
+                  >
+                    Deny
+                  </button>
+                }
+                @case ('edit-decision') {
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
+                  >
+                    No
+                  </button>
+                }
+                @default {
+                  @for (choice of entry.item.inputChoices ?? []; track choice.label) {
+                    <button
+                      type="button"
+                      class="title-strip-tab-menu__request-btn"
+                      [title]="choice.description ?? ''"
+                      (pointerdown)="$event.preventDefault()"
+                      (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
+                    >
+                      {{ choice.label }}
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onAnswer(entry, null); $event.stopPropagation()"
+                  >
+                    Skip
+                  </button>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+    }
+    @if (unattributed().length > 0) {
+      <p class="title-strip-tab-menu__heading">Agent panels</p>
+      @for (entry of unattributed(); track entry.key) {
+        <div class="title-strip-tab-menu__request">
+          <span class="title-strip-tab-menu__request-source">
+            <app-icon [icon]="Icon.BELL" [size]="1.4" />
+            <span>{{ entry.label }}</span>
+          </span>
+          <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
+          @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
+            <code class="title-strip-tab-menu__request-detail">{{
+              entry.item.permissionDetail
+            }}</code>
+          }
+          <div class="title-strip-tab-menu__request-actions">
+            @switch (entry.item.kind) {
+              @case ('permission') {
+                <button
+                  type="button"
+                  class="title-strip-tab-menu__request-btn"
+                  (pointerdown)="$event.preventDefault()"
+                  (click)="onPermission(entry, true); $event.stopPropagation()"
+                >
+                  Allow
+                </button>
+                <button
+                  type="button"
+                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
+                  (click)="onPermission(entry, false); $event.stopPropagation()"
+                >
+                  Deny
+                </button>
+              }
+              @case ('edit-decision') {
+                <button
+                  type="button"
+                  class="title-strip-tab-menu__request-btn"
+                  (pointerdown)="$event.preventDefault()"
+                  (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
+                  (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
+                >
+                  No
+                </button>
+              }
+              @default {
+                @for (choice of entry.item.inputChoices ?? []; track choice.label) {
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn"
+                    [title]="choice.description ?? ''"
+                    (pointerdown)="$event.preventDefault()"
+                    (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
+                  >
+                    {{ choice.label }}
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
+                  (click)="onAnswer(entry, null); $event.stopPropagation()"
+                >
+                  Skip
+                </button>
+              }
+            }
+          </div>
         </div>
       }
     }
