@@ -5,6 +5,7 @@ import type {
   AgentMode,
   AiEditDecisionReply,
   AiEvent,
+  AiImageRef,
   AiInputChoice,
   AiInputReply,
   AiModelInfo,
@@ -238,6 +239,7 @@ export class AiManager {
         detail: availability.detail,
         models: provider.models,
         defaultModelId: provider.defaultModelId,
+        supportsImages: provider.supportsImages,
       };
     });
   }
@@ -278,6 +280,11 @@ export class AiManager {
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );
+    // Images only reach providers that declared image support; the composer rejects them earlier,
+    // this is the backstop for an untrusted request.
+    const images: readonly AiImageRef[] = provider.supportsImages
+      ? this.sanitizeImages(request.images)
+      : [];
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const context: AgentRunContext = {
@@ -291,6 +298,7 @@ export class AiManager {
       surface: request.surface ?? 'editor',
       mode,
       contextPaths,
+      images,
       resumeSessionId:
         typeof request.resumeSessionId === 'string' && request.resumeSessionId.length > 0
           ? request.resumeSessionId
@@ -632,8 +640,41 @@ export class AiManager {
         record['surface'] === 'project' ||
         record['surface'] === undefined) &&
       (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
-      (record['contextPaths'] === undefined || Array.isArray(record['contextPaths']))
+      (record['contextPaths'] === undefined || Array.isArray(record['contextPaths'])) &&
+      (record['images'] === undefined || Array.isArray(record['images']))
     );
+  }
+
+  /**
+   * Validates and normalises the attached images from an untrusted run request: only well-formed
+   * base64 entries with an allowed media type survive, capped in count and per-image size.
+   * @param value The untrusted `images` value.
+   * @returns Returns the sanitised images (empty when none are valid).
+   */
+  private sanitizeImages(value: unknown): readonly AiImageRef[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const allowedTypes: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    // ~6 MB of base64 (~4.5 MB of image) per image; the composer enforces a smaller cap already.
+    const maxDataLength: number = 6_000_000;
+    return value
+      .filter((entry: unknown): entry is AiImageRef => {
+        if (entry === null || typeof entry !== 'object') {
+          return false;
+        }
+        const record: Record<string, unknown> = entry as Record<string, unknown>;
+        return (
+          typeof record['mediaType'] === 'string' &&
+          allowedTypes.includes(record['mediaType']) &&
+          typeof record['data'] === 'string' &&
+          record['data'].length > 0 &&
+          record['data'].length <= maxDataLength &&
+          /^[A-Za-z0-9+/=]+$/.test(record['data']) &&
+          (record['name'] === undefined || typeof record['name'] === 'string')
+        );
+      })
+      .slice(0, 6);
   }
 
   /**

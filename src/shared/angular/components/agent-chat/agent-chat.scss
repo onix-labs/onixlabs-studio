@@ -746,6 +746,71 @@ $agent-node-size: 1.75rem;
   }
 }
 
+// Images attached to the draft (pasted or dropped): thumbnail chips with a remove control, plus the
+// transient hint shown when an image is rejected at compose time.
+.agent__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent__image-chip {
+  position: relative;
+}
+
+.agent__image-thumb {
+  display: block;
+  block-size: 3.25rem;
+  inline-size: 3.25rem;
+  object-fit: cover;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
+.agent__image-remove {
+  position: absolute;
+  inset-block-start: -0.35rem;
+  inset-inline-end: -0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  font-size: 0.7rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: 50%;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent-color);
+  }
+}
+
+.agent__image-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--accent-orange);
+}
+
+// A user message's attached images, shown as bounded previews above its bubble.
+.agent__bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.agent__bubble-image {
+  max-block-size: 10rem;
+  max-inline-size: 100%;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
 // Messages queued while a run executes: dashed rows above the input, each with edit/remove controls,
 // draining one per completed run.
 .agent__queue {
@@ -1040,6 +1105,8 @@ $agent-node-size: 1.75rem;
 .agent__attachment,
 .agent__queue-item,
 .agent__edit-banner,
+.agent__image-thumb,
+.agent__bubble-image,
 .agent__send,
 .agent__md,
 .agent__md-editor {

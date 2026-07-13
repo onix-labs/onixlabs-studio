@@ -30,6 +30,7 @@ export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider
 export type {
   AiPermissionPosture,
   AiRunRequest,
+  AiImageRef,
   AgentMode,
   AgentContextRef,
 } from './ai/ai-run-types';

@@ -27,6 +27,7 @@ import {
   type InsertPlacement,
   type AgentContextRef,
   type AgentSurface,
+  type AiImageRef,
   type AiInputChoice,
   type AiModelInfo,
   type AiPermissionPosture,
@@ -163,6 +164,11 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets the identifier of Claude's default model.
    */
   public readonly defaultModelId: string = DEFAULT_ANTHROPIC_MODEL;
+
+  /**
+   * Gets a value indicating whether the provider accepts image input (Claude models are multimodal).
+   */
+  public readonly supportsImages: boolean = true;
 
   /**
    * Reports whether Claude can run: a local login or an API key is enough.
@@ -632,8 +638,34 @@ export class ClaudeAgentProvider implements AgentProvider {
       message: { role: 'user', content: value },
       parent_tool_use_id: null,
     });
+    // Attached images ride the initial message as image blocks ahead of the prompt text; steered
+    // follow-ups are text-only.
+    const initialMessage: SDKUserMessage =
+      context.images.length === 0
+        ? userMessage(initialPrompt)
+        : {
+            type: 'user',
+            message: {
+              role: 'user',
+              content: [
+                ...context.images.map(
+                  (
+                    image: AiImageRef,
+                  ): {
+                    type: 'image';
+                    source: { type: 'base64'; media_type: string; data: string };
+                  } => ({
+                    type: 'image',
+                    source: { type: 'base64', media_type: image.mediaType, data: image.data },
+                  }),
+                ),
+                { type: 'text', text: initialPrompt },
+              ],
+            } as SDKUserMessage['message'],
+            parent_tool_use_id: null,
+          };
     async function* promptStream(): AsyncGenerator<SDKUserMessage> {
-      yield userMessage(initialPrompt);
+      yield initialMessage;
       while (true) {
         const next: string | undefined = pendingSteers.shift();
         if (next !== undefined) {

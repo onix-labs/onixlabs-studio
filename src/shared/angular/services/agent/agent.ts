@@ -13,6 +13,7 @@ import type {
   AgentSurface,
   AiEditDecision,
   AiEvent,
+  AiImageRef,
   AiInputChoice,
   AiModelInfo,
   AiPermissionRemember,
@@ -78,6 +79,12 @@ export interface AgentItem {
    * Gets the text content (user/assistant/thinking items).
    */
   readonly text: string;
+
+  /**
+   * Gets the images attached to a user message (pasted or dropped into the composer), rendered as
+   * thumbnails and persisted with the transcript.
+   */
+  readonly images?: readonly AiImageRef[];
 
   /**
    * Gets the correlation id of a tool use.
@@ -223,6 +230,11 @@ export interface AgentItem {
   readonly errorPrompt?: string;
 
   /**
+   * Gets the images the failed turn carried, so its retry resends them with the prompt.
+   */
+  readonly errorImages?: readonly AiImageRef[];
+
+  /**
    * Gets a value indicating whether the error item's turn has been retried (the retry affordance is
    * spent).
    */
@@ -301,6 +313,12 @@ export interface AgentQueuedMessage {
    * turn's surface when dispatched.
    */
   readonly surface?: AgentSurface;
+
+  /**
+   * Gets the images attached to the queued message, sent with it when it dispatches. Not persisted
+   * with the conversation (a restored queue is text-only).
+   */
+  readonly images?: readonly AiImageRef[];
 }
 
 /**
@@ -374,6 +392,11 @@ export class Agent {
    * so its one-click retry can re-run the turn. Null until the first send of this session.
    */
   private lastPrompt: string | null = null;
+
+  /**
+   * Holds the images of the most recently started turn, so an error item's retry resends them.
+   */
+  private lastImages: readonly AiImageRef[] = [];
 
   /**
    * Holds the owning tab of the most recently started turn, the fallback for dispatching a queued
@@ -559,36 +582,50 @@ export class Agent {
    * tools fall back to the focused editor.
    * @param surface What this run acts on, which selects the tool set the providers expose; omitted
    * for the editor surface. The standalone agent tab passes `project`, which exposes no in-app tools.
+   * @param images The images attached to the message, sent to the model alongside it.
    */
-  public send(text: string, owningTabId?: string, surface?: AgentSurface): void {
+  public send(
+    text: string,
+    owningTabId?: string,
+    surface?: AgentSurface,
+    images: readonly AiImageRef[] = [],
+  ): void {
     const trimmed: string = text.trim();
     if (trimmed.length === 0) {
       return;
     }
     if (this.busy()) {
-      void this.deferSend(trimmed, owningTabId, surface);
+      void this.deferSend(trimmed, owningTabId, surface, images);
       return;
     }
-    this.push({ kind: 'user', text: trimmed });
-    this.startRun(trimmed, owningTabId, surface);
+    this.push({ kind: 'user', text: trimmed, ...(images.length === 0 ? {} : { images }) });
+    this.startRun(trimmed, owningTabId, surface, images);
   }
 
   /**
    * Handles a message sent while a run executes: first tries to steer the in-flight run (accepted
    * only when the provider supports streaming input and the run is still open — the message then
    * becomes a further turn in the same run), otherwise queues it to dispatch when the run completes.
-   * A compaction run is never steered.
+   * A compaction run is never steered, and neither is a message carrying images (the steer channel
+   * is text-only) — those queue directly.
    * @param text The trimmed message.
    * @param owningTabId The owning tab (as for {@link send}).
    * @param surface The run surface (as for {@link send}).
+   * @param images The images attached to the message.
    */
   private async deferSend(
     text: string,
     owningTabId?: string,
     surface?: AgentSurface,
+    images: readonly AiImageRef[] = [],
   ): Promise<void> {
     const requestId: string | null = this.activeRequestId;
-    if (!this.compacting && requestId !== null && (await this.runtime.steer(requestId, text))) {
+    if (
+      !this.compacting &&
+      images.length === 0 &&
+      requestId !== null &&
+      (await this.runtime.steer(requestId, text))
+    ) {
       this.push({ kind: 'user', text });
       this.lastPrompt = text;
       return;
@@ -599,6 +636,7 @@ export class Agent {
       text,
       ...(owningTabId === undefined ? {} : { owningTabId }),
       ...(surface === undefined ? {} : { surface }),
+      ...(images.length === 0 ? {} : { images }),
     };
     this.queueState.update(
       (queue: readonly AgentQueuedMessage[]): readonly AgentQueuedMessage[] => [...queue, entry],
@@ -652,11 +690,13 @@ export class Agent {
     this.queueState.update((queue: readonly AgentQueuedMessage[]): readonly AgentQueuedMessage[] =>
       queue.slice(1),
     );
-    this.push({ kind: 'user', text: next.text });
+    const images: readonly AiImageRef[] = next.images ?? [];
+    this.push({ kind: 'user', text: next.text, ...(images.length === 0 ? {} : { images }) });
     this.startRun(
       next.text,
       next.owningTabId ?? this.lastOwningTabId,
       next.surface ?? this.lastSurface,
+      images,
     );
   }
 
@@ -709,8 +749,10 @@ export class Agent {
     } else {
       this.forkAt = anchor;
     }
-    this.push({ kind: 'user', text: trimmed });
-    this.startRun(trimmed, owningTabId, surface);
+    // The edited message keeps the original's attached images.
+    const images: readonly AiImageRef[] = item.images ?? [];
+    this.push({ kind: 'user', text: trimmed, ...(images.length === 0 ? {} : { images }) });
+    this.startRun(trimmed, owningTabId, surface, images);
   }
 
   /**
@@ -720,9 +762,16 @@ export class Agent {
    * @param prompt The prompt to run.
    * @param owningTabId The owning tab (as for {@link send}).
    * @param surface The run surface (as for {@link send}).
+   * @param images The images attached to the turn.
    */
-  private startRun(prompt: string, owningTabId?: string, surface?: AgentSurface): void {
+  private startRun(
+    prompt: string,
+    owningTabId?: string,
+    surface?: AgentSurface,
+    images: readonly AiImageRef[] = [],
+  ): void {
     this.lastPrompt = prompt;
+    this.lastImages = images;
     this.lastOwningTabId = owningTabId;
     this.lastSurface = surface;
     const forkAt: string | null = this.forkAt;
@@ -739,6 +788,7 @@ export class Agent {
       contextPaths: this.contextPathsState(),
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
+      ...(images.length === 0 ? {} : { images }),
     });
   }
 
@@ -1110,6 +1160,7 @@ export class Agent {
       ...(reason === cause ? {} : { errorDetail: reason }),
       ...(toolContext === undefined ? {} : { errorToolContext: toolContext }),
       ...(this.lastPrompt === null ? {} : { errorPrompt: this.lastPrompt }),
+      ...(this.lastImages.length === 0 ? {} : { errorImages: this.lastImages }),
     });
   }
 
@@ -1146,7 +1197,7 @@ export class Agent {
       return;
     }
     this.update(item.id, (existing: AgentItem): AgentItem => ({ ...existing, errorRetried: true }));
-    this.startRun(prompt, owningTabId, surface);
+    this.startRun(prompt, owningTabId, surface, item.errorImages ?? []);
   }
 
   /**

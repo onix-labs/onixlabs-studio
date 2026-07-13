@@ -7,6 +7,7 @@ import type {
   AiBridgeRequest,
   AiEditDecision,
   AiEvent,
+  AiImageRef,
   AiPermissionPosture,
   AiPermissionRemember,
   AiProviderId,
@@ -87,6 +88,11 @@ export interface AiRunOptions {
    * continuing (branching keeps the original session untouched).
    */
   readonly forkSession?: boolean;
+
+  /**
+   * Gets the images attached to the turn, sent to the model alongside the prompt.
+   */
+  readonly images?: readonly AiImageRef[];
 }
 
 /**
@@ -166,6 +172,7 @@ export class AiRuntime {
       resumeSessionId: options.resumeSessionId ?? null,
       resumeSessionAt: options.resumeSessionAt ?? null,
       forkSession: options.forkSession ?? false,
+      images: options.images ?? [],
     });
     return requestId;
   }

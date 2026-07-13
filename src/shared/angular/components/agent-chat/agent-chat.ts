@@ -17,7 +17,13 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { AgentContextRef, AgentSurface, AiEditDecision } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentSurface,
+  AiEditDecision,
+  AiImageRef,
+  AiProviderInfo,
+} from '@shared/api/ai-types';
 import {
   Agent,
   AgentItem,
@@ -25,6 +31,7 @@ import {
   AgentQueuedMessage,
   AgentToolState,
 } from '@shared/angular/services/agent/agent';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { Shell } from '@shared/angular/services/shell/shell';
@@ -51,6 +58,22 @@ const BOTTOM_THRESHOLD_PX: number = 24;
  * expanded tool row renders by default.
  */
 const PAYLOAD_PREVIEW_CHARS: number = 1_500;
+
+/**
+ * The most images a single turn can carry.
+ */
+const MAX_IMAGES: number = 4;
+
+/**
+ * The largest accepted image file (bytes). Base64 inflates this by ~4/3 on the wire and in the
+ * persisted transcript, and the main process backstops at a slightly larger cap.
+ */
+const MAX_IMAGE_BYTES: number = 4 * 1024 * 1024;
+
+/**
+ * The image media types accepted by the composer (the types the providers accept).
+ */
+const IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /**
  * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
@@ -272,6 +295,11 @@ export class AgentChat {
   private readonly requests: AgentRequests = inject(AgentRequests);
 
   /**
+   * Holds the global engine selection, read to gate image input on the selected provider's support.
+   */
+  private readonly agentEngine: AgentEngine = inject(AgentEngine);
+
+  /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
    * (e.g. the dockable agent panel).
    */
@@ -441,6 +469,36 @@ export class AgentChat {
    * composing normally. Sending in edit mode rewinds the conversation to that message.
    */
   protected readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
+
+  /**
+   * Holds the images attached to the draft (pasted or dropped), shown as thumbnail chips and sent
+   * with the next message.
+   */
+  protected readonly pendingImages: WritableSignal<readonly AiImageRef[]> = signal<
+    readonly AiImageRef[]
+  >([]);
+
+  /**
+   * Holds the transient image-input hint (unsupported provider, oversize file, …), or null.
+   */
+  protected readonly imageHint: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the timer that clears the transient image hint, or null when none is pending.
+   */
+  private imageHintTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Gets a value indicating whether the selected provider accepts image input, so the composer can
+   * reject images at compose time rather than at run time.
+   */
+  protected readonly supportsImages: Signal<boolean> = computed(
+    (): boolean =>
+      this.agentEngine
+        .providers()
+        .find((info: AiProviderInfo): boolean => info.id === this.agentEngine.provider())
+        ?.supportsImages === true,
+  );
 
   /**
    * Holds the draft that was in the composer when edit mode began, restored on cancel.
@@ -786,7 +844,8 @@ export class AgentChat {
       this.stashedBeforeEdit = '';
       this.agent.rewind(editing, text, this.tabId(), this.surface());
     } else {
-      this.agent.send(text, this.tabId(), this.surface());
+      this.agent.send(text, this.tabId(), this.surface(), this.pendingImages());
+      this.pendingImages.set([]);
     }
     this.draftText.set('');
     this.historyIndex = null;
@@ -950,6 +1009,132 @@ export class AgentChat {
    */
   public stop(): void {
     this.agent.stop();
+  }
+
+  /**
+   * Handles a paste into the composer: image clipboard content becomes attached thumbnail chips
+   * (screenshots paste straight in); text pastes fall through to the text area untouched.
+   * @param event The clipboard event.
+   */
+  public onPaste(event: ClipboardEvent): void {
+    const files: File[] = Array.from(event.clipboardData?.items ?? [])
+      .filter((entry: DataTransferItem): boolean => entry.type.startsWith('image/'))
+      .map((entry: DataTransferItem): File | null => entry.getAsFile())
+      .filter((file: File | null): file is File => file !== null);
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    void this.addImageFiles(files);
+  }
+
+  /**
+   * Allows image files to be dropped onto the composer.
+   * @param event The drag event.
+   */
+  public onDragOver(event: DragEvent): void {
+    event.preventDefault();
+  }
+
+  /**
+   * Handles an image file dropped onto the composer, attaching it like a paste.
+   * @param event The drop event.
+   */
+  public onDrop(event: DragEvent): void {
+    event.preventDefault();
+    const files: File[] = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length > 0) {
+      void this.addImageFiles(files);
+    }
+  }
+
+  /**
+   * Attaches image files to the draft as base64, enforcing provider support, the accepted media
+   * types, and the count/size caps — each rejection surfaces a transient hint rather than failing
+   * silently.
+   * @param files The candidate files.
+   * @returns Returns a promise that resolves once every accepted file is attached.
+   */
+  public async addImageFiles(files: readonly File[]): Promise<void> {
+    if (!this.supportsImages()) {
+      this.showImageHint('The selected provider does not accept images.');
+      return;
+    }
+    for (const file of files) {
+      if (!IMAGE_TYPES.includes(file.type)) {
+        this.showImageHint('Only PNG, JPEG, WebP, and GIF images can be attached.');
+        continue;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        this.showImageHint('Images larger than 4 MB cannot be attached.');
+        continue;
+      }
+      if (this.pendingImages().length >= MAX_IMAGES) {
+        this.showImageHint(`At most ${MAX_IMAGES} images can be attached to one message.`);
+        return;
+      }
+      const data: string | null = await this.readAsBase64(file);
+      if (data !== null) {
+        const image: AiImageRef = {
+          mediaType: file.type,
+          data,
+          ...(file.name.length > 0 ? { name: file.name } : {}),
+        };
+        this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] => [
+          ...images,
+          image,
+        ]);
+      }
+    }
+  }
+
+  /**
+   * Removes an attached image chip before sending.
+   * @param index The chip's position.
+   */
+  public removeImage(index: number): void {
+    this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] =>
+      images.filter((_: AiImageRef, position: number): boolean => position !== index),
+    );
+  }
+
+  /**
+   * Builds the data URI for an attached or transcript image thumbnail.
+   * @param image The image.
+   * @returns Returns the data URI.
+   */
+  public imageSrc(image: AiImageRef): string {
+    return `data:${image.mediaType};base64,${image.data}`;
+  }
+
+  /**
+   * Reads a file's bytes as base64 (without the data-URI prefix).
+   * @param file The file to read.
+   * @returns Returns the base64 data, or null when reading fails.
+   */
+  private readAsBase64(file: File): Promise<string | null> {
+    return new Promise<string | null>((resolve: (data: string | null) => void): void => {
+      const reader: FileReader = new FileReader();
+      reader.onload = (): void => {
+        const result: string = typeof reader.result === 'string' ? reader.result : '';
+        const separator: number = result.indexOf(',');
+        resolve(separator >= 0 ? result.slice(separator + 1) : null);
+      };
+      reader.onerror = (): void => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Shows a transient image-input hint, replacing any previous one.
+   * @param message The hint text.
+   */
+  private showImageHint(message: string): void {
+    this.imageHint.set(message);
+    if (this.imageHintTimer !== null) {
+      clearTimeout(this.imageHintTimer);
+    }
+    this.imageHintTimer = setTimeout((): void => this.imageHint.set(null), 4000);
   }
 
   /**
