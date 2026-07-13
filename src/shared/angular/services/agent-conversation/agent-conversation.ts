@@ -16,7 +16,7 @@ import {
   contextIdOf,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
-import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import {
@@ -123,7 +123,9 @@ export class AgentConversation implements AgentSessionHandle {
    * Gets a value indicating whether the conversation has any messages, so controls that act on the
    * transcript (such as Compact) can disable on an empty conversation.
    */
-  public readonly hasMessages: Signal<boolean> = computed((): boolean => this.agent.items().length > 0);
+  public readonly hasMessages: Signal<boolean> = computed(
+    (): boolean => this.agent.items().length > 0,
+  );
 
   /**
    * Holds whether the conversation-history list is shown.
@@ -182,6 +184,12 @@ export class AgentConversation implements AgentSessionHandle {
   private savedRef: readonly AgentItem[] | null = null;
 
   /**
+   * Holds the queued-messages reference last persisted or restored, so queue edits (enqueue, remove)
+   * also schedule a save even when the transcript itself has not changed.
+   */
+  private savedQueueRef: readonly AgentQueuedMessage[] | null = null;
+
+  /**
    * Holds the pending debounced-save timer, or null when none is scheduled.
    */
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -194,17 +202,20 @@ export class AgentConversation implements AgentSessionHandle {
   public constructor() {
     effect((): void => {
       const items: readonly AgentItem[] = this.agent.items();
+      const queue: readonly AgentQueuedMessage[] = this.agent.queued();
       untracked((): void => {
         if (items.length === 0) {
           this.currentIdState.set(null);
           this.createdAt = 0;
           this.savedRef = items;
+          this.savedQueueRef = queue;
           return;
         }
-        if (items === this.savedRef) {
+        if (items === this.savedRef && queue === this.savedQueueRef) {
           return;
         }
         this.savedRef = items;
+        this.savedQueueRef = queue;
         this.scheduleSave();
       });
     });
@@ -325,11 +336,16 @@ export class AgentConversation implements AgentSessionHandle {
       return;
     }
     this.cancelScheduledSave();
-    this.agent.restore(record.items as readonly AgentItem[], record.sessionId ?? null);
+    this.agent.restore(
+      record.items as readonly AgentItem[],
+      record.sessionId ?? null,
+      (record.queue ?? []).filter((text: unknown): text is string => typeof text === 'string'),
+    );
     this.currentIdState.set(record.id);
     this.createdAt = record.createdAt;
-    // Capture the restored reference so the autosave effect does not immediately re-save it.
+    // Capture the restored references so the autosave effect does not immediately re-save them.
     this.savedRef = this.agent.items();
+    this.savedQueueRef = this.agent.queued();
     this.historyOpenState.set(false);
   }
 
@@ -414,6 +430,9 @@ export class AgentConversation implements AgentSessionHandle {
       messageCount,
       items,
       sessionId: this.agent.sessionId(),
+      ...(this.agent.queued().length === 0
+        ? {}
+        : { queue: this.agent.queued().map((entry: AgentQueuedMessage): string => entry.text) }),
     };
     await this.store.save(record);
     await this.reloadSummaries();

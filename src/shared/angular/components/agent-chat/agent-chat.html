@@ -425,6 +425,37 @@
       </ul>
     }
 
+    @if (queue().length > 0) {
+      <!-- Messages sent while the run executes wait here, editable and removable, and dispatch one
+           per completed run. -->
+      <ul class="agent__queue" aria-label="Queued messages">
+        @for (entry of queue(); track entry.id) {
+          <li class="agent__queue-item">
+            <app-icon class="agent__queue-icon" [icon]="Icon.RECENT" aria-hidden="true" />
+            <span class="agent__queue-text" [title]="entry.text">{{ entry.text }}</span>
+            <button
+              type="button"
+              class="agent__queue-btn"
+              aria-label="Edit queued message"
+              title="Edit"
+              (click)="editQueued(entry)"
+            >
+              <app-icon [icon]="Icon.PENCIL" />
+            </button>
+            <button
+              type="button"
+              class="agent__queue-btn"
+              aria-label="Remove queued message"
+              title="Remove"
+              (click)="removeQueued(entry.id)"
+            >
+              <app-icon [icon]="Icon.CLOSE" />
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
     <textarea
       #input
       class="agent__input"
@@ -464,6 +495,18 @@
               [disabled]="draft().trim().length === 0"
             >
               <span class="agent__send-label">Answer</span>
+              <app-icon [icon]="Icon.SEND" />
+            </button>
+          } @else {
+            <!-- Sending mid-run steers the run where the provider supports it, and queues the
+                 message for after the run otherwise. -->
+            <button
+              type="submit"
+              class="agent__send"
+              aria-label="Send"
+              [disabled]="draft().trim().length === 0"
+            >
+              <span class="agent__send-label">Send</span>
               <app-icon [icon]="Icon.SEND" />
             </button>
           }

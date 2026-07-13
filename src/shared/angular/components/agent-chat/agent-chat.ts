@@ -22,6 +22,7 @@ import {
   Agent,
   AgentItem,
   AgentItemKind,
+  AgentQueuedMessage,
   AgentToolState,
 } from '@shared/angular/services/agent/agent';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
@@ -429,6 +430,11 @@ export class AgentChat {
    * a new message.
    */
   public readonly pendingInput: Signal<AgentItem | undefined> = this.agent.pendingInput;
+
+  /**
+   * Gets the messages queued while a run executes, listed above the composer until they dispatch.
+   */
+  public readonly queue: Signal<readonly AgentQueuedMessage[]> = this.agent.queued;
 
   /**
    * Holds the label of the suggested choice currently selected on the pending question's radio group,
@@ -903,6 +909,32 @@ export class AgentChat {
    */
   public stop(): void {
     this.agent.stop();
+  }
+
+  /**
+   * Removes a queued message before it dispatches.
+   * @param id The queued entry's identifier.
+   */
+  public removeQueued(id: string): void {
+    this.agent.removeQueued(id);
+  }
+
+  /**
+   * Loads a queued message back into the composer for editing, removing it from the queue.
+   * @param entry The queued entry.
+   */
+  public editQueued(entry: AgentQueuedMessage): void {
+    const text: string | null = this.agent.takeQueued(entry.id);
+    if (text === null) {
+      return;
+    }
+    this.draftText.set(text);
+    const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+    if (area !== undefined) {
+      area.value = text;
+      this.autoGrow(area);
+      area.focus();
+    }
   }
 
   /**

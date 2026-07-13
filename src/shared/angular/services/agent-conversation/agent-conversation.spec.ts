@@ -7,7 +7,7 @@ import {
   ConversationContext,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
-import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import {
@@ -26,6 +26,7 @@ function agentStub(items: WritableSignal<readonly AgentItem[]>, log: string[]): 
   return {
     items,
     isRunning: signal<boolean>(false),
+    queued: signal<readonly AgentQueuedMessage[]>([]),
     clear: (): void => {
       log.push('clear');
       items.set([]);

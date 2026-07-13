@@ -56,4 +56,5 @@ export type {
   AiInputReply,
   AiEditDecision,
   AiEditDecisionReply,
+  AiSteerRequest,
 } from './ai/ai-bridge-types';

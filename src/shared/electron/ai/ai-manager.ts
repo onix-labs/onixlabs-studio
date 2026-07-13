@@ -14,6 +14,7 @@ import type {
   AiProviderInfo,
   AiRunRequest,
   AiRunState,
+  AiSteerRequest,
   AiVerifyResult,
 } from '@shared/api/ai-types';
 
@@ -135,6 +136,16 @@ export class AiManager {
   >();
 
   /**
+   * Holds the mid-run steering handlers of in-flight runs that accept injected user messages, keyed
+   * by request id. Only providers with streaming input register one (the Claude Agent SDK); a steer
+   * request for a run with no handler is refused so the renderer queues the message instead.
+   */
+  private readonly steers: Map<string, (text: string) => boolean> = new Map<
+    string,
+    (text: string) => boolean
+  >();
+
+  /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    */
@@ -185,6 +196,12 @@ export class AiManager {
       if (typeof requestId === 'string') {
         this.abort(requestId);
       }
+    });
+    ipcMain.handle(AiChannel.Steer, (_event: IpcMainInvokeEvent, request: unknown): boolean => {
+      if (!this.isSteerRequest(request)) {
+        return false;
+      }
+      return this.steers.get(request.requestId)?.(request.text) ?? false;
     });
   }
 
@@ -301,6 +318,13 @@ export class AiManager {
       ): Promise<EditDecisionOutcome> =>
         this.requestEditDecision(request.requestId, controller.signal, name, detail, hasDiff),
       emit: (event: AiEvent): void => this.emit(event),
+      setSteerHandler: (handler: ((text: string) => boolean) | null): void => {
+        if (handler === null) {
+          this.steers.delete(request.requestId);
+        } else {
+          this.steers.set(request.requestId, handler);
+        }
+      },
     };
     this.emit({
       requestId: request.requestId,
@@ -330,6 +354,7 @@ export class AiManager {
    */
   private finish(requestId: string, state: AiRunState, detail: string): void {
     this.runs.delete(requestId);
+    this.steers.delete(requestId);
     this.emit({ requestId, kind: 'status', state, detail });
   }
 
@@ -538,6 +563,23 @@ export class AiManager {
     return (
       typeof record['inputId'] === 'string' &&
       (typeof record['answer'] === 'string' || record['answer'] === null)
+    );
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiSteerRequest}.
+   * @param value The payload.
+   * @returns Returns true when the payload has the required shape.
+   */
+  private isSteerRequest(value: unknown): value is AiSteerRequest {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof record['requestId'] === 'string' &&
+      typeof record['text'] === 'string' &&
+      record['text'].length > 0
     );
   }
 

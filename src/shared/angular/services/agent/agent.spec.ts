@@ -40,6 +40,8 @@ describe('Agent', () => {
     resumeSessionId: string | null;
   }[];
   let abortCalls: string[];
+  let steerCalls: { requestId: string; text: string }[];
+  let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
   let inputReplies: { inputId: string; answer: string | null }[];
   let editDecisions: { decisionId: string; choice: string }[];
@@ -58,6 +60,8 @@ describe('Agent', () => {
     localStorage.clear();
     runCalls = [];
     abortCalls = [];
+    steerCalls = [];
+    steerResult = false;
     permissionReplies = [];
     inputReplies = [];
     editDecisions = [];
@@ -66,6 +70,7 @@ describe('Agent', () => {
       | 'onEvent'
       | 'run'
       | 'abort'
+      | 'steer'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
@@ -89,6 +94,10 @@ describe('Agent', () => {
       },
       abort: (requestId: string): void => {
         abortCalls.push(requestId);
+      },
+      steer: (requestId: string, text: string): Promise<boolean> => {
+        steerCalls.push({ requestId, text });
+        return Promise.resolve(steerResult);
       },
       listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
       respondPermission: (permissionId: string, granted: boolean, remember?: string): void => {
@@ -691,6 +700,87 @@ describe('Agent', () => {
 
     expect(lastItem()?.kind).toBe('assistant');
     expect(lastItem()?.text).toBe('Hello');
+  });
+
+  it('send_whileRunningAndSteerAccepted_injectsIntoTheRunWithoutQueueing', async () => {
+    steerResult = true;
+    agent.send('first');
+
+    agent.send('also do this');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(steerCalls).toEqual([{ requestId: 'run-1', text: 'also do this' }]);
+    expect(agent.queued()).toHaveLength(0);
+    expect(runCalls).toHaveLength(1);
+    expect(lastItem()?.kind).toBe('user');
+    expect(lastItem()?.text).toBe('also do this');
+  });
+
+  it('send_whileRunningAndSteerRefused_queuesAndDispatchesOnCompletion', async () => {
+    agent.send('first');
+
+    agent.send('follow-up');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(agent.queued()).toHaveLength(1);
+    expect(agent.queued()[0].text).toBe('follow-up');
+    // The queued message is not yet in the transcript.
+    expect(lastItem()?.text).toBe('first');
+
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'done first' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(agent.queued()).toHaveLength(0);
+    expect(runCalls).toHaveLength(2);
+    expect(runCalls[1].prompt).toBe('follow-up');
+    expect(agent.isRunning()).toBe(true);
+    expect(lastItem()?.kind).toBe('user');
+    expect(lastItem()?.text).toBe('follow-up');
+  });
+
+  it('queue_whenTheRunFailsOrAborts_isHeldRatherThanDispatched', async () => {
+    agent.send('first');
+    agent.send('follow-up');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+    expect(agent.queued()).toHaveLength(1);
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('queue_whenEntriesAreRemovedOrTaken_editsBeforeDispatch', async () => {
+    agent.send('first');
+    agent.send('one');
+    agent.send('two');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(agent.queued()).toHaveLength(2);
+
+    const taken: string | null = agent.takeQueued(agent.queued()[0].id);
+    expect(taken).toBe('one');
+    agent.removeQueued(agent.queued()[0].id);
+
+    expect(agent.queued()).toHaveLength(0);
+  });
+
+  it('restore_whenAQueueWasPersisted_rehydratesItForTheNextCompletedRun', () => {
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'hi' }], null, ['queued follow-up']);
+
+    expect(agent.queued()).toHaveLength(1);
+    expect(agent.queued()[0].text).toBe('queued follow-up');
+
+    // The queue drains after the next completed run.
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'ok' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(agent.queued()).toHaveLength(0);
+    expect(runCalls).toHaveLength(2);
+    expect(runCalls[1].prompt).toBe('queued follow-up');
   });
 
   it('stop_whenRunning_abortsTheRun', () => {

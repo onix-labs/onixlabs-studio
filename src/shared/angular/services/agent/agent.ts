@@ -247,6 +247,34 @@ export interface AgentItem {
 }
 
 /**
+ * A message the user sent while a run was executing, waiting to dispatch: it is sent automatically
+ * when the run completes, and can be edited or removed before then.
+ */
+export interface AgentQueuedMessage {
+  /**
+   * Gets the entry's unique identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the queued message text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the owning tab captured when the message was queued (as for `send`), or undefined to fall
+   * back to the last turn's tab when dispatched.
+   */
+  readonly owningTabId?: string;
+
+  /**
+   * Gets the surface captured when the message was queued, or undefined to fall back to the last
+   * turn's surface when dispatched.
+   */
+  readonly surface?: AgentSurface;
+}
+
+/**
  * Owns a single agent conversation: it drives runs through the {@link AiRuntime} and folds the
  * streamed provider-agnostic events into a structured transcript (text, reasoning, tool activity,
  * inline permission prompts). State is exposed as signals so the hosting view renders the
@@ -319,6 +347,30 @@ export class Agent {
   private lastPrompt: string | null = null;
 
   /**
+   * Holds the owning tab of the most recently started turn, the fallback for dispatching a queued
+   * message that captured none (a restored queue).
+   */
+  private lastOwningTabId: string | undefined = undefined;
+
+  /**
+   * Holds the surface of the most recently started turn, the fallback for dispatching a queued
+   * message that captured none (a restored queue).
+   */
+  private lastSurface: AgentSurface | undefined = undefined;
+
+  /**
+   * Holds the messages waiting to dispatch once the running turn completes.
+   */
+  private readonly queueState: WritableSignal<readonly AgentQueuedMessage[]> = signal<
+    readonly AgentQueuedMessage[]
+  >([]);
+
+  /**
+   * Tracks the counter that makes queued-message identifiers unique.
+   */
+  private queueSequence: number = 0;
+
+  /**
    * Holds the provider session this conversation resumes on its next turn, so the model keeps the
    * earlier turns' context. Null for a fresh conversation; set from the first run's `session` event and
    * updated as the session is resumed, reset on {@link clear}, and rehydrated by {@link restore}.
@@ -358,6 +410,11 @@ export class Agent {
    * Gets the ordered transcript.
    */
   public readonly items: Signal<readonly AgentItem[]> = this.log.asReadonly();
+
+  /**
+   * Gets the messages waiting to dispatch once the running turn completes.
+   */
+  public readonly queued: Signal<readonly AgentQueuedMessage[]> = this.queueState.asReadonly();
 
   /**
    * Gets a value indicating whether a run is in flight.
@@ -442,7 +499,9 @@ export class Agent {
   }
 
   /**
-   * Sends a user message, starting a run. Blank messages and concurrent sends are ignored.
+   * Sends a user message. While idle it starts a run; while a run is executing it steers the run with
+   * the message where the provider supports it, and otherwise queues the message to dispatch when the
+   * run completes. Blank messages are ignored.
    * @param text The user's message.
    * @param owningTabId The identifier of the tab hosting this agent (every host passes its tab id —
    * the content host sets one on each view), so a surface's in-app tools act on that tab; absent only
@@ -453,13 +512,117 @@ export class Agent {
    */
   public send(text: string, owningTabId?: string, surface?: AgentSurface): void {
     const trimmed: string = text.trim();
-    if (trimmed.length === 0 || this.busy()) {
+    if (trimmed.length === 0) {
+      return;
+    }
+    if (this.busy()) {
+      void this.deferSend(trimmed, owningTabId, surface);
       return;
     }
     this.push({ kind: 'user', text: trimmed });
-    this.lastPrompt = trimmed;
+    this.startRun(trimmed, owningTabId, surface);
+  }
+
+  /**
+   * Handles a message sent while a run executes: first tries to steer the in-flight run (accepted
+   * only when the provider supports streaming input and the run is still open — the message then
+   * becomes a further turn in the same run), otherwise queues it to dispatch when the run completes.
+   * A compaction run is never steered.
+   * @param text The trimmed message.
+   * @param owningTabId The owning tab (as for {@link send}).
+   * @param surface The run surface (as for {@link send}).
+   */
+  private async deferSend(
+    text: string,
+    owningTabId?: string,
+    surface?: AgentSurface,
+  ): Promise<void> {
+    const requestId: string | null = this.activeRequestId;
+    if (!this.compacting && requestId !== null && (await this.runtime.steer(requestId, text))) {
+      this.push({ kind: 'user', text });
+      this.lastPrompt = text;
+      return;
+    }
+    this.queueSequence += 1;
+    const entry: AgentQueuedMessage = {
+      id: `queued-${this.queueSequence}`,
+      text,
+      ...(owningTabId === undefined ? {} : { owningTabId }),
+      ...(surface === undefined ? {} : { surface }),
+    };
+    this.queueState.update(
+      (queue: readonly AgentQueuedMessage[]): readonly AgentQueuedMessage[] => [...queue, entry],
+    );
+    // The run may have ended while the steer attempt was in flight; drain immediately if now idle.
+    if (!this.busy()) {
+      this.dispatchQueue();
+    }
+  }
+
+  /**
+   * Removes a queued message before it dispatches.
+   * @param id The queued entry's identifier.
+   */
+  public removeQueued(id: string): void {
+    this.queueState.update((queue: readonly AgentQueuedMessage[]): readonly AgentQueuedMessage[] =>
+      queue.filter((entry: AgentQueuedMessage): boolean => entry.id !== id),
+    );
+  }
+
+  /**
+   * Removes a queued message and returns its text, so the host can load it back into the composer
+   * for editing.
+   * @param id The queued entry's identifier.
+   * @returns Returns the entry's text, or null when it no longer exists.
+   */
+  public takeQueued(id: string): string | null {
+    const entry: AgentQueuedMessage | undefined = this.queueState().find(
+      (candidate: AgentQueuedMessage): boolean => candidate.id === id,
+    );
+    if (entry === undefined) {
+      return null;
+    }
+    this.removeQueued(id);
+    return entry.text;
+  }
+
+  /**
+   * Dispatches the next queued message as a normal turn. No-ops while a run is executing or when the
+   * queue is empty; each completed run dispatches the next entry, so a backlog drains one turn at a
+   * time.
+   */
+  private dispatchQueue(): void {
+    if (this.busy()) {
+      return;
+    }
+    const next: AgentQueuedMessage | undefined = this.queueState()[0];
+    if (next === undefined) {
+      return;
+    }
+    this.queueState.update((queue: readonly AgentQueuedMessage[]): readonly AgentQueuedMessage[] =>
+      queue.slice(1),
+    );
+    this.push({ kind: 'user', text: next.text });
+    this.startRun(
+      next.text,
+      next.owningTabId ?? this.lastOwningTabId,
+      next.surface ?? this.lastSurface,
+    );
+  }
+
+  /**
+   * Starts a run with the current engine selection and settings, recording the turn for retry and
+   * queued-dispatch fallbacks.
+   * @param prompt The prompt to run.
+   * @param owningTabId The owning tab (as for {@link send}).
+   * @param surface The run surface (as for {@link send}).
+   */
+  private startRun(prompt: string, owningTabId?: string, surface?: AgentSurface): void {
+    this.lastPrompt = prompt;
+    this.lastOwningTabId = owningTabId;
+    this.lastSurface = surface;
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.engine.provider(), trimmed, {
+    this.activeRequestId = this.runtime.run(this.engine.provider(), prompt, {
       workspaceRoot: this.workspace.root()?.path ?? null,
       model: this.engine.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
@@ -554,6 +717,7 @@ export class Agent {
     this.sessionIdState.set(null);
     this.contextTokensState.set(0);
     this.costUsdState.set(0);
+    this.queueState.set([]);
   }
 
   /**
@@ -563,12 +727,26 @@ export class Agent {
    * @param items The restored transcript items.
    * @param sessionId The persisted provider session to resume on the next turn, so the restored
    * conversation keeps its memory; null when the conversation has no session yet.
+   * @param queue The persisted queued-message texts, waiting to dispatch after the next completed
+   * run (they capture no tab/surface; dispatch falls back to the next turn's).
    */
-  public restore(items: readonly AgentItem[], sessionId: string | null = null): void {
+  public restore(
+    items: readonly AgentItem[],
+    sessionId: string | null = null,
+    queue: readonly string[] = [],
+  ): void {
     this.activeRequestId = null;
     this.busy.set(false);
     this.contextPathsState.set([]);
     this.sessionIdState.set(sessionId);
+    this.queueState.set(
+      queue
+        .filter((text: string): boolean => text.trim().length > 0)
+        .map((text: string): AgentQueuedMessage => {
+          this.queueSequence += 1;
+          return { id: `queued-${this.queueSequence}`, text };
+        }),
+    );
     // Usage is not persisted with the conversation; it refills from the next turn's reported counts.
     this.contextTokensState.set(0);
     this.costUsdState.set(0);
@@ -793,6 +971,11 @@ export class Agent {
     } else if (state === 'completed' && !this.producedReply()) {
       this.push({ kind: 'assistant', text: '_The model returned no output._' });
     }
+    // A completed run dispatches the next queued message; a failed or stopped run holds the queue so
+    // messages never fire into a broken or deliberately-stopped conversation.
+    if (state === 'completed') {
+      this.dispatchQueue();
+    }
   }
 
   /**
@@ -856,19 +1039,7 @@ export class Agent {
       return;
     }
     this.update(item.id, (existing: AgentItem): AgentItem => ({ ...existing, errorRetried: true }));
-    this.lastPrompt = prompt;
-    this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.engine.provider(), prompt, {
-      workspaceRoot: this.workspace.root()?.path ?? null,
-      model: this.engine.model(),
-      permissionPosture: this.settings.aiPermissionPosture(),
-      tokenCap: this.settings.aiTokenCap(),
-      owningTabId,
-      surface,
-      mode: this.modeState(),
-      contextPaths: this.contextPathsState(),
-      resumeSessionId: this.sessionIdState(),
-    });
+    this.startRun(prompt, owningTabId, surface);
   }
 
   /**

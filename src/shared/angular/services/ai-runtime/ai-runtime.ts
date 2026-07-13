@@ -165,6 +165,17 @@ export class AiRuntime {
   }
 
   /**
+   * Injects a user message into an in-flight run (mid-run steering).
+   * @param requestId The identifier of the run to steer.
+   * @param text The user message to inject.
+   * @returns Returns true when the run took the message; false when the run has ended, its provider
+   * does not support steering, or outside Electron.
+   */
+  public steer(requestId: string, text: string): Promise<boolean> {
+    return this.api?.steer({ requestId, text }) ?? Promise.resolve(false);
+  }
+
+  /**
    * Subscribes to streamed agent events.
    * @param listener Receives each {@link AiEvent}.
    * @returns Returns a function that removes the listener.
