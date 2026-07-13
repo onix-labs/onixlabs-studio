@@ -2,7 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AgentContextRef, AiPermissionRemember } from '@shared/api/ai-types';
-import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { AgentChat } from './agent-chat';
 
 describe('AgentChat', () => {
@@ -17,10 +17,14 @@ describe('AgentChat', () => {
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
   let retried: string[];
+  let queued: WritableSignal<readonly AgentQueuedMessage[]>;
+  let removedQueued: string[];
   let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
   beforeEach(async () => {
     retried = [];
+    queued = signal<readonly AgentQueuedMessage[]>([]);
+    removedQueued = [];
     permissionResponses = [];
     sent = [];
     stopped = 0;
@@ -53,6 +57,20 @@ describe('AgentChat', () => {
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
       retry: (item: AgentItem): void => void retried.push(item.id),
+      queued,
+      removeQueued: (id: string): void => void removedQueued.push(id),
+      takeQueued: (id: string): string | null => {
+        const entry: AgentQueuedMessage | undefined = queued().find(
+          (candidate: AgentQueuedMessage): boolean => candidate.id === id,
+        );
+        if (entry === undefined) {
+          return null;
+        }
+        queued.set(
+          queued().filter((candidate: AgentQueuedMessage): boolean => candidate.id !== id),
+        );
+        return entry.text;
+      },
     };
 
     await TestBed.configureTestingModule({
@@ -448,6 +466,37 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__error .agent__ask-state')?.textContent?.trim()).toBe(
       'Retried',
     );
+  });
+
+  it('queue_whenMessagesWait_rendersRowsWithEditAndRemove', () => {
+    queued.set([
+      { id: 'q-1', text: 'first follow-up' },
+      { id: 'q-2', text: 'second follow-up' },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const rows: NodeListOf<Element> = host.querySelectorAll('.agent__queue-item');
+    expect(rows.length).toBe(2);
+    expect(rows[0].querySelector('.agent__queue-text')?.textContent?.trim()).toBe(
+      'first follow-up',
+    );
+
+    rows[1].querySelector<HTMLButtonElement>('[aria-label="Remove queued message"]')!.click();
+    expect(removedQueued).toEqual(['q-2']);
+
+    rows[0].querySelector<HTMLButtonElement>('[aria-label="Edit queued message"]')!.click();
+    expect(component.draft()).toBe('first follow-up');
+    expect(queued()).toHaveLength(1);
+  });
+
+  it('composer_whileRunning_stillOffersSendForQueueingOrSteering', () => {
+    running.set(true);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__send[aria-label="Send"]')).not.toBeNull();
+    expect(host.querySelector('.agent__send--stop')).not.toBeNull();
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {

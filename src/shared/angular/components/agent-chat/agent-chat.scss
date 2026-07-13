@@ -740,6 +740,62 @@ $agent-node-size: 1.75rem;
   }
 }
 
+// Messages queued while a run executes: dashed rows above the input, each with edit/remove controls,
+// draining one per completed run.
+.agent__queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent__queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+  border: 0.0625rem dashed var(--agent-view-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
+.agent__queue-icon {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__queue-text {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.agent__queue-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--body-foreground-color);
+    background: var(--agent-view-border-color);
+  }
+}
+
 .agent__input {
   inline-size: 100%;
   min-block-size: 1.5rem;
@@ -951,6 +1007,7 @@ $agent-node-size: 1.75rem;
 .agent__composer,
 .agent__meter,
 .agent__attachment,
+.agent__queue-item,
 .agent__send,
 .agent__md,
 .agent__md-editor {

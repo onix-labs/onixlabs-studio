@@ -6,6 +6,7 @@ import type {
   PermissionResult,
   Query,
   SDKMessage,
+  SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   ASK_USER,
@@ -597,20 +598,81 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(this.runEnv(context.auth) ?? {}),
     };
 
-    const response: Query = query({ prompt: this.buildPrompt(context), options });
+    // Mid-run steering rides the SDK's streaming-input mode: the prompt is an async generator that
+    // yields the initial message and then any user messages the user injects while the run executes
+    // (each becomes a further turn in the same run). After a completed response cycle (a `result`
+    // message) with nothing further queued, the input closes and the run ends — identical to the
+    // single-turn behaviour when the user never steers.
+    const pendingSteers: string[] = [];
+    let wake: (() => void) | null = null;
+    let inputClosed: boolean = false;
+    const closeInput: () => void = (): void => {
+      inputClosed = true;
+      context.setSteerHandler(null);
+      wake?.();
+    };
+    context.setSteerHandler((steered: string): boolean => {
+      if (inputClosed) {
+        return false;
+      }
+      pendingSteers.push(steered);
+      wake?.();
+      return true;
+    });
+    context.signal.addEventListener('abort', closeInput, { once: true });
+    const initialPrompt: string = this.buildPrompt(context);
+    const userMessage: (value: string) => SDKUserMessage = (value: string): SDKUserMessage => ({
+      type: 'user',
+      message: { role: 'user', content: value },
+      parent_tool_use_id: null,
+    });
+    async function* promptStream(): AsyncGenerator<SDKUserMessage> {
+      yield userMessage(initialPrompt);
+      while (true) {
+        const next: string | undefined = pendingSteers.shift();
+        if (next !== undefined) {
+          yield userMessage(next);
+          continue;
+        }
+        if (inputClosed) {
+          return;
+        }
+        await new Promise<void>((resolve: () => void): void => {
+          wake = resolve;
+        });
+        wake = null;
+      }
+    }
+
+    const response: Query = query({ prompt: promptStream(), options });
     let reportedSessionId: string | null = null;
-    for await (const message of response) {
-      if (context.signal.aborted) {
-        break;
+    // A steered run sees several `result` messages whose reported cost is cumulative; this tracks the
+    // last total so each usage event carries only that turn's delta.
+    const costState: { lastCostUsd: number } = { lastCostUsd: 0 };
+    try {
+      for await (const message of response) {
+        if (context.signal.aborted) {
+          break;
+        }
+        // Surface the SDK session id so the renderer can resume this conversation on its next turn.
+        // Every message carries it; report it once (and again if it ever changes, e.g. a forked
+        // resume).
+        const sessionId: string | null = this.sessionIdOf(message);
+        if (sessionId !== null && sessionId !== reportedSessionId) {
+          reportedSessionId = sessionId;
+          context.emit({ requestId: context.requestId, kind: 'session', sessionId });
+        }
+        this.handleMessage(message, context, costState);
+        // A turn boundary with nothing further queued ends the run. Closing the input in the same
+        // tick as the check keeps this race-free: once closed, a late steer is refused and the
+        // renderer queues the message for the next run instead.
+        if (message.type === 'result' && pendingSteers.length === 0) {
+          closeInput();
+          break;
+        }
       }
-      // Surface the SDK session id so the renderer can resume this conversation on its next turn. Every
-      // message carries it; report it once (and again if it ever changes, e.g. a forked resume).
-      const sessionId: string | null = this.sessionIdOf(message);
-      if (sessionId !== null && sessionId !== reportedSessionId) {
-        reportedSessionId = sessionId;
-        context.emit({ requestId: context.requestId, kind: 'session', sessionId });
-      }
-      this.handleMessage(message, context);
+    } finally {
+      closeInput();
     }
   }
 
@@ -762,8 +824,14 @@ export class ClaudeAgentProvider implements AgentProvider {
    * `parentToolId` so the renderer nests them under the spawning tool use.
    * @param message The SDK message.
    * @param context The run context to emit through.
+   * @param costState Tracks the last cumulative cost reported by a `result` message, so a steered
+   * run's several results each report only their turn's delta.
    */
-  private handleMessage(message: SDKMessage, context: AgentRunContext): void {
+  private handleMessage(
+    message: SDKMessage,
+    context: AgentRunContext,
+    costState: { lastCostUsd: number },
+  ): void {
     const parent: string | null = this.parentToolIdOf(message);
     if (message.type === 'assistant') {
       this.handleAssistantBlocks(
@@ -775,7 +843,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     } else if (message.type === 'user') {
       this.handleToolResults(message, context, parent);
     } else if (message.type === 'result') {
-      this.handleResult(message, context);
+      this.handleResult(message, context, costState);
     }
   }
 
@@ -838,8 +906,13 @@ export class ClaudeAgentProvider implements AgentProvider {
    * prompt.
    * @param message The result SDK message.
    * @param context The run context to emit through.
+   * @param costState Tracks the last cumulative cost reported, so each result carries its delta.
    */
-  private handleResult(message: SDKMessage, context: AgentRunContext): void {
+  private handleResult(
+    message: SDKMessage,
+    context: AgentRunContext,
+    costState: { lastCostUsd: number },
+  ): void {
     const result: {
       usage?: {
         input_tokens?: number;
@@ -864,12 +937,22 @@ export class ClaudeAgentProvider implements AgentProvider {
       (usage.input_tokens ?? 0) +
       (usage.cache_read_input_tokens ?? 0) +
       (usage.cache_creation_input_tokens ?? 0);
+    // The reported cost is cumulative across the run's turns; emit this turn's delta so the
+    // renderer's accumulating readout never double-counts a steered run.
+    let costUsd: number | null = null;
+    if (typeof result.total_cost_usd === 'number') {
+      costUsd =
+        result.total_cost_usd >= costState.lastCostUsd
+          ? result.total_cost_usd - costState.lastCostUsd
+          : result.total_cost_usd;
+      costState.lastCostUsd = result.total_cost_usd;
+    }
     context.emit({
       requestId: context.requestId,
       kind: 'usage',
       inputTokens,
       outputTokens: usage.output_tokens ?? 0,
-      costUsd: typeof result.total_cost_usd === 'number' ? result.total_cost_usd : null,
+      costUsd,
     });
   }
 

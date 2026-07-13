@@ -97,6 +97,23 @@ export interface AiEditDecisionReply {
 }
 
 /**
+ * A request to inject a user message into an in-flight run (mid-run steering). Accepted only when the
+ * run's provider supports streaming input (the Claude Agent SDK); the manager answers whether the
+ * message was taken, so the renderer can queue it for after the run instead.
+ */
+export interface AiSteerRequest {
+  /**
+   * Gets the identifier of the run to steer.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the user message to inject.
+   */
+  readonly text: string;
+}
+
+/**
  * The renderer's answer to a question carried by an `AiInputRequestEvent`.
  */
 export interface AiInputReply {

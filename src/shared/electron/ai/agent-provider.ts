@@ -178,6 +178,15 @@ export interface AgentRunContext {
    * @param event The event to emit (its `requestId` must match this run).
    */
   emit(event: AiEvent): void;
+
+  /**
+   * Registers (or clears, with null) the run's mid-run steering handler. A provider that supports
+   * streaming input registers a handler that takes an injected user message and returns whether the
+   * run accepted it; while no handler is registered, steer requests for this run are refused and the
+   * renderer queues the message for after the run instead.
+   * @param handler The handler, or null to stop accepting steered messages.
+   */
+  setSteerHandler(handler: ((text: string) => boolean) | null): void;
 }
 
 /**

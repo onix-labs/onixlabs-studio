@@ -14,6 +14,7 @@ import type {
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
+  AiSteerRequest,
   AiVerifyResult,
 } from '@shared/api/ai-types';
 
@@ -57,6 +58,12 @@ export enum AiChannel {
    * Aborts a running agent turn (invoke).
    */
   Abort = 'ai:abort',
+
+  /**
+   * Injects a user message into an in-flight run (mid-run steering); resolves whether the run took it
+   * (invoke).
+   */
+  Steer = 'ai:steer',
 
   /**
    * Streams events from running agent turns (main→renderer, on).
@@ -141,6 +148,14 @@ export interface AiClient {
    * @param requestId The identifier of the run to abort.
    */
   abort(requestId: string): Promise<void>;
+
+  /**
+   * Injects a user message into an in-flight run (mid-run steering).
+   * @param request The steer request.
+   * @returns Returns true when the run took the message; false when the run has ended or its
+   * provider does not support steering (queue it for after the run instead).
+   */
+  steer(request: AiSteerRequest): Promise<boolean>;
 
   /**
    * Subscribes to streamed events from running agent turns.

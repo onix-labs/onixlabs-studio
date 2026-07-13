@@ -157,6 +157,12 @@ export interface StoredAgentConversation {
    * never ran).
    */
   readonly sessionId?: string | null;
+
+  /**
+   * Gets the texts of the messages that were still queued (sent while a run executed, awaiting
+   * dispatch) when the conversation was saved; absent when nothing was queued.
+   */
+  readonly queue?: readonly string[];
 }
 
 /**

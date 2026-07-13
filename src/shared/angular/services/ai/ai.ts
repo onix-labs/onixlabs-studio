@@ -11,6 +11,7 @@ import type {
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
+  AiSteerRequest,
   AiVerifyResult,
 } from '@shared/api/ai-types';
 
@@ -31,6 +32,7 @@ function createClient(bridge: Bridge): AiClient {
     listProviders: (): Promise<readonly AiProviderInfo[]> => bridge.invoke(AiChannel.ListProviders),
     run: (request: AiRunRequest): Promise<void> => bridge.invoke(AiChannel.Run, request),
     abort: (requestId: string): Promise<void> => bridge.invoke(AiChannel.Abort, requestId),
+    steer: (request: AiSteerRequest): Promise<boolean> => bridge.invoke(AiChannel.Steer, request),
     onEvent: (listener: (event: AiEvent) => void): (() => void) =>
       bridge.on(AiChannel.Event, (...args: unknown[]): void => listener(args[0] as AiEvent)),
     onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) =>
