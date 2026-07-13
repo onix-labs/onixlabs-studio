@@ -16,6 +16,7 @@ import {
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type AgentSurface,
+  type AiInputChoice,
   type InsertPlacement,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
@@ -145,13 +146,26 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
       inputSchema: z.object({
         question: z.string().min(1).describe('The question to ask the user.'),
         choices: z
-          .array(z.string().min(1))
+          .array(
+            z.object({
+              label: z
+                .string()
+                .min(1)
+                .describe('The short answer label; sent back verbatim as the answer when picked.'),
+              description: z
+                .string()
+                .optional()
+                .describe(
+                  'An explanation of this choice: what picking it means, its trade-offs, and "(recommended)" when it is your recommendation.',
+                ),
+            }),
+          )
           .optional()
           .describe(
-            'Suggested answers the user can pick from (they may always answer with their own text instead). Omit for a free-form question.',
+            'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
           ),
       }),
-      execute: (args: { question: string; choices?: string[] }): Promise<string> =>
+      execute: (args: { question: string; choices?: AiInputChoice[] }): Promise<string> =>
         askUser(context, args.question, args.choices ?? []),
     }),
   };

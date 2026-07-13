@@ -90,20 +90,37 @@ describe('AgentChat', () => {
     expect(component.draft()).toBe('');
   });
 
-  it('choose_whenCalled_answersWithTheChoice', () => {
+  it('confirmChoice_whenAChoiceIsSelected_answersWithIt', () => {
     const item: AgentItem = {
       id: 'item-2',
       kind: 'input-request',
       text: '',
       inputId: 'q1',
       inputQuestion: 'Which approach?',
-      inputChoices: ['A', 'B'],
+      inputChoices: [{ label: 'A' }, { label: 'B', description: 'the bold one' }],
       inputState: 'pending',
     };
 
-    component.choose(item, 'B');
+    component.selectChoice('B');
+    component.confirmChoice(item);
 
     expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
+  });
+
+  it('confirmChoice_whenNothingIsSelected_isIgnored', () => {
+    const item: AgentItem = {
+      id: 'item-2',
+      kind: 'input-request',
+      text: '',
+      inputId: 'q1',
+      inputQuestion: 'Which approach?',
+      inputChoices: [{ label: 'A' }, { label: 'B' }],
+      inputState: 'pending',
+    };
+
+    component.confirmChoice(item);
+
+    expect(inputAnswers).toEqual([]);
   });
 
   it('skipInput_whenCalled_declinesTheQuestion', () => {

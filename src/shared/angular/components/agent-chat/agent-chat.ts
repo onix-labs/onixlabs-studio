@@ -24,6 +24,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { MarkdownPipe } from './markdown-pipe';
 import { friendlyToolLabel, technicalToolName } from './tool-summary';
 
@@ -145,7 +146,7 @@ interface ContextChip {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe],
+  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, Radio],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -323,6 +324,12 @@ export class AgentChat {
   public readonly pendingInput: Signal<AgentItem | undefined> = this.agent.pendingInput;
 
   /**
+   * Holds the label of the suggested choice currently selected on the pending question's radio group,
+   * or null when none is selected yet. Reset whenever the pending question changes.
+   */
+  protected readonly selectedChoice: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the current composer text.
    */
   public readonly draft: Signal<string> = this.draftText.asReadonly();
@@ -417,6 +424,13 @@ export class AgentChat {
       });
     });
 
+    // A fresh question starts with nothing selected: reset the radio selection whenever the pending
+    // question changes (including when it settles).
+    effect((): void => {
+      this.pendingInput();
+      untracked((): void => this.selectedChoice.set(null));
+    });
+
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
     // working indicator), pin the list to the bottom while the preference is on and the reader is
     // already there. Reading rows() re-runs this as the transcript streams.
@@ -477,12 +491,23 @@ export class AgentChat {
   }
 
   /**
-   * Answers a pending agent question with one of its suggested choices.
-   * @param item The input-request item.
-   * @param choice The chosen answer.
+   * Marks a suggested choice as selected on the pending question's radio group. Answering happens on
+   * confirm, so a mis-click is recoverable.
+   * @param label The selected choice's label.
    */
-  public choose(item: AgentItem, choice: string): void {
-    this.agent.respondInput(item, choice);
+  public selectChoice(label: string): void {
+    this.selectedChoice.set(label);
+  }
+
+  /**
+   * Answers a pending agent question with the selected choice. Ignored while nothing is selected.
+   * @param item The input-request item.
+   */
+  public confirmChoice(item: AgentItem): void {
+    const choice: string | null = this.selectedChoice();
+    if (choice !== null) {
+      this.agent.respondInput(item, choice);
+    }
   }
 
   /**

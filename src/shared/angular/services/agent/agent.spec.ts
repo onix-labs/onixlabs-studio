@@ -192,12 +192,15 @@ describe('Agent', () => {
       kind: 'input-request',
       inputId: 'q1',
       question: 'Which approach?',
-      choices: ['A', 'B'],
+      choices: [{ label: 'A', description: 'the safe one (recommended)' }, { label: 'B' }],
     });
 
     expect(agent.awaitingDecision()).toBe(true);
     expect(agent.pendingInput()?.inputQuestion).toBe('Which approach?');
-    expect(agent.pendingInput()?.inputChoices).toEqual(['A', 'B']);
+    expect(agent.pendingInput()?.inputChoices).toEqual([
+      { label: 'A', description: 'the safe one (recommended)' },
+      { label: 'B' },
+    ]);
     expect(lastItem()?.inputState).toBe('pending');
   });
 
@@ -301,6 +304,26 @@ describe('Agent', () => {
       .items()
       .find((item: AgentItem): boolean => item.kind === 'input-request');
     expect(question?.inputState).toBe('dismissed');
+  });
+
+  it('restore_whenChoicesWerePersistedAsStrings_liftsThemToLabelledChoices', () => {
+    agent.restore([
+      {
+        id: 'item-1',
+        kind: 'input-request',
+        text: '',
+        inputId: 'q1',
+        inputQuestion: 'Which approach?',
+        inputChoices: ['A', 'B'] as unknown as AgentItem['inputChoices'],
+        inputState: 'answered',
+        inputAnswer: 'A',
+      },
+    ]);
+
+    const question: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'input-request');
+    expect(question?.inputChoices).toEqual([{ label: 'A' }, { label: 'B' }]);
   });
 
   it('status_whenAborted_endsTheRun', () => {

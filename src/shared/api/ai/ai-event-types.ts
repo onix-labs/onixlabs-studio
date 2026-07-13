@@ -123,6 +123,23 @@ export interface AiPermissionEvent extends AiEventBase {
 }
 
 /**
+ * A suggested answer to an agent question: a short label the run is answered with, plus an optional
+ * explanation of what picking it means.
+ */
+export interface AiInputChoice {
+  /**
+   * Gets the short answer label (this is the text sent back as the answer when picked).
+   */
+  readonly label: string;
+
+  /**
+   * Gets the explanation of this choice (trade-offs, why it might be recommended), or undefined for
+   * none.
+   */
+  readonly description?: string;
+}
+
+/**
  * Asks the user a question the agent needs answered before it continues. Raised by the in-app
  * `ask_user` tool; the provider blocks on the answer exactly as it blocks on a permission decision.
  * Answered with an `AiInputReply` carrying the {@link inputId}.
@@ -147,7 +164,7 @@ export interface AiInputRequestEvent extends AiEventBase {
    * Gets the suggested answers the user can pick from, or empty for a free-form question. A free-form
    * answer is always accepted, so the choices are suggestions rather than a closed set.
    */
-  readonly choices: readonly string[];
+  readonly choices: readonly AiInputChoice[];
 }
 
 /**

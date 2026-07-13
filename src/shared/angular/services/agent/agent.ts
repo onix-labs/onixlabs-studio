@@ -12,6 +12,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiEvent,
+  AiInputChoice,
   AiModelInfo,
   AiRunState,
 } from '@shared/api/ai-types';
@@ -120,7 +121,7 @@ export interface AgentItem {
   /**
    * Gets the suggested answers the user can pick from (empty for a free-form question).
    */
-  readonly inputChoices?: readonly string[];
+  readonly inputChoices?: readonly AiInputChoice[];
 
   /**
    * Gets the input request's state.
@@ -456,14 +457,22 @@ export class Agent {
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
     }, 0);
     // A restored question can no longer be answered (its run is gone), so a persisted pending state
-    // is normalised to dismissed rather than locking the composer into answer mode.
+    // is normalised to dismissed rather than locking the composer into answer mode. Choices persisted
+    // by the earlier protocol as plain strings are lifted to labelled choices.
     this.log.set(
-      items.map(
-        (item: AgentItem): AgentItem =>
-          item.kind === 'input-request' && item.inputState === 'pending'
-            ? { ...item, inputState: 'dismissed' }
-            : item,
-      ),
+      items.map((item: AgentItem): AgentItem => {
+        if (item.kind !== 'input-request') {
+          return item;
+        }
+        return {
+          ...item,
+          inputState: item.inputState === 'pending' ? 'dismissed' : item.inputState,
+          inputChoices: (item.inputChoices ?? []).map(
+            (choice: AiInputChoice | string): AiInputChoice =>
+              typeof choice === 'string' ? { label: choice } : choice,
+          ),
+        };
+      }),
     );
   }
 

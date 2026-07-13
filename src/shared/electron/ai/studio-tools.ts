@@ -15,6 +15,7 @@ import {
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
+  type AiInputChoice,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
 
@@ -90,10 +91,11 @@ export const ASK_USER_FQN: string = `mcp__studio__${ASK_USER}`;
 export const ASK_USER_DESCRIPTION: string =
   'Ask the user a question and wait for their answer. Use it when you need a decision only the user ' +
   'can make: a choice between approaches, a missing name or value, or confirmation before something ' +
-  'destructive or hard to reverse. Provide choices when the sensible answers are enumerable — the ' +
-  'user can always answer with their own text instead. Do not use it to ask for permission to run a ' +
-  'tool (permission prompts are separate), and do not ask when the answer is derivable from the ' +
-  'context you already have.';
+  'destructive or hard to reverse. Provide choices when the sensible answers are enumerable — each ' +
+  'with a short label and a description explaining the trade-off; put a recommended choice first and ' +
+  'note "(recommended)" in its description. The user can always answer with their own text instead. ' +
+  'Do not use it to ask for permission to run a tool (permission prompts are separate), and do not ' +
+  'ask when the answer is derivable from the context you already have.';
 
 /**
  * Appended to every surface's system prompt so the model knows it can ask the user questions instead
@@ -199,7 +201,7 @@ export const BINARY_PROMPT_APPENDIX: string = [
 export async function askUser(
   context: AgentRunContext,
   question: string,
-  choices: readonly string[],
+  choices: readonly AiInputChoice[],
 ): Promise<string> {
   const answer: string | null = await context.requestInput(question, choices);
   return answer === null

@@ -29,11 +29,29 @@
             <p class="agent__ask-question">{{ row.item!.inputQuestion }}</p>
             @if (row.item!.inputState === 'pending') {
               @if (row.item!.inputChoices?.length) {
-                <div class="agent__ask-choices">
-                  @for (choice of row.item!.inputChoices!; track choice) {
-                    <button type="button" class="agent__btn" (click)="choose(row.item!, choice)">
-                      {{ choice }}
-                    </button>
+                <div
+                  class="agent__ask-options"
+                  role="radiogroup"
+                  [attr.aria-label]="row.item!.inputQuestion"
+                >
+                  @for (choice of row.item!.inputChoices!; track choice.label) {
+                    <!-- The label wraps the radio's projected native input, associating them at
+                         runtime; the lint rule cannot see through the component boundary. -->
+                    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+                    <label class="agent__ask-option">
+                      <app-radio
+                        class="agent__ask-option-dial"
+                        [name]="'ask-' + row.item!.id"
+                        [checked]="selectedChoice() === choice.label"
+                        (checkedChange)="selectChoice(choice.label)"
+                      />
+                      <span class="agent__ask-option-text">
+                        <span class="agent__ask-option-label">{{ choice.label }}</span>
+                        @if (choice.description) {
+                          <span class="agent__ask-option-desc">{{ choice.description }}</span>
+                        }
+                      </span>
+                    </label>
                   }
                 </div>
               }
@@ -45,13 +63,25 @@
                       : 'Type your answer below.'
                   }}
                 </span>
-                <button
-                  type="button"
-                  class="agent__btn agent__btn--ghost"
-                  (click)="skipInput(row.item!)"
-                >
-                  Skip
-                </button>
+                <div class="agent__ask-actions">
+                  @if (row.item!.inputChoices?.length) {
+                    <button
+                      type="button"
+                      class="agent__btn"
+                      [disabled]="selectedChoice() === null"
+                      (click)="confirmChoice(row.item!)"
+                    >
+                      Answer
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="agent__btn agent__btn--ghost"
+                    (click)="skipInput(row.item!)"
+                  >
+                    Skip
+                  </button>
+                </div>
               </div>
             } @else if (row.item!.inputState === 'answered') {
               <span class="agent__ask-answer">{{ row.item!.inputAnswer }}</span>

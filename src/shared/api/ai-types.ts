@@ -38,6 +38,7 @@ export type {
   AiToolStartEvent,
   AiToolEndEvent,
   AiPermissionEvent,
+  AiInputChoice,
   AiInputRequestEvent,
   AiStatusEvent,
   AiUsageEvent,

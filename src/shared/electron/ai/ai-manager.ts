@@ -4,6 +4,7 @@ import type {
   AgentContextRef,
   AgentMode,
   AiEvent,
+  AiInputChoice,
   AiInputReply,
   AiModelInfo,
   AiPermissionPosture,
@@ -232,7 +233,7 @@ export class AiManager {
       },
       requestPermission: (name: string, detail: string): Promise<boolean> =>
         this.requestPermission(request.requestId, controller.signal, name, detail),
-      requestInput: (question: string, choices: readonly string[]): Promise<string | null> =>
+      requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
       emit: (event: AiEvent): void => this.emit(event),
     };
@@ -336,7 +337,7 @@ export class AiManager {
     requestId: string,
     signal: AbortSignal,
     question: string,
-    choices: readonly string[],
+    choices: readonly AiInputChoice[],
   ): Promise<string | null> {
     const inputId: string = randomUUID();
     return new Promise<string | null>((resolve: (answer: string | null) => void): void => {

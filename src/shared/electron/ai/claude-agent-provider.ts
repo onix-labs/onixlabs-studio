@@ -26,6 +26,7 @@ import {
   type InsertPlacement,
   type AgentContextRef,
   type AgentSurface,
+  type AiInputChoice,
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
@@ -225,13 +226,28 @@ export class ClaudeAgentProvider implements AgentProvider {
           {
             question: z.string().min(1).describe('The question to ask the user.'),
             choices: z
-              .array(z.string().min(1))
+              .array(
+                z.object({
+                  label: z
+                    .string()
+                    .min(1)
+                    .describe(
+                      'The short answer label; sent back verbatim as the answer when picked.',
+                    ),
+                  description: z
+                    .string()
+                    .optional()
+                    .describe(
+                      'An explanation of this choice: what picking it means, its trade-offs, and "(recommended)" when it is your recommendation.',
+                    ),
+                }),
+              )
               .optional()
               .describe(
-                'Suggested answers the user can pick from (they may always answer with their own text instead). Omit for a free-form question.',
+                'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
               ),
           },
-          async (args: { question: string; choices?: string[] }) =>
+          async (args: { question: string; choices?: AiInputChoice[] }) =>
             text(await askUser(context, args.question, args.choices ?? [])),
         ),
         ...(project

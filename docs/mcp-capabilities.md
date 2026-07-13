@@ -31,9 +31,10 @@ The tool name constants live in `src/shared/api/ai/ai-tool-surface.ts`; the conv
 kinds (`global` / `workspace` / `repository` / `file`) in
 `src/shared/api/agent-conversation-channels.ts`.
 
-Every surface additionally registers **`ask_user`**: the agent asks the user a question
-(free-form, or with suggested choices) and the run blocks until they answer, decline, or stop the
-run. It is auto-allowed everywhere — asking is not a mutation, and the answer itself is the gate —
+Every surface additionally registers **`ask_user`**: the agent asks the user a question —
+free-form, or with suggested choices (each a short label plus an optional description, rendered
+as a radio list with the recommended choice first) — and the run blocks until they answer,
+decline, or stop the run. It is auto-allowed everywhere — asking is not a mutation, and the answer itself is the gate —
 and it works on every provider, because the round-trip rides the provider-agnostic run context
 (`requestInput`, mirroring the permission plumbing) rather than a provider hook. The question and
 its answer land in the transcript as an `input-request` item and persist with the conversation.

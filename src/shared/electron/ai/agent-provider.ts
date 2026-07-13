@@ -3,6 +3,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiEvent,
+  AiInputChoice,
   AiModelInfo,
   AiPermissionPosture,
   AiProviderId,
@@ -152,7 +153,7 @@ export interface AgentRunContext {
    * @param choices The suggested answers, or empty for a free-form question.
    * @returns Returns the user's answer, or null when they declined.
    */
-  requestInput(question: string, choices: readonly string[]): Promise<string | null>;
+  requestInput(question: string, choices: readonly AiInputChoice[]): Promise<string | null>;
 
   /**
    * Emits a streamed event for this run.
