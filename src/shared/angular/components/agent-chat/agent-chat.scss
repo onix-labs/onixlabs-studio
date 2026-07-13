@@ -397,6 +397,16 @@ $agent-node-size: 1.75rem;
   gap: 0.5rem;
 }
 
+// The edit-decision options stack vertically, Claude Code-style: full-width, left-aligned rows.
+.agent__ask-actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+
+  .agent__btn {
+    text-align: left;
+  }
+}
+
 .agent__ask-answer {
   font-size: 0.9rem;
   word-break: break-word;

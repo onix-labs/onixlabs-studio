@@ -114,29 +114,27 @@
               }
             </p>
             @if (row.item!.decisionState === 'pending') {
-              <div class="agent__ask-footer">
-                <span class="agent__ask-hint">
-                  {{
-                    row.item!.decisionHasDiff
-                      ? 'Review the diff in the document well.'
-                      : 'The summary above describes the change.'
-                  }}
-                </span>
-                <div class="agent__ask-actions">
-                  <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes')">
-                    Yes
-                  </button>
-                  <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes-auto')">
-                    Yes, auto-accept edits
-                  </button>
-                  <button
-                    type="button"
-                    class="agent__btn agent__btn--ghost"
-                    (click)="decide(row.item!, 'no')"
-                  >
-                    No
-                  </button>
-                </div>
+              <span class="agent__ask-hint">
+                {{
+                  row.item!.decisionHasDiff
+                    ? 'Review the diff in the document well.'
+                    : 'The summary above describes the change.'
+                }}
+              </span>
+              <div class="agent__ask-actions agent__ask-actions--stack">
+                <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes')">
+                  Yes
+                </button>
+                <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes-auto')">
+                  Yes, and automatically accept edits
+                </button>
+                <button
+                  type="button"
+                  class="agent__btn agent__btn--ghost"
+                  (click)="decide(row.item!, 'no')"
+                >
+                  No
+                </button>
               </div>
             } @else {
               <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>
