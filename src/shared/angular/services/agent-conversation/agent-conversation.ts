@@ -22,7 +22,10 @@ import {
   AgentItem,
   AgentQueuedMessage,
 } from '@shared/angular/services/agent/agent';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import {
   AGENT_CONVERSATION_CONTEXT,
@@ -74,6 +77,21 @@ export class AgentConversation implements AgentSessionHandle {
    * Holds the file-system client used to prompt for a file or folder when attaching context.
    */
   private readonly files: FileSystem = inject(FileSystem);
+
+  /**
+   * Holds the editor-commands registry, the source of the current editor selection when attaching it.
+   */
+  private readonly editors: EditorCommands = inject(EditorCommands);
+
+  /**
+   * Holds the tab registry, used to label an attached selection with its source tab's title.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Tracks the counter that keeps attached-selection labels unique within this conversation.
+   */
+  private selectionCounter: number = 0;
 
   /**
    * Holds the destroy notifier used to flush a pending debounced save when the host is torn down.
@@ -322,12 +340,40 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
+   * Attaches the current editor selection to the conversation's context (part of
+   * {@link AgentSessionHandle}): the selected text is inlined into the next run's prompt. Does
+   * nothing when no code editor has a selection.
+   */
+  public attachSelection(): void {
+    const selection: { tabId: string; text: string } | null = this.editors.readActiveSelection();
+    if (selection === null) {
+      return;
+    }
+    const title: string =
+      this.tabs.tabs().find((tab: Tab): boolean => tab.id === selection.tabId)?.title ?? 'editor';
+    this.selectionCounter += 1;
+    const lines: number = selection.text.split('\n').length;
+    this.agent.attachContext({
+      path: `${title} — selection #${this.selectionCounter} (${lines === 1 ? '1 line' : `${lines} lines`})`,
+      kind: 'selection',
+      content: selection.text,
+    });
+  }
+
+  /**
    * Removes an attached file or folder from the conversation's context (part of
    * {@link AgentSessionHandle}).
    * @param path The path to detach.
    */
   public removeContext(path: string): void {
     this.agent.removeContext(path);
+  }
+
+  /**
+   * Removes everything attached to the conversation's context (part of {@link AgentSessionHandle}).
+   */
+  public clearContext(): void {
+    this.agent.clearContext();
   }
 
   /**

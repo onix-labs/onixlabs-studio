@@ -10,6 +10,7 @@ import {
   type StreamPart,
 } from './ai-sdk-stream';
 import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODELS } from './models';
+import { buildRunPrompt } from './studio-tools';
 
 /**
  * The base URL of a local Ollama server's OpenAI-compatible API. Ollama's standard env var is
@@ -112,7 +113,8 @@ export class OllamaProvider implements AgentProvider {
       const stream: AsyncIterable<StreamPart> = streamText({
         model: ollama(context.model),
         system,
-        prompt: context.prompt,
+        // Attached context (paths and inlined selections) rides the prompt, matching the Claude path.
+        prompt: buildRunPrompt(context),
         abortSignal: context.signal,
         stopWhen: stepCountIs(MAX_STEPS),
         // Cap the output tokens when the user set a per-request budget; 0 leaves the model default.

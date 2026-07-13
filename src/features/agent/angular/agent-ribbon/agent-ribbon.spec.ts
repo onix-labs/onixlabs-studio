@@ -60,6 +60,9 @@ describe('AgentRibbon', () => {
   let compacted: number;
   let attachedFiles: number;
   let attachedFolders: number;
+  let attachedSelections: number;
+  let clearedContexts: number;
+  let contextRefs: WritableSignal<readonly AgentContextRef[]>;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -106,6 +109,9 @@ describe('AgentRibbon', () => {
     compacted = 0;
     attachedFiles = 0;
     attachedFolders = 0;
+    attachedSelections = 0;
+    clearedContexts = 0;
+    contextRefs = signal<readonly AgentContextRef[]>([]);
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
       provider: signal<AiProviderId>('claude'),
@@ -119,7 +125,7 @@ describe('AgentRibbon', () => {
       historyOpen,
       autoScroll,
       mode,
-      contextPaths: signal<readonly AgentContextRef[]>([]),
+      contextPaths: contextRefs,
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
@@ -128,6 +134,8 @@ describe('AgentRibbon', () => {
       compact: (): void => void (compacted += 1),
       attachFile: (): void => void (attachedFiles += 1),
       attachFolder: (): void => void (attachedFolders += 1),
+      attachSelection: (): void => void (attachedSelections += 1),
+      clearContext: (): void => void (clearedContexts += 1),
     };
 
     await TestBed.configureTestingModule({
@@ -236,5 +244,23 @@ describe('AgentRibbon', () => {
     button('Add Folder').click();
 
     expect(attachedFolders).toBe(1);
+  });
+
+  it('attachSelection_whenClicked_attachesTheEditorSelection', () => {
+    button('Attach Selection').click();
+
+    expect(attachedSelections).toBe(1);
+  });
+
+  it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {
+    expect(button('Clear Context').disabled).toBe(true);
+
+    contextRefs.set([{ path: '/repo/a.ts', kind: 'file' }]);
+    fixture.detectChanges();
+    const clear: HTMLButtonElement = button('Clear Context');
+    expect(clear.disabled).toBe(false);
+
+    clear.click();
+    expect(clearedContexts).toBe(1);
   });
 });

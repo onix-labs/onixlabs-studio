@@ -38,6 +38,25 @@
   />
 
   <app-ribbon-strip-button-small
+    [icon]="Icon.ATTACH"
+    label="Attach file"
+    [iconOnly]="true"
+    (action)="conversation.attachFile()"
+  />
+  <app-ribbon-strip-button-small
+    [icon]="Icon.FOLDER_PLUS"
+    label="Add folder"
+    [iconOnly]="true"
+    (action)="conversation.attachFolder()"
+  />
+  <app-ribbon-strip-button-small
+    [icon]="Icon.SELECTION"
+    label="Attach selection"
+    [iconOnly]="true"
+    (action)="conversation.attachSelection()"
+  />
+
+  <app-ribbon-strip-button-small
     class="strip__history"
     [icon]="Icon.RECENT"
     label="Conversation history"

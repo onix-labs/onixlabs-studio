@@ -1,7 +1,8 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { AiProviderId } from '@shared/api/ai-types';
+import type { AgentContextRef, AiProviderId } from '@shared/api/ai-types';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import {
   AgentConversationSummary,
   ConversationContext,
@@ -31,6 +32,7 @@ function agentStub(
   items: WritableSignal<readonly AgentItem[]>,
   log: string[],
   branch: WritableSignal<AgentBranchPoint>,
+  attachedRefs: AgentContextRef[],
 ): Partial<Agent> {
   return {
     items,
@@ -46,6 +48,8 @@ function agentStub(
       log.push('restore');
       items.set([...restored]);
     },
+    attachContext: (ref: AgentContextRef): void => void attachedRefs.push(ref),
+    clearContext: (): void => void log.push('clearContext'),
   };
 }
 
@@ -66,6 +70,7 @@ describe('AgentConversation', () => {
   let log: string[];
   let branch: WritableSignal<AgentBranchPoint>;
   let saves: StoredAgentConversation[];
+  let attachedRefs: AgentContextRef[];
 
   /**
    * Configures the module with the given optional context resolver and returns the service.
@@ -89,7 +94,7 @@ describe('AgentConversation', () => {
     TestBed.configureTestingModule({
       providers: [
         AgentConversation,
-        { provide: Agent, useValue: agentStub(items, log, branch) },
+        { provide: Agent, useValue: agentStub(items, log, branch, attachedRefs) },
         { provide: AgentConversations, useValue: storeStub },
         { provide: AgentEngine, useValue: engineStub },
         ...(resolver === undefined
@@ -105,6 +110,7 @@ describe('AgentConversation', () => {
     log = [];
     branch = signal<AgentBranchPoint>({ epoch: 0, origin: [], originSessionId: null });
     saves = [];
+    attachedRefs = [];
   });
 
   it('context_whenNoResolverAndNoBinding_isGlobal', () => {
@@ -152,6 +158,41 @@ describe('AgentConversation', () => {
     conversation.setAutoScroll(false);
 
     expect(conversation.autoScroll()).toBe(false);
+  });
+
+  it('attachSelection_whenAnEditorHasASelection_attachesItsTextAsInlineContext', () => {
+    const conversation: AgentConversation = build();
+    const editors: EditorCommands = TestBed.inject(EditorCommands);
+    editors.register('tab-1', {
+      cut: (): void => undefined,
+      copy: (): void => undefined,
+      paste: (): void => undefined,
+      undo: (): void => undefined,
+      redo: (): void => undefined,
+      find: (): void => undefined,
+      formatDocument: (): void => undefined,
+      save: (): void => undefined,
+      saveAs: (): void => undefined,
+      getText: (): string => 'whole document',
+      getSelectionText: (): string => 'const answer = 42;\nreturn answer;',
+      replaceText: (): void => undefined,
+      replaceRange: (): void => undefined,
+    });
+
+    conversation.attachSelection();
+
+    expect(attachedRefs).toHaveLength(1);
+    expect(attachedRefs[0].kind).toBe('selection');
+    expect(attachedRefs[0].content).toBe('const answer = 42;\nreturn answer;');
+    expect(attachedRefs[0].path).toContain('selection #1 (2 lines)');
+  });
+
+  it('attachSelection_whenNothingIsSelected_attachesNothing', () => {
+    const conversation: AgentConversation = build();
+
+    conversation.attachSelection();
+
+    expect(attachedRefs).toHaveLength(0);
   });
 
   it('branch_whenARewindPublishesAnOrigin_preservesItAsItsOwnRecordAndDetachesTheId', async () => {
