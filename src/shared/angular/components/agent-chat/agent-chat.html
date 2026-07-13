@@ -452,7 +452,13 @@
           <li class="agent__attachment">
             <app-icon
               class="agent__attachment-icon"
-              [icon]="chip.kind === 'folder' ? Icon.FOLDER : Icon.FILE"
+              [icon]="
+                chip.kind === 'folder'
+                  ? Icon.FOLDER
+                  : chip.kind === 'selection'
+                    ? Icon.SELECTION
+                    : Icon.FILE
+              "
               aria-hidden="true"
             />
             <span class="agent__attachment-name" [title]="chip.path">{{ chip.name }}</span>

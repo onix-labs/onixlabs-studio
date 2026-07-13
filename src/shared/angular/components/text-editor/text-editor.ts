@@ -327,6 +327,20 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Gets the text of the editor's current selection.
+   * @returns Returns the selected text, or an empty string when nothing is selected.
+   */
+  public getSelectionText(): string {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    const selection: MonacoApi.Selection | null = editor?.getSelection() ?? null;
+    if (editor === null || model === null || selection === null || selection.isEmpty()) {
+      return '';
+    }
+    return model.getValueInRange(selection);
+  }
+
+  /**
    * Focuses the editor.
    */
   public focus(): void {

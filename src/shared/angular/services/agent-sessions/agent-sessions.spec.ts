@@ -67,8 +67,14 @@ function createSession(): FakeSession {
     attachFolder: (): void => {
       calls.push('attachFolder');
     },
+    attachSelection: (): void => {
+      calls.push('attachSelection');
+    },
     removeContext: (path: string): void => {
       calls.push(`removeContext:${path}`);
+    },
+    clearContext: (): void => {
+      calls.push('clearContext');
     },
     compact: (): void => {
       calls.push('compact');

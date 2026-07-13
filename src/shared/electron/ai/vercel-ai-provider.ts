@@ -13,6 +13,7 @@ import {
   toolsForSurface,
   type StreamPart,
 } from './ai-sdk-stream';
+import { buildRunPrompt } from './studio-tools';
 import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 
 /**
@@ -84,10 +85,12 @@ export class VercelAiProvider implements AgentProvider {
     const system: string = promptForSurface(context);
     const tools: ToolSet = await toolsForSurface(context);
 
-    // Attached images require message parts; a plain prompt string suffices otherwise.
+    // Attached context (paths and inlined selections) rides the prompt; attached images require
+    // message parts, while a plain prompt string suffices otherwise.
+    const prompt: string = buildRunPrompt(context);
     const input: { prompt: string } | { messages: ModelMessage[] } =
       context.images.length === 0
-        ? { prompt: context.prompt }
+        ? { prompt }
         : {
             messages: [
               {
@@ -100,7 +103,7 @@ export class VercelAiProvider implements AgentProvider {
                       mediaType: image.mediaType,
                     }),
                   ),
-                  { type: 'text', text: context.prompt },
+                  { type: 'text', text: prompt },
                 ],
               },
             ],

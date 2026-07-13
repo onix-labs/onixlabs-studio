@@ -77,6 +77,7 @@ function textHandler(initial: string): EditorCommandHandler {
     save: (): void => undefined,
     saveAs: (): void => undefined,
     getText: (): string => text,
+    getSelectionText: (): string => '',
     replaceText: (value: string): void => {
       text = value;
     },

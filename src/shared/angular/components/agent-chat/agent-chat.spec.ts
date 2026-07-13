@@ -32,6 +32,7 @@ describe('AgentChat', () => {
   let rewinds: { id: string; text: string }[];
   let sentImages: (readonly AiImageRef[])[];
   let providers: WritableSignal<readonly AiProviderInfo[]>;
+  let pendingContextTokens: WritableSignal<number>;
 
   beforeEach(async () => {
     retried = [];
@@ -59,6 +60,7 @@ describe('AgentChat', () => {
     inputAnswers = [];
     items = signal<readonly AgentItem[]>([]);
     running = signal<boolean>(false);
+    pendingContextTokens = signal<number>(0);
     const agentStub: Partial<Agent> = {
       items,
       isRunning: running,
@@ -67,6 +69,7 @@ describe('AgentChat', () => {
       contextTokens: signal<number>(0),
       contextWindow: signal<number>(0),
       costUsd: signal<number>(0),
+      pendingContextTokens,
       contextPaths,
       send: (
         text: string,
@@ -332,6 +335,19 @@ describe('AgentChat', () => {
 
     expect(values(true)).toEqual(['once', 'session', 'workspace', 'always']);
     expect(values(false)).toEqual(['once', 'session', 'always']);
+  });
+
+  it('contextMeter_whenASelectionIsAttached_showsTheEstimate', () => {
+    pendingContextTokens.set(500);
+    contextPaths.set([{ path: 'main.ts — selection #1 (12 lines)', kind: 'selection' }]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    // The meter appears on the estimate alone (no usage reported yet), marked approximate.
+    expect(host.querySelector('.agent__context-label')?.textContent?.trim()).toBe('≈500');
+    expect(host.querySelector('.agent__attachment-name')?.textContent?.trim()).toBe(
+      'main.ts — selection #1 (12 lines)',
+    );
   });
 
   it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {

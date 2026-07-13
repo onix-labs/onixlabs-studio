@@ -23,19 +23,25 @@ export type AiPermissionPosture = 'prompt' | 'auto-edits' | 'auto-all';
 export type AgentMode = 'agent' | 'chat';
 
 /**
- * References a file or folder the user attached to the run's context. The path is passed to the run so
- * the agent can read it with its own file tools; the content is not inlined into the prompt.
+ * References a file, folder, or editor selection the user attached to the run's context. A file or
+ * folder is passed by path so the agent reads it with its own file tools; a selection carries its
+ * text, inlined into the prompt (so it reaches every provider, including those without file tools).
  */
 export interface AgentContextRef {
   /**
-   * Gets the absolute path of the attached file or folder.
+   * Gets the absolute path of an attached file or folder, or the display label of a selection.
    */
   readonly path: string;
 
   /**
-   * Gets whether the path refers to a single file or a folder.
+   * Gets what the reference is: a file or folder (read by path) or an editor selection (inlined).
    */
-  readonly kind: 'file' | 'folder';
+  readonly kind: 'file' | 'folder' | 'selection';
+
+  /**
+   * Gets the selected text of a selection reference (absent for files and folders).
+   */
+  readonly content?: string;
 }
 
 /**

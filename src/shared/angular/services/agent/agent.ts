@@ -506,6 +506,21 @@ export class Agent {
     this.contextPathsState.asReadonly();
 
   /**
+   * Gets the estimated tokens the attached context will add to the next turn: the inlined selection
+   * text at ~4 characters per token. Files and folders contribute nothing here — what they cost
+   * depends on what the agent actually reads, which the next turn's reported usage captures.
+   */
+  public readonly pendingContextTokens: Signal<number> = computed((): number =>
+    Math.ceil(
+      this.contextPathsState().reduce(
+        (total: number, ref: AgentContextRef): number =>
+          total + (ref.kind === 'selection' ? (ref.content?.length ?? 0) : 0),
+        0,
+      ) / 4,
+    ),
+  );
+
+  /**
    * Gets the provider session this conversation resumes on its next turn, or null for a fresh
    * conversation. Persisted with the conversation so its memory survives reopening and restart.
    */
@@ -825,6 +840,13 @@ export class Agent {
     this.contextPathsState.update((refs: readonly AgentContextRef[]): readonly AgentContextRef[] =>
       refs.filter((ref: AgentContextRef): boolean => ref.path !== path),
     );
+  }
+
+  /**
+   * Removes everything attached to the conversation's context.
+   */
+  public clearContext(): void {
+    this.contextPathsState.set([]);
   }
 
   /**

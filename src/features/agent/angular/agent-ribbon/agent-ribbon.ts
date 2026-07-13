@@ -16,9 +16,9 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
  * active tab's conversation through {@link AgentSessions} — New Chat clears its transcript and Stop
  * aborts its in-flight run — while the Engine group's Provider and Model fields drive the global
- * selection owned by {@link AgentEngine}. The Options group's Auto-scroll check drives the active
- * conversation's follow-the-tail preference; the remaining Context and Options controls are disabled
- * placeholders for capabilities that do not exist yet.
+ * selection owned by {@link AgentEngine}. The Context group attaches files, folders, and the current
+ * editor selection to the conversation (and clears everything attached); the Options group drives the
+ * autonomy mode and the follow-the-tail preference.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -153,6 +153,28 @@ export class AgentRibbon {
   protected attachFolder(): void {
     this.sessions.attachFolder();
   }
+
+  /**
+   * Attaches the current editor selection to the active tab's conversation context.
+   */
+  protected attachSelection(): void {
+    this.sessions.attachSelection();
+  }
+
+  /**
+   * Removes everything attached to the active tab's conversation context.
+   */
+  protected clearContext(): void {
+    this.sessions.clearContext();
+  }
+
+  /**
+   * Gets a value indicating whether anything is attached to the active tab's context, enabling the
+   * Clear Context button.
+   */
+  protected readonly hasContext: Signal<boolean> = computed(
+    (): boolean => this.sessions.contextPaths().length > 0,
+  );
 
   /**
    * Sets the active tab's autonomy mode from the chosen label.

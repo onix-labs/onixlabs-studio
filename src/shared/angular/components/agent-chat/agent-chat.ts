@@ -246,9 +246,9 @@ interface ContextChip {
   readonly name: string;
 
   /**
-   * Gets whether the path is a file or a folder.
+   * Gets whether the reference is a file, a folder, or an editor selection.
    */
-  readonly kind: 'file' | 'folder';
+  readonly kind: 'file' | 'folder' | 'selection';
 }
 
 /**
@@ -388,26 +388,36 @@ export class AgentChat {
   }
 
   /**
-   * Gets a value indicating whether the conversation has reported any usage yet, so the composer's
-   * context meter only appears once there is something to show.
+   * Gets a value indicating whether the composer's context meter has anything to show: reported
+   * usage, or an estimate for attached-but-unsent context.
    */
   protected readonly hasContext: Signal<boolean> = computed(
-    (): boolean => this.agent.contextTokens() > 0,
+    (): boolean => this.agent.contextTokens() > 0 || this.agent.pendingContextTokens() > 0,
   );
 
   /**
-   * Gets the compact context-token figure for the composer meter (for example, `12.3k`).
+   * Gets the tokens the meter reflects: the reported usage plus the estimated cost of attached
+   * context that has not been sent yet (inlined selections).
    */
-  protected readonly contextLabel: Signal<string> = computed((): string =>
-    formatTokens(this.agent.contextTokens()),
+  private readonly meterTokens: Signal<number> = computed(
+    (): number => this.agent.contextTokens() + this.agent.pendingContextTokens(),
   );
+
+  /**
+   * Gets the compact context-token figure for the composer meter (for example, `12.3k`), prefixed
+   * with `≈` while it includes an attached-context estimate.
+   */
+  protected readonly contextLabel: Signal<string> = computed((): string => {
+    const label: string = formatTokens(this.meterTokens());
+    return this.agent.pendingContextTokens() > 0 ? `≈${label}` : label;
+  });
 
   /**
    * Gets how full the context window is, 0–100, for the meter fill; zero when the window is unknown.
    */
   protected readonly contextPercent: Signal<number> = computed((): number => {
     const window: number = this.agent.contextWindow();
-    return window > 0 ? Math.min(100, Math.round((this.agent.contextTokens() / window) * 100)) : 0;
+    return window > 0 ? Math.min(100, Math.round((this.meterTokens() / window) * 100)) : 0;
   });
 
   /**
@@ -426,12 +436,16 @@ export class AgentChat {
    * accumulated cost when the provider reports one.
    */
   protected readonly contextTitle: Signal<string> = computed((): string => {
-    const used: string = this.agent.contextTokens().toLocaleString();
+    const used: string = this.meterTokens().toLocaleString();
     const window: number = this.agent.contextWindow();
-    const base: string =
+    let base: string =
       window > 0
         ? `${used} / ${window.toLocaleString()} tokens (${this.contextPercent()}%)`
         : `${used} tokens`;
+    const pending: number = this.agent.pendingContextTokens();
+    if (pending > 0) {
+      base = `${base} · includes ≈${pending.toLocaleString()} tokens of attached selection`;
+    }
     const cost: number = this.agent.costUsd();
     return cost > 0 ? `${base} · ${formatCost(cost)}` : base;
   });

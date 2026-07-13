@@ -687,16 +687,31 @@ export class AiManager {
     if (!Array.isArray(value)) {
       return [];
     }
-    return value.filter((entry: unknown): entry is AgentContextRef => {
-      if (entry === null || typeof entry !== 'object') {
-        return false;
-      }
-      const record: Record<string, unknown> = entry as Record<string, unknown>;
-      return (
-        typeof record['path'] === 'string' &&
-        record['path'].length > 0 &&
-        (record['kind'] === 'file' || record['kind'] === 'folder')
+    // Selection content is inlined into the prompt, so its size is bounded here.
+    const maxSelectionChars: number = 200_000;
+    return value
+      .filter((entry: unknown): entry is AgentContextRef => {
+        if (entry === null || typeof entry !== 'object') {
+          return false;
+        }
+        const record: Record<string, unknown> = entry as Record<string, unknown>;
+        if (typeof record['path'] !== 'string' || record['path'].length === 0) {
+          return false;
+        }
+        if (record['kind'] === 'file' || record['kind'] === 'folder') {
+          return true;
+        }
+        return (
+          record['kind'] === 'selection' &&
+          typeof record['content'] === 'string' &&
+          record['content'].length > 0 &&
+          record['content'].length <= maxSelectionChars
+        );
+      })
+      .map(
+        (ref: AgentContextRef): AgentContextRef =>
+          // Content rides only on selections; strip any stray payload from path references.
+          ref.kind === 'selection' ? ref : { path: ref.path, kind: ref.kind },
       );
-    });
   }
 }

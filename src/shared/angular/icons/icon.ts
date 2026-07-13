@@ -127,6 +127,11 @@ export class Icon {
   public static readonly THINKING: Icon = new Icon('ph ph-brain');
 
   /**
+   * Gets the glyph for an attached editor selection (agent context).
+   */
+  public static readonly SELECTION: Icon = new Icon('ph ph-selection');
+
+  /**
    * Gets the sparkle glyph marking an AI-assisted action (for example generating a commit message).
    */
   public static readonly SPARKLE: Icon = new Icon('ph ph-sparkle');

@@ -492,6 +492,7 @@ export class CodeView implements OnDestroy {
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),
       getText: (): string => pane.getValue(),
+      getSelectionText: (): string => pane.getSelectionText(),
       replaceText: (text: string): void => pane.replaceAll(text),
       replaceRange: (start: number, length: number, text: string): void =>
         pane.replaceRange(start, length, text),

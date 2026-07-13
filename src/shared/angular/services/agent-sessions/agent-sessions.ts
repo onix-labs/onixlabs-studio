@@ -72,10 +72,21 @@ export interface AgentSessionHandle {
   attachFolder(): void;
 
   /**
+   * Attaches the current editor selection to the conversation's context. Does nothing when no code
+   * editor has a selection.
+   */
+  attachSelection(): void;
+
+  /**
    * Removes an attached file or folder from the conversation's context.
    * @param path The path to detach.
    */
   removeContext(path: string): void;
+
+  /**
+   * Removes everything attached to the conversation's context.
+   */
+  clearContext(): void;
 
   /**
    * Compacts the conversation, replacing the transcript with a concise summary.
@@ -204,11 +215,25 @@ export class AgentSessions {
   }
 
   /**
+   * Attaches the current editor selection to the active agent tab's context.
+   */
+  public attachSelection(): void {
+    this.activeSession()?.attachSelection();
+  }
+
+  /**
    * Removes an attached file or folder from the active agent tab's context.
    * @param path The path to detach.
    */
   public removeContext(path: string): void {
     this.activeSession()?.removeContext(path);
+  }
+
+  /**
+   * Removes everything attached to the active agent tab's context.
+   */
+  public clearContext(): void {
+    this.activeSession()?.clearContext();
   }
 
   /**

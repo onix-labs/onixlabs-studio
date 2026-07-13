@@ -56,6 +56,12 @@ export interface EditorCommandHandler {
   getText(): string;
 
   /**
+   * Gets the text of the editor's current selection.
+   * @returns Returns the selected text, or an empty string when nothing is selected.
+   */
+  getSelectionText(): string;
+
+  /**
    * Replaces the editor's full text (as a single undoable edit).
    * @param text The new text.
    */
@@ -243,6 +249,21 @@ export class EditorCommands {
   private fallbackTarget(): EditorCommandHandler | null {
     const id: string | null = this.activeId() ?? this.lastActiveId;
     return id === null ? null : (this.handlers.get(id) ?? null);
+  }
+
+  /**
+   * Reads the current selection of the editor the user is (or was last) working in, so it can be
+   * attached to an agent conversation's context.
+   * @returns Returns the owning tab and the selected text, or null when no editor is available or
+   * nothing is selected.
+   */
+  public readActiveSelection(): { tabId: string; text: string } | null {
+    const id: string | null = this.activeId() ?? this.lastActiveId;
+    if (id === null) {
+      return null;
+    }
+    const text: string = this.handlers.get(id)?.getSelectionText() ?? '';
+    return text.trim().length === 0 ? null : { tabId: id, text };
   }
 
   /**

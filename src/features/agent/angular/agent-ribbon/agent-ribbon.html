@@ -51,6 +51,19 @@
         label="Add Folder"
         (action)="attachFolder()"
       />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SELECTION"
+        label="Attach Selection"
+        (action)="attachSelection()"
+      />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CLEAR"
+        label="Clear Context"
+        [disabled]="!hasContext()"
+        (action)="clearContext()"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 

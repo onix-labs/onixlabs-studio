@@ -18,6 +18,7 @@ import {
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
+  type AgentContextRef,
   type AiInputChoice,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
@@ -109,6 +110,39 @@ export const READ_ONLY_APPENDIX: string =
   'You are in read-only chat mode. You may inspect the project and the active surface, but you must ' +
   'not modify files or run commands — editing and executing tools are disabled. Answer, explain, and ' +
   'advise instead of acting.';
+
+/**
+ * Builds the prompt for a run: the user's prompt preceded by the attached context — files and
+ * folders referenced by path (for the agent's own file tools) and editor selections inlined verbatim
+ * (so they reach every provider, including those without file tools). Shared by every provider so
+ * attached context behaves identically across them.
+ * @param context The run context.
+ * @returns Returns the prompt to send.
+ */
+export function buildRunPrompt(context: AgentRunContext): string {
+  const sections: string[] = [];
+  const paths: readonly AgentContextRef[] = context.contextPaths.filter(
+    (ref: AgentContextRef): boolean => ref.kind !== 'selection',
+  );
+  if (paths.length > 0) {
+    const lines: string = paths
+      .map((ref: AgentContextRef): string => ` - ${ref.path} (${ref.kind})`)
+      .join('\n');
+    sections.push(
+      'The user attached the following context. Read the files and explore the folders with your ' +
+        `file tools (Read, Glob, Grep) as needed to answer:\n${lines}`,
+    );
+  }
+  for (const ref of context.contextPaths) {
+    if (ref.kind === 'selection' && typeof ref.content === 'string' && ref.content.length > 0) {
+      sections.push(
+        `The user attached this editor selection (${ref.path}):\n"""\n${ref.content}\n"""`,
+      );
+    }
+  }
+  sections.push(context.prompt);
+  return sections.join('\n\n');
+}
 
 /**
  * Appended to every surface's system prompt so the model knows it can ask the user questions instead

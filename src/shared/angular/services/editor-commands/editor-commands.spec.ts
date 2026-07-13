@@ -9,7 +9,7 @@ import { EditorCommandHandler, EditorCommands } from './editor-commands';
  */
 function recordingCommands(
   calls: Set<string>,
-): Omit<EditorCommandHandler, 'getText' | 'replaceText' | 'replaceRange'> {
+): Omit<EditorCommandHandler, 'getText' | 'getSelectionText' | 'replaceText' | 'replaceRange'> {
   return {
     cut: (): void => void calls.add('cut'),
     copy: (): void => void calls.add('copy'),
@@ -35,6 +35,7 @@ function recordingHandler(calls: Set<string>, initial: string = ''): EditorComma
   return {
     ...recordingCommands(calls),
     getText: (): string => text,
+    getSelectionText: (): string => '',
     replaceText: (value: string): void => {
       text = value;
     },
@@ -75,6 +76,28 @@ describe('EditorCommands', () => {
     commands.register('tab-1', recordingHandler(new Set<string>()));
     commands.deactivate('tab-1');
     expect(commands.hasActiveEditor()).toBe(false);
+  });
+
+  it('readActiveSelection_whenTheLastEditorHasASelection_returnsItEvenAfterDeactivation', () => {
+    const handler: EditorCommandHandler = {
+      ...recordingHandler(new Set<string>()),
+      getSelectionText: (): string => 'const answer = 42;',
+    };
+    commands.register('tab-1', handler);
+    // The user focuses the agent panel: the editor deactivates but stays the last-active target.
+    commands.deactivate('tab-1');
+
+    expect(commands.readActiveSelection()).toEqual({
+      tabId: 'tab-1',
+      text: 'const answer = 42;',
+    });
+  });
+
+  it('readActiveSelection_whenNothingIsSelectedOrNoEditor_returnsNull', () => {
+    expect(commands.readActiveSelection()).toBeNull();
+
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+    expect(commands.readActiveSelection()).toBeNull();
   });
 
   it('readText_readsTheGivenTabsEditorRegardlessOfWhichIsActive', () => {

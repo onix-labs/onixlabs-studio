@@ -25,7 +25,6 @@ import {
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type InsertPlacement,
-  type AgentContextRef,
   type AgentSurface,
   type AiImageRef,
   type AiInputChoice,
@@ -63,6 +62,7 @@ import {
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
   askUser,
+  buildRunPrompt,
   deleteBinaryBytes,
   editActiveDocument,
   insertBinaryBytes,
@@ -632,7 +632,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       return true;
     });
     context.signal.addEventListener('abort', closeInput, { once: true });
-    const initialPrompt: string = this.buildPrompt(context);
+    const initialPrompt: string = buildRunPrompt(context);
     const userMessage: (value: string) => SDKUserMessage = (value: string): SDKUserMessage => ({
       type: 'user',
       message: { role: 'user', content: value },
@@ -743,25 +743,6 @@ export class ClaudeAgentProvider implements AgentProvider {
     // Every surface learns it can ask the user questions instead of guessing.
     const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
     return readOnly ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
-  }
-
-  /**
-   * Builds the prompt for a run: the user's prompt, preceded by a preamble listing any attached
-   * context so the agent reads those files and folders with its own file tools.
-   * @param context The run context.
-   * @returns Returns the prompt to send.
-   */
-  private buildPrompt(context: AgentRunContext): string {
-    if (context.contextPaths.length === 0) {
-      return context.prompt;
-    }
-    const lines: string = context.contextPaths
-      .map((ref: AgentContextRef): string => ` - ${ref.path} (${ref.kind})`)
-      .join('\n');
-    const preamble: string =
-      'The user attached the following context. Read the files and explore the folders with your ' +
-      `file tools (Read, Glob, Grep) as needed to answer:\n${lines}`;
-    return `${preamble}\n\n${context.prompt}`;
   }
 
   /**
