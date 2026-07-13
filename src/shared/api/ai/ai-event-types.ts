@@ -78,6 +78,13 @@ export interface AiToolStartEvent extends AiEventBase {
   readonly detail: string;
 
   /**
+   * Gets the tool's full input, pretty-printed (JSON), for the transcript's expandable raw-detail
+   * view. Clamped at the source with an explicit truncation marker when enormous; undefined when the
+   * tool takes no input.
+   */
+  readonly input?: string;
+
+  /**
    * Gets the type of the sub-agent this tool use spawns (a Task tool's `subagent_type`, e.g.
    * `Explore`), or undefined for an ordinary tool. Events from inside the sub-agent carry this tool
    * use's {@link toolId} as their `parentToolId`.
@@ -108,6 +115,13 @@ export interface AiToolEndEvent extends AiEventBase {
    * Gets a one-line summary of the result.
    */
   readonly detail: string;
+
+  /**
+   * Gets the tool's raw output — or the error detail when it failed — for the transcript's
+   * expandable raw-detail view. Clamped at the source with an explicit truncation marker when
+   * enormous; undefined when the tool produced none.
+   */
+  readonly output?: string;
 }
 
 /**

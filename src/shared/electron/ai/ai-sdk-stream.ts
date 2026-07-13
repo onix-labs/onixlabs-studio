@@ -44,7 +44,7 @@ import {
   writeTerminalInput,
   READ_ONLY_APPENDIX,
 } from './studio-tools';
-import { summarizeToolInput } from './tool-format';
+import { formatToolInput, formatToolOutput, summarizeToolInput } from './tool-format';
 
 /**
  * The maximum number of steps (model turns plus tool round-trips) a single run may take before the
@@ -67,6 +67,7 @@ export interface StreamPart {
   readonly toolName?: string;
   readonly toolCallId?: string;
   readonly input?: unknown;
+  readonly output?: unknown;
   readonly errorText?: string;
 
   /**
@@ -528,24 +529,30 @@ export function mapStreamPart(part: StreamPart, context: AgentRunContext): void 
     case 'reasoning-delta':
       context.emit({ requestId, kind: 'thinking', delta: part.text ?? part.delta ?? '' });
       break;
-    case 'tool-call':
+    case 'tool-call': {
+      const input: string | undefined = formatToolInput(part.input);
       context.emit({
         requestId,
         kind: 'tool-start',
         toolId: part.toolCallId ?? '',
         name: part.toolName ?? 'tool',
-        detail: typeof part.input === 'string' ? part.input : '',
+        detail: typeof part.input === 'string' ? part.input : summarizeToolInput(part.input),
+        ...(input === undefined ? {} : { input }),
       });
       break;
-    case 'tool-result':
+    }
+    case 'tool-result': {
+      const output: string | undefined = formatToolOutput(part.output);
       context.emit({
         requestId,
         kind: 'tool-end',
         toolId: part.toolCallId ?? '',
         ok: true,
         detail: 'done',
+        ...(output === undefined ? {} : { output }),
       });
       break;
+    }
     case 'tool-error':
       context.emit({
         requestId,
@@ -553,6 +560,9 @@ export function mapStreamPart(part: StreamPart, context: AgentRunContext): void 
         toolId: part.toolCallId ?? '',
         ok: false,
         detail: part.errorText ?? 'failed',
+        ...(part.errorText === undefined || part.errorText.length === 0
+          ? {}
+          : { output: part.errorText }),
       });
       break;
     case 'finish': {

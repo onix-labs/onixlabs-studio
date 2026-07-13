@@ -300,6 +300,43 @@ $agent-node-size: 1.75rem;
   user-select: text;
 }
 
+// The raw-detail sections of an expanded tool row: an INPUT/OUTPUT heading over the payload, which
+// scrolls when tall and clips behind the "Show all" affordance when long.
+.agent__action-section {
+  margin-block-start: 0.3rem;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__action-payload {
+  margin: 0;
+  max-block-size: 20rem;
+  overflow: auto;
+}
+
+.agent__action-payload--error {
+  color: var(--warning-color);
+}
+
+.agent__action-more {
+  align-self: flex-start;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--accent-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 // The permission and question cards share one off-rail card shell; a card awaiting the user is
 // outlined in the accent colour.
 .agent__permission,

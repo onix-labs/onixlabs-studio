@@ -176,6 +176,31 @@ describe('Agent', () => {
     expect(lastItem()?.toolState).toBe('ok');
   });
 
+  it('onTool_whenPayloadsAreCarried_storesTheRawInputAndOutput', () => {
+    agent.send('hi');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 't1',
+      name: 'Bash',
+      detail: 'ls',
+      input: '{\n  "command": "ls"\n}',
+    });
+    expect(lastItem()?.toolInput).toBe('{\n  "command": "ls"\n}');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-end',
+      toolId: 't1',
+      ok: false,
+      detail: 'failed',
+      output: 'ls: no such directory',
+    });
+    expect(lastItem()?.toolState).toBe('error');
+    expect(lastItem()?.toolOutput).toBe('ls: no such directory');
+  });
+
   it('permission_whenRaisedThenAnswered_resolvesTheItemAndReplies', () => {
     agent.send('hi');
     fireEvent({

@@ -76,7 +76,12 @@ import {
   writeBinaryAssembly,
   writeTerminalInput,
 } from './studio-tools';
-import { prettyToolName, summarizeToolInput } from './tool-format';
+import {
+  formatToolInput,
+  formatToolOutput,
+  prettyToolName,
+  summarizeToolInput,
+} from './tool-format';
 
 /**
  * Holds the model the verification turn runs with (the default; verification does not depend on the
@@ -127,6 +132,7 @@ interface ContentBlock {
   readonly input?: Record<string, unknown>;
   readonly tool_use_id?: string;
   readonly is_error?: boolean;
+  readonly content?: unknown;
 }
 
 /**
@@ -897,12 +903,14 @@ export class ClaudeAgentProvider implements AgentProvider {
         });
       } else if (block.type === 'tool_use' && typeof block.id === 'string') {
         const agentType: unknown = block.input?.['subagent_type'];
+        const input: string | undefined = formatToolInput(block.input);
         context.emit({
           requestId: context.requestId,
           kind: 'tool-start',
           toolId: block.id,
           name: prettyToolName(block.name ?? 'tool'),
           detail: summarizeToolInput(block.input),
+          ...(input === undefined ? {} : { input }),
           ...attribution,
           ...(typeof agentType === 'string' && agentType.length > 0 ? { agentType } : {}),
         });
@@ -927,12 +935,14 @@ export class ClaudeAgentProvider implements AgentProvider {
     }
     for (const block of content as readonly ContentBlock[]) {
       if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+        const output: string | undefined = formatToolOutput(block.content);
         context.emit({
           requestId: context.requestId,
           kind: 'tool-end',
           toolId: block.tool_use_id,
           ok: block.is_error !== true,
           detail: block.is_error === true ? 'failed' : 'done',
+          ...(output === undefined ? {} : { output }),
           ...(parent === null ? {} : { parentToolId: parent }),
         });
       }
