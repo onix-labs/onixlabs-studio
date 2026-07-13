@@ -19,7 +19,18 @@ export function summarizeToolInput(input: unknown): string {
     return '';
   }
   const record: Record<string, unknown> = input as Record<string, unknown>;
-  for (const key of ['file_path', 'path', 'pattern', 'command', 'query', 'url', 'prompt']) {
+  // `description` precedes `prompt` so a Task (sub-agent) call summarises as its short description
+  // rather than its full delegated prompt.
+  for (const key of [
+    'file_path',
+    'path',
+    'pattern',
+    'command',
+    'query',
+    'url',
+    'description',
+    'prompt',
+  ]) {
     const value: unknown = record[key];
     if (typeof value === 'string' && value.length > 0) {
       return value.length > 120 ? `${value.slice(0, 117)}...` : value;

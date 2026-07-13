@@ -149,21 +149,66 @@
                   <p class="agent__working" aria-live="polite">Working…</p>
                 }
                 @default {
-                  <details
-                    class="agent__action"
-                    [class.agent__action--error]="row.item!.toolState === 'error'"
-                  >
-                    <summary class="agent__action-summary">
-                      <span class="agent__action-label">{{ row.label }}</span>
-                      <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-                    </summary>
-                    <div class="agent__action-detail">
-                      <span class="agent__action-tech">{{ row.tech }}</span>
-                      @if (row.item!.toolDetail) {
-                        <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
-                      }
-                    </div>
-                  </details>
+                  @if (row.lane; as lane) {
+                    <!-- A sub-agent lane: a live status line while the Task runs, and its nested
+                         activity revealed on expand. -->
+                    <details
+                      class="agent__action agent__lane"
+                      [class.agent__action--error]="row.item!.toolState === 'error'"
+                    >
+                      <summary class="agent__action-summary">
+                        <span class="agent__action-label">{{ lane.title }}</span>
+                        <span class="agent__lane-status">· {{ lane.status }}</span>
+                        @if (lane.meta) {
+                          <span class="agent__lane-meta">{{ lane.meta }}</span>
+                        }
+                        <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                      </summary>
+                      <div class="agent__action-detail">
+                        @if (row.item!.toolDetail) {
+                          <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
+                        }
+                        @for (child of lane.children; track child.id) {
+                          @if (child.kind === 'tool') {
+                            <span
+                              class="agent__lane-tool"
+                              [class.agent__lane-tool--error]="child.state === 'error'"
+                            >
+                              <app-icon
+                                [icon]="child.state === 'running' ? Icon.SPINNER : Icon.ACTION"
+                                [class.agent__spin]="child.state === 'running'"
+                              />
+                              <span>{{ child.label }}</span>
+                              @if (child.detail) {
+                                <code class="agent__lane-tool-detail">{{ child.detail }}</code>
+                              }
+                            </span>
+                          } @else {
+                            <div
+                              class="agent__lane-text agent__markdown"
+                              [innerHTML]="child.text! | markdown"
+                            ></div>
+                          }
+                        }
+                      </div>
+                    </details>
+                  } @else {
+                    <details
+                      class="agent__action"
+                      [class.agent__action--error]="row.item!.toolState === 'error'"
+                    >
+                      <summary class="agent__action-summary">
+                        <span class="agent__action-label">{{ row.label }}</span>
+                        <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                      </summary>
+                      <div class="agent__action-detail">
+                        <span class="agent__action-tech">{{ row.tech }}</span>
+                        @if (row.item!.toolDetail) {
+                          <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
+                        }
+                      </div>
+                    </details>
+                  }
                 }
               }
             </div>

@@ -16,7 +16,12 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AgentContextRef, AgentSurface } from '@shared/api/ai-types';
-import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
+import {
+  Agent,
+  AgentItem,
+  AgentItemKind,
+  AgentToolState,
+} from '@shared/angular/services/agent/agent';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -112,6 +117,75 @@ interface TranscriptRow {
    * Gets the technical tool identifier revealed when a tool row is expanded (undefined otherwise).
    */
   readonly tech?: string;
+
+  /**
+   * Gets the sub-agent lane this tool row renders as (a Task spawning nested work), or undefined for
+   * an ordinary tool row.
+   */
+  readonly lane?: LaneInfo;
+}
+
+/**
+ * A sub-agent's transcript entry prepared for rendering inside its lane: a tool call (label, input
+ * summary, state) or a block of assistant text.
+ */
+interface LaneChild {
+  /**
+   * Gets the backing item's stable identity for tracking.
+   */
+  readonly id: string;
+
+  /**
+   * Gets whether this entry is a tool call or assistant text.
+   */
+  readonly kind: 'tool' | 'assistant';
+
+  /**
+   * Gets the friendly label of a tool entry.
+   */
+  readonly label?: string;
+
+  /**
+   * Gets the one-line input summary of a tool entry.
+   */
+  readonly detail?: string;
+
+  /**
+   * Gets the lifecycle state of a tool entry.
+   */
+  readonly state?: AgentToolState;
+
+  /**
+   * Gets the text of an assistant entry.
+   */
+  readonly text?: string;
+}
+
+/**
+ * A sub-agent (Task) tool row prepared for rendering as a collapsible lane: a live status line while
+ * it runs, a tools/tokens meta readout, and the nested activity revealed on expand.
+ */
+interface LaneInfo {
+  /**
+   * Gets the lane's title: the sub-agent's type (e.g. `Explore`), or a generic fallback.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the live status line: the friendly label of the tool currently running, or the settled
+   * done/failed state.
+   */
+  readonly status: string;
+
+  /**
+   * Gets the tools/tokens meta readout (for example, `3 tools, 12.1k tokens`), or an empty string.
+   */
+  readonly meta: string;
+
+  /**
+   * Gets the sub-agent's own activity, rendered inside the expanded lane.
+   */
+  readonly children: readonly LaneChild[];
 }
 
 /**
@@ -358,9 +432,20 @@ export class AgentChat {
     (): readonly TranscriptRow[] => {
       const items: readonly AgentItem[] = this.items();
       const showWorking: boolean = this.isRunning() && !this.awaitingDecision();
+      // Sub-agent items nest under their spawning Task tool row (its lane) rather than the main rail.
+      const children: Map<string, AgentItem[]> = new Map<string, AgentItem[]>();
+      for (const item of items) {
+        if (item.parentToolId !== undefined) {
+          const list: AgentItem[] = children.get(item.parentToolId) ?? [];
+          list.push(item);
+          children.set(item.parentToolId, list);
+        }
+      }
       // Reasoning ('thinking') is streamed but not shown in the transcript.
       const base: RailEntry[] = items
-        .filter((item: AgentItem): boolean => item.kind !== 'thinking')
+        .filter(
+          (item: AgentItem): boolean => item.kind !== 'thinking' && item.parentToolId === undefined,
+        )
         .map((item: AgentItem): RailEntry => ({ item, kind: item.kind }));
       const sequence: readonly RailEntry[] = showWorking
         ? [...base, { item: null, kind: 'working' }]
@@ -392,6 +477,10 @@ export class AgentChat {
         const timeline: boolean = onRail(row.kind);
         const previous: RailEntry | undefined = sequence[index - 1];
         const next: RailEntry | undefined = sequence[index + 1];
+        const lane: LaneInfo | undefined =
+          row.kind === 'tool' && row.item !== null
+            ? this.laneFor(row.item, children.get(row.item.toolId ?? ''))
+            : undefined;
         return {
           id: row.item?.id ?? 'working',
           kind: row.kind,
@@ -403,10 +492,64 @@ export class AgentChat {
           nodeSpin: row.kind === 'working' || running(row),
           label: row.kind === 'tool' ? friendlyToolLabel(row.item?.toolName) : undefined,
           tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
+          lane,
         };
       });
     },
   );
+
+  /**
+   * Prepares a Task tool item for rendering as a sub-agent lane, or returns undefined for an
+   * ordinary tool row (no sub-agent type and no nested activity).
+   * @param item The tool item.
+   * @param kids The items attributed to this tool use, or undefined for none.
+   * @returns Returns the lane, or undefined.
+   */
+  private laneFor(item: AgentItem, kids: readonly AgentItem[] | undefined): LaneInfo | undefined {
+    const nested: readonly AgentItem[] = (kids ?? []).filter(
+      (kid: AgentItem): boolean => kid.kind !== 'thinking',
+    );
+    if (item.agentType === undefined && nested.length === 0) {
+      return undefined;
+    }
+    const tools: readonly AgentItem[] = nested.filter(
+      (kid: AgentItem): boolean => kid.kind === 'tool',
+    );
+    const active: AgentItem | undefined = [...tools]
+      .reverse()
+      .find((tool: AgentItem): boolean => tool.toolState === 'running');
+    const status: string =
+      item.toolState === 'running'
+        ? `${active !== undefined ? friendlyToolLabel(active.toolName) : 'Working'}…`
+        : item.toolState === 'error'
+          ? 'failed'
+          : 'done';
+    const meta: string[] = [];
+    if (tools.length > 0) {
+      meta.push(tools.length === 1 ? '1 tool' : `${tools.length} tools`);
+    }
+    const tokens: number = item.agentTokens ?? 0;
+    if (tokens > 0) {
+      meta.push(`${formatTokens(tokens)} tokens`);
+    }
+    return {
+      title: item.agentType ?? 'Sub-agent',
+      status,
+      meta: meta.join(', '),
+      children: nested.map(
+        (kid: AgentItem): LaneChild =>
+          kid.kind === 'tool'
+            ? {
+                id: kid.id,
+                kind: 'tool',
+                label: friendlyToolLabel(kid.toolName),
+                detail: kid.toolDetail,
+                state: kid.toolState,
+              }
+            : { id: kid.id, kind: 'assistant', text: kid.text },
+      ),
+    };
+  }
 
   /**
    * Initializes a new instance of the {@link AgentChat} class, lighting the hosting tab's attention dot
