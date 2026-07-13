@@ -185,6 +185,19 @@ export class Agent {
   private compactionText: string = '';
 
   /**
+   * Holds the tokens the conversation currently occupies in the context window: the latest turn's
+   * input (the whole re-sent conversation) plus its output. Zero for a fresh conversation and after a
+   * compaction, refilling on the next turn.
+   */
+  private readonly contextTokensState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Accumulates the conversation's cost in US dollars across its turns, when the provider reports it
+   * (the Claude Agent SDK does; the AI-SDK providers do not, leaving this at zero).
+   */
+  private readonly costUsdState: WritableSignal<number> = signal<number>(0);
+
+  /**
    * Gets the ordered transcript.
    */
   public readonly items: Signal<readonly AgentItem[]> = this.log.asReadonly();
@@ -210,6 +223,17 @@ export class Agent {
    * conversation. Persisted with the conversation so its memory survives reopening and restart.
    */
   public readonly sessionId: Signal<string | null> = this.sessionIdState.asReadonly();
+
+  /**
+   * Gets the tokens the conversation currently occupies in the context window (the latest turn's
+   * input plus output). Zero for a fresh conversation and immediately after a compaction.
+   */
+  public readonly contextTokens: Signal<number> = this.contextTokensState.asReadonly();
+
+  /**
+   * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.
+   */
+  public readonly costUsd: Signal<number> = this.costUsdState.asReadonly();
 
   /**
    * Gets a value indicating whether the agent is waiting on a permission decision.
@@ -342,6 +366,8 @@ export class Agent {
     this.busy.set(false);
     this.contextPathsState.set([]);
     this.sessionIdState.set(null);
+    this.contextTokensState.set(0);
+    this.costUsdState.set(0);
   }
 
   /**
@@ -357,6 +383,9 @@ export class Agent {
     this.busy.set(false);
     this.contextPathsState.set([]);
     this.sessionIdState.set(sessionId);
+    // Usage is not persisted with the conversation; it refills from the next turn's reported counts.
+    this.contextTokensState.set(0);
+    this.costUsdState.set(0);
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
       const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
@@ -436,6 +465,17 @@ export class Agent {
         // context. A compaction run's session is ignored above (its events never reach here).
         this.sessionIdState.set(event.sessionId);
         break;
+      case 'usage': {
+        // The turn's input already folds in the re-sent conversation, so it stands as the new context
+        // size rather than adding to a running total. Cost, in contrast, accumulates. Compaction-run
+        // usage never reaches here (handled and returned above), so the meter is not spiked by it.
+        this.contextTokensState.set(event.inputTokens + event.outputTokens);
+        const cost: number | null = event.costUsd;
+        if (cost !== null) {
+          this.costUsdState.update((total: number): number => total + cost);
+        }
+        break;
+      }
       case 'status':
         this.onStatus(event.state, event.detail);
         break;
@@ -498,6 +538,9 @@ export class Agent {
           text: `**Conversation summary**\n\n${summary}`,
         },
       ]);
+      // The transcript is now just the compact summary; the context readout drops to zero and refills
+      // from the next turn's reported usage.
+      this.contextTokensState.set(0);
     }
   }
 

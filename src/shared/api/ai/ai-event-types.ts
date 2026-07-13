@@ -160,6 +160,36 @@ export interface AiStatusEvent extends AiEventBase {
 }
 
 /**
+ * Reports the token usage of a completed model turn, so the renderer can show a running context-size
+ * and cost readout. Emitted once per turn by providers that report usage (all three do); the counts
+ * are for that turn (its full input — including any cached/re-sent context — and its output), so the
+ * latest turn's input plus output approximates the size the conversation now occupies in the context
+ * window.
+ */
+export interface AiUsageEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'usage';
+
+  /**
+   * Gets the turn's total input tokens, including any cached or re-sent conversation context.
+   */
+  readonly inputTokens: number;
+
+  /**
+   * Gets the turn's output tokens.
+   */
+  readonly outputTokens: number;
+
+  /**
+   * Gets the turn's cost in US dollars, when the provider reports it (the Claude Agent SDK does; the
+   * AI-SDK providers do not), or null when unknown.
+   */
+  readonly costUsd: number | null;
+}
+
+/**
  * A streamed event from a running agent turn. Both providers parse their model output into this
  * provider-agnostic protocol.
  */
@@ -170,4 +200,5 @@ export type AiEvent =
   | AiToolEndEvent
   | AiPermissionEvent
   | AiSessionEvent
-  | AiStatusEvent;
+  | AiStatusEvent
+  | AiUsageEvent;

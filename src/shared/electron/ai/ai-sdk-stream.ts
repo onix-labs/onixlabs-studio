@@ -63,6 +63,16 @@ export interface StreamPart {
   readonly errorText?: string;
 
   /**
+   * Gets the cumulative token usage carried by a `finish` part. Fields are optional because a model
+   * back-end may not report every count.
+   */
+  readonly totalUsage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+    readonly totalTokens?: number;
+  };
+
+  /**
    * Gets the error carried by an `error` part. The SDK surfaces request/stream failures here rather
    * than throwing, so this must be inspected — see {@link consumeAgentStream}.
    */
@@ -413,6 +423,21 @@ export function mapStreamPart(part: StreamPart, context: AgentRunContext): void 
         detail: part.errorText ?? 'failed',
       });
       break;
+    case 'finish': {
+      // The terminal `finish` part carries the run's cumulative usage; the AI-SDK providers do not
+      // report a cost, so it is left unknown.
+      const usage: StreamPart['totalUsage'] = part.totalUsage;
+      if (usage !== undefined) {
+        context.emit({
+          requestId,
+          kind: 'usage',
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          costUsd: null,
+        });
+      }
+      break;
+    }
     default:
       break;
   }

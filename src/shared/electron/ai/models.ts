@@ -8,9 +8,9 @@ import type { AiModelInfo } from '@shared/api/ai-types';
  * The Anthropic models a turn can run with, in display order (most to least capable).
  */
 export const ANTHROPIC_MODELS: readonly AiModelInfo[] = [
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 1_000_000 },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', contextWindow: 200_000 },
 ];
 
 /**
@@ -26,9 +26,9 @@ export const DEFAULT_ANTHROPIC_MODEL: string = 'claude-opus-4-8';
  * The Ollama models a turn can run with, in display order (most to least capable).
  */
 export const OLLAMA_MODELS: readonly AiModelInfo[] = [
-  { id: 'qwen2.5-coder:14b', label: 'Qwen2.5 Coder 14B' },
-  { id: 'qwen2.5-coder:7b', label: 'Qwen2.5 Coder 7B' },
-  { id: 'qwen3:8b', label: 'Qwen3 8B' },
+  { id: 'qwen2.5-coder:14b', label: 'Qwen2.5 Coder 14B', contextWindow: 32_768 },
+  { id: 'qwen2.5-coder:7b', label: 'Qwen2.5 Coder 7B', contextWindow: 32_768 },
+  { id: 'qwen3:8b', label: 'Qwen3 8B', contextWindow: 40_960 },
 ];
 
 /**

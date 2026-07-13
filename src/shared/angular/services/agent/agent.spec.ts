@@ -21,8 +21,8 @@ const PROVIDERS: readonly AiProviderInfo[] = [
     available: true,
     detail: 'ok',
     models: [
-      { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+      { id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 },
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 1_000_000 },
     ],
     defaultModelId: 'claude-opus-4-8',
   },
@@ -298,5 +298,60 @@ describe('Agent', () => {
 
     expect(lastItem()?.kind).toBe('user');
     expect(lastItem()?.id).toBe('item-5');
+  });
+
+  it('usage_whenReported_setsContextTokensToInputPlusOutputAndAccumulatesCost', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1200, outputTokens: 300, costUsd: 0.02 });
+
+    expect(agent.contextTokens()).toBe(1500);
+    expect(agent.costUsd()).toBeCloseTo(0.02, 5);
+  });
+
+  it('usage_whenReportedAcrossTurns_replacesContextButAccumulatesCost', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1000, outputTokens: 200, costUsd: 0.01 });
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 4000, outputTokens: 500, costUsd: 0.03 });
+
+    // The latest turn's input already re-sends the whole context, so context is replaced, not summed.
+    expect(agent.contextTokens()).toBe(4500);
+    // Cost is real spend and accumulates.
+    expect(agent.costUsd()).toBeCloseTo(0.04, 5);
+  });
+
+  it('usage_whenCostIsNull_leavesCostUnchanged', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 800, outputTokens: 100, costUsd: null });
+
+    expect(agent.contextTokens()).toBe(900);
+    expect(agent.costUsd()).toBe(0);
+  });
+
+  it('clear_whenCalled_resetsTheContextAndCostReadout', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1000, outputTokens: 200, costUsd: 0.05 });
+
+    agent.clear();
+
+    expect(agent.contextTokens()).toBe(0);
+    expect(agent.costUsd()).toBe(0);
+  });
+
+  it('compact_whenSuccessful_dropsTheContextReadoutToZero', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 5000, outputTokens: 500, costUsd: 0.05 });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.compact();
+    // A compaction run's own usage must not spike the meter; it is ignored while compacting.
+    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 5500, outputTokens: 400, costUsd: 0.02 });
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Summary of the chat.' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(agent.contextTokens()).toBe(0);
+    // The summary replaced the transcript, so the meter refills from the next real turn.
+    expect(agent.items()).toHaveLength(1);
   });
 });

@@ -702,7 +702,49 @@ export class ClaudeAgentProvider implements AgentProvider {
       this.handleAssistantBlocks(message.message.content as readonly ContentBlock[], context);
     } else if (message.type === 'user') {
       this.handleToolResults(message, context);
+    } else if (message.type === 'result') {
+      this.handleResult(message, context);
     }
+  }
+
+  /**
+   * Emits a usage event from the terminal `result` message, which carries the turn's token counts and
+   * cost. The input count folds in the cached and cache-creation tokens (the whole context the turn
+   * processed), so the renderer's context readout reflects the re-sent conversation, not just the new
+   * prompt.
+   * @param message The result SDK message.
+   * @param context The run context to emit through.
+   */
+  private handleResult(message: SDKMessage, context: AgentRunContext): void {
+    const result: {
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number;
+        cache_creation_input_tokens?: number;
+      };
+      total_cost_usd?: number;
+    } = message as never;
+    const usage: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    } | undefined = result.usage;
+    if (usage === undefined) {
+      return;
+    }
+    const inputTokens: number =
+      (usage.input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0);
+    context.emit({
+      requestId: context.requestId,
+      kind: 'usage',
+      inputTokens,
+      outputTokens: usage.output_tokens ?? 0,
+      costUsd: typeof result.total_cost_usd === 'number' ? result.total_cost_usd : null,
+    });
   }
 
   /**

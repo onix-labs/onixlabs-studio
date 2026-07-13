@@ -22,6 +22,8 @@ describe('AgentChat', () => {
       items: signal<readonly AgentItem[]>([]),
       isRunning: signal<boolean>(false),
       awaitingDecision: signal<boolean>(false),
+      contextTokens: signal<number>(0),
+      costUsd: signal<number>(0),
       contextPaths,
       send: (text: string): void => void sent.push(text),
       stop: (): void => void (stopped += 1),

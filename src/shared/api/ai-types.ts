@@ -38,6 +38,7 @@ export type {
   AiToolEndEvent,
   AiPermissionEvent,
   AiStatusEvent,
+  AiUsageEvent,
   AiEvent,
 } from './ai/ai-event-types';
 export type { AiBridgeRequest, AiBridgeReply, AiPermissionReply } from './ai/ai-bridge-types';

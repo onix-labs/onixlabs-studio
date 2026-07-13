@@ -17,6 +17,7 @@ import {
 } from '@angular/core';
 import type { AgentContextRef, AgentSurface } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
+import { formatTokens } from '@shared/angular/services/agent/token-format';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
@@ -247,6 +248,15 @@ export class AgentChat {
       .split(/\s+/)
       .filter((word: string): boolean => word.length > 0).length;
     return words === 1 ? '1 word' : `${words} words`;
+  });
+
+  /**
+   * Gets the compact context-token figure for the composer hint (for example, `12.3k`), or an empty
+   * string before the conversation has reported any usage.
+   */
+  protected readonly contextLabel: Signal<string> = computed((): string => {
+    const tokens: number = this.agent.contextTokens();
+    return tokens > 0 ? formatTokens(tokens) : '';
   });
 
   /**
