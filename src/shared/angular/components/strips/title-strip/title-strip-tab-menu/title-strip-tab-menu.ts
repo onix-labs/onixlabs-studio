@@ -235,10 +235,10 @@ export class TitleStripTabMenu {
   }
 
   /**
-   * Runs an answer after the current click cycle completes. Settling immediately would remove the
-   * clicked button from the DOM mid-click, which the overlay's outside-click detection reads as a
-   * click outside the menu and dismisses it; deferring a tick keeps the menu open until the
-   * self-dismiss effect decides.
+   * Runs an answer after the current click cycle completes, as one of two defences that keep the
+   * menu open while requests remain (a CdkMenu closes itself when it loses focus, and an answered
+   * entry's removal would otherwise take the focus down with it). The other is on the buttons
+   * themselves: pointerdown is prevented so they never take focus in the first place.
    * @param respond The answer to apply.
    */
   private settle(respond: () => void): void {

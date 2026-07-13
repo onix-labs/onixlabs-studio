@@ -44,6 +44,7 @@
             type="button"
             class="title-strip-tab-menu__close"
             [attr.aria-label]="'Close ' + tab.title"
+            (pointerdown)="$event.preventDefault()"
             (click)="onClose(tab); $event.stopPropagation()"
           >
             <app-icon [icon]="Icon.CLOSE" />
@@ -65,6 +66,7 @@
                   <button
                     type="button"
                     class="title-strip-tab-menu__request-btn"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onPermission(entry, true); $event.stopPropagation()"
                   >
                     Allow
@@ -72,6 +74,7 @@
                   <button
                     type="button"
                     class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onPermission(entry, false); $event.stopPropagation()"
                   >
                     Deny
@@ -81,6 +84,7 @@
                   <button
                     type="button"
                     class="title-strip-tab-menu__request-btn"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
                   >
                     Yes
@@ -88,6 +92,7 @@
                   <button
                     type="button"
                     class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
                   >
                     No
@@ -99,6 +104,7 @@
                       type="button"
                       class="title-strip-tab-menu__request-btn"
                       [title]="choice.description ?? ''"
+                      (pointerdown)="$event.preventDefault()"
                       (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
                     >
                       {{ choice.label }}
@@ -107,6 +113,7 @@
                   <button
                     type="button"
                     class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onAnswer(entry, null); $event.stopPropagation()"
                   >
                     Skip
@@ -138,6 +145,7 @@
                 <button
                   type="button"
                   class="title-strip-tab-menu__request-btn"
+                  (pointerdown)="$event.preventDefault()"
                   (click)="onPermission(entry, true); $event.stopPropagation()"
                 >
                   Allow
@@ -145,6 +153,7 @@
                 <button
                   type="button"
                   class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
                   (click)="onPermission(entry, false); $event.stopPropagation()"
                 >
                   Deny
@@ -154,6 +163,7 @@
                 <button
                   type="button"
                   class="title-strip-tab-menu__request-btn"
+                  (pointerdown)="$event.preventDefault()"
                   (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
                 >
                   Yes
@@ -161,6 +171,7 @@
                 <button
                   type="button"
                   class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
                   (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
                 >
                   No
@@ -172,6 +183,7 @@
                     type="button"
                     class="title-strip-tab-menu__request-btn"
                     [title]="choice.description ?? ''"
+                    (pointerdown)="$event.preventDefault()"
                     (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
                   >
                     {{ choice.label }}
@@ -180,6 +192,7 @@
                 <button
                   type="button"
                   class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  (pointerdown)="$event.preventDefault()"
                   (click)="onAnswer(entry, null); $event.stopPropagation()"
                 >
                   Skip
