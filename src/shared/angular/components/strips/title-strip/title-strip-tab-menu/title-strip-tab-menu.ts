@@ -2,6 +2,10 @@ import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import {
+  AgentRequestEntry,
+  AgentRequests,
+} from '@shared/angular/services/agent-requests/agent-requests';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -63,6 +67,11 @@ export class TitleStripTabMenu {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
+   * Holds the app-wide agent-requests registry the menu surfaces.
+   */
+  private readonly agentRequests: AgentRequests = inject(AgentRequests);
+
+  /**
    * Holds the tab closer that resolves unsaved changes before removing a tab.
    */
   private readonly tabCloser: TabCloser = inject(TabCloser);
@@ -90,6 +99,88 @@ export class TitleStripTabMenu {
    * Gets the position that opens the menu below the trigger with their right edges aligned.
    */
   protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['down-end'];
+
+  /**
+   * Gets the pending agent requests surfaced at the top of the menu.
+   */
+  protected readonly requests: Signal<readonly AgentRequestEntry[]> = this.agentRequests.entries;
+
+  /**
+   * Gets the number of pending agent requests, flipping the trigger from chevron to bell.
+   */
+  protected readonly requestCount: Signal<number> = this.agentRequests.count;
+
+  /**
+   * Gets the identifiers of the tabs with pending requests, marked with a bell in the tab list.
+   */
+  protected readonly requestTabIds: Signal<ReadonlySet<string>> = this.agentRequests.tabIds;
+
+  /**
+   * Gets the trigger's tooltip: the open-tabs default, or the pending-request count.
+   */
+  protected readonly triggerTitle: Signal<string> = computed((): string => {
+    const count: number = this.requestCount();
+    return count === 0
+      ? 'Open tabs'
+      : count === 1
+        ? '1 agent request waiting'
+        : `${count} agent requests waiting`;
+  });
+
+  /**
+   * Renders the heading line of a request entry: what kind of request it is.
+   * @param entry The request entry.
+   * @returns Returns the heading.
+   */
+  protected requestHeading(entry: AgentRequestEntry): string {
+    switch (entry.item.kind) {
+      case 'permission':
+        return `Allow ${entry.item.permissionName ?? 'a tool'}?`;
+      case 'edit-decision':
+        return `Apply an edit to ${entry.item.decisionName ?? 'a document'}?`;
+      default:
+        return entry.item.inputQuestion ?? 'The agent has a question.';
+    }
+  }
+
+  /**
+   * Answers a permission request from the list (a one-off grant or denial; scoped remembering lives
+   * on the transcript card).
+   * @param entry The request entry.
+   * @param granted Whether the user granted permission.
+   */
+  protected onPermission(entry: AgentRequestEntry, granted: boolean): void {
+    entry.agent.respondPermission(entry.item, granted);
+  }
+
+  /**
+   * Answers an edit decision from the list.
+   * @param entry The request entry.
+   * @param choice The decision.
+   */
+  protected onEditDecision(entry: AgentRequestEntry, choice: 'yes' | 'yes-auto' | 'no'): void {
+    entry.agent.respondEditDecision(entry.item, choice);
+  }
+
+  /**
+   * Answers a question from the list with one of its suggested choices, or declines it.
+   * @param entry The request entry.
+   * @param answer The chosen answer, or null to decline.
+   */
+  protected onAnswer(entry: AgentRequestEntry, answer: string | null): void {
+    entry.agent.respondInput(entry.item, answer);
+  }
+
+  /**
+   * Activates the tab hosting a request, so a free-form question (or an edit's diff) can be handled
+   * in context.
+   * @param entry The request entry.
+   */
+  protected onOpenRequest(entry: AgentRequestEntry): void {
+    if (entry.tabId !== null) {
+      this.tabsService.activate(entry.tabId);
+    }
+  }
 
   /**
    * Activates the given tab, bringing it into view in the tab strip.

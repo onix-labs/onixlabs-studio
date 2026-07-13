@@ -112,6 +112,11 @@ export class Icon {
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
 
   /**
+   * The bell shown when agent requests are waiting for the user.
+   */
+  public static readonly BELL: Icon = new Icon('ph-duotone ph-bell-ringing');
+
+  /**
    * Gets the thin agent (brain) glyph shown large in the agent panel's empty state.
    */
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');
