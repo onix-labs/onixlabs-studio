@@ -211,6 +211,21 @@
                     <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
                   </button>
                 }
+                @case ('thinking') {
+                  <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
+                       the run produces it (the summary's word count ticks up as progress). -->
+                  <details class="agent__action agent__thinking">
+                    <summary class="agent__action-summary">
+                      <span class="agent__action-label">{{ row.label }}</span>
+                      <span class="agent__lane-meta">{{ row.meta }}</span>
+                      <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                    </summary>
+                    <div
+                      class="agent__thinking-body agent__markdown"
+                      [innerHTML]="row.item!.text | markdown"
+                    ></div>
+                  </details>
+                }
                 @case ('working') {
                   <p class="agent__working" aria-live="polite">Working…</p>
                 }

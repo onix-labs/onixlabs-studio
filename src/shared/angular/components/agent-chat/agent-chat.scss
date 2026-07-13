@@ -272,6 +272,24 @@ $agent-node-size: 1.75rem;
   letter-spacing: 0.02em;
 }
 
+// A thinking disclosure rides the action-chip chrome but reads quieter: a muted label with a live
+// word count, expanding to the reasoning itself as dim prose.
+.agent__thinking .agent__action-label {
+  color: var(--form-muted-foreground-color);
+
+  .agent__action-summary:hover & {
+    color: var(--accent-color);
+  }
+}
+
+.agent__thinking-body {
+  max-inline-size: 44rem;
+  margin-block-start: 0.4rem;
+  padding-inline-start: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
 .agent__action-cmd {
   padding: 0.4rem 0.6rem;
   color: var(--body-foreground-color);

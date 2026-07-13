@@ -122,6 +122,11 @@ export class Icon {
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');
 
   /**
+   * Gets the glyph marking the agent's reasoning (a settled thinking disclosure in the transcript).
+   */
+  public static readonly THINKING: Icon = new Icon('ph ph-brain');
+
+  /**
    * Gets the sparkle glyph marking an AI-assisted action (for example generating a commit message).
    */
   public static readonly SPARKLE: Icon = new Icon('ph ph-sparkle');
