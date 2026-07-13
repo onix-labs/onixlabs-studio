@@ -428,6 +428,22 @@
         pendingInput() ? 'Answer' : editing() ? 'Edit' : 'Message'
       }}</span>
       <span class="agent__composer-meta">
+        @if (isRunning()) {
+          <!-- Elapsed run time; the clock (like the wall-clock budget) pauses while the agent
+               waits on the user. -->
+          <span
+            class="agent__elapsed"
+            [class.agent__elapsed--paused]="awaitingDecision()"
+            [title]="
+              awaitingDecision()
+                ? 'Run clock paused while the agent waits for you'
+                : 'Elapsed run time'
+            "
+          >
+            {{ elapsedLabel() }}{{ awaitingDecision() ? ' ⏸' : '' }}
+          </span>
+          <span class="agent__composer-sep">|</span>
+        }
         <span class="agent__composer-words">{{ wordCount() }}</span>
         @if (hasContext()) {
           <span class="agent__composer-sep">|</span>

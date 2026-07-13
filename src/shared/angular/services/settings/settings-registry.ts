@@ -75,6 +75,7 @@ export interface SettingsValues {
   readonly 'ai.models': AiModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.tokenCap': number;
+  readonly 'ai.runTimeoutMinutes': number;
 }
 
 /**
@@ -515,6 +516,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The per-request token budget (0 for the provider default).',
         control: { kind: 'number', min: 0, max: 1_000_000, step: 1000, unit: 'tokens' },
         default: 0,
+      },
+      {
+        key: 'ai.runTimeoutMinutes',
+        title: 'Run time limit',
+        description:
+          'Aborts a run after this many minutes (0 for no limit). The clock pauses while the agent waits for your input.',
+        control: { kind: 'number', min: 0, max: 120, step: 1, unit: 'minutes' },
+        default: 10,
       },
     ],
   },

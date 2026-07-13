@@ -42,6 +42,7 @@ describe('Agent', () => {
     resumeSessionAt: string | null;
     forkSession: boolean;
     images: readonly AiImageRef[];
+    runTimeoutMs: number;
   }[];
   let abortCalls: string[];
   let steerCalls: { requestId: string; text: string }[];
@@ -96,6 +97,7 @@ describe('Agent', () => {
           resumeSessionAt: options.resumeSessionAt ?? null,
           forkSession: options.forkSession ?? false,
           images: options.images ?? [],
+          runTimeoutMs: options.runTimeoutMs ?? 0,
         });
         return 'run-1';
       },
@@ -156,6 +158,16 @@ describe('Agent', () => {
 
     expect(runCalls[0].permissionPosture).toBe('auto-edits');
     expect(runCalls[0].tokenCap).toBe(8000);
+    // The default wall-clock budget (10 minutes) rides every run in milliseconds.
+    expect(runCalls[0].runTimeoutMs).toBe(600_000);
+  });
+
+  it('send_whenTheRunTimeLimitIsChanged_forwardsItInMilliseconds', () => {
+    TestBed.inject(Settings).set('ai.runTimeoutMinutes', 2);
+
+    agent.send('hi');
+
+    expect(runCalls[0].runTimeoutMs).toBe(120_000);
   });
 
   it('send_whenBlank_isIgnored', () => {

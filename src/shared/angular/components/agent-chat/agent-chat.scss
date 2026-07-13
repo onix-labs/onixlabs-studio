@@ -641,6 +641,16 @@ $agent-node-size: 1.75rem;
   flex: 0 0 auto;
 }
 
+// The elapsed-run readout beside the token meter; dimmed while the clock is paused on a user prompt.
+.agent__elapsed {
+  flex: 0 0 auto;
+  color: var(--accent-color);
+
+  &--paused {
+    color: var(--form-muted-foreground-color);
+  }
+}
+
 .agent__context {
   display: flex;
   flex: 0 1 auto;

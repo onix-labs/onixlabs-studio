@@ -568,6 +568,28 @@ export class AgentChat {
   protected readonly imageHint: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the milliseconds the current run has been actively executing. Ticks only while the run is
+   * not blocked on the user, mirroring the wall-clock budget's pause semantics; reset when a run
+   * starts.
+   */
+  protected readonly elapsedMs: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the ticking interval behind {@link elapsedMs}, or null while no run executes.
+   */
+  private elapsedTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Gets the elapsed-run readout (`m:ss`), shown beside the token meter while a run executes.
+   */
+  protected readonly elapsedLabel: Signal<string> = computed((): string => {
+    const total: number = Math.floor(this.elapsedMs() / 1000);
+    const minutes: number = Math.floor(total / 60);
+    const seconds: number = total % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  });
+
+  /**
    * Holds the token the suggestion popup is anchored to, or null while no popup is open.
    */
   private readonly suggestToken: WritableSignal<SuggestToken | null> = signal<SuggestToken | null>(
@@ -955,6 +977,30 @@ export class AgentChat {
     effect((): void => {
       this.pendingInput();
       untracked((): void => this.selectedChoice.set(null));
+    });
+
+    // The elapsed indicator ticks while a run executes, pausing whenever the run is blocked on the
+    // user — mirroring the wall-clock budget's pause semantics.
+    effect((): void => {
+      const running: boolean = this.isRunning();
+      untracked((): void => {
+        if (running) {
+          this.elapsedMs.set(0);
+          this.elapsedTimer ??= setInterval((): void => {
+            if (!this.awaitingDecision()) {
+              this.elapsedMs.update((value: number): number => value + 1000);
+            }
+          }, 1000);
+        } else if (this.elapsedTimer !== null) {
+          clearInterval(this.elapsedTimer);
+          this.elapsedTimer = null;
+        }
+      });
+    });
+    inject(DestroyRef).onDestroy((): void => {
+      if (this.elapsedTimer !== null) {
+        clearInterval(this.elapsedTimer);
+      }
     });
 
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the

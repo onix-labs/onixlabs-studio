@@ -60,6 +60,43 @@ interface PendingPermission {
 }
 
 /**
+ * Caps a run's wall-clock budget at two hours, bounding an untrusted request.
+ */
+const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
+
+/**
+ * The wall-clock budget of a run: the time remaining, the armed timer, and the pause depth (several
+ * user prompts can overlap when parallel sub-agents ask concurrently — the clock resumes when the
+ * last one settles).
+ */
+interface RunClock {
+  /**
+   * Gets the configured limit (for the timeout message).
+   */
+  readonly limitMs: number;
+
+  /**
+   * The budget left when the clock was last (re)armed.
+   */
+  remainingMs: number;
+
+  /**
+   * When the running timer was armed (epoch ms), or 0 while paused.
+   */
+  armedAt: number;
+
+  /**
+   * The armed timeout, or null while paused.
+   */
+  timer: NodeJS.Timeout | null;
+
+  /**
+   * How many user prompts currently hold the clock paused.
+   */
+  pauseDepth: number;
+}
+
+/**
  * Coordinates the agent subsystem in the main process: authentication (delegated to
  * {@link AiAuthManager}), a registry of {@link AgentProvider}s behind one seam, and the run/abort
  * lifecycle that streams provider-agnostic events to the renderer. Mirrors the other IPC managers
@@ -147,6 +184,17 @@ export class AiManager {
   >();
 
   /**
+   * Holds the wall-clock budgets of in-flight runs that have one, keyed by request id.
+   */
+  private readonly clocks: Map<string, RunClock> = new Map<string, RunClock>();
+
+  /**
+   * Holds the runs whose wall-clock budget expired, so their abort lands as a structured timeout
+   * error rather than a plain stop.
+   */
+  private readonly timedOut: Set<string> = new Set<string>();
+
+  /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    */
@@ -214,6 +262,9 @@ export class AiManager {
       controller.abort();
     }
     this.runs.clear();
+    for (const requestId of [...this.clocks.keys()]) {
+      this.dropClock(requestId);
+    }
   }
 
   /**
@@ -287,6 +338,15 @@ export class AiManager {
       : [];
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
+    // Arm the wall-clock budget when one is set; expiry aborts through the ordinary abort path and
+    // finish() turns the stop into a structured timeout error.
+    const runTimeoutMs: number =
+      typeof request.runTimeoutMs === 'number' && Number.isFinite(request.runTimeoutMs)
+        ? Math.min(Math.max(Math.floor(request.runTimeoutMs), 0), MAX_RUN_TIMEOUT_MS)
+        : 0;
+    if (runTimeoutMs > 0) {
+      this.startClock(request.requestId, runTimeoutMs, controller);
+    }
     const context: AgentRunContext = {
       requestId: request.requestId,
       prompt: request.prompt,
@@ -368,7 +428,103 @@ export class AiManager {
   private finish(requestId: string, state: AiRunState, detail: string): void {
     this.runs.delete(requestId);
     this.steers.delete(requestId);
+    const clock: RunClock | undefined = this.clocks.get(requestId);
+    this.dropClock(requestId);
+    // An expired budget aborted the run; land it as a structured timeout error so the renderer's
+    // error card (with its retry) explains what happened.
+    if (this.timedOut.delete(requestId)) {
+      const minutes: number = clock === undefined ? 0 : Math.round(clock.limitMs / 60_000);
+      this.emit({
+        requestId,
+        kind: 'status',
+        state: 'error',
+        detail: `The run exceeded its ${minutes === 1 ? '1-minute' : `${minutes}-minute`} time limit and was stopped.`,
+      });
+      return;
+    }
     this.emit({ requestId, kind: 'status', state, detail });
+  }
+
+  /**
+   * Arms a run's wall-clock budget; expiry marks the run timed out and aborts it.
+   * @param requestId The run's identifier.
+   * @param limitMs The budget in milliseconds.
+   * @param controller The run's abort controller.
+   */
+  private startClock(requestId: string, limitMs: number, controller: AbortController): void {
+    const clock: RunClock = {
+      limitMs,
+      remainingMs: limitMs,
+      armedAt: 0,
+      timer: null,
+      pauseDepth: 0,
+    };
+    this.clocks.set(requestId, clock);
+    this.armClock(requestId, clock, controller);
+  }
+
+  /**
+   * Arms (or re-arms) a clock's timer for its remaining budget.
+   * @param requestId The run's identifier.
+   * @param clock The clock to arm.
+   * @param controller The run's abort controller.
+   */
+  private armClock(requestId: string, clock: RunClock, controller: AbortController): void {
+    clock.armedAt = Date.now();
+    clock.timer = setTimeout((): void => {
+      this.timedOut.add(requestId);
+      controller.abort();
+    }, clock.remainingMs);
+  }
+
+  /**
+   * Pauses a run's clock while a user prompt is open (nested prompts stack; the clock resumes when
+   * the last one settles). A run without a budget is unaffected.
+   * @param requestId The run's identifier.
+   */
+  private pauseClock(requestId: string): void {
+    const clock: RunClock | undefined = this.clocks.get(requestId);
+    if (clock === undefined) {
+      return;
+    }
+    clock.pauseDepth += 1;
+    if (clock.pauseDepth === 1 && clock.timer !== null) {
+      clearTimeout(clock.timer);
+      clock.timer = null;
+      clock.remainingMs = Math.max(0, clock.remainingMs - (Date.now() - clock.armedAt));
+      clock.armedAt = 0;
+    }
+  }
+
+  /**
+   * Resumes a run's clock once a user prompt settles (the last of any overlapping prompts re-arms
+   * the timer for the remaining budget).
+   * @param requestId The run's identifier.
+   */
+  private resumeClock(requestId: string): void {
+    const clock: RunClock | undefined = this.clocks.get(requestId);
+    if (clock === undefined || clock.pauseDepth === 0) {
+      return;
+    }
+    clock.pauseDepth -= 1;
+    if (clock.pauseDepth === 0) {
+      const controller: AbortController | undefined = this.runs.get(requestId);
+      if (controller !== undefined) {
+        this.armClock(requestId, clock, controller);
+      }
+    }
+  }
+
+  /**
+   * Drops a run's clock, clearing any armed timer.
+   * @param requestId The run's identifier.
+   */
+  private dropClock(requestId: string): void {
+    const clock: RunClock | undefined = this.clocks.get(requestId);
+    if (clock?.timer != null) {
+      clearTimeout(clock.timer);
+    }
+    this.clocks.delete(requestId);
   }
 
   /**
@@ -410,9 +566,12 @@ export class AiManager {
       return Promise.resolve(true);
     }
     const permissionId: string = randomUUID();
+    // The run is blocked on the user: its wall clock pauses until the prompt settles.
+    this.pauseClock(requestId);
     return new Promise<boolean>((resolve: (granted: boolean) => void): void => {
       const settle: (granted: boolean) => void = (granted: boolean): void => {
         if (this.permissions.delete(permissionId)) {
+          this.resumeClock(requestId);
           resolve(granted);
         }
       };
@@ -469,9 +628,12 @@ export class AiManager {
     choices: readonly AiInputChoice[],
   ): Promise<string | null> {
     const inputId: string = randomUUID();
+    // The run is blocked on the user: its wall clock pauses until the question settles.
+    this.pauseClock(requestId);
     return new Promise<string | null>((resolve: (answer: string | null) => void): void => {
       const settle: (answer: string | null) => void = (answer: string | null): void => {
         if (this.inputs.delete(inputId)) {
+          this.resumeClock(requestId);
           resolve(answer);
         }
       };
@@ -515,12 +677,15 @@ export class AiManager {
       return Promise.resolve('yes');
     }
     const decisionId: string = randomUUID();
+    // The run is blocked on the user: its wall clock pauses until the decision settles.
+    this.pauseClock(requestId);
     return new Promise<EditDecisionOutcome>(
       (resolve: (choice: EditDecisionOutcome) => void): void => {
         const settle: (choice: EditDecisionOutcome) => void = (
           choice: EditDecisionOutcome,
         ): void => {
           if (this.editDecisions.delete(decisionId)) {
+            this.resumeClock(requestId);
             resolve(choice);
           }
         };
@@ -641,7 +806,8 @@ export class AiManager {
         record['surface'] === undefined) &&
       (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
       (record['contextPaths'] === undefined || Array.isArray(record['contextPaths'])) &&
-      (record['images'] === undefined || Array.isArray(record['images']))
+      (record['images'] === undefined || Array.isArray(record['images'])) &&
+      (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number')
     );
   }
 

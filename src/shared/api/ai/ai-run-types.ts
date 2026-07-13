@@ -107,6 +107,12 @@ export interface AiRunRequest {
   readonly tokenCap: number;
 
   /**
+   * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0 for no limit. The
+   * clock pauses while the run is blocked on the user (a permission, question, or edit decision).
+   */
+  readonly runTimeoutMs?: number;
+
+  /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
    * on that tab's editor; null when the run has no owning editor (the standalone agent tab).
    */

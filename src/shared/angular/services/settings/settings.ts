@@ -306,6 +306,12 @@ export interface AiSettings {
    * Gets the per-request token budget, or 0 for the provider default (no cap).
    */
   readonly tokenCap: number;
+
+  /**
+   * Gets the wall-clock limit a run is aborted after, in minutes, or 0 for no limit. The clock
+   * pauses while the run waits on the user (a permission, question, or edit decision).
+   */
+  readonly runTimeoutMinutes: number;
 }
 
 /**
@@ -547,6 +553,7 @@ export class Settings {
       models: this.read('ai.models'),
       permissionPosture: this.read('ai.permissionPosture'),
       tokenCap: this.read('ai.tokenCap'),
+      runTimeoutMinutes: this.read('ai.runTimeoutMinutes'),
     }),
   );
 
@@ -565,6 +572,11 @@ export class Settings {
    * Gets the per-request token cap (0 for no cap).
    */
   public readonly aiTokenCap: Signal<number> = this.value('ai.tokenCap');
+
+  /**
+   * Gets the wall-clock run limit in minutes (0 for no limit).
+   */
+  public readonly aiRunTimeoutMinutes: Signal<number> = this.value('ai.runTimeoutMinutes');
 
   /**
    * Initialises the service, persisting the override map to the store whenever it changes.

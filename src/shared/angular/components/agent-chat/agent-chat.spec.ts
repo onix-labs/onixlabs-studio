@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 
 import type {
   AgentContextRef,
@@ -28,6 +29,7 @@ describe('AgentChat', () => {
   let inputAnswers: { id: string; answer: string | null }[];
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
+  let awaiting: WritableSignal<boolean>;
   let retried: string[];
   let queued: WritableSignal<readonly AgentQueuedMessage[]>;
   let removedQueued: string[];
@@ -73,11 +75,12 @@ describe('AgentChat', () => {
     inputAnswers = [];
     items = signal<readonly AgentItem[]>([]);
     running = signal<boolean>(false);
+    awaiting = signal<boolean>(false);
     pendingContextTokens = signal<number>(0);
     const agentStub: Partial<Agent> = {
       items,
       isRunning: running,
-      awaitingDecision: signal<boolean>(false),
+      awaitingDecision: awaiting,
       pendingInput,
       contextTokens: signal<number>(0),
       contextWindow: signal<number>(0),
@@ -806,6 +809,41 @@ describe('AgentChat', () => {
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
     expect(host.querySelector('.agent__suggest')).toBeNull();
+  });
+
+  it('elapsed_whileRunning_ticksAndPausesWhileAwaitingTheUser', () => {
+    vi.useFakeTimers();
+    try {
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      running.set(true);
+      fixture.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toBe('0:00');
+
+      vi.advanceTimersByTime(3000);
+      fixture.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toBe('0:03');
+
+      // Blocked on the user: the clock holds and the readout dims.
+      awaiting.set(true);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(5000);
+      fixture.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toContain('0:03');
+      expect(host.querySelector('.agent__elapsed--paused')).not.toBeNull();
+
+      // Answered: the clock resumes.
+      awaiting.set(false);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(2000);
+      fixture.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toBe('0:05');
+
+      running.set(false);
+      fixture.detectChanges();
+      expect(host.querySelector('.agent__elapsed')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {
