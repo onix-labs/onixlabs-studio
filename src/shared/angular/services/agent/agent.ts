@@ -797,6 +797,7 @@ export class Agent {
       model: this.engine.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       tokenCap: this.settings.aiTokenCap(),
+      runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       owningTabId,
       surface,
       mode: this.modeState(),
@@ -880,6 +881,7 @@ export class Agent {
         model: this.engine.model(),
         permissionPosture: 'prompt',
         tokenCap: this.settings.aiTokenCap(),
+        runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
         mode: 'chat',
       },
     );

@@ -48,6 +48,11 @@ export interface AiRunOptions {
   readonly tokenCap?: number;
 
   /**
+   * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0/omitted for none.
+   */
+  readonly runTimeoutMs?: number;
+
+  /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
    * on that tab's editor. Omitted for runs with no owning editor (the standalone agent tab).
    */
@@ -165,6 +170,7 @@ export class AiRuntime {
       workspaceRoot: options.workspaceRoot ?? null,
       permissionPosture: options.permissionPosture ?? 'prompt',
       tokenCap: options.tokenCap ?? 0,
+      runTimeoutMs: options.runTimeoutMs ?? 0,
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',
