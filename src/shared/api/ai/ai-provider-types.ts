@@ -64,4 +64,10 @@ export interface AiProviderInfo {
    * Gets the identifier of the provider's default model (always present in {@link models}).
    */
   readonly defaultModelId: string;
+
+  /**
+   * Gets a value indicating whether the provider accepts image input (the composer rejects images at
+   * compose time otherwise). Absent means no.
+   */
+  readonly supportsImages?: boolean;
 }

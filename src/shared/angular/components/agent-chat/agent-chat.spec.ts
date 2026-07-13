@@ -1,8 +1,16 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef, AiPermissionRemember } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentSurface,
+  AiImageRef,
+  AiPermissionRemember,
+  AiProviderId,
+  AiProviderInfo,
+} from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentChat } from './agent-chat';
 
 describe('AgentChat', () => {
@@ -22,12 +30,26 @@ describe('AgentChat', () => {
   let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
   let rewinds: { id: string; text: string }[];
+  let sentImages: (readonly AiImageRef[])[];
+  let providers: WritableSignal<readonly AiProviderInfo[]>;
 
   beforeEach(async () => {
     retried = [];
     rewinds = [];
+    sentImages = [];
     queued = signal<readonly AgentQueuedMessage[]>([]);
     removedQueued = [];
+    providers = signal<readonly AiProviderInfo[]>([
+      {
+        id: 'claude',
+        label: 'Claude (Agent SDK)',
+        available: true,
+        detail: 'ok',
+        models: [],
+        defaultModelId: 'claude-opus-4-8',
+        supportsImages: true,
+      },
+    ]);
     permissionResponses = [];
     sent = [];
     stopped = 0;
@@ -46,7 +68,15 @@ describe('AgentChat', () => {
       contextWindow: signal<number>(0),
       costUsd: signal<number>(0),
       contextPaths,
-      send: (text: string): void => void sent.push(text),
+      send: (
+        text: string,
+        _tab?: string,
+        _surface?: AgentSurface,
+        images: readonly AiImageRef[] = [],
+      ): void => {
+        sent.push(text);
+        sentImages.push(images);
+      },
       stop: (): void => void (stopped += 1),
       removeContext: (path: string): void => void removed.push(path),
       respondPermission: (
@@ -77,8 +107,14 @@ describe('AgentChat', () => {
       },
     };
 
+    const engineStub: Partial<AgentEngine> = {
+      providers,
+      provider: signal<AiProviderId>('claude'),
+    };
+
     await TestBed.configureTestingModule({
       imports: [AgentChat],
+      providers: [{ provide: AgentEngine, useValue: engineStub }],
     })
       .overrideComponent(AgentChat, {
         set: { providers: [{ provide: Agent, useValue: agentStub }] },
@@ -573,6 +609,72 @@ describe('AgentChat', () => {
     running.set(true);
     fixture.detectChanges();
     expect(host.querySelector('[aria-label="Retry this turn"]')).toBeNull();
+  });
+
+  it('images_whenAnImageFileIsAttached_showsAChipAndSendsItWithTheMessage', async () => {
+    const file: File = new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', {
+      type: 'image/png',
+    });
+
+    await component.addImageFiles([file]);
+    fixture.detectChanges();
+
+    const chip: HTMLImageElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLImageElement>('.agent__image-thumb');
+    expect(chip).not.toBeNull();
+    expect(chip!.src.startsWith('data:image/png;base64,')).toBe(true);
+
+    component.onInput('what is this?');
+    component.send();
+
+    expect(sent).toEqual(['what is this?']);
+    expect(sentImages[0]).toHaveLength(1);
+    expect(sentImages[0][0].mediaType).toBe('image/png');
+    expect(sentImages[0][0].name).toBe('shot.png');
+    // The chips clear once sent.
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.agent__image-thumb')).toBeNull();
+  });
+
+  it('images_whenTheProviderDoesNotAcceptThem_rejectsAtComposeTimeWithAHint', async () => {
+    providers.set([
+      {
+        id: 'ollama',
+        label: 'Ollama',
+        available: true,
+        detail: 'ok',
+        models: [],
+        defaultModelId: 'qwen3:8b',
+      },
+    ]);
+    const file: File = new File([new Uint8Array([1])], 'shot.png', { type: 'image/png' });
+
+    await component.addImageFiles([file]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__image-thumb')).toBeNull();
+    expect(host.querySelector('.agent__image-hint')?.textContent).toContain(
+      'does not accept images',
+    );
+  });
+
+  it('images_whenOversizeOrWrongType_rejectsWithAHint', async () => {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const oversize: File = new File([new Uint8Array(4 * 1024 * 1024 + 1)], 'big.png', {
+      type: 'image/png',
+    });
+    await component.addImageFiles([oversize]);
+    fixture.detectChanges();
+    expect(host.querySelector('.agent__image-thumb')).toBeNull();
+    expect(host.querySelector('.agent__image-hint')?.textContent).toContain('4 MB');
+
+    const wrongType: File = new File([new Uint8Array([1])], 'movie.mp4', { type: 'video/mp4' });
+    await component.addImageFiles([wrongType]);
+    fixture.detectChanges();
+    expect(host.querySelector('.agent__image-thumb')).toBeNull();
+    expect(host.querySelector('.agent__image-hint')?.textContent).toContain('PNG, JPEG');
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {

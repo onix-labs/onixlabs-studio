@@ -71,6 +71,12 @@ export class OllamaProvider implements AgentProvider {
   public readonly defaultModelId: string = DEFAULT_OLLAMA_MODEL;
 
   /**
+   * Gets a value indicating whether the provider accepts image input. The offered local models are
+   * text-only, so the composer rejects images at compose time.
+   */
+  public readonly supportsImages: boolean = false;
+
+  /**
    * Reports availability. Ollama needs no credentials, so the provider is offered whenever it is
    * registered; whether the local server is actually running is discovered when a run starts.
    * @returns Returns the availability descriptor.

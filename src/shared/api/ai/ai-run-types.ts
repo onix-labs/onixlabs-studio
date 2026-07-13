@@ -39,6 +39,27 @@ export interface AgentContextRef {
 }
 
 /**
+ * An image attached to a turn (pasted or dropped into the composer), carried as base64 so it crosses
+ * the IPC bridge and persists with the transcript.
+ */
+export interface AiImageRef {
+  /**
+   * Gets the image's media type (e.g. `image/png`).
+   */
+  readonly mediaType: string;
+
+  /**
+   * Gets the image bytes as base64 (no `data:` prefix).
+   */
+  readonly data: string;
+
+  /**
+   * Gets the source file name, when the image came from a file.
+   */
+  readonly name?: string;
+}
+
+/**
  * Describes a request to run a single agent turn.
  */
 export interface AiRunRequest {
@@ -124,4 +145,10 @@ export interface AiRunRequest {
    * resumable). Defaults to false.
    */
   readonly forkSession?: boolean;
+
+  /**
+   * Gets the images attached to the turn, sent to the model alongside the prompt. Empty or absent
+   * when none are attached.
+   */
+  readonly images?: readonly AiImageRef[];
 }

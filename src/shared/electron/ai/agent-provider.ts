@@ -3,6 +3,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiEvent,
+  AiImageRef,
   AiInputChoice,
   AiModelInfo,
   AiPermissionPosture,
@@ -123,6 +124,12 @@ export interface AgentRunContext {
   readonly contextPaths: readonly AgentContextRef[];
 
   /**
+   * Gets the images attached to the turn, sent to the model alongside the prompt. Empty when none
+   * are attached (and always empty for providers that report no image support).
+   */
+  readonly images: readonly AiImageRef[];
+
+  /**
    * Gets the provider session to resume so the model keeps the conversation's prior context, or null
    * to start a fresh session (a conversation's first turn). Providers that do not support session
    * continuation ignore it.
@@ -225,6 +232,11 @@ export interface AgentProvider {
    * Gets the identifier of the provider's default model (always present in {@link models}).
    */
   readonly defaultModelId: string;
+
+  /**
+   * Gets a value indicating whether the provider accepts image input on a turn.
+   */
+  readonly supportsImages: boolean;
 
   /**
    * Reports whether the provider can run with the given credential.

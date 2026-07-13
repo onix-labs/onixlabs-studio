@@ -1,11 +1,11 @@
-import { type AiModelInfo, type AiProviderId } from '@shared/api/ai-types';
+import { type AiImageRef, type AiModelInfo, type AiProviderId } from '@shared/api/ai-types';
 import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
   ProviderAvailability,
 } from './agent-provider';
-import type { ToolSet } from 'ai';
+import type { ImagePart, ModelMessage, ToolSet } from 'ai';
 import {
   consumeAgentStream,
   MAX_STEPS,
@@ -43,6 +43,12 @@ export class VercelAiProvider implements AgentProvider {
   public readonly defaultModelId: string = DEFAULT_ANTHROPIC_MODEL;
 
   /**
+   * Gets a value indicating whether the provider accepts image input (its Anthropic models are
+   * multimodal).
+   */
+  public readonly supportsImages: boolean = true;
+
+  /**
    * Reports whether the provider can run: an API key is required (it cannot use the local login).
    * @param auth The resolved credential material.
    * @returns Returns the availability descriptor.
@@ -78,10 +84,32 @@ export class VercelAiProvider implements AgentProvider {
     const system: string = promptForSurface(context);
     const tools: ToolSet = await toolsForSurface(context);
 
+    // Attached images require message parts; a plain prompt string suffices otherwise.
+    const input: { prompt: string } | { messages: ModelMessage[] } =
+      context.images.length === 0
+        ? { prompt: context.prompt }
+        : {
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  ...context.images.map(
+                    (image: AiImageRef): ImagePart => ({
+                      type: 'image',
+                      image: image.data,
+                      mediaType: image.mediaType,
+                    }),
+                  ),
+                  { type: 'text', text: context.prompt },
+                ],
+              },
+            ],
+          };
+
     const stream: AsyncIterable<StreamPart> = streamText({
       model: anthropic(context.model),
       system,
-      prompt: context.prompt,
+      ...input,
       abortSignal: context.signal,
       stopWhen: stepCountIs(MAX_STEPS),
       // Cap the output tokens when the user set a per-request budget; 0 leaves the provider default.

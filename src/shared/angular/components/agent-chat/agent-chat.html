@@ -19,6 +19,17 @@
           <div class="agent__message agent__message--user">
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
             <div class="agent__message-body">
+              @if (row.item!.images?.length) {
+                <div class="agent__bubble-images">
+                  @for (image of row.item!.images!; track $index) {
+                    <img
+                      class="agent__bubble-image"
+                      [src]="imageSrc(image)"
+                      [alt]="image.name ?? 'attached image'"
+                    />
+                  }
+                </div>
+              }
               <div
                 class="agent__bubble agent__markdown"
                 [innerHTML]="row.item!.text | markdown"
@@ -406,7 +417,12 @@
     }
   </div>
 
-  <form class="agent__composer" (submit)="$event.preventDefault(); send()">
+  <form
+    class="agent__composer"
+    (submit)="$event.preventDefault(); send()"
+    (dragover)="onDragOver($event)"
+    (drop)="onDrop($event)"
+  >
     <div class="agent__composer-head">
       <span class="agent__composer-label">{{
         pendingInput() ? 'Answer' : editing() ? 'Edit' : 'Message'
@@ -451,6 +467,28 @@
           </li>
         }
       </ul>
+    }
+
+    @if (pendingImages().length > 0) {
+      <!-- Images pasted or dropped into the composer, sent with the next message. -->
+      <ul class="agent__images" aria-label="Attached images">
+        @for (image of pendingImages(); track $index) {
+          <li class="agent__image-chip">
+            <img class="agent__image-thumb" [src]="imageSrc(image)" [alt]="image.name ?? 'image'" />
+            <button
+              type="button"
+              class="agent__image-remove"
+              [attr.aria-label]="'Remove ' + (image.name ?? 'image')"
+              (click)="removeImage($index)"
+            >
+              <app-icon [icon]="Icon.CLOSE" />
+            </button>
+          </li>
+        }
+      </ul>
+    }
+    @if (imageHint(); as hint) {
+      <p class="agent__image-hint" role="status">{{ hint }}</p>
     }
 
     @if (queue().length > 0) {
@@ -514,6 +552,7 @@
       [value]="draft()"
       (input)="onInput(input.value); autoGrow(input)"
       (keydown)="onKeydown($event)"
+      (paste)="onPaste($event)"
     ></textarea>
 
     <div class="agent__composer-footer">

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import type {
   AiEvent,
+  AiImageRef,
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
@@ -40,6 +41,7 @@ describe('Agent', () => {
     resumeSessionId: string | null;
     resumeSessionAt: string | null;
     forkSession: boolean;
+    images: readonly AiImageRef[];
   }[];
   let abortCalls: string[];
   let steerCalls: { requestId: string; text: string }[];
@@ -93,6 +95,7 @@ describe('Agent', () => {
           resumeSessionId: options.resumeSessionId ?? null,
           resumeSessionAt: options.resumeSessionAt ?? null,
           forkSession: options.forkSession ?? false,
+          images: options.images ?? [],
         });
         return 'run-1';
       },
@@ -785,6 +788,36 @@ describe('Agent', () => {
     expect(agent.queued()).toHaveLength(0);
     expect(runCalls).toHaveLength(2);
     expect(runCalls[1].prompt).toBe('queued follow-up');
+  });
+
+  it('send_whenImagesAttached_carriesThemOnTheItemAndTheRun', () => {
+    const image: AiImageRef = { mediaType: 'image/png', data: 'aWJt', name: 'shot.png' };
+
+    agent.send('what is wrong in this screenshot?', undefined, undefined, [image]);
+
+    expect(lastItem()?.kind).toBe('user');
+    expect(lastItem()?.images).toEqual([image]);
+    expect(runCalls[0].images).toEqual([image]);
+  });
+
+  it('send_whileRunningWithImages_queuesWithoutAttemptingToSteer', async () => {
+    steerResult = true;
+    const image: AiImageRef = { mediaType: 'image/png', data: 'aWJt' };
+    agent.send('first');
+
+    agent.send('look at this', undefined, undefined, [image]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The steer channel is text-only: an image-carrying message queues directly.
+    expect(steerCalls).toEqual([]);
+    expect(agent.queued()).toHaveLength(1);
+
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'ok' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(runCalls[1].images).toEqual([image]);
+    expect(lastItem()?.images).toEqual([image]);
   });
 
   it('onText_whenChunksCarryAMessageUuid_recordsTheBranchAnchor', () => {
