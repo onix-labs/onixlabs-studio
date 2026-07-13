@@ -1,6 +1,14 @@
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  Signal,
+  viewChild,
+} from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   AgentRequestEntry,
@@ -43,10 +51,12 @@ const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string 
 ];
 
 /**
- * The title strip's tab menu: a trigger button at the end of the tab strip that opens a drop-down
+ * The title strip's tab menu: a trigger in the title-strip button group that opens a drop-down
  * listing every open tab, grouped by category (workspaces, repositories, code files, and so on).
  * Selecting an entry activates that tab, which makes tabs reachable even once the strip overflows and
- * begins to scroll. The menu's right edge is aligned with the trigger's right edge.
+ * begins to scroll. It doubles as the agent-requests inbox (#253): pending requests render under
+ * their hosting tab's entry with inline answers, the trigger becomes an accent bell while any wait,
+ * and the menu's left edge is aligned with the trigger's left edge.
  */
 @Component({
   selector: 'app-title-strip-tab-menu',
@@ -96,14 +106,67 @@ export class TitleStripTabMenu {
   });
 
   /**
-   * Gets the position that opens the menu below the trigger with their right edges aligned.
+   * Gets the position that opens the menu below the trigger with their left edges aligned.
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['down-end'];
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['down-start'];
 
   /**
-   * Gets the pending agent requests surfaced at the top of the menu.
+   * References the menu trigger, so the menu can dismiss itself once the last request settles.
    */
-  protected readonly requests: Signal<readonly AgentRequestEntry[]> = this.agentRequests.entries;
+  private readonly menuTrigger: Signal<CdkMenuTrigger | undefined> = viewChild(CdkMenuTrigger);
+
+  /**
+   * Gets the pending agent requests, keyed by their hosting tab, so each renders under its tab's
+   * entry in the grouped list.
+   */
+  protected readonly entriesByTab: Signal<ReadonlyMap<string, readonly AgentRequestEntry[]>> =
+    computed((): ReadonlyMap<string, readonly AgentRequestEntry[]> => {
+      const map: Map<string, AgentRequestEntry[]> = new Map<string, AgentRequestEntry[]>();
+      for (const entry of this.agentRequests.entries()) {
+        if (entry.tabId !== null) {
+          const list: AgentRequestEntry[] = map.get(entry.tabId) ?? [];
+          list.push(entry);
+          map.set(entry.tabId, list);
+        }
+      }
+      return map;
+    });
+
+  /**
+   * Gets the pending requests with no hosting tab (the workspace and repository agent panels),
+   * listed under their own trailing heading.
+   */
+  protected readonly unattributed: Signal<readonly AgentRequestEntry[]> = computed(
+    (): readonly AgentRequestEntry[] =>
+      this.agentRequests
+        .entries()
+        .filter((entry: AgentRequestEntry): boolean => entry.tabId === null),
+  );
+
+  /**
+   * Initializes a new instance of the {@link TitleStripTabMenu} class, wiring the self-dismiss: when
+   * the last pending request settles (from this menu or anywhere else), an open menu closes — but a
+   * menu opened as a plain tab list (no requests) is left alone.
+   */
+  public constructor() {
+    let previous: number = 0;
+    effect((): void => {
+      const count: number = this.requestCount();
+      if (previous > 0 && count === 0) {
+        this.menuTrigger()?.close();
+      }
+      previous = count;
+    });
+  }
+
+  /**
+   * Gets the pending requests hosted by a tab.
+   * @param tabId The tab identifier.
+   * @returns Returns the tab's pending requests (empty for none).
+   */
+  protected entriesFor(tabId: string): readonly AgentRequestEntry[] {
+    return this.entriesByTab().get(tabId) ?? [];
+  }
 
   /**
    * Gets the number of pending agent requests, flipping the trigger from chevron to bell.
@@ -150,7 +213,7 @@ export class TitleStripTabMenu {
    * @param granted Whether the user granted permission.
    */
   protected onPermission(entry: AgentRequestEntry, granted: boolean): void {
-    entry.agent.respondPermission(entry.item, granted);
+    this.settle((): void => entry.agent.respondPermission(entry.item, granted));
   }
 
   /**
@@ -159,7 +222,7 @@ export class TitleStripTabMenu {
    * @param choice The decision.
    */
   protected onEditDecision(entry: AgentRequestEntry, choice: 'yes' | 'yes-auto' | 'no'): void {
-    entry.agent.respondEditDecision(entry.item, choice);
+    this.settle((): void => entry.agent.respondEditDecision(entry.item, choice));
   }
 
   /**
@@ -168,7 +231,18 @@ export class TitleStripTabMenu {
    * @param answer The chosen answer, or null to decline.
    */
   protected onAnswer(entry: AgentRequestEntry, answer: string | null): void {
-    entry.agent.respondInput(entry.item, answer);
+    this.settle((): void => entry.agent.respondInput(entry.item, answer));
+  }
+
+  /**
+   * Runs an answer after the current click cycle completes. Settling immediately would remove the
+   * clicked button from the DOM mid-click, which the overlay's outside-click detection reads as a
+   * click outside the menu and dismisses it; deferring a tick keeps the menu open until the
+   * self-dismiss effect decides.
+   * @param respond The answer to apply.
+   */
+  private settle(respond: () => void): void {
+    setTimeout(respond, 0);
   }
 
   /**

@@ -12,27 +12,126 @@
 
 <ng-template #menu>
   <div class="title-strip-tab-menu__panel" cdkMenu>
-    @if (requests().length > 0) {
-      <p class="title-strip-tab-menu__heading">Waiting for you</p>
-      @for (entry of requests(); track entry.key) {
-        <div class="title-strip-tab-menu__request">
+    @for (group of groups(); track group.label) {
+      <p class="title-strip-tab-menu__heading">{{ group.label }}</p>
+      @for (tab of group.tabs; track tab.id) {
+        <div
+          class="title-strip-tab-menu__item"
+          [class.title-strip-tab-menu__item--active]="tab.id === activeTabId()"
+        >
           <button
             type="button"
-            class="title-strip-tab-menu__request-source"
-            [attr.aria-label]="'Open ' + entry.label"
-            (click)="onOpenRequest(entry); $event.stopPropagation()"
+            class="title-strip-tab-menu__select"
+            cdkMenuItem
+            (cdkMenuItemTriggered)="onSelect(tab)"
           >
+            <app-icon class="title-strip-tab-menu__item-icon" [icon]="tab.icon" [size]="1.5" />
+            <span class="title-strip-tab-menu__item-label">{{ tab.title }}</span>
+            @if (tab.dirty) {
+              <span class="title-strip-tab-menu__item-dirty" aria-label="Unsaved changes"></span>
+            }
+            @if (requestTabIds().has(tab.id)) {
+              <app-icon
+                class="title-strip-tab-menu__item-bell"
+                [icon]="Icon.BELL"
+                aria-label="Agent request waiting"
+              />
+            }
+          </button>
+          <!-- A plain button rather than a cdkMenuItem so closing a tab leaves the menu open, letting
+               several be closed in a row; the stopPropagation keeps the click from reaching the menu. -->
+          <button
+            type="button"
+            class="title-strip-tab-menu__close"
+            [attr.aria-label]="'Close ' + tab.title"
+            (click)="onClose(tab); $event.stopPropagation()"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        </div>
+        @for (entry of entriesFor(tab.id); track entry.key) {
+          <div class="title-strip-tab-menu__request title-strip-tab-menu__request--nested">
+            <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
+            @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
+              <code class="title-strip-tab-menu__request-detail">{{
+                entry.item.permissionDetail
+              }}</code>
+            }
+            <!-- Plain buttons (not cdkMenuItems) so answering keeps the menu open; the menu
+                 dismisses itself once the last request settles. -->
+            <div class="title-strip-tab-menu__request-actions">
+              @switch (entry.item.kind) {
+                @case ('permission') {
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn"
+                    (click)="onPermission(entry, true); $event.stopPropagation()"
+                  >
+                    Allow
+                  </button>
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (click)="onPermission(entry, false); $event.stopPropagation()"
+                  >
+                    Deny
+                  </button>
+                }
+                @case ('edit-decision') {
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn"
+                    (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
+                  >
+                    No
+                  </button>
+                }
+                @default {
+                  @for (choice of entry.item.inputChoices ?? []; track choice.label) {
+                    <button
+                      type="button"
+                      class="title-strip-tab-menu__request-btn"
+                      [title]="choice.description ?? ''"
+                      (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
+                    >
+                      {{ choice.label }}
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                    (click)="onAnswer(entry, null); $event.stopPropagation()"
+                  >
+                    Skip
+                  </button>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+    }
+    @if (unattributed().length > 0) {
+      <p class="title-strip-tab-menu__heading">Agent panels</p>
+      @for (entry of unattributed(); track entry.key) {
+        <div class="title-strip-tab-menu__request">
+          <span class="title-strip-tab-menu__request-source">
             <app-icon [icon]="Icon.BELL" [size]="1.4" />
             <span>{{ entry.label }}</span>
-          </button>
+          </span>
           <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
           @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
             <code class="title-strip-tab-menu__request-detail">{{
               entry.item.permissionDetail
             }}</code>
           }
-          <!-- Plain buttons (not cdkMenuItems) so answering keeps the menu open; settled entries
-               drop out of the list on their own. -->
           <div class="title-strip-tab-menu__request-actions">
             @switch (entry.item.kind) {
               @case ('permission') {
@@ -88,45 +187,6 @@
               }
             }
           </div>
-        </div>
-      }
-    }
-    @for (group of groups(); track group.label) {
-      <p class="title-strip-tab-menu__heading">{{ group.label }}</p>
-      @for (tab of group.tabs; track tab.id) {
-        <div
-          class="title-strip-tab-menu__item"
-          [class.title-strip-tab-menu__item--active]="tab.id === activeTabId()"
-        >
-          <button
-            type="button"
-            class="title-strip-tab-menu__select"
-            cdkMenuItem
-            (cdkMenuItemTriggered)="onSelect(tab)"
-          >
-            <app-icon class="title-strip-tab-menu__item-icon" [icon]="tab.icon" [size]="1.5" />
-            <span class="title-strip-tab-menu__item-label">{{ tab.title }}</span>
-            @if (tab.dirty) {
-              <span class="title-strip-tab-menu__item-dirty" aria-label="Unsaved changes"></span>
-            }
-            @if (requestTabIds().has(tab.id)) {
-              <app-icon
-                class="title-strip-tab-menu__item-bell"
-                [icon]="Icon.BELL"
-                aria-label="Agent request waiting"
-              />
-            }
-          </button>
-          <!-- A plain button rather than a cdkMenuItem so closing a tab leaves the menu open, letting
-               several be closed in a row; the stopPropagation keeps the click from reaching the menu. -->
-          <button
-            type="button"
-            class="title-strip-tab-menu__close"
-            [attr.aria-label]="'Close ' + tab.title"
-            (click)="onClose(tab); $event.stopPropagation()"
-          >
-            <app-icon [icon]="Icon.CLOSE" />
-          </button>
         </div>
       }
     }
