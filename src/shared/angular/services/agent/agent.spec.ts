@@ -42,6 +42,7 @@ describe('Agent', () => {
   let abortCalls: string[];
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
   let inputReplies: { inputId: string; answer: string | null }[];
+  let editDecisions: { decisionId: string; choice: string }[];
   let fireEvent: (event: AiEvent) => void;
 
   /**
@@ -59,9 +60,16 @@ describe('Agent', () => {
     abortCalls = [];
     permissionReplies = [];
     inputReplies = [];
+    editDecisions = [];
     const runtimeStub: Pick<
       AiRuntime,
-      'onEvent' | 'run' | 'abort' | 'listProviders' | 'respondPermission' | 'respondInput'
+      | 'onEvent'
+      | 'run'
+      | 'abort'
+      | 'listProviders'
+      | 'respondPermission'
+      | 'respondInput'
+      | 'respondEditDecision'
     > = {
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
@@ -90,6 +98,9 @@ describe('Agent', () => {
       },
       respondInput: (inputId: string, answer: string | null): void => {
         inputReplies.push({ inputId, answer });
+      },
+      respondEditDecision: (decisionId: string, choice: string): void => {
+        editDecisions.push({ decisionId, choice });
       },
     };
     TestBed.configureTestingModule({
@@ -479,6 +490,72 @@ describe('Agent', () => {
       costUsd: 0.05,
     });
     expect(agent.contextTokens()).toBe(12_500);
+  });
+
+  it('editDecision_whenRaisedThenApplied_repliesAndSettlesTheItem', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'edit-decision',
+      decisionId: 'd1',
+      name: 'the active document',
+      detail: '+2 lines, +40 characters',
+      hasDiff: true,
+    });
+    expect(agent.awaitingDecision()).toBe(true);
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondEditDecision(item, 'yes-auto');
+    }
+
+    expect(editDecisions).toEqual([{ decisionId: 'd1', choice: 'yes-auto' }]);
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(lastItem()?.decisionState).toBe('applied');
+    expect(lastItem()?.decisionAuto).toBe(true);
+  });
+
+  it('editDecision_whenRejected_settlesRejected', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'edit-decision',
+      decisionId: 'd1',
+      name: 'the markdown document',
+      detail: '',
+      hasDiff: false,
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondEditDecision(item, 'no');
+    }
+
+    expect(editDecisions).toEqual([{ decisionId: 'd1', choice: 'no' }]);
+    expect(lastItem()?.decisionState).toBe('rejected');
+    expect(lastItem()?.decisionHasDiff).toBe(false);
+  });
+
+  it('status_whenRunEndsWithAPendingEditDecision_dismissesIt', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'edit-decision',
+      decisionId: 'd1',
+      name: 'the active document',
+      detail: '',
+      hasDiff: true,
+    });
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+    const decision: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'edit-decision');
+    expect(decision?.decisionState).toBe('dismissed');
+    expect(agent.awaitingDecision()).toBe(false);
   });
 
   it('status_whenAborted_endsTheRun', () => {

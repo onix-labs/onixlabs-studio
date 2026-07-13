@@ -20,6 +20,9 @@ export {
   DELETE_BINARY_BYTES,
   WRITE_BINARY_ASSEMBLY,
   ASK_USER,
+  PREVIEW_ACTIVE_DOCUMENT_EDIT,
+  COMMIT_EDIT_PREVIEW,
+  CANCEL_EDIT_PREVIEW,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
@@ -40,6 +43,7 @@ export type {
   AiPermissionEvent,
   AiInputChoice,
   AiInputRequestEvent,
+  AiEditDecisionEvent,
   AiStatusEvent,
   AiUsageEvent,
   AiEvent,
@@ -50,4 +54,6 @@ export type {
   AiPermissionReply,
   AiPermissionRemember,
   AiInputReply,
+  AiEditDecision,
+  AiEditDecisionReply,
 } from './ai/ai-bridge-types';

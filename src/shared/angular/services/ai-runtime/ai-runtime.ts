@@ -5,6 +5,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiBridgeRequest,
+  AiEditDecision,
   AiEvent,
   AiPermissionPosture,
   AiPermissionRemember,
@@ -196,6 +197,15 @@ export class AiRuntime {
    */
   public respondInput(inputId: string, answer: string | null): void {
     this.api?.respondInput({ inputId, answer });
+  }
+
+  /**
+   * Answers an edit-decision request (a staged edit preview) raised during a run.
+   * @param decisionId The identifier carried by the edit-decision event.
+   * @param choice The user's decision.
+   */
+  public respondEditDecision(decisionId: string, choice: AiEditDecision): void {
+    this.api?.respondEditDecision({ decisionId, choice });
   }
 
   /**

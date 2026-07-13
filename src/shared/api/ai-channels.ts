@@ -8,6 +8,7 @@ import type {
   AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
+  AiEditDecisionReply,
   AiEvent,
   AiInputReply,
   AiPermissionReply,
@@ -83,6 +84,12 @@ export enum AiChannel {
    * (renderer→main, send).
    */
   InputReply = 'ai:input-reply',
+
+  /**
+   * Sends the user's decision on a staged edit preview back to the main process (renderer→main,
+   * send).
+   */
+  EditDecisionReply = 'ai:edit-decision-reply',
 }
 
 /**
@@ -166,4 +173,10 @@ export interface AiClient {
    * @param reply The reply.
    */
   respondInput(reply: AiInputReply): void;
+
+  /**
+   * Sends the user's decision on a staged edit preview back to the main process.
+   * @param reply The reply.
+   */
+  respondEditDecision(reply: AiEditDecisionReply): void;
 }

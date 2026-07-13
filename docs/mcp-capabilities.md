@@ -192,6 +192,15 @@ These apply to every tab type:
   provider. Those providers still have no built-in file/shell tools, so their reach is limited to
   the studio tools — and on the `project` surface (whose only studio tool is `ask_user`) they can
   do nothing but converse and ask.
+- **Edit preview (accept/reject)** — under the `prompt` posture in agent mode, the in-app editor
+  mutations (`edit`/`insert`/`replace_active_document`) no longer apply straight through: the
+  change is staged in the renderer, a **diff opens in the document well** for code targets
+  (markdown has no diff editor, so its card carries the summary alone), and the transcript card
+  asks _Yes / Yes, and automatically accept edits / No_. "Yes, and automatically accept" applies
+  and auto-accepts further edit previews for the rest of the app session. Rejecting discards the
+  staged change and tells the model not to retry as-is. `auto-edits`/`auto-all` postures skip the
+  preview and apply directly, as before. Runs on every provider (the flow lives in the shared
+  tool helpers and the renderer capabilities).
 - **Permission broker (remembered decisions)** — every gated prompt is brokered in the main
   process (`AiManager.requestPermission` → `PermissionRuleStore`): the prompt offers _just this
   once / for this session / for this workspace / always_, and a remembered grant short-circuits

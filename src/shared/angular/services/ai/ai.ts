@@ -5,6 +5,7 @@ import type {
   AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
+  AiEditDecisionReply,
   AiEvent,
   AiInputReply,
   AiPermissionReply,
@@ -44,6 +45,9 @@ function createClient(bridge: Bridge): AiClient {
     },
     respondInput: (reply: AiInputReply): void => {
       bridge.send(AiChannel.InputReply, reply);
+    },
+    respondEditDecision: (reply: AiEditDecisionReply): void => {
+      bridge.send(AiChannel.EditDecisionReply, reply);
     },
   };
 }

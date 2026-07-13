@@ -10,6 +10,13 @@ import type {
 } from '@shared/api/ai-types';
 
 /**
+ * The outcome of an edit-decision round-trip as the provider sees it: apply or don't. The
+ * "auto-accept from now on" variant is folded into `yes` by the manager, which records the session
+ * flag before settling.
+ */
+export type EditDecisionOutcome = 'yes' | 'no';
+
+/**
  * Reports whether a provider can currently run, with a reason suitable for display.
  */
 export interface ProviderAvailability {
@@ -154,6 +161,17 @@ export interface AgentRunContext {
    * @returns Returns the user's answer, or null when they declined.
    */
   requestInput(question: string, choices: readonly AiInputChoice[]): Promise<string | null>;
+
+  /**
+   * Asks the user to decide on a staged edit preview (showing as a diff in the document well for
+   * code targets), resolving once they apply or reject it — or immediately with `yes` when edits are
+   * being auto-accepted for the session. Resolves `no` if the run aborts first.
+   * @param name The display name of the document being edited.
+   * @param detail A one-line summary of the staged change.
+   * @param hasDiff Whether the staged change is showing as a diff in the document well.
+   * @returns Returns the decision.
+   */
+  requestEditDecision(name: string, detail: string, hasDiff: boolean): Promise<EditDecisionOutcome>;
 
   /**
    * Emits a streamed event for this run.
