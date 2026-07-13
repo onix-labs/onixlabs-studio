@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai';
 import {
+  ASK_USER,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -19,10 +20,13 @@ import {
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
 import {
+  ASK_USER_DESCRIPTION,
+  ASK_USER_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
   PROJECT_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
+  askUser,
   deleteBinaryBytes,
   editActiveDocument,
   insertBinaryBytes,
@@ -126,6 +130,34 @@ export async function consumeAgentStream(
 }
 
 /**
+ * Builds the ask-user tool every AI-SDK-backed provider exposes on every surface, bridged to the
+ * renderer through the run context's input round-trip. The `ai` and `zod` packages are imported
+ * dynamically to match the providers' own dynamic-import (ESM-compatibility) convention.
+ * @param context The run context the tool acts through.
+ * @returns Returns the tool set entry, ready to merge into a surface's tool set.
+ */
+export async function createAskUserTool(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [ASK_USER]: tool({
+      description: ASK_USER_DESCRIPTION,
+      inputSchema: z.object({
+        question: z.string().min(1).describe('The question to ask the user.'),
+        choices: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            'Suggested answers the user can pick from (they may always answer with their own text instead). Omit for a free-form question.',
+          ),
+      }),
+      execute: (args: { question: string; choices?: string[] }): Promise<string> =>
+        askUser(context, args.question, args.choices ?? []),
+    }),
+  };
+}
+
+/**
  * Builds the in-app editor tools every AI-SDK-backed provider exposes, bridged to the renderer through
  * the run context. The `ai` and `zod` packages are imported dynamically to match the providers' own
  * dynamic-import (ESM-compatibility) convention.
@@ -149,9 +181,7 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
           .string()
           .min(1)
           .describe('The exact text to replace; must match the document verbatim.'),
-        new_string: z
-          .string()
-          .describe('The replacement text (empty deletes the matched text).'),
+        new_string: z.string().describe('The replacement text (empty deletes the matched text).'),
         replace_all: z
           .boolean()
           .optional()
@@ -182,7 +212,12 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
           ),
       }),
       execute: (args: { text: string; placement: string; anchor?: string }): Promise<string> =>
-        insertIntoActiveDocument(context, args.text, args.placement as InsertPlacement, args.anchor),
+        insertIntoActiveDocument(
+          context,
+          args.text,
+          args.placement as InsertPlacement,
+          args.anchor,
+        ),
     }),
     [REPLACE_ACTIVE_DOCUMENT]: tool({
       description:
@@ -302,9 +337,7 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
           .int()
           .min(0)
           .describe('The offset to insert before (the file size appends).'),
-        bytes: z
-          .string()
-          .describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
+        bytes: z.string().describe('The bytes to insert as a hex string, e.g. "4d 5a" or "4D5A".'),
       }),
       execute: (args: { offset: number; bytes: string }): Promise<string> =>
         insertBinaryBytes(context, args.offset, args.bytes),
@@ -342,42 +375,51 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
 
 /**
  * Selects the system-prompt appendix for a run's surface: the terminal, binary, or (default) editor
- * appendix. Shared by the AI-SDK-backed providers so the surface-to-prompt mapping lives in one place.
+ * appendix, plus the ask-user guidance every surface carries. Shared by the AI-SDK-backed providers so
+ * the surface-to-prompt mapping lives in one place.
  * @param surface The run's surface.
  * @returns Returns the prompt appendix text.
  */
 export function promptForSurface(surface: AgentSurface): string {
-  switch (surface) {
-    case 'terminal':
-      return TERMINAL_PROMPT_APPENDIX;
-    case 'binary':
-      return BINARY_PROMPT_APPENDIX;
-    case 'project':
-      return PROJECT_PROMPT_APPENDIX;
-    case 'editor':
-      return STUDIO_PROMPT_APPENDIX;
-  }
+  const base: string = ((): string => {
+    switch (surface) {
+      case 'terminal':
+        return TERMINAL_PROMPT_APPENDIX;
+      case 'binary':
+        return BINARY_PROMPT_APPENDIX;
+      case 'project':
+        return PROJECT_PROMPT_APPENDIX;
+      case 'editor':
+        return STUDIO_PROMPT_APPENDIX;
+    }
+  })();
+  return `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
 }
 
 /**
- * Builds the tool set for a run's surface: the terminal, binary, or (default) editor tools. Shared by
- * the AI-SDK-backed providers so the surface-to-tools mapping lives in one place.
+ * Builds the tool set for a run's surface: the terminal, binary, or (default) editor tools, plus the
+ * ask-user tool every surface carries. Shared by the AI-SDK-backed providers so the surface-to-tools
+ * mapping lives in one place.
  * @param context The run context the tools act through.
  * @returns Returns the tool set for the run's surface.
  */
-export function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
-  switch (context.surface) {
-    case 'terminal':
-      return createTerminalTools(context);
-    case 'binary':
-      return createBinaryTools(context);
-    // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
-    // so a project run carries no tools at all (a documented limitation of those providers).
-    case 'project':
-      return Promise.resolve({});
-    case 'editor':
-      return createStudioTools(context);
-  }
+export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
+  const askUserTool: ToolSet = await createAskUserTool(context);
+  const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
+    switch (context.surface) {
+      case 'terminal':
+        return createTerminalTools(context);
+      case 'binary':
+        return createBinaryTools(context);
+      // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
+      // so a project run carries only the ask-user tool (a documented limitation of those providers).
+      case 'project':
+        return Promise.resolve({});
+      case 'editor':
+        return createStudioTools(context);
+    }
+  })();
+  return { ...askUserTool, ...surfaceTools };
 }
 
 /**

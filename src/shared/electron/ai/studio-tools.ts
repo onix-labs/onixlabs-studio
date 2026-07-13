@@ -1,4 +1,5 @@
 import {
+  ASK_USER,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -75,6 +76,35 @@ export const DELETE_BINARY_BYTES_FQN: string = `mcp__studio__${DELETE_BINARY_BYT
  * other binary write tools it is never auto-allowed: it flows through the permission broker.
  */
 export const WRITE_BINARY_ASSEMBLY_FQN: string = `mcp__studio__${WRITE_BINARY_ASSEMBLY}`;
+
+/**
+ * The fully-qualified name the ask-user tool is exposed under to the Claude Agent SDK. Auto-allowed on
+ * every surface: asking is not a mutation, and the user's answer is itself the gate.
+ */
+export const ASK_USER_FQN: string = `mcp__studio__${ASK_USER}`;
+
+/**
+ * The description the ask-user tool is registered with, shared by the Claude and AI-SDK providers so
+ * the model sees one contract everywhere.
+ */
+export const ASK_USER_DESCRIPTION: string =
+  'Ask the user a question and wait for their answer. Use it when you need a decision only the user ' +
+  'can make: a choice between approaches, a missing name or value, or confirmation before something ' +
+  'destructive or hard to reverse. Provide choices when the sensible answers are enumerable — the ' +
+  'user can always answer with their own text instead. Do not use it to ask for permission to run a ' +
+  'tool (permission prompts are separate), and do not ask when the answer is derivable from the ' +
+  'context you already have.';
+
+/**
+ * Appended to every surface's system prompt so the model knows it can ask the user questions instead
+ * of guessing.
+ */
+export const ASK_USER_PROMPT_APPENDIX: string = [
+  `When you need the user's decision — a choice between approaches, a missing name or value, or`,
+  `confirmation before something destructive — ask them with the "${ASK_USER}" tool and wait for the`,
+  'answer rather than guessing or proceeding on an assumption. Keep questions short and concrete,',
+  'and offer choices when the sensible answers are enumerable.',
+].join('\n');
 
 /**
  * Appended to the system prompt so the model knows the in-app editor tools exist and when to use them.
@@ -157,6 +187,25 @@ export const BINARY_PROMPT_APPENDIX: string = [
   'Offsets and lengths are byte counts in the file. Prefer these tools over the file-system tools for',
   'inspecting or editing this file, since it may have unsaved edits held in the editor.',
 ].join('\n');
+
+/**
+ * Asks the user a question through the run context's input round-trip and renders their answer for
+ * the model. Blocks until the user answers, declines, or the run aborts.
+ * @param context The agent run context (carries the input request round-trip).
+ * @param question The question to ask.
+ * @param choices The suggested answers, or empty for a free-form question.
+ * @returns Returns the user's answer, or a note that they declined to answer.
+ */
+export async function askUser(
+  context: AgentRunContext,
+  question: string,
+  choices: readonly string[],
+): Promise<string> {
+  const answer: string | null = await context.requestInput(question, choices);
+  return answer === null
+    ? 'The user declined to answer. Continue without this information, choosing conservatively.'
+    : `The user answered: ${answer}`;
+}
 
 /**
  * Reads the owning terminal's recent output through the renderer bridge and renders it for the model.

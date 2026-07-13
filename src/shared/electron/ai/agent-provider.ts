@@ -145,6 +145,16 @@ export interface AgentRunContext {
   requestPermission(name: string, detail: string): Promise<boolean>;
 
   /**
+   * Asks the user a question on the agent's behalf, resolving once they answer (or null when they
+   * decline or the run aborts). The provider blocks on the answer exactly as it blocks on a
+   * permission decision.
+   * @param question The question the agent is asking.
+   * @param choices The suggested answers, or empty for a free-form question.
+   * @returns Returns the user's answer, or null when they declined.
+   */
+  requestInput(question: string, choices: readonly string[]): Promise<string | null>;
+
+  /**
    * Emits a streamed event for this run.
    * @param event The event to emit (its `requestId` must match this run).
    */

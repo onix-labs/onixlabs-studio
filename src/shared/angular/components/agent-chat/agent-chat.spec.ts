@@ -12,16 +12,21 @@ describe('AgentChat', () => {
   let stopped: number;
   let contextPaths: WritableSignal<readonly AgentContextRef[]>;
   let removed: string[];
+  let pendingInput: WritableSignal<AgentItem | undefined>;
+  let inputAnswers: { id: string; answer: string | null }[];
 
   beforeEach(async () => {
     sent = [];
     stopped = 0;
     contextPaths = signal<readonly AgentContextRef[]>([]);
     removed = [];
+    pendingInput = signal<AgentItem | undefined>(undefined);
+    inputAnswers = [];
     const agentStub: Partial<Agent> = {
       items: signal<readonly AgentItem[]>([]),
       isRunning: signal<boolean>(false),
       awaitingDecision: signal<boolean>(false),
+      pendingInput,
       contextTokens: signal<number>(0),
       contextWindow: signal<number>(0),
       costUsd: signal<number>(0),
@@ -30,6 +35,8 @@ describe('AgentChat', () => {
       stop: (): void => void (stopped += 1),
       removeContext: (path: string): void => void removed.push(path),
       respondPermission: (): void => undefined,
+      respondInput: (item: AgentItem, answer: string | null): void =>
+        void inputAnswers.push({ id: item.id, answer }),
     };
 
     await TestBed.configureTestingModule({
@@ -62,6 +69,57 @@ describe('AgentChat', () => {
     component.send();
 
     expect(sent).toHaveLength(0);
+  });
+
+  it('send_whenAQuestionIsPending_answersItInsteadOfSendingAMessage', () => {
+    pendingInput.set({
+      id: 'item-2',
+      kind: 'input-request',
+      text: '',
+      inputId: 'q1',
+      inputQuestion: 'Which approach?',
+      inputChoices: [],
+      inputState: 'pending',
+    });
+
+    component.onInput('the second one');
+    component.send();
+
+    expect(sent).toEqual([]);
+    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'the second one' }]);
+    expect(component.draft()).toBe('');
+  });
+
+  it('choose_whenCalled_answersWithTheChoice', () => {
+    const item: AgentItem = {
+      id: 'item-2',
+      kind: 'input-request',
+      text: '',
+      inputId: 'q1',
+      inputQuestion: 'Which approach?',
+      inputChoices: ['A', 'B'],
+      inputState: 'pending',
+    };
+
+    component.choose(item, 'B');
+
+    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
+  });
+
+  it('skipInput_whenCalled_declinesTheQuestion', () => {
+    const item: AgentItem = {
+      id: 'item-2',
+      kind: 'input-request',
+      text: '',
+      inputId: 'q1',
+      inputQuestion: 'Which approach?',
+      inputChoices: [],
+      inputState: 'pending',
+    };
+
+    component.skipInput(item);
+
+    expect(inputAnswers).toEqual([{ id: 'item-2', answer: null }]);
   });
 
   it('stop_whenCalled_stopsTheAgent', () => {

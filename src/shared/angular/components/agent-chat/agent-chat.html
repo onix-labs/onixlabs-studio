@@ -24,6 +24,42 @@
             ></div>
           </div>
         }
+        @case ('input-request') {
+          <div class="agent__ask" [class.agent__ask--pending]="row.item!.inputState === 'pending'">
+            <p class="agent__ask-question">{{ row.item!.inputQuestion }}</p>
+            @if (row.item!.inputState === 'pending') {
+              @if (row.item!.inputChoices?.length) {
+                <div class="agent__ask-choices">
+                  @for (choice of row.item!.inputChoices!; track choice) {
+                    <button type="button" class="agent__btn" (click)="choose(row.item!, choice)">
+                      {{ choice }}
+                    </button>
+                  }
+                </div>
+              }
+              <div class="agent__ask-footer">
+                <span class="agent__ask-hint">
+                  {{
+                    row.item!.inputChoices?.length
+                      ? 'Pick an option, or type your own answer below.'
+                      : 'Type your answer below.'
+                  }}
+                </span>
+                <button
+                  type="button"
+                  class="agent__btn agent__btn--ghost"
+                  (click)="skipInput(row.item!)"
+                >
+                  Skip
+                </button>
+              </div>
+            } @else if (row.item!.inputState === 'answered') {
+              <span class="agent__ask-answer">{{ row.item!.inputAnswer }}</span>
+            } @else {
+              <span class="agent__ask-state">Not answered</span>
+            }
+          </div>
+        }
         @case ('permission') {
           <div class="agent__permission">
             <p class="agent__permission-text">
@@ -109,7 +145,7 @@
 
   <form class="agent__composer" (submit)="$event.preventDefault(); send()">
     <div class="agent__composer-head">
-      <span class="agent__composer-label">Message</span>
+      <span class="agent__composer-label">{{ pendingInput() ? 'Answer' : 'Message' }}</span>
       <span class="agent__composer-meta">
         <span class="agent__composer-words">{{ wordCount() }}</span>
         @if (hasContext()) {
@@ -156,8 +192,8 @@
       #input
       class="agent__input"
       rows="4"
-      placeholder="Ask the agent to do something…"
-      aria-label="Message the agent"
+      [placeholder]="pendingInput() ? 'Answer the agent…' : 'Ask the agent to do something…'"
+      [attr.aria-label]="pendingInput() ? 'Answer the agent' : 'Message the agent'"
       [value]="draft()"
       (input)="onInput(input.value); autoGrow(input)"
       (keydown)="onKeydown($event)"
@@ -183,6 +219,17 @@
         </button>
 
         @if (isRunning()) {
+          @if (pendingInput()) {
+            <button
+              type="submit"
+              class="agent__send"
+              aria-label="Answer"
+              [disabled]="draft().trim().length === 0"
+            >
+              <span class="agent__send-label">Answer</span>
+              <app-icon [icon]="Icon.SEND" />
+            </button>
+          }
           <button
             type="button"
             class="agent__send agent__send--stop"

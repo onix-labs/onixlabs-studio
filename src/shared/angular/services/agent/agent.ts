@@ -23,7 +23,13 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 /**
  * Identifies the kind of transcript item.
  */
-export type AgentItemKind = 'user' | 'assistant' | 'thinking' | 'tool' | 'permission';
+export type AgentItemKind =
+  | 'user'
+  | 'assistant'
+  | 'thinking'
+  | 'tool'
+  | 'permission'
+  | 'input-request';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -34,6 +40,12 @@ export type AgentToolState = 'running' | 'ok' | 'error';
  * Identifies the state of a permission request item.
  */
 export type AgentPermissionState = 'pending' | 'allowed' | 'denied';
+
+/**
+ * Identifies the state of an input-request (agent question) item: awaiting the user's answer,
+ * answered, or dismissed (the user skipped it, or the run ended before an answer).
+ */
+export type AgentInputState = 'pending' | 'answered' | 'dismissed';
 
 /**
  * A single item in the agent transcript. The fields used depend on {@link kind}: user/assistant/
@@ -94,6 +106,31 @@ export interface AgentItem {
    * Gets the permission request's state.
    */
   readonly permissionState?: AgentPermissionState;
+
+  /**
+   * Gets the id used to answer an input request (an agent question).
+   */
+  readonly inputId?: string;
+
+  /**
+   * Gets the question the agent is asking.
+   */
+  readonly inputQuestion?: string;
+
+  /**
+   * Gets the suggested answers the user can pick from (empty for a free-form question).
+   */
+  readonly inputChoices?: readonly string[];
+
+  /**
+   * Gets the input request's state.
+   */
+  readonly inputState?: AgentInputState;
+
+  /**
+   * Gets the answer the user gave (answered input requests only).
+   */
+  readonly inputAnswer?: string;
 }
 
 /**
@@ -238,7 +275,8 @@ export class Agent {
   public readonly contextWindow: Signal<number> = computed((): number => {
     const id: string = this.engine.model();
     return (
-      this.engine.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0
+      this.engine.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ??
+      0
     );
   });
 
@@ -248,13 +286,28 @@ export class Agent {
   public readonly costUsd: Signal<number> = this.costUsdState.asReadonly();
 
   /**
-   * Gets a value indicating whether the agent is waiting on a permission decision.
+   * Gets a value indicating whether the agent is waiting on the user: a permission decision or an
+   * answer to a question it asked.
    */
-  public readonly awaitingDecision: Signal<boolean> = computed((): boolean =>
-    this.log().some(
-      (item: AgentItem): boolean =>
-        item.kind === 'permission' && item.permissionState === 'pending',
-    ),
+  public readonly awaitingDecision: Signal<boolean> = computed(
+    (): boolean =>
+      this.log().some(
+        (item: AgentItem): boolean =>
+          item.kind === 'permission' && item.permissionState === 'pending',
+      ) || this.pendingInput() !== undefined,
+  );
+
+  /**
+   * Gets the question the agent is currently waiting on, or undefined when none is pending. At most
+   * one question is pending at a time (the run blocks on the answer), so this is the item the
+   * composer's answer mode targets.
+   */
+  public readonly pendingInput: Signal<AgentItem | undefined> = computed(
+    (): AgentItem | undefined =>
+      this.log().find(
+        (item: AgentItem): boolean =>
+          item.kind === 'input-request' && item.inputState === 'pending',
+      ),
   );
 
   /**
@@ -402,7 +455,16 @@ export class Agent {
       const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
     }, 0);
-    this.log.set([...items]);
+    // A restored question can no longer be answered (its run is gone), so a persisted pending state
+    // is normalised to dismissed rather than locking the composer into answer mode.
+    this.log.set(
+      items.map(
+        (item: AgentItem): AgentItem =>
+          item.kind === 'input-request' && item.inputState === 'pending'
+            ? { ...item, inputState: 'dismissed' }
+            : item,
+      ),
+    );
   }
 
   /**
@@ -421,6 +483,26 @@ export class Agent {
         ...existing,
         permissionState: granted ? 'allowed' : 'denied',
       }),
+    );
+  }
+
+  /**
+   * Answers a pending input request (a question the agent asked), unblocking the run.
+   * @param item The input-request item.
+   * @param answer The user's answer, or null to decline (the agent is told and continues without
+   * one).
+   */
+  public respondInput(item: AgentItem, answer: string | null): void {
+    if (item.inputId === undefined || item.inputState !== 'pending') {
+      return;
+    }
+    this.runtime.respondInput(item.inputId, answer);
+    this.update(
+      item.id,
+      (existing: AgentItem): AgentItem =>
+        answer === null
+          ? { ...existing, inputState: 'dismissed' }
+          : { ...existing, inputState: 'answered', inputAnswer: answer },
     );
   }
 
@@ -472,6 +554,16 @@ export class Agent {
           permissionState: 'pending',
         });
         break;
+      case 'input-request':
+        this.push({
+          kind: 'input-request',
+          text: '',
+          inputId: event.inputId,
+          inputQuestion: event.question,
+          inputChoices: event.choices,
+          inputState: 'pending',
+        });
+        break;
       case 'session':
         // Remember the session so the next turn resumes it and the model keeps this conversation's
         // context. A compaction run's session is ignored above (its events never reach here).
@@ -509,6 +601,9 @@ export class Agent {
     }
     this.busy.set(false);
     this.activeRequestId = null;
+    // A question the run never got answered can no longer be answered: mark it dismissed so the
+    // composer leaves answer mode and the transcript reads coherently.
+    this.dismissPendingInputs();
     if (state === 'error') {
       const reason: string =
         detail.trim().length > 0 ? detail : 'The agent run ended with an error.';
@@ -606,6 +701,23 @@ export class Agent {
     } else {
       this.push({ kind, text: delta });
     }
+  }
+
+  /**
+   * Marks every still-pending input request dismissed (the run ended before it was answered).
+   */
+  private dismissPendingInputs(): void {
+    if (this.pendingInput() === undefined) {
+      return;
+    }
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+      items.map(
+        (item: AgentItem): AgentItem =>
+          item.kind === 'input-request' && item.inputState === 'pending'
+            ? { ...item, inputState: 'dismissed' }
+            : item,
+      ),
+    );
   }
 
   /**

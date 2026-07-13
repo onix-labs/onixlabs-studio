@@ -9,6 +9,7 @@ import type {
   AiBridgeReply,
   AiBridgeRequest,
   AiEvent,
+  AiInputReply,
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
@@ -76,6 +77,12 @@ export enum AiChannel {
    * Sends the user's answer to a permission request back to the main process (renderer→main, send).
    */
   PermissionReply = 'ai:permission-reply',
+
+  /**
+   * Sends the user's answer to an input request (an agent question) back to the main process
+   * (renderer→main, send).
+   */
+  InputReply = 'ai:input-reply',
 }
 
 /**
@@ -153,4 +160,10 @@ export interface AiClient {
    * @param reply The reply.
    */
   respondPermission(reply: AiPermissionReply): void;
+
+  /**
+   * Sends the user's answer to an input request (an agent question) back to the main process.
+   * @param reply The reply.
+   */
+  respondInput(reply: AiInputReply): void;
 }

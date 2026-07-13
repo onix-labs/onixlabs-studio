@@ -61,3 +61,19 @@ export interface AiPermissionReply {
    */
   readonly granted: boolean;
 }
+
+/**
+ * The renderer's answer to a question carried by an `AiInputRequestEvent`.
+ */
+export interface AiInputReply {
+  /**
+   * Gets the identifier of the input request being answered.
+   */
+  readonly inputId: string;
+
+  /**
+   * Gets the user's answer, or null when they declined to answer (the agent is told and continues
+   * without one).
+   */
+  readonly answer: string | null;
+}

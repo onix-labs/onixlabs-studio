@@ -310,9 +310,17 @@ export class AgentChat {
   public readonly isRunning: Signal<boolean> = this.agent.isRunning;
 
   /**
-   * Gets a value indicating whether the agent is waiting on a permission decision.
+   * Gets a value indicating whether the agent is waiting on the user (a permission decision or an
+   * answer to a question).
    */
   public readonly awaitingDecision: Signal<boolean> = this.agent.awaitingDecision;
+
+  /**
+   * Gets the question the agent is currently waiting on, or undefined when none is pending. While one
+   * is pending the composer switches into answer mode: the draft is sent as the answer rather than as
+   * a new message.
+   */
+  public readonly pendingInput: Signal<AgentItem | undefined> = this.agent.pendingInput;
 
   /**
    * Gets the current composer text.
@@ -444,14 +452,20 @@ export class AgentChat {
   }
 
   /**
-   * Sends the current draft to the agent and clears the composer. Blank drafts are ignored.
+   * Sends the current draft: as the answer to a pending agent question when one is waiting (the
+   * composer's answer mode), otherwise as a new message starting a run. Blank drafts are ignored.
    */
   public send(): void {
     const text: string = this.draftText();
     if (text.trim().length === 0) {
       return;
     }
-    this.agent.send(text, this.tabId(), this.surface());
+    const pending: AgentItem | undefined = this.pendingInput();
+    if (pending !== undefined) {
+      this.agent.respondInput(pending, text.trim());
+    } else {
+      this.agent.send(text, this.tabId(), this.surface());
+    }
     this.draftText.set('');
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
     this.atBottom.set(true);
@@ -460,6 +474,23 @@ export class AgentChat {
     if (element !== undefined) {
       element.style.height = 'auto';
     }
+  }
+
+  /**
+   * Answers a pending agent question with one of its suggested choices.
+   * @param item The input-request item.
+   * @param choice The chosen answer.
+   */
+  public choose(item: AgentItem, choice: string): void {
+    this.agent.respondInput(item, choice);
+  }
+
+  /**
+   * Declines to answer a pending agent question; the agent is told and continues without an answer.
+   * @param item The input-request item.
+   */
+  public skipInput(item: AgentItem): void {
+    this.agent.respondInput(item, null);
   }
 
   /**

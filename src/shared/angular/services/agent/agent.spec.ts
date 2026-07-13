@@ -41,6 +41,7 @@ describe('Agent', () => {
   }[];
   let abortCalls: string[];
   let permissionReplies: { permissionId: string; granted: boolean }[];
+  let inputReplies: { inputId: string; answer: string | null }[];
   let fireEvent: (event: AiEvent) => void;
 
   /**
@@ -57,9 +58,10 @@ describe('Agent', () => {
     runCalls = [];
     abortCalls = [];
     permissionReplies = [];
+    inputReplies = [];
     const runtimeStub: Pick<
       AiRuntime,
-      'onEvent' | 'run' | 'abort' | 'listProviders' | 'respondPermission'
+      'onEvent' | 'run' | 'abort' | 'listProviders' | 'respondPermission' | 'respondInput'
     > = {
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
@@ -83,6 +85,9 @@ describe('Agent', () => {
       listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
       respondPermission: (permissionId: string, granted: boolean): void => {
         permissionReplies.push({ permissionId, granted });
+      },
+      respondInput: (inputId: string, answer: string | null): void => {
+        inputReplies.push({ inputId, answer });
       },
     };
     TestBed.configureTestingModule({
@@ -178,6 +183,124 @@ describe('Agent', () => {
     expect(permissionReplies).toEqual([{ permissionId: 'p1', granted: true }]);
     expect(agent.awaitingDecision()).toBe(false);
     expect(lastItem()?.permissionState).toBe('allowed');
+  });
+
+  it('inputRequest_whenRaised_pushesAPendingQuestionAndAwaitsTheUser', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Which approach?',
+      choices: ['A', 'B'],
+    });
+
+    expect(agent.awaitingDecision()).toBe(true);
+    expect(agent.pendingInput()?.inputQuestion).toBe('Which approach?');
+    expect(agent.pendingInput()?.inputChoices).toEqual(['A', 'B']);
+    expect(lastItem()?.inputState).toBe('pending');
+  });
+
+  it('respondInput_whenAnswered_repliesAndSettlesTheItem', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Name?',
+      choices: [],
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondInput(item, 'orders-db');
+    }
+
+    expect(inputReplies).toEqual([{ inputId: 'q1', answer: 'orders-db' }]);
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(agent.pendingInput()).toBeUndefined();
+    expect(lastItem()?.inputState).toBe('answered');
+    expect(lastItem()?.inputAnswer).toBe('orders-db');
+  });
+
+  it('respondInput_whenDeclined_repliesNullAndDismissesTheItem', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Name?',
+      choices: [],
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondInput(item, null);
+    }
+
+    expect(inputReplies).toEqual([{ inputId: 'q1', answer: null }]);
+    expect(lastItem()?.inputState).toBe('dismissed');
+  });
+
+  it('respondInput_whenAlreadySettled_isIgnored', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Name?',
+      choices: [],
+    });
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toBeDefined();
+    if (item !== undefined) {
+      agent.respondInput(item, 'first');
+      agent.respondInput({ ...item, inputState: 'answered' }, 'second');
+    }
+
+    expect(inputReplies).toHaveLength(1);
+  });
+
+  it('status_whenRunEndsWithAPendingQuestion_dismissesIt', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Name?',
+      choices: [],
+    });
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+    expect(agent.pendingInput()).toBeUndefined();
+    const question: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'input-request');
+    expect(question?.inputState).toBe('dismissed');
+  });
+
+  it('restore_whenAQuestionWasPersistedPending_normalisesItToDismissed', () => {
+    agent.restore([
+      { id: 'item-1', kind: 'user', text: 'hi' },
+      {
+        id: 'item-2',
+        kind: 'input-request',
+        text: '',
+        inputId: 'q1',
+        inputQuestion: 'Name?',
+        inputChoices: [],
+        inputState: 'pending',
+      },
+    ]);
+
+    expect(agent.pendingInput()).toBeUndefined();
+    const question: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'input-request');
+    expect(question?.inputState).toBe('dismissed');
   });
 
   it('status_whenAborted_endsTheRun', () => {
@@ -303,7 +426,13 @@ describe('Agent', () => {
   it('usage_whenReported_setsContextTokensToInputPlusOutputAndAccumulatesCost', () => {
     agent.send('hi');
 
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1200, outputTokens: 300, costUsd: 0.02 });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 1200,
+      outputTokens: 300,
+      costUsd: 0.02,
+    });
 
     expect(agent.contextTokens()).toBe(1500);
     expect(agent.costUsd()).toBeCloseTo(0.02, 5);
@@ -311,8 +440,20 @@ describe('Agent', () => {
 
   it('usage_whenReportedAcrossTurns_replacesContextButAccumulatesCost', () => {
     agent.send('hi');
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1000, outputTokens: 200, costUsd: 0.01 });
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 4000, outputTokens: 500, costUsd: 0.03 });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 1000,
+      outputTokens: 200,
+      costUsd: 0.01,
+    });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 4000,
+      outputTokens: 500,
+      costUsd: 0.03,
+    });
 
     // The latest turn's input already re-sends the whole context, so context is replaced, not summed.
     expect(agent.contextTokens()).toBe(4500);
@@ -323,7 +464,13 @@ describe('Agent', () => {
   it('usage_whenCostIsNull_leavesCostUnchanged', () => {
     agent.send('hi');
 
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 800, outputTokens: 100, costUsd: null });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 800,
+      outputTokens: 100,
+      costUsd: null,
+    });
 
     expect(agent.contextTokens()).toBe(900);
     expect(agent.costUsd()).toBe(0);
@@ -331,7 +478,13 @@ describe('Agent', () => {
 
   it('clear_whenCalled_resetsTheContextAndCostReadout', () => {
     agent.send('hi');
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 1000, outputTokens: 200, costUsd: 0.05 });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 1000,
+      outputTokens: 200,
+      costUsd: 0.05,
+    });
 
     agent.clear();
 
@@ -341,12 +494,24 @@ describe('Agent', () => {
 
   it('compact_whenSuccessful_dropsTheContextReadoutToZero', () => {
     agent.send('hi');
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 5000, outputTokens: 500, costUsd: 0.05 });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 5000,
+      outputTokens: 500,
+      costUsd: 0.05,
+    });
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
     agent.compact();
     // A compaction run's own usage must not spike the meter; it is ignored while compacting.
-    fireEvent({ requestId: 'run-1', kind: 'usage', inputTokens: 5500, outputTokens: 400, costUsd: 0.02 });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 5500,
+      outputTokens: 400,
+      costUsd: 0.02,
+    });
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Summary of the chat.' });
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 

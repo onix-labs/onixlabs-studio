@@ -291,6 +291,64 @@ $agent-node-size: 1.75rem;
   opacity: 0.7;
 }
 
+// A question the agent asked: styled like the permission card (it also sits off the timeline rail and
+// awaits the user), with a choice row, an answer/skip footer, and the settled answer once given.
+.agent__ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-inline-size: 48rem;
+  margin-block: 0.5rem;
+  padding: 0.8rem 1rem;
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &--pending {
+    border-color: var(--accent-color);
+  }
+}
+
+.agent__ask-question {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent__ask-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.agent__ask-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent__ask-hint {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.agent__ask-answer {
+  font-size: 0.9rem;
+  word-break: break-word;
+
+  &::before {
+    content: '→ ';
+    color: var(--accent-color);
+  }
+}
+
+.agent__ask-state {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
 .agent__btn {
   padding: 0.4rem 0.9rem;
   font: inherit;

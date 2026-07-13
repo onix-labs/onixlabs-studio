@@ -17,26 +17,33 @@ provider-independent — but permission gating is not (see [Cross-cutting rules]
 
 ## Summary
 
-| Tab type   | Surface    | Studio MCP tools                                                                                                          | Conversation scope    |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------- |
-| Code       | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                  | `file` (document id)  |
-| Markdown   | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                  | `file` (document id)  |
-| Terminal   | `terminal` | `read_terminal_output`, `write_terminal_input` — **all other tools denied**                                                | per terminal tab      |
-| Agent      | `project`  | **none** — the built-in Agent SDK tools are this surface's capability set (see below)                                      | `global`              |
-| Workspace  | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `workspace` (root)    |
-| Repository | `editor`   | editor tools (resolve to the focused editor in the document well)                                                          | `repository` (root)   |
-| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`, `insert_binary_bytes`, `delete_binary_bytes`, `write_binary_assembly` | per binary tab        |
+| Tab type   | Surface    | Studio MCP tools                                                                                                                                                                             | Conversation scope   |
+| ---------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Code       | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                                                                                     | `file` (document id) |
+| Markdown   | `editor`   | `read_active_document`, `edit_active_document`, `insert_into_active_document`, `replace_active_document`                                                                                     | `file` (document id) |
+| Terminal   | `terminal` | `read_terminal_output`, `write_terminal_input` — **all other tools denied** (except `ask_user`)                                                                                              | per terminal tab     |
+| Agent      | `project`  | `ask_user` only — the built-in Agent SDK tools are this surface's capability set (see below)                                                                                                 | `global`             |
+| Workspace  | `editor`   | editor tools (resolve to the focused editor in the document well)                                                                                                                            | `workspace` (root)   |
+| Repository | `editor`   | editor tools (resolve to the focused editor in the document well)                                                                                                                            | `repository` (root)  |
+| Binary     | `binary`   | `read_binary_overview`, `read_binary_bytes`, `read_binary_selection`, `read_binary_disassembly`, `patch_binary_bytes`, `insert_binary_bytes`, `delete_binary_bytes`, `write_binary_assembly` | per binary tab       |
 
 The tool name constants live in `src/shared/api/ai/ai-tool-surface.ts`; the conversation-scope
 kinds (`global` / `workspace` / `repository` / `file`) in
 `src/shared/api/agent-conversation-channels.ts`.
+
+Every surface additionally registers **`ask_user`**: the agent asks the user a question
+(free-form, or with suggested choices) and the run blocks until they answer, decline, or stop the
+run. It is auto-allowed everywhere — asking is not a mutation, and the answer itself is the gate —
+and it works on every provider, because the round-trip rides the provider-agnostic run context
+(`requestInput`, mirroring the permission plumbing) rather than a provider hook. The question and
+its answer land in the transcript as an `input-request` item and persist with the conversation.
 
 ## Code
 
 The code view docks an agent side panel (`code-agent-panel`) that hosts the shared
 `AgentConversationPanel` with the tab's id and the default `editor` surface.
 
-- **`read_active_document`** — returns the full text of *this tab's* Monaco document, including
+- **`read_active_document`** — returns the full text of _this tab's_ Monaco document, including
   unsaved edits (auto-allowed; also available in Chat mode).
 - **`edit_active_document`** — string-anchored edit: replaces one exact occurrence of
   `old_string` with `new_string` (`replace_all` for every occurrence; empty `new_string`
@@ -74,16 +81,17 @@ most confined surface — the agent is deliberately locked to its terminal:
 - **`write_terminal_input`** — types text into the terminal, running it as a command by default
   (`submit: false` types without executing). Never auto-allowed by `allowedTools`; it flows
   through the permission posture, and Chat mode withholds it entirely.
-- **Everything else is denied.** The Claude provider's `canUseTool` rejects every tool that is
-  not one of these two, including the built-in file-system and shell tools — the agent inspects
-  files by running `ls`/`cat`/`grep` in the terminal the user is watching, not through hidden
-  tooling. The `TERMINAL_PROMPT_APPENDIX` tells the model exactly that.
+- **Everything else is denied** (`ask_user` excepted — it is auto-allowed before the confinement
+  check applies). The Claude provider's `canUseTool` rejects every other tool, including the
+  built-in file-system and shell tools — the agent inspects files by running `ls`/`cat`/`grep` in
+  the terminal the user is watching, not through hidden tooling. The `TERMINAL_PROMPT_APPENDIX`
+  tells the model exactly that.
 
 ## Agent (standalone tab)
 
 The standalone Agent tab (`agent-view`) is a full-page chat with a `global` conversation scope
-and the dedicated `project` surface. It has no document of its own, so **no studio MCP server is
-registered at all** — the run's capability set is the **built-in Agent SDK tools**: with a
+and the dedicated `project` surface. It has no document of its own, so the studio server carries
+**only `ask_user`** — the run's capability set is otherwise the **built-in Agent SDK tools**: with a
 workspace open (or files/folders attached), `Read`/`Glob`/`Grep` are auto-allowed, and edits,
 shell, and other built-ins are available subject to the permission posture, with the workspace
 root as the working directory (falling back to the home directory). The prompt appendix
@@ -92,13 +100,13 @@ the IDE (editors follow external changes; explorers refresh live). This is the s
 project-wide work.
 
 Note the provider caveat below: on the Vercel AI SDK and Ollama engines — which have no built-in
-tools — a `project` run carries no tools at all.
+tools — a `project` run carries only `ask_user`.
 
 ## Workspace
 
 The workspace view's dock blueprint includes the shared `AgentPanel`, which hosts
 `AgentConversationPanel` with **no owning tab id** — the run is unscoped. The editor tools then
-fall back to the *focused* editor: markdown first, then code. So the agent reads/edits whatever
+fall back to the _focused_ editor: markdown first, then code. So the agent reads/edits whatever
 document is active in the workspace's document well, tracking the user's focus rather than a
 fixed document.
 
@@ -178,8 +186,12 @@ These apply to every tab type:
   are enforced by the **Claude Agent SDK provider**. The Vercel AI SDK and Ollama providers
   expose the same surface-selected tool set but have no per-tool permission hook, so their tool
   calls run ungated (`ai-sdk-stream.ts`); they also have no built-in file/shell tools, so their
-  reach is limited to the studio tools themselves — and on the `project` surface (which has no
-  studio tools) they have no tools at all.
+  reach is limited to the studio tools themselves — and on the `project` surface (whose only
+  studio tool is `ask_user`) they can do nothing but converse and ask.
+- **Interactive input** — `ask_user` blocks the run on the user's answer through the same
+  main-process round-trip as permissions (`AiManager.requestInput` → `input-request` event →
+  `resolveInput`). Declining ("Skip") or stopping the run resolves the question with no answer,
+  and the model is told to continue conservatively. Available in Chat mode: asking is read-only.
 - **Attached context** — Attach File / Add Folder pass paths by reference (`contextPaths`); the
   prompt preamble lists them and the built-in `Read`/`Glob` tools are auto-allowed so the agent
   can read them even without an open workspace.

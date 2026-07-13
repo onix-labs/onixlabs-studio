@@ -123,6 +123,34 @@ export interface AiPermissionEvent extends AiEventBase {
 }
 
 /**
+ * Asks the user a question the agent needs answered before it continues. Raised by the in-app
+ * `ask_user` tool; the provider blocks on the answer exactly as it blocks on a permission decision.
+ * Answered with an `AiInputReply` carrying the {@link inputId}.
+ */
+export interface AiInputRequestEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'input-request';
+
+  /**
+   * Gets the identifier the renderer answers the request with.
+   */
+  readonly inputId: string;
+
+  /**
+   * Gets the question the agent is asking.
+   */
+  readonly question: string;
+
+  /**
+   * Gets the suggested answers the user can pick from, or empty for a free-form question. A free-form
+   * answer is always accepted, so the choices are suggestions rather than a closed set.
+   */
+  readonly choices: readonly string[];
+}
+
+/**
  * Reports the provider session the run belongs to, so the renderer can resume it on the next turn and
  * the model keeps the conversation's context. Emitted for providers that support session continuation
  * (the Claude Agent SDK); the session id is stable across a resumed conversation.
@@ -199,6 +227,7 @@ export type AiEvent =
   | AiToolStartEvent
   | AiToolEndEvent
   | AiPermissionEvent
+  | AiInputRequestEvent
   | AiSessionEvent
   | AiStatusEvent
   | AiUsageEvent;

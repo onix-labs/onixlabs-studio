@@ -4,6 +4,7 @@ import type {
   AgentContextRef,
   AgentMode,
   AiEvent,
+  AiInputReply,
   AiModelInfo,
   AiPermissionPosture,
   AiPermissionReply,
@@ -77,6 +78,14 @@ export class AiManager {
   >();
 
   /**
+   * Holds the resolvers of pending input requests (agent questions), keyed by input id.
+   */
+  private readonly inputs: Map<string, (answer: string | null) => void> = new Map<
+    string,
+    (answer: string | null) => void
+  >();
+
+  /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    */
@@ -101,6 +110,11 @@ export class AiManager {
     ipcMain.on(AiChannel.PermissionReply, (_event: IpcMainEvent, reply: unknown): void => {
       if (this.isPermissionReply(reply)) {
         this.resolvePermission(reply);
+      }
+    });
+    ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
+      if (this.isInputReply(reply)) {
+        this.resolveInput(reply);
       }
     });
     ipcMain.handle(
@@ -218,6 +232,8 @@ export class AiManager {
       },
       requestPermission: (name: string, detail: string): Promise<boolean> =>
         this.requestPermission(request.requestId, controller.signal, name, detail),
+      requestInput: (question: string, choices: readonly string[]): Promise<string | null> =>
+        this.requestInput(request.requestId, controller.signal, question, choices),
       emit: (event: AiEvent): void => this.emit(event),
     };
     this.emit({
@@ -305,6 +321,62 @@ export class AiManager {
    */
   private resolvePermission(reply: AiPermissionReply): void {
     this.permissions.get(reply.permissionId)?.(reply.granted);
+  }
+
+  /**
+   * Asks the user a question on the agent's behalf by emitting an input-request event and awaiting the
+   * renderer's answer. Resolves to null if the user declines to answer or the run aborts first.
+   * @param requestId The run the question belongs to.
+   * @param signal The run's abort signal.
+   * @param question The question the agent is asking.
+   * @param choices The suggested answers, or empty for a free-form question.
+   * @returns Returns the user's answer, or null when they declined.
+   */
+  private requestInput(
+    requestId: string,
+    signal: AbortSignal,
+    question: string,
+    choices: readonly string[],
+  ): Promise<string | null> {
+    const inputId: string = randomUUID();
+    return new Promise<string | null>((resolve: (answer: string | null) => void): void => {
+      const settle: (answer: string | null) => void = (answer: string | null): void => {
+        if (this.inputs.delete(inputId)) {
+          resolve(answer);
+        }
+      };
+      this.inputs.set(inputId, settle);
+      if (signal.aborted) {
+        settle(null);
+        return;
+      }
+      signal.addEventListener('abort', (): void => settle(null), { once: true });
+      this.emit({ requestId, kind: 'input-request', inputId, question, choices });
+    });
+  }
+
+  /**
+   * Resolves the pending input request matching a reply.
+   * @param reply The renderer's reply.
+   */
+  private resolveInput(reply: AiInputReply): void {
+    this.inputs.get(reply.inputId)?.(reply.answer);
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiInputReply}.
+   * @param value The payload.
+   * @returns Returns true when the payload has the required shape.
+   */
+  private isInputReply(value: unknown): value is AiInputReply {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof record['inputId'] === 'string' &&
+      (typeof record['answer'] === 'string' || record['answer'] === null)
+    );
   }
 
   /**
