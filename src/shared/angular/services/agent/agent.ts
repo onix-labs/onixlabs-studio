@@ -16,6 +16,7 @@ import type {
   AiInputChoice,
   AiModelInfo,
   AiPermissionRemember,
+  AiProviderInfo,
   AiRunState,
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
@@ -33,7 +34,8 @@ export type AgentItemKind =
   | 'tool'
   | 'permission'
   | 'input-request'
-  | 'edit-decision';
+  | 'edit-decision'
+  | 'error';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -198,6 +200,35 @@ export interface AgentItem {
   readonly decisionAuto?: boolean;
 
   /**
+   * Gets the full failure detail of an error item (the raw provider error), shown in its expandable
+   * diagnostics; undefined when the cause line already carries everything.
+   */
+  readonly errorDetail?: string;
+
+  /**
+   * Gets the provider/model readout of an error item (what the failed run was going through).
+   */
+  readonly errorProvider?: string;
+
+  /**
+   * Gets the failed-tool context of an error item (the failing tool's name and its error output),
+   * when a tool failure preceded the run's end.
+   */
+  readonly errorToolContext?: string;
+
+  /**
+   * Gets the prompt of the turn that failed, enabling the error item's one-click retry; undefined
+   * when the failed turn's prompt is unknown (no retry is offered).
+   */
+  readonly errorPrompt?: string;
+
+  /**
+   * Gets a value indicating whether the error item's turn has been retried (the retry affordance is
+   * spent).
+   */
+  readonly errorRetried?: boolean;
+
+  /**
    * Gets the identifier of the sub-agent this item belongs to — the {@link toolId} of the Task tool
    * item that spawned it — so it renders nested under that lane. Absent for top-level items.
    */
@@ -280,6 +311,12 @@ export class Agent {
    * Holds the identifier of the in-flight run, or null when none.
    */
   private activeRequestId: string | null = null;
+
+  /**
+   * Holds the prompt of the most recently started turn, attached to an error item when a run fails
+   * so its one-click retry can re-run the turn. Null until the first send of this session.
+   */
+  private lastPrompt: string | null = null;
 
   /**
    * Holds the provider session this conversation resumes on its next turn, so the model keeps the
@@ -420,6 +457,7 @@ export class Agent {
       return;
     }
     this.push({ kind: 'user', text: trimmed });
+    this.lastPrompt = trimmed;
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.engine.provider(), trimmed, {
       workspaceRoot: this.workspace.root()?.path ?? null,
@@ -749,14 +787,88 @@ export class Agent {
     // composer leaves answer mode and the transcript reads coherently.
     this.dismissPendingInputs();
     if (state === 'error') {
-      const reason: string =
-        detail.trim().length > 0 ? detail : 'The agent run ended with an error.';
-      this.push({ kind: 'assistant', text: `_${reason}_` });
+      this.pushError(detail);
     } else if (state === 'aborted') {
       this.push({ kind: 'assistant', text: '_Stopped._' });
     } else if (state === 'completed' && !this.producedReply()) {
       this.push({ kind: 'assistant', text: '_The model returned no output._' });
     }
+  }
+
+  /**
+   * Folds a failed run into a structured error item: a one-line cause, the provider/model the run
+   * went through, expandable diagnostics (the raw error, plus the failing tool's context when a tool
+   * failure preceded the end), and the failed turn's prompt so the item offers a one-click retry.
+   * @param detail The failure detail carried by the status event.
+   */
+  private pushError(detail: string): void {
+    const reason: string =
+      detail.trim().length > 0 ? detail.trim() : 'The agent run ended with an error.';
+    const firstLine: string = reason.split('\n', 1)[0];
+    const cause: string = firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine;
+    const failedTool: AgentItem | undefined = [...this.log()]
+      .reverse()
+      .find((item: AgentItem): boolean => item.kind === 'tool' && item.toolState === 'error');
+    const toolContext: string | undefined =
+      failedTool === undefined
+        ? undefined
+        : `${failedTool.toolName ?? 'tool'}: ${failedTool.toolOutput ?? failedTool.toolDetail ?? 'failed'}`;
+    this.push({
+      kind: 'error',
+      text: cause,
+      errorProvider: this.providerReadout(),
+      ...(reason === cause ? {} : { errorDetail: reason }),
+      ...(toolContext === undefined ? {} : { errorToolContext: toolContext }),
+      ...(this.lastPrompt === null ? {} : { errorPrompt: this.lastPrompt }),
+    });
+  }
+
+  /**
+   * Renders the provider/model readout attached to an error item (for example,
+   * `Claude (Agent SDK) · claude-opus-4-8`).
+   * @returns Returns the readout.
+   */
+  private providerReadout(): string {
+    const id: string = this.engine.provider();
+    const label: string =
+      this.engine.providers().find((info: AiProviderInfo): boolean => info.id === id)?.label ?? id;
+    const model: string = this.engine.model();
+    return model.length > 0 ? `${label} · ${model}` : label;
+  }
+
+  /**
+   * Retries the failed turn an error item records: the same prompt is re-run (resuming the session,
+   * so the model keeps the conversation's context) without duplicating the user's message in the
+   * transcript. Ignored while a run is in flight, once the item has been retried, or when the item
+   * carries no prompt.
+   * @param item The error item.
+   * @param owningTabId The identifier of the tab hosting this agent (as for {@link send}).
+   * @param surface What the run acts on (as for {@link send}).
+   */
+  public retry(item: AgentItem, owningTabId?: string, surface?: AgentSurface): void {
+    const prompt: string | undefined = item.errorPrompt;
+    if (
+      item.kind !== 'error' ||
+      item.errorRetried === true ||
+      prompt === undefined ||
+      this.busy()
+    ) {
+      return;
+    }
+    this.update(item.id, (existing: AgentItem): AgentItem => ({ ...existing, errorRetried: true }));
+    this.lastPrompt = prompt;
+    this.busy.set(true);
+    this.activeRequestId = this.runtime.run(this.engine.provider(), prompt, {
+      workspaceRoot: this.workspace.root()?.path ?? null,
+      model: this.engine.model(),
+      permissionPosture: this.settings.aiPermissionPosture(),
+      tokenCap: this.settings.aiTokenCap(),
+      owningTabId,
+      surface,
+      mode: this.modeState(),
+      contextPaths: this.contextPathsState(),
+      resumeSessionId: this.sessionIdState(),
+    });
   }
 
   /**

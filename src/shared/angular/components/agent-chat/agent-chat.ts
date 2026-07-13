@@ -906,6 +906,33 @@ export class AgentChat {
   }
 
   /**
+   * Retries the failed turn an error item records.
+   * @param item The error item.
+   */
+  public retry(item: AgentItem): void {
+    this.agent.retry(item, this.tabId(), this.surface());
+    // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
+    this.atBottom.set(true);
+  }
+
+  /**
+   * Renders an error item's expandable diagnostics: the raw provider error, plus the failing tool's
+   * context when a tool failure preceded the run's end. Empty when the cause line carries everything.
+   * @param item The error item.
+   * @returns Returns the diagnostics text.
+   */
+  public errorDiagnostics(item: AgentItem): string {
+    const parts: string[] = [];
+    if (item.errorDetail !== undefined) {
+      parts.push(item.errorDetail);
+    }
+    if (item.errorToolContext !== undefined) {
+      parts.push(`Failed tool — ${item.errorToolContext}`);
+    }
+    return parts.join('\n\n');
+  }
+
+  /**
    * Removes an attached file or folder from the conversation's context.
    * @param path The path to detach.
    */

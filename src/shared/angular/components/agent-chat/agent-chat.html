@@ -141,6 +141,46 @@
             }
           </div>
         }
+        @case ('error') {
+          <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
+               and a one-click retry of the failed turn. -->
+          <div class="agent__error">
+            <p class="agent__error-text">
+              <app-icon class="agent__error-icon" [icon]="Icon.ERROR" aria-hidden="true" />
+              <span>{{ row.item!.text }}</span>
+            </p>
+            @if (row.item!.errorProvider) {
+              <span class="agent__error-provider">{{ row.item!.errorProvider }}</span>
+            }
+            @if (errorDiagnostics(row.item!); as diagnostics) {
+              <details class="agent__error-details">
+                <summary class="agent__action-summary">
+                  <span>Details</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                </summary>
+                <pre class="agent__action-cmd agent__action-payload agent__error-diagnostics">{{
+                  diagnostics
+                }}</pre>
+              </details>
+            }
+            @if (row.item!.errorPrompt) {
+              <div class="agent__ask-actions">
+                @if (row.item!.errorRetried) {
+                  <span class="agent__ask-state">Retried</span>
+                } @else {
+                  <button
+                    type="button"
+                    class="agent__btn"
+                    [disabled]="isRunning()"
+                    (click)="retry(row.item!)"
+                  >
+                    Retry
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
         @case ('permission') {
           <div class="agent__permission">
             <p class="agent__permission-text">

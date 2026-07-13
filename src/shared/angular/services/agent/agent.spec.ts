@@ -591,7 +591,7 @@ describe('Agent', () => {
     expect(agent.isRunning()).toBe(false);
   });
 
-  it('status_whenErrorWithDetail_showsTheReason', () => {
+  it('status_whenErrorWithDetail_foldsAStructuredErrorItem', () => {
     agent.send('hi');
 
     fireEvent({
@@ -602,8 +602,11 @@ describe('Agent', () => {
     });
 
     expect(agent.isRunning()).toBe(false);
-    expect(lastItem()?.kind).toBe('assistant');
-    expect(lastItem()?.text).toBe('_Ollama is not running._');
+    expect(lastItem()?.kind).toBe('error');
+    expect(lastItem()?.text).toBe('Ollama is not running.');
+    expect(lastItem()?.errorPrompt).toBe('hi');
+    // A one-line reason carries everything; there are no extra diagnostics.
+    expect(lastItem()?.errorDetail).toBeUndefined();
   });
 
   it('status_whenErrorWithoutDetail_fallsBackToAGenericMessage', () => {
@@ -611,7 +614,64 @@ describe('Agent', () => {
 
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: '' });
 
-    expect(lastItem()?.text).toBe('_The agent run ended with an error._');
+    expect(lastItem()?.kind).toBe('error');
+    expect(lastItem()?.text).toBe('The agent run ended with an error.');
+  });
+
+  it('status_whenErrorIsMultiLine_splitsTheCauseFromTheDiagnostics', () => {
+    agent.send('hi');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Request failed with status 529\n{"type":"overloaded_error"}',
+    });
+
+    expect(lastItem()?.text).toBe('Request failed with status 529');
+    expect(lastItem()?.errorDetail).toBe(
+      'Request failed with status 529\n{"type":"overloaded_error"}',
+    );
+  });
+
+  it('status_whenErrorFollowsAFailedTool_capturesTheToolContext', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 't1', name: 'Bash', detail: 'ls' });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-end',
+      toolId: 't1',
+      ok: false,
+      detail: 'failed',
+      output: 'command not found',
+    });
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'The run failed.' });
+
+    expect(lastItem()?.errorToolContext).toBe('Bash: command not found');
+  });
+
+  it('retry_whenClicked_reRunsTheFailedTurnWithoutDuplicatingTheUserMessage', () => {
+    agent.send('do the thing');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+    const errorItem: AgentItem = lastItem()!;
+    const itemsBefore: number = agent.items().length;
+
+    agent.retry(errorItem);
+
+    expect(runCalls).toHaveLength(2);
+    expect(runCalls[1].prompt).toBe('do the thing');
+    expect(agent.isRunning()).toBe(true);
+    expect(agent.items()).toHaveLength(itemsBefore);
+    const retried: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.id === errorItem.id);
+    expect(retried?.errorRetried).toBe(true);
+
+    // A spent retry does not fire again, even once the re-run has ended.
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    agent.retry(retried!);
+    expect(runCalls).toHaveLength(2);
   });
 
   it('status_whenCompletedWithNoOutput_notesIt', () => {
