@@ -49,6 +49,7 @@ import {
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
   PROJECT_PROMPT_APPENDIX,
+  READ_ONLY_APPENDIX,
   READ_BINARY_BYTES_FQN,
   READ_BINARY_DISASSEMBLY_FQN,
   READ_BINARY_OVERVIEW_FQN,
@@ -93,15 +94,6 @@ const VERIFY_TIMEOUT_MS: number = 45_000;
  * These are always allowed regardless of the permission posture.
  */
 const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
-
-/**
- * Holds the system-prompt note appended on a chat-mode (read-only) run, telling the model it may
- * inspect but must not modify files or run commands.
- */
-const READ_ONLY_APPENDIX: string =
-  'You are in read-only chat mode. You may inspect the project and the active surface, but you must ' +
-  'not modify files or run commands — editing and executing tools are disabled. Answer, explain, and ' +
-  'advise instead of acting.';
 
 /**
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.

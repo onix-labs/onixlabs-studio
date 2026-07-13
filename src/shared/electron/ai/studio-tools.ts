@@ -98,6 +98,16 @@ export const ASK_USER_DESCRIPTION: string =
   'ask when the answer is derivable from the context you already have.';
 
 /**
+ * Appended to the system prompt on a chat-mode (read-only) run, telling the model it may inspect but
+ * must not modify files or run commands. Shared by every provider so chat mode reads the same
+ * everywhere.
+ */
+export const READ_ONLY_APPENDIX: string =
+  'You are in read-only chat mode. You may inspect the project and the active surface, but you must ' +
+  'not modify files or run commands — editing and executing tools are disabled. Answer, explain, and ' +
+  'advise instead of acting.';
+
+/**
  * Appended to every surface's system prompt so the model knows it can ask the user questions instead
  * of guessing.
  */
