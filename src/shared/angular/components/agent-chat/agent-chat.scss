@@ -890,6 +890,14 @@ $agent-node-size: 1.75rem;
     opacity: 0.5;
     cursor: default;
   }
+
+  // Stop reads as its own control, not a twin of Send: outlined in the critical colour rather than
+  // filled in the accent.
+  &--stop {
+    color: var(--accent-coral);
+    background: transparent;
+    border: 0.0625rem solid var(--accent-coral);
+  }
 }
 
 // A compact, ghost-styled affordance that opens the markdown composer modal. It matches the send

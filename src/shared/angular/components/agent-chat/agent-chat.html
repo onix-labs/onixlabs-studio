@@ -546,15 +546,11 @@
               <span class="agent__send-label">Answer</span>
               <app-icon [icon]="Icon.SEND" />
             </button>
-          } @else {
+          } @else if (draft().trim().length > 0) {
             <!-- Sending mid-run steers the run where the provider supports it, and queues the
-                 message for after the run otherwise. -->
-            <button
-              type="submit"
-              class="agent__send"
-              aria-label="Send"
-              [disabled]="draft().trim().length === 0"
-            >
+                 message for after the run otherwise. The button only appears once there is a draft,
+                 so Stop stands alone while nothing is being written. -->
+            <button type="submit" class="agent__send" aria-label="Send">
               <span class="agent__send-label">Send</span>
               <app-icon [icon]="Icon.SEND" />
             </button>

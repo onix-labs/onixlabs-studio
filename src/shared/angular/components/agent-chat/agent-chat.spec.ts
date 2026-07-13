@@ -494,11 +494,18 @@ describe('AgentChat', () => {
     expect(queued()).toHaveLength(1);
   });
 
-  it('composer_whileRunning_stillOffersSendForQueueingOrSteering', () => {
+  it('composer_whileRunning_offersSendOnlyOnceADraftIsWritten', () => {
     running.set(true);
     fixture.detectChanges();
 
+    // No draft: Stop stands alone.
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__send[aria-label="Send"]')).toBeNull();
+    expect(host.querySelector('.agent__send--stop')).not.toBeNull();
+
+    // Typing reveals Send (for steering or queueing) beside Stop.
+    component.onInput('a follow-up');
+    fixture.detectChanges();
     expect(host.querySelector('.agent__send[aria-label="Send"]')).not.toBeNull();
     expect(host.querySelector('.agent__send--stop')).not.toBeNull();
   });
