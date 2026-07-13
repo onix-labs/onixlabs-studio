@@ -16,9 +16,11 @@ describe('AgentChat', () => {
   let inputAnswers: { id: string; answer: string | null }[];
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
+  let retried: string[];
   let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
   beforeEach(async () => {
+    retried = [];
     permissionResponses = [];
     sent = [];
     stopped = 0;
@@ -50,6 +52,7 @@ describe('AgentChat', () => {
         ),
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
+      retry: (item: AgentItem): void => void retried.push(item.id),
     };
 
     await TestBed.configureTestingModule({
@@ -395,6 +398,56 @@ describe('AgentChat', () => {
 
     expect(host.querySelector('.agent__action-payload')?.textContent?.length).toBe(2_000);
     expect(host.querySelector('.agent__action-more')).toBeNull();
+  });
+
+  it('errorItem_whenRendered_showsCauseProviderDiagnosticsAndRetry', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'error',
+        text: 'Request failed with status 529',
+        errorProvider: 'Claude (Agent SDK) · claude-opus-4-8',
+        errorDetail: 'Request failed with status 529\noverloaded',
+        errorToolContext: 'Bash: command not found',
+        errorPrompt: 'do the thing',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const card: HTMLElement | null = host.querySelector('.agent__error');
+    expect(card).not.toBeNull();
+    expect(card!.querySelector('.agent__error-text')?.textContent).toContain(
+      'Request failed with status 529',
+    );
+    expect(card!.querySelector('.agent__error-provider')?.textContent?.trim()).toBe(
+      'Claude (Agent SDK) · claude-opus-4-8',
+    );
+    const diagnostics: string = card!.querySelector('.agent__error-diagnostics')?.textContent ?? '';
+    expect(diagnostics).toContain('overloaded');
+    expect(diagnostics).toContain('Failed tool — Bash: command not found');
+
+    card!.querySelector<HTMLButtonElement>('.agent__btn')!.click();
+    expect(retried).toEqual(['item-1']);
+  });
+
+  it('errorItem_whenAlreadyRetried_showsTheSpentStateInsteadOfTheButton', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'error',
+        text: 'boom',
+        errorPrompt: 'do the thing',
+        errorRetried: true,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__error .agent__btn')).toBeNull();
+    expect(host.querySelector('.agent__error .agent__ask-state')?.textContent?.trim()).toBe(
+      'Retried',
+    );
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {

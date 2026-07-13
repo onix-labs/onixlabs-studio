@@ -337,10 +337,11 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// The permission and question cards share one off-rail card shell; a card awaiting the user is
-// outlined in the accent colour.
+// The permission, question, and error cards share one off-rail card shell; a card awaiting the user
+// is outlined in the accent colour, a failed run in the warning colour.
 .agent__permission,
-.agent__ask {
+.agent__ask,
+.agent__error {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -358,12 +359,14 @@ $agent-node-size: 1.75rem;
 .agent__action-summary,
 .agent__permission,
 .agent__ask,
+.agent__error,
 .agent__composer {
   background: var(--agent-view-surface-color);
 }
 
 .agent__permission,
 .agent__ask,
+.agent__error,
 .agent__composer,
 .agent__attachment,
 .agent__md,
@@ -374,6 +377,37 @@ $agent-node-size: 1.75rem;
 .agent__permission,
 .agent__ask--pending {
   border-color: var(--accent-color);
+}
+
+.agent__error {
+  border-color: var(--warning-color);
+}
+
+// A failed run's card: the cause line beside its warning glyph, the provider readout under it, and
+// the diagnostics disclosure.
+.agent__error-text {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0;
+}
+
+.agent__error-icon {
+  color: var(--warning-color);
+}
+
+.agent__error-provider {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__error-details[open] .agent__action-caret {
+  transform: rotate(180deg);
+}
+
+.agent__error-diagnostics {
+  margin-block-start: 0.4rem;
 }
 
 .agent__permission-text {
@@ -912,6 +946,7 @@ $agent-node-size: 1.75rem;
 .agent__action-cmd,
 .agent__permission,
 .agent__ask,
+.agent__error,
 .agent__btn,
 .agent__composer,
 .agent__meter,
@@ -925,6 +960,7 @@ $agent-node-size: 1.75rem;
 .agent__avatar,
 .agent__permission,
 .agent__ask,
+.agent__error,
 .agent__attachment,
 .agent__send,
 .agent__md,
