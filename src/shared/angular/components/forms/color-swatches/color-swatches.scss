@@ -1,6 +1,8 @@
-// The colour picker: a row of swatches, the active one ringed.
+// The colour picker: a row of swatches, the active one ringed. The row wraps when the palette
+// outgrows the control column.
 .swatches {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 

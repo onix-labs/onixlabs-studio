@@ -66,25 +66,46 @@
   --gray-900: #212529;
   --gray-950: #181b1e;
 
-  // Accent palette (resources/Palette.png). Each colour is exposed both as a hex primitive and as a
+  // Accent palette (resources/Palette.png, interleaved with Bootstrap 5 hues). Each colour is
+  // exposed both as a hex primitive and as a
   // bare RGB triplet, so it can drive solid fills as well as translucent rgba() overlays. The active
   // accent is projected onto `--accent-color` / `--accent-color-rgb` by the Theme service.
   --accent-orange: #f79533;
   --accent-orange-rgb: 247, 149, 51;
+  --accent-yellow: #ffc107;
+  --accent-yellow-rgb: 255, 193, 7;
   --accent-coral: #f37055;
   --accent-coral-rgb: 243, 112, 85;
+  --accent-tangerine: #fd7e14;
+  --accent-tangerine-rgb: 253, 126, 20;
+  --accent-red: #dc3545;
+  --accent-red-rgb: 220, 53, 69;
   --accent-pink: #ef4e7b;
   --accent-pink-rgb: 239, 78, 123;
+  --accent-magenta: #d63384;
+  --accent-magenta-rgb: 214, 51, 132;
   --accent-purple: #a166ab;
   --accent-purple-rgb: 161, 102, 171;
+  --accent-violet: #6f42c1;
+  --accent-violet-rgb: 111, 66, 193;
+  --accent-indigo: #6610f2;
+  --accent-indigo-rgb: 102, 16, 242;
   --accent-blue: #5073b8;
   --accent-blue-rgb: 80, 115, 184;
+  --accent-azure: #0d6efd;
+  --accent-azure-rgb: 13, 110, 253;
   --accent-cyan: #1098ad;
   --accent-cyan-rgb: 16, 152, 173;
+  --accent-mint: #20c997;
+  --accent-mint-rgb: 32, 201, 151;
   --accent-teal: #07b39b;
   --accent-teal-rgb: 7, 179, 155;
+  --accent-sky: #0dcaf0;
+  --accent-sky-rgb: 13, 202, 240;
   --accent-green: #6fba82;
   --accent-green-rgb: 111, 186, 130;
+  --accent-emerald: #198754;
+  --accent-emerald-rgb: 25, 135, 84;
 
   // The active accent, defaulting to blue until the Theme service applies the persisted choice.
   --accent-color: var(--accent-blue);

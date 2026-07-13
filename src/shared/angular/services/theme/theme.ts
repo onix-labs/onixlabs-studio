@@ -25,26 +25,46 @@ export type ResolvedThemeMode = 'light' | 'dark';
  */
 export type AccentColor =
   | 'orange'
+  | 'yellow'
   | 'coral'
+  | 'tangerine'
+  | 'red'
   | 'pink'
+  | 'magenta'
   | 'purple'
+  | 'violet'
+  | 'indigo'
   | 'blue'
+  | 'azure'
   | 'cyan'
+  | 'mint'
   | 'teal'
-  | 'green';
+  | 'sky'
+  | 'green'
+  | 'emerald';
 
 /**
  * Lists the accent colours in palette order, for rendering pickers.
  */
 export const ACCENT_COLORS: readonly AccentColor[] = [
   'orange',
+  'yellow',
   'coral',
+  'tangerine',
+  'red',
   'pink',
+  'magenta',
   'purple',
+  'violet',
+  'indigo',
   'blue',
+  'azure',
   'cyan',
+  'mint',
   'teal',
+  'sky',
   'green',
+  'emerald',
 ];
 
 /**

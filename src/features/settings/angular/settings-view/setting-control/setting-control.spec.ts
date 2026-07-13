@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { SettingControl } from './setting-control';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 
 describe('SettingControl', () => {
   let fixture: ComponentFixture<SettingControl>;
@@ -52,7 +53,7 @@ describe('SettingControl', () => {
   it('render_whenColorControl_rendersColorSwatches', async () => {
     const element: HTMLElement = await render('appearance.accent');
     expect(element.querySelector('app-color-swatches')).toBeTruthy();
-    expect(element.querySelectorAll('.swatch').length).toBe(8);
+    expect(element.querySelectorAll('.swatch').length).toBe(ACCENT_COLORS.length);
   });
 
   it('render_whenNumberControl_rendersANumberFieldWithTheRegistryRange', async () => {

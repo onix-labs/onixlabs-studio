@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { findSection } from '@shared/angular/services/settings/settings-registry';
+import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import { SettingsSection } from './settings-section';
 
 describe('SettingsSection', () => {
@@ -78,7 +79,7 @@ describe('SettingsSection', () => {
     // Accent, theme, ribbon alignment, modern UI features, hardware acceleration.
     const element: HTMLElement = await render('appearance');
     expect(element.querySelectorAll('app-setting-row').length).toBe(5);
-    expect(element.querySelectorAll('.swatch').length).toBe(8);
+    expect(element.querySelectorAll('.swatch').length).toBe(ACCENT_COLORS.length);
     expect(element.querySelector('app-toggle')).toBeTruthy();
   });
 
