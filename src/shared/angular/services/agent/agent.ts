@@ -132,6 +132,23 @@ export interface AgentItem {
    * Gets the answer the user gave (answered input requests only).
    */
   readonly inputAnswer?: string;
+
+  /**
+   * Gets the identifier of the sub-agent this item belongs to — the {@link toolId} of the Task tool
+   * item that spawned it — so it renders nested under that lane. Absent for top-level items.
+   */
+  readonly parentToolId?: string;
+
+  /**
+   * Gets the type of the sub-agent a Task tool item spawns (e.g. `Explore`), labelling its lane.
+   */
+  readonly agentType?: string;
+
+  /**
+   * Gets the tokens a sub-agent has consumed so far (input plus output, accumulated across its
+   * turns), shown on its lane's status line. Task tool items only.
+   */
+  readonly agentTokens?: number;
 }
 
 /**
@@ -535,10 +552,10 @@ export class Agent {
     }
     switch (event.kind) {
       case 'text':
-        this.appendText('assistant', event.delta);
+        this.appendText('assistant', event.delta, event.parentToolId);
         break;
       case 'thinking':
-        this.appendText('thinking', event.delta);
+        this.appendText('thinking', event.delta, event.parentToolId);
         break;
       case 'tool-start':
         this.push({
@@ -548,6 +565,8 @@ export class Agent {
           toolName: event.name,
           toolDetail: event.detail,
           toolState: 'running',
+          ...(event.parentToolId === undefined ? {} : { parentToolId: event.parentToolId }),
+          ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
         });
         break;
       case 'tool-end':
@@ -579,6 +598,13 @@ export class Agent {
         this.sessionIdState.set(event.sessionId);
         break;
       case 'usage': {
+        // Sub-agent usage accumulates onto its lane's Task tool item and never touches the context
+        // meter: the run's own terminal usage report already folds sub-agent work in, so counting it
+        // here would double it.
+        if (event.parentToolId !== undefined) {
+          this.accumulateAgentTokens(event.parentToolId, event.inputTokens + event.outputTokens);
+          break;
+        }
         // The turn's input already folds in the re-sent conversation, so it stands as the new context
         // size rather than adding to a running total. Cost, in contrast, accumulates. Compaction-run
         // usage never reaches here (handled and returned above), so the meter is not spiked by it.
@@ -692,14 +718,17 @@ export class Agent {
   }
 
   /**
-   * Appends streamed text to the trailing item of the same kind, or starts a new one.
+   * Appends streamed text to the trailing item of the same kind and sub-agent attribution, or starts
+   * a new one. Matching on the attribution keeps interleaved parallel sub-agents (and the top-level
+   * stream) from merging into one another's items.
    * @param kind The text item kind.
    * @param delta The text chunk.
+   * @param parentToolId The sub-agent the text belongs to, or undefined for the top-level stream.
    */
-  private appendText(kind: 'assistant' | 'thinking', delta: string): void {
+  private appendText(kind: 'assistant' | 'thinking', delta: string, parentToolId?: string): void {
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
-    if (last?.kind === kind) {
+    if (last?.kind === kind && last.parentToolId === parentToolId) {
       this.update(
         last.id,
         (existing: AgentItem): AgentItem => ({
@@ -708,8 +737,28 @@ export class Agent {
         }),
       );
     } else {
-      this.push({ kind, text: delta });
+      this.push({
+        kind,
+        text: delta,
+        ...(parentToolId === undefined ? {} : { parentToolId }),
+      });
     }
+  }
+
+  /**
+   * Adds a sub-agent turn's tokens onto its lane's Task tool item.
+   * @param toolId The Task tool use the tokens belong to.
+   * @param tokens The turn's tokens (input plus output).
+   */
+  private accumulateAgentTokens(toolId: string, tokens: number): void {
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+      items.map(
+        (item: AgentItem): AgentItem =>
+          item.kind === 'tool' && item.toolId === toolId
+            ? { ...item, agentTokens: (item.agentTokens ?? 0) + tokens }
+            : item,
+      ),
+    );
   }
 
   /**

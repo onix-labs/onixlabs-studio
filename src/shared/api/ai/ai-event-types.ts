@@ -14,6 +14,13 @@ export interface AiEventBase {
    * Gets the identifier of the run the event belongs to.
    */
   readonly requestId: string;
+
+  /**
+   * Gets the identifier of the sub-agent this event belongs to — the `toolId` of the Task tool use
+   * that spawned it — so nested work can be attributed and rendered under its own lane. Absent for
+   * the run's own top-level events.
+   */
+  readonly parentToolId?: string;
 }
 
 /**
@@ -69,6 +76,13 @@ export interface AiToolStartEvent extends AiEventBase {
    * Gets a one-line summary of the tool's input.
    */
   readonly detail: string;
+
+  /**
+   * Gets the type of the sub-agent this tool use spawns (a Task tool's `subagent_type`, e.g.
+   * `Explore`), or undefined for an ordinary tool. Events from inside the sub-agent carry this tool
+   * use's {@link toolId} as their `parentToolId`.
+   */
+  readonly agentType?: string;
 }
 
 /**

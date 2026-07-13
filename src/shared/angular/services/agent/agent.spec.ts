@@ -326,6 +326,112 @@ describe('Agent', () => {
     expect(question?.inputChoices).toEqual([{ label: 'A' }, { label: 'B' }]);
   });
 
+  it('subagent_whenTextIsAttributed_doesNotMergeIntoTheTopLevelStream', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'top-level' });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'task-1',
+      name: 'Task',
+      detail: 'Explore the repo',
+      agentType: 'Explore',
+    });
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'nested', parentToolId: 'task-1' });
+
+    const items: readonly AgentItem[] = agent.items();
+    const top: AgentItem | undefined = items.find(
+      (item: AgentItem): boolean => item.kind === 'assistant' && item.parentToolId === undefined,
+    );
+    const nested: AgentItem | undefined = items.find(
+      (item: AgentItem): boolean => item.parentToolId === 'task-1' && item.kind === 'assistant',
+    );
+    const task: AgentItem | undefined = items.find(
+      (item: AgentItem): boolean => item.toolId === 'task-1',
+    );
+    expect(top?.text).toBe('top-level');
+    expect(nested?.text).toBe('nested');
+    expect(task?.agentType).toBe('Explore');
+  });
+
+  it('subagent_whenToolsRun_attributesThemToTheirLane', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'task-1',
+      name: 'Task',
+      detail: 'Explore',
+      agentType: 'Explore',
+    });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 't2',
+      name: 'Grep',
+      detail: 'pattern',
+      parentToolId: 'task-1',
+    });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-end',
+      toolId: 't2',
+      ok: true,
+      detail: 'done',
+      parentToolId: 'task-1',
+    });
+
+    const nestedTool: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.toolId === 't2');
+    expect(nestedTool?.parentToolId).toBe('task-1');
+    expect(nestedTool?.toolState).toBe('ok');
+  });
+
+  it('subagentUsage_whenReported_accumulatesOnTheLaneNotTheContextMeter', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'task-1',
+      name: 'Task',
+      detail: 'Explore',
+      agentType: 'Explore',
+    });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      parentToolId: 'task-1',
+      inputTokens: 4000,
+      outputTokens: 100,
+      costUsd: null,
+    });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      parentToolId: 'task-1',
+      inputTokens: 5000,
+      outputTokens: 200,
+      costUsd: null,
+    });
+
+    const task: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.toolId === 'task-1');
+    expect(task?.agentTokens).toBe(9300);
+    expect(agent.contextTokens()).toBe(0);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 12_000,
+      outputTokens: 500,
+      costUsd: 0.05,
+    });
+    expect(agent.contextTokens()).toBe(12_500);
+  });
+
   it('status_whenAborted_endsTheRun', () => {
     agent.send('hi');
 

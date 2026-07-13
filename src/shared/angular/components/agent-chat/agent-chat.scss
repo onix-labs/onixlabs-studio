@@ -78,8 +78,6 @@
   inline-size: 2rem;
   color: var(--accent-color);
   background: var(--agent-view-surface-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .agent__bubble {
@@ -87,7 +85,6 @@
   padding: 0.7rem 0.9rem;
   background: var(--agent-view-surface-color);
   border-radius: calc(0.75rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   line-height: 1.5;
   // Agent output is reference material; let the user select it despite the global selection lock.
   user-select: text;
@@ -161,7 +158,6 @@ $agent-node-size: 1.75rem;
   color: var(--accent-color);
   background: var(--agent-view-surface-color);
   border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
 
   &--error {
     color: var(--warning-color);
@@ -200,7 +196,6 @@ $agent-node-size: 1.75rem;
   color: var(--body-foreground-color);
   background: var(--agent-view-surface-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
   // Hide the native disclosure triangle in favour of the caret icon.
   list-style: none;
@@ -250,7 +245,6 @@ $agent-node-size: 1.75rem;
   color: var(--body-foreground-color);
   background: var(--body-background-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
@@ -268,8 +262,6 @@ $agent-node-size: 1.75rem;
   padding: 0.8rem 1rem;
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .agent__permission,
@@ -370,7 +362,6 @@ $agent-node-size: 1.75rem;
   background: var(--accent-color);
   border: none;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
 
   &--ghost {
@@ -383,6 +374,39 @@ $agent-node-size: 1.75rem;
     opacity: 0.5;
     cursor: default;
   }
+}
+
+// A sub-agent lane rides the action-chip chrome; its summary adds the live status and a muted
+// tools/tokens readout, and its expanded body lists the nested activity.
+.agent__lane-status {
+  color: var(--body-foreground-color);
+  opacity: 0.75;
+}
+
+.agent__lane-meta {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__lane-tool {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.agent__lane-tool--error {
+  color: var(--warning-color);
+}
+
+.agent__lane-tool-detail {
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.agent__lane-text {
+  font-size: 0.85rem;
 }
 
 .agent__working {
@@ -415,7 +439,6 @@ $agent-node-size: 1.75rem;
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--agent-view-border-color);
   border-radius: calc(1.1rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.0625rem 0.125rem -0.0625rem rgba(0, 0, 0, 0.5);
   transition: border-color 150ms ease-in-out;
 
@@ -479,7 +502,6 @@ $agent-node-size: 1.75rem;
   overflow: hidden;
   background: var(--gray-200);
   border-radius: 0.2rem;
-  corner-shape: var(--app-corner-shape, squircle);
 }
 
 :host-context([data-theme-mode='dark']) .agent__meter {
@@ -538,8 +560,6 @@ $agent-node-size: 1.75rem;
   color: var(--body-foreground-color);
   background: var(--body-background-color);
   border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
 }
 
 .agent__attachment-icon {
@@ -634,8 +654,6 @@ $agent-node-size: 1.75rem;
   color: var(--gray-100);
   background: var(--accent-color);
   border: none;
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -659,8 +677,6 @@ $agent-node-size: 1.75rem;
   color: var(--form-muted-foreground-color);
   background: transparent;
   border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
   font-family: inherit;
   cursor: default;
   transition:
@@ -706,8 +722,6 @@ $agent-node-size: 1.75rem;
   min-block-size: 0;
   overflow: hidden;
   border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
 
   app-markdown-editor {
     flex: 1;
@@ -775,4 +789,33 @@ $agent-node-size: 1.75rem;
 :host ::ng-deep .agent__message--user .agent__markdown a {
   color: var(--gray-100);
   text-decoration: underline;
+}
+
+// Shared chrome, grouped so the compiled component style stays inside its budget: every rounded
+// surface follows the app's corner shape, and the card/chip family shares one radius.
+.agent__avatar,
+.agent__bubble,
+.agent__node-icon,
+.agent__action-summary,
+.agent__action-cmd,
+.agent__permission,
+.agent__ask,
+.agent__btn,
+.agent__composer,
+.agent__meter,
+.agent__attachment,
+.agent__send,
+.agent__md,
+.agent__md-editor {
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__avatar,
+.agent__permission,
+.agent__ask,
+.agent__attachment,
+.agent__send,
+.agent__md,
+.agent__md-editor {
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }

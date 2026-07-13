@@ -585,6 +585,9 @@ export class ClaudeAgentProvider implements AgentProvider {
       ],
       canUseTool,
       abortController: controller,
+      // Forward sub-agent (Task) text and thinking with `parent_tool_use_id` set, so the renderer can
+      // show nested sub-agent activity as live progress instead of an opaque "Working…" stall.
+      forwardSubagentText: true,
       // Resume the conversation's prior session when one exists, so the model keeps the earlier turns'
       // context (the SDK replays the persisted session transcript, including tool calls and results).
       // Absent on a conversation's first turn, which starts a fresh session.
@@ -757,17 +760,77 @@ export class ClaudeAgentProvider implements AgentProvider {
 
   /**
    * Translates an SDK message into transcript events: reasoning, assistant text, and tool lifecycle.
+   * Messages produced inside a sub-agent (Task) carry `parent_tool_use_id`; their events carry it as
+   * `parentToolId` so the renderer nests them under the spawning tool use.
    * @param message The SDK message.
    * @param context The run context to emit through.
    */
   private handleMessage(message: SDKMessage, context: AgentRunContext): void {
+    const parent: string | null = this.parentToolIdOf(message);
     if (message.type === 'assistant') {
-      this.handleAssistantBlocks(message.message.content as readonly ContentBlock[], context);
+      this.handleAssistantBlocks(
+        message.message.content as readonly ContentBlock[],
+        context,
+        parent,
+      );
+      this.handleSubagentUsage(message, context, parent);
     } else if (message.type === 'user') {
-      this.handleToolResults(message, context);
+      this.handleToolResults(message, context, parent);
     } else if (message.type === 'result') {
       this.handleResult(message, context);
     }
+  }
+
+  /**
+   * Reads the sub-agent attribution an SDK message carries: the id of the Task tool use it belongs
+   * to, or null for a top-level message.
+   * @param message The SDK message.
+   * @returns Returns the parent tool use id, or null.
+   */
+  private parentToolIdOf(message: SDKMessage): string | null {
+    const value: unknown = (message as { parent_tool_use_id?: unknown }).parent_tool_use_id;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * Emits a sub-agent usage event from an assistant message produced inside a Task, so the renderer
+   * can attribute tokens to that sub-agent's lane. Only sub-agent messages are reported this way —
+   * the run's own usage comes once from the terminal `result` message, which already folds in
+   * sub-agent work, so the context meter is never double-counted.
+   * @param message The assistant SDK message.
+   * @param context The run context to emit through.
+   * @param parent The sub-agent (Task tool use) the message belongs to, or null for top-level.
+   */
+  private handleSubagentUsage(
+    message: SDKMessage,
+    context: AgentRunContext,
+    parent: string | null,
+  ): void {
+    if (parent === null) {
+      return;
+    }
+    interface TurnUsage {
+      readonly input_tokens?: number;
+      readonly output_tokens?: number;
+      readonly cache_read_input_tokens?: number;
+      readonly cache_creation_input_tokens?: number;
+    }
+    const usage: TurnUsage | undefined = (message as { message?: { usage?: TurnUsage } }).message
+      ?.usage;
+    if (usage === undefined) {
+      return;
+    }
+    context.emit({
+      requestId: context.requestId,
+      kind: 'usage',
+      parentToolId: parent,
+      inputTokens:
+        (usage.input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0),
+      outputTokens: usage.output_tokens ?? 0,
+      costUsd: null,
+    });
   }
 
   /**
@@ -813,23 +876,43 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Emits reasoning, text, and tool-start events for an assistant message's content blocks.
+   * Emits reasoning, text, and tool-start events for an assistant message's content blocks. A Task
+   * tool use additionally carries its `subagent_type` so the renderer labels the sub-agent's lane.
    * @param blocks The assistant content blocks.
    * @param context The run context to emit through.
+   * @param parent The sub-agent (Task tool use) the message belongs to, or null for top-level.
    */
-  private handleAssistantBlocks(blocks: readonly ContentBlock[], context: AgentRunContext): void {
+  private handleAssistantBlocks(
+    blocks: readonly ContentBlock[],
+    context: AgentRunContext,
+    parent: string | null,
+  ): void {
+    const attribution: { parentToolId?: string } = parent === null ? {} : { parentToolId: parent };
     for (const block of blocks) {
       if (block.type === 'text' && typeof block.text === 'string') {
-        context.emit({ requestId: context.requestId, kind: 'text', delta: block.text });
+        context.emit({
+          requestId: context.requestId,
+          kind: 'text',
+          delta: block.text,
+          ...attribution,
+        });
       } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
-        context.emit({ requestId: context.requestId, kind: 'thinking', delta: block.thinking });
+        context.emit({
+          requestId: context.requestId,
+          kind: 'thinking',
+          delta: block.thinking,
+          ...attribution,
+        });
       } else if (block.type === 'tool_use' && typeof block.id === 'string') {
+        const agentType: unknown = block.input?.['subagent_type'];
         context.emit({
           requestId: context.requestId,
           kind: 'tool-start',
           toolId: block.id,
           name: prettyToolName(block.name ?? 'tool'),
           detail: summarizeToolInput(block.input),
+          ...attribution,
+          ...(typeof agentType === 'string' && agentType.length > 0 ? { agentType } : {}),
         });
       }
     }
@@ -839,8 +922,13 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Emits tool-end events for the tool-result blocks carried by a user message.
    * @param message The user SDK message.
    * @param context The run context to emit through.
+   * @param parent The sub-agent (Task tool use) the message belongs to, or null for top-level.
    */
-  private handleToolResults(message: SDKMessage, context: AgentRunContext): void {
+  private handleToolResults(
+    message: SDKMessage,
+    context: AgentRunContext,
+    parent: string | null,
+  ): void {
     const content: unknown = (message as { message?: { content?: unknown } }).message?.content;
     if (!Array.isArray(content)) {
       return;
@@ -853,6 +941,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           toolId: block.tool_use_id,
           ok: block.is_error !== true,
           detail: block.is_error === true ? 'failed' : 'done',
+          ...(parent === null ? {} : { parentToolId: parent }),
         });
       }
     }
