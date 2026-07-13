@@ -7,7 +7,12 @@ import {
   ConversationContext,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
-import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import {
+  Agent,
+  AgentBranchPoint,
+  AgentItem,
+  AgentQueuedMessage,
+} from '@shared/angular/services/agent/agent';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import {
@@ -22,11 +27,16 @@ import { AgentConversation } from './agent-conversation';
  * @param log A record the stub appends its calls to.
  * @returns Returns the partial agent.
  */
-function agentStub(items: WritableSignal<readonly AgentItem[]>, log: string[]): Partial<Agent> {
+function agentStub(
+  items: WritableSignal<readonly AgentItem[]>,
+  log: string[],
+  branch: WritableSignal<AgentBranchPoint>,
+): Partial<Agent> {
   return {
     items,
     isRunning: signal<boolean>(false),
     queued: signal<readonly AgentQueuedMessage[]>([]),
+    branch,
     clear: (): void => {
       log.push('clear');
       items.set([]);
@@ -54,6 +64,8 @@ describe('AgentConversation', () => {
 
   let items: WritableSignal<readonly AgentItem[]>;
   let log: string[];
+  let branch: WritableSignal<AgentBranchPoint>;
+  let saves: StoredAgentConversation[];
 
   /**
    * Configures the module with the given optional context resolver and returns the service.
@@ -64,6 +76,10 @@ describe('AgentConversation', () => {
     const storeStub: Partial<AgentConversations> = {
       list: (): Promise<readonly AgentConversationSummary[]> => Promise.resolve([]),
       load: (): Promise<StoredAgentConversation | null> => Promise.resolve(RECORD),
+      save: (record: StoredAgentConversation): Promise<AgentConversationSummary | null> => {
+        saves.push(record);
+        return Promise.resolve(null);
+      },
       delete: (): Promise<void> => Promise.resolve(),
     };
     const engineStub: Partial<AgentEngine> = {
@@ -73,7 +89,7 @@ describe('AgentConversation', () => {
     TestBed.configureTestingModule({
       providers: [
         AgentConversation,
-        { provide: Agent, useValue: agentStub(items, log) },
+        { provide: Agent, useValue: agentStub(items, log, branch) },
         { provide: AgentConversations, useValue: storeStub },
         { provide: AgentEngine, useValue: engineStub },
         ...(resolver === undefined
@@ -87,6 +103,8 @@ describe('AgentConversation', () => {
   beforeEach(() => {
     items = signal<readonly AgentItem[]>([]);
     log = [];
+    branch = signal<AgentBranchPoint>({ epoch: 0, origin: [], originSessionId: null });
+    saves = [];
   });
 
   it('context_whenNoResolverAndNoBinding_isGlobal', () => {
@@ -134,6 +152,26 @@ describe('AgentConversation', () => {
     conversation.setAutoScroll(false);
 
     expect(conversation.autoScroll()).toBe(false);
+  });
+
+  it('branch_whenARewindPublishesAnOrigin_preservesItAsItsOwnRecordAndDetachesTheId', async () => {
+    const conversation: AgentConversation = build();
+    const origin: readonly AgentItem[] = [
+      { id: 'item-1', kind: 'user', text: 'original question' },
+      { id: 'item-2', kind: 'assistant', text: 'original answer' },
+    ];
+
+    branch.set({ epoch: 1, origin, originSessionId: 'sess-1' });
+    TestBed.tick();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(saves).toHaveLength(1);
+    expect(saves[0].items).toBe(origin);
+    expect(saves[0].sessionId).toBe('sess-1');
+    expect(saves[0].title).toBe('original question');
+    // The edited line continues under a fresh conversation id.
+    expect(conversation.currentId()).toBeNull();
   });
 
   it('open_whenRecordExists_restoresTheTranscriptAndMarksItCurrent', async () => {

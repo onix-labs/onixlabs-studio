@@ -589,8 +589,14 @@ export class ClaudeAgentProvider implements AgentProvider {
       forwardSubagentText: true,
       // Resume the conversation's prior session when one exists, so the model keeps the earlier turns'
       // context (the SDK replays the persisted session transcript, including tool calls and results).
-      // Absent on a conversation's first turn, which starts a fresh session.
+      // Absent on a conversation's first turn, which starts a fresh session. A branch (rewind)
+      // resumes only up to its anchor message and forks to a new session id, so the discarded turns
+      // never reach the model and the original session stays resumable.
       ...(context.resumeSessionId !== null ? { resume: context.resumeSessionId } : {}),
+      ...(context.resumeSessionId !== null && context.resumeSessionAt !== null
+        ? { resumeSessionAt: context.resumeSessionAt }
+        : {}),
+      ...(context.resumeSessionId !== null && context.forkSession ? { forkSession: true } : {}),
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task
       // budget so the model paces its tool use and wraps up before the limit.
       ...(context.tokenCap > 0 ? { taskBudget: { total: context.tokenCap } } : {}),
@@ -834,10 +840,12 @@ export class ClaudeAgentProvider implements AgentProvider {
   ): void {
     const parent: string | null = this.parentToolIdOf(message);
     if (message.type === 'assistant') {
+      const uuid: unknown = (message as { uuid?: unknown }).uuid;
       this.handleAssistantBlocks(
         message.message.content as readonly ContentBlock[],
         context,
         parent,
+        typeof uuid === 'string' && uuid.length > 0 ? uuid : null,
       );
       this.handleSubagentUsage(message, context, parent);
     } else if (message.type === 'user') {
@@ -962,11 +970,13 @@ export class ClaudeAgentProvider implements AgentProvider {
    * @param blocks The assistant content blocks.
    * @param context The run context to emit through.
    * @param parent The sub-agent (Task tool use) the message belongs to, or null for top-level.
+   * @param uuid The SDK message uuid text chunks carry (the branch anchor), or null when absent.
    */
   private handleAssistantBlocks(
     blocks: readonly ContentBlock[],
     context: AgentRunContext,
     parent: string | null,
+    uuid: string | null,
   ): void {
     const attribution: { parentToolId?: string } = parent === null ? {} : { parentToolId: parent };
     for (const block of blocks) {
@@ -975,6 +985,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           requestId: context.requestId,
           kind: 'text',
           delta: block.text,
+          ...(uuid === null ? {} : { messageUuid: uuid }),
           ...attribution,
         });
       } else if (block.type === 'thinking' && typeof block.thinking === 'string') {

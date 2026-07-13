@@ -106,6 +106,12 @@
   opacity: 1;
 }
 
+// Groups a message's quiet affordances (copy, edit-and-resend, retry) on one hover-revealed row.
+.agent__msg-actions {
+  display: flex;
+  gap: 0.15rem;
+}
+
 .agent__avatar {
   display: grid;
   flex: 0 0 2rem;
@@ -796,6 +802,23 @@ $agent-node-size: 1.75rem;
   }
 }
 
+// The composer's edit-mode banner: sending now rewinds the conversation to the message under edit.
+.agent__edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--accent-color);
+  border: 0.0625rem dashed var(--accent-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+}
+
+.agent__edit-text {
+  flex: 1;
+  min-inline-size: 0;
+}
+
 .agent__input {
   inline-size: 100%;
   min-block-size: 1.5rem;
@@ -1008,6 +1031,7 @@ $agent-node-size: 1.75rem;
 .agent__meter,
 .agent__attachment,
 .agent__queue-item,
+.agent__edit-banner,
 .agent__send,
 .agent__md,
 .agent__md-editor {

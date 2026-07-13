@@ -437,6 +437,41 @@ export class AgentChat {
   public readonly queue: Signal<readonly AgentQueuedMessage[]> = this.agent.queued;
 
   /**
+   * Holds the prior user message being edited for resend (the composer's edit mode), or null when
+   * composing normally. Sending in edit mode rewinds the conversation to that message.
+   */
+  protected readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
+
+  /**
+   * Holds the draft that was in the composer when edit mode began, restored on cancel.
+   */
+  private stashedBeforeEdit: string = '';
+
+  /**
+   * Gets the assistant item the Retry affordance sits under: the conversation's final top-level
+   * assistant reply, provided a user message precedes it and no run is in flight. Null when there is
+   * nothing to retry.
+   */
+  protected readonly retryTarget: Signal<{ assistantId: string; user: AgentItem } | null> =
+    computed((): { assistantId: string; user: AgentItem } | null => {
+      if (this.isRunning()) {
+        return null;
+      }
+      const items: readonly AgentItem[] = this.items();
+      let user: AgentItem | null = null;
+      let assistantId: string | null = null;
+      for (const item of items) {
+        if (item.kind === 'user') {
+          user = item;
+          assistantId = null;
+        } else if (item.kind === 'assistant' && item.parentToolId === undefined && user !== null) {
+          assistantId = item.id;
+        }
+      }
+      return user !== null && assistantId !== null ? { assistantId, user } : null;
+    });
+
+  /**
    * Holds the label of the suggested choice currently selected on the pending question's radio group,
    * or null when none is selected yet. Reset whenever the pending question changes.
    */
@@ -734,7 +769,8 @@ export class AgentChat {
 
   /**
    * Sends the current draft: as the answer to a pending agent question when one is waiting (the
-   * composer's answer mode), otherwise as a new message starting a run. Blank drafts are ignored.
+   * composer's answer mode), as a rewind-and-resend while a prior message is being edited (edit
+   * mode), otherwise as a new message starting a run. Blank drafts are ignored.
    */
   public send(): void {
     const text: string = this.draftText();
@@ -742,8 +778,13 @@ export class AgentChat {
       return;
     }
     const pending: AgentItem | undefined = this.pendingInput();
+    const editing: AgentItem | null = this.editing();
     if (pending !== undefined) {
       this.agent.respondInput(pending, text.trim());
+    } else if (editing !== null) {
+      this.editing.set(null);
+      this.stashedBeforeEdit = '';
+      this.agent.rewind(editing, text, this.tabId(), this.surface());
     } else {
       this.agent.send(text, this.tabId(), this.surface());
     }
@@ -938,6 +979,53 @@ export class AgentChat {
   }
 
   /**
+   * Enters edit mode on a prior user message: its text is loaded into the composer and sending
+   * rewinds the conversation to that message. The draft being written is stashed and restored on
+   * cancel.
+   * @param item The user item to edit and resend.
+   */
+  public beginEdit(item: AgentItem): void {
+    this.stashedBeforeEdit = this.draftText();
+    this.editing.set(item);
+    this.draftText.set(item.text);
+    const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+    if (area !== undefined) {
+      area.value = item.text;
+      this.autoGrow(area);
+      area.focus();
+    }
+  }
+
+  /**
+   * Leaves edit mode without resending, restoring the stashed draft.
+   */
+  public cancelEdit(): void {
+    if (this.editing() === null) {
+      return;
+    }
+    this.editing.set(null);
+    this.draftText.set(this.stashedBeforeEdit);
+    const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
+    if (area !== undefined) {
+      area.value = this.stashedBeforeEdit;
+      this.autoGrow(area);
+    }
+    this.stashedBeforeEdit = '';
+  }
+
+  /**
+   * Retries the conversation's final turn: rewinds to the last user message and resends it
+   * unchanged, replacing the final reply with a fresh one (the original line stays in History).
+   */
+  public retryLast(): void {
+    const target: { assistantId: string; user: AgentItem } | null = this.retryTarget();
+    if (target !== null) {
+      this.agent.rewind(target.user, target.user.text, this.tabId(), this.surface());
+      this.atBottom.set(true);
+    }
+  }
+
+  /**
    * Retries the failed turn an error item records.
    * @param item The error item.
    */
@@ -1083,6 +1171,11 @@ export class AgentChat {
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.editing() !== null) {
+      event.preventDefault();
+      this.cancelEdit();
+      return;
+    }
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       this.onHistoryKey(event);
       return;

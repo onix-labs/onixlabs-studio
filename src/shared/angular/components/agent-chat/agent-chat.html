@@ -23,15 +23,28 @@
                 class="agent__bubble agent__markdown"
                 [innerHTML]="row.item!.text | markdown"
               ></div>
-              <button
-                type="button"
-                class="agent__copy"
-                aria-label="Copy message"
-                (click)="copy(row.item!)"
-              >
-                <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
-                <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
-              </button>
+              <span class="agent__msg-actions">
+                <button
+                  type="button"
+                  class="agent__copy"
+                  aria-label="Copy message"
+                  (click)="copy(row.item!)"
+                >
+                  <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
+                  <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
+                </button>
+                @if (!isRunning()) {
+                  <button
+                    type="button"
+                    class="agent__copy"
+                    aria-label="Edit and resend"
+                    (click)="beginEdit(row.item!)"
+                  >
+                    <app-icon [icon]="Icon.PENCIL" />
+                    <span>Edit</span>
+                  </button>
+                }
+              </span>
             </div>
           </div>
         }
@@ -241,15 +254,28 @@
                     class="agent__bubble agent__markdown"
                     [innerHTML]="row.item!.text | markdown"
                   ></div>
-                  <button
-                    type="button"
-                    class="agent__copy"
-                    aria-label="Copy response"
-                    (click)="copy(row.item!)"
-                  >
-                    <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
-                    <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
-                  </button>
+                  <span class="agent__msg-actions">
+                    <button
+                      type="button"
+                      class="agent__copy"
+                      aria-label="Copy response"
+                      (click)="copy(row.item!)"
+                    >
+                      <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
+                      <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
+                    </button>
+                    @if (retryTarget()?.assistantId === row.item!.id) {
+                      <button
+                        type="button"
+                        class="agent__copy"
+                        aria-label="Retry this turn"
+                        (click)="retryLast()"
+                      >
+                        <app-icon [icon]="Icon.REFRESH" />
+                        <span>Retry</span>
+                      </button>
+                    }
+                  </span>
                 }
                 @case ('thinking') {
                   <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
@@ -382,7 +408,9 @@
 
   <form class="agent__composer" (submit)="$event.preventDefault(); send()">
     <div class="agent__composer-head">
-      <span class="agent__composer-label">{{ pendingInput() ? 'Answer' : 'Message' }}</span>
+      <span class="agent__composer-label">{{
+        pendingInput() ? 'Answer' : editing() ? 'Edit' : 'Message'
+      }}</span>
       <span class="agent__composer-meta">
         <span class="agent__composer-words">{{ wordCount() }}</span>
         @if (hasContext()) {
@@ -456,6 +484,27 @@
       </ul>
     }
 
+    @if (editing()) {
+      <!-- Edit mode: sending rewinds the conversation to the message being edited; the original
+           line is preserved in History as its own conversation. -->
+      <div class="agent__edit-banner">
+        <app-icon [icon]="Icon.PENCIL" aria-hidden="true" />
+        <span class="agent__edit-text">
+          Editing an earlier message — sending rewinds the conversation to it. The original line is
+          kept in History.
+        </span>
+        <button
+          type="button"
+          class="agent__queue-btn"
+          aria-label="Cancel edit"
+          title="Cancel"
+          (click)="cancelEdit()"
+        >
+          <app-icon [icon]="Icon.CLOSE" />
+        </button>
+      </div>
+    }
+
     <textarea
       #input
       class="agent__input"
@@ -523,10 +572,10 @@
           <button
             type="submit"
             class="agent__send"
-            aria-label="Send"
+            [attr.aria-label]="editing() ? 'Resend' : 'Send'"
             [disabled]="draft().trim().length === 0"
           >
-            <span class="agent__send-label">Send</span>
+            <span class="agent__send-label">{{ editing() ? 'Resend' : 'Send' }}</span>
             <app-icon [icon]="Icon.SEND" />
           </button>
         }

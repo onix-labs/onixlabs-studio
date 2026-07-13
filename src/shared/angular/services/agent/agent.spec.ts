@@ -38,6 +38,8 @@ describe('Agent', () => {
     permissionPosture: AiPermissionPosture;
     tokenCap: number;
     resumeSessionId: string | null;
+    resumeSessionAt: string | null;
+    forkSession: boolean;
   }[];
   let abortCalls: string[];
   let steerCalls: { requestId: string; text: string }[];
@@ -89,6 +91,8 @@ describe('Agent', () => {
           permissionPosture: options.permissionPosture ?? 'prompt',
           tokenCap: options.tokenCap ?? 0,
           resumeSessionId: options.resumeSessionId ?? null,
+          resumeSessionAt: options.resumeSessionAt ?? null,
+          forkSession: options.forkSession ?? false,
         });
         return 'run-1';
       },
@@ -781,6 +785,74 @@ describe('Agent', () => {
     expect(agent.queued()).toHaveLength(0);
     expect(runCalls).toHaveLength(2);
     expect(runCalls[1].prompt).toBe('queued follow-up');
+  });
+
+  it('onText_whenChunksCarryAMessageUuid_recordsTheBranchAnchor', () => {
+    agent.send('hi');
+
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Hel', messageUuid: 'uuid-1' });
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'lo', messageUuid: 'uuid-1' });
+
+    expect(lastItem()?.text).toBe('Hello');
+    expect(lastItem()?.providerMessageId).toBe('uuid-1');
+  });
+
+  it('rewind_whenEditingAPriorMessage_truncatesAndForksTheSessionAtTheKeptAnchor', () => {
+    agent.send('first');
+    fireEvent({ requestId: 'run-1', kind: 'session', sessionId: 'sess-1' });
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'reply one', messageUuid: 'uuid-1' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    agent.send('second');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'reply two', messageUuid: 'uuid-2' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    const secondUser: AgentItem = agent
+      .items()
+      .filter((item: AgentItem): boolean => item.kind === 'user')[1];
+
+    agent.rewind(secondUser, 'second, but better');
+
+    // The transcript keeps only the items before the rewind point, plus the edited message.
+    expect(agent.items().map((item: AgentItem): string => item.text)).toEqual([
+      'first',
+      'reply one',
+      'second, but better',
+    ]);
+    // The original line is published as a branch point for the hosting conversation to preserve.
+    expect(agent.branch().epoch).toBe(1);
+    expect(agent.branch().origin).toHaveLength(4);
+    expect(agent.branch().originSessionId).toBe('sess-1');
+    // The re-run forks the session resumed up to the last kept assistant message.
+    expect(runCalls).toHaveLength(3);
+    expect(runCalls[2].prompt).toBe('second, but better');
+    expect(runCalls[2].resumeSessionId).toBe('sess-1');
+    expect(runCalls[2].resumeSessionAt).toBe('uuid-1');
+    expect(runCalls[2].forkSession).toBe(true);
+    // The fork anchor is consumed: a later ordinary send does not fork again.
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'better reply' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    agent.send('carry on');
+    expect(runCalls[3].forkSession).toBe(false);
+    expect(runCalls[3].resumeSessionAt).toBeNull();
+  });
+
+  it('rewind_whenNoAnchorRemains_startsAFreshSession', () => {
+    agent.send('first');
+    fireEvent({ requestId: 'run-1', kind: 'session', sessionId: 'sess-1' });
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'reply', messageUuid: 'uuid-1' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    const firstUser: AgentItem = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'user')!;
+
+    agent.rewind(firstUser, 'a different opening');
+
+    // Nothing kept before the rewind point: the branch must not resume a session that still
+    // contains the discarded turns.
+    expect(runCalls[1].resumeSessionId).toBeNull();
+    expect(runCalls[1].forkSession).toBe(false);
+    expect(agent.items().map((item: AgentItem): string => item.text)).toEqual([
+      'a different opening',
+    ]);
   });
 
   it('stop_whenRunning_abortsTheRun', () => {

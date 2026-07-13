@@ -75,6 +75,18 @@ export interface AiRunOptions {
    * omitted to start a fresh session (a conversation's first turn).
    */
   readonly resumeSessionId?: string | null;
+
+  /**
+   * Gets the provider message to resume up to (and including) when branching, so discarded turns
+   * never reach the model. Used with {@link resumeSessionId} and {@link forkSession}.
+   */
+  readonly resumeSessionAt?: string;
+
+  /**
+   * Gets a value indicating whether the resumed session forks to a new session id rather than
+   * continuing (branching keeps the original session untouched).
+   */
+  readonly forkSession?: boolean;
 }
 
 /**
@@ -152,6 +164,8 @@ export class AiRuntime {
       mode: options.mode ?? 'agent',
       contextPaths: options.contextPaths ?? [],
       resumeSessionId: options.resumeSessionId ?? null,
+      resumeSessionAt: options.resumeSessionAt ?? null,
+      forkSession: options.forkSession ?? false,
     });
     return requestId;
   }

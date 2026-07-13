@@ -16,7 +16,12 @@ import {
   contextIdOf,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
-import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import {
+  Agent,
+  AgentBranchPoint,
+  AgentItem,
+  AgentQueuedMessage,
+} from '@shared/angular/services/agent/agent';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import {
@@ -226,6 +231,24 @@ export class AgentConversation implements AgentSessionHandle {
       untracked((): void => void this.reloadSummaries());
     });
 
+    // A rewind publishes a branch point carrying the original line. Preserve that line as its own
+    // record — under the conversation's current id, cancelling any save the truncation just
+    // scheduled — and let the edited line continue as a new conversation, so the original stays
+    // reachable in History rather than being overwritten.
+    let seenBranchEpoch: number = 0;
+    effect((): void => {
+      const branch: AgentBranchPoint = this.agent.branch();
+      untracked((): void => {
+        if (branch.epoch === seenBranchEpoch) {
+          return;
+        }
+        seenBranchEpoch = branch.epoch;
+        if (branch.origin.length > 0) {
+          void this.preserveBranchOrigin(branch);
+        }
+      });
+    });
+
     this.destroyRef.onDestroy((): void => {
       if (this.saveTimer !== null) {
         this.cancelScheduledSave();
@@ -374,6 +397,36 @@ export class AgentConversation implements AgentSessionHandle {
       contextIdOf(this.context()),
     );
     this.summariesState.set(summaries);
+  }
+
+  /**
+   * Saves a rewind's original line as its own conversation record and detaches the current id, so
+   * the edited line continues under a fresh one. The original keeps its provider session, staying
+   * fully resumable from History.
+   * @param branch The branch point carrying the original transcript.
+   */
+  private async preserveBranchOrigin(branch: AgentBranchPoint): Promise<void> {
+    this.cancelScheduledSave();
+    const id: string = this.currentIdState() ?? crypto.randomUUID();
+    const createdAt: number = this.createdAt > 0 ? this.createdAt : Date.now();
+    this.currentIdState.set(null);
+    this.createdAt = 0;
+    const record: StoredAgentConversation = {
+      id,
+      contextId: contextIdOf(this.context()),
+      title: this.deriveTitle(branch.origin),
+      provider: this.engine.provider(),
+      model: this.engine.model(),
+      createdAt,
+      updatedAt: Date.now(),
+      messageCount: branch.origin.filter(
+        (item: AgentItem): boolean => item.kind === 'user' || item.kind === 'assistant',
+      ).length,
+      items: branch.origin,
+      sessionId: branch.originSessionId,
+    };
+    await this.store.save(record);
+    await this.reloadSummaries();
   }
 
   /**

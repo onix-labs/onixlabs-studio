@@ -295,6 +295,11 @@ export class AiManager {
         typeof request.resumeSessionId === 'string' && request.resumeSessionId.length > 0
           ? request.resumeSessionId
           : null,
+      resumeSessionAt:
+        typeof request.resumeSessionAt === 'string' && request.resumeSessionAt.length > 0
+          ? request.resumeSessionAt
+          : null,
+      forkSession: request.forkSession === true,
       auth: this.currentAuth(),
       signal: controller.signal,
       bridge: {

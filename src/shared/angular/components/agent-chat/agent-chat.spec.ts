@@ -21,8 +21,11 @@ describe('AgentChat', () => {
   let removedQueued: string[];
   let permissionResponses: { id: string; granted: boolean; remember?: AiPermissionRemember }[];
 
+  let rewinds: { id: string; text: string }[];
+
   beforeEach(async () => {
     retried = [];
+    rewinds = [];
     queued = signal<readonly AgentQueuedMessage[]>([]);
     removedQueued = [];
     permissionResponses = [];
@@ -57,6 +60,7 @@ describe('AgentChat', () => {
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
       retry: (item: AgentItem): void => void retried.push(item.id),
+      rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       queued,
       removeQueued: (id: string): void => void removedQueued.push(id),
       takeQueued: (id: string): string | null => {
@@ -497,6 +501,71 @@ describe('AgentChat', () => {
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('.agent__send[aria-label="Send"]')).not.toBeNull();
     expect(host.querySelector('.agent__send--stop')).not.toBeNull();
+  });
+
+  it('editAndResend_whenSendingInEditMode_rewindsTheConversationWithTheNewText', () => {
+    const userItem: AgentItem = { id: 'item-1', kind: 'user', text: 'original' };
+    items.set([userItem, { id: 'item-2', kind: 'assistant', text: 'reply' }]);
+    fixture.detectChanges();
+
+    component.beginEdit(userItem);
+    expect(component.draft()).toBe('original');
+
+    component.onInput('improved');
+    component.send();
+
+    expect(rewinds).toEqual([{ id: 'item-1', text: 'improved' }]);
+    expect(sent).toEqual([]);
+    expect(component.draft()).toBe('');
+  });
+
+  it('editMode_whenCancelled_restoresTheStashedDraft', () => {
+    const userItem: AgentItem = { id: 'item-1', kind: 'user', text: 'original' };
+    items.set([userItem]);
+    component.onInput('half-written draft');
+
+    component.beginEdit(userItem);
+    expect(component.draft()).toBe('original');
+
+    component.cancelEdit();
+
+    expect(component.draft()).toBe('half-written draft');
+
+    component.send();
+    expect(rewinds).toEqual([]);
+    expect(sent).toEqual(['half-written draft']);
+  });
+
+  it('retryLast_whenTheLastTurnHasAReply_rewindsToItsUserMessageUnchanged', () => {
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'question' },
+      { id: 'item-2', kind: 'assistant', text: 'meh answer' },
+    ]);
+    fixture.detectChanges();
+
+    const retryButton: HTMLButtonElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('[aria-label="Retry this turn"]');
+    expect(retryButton).not.toBeNull();
+
+    retryButton!.click();
+
+    expect(rewinds).toEqual([{ id: 'item-1', text: 'question' }]);
+  });
+
+  it('retryLast_whileRunningOrWithoutAReply_offersNoRetry', () => {
+    items.set([{ id: 'item-1', kind: 'user', text: 'question' }]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[aria-label="Retry this turn"]')).toBeNull();
+
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'question' },
+      { id: 'item-2', kind: 'assistant', text: 'answer' },
+    ]);
+    running.set(true);
+    fixture.detectChanges();
+    expect(host.querySelector('[aria-label="Retry this turn"]')).toBeNull();
   });
 
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {
