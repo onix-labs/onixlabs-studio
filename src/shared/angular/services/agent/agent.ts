@@ -98,6 +98,18 @@ export interface AgentItem {
   readonly toolState?: AgentToolState;
 
   /**
+   * Gets the tool's full input, pretty-printed, for the expanded raw-detail view (clamped at the
+   * source when enormous).
+   */
+  readonly toolInput?: string;
+
+  /**
+   * Gets the tool's raw output — or its error detail when it failed — for the expanded raw-detail
+   * view (clamped at the source when enormous).
+   */
+  readonly toolOutput?: string;
+
+  /**
    * Gets the id used to answer a permission request.
    */
   readonly permissionId?: string;
@@ -649,12 +661,13 @@ export class Agent {
           toolName: event.name,
           toolDetail: event.detail,
           toolState: 'running',
+          ...(event.input === undefined ? {} : { toolInput: event.input }),
           ...(event.parentToolId === undefined ? {} : { parentToolId: event.parentToolId }),
           ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
         });
         break;
       case 'tool-end':
-        this.endTool(event.toolId, event.ok);
+        this.endTool(event.toolId, event.ok, event.output);
         break;
       case 'permission':
         this.push({
@@ -876,16 +889,22 @@ export class Agent {
   }
 
   /**
-   * Marks a tool item complete.
+   * Marks a tool item complete, attaching its raw output (or error detail) for the expanded
+   * raw-detail view.
    * @param toolId The tool correlation id.
    * @param ok Whether the tool succeeded.
+   * @param output The tool's raw output or error detail, or undefined for none.
    */
-  private endTool(toolId: string, ok: boolean): void {
+  private endTool(toolId: string, ok: boolean, output?: string): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map(
         (item: AgentItem): AgentItem =>
           item.kind === 'tool' && item.toolId === toolId
-            ? { ...item, toolState: ok ? 'ok' : 'error' }
+            ? {
+                ...item,
+                toolState: ok ? 'ok' : 'error',
+                ...(output === undefined ? {} : { toolOutput: output }),
+              }
             : item,
       ),
     );

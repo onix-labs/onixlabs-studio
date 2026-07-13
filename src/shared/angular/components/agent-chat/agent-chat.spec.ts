@@ -343,6 +343,60 @@ describe('AgentChat', () => {
     ).toBe('Thought process');
   });
 
+  it('toolDetail_whenExpanded_showsTheFullInputAndOutputSections', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolDetail: 'ls',
+        toolState: 'error',
+        toolInput: '{\n  "command": "ls"\n}',
+        toolOutput: 'ls: no such directory',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const sections: string[] = Array.from(host.querySelectorAll('.agent__action-section')).map(
+      (section: Element): string => section.textContent?.trim() ?? '',
+    );
+    expect(sections).toEqual(['Input', 'Error']);
+    const payloads: NodeListOf<Element> = host.querySelectorAll('.agent__action-payload');
+    expect(payloads[0].textContent).toContain('"command": "ls"');
+    expect(payloads[1].textContent).toContain('no such directory');
+  });
+
+  it('payloads_whenLong_clipBehindShowAllUntilRevealed', () => {
+    const long: string = 'x'.repeat(2_000);
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Read',
+        toolState: 'ok',
+        toolOutput: long,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__action-payload')?.textContent?.length).toBe(1_500);
+    const more: HTMLButtonElement | null =
+      host.querySelector<HTMLButtonElement>('.agent__action-more');
+    expect(more?.textContent).toContain('500 more characters');
+
+    more!.click();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.agent__action-payload')?.textContent?.length).toBe(2_000);
+    expect(host.querySelector('.agent__action-more')).toBeNull();
+  });
+
   it('composer_whenRendered_doesNotShowProviderOrModelDropdowns', () => {
     fixture.detectChanges();
     const dropdowns: NodeListOf<Element> = (fixture.nativeElement as HTMLElement).querySelectorAll(

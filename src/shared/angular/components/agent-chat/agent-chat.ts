@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
@@ -42,6 +43,13 @@ import { friendlyToolLabel, technicalToolName } from './tool-summary';
  * scrolling, absorbing sub-pixel rounding and the last line's leading so streaming stays pinned.
  */
 const BOTTOM_THRESHOLD_PX: number = 24;
+
+/**
+ * How many characters of a raw tool payload (full input or output) show before it is clipped behind
+ * the "Show all" affordance. The full text is always present on the item; this only bounds what an
+ * expanded tool row renders by default.
+ */
+const PAYLOAD_PREVIEW_CHARS: number = 1_500;
 
 /**
  * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
@@ -230,7 +238,7 @@ interface ContextChip {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, Radio, Dropdown],
+  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, NgTemplateOutlet, Radio, Dropdown],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -446,6 +454,14 @@ export class AgentChat {
    * Holds the timer that clears the transient copied feedback, or null when none is pending.
    */
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the keys (`itemId:section`) of the raw tool payloads the user has revealed in full,
+   * lifting their preview clip.
+   */
+  private readonly revealedPayloads: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
 
   /**
    * Holds the position in the sent-prompt history while the user arrows through it from the composer
@@ -762,6 +778,54 @@ export class AgentChat {
    */
   public skipInput(item: AgentItem): void {
     this.agent.respondInput(item, null);
+  }
+
+  /**
+   * Renders a raw tool payload for an expanded tool row: the full text once revealed (or when it is
+   * short), otherwise its preview clip.
+   * @param itemId The tool item's id.
+   * @param section Which payload of the item this is.
+   * @param text The full payload text.
+   * @returns Returns the text to render.
+   */
+  public payloadText(itemId: string, section: 'input' | 'output', text: string): string {
+    return this.payloadClipped(itemId, section, text) ? text.slice(0, PAYLOAD_PREVIEW_CHARS) : text;
+  }
+
+  /**
+   * Gets a value indicating whether a raw tool payload is currently clipped to its preview (long and
+   * not yet revealed), which shows the "Show all" affordance.
+   * @param itemId The tool item's id.
+   * @param section Which payload of the item this is.
+   * @param text The full payload text.
+   * @returns Returns true when the payload renders clipped.
+   */
+  public payloadClipped(itemId: string, section: 'input' | 'output', text: string): boolean {
+    return (
+      text.length > PAYLOAD_PREVIEW_CHARS && !this.revealedPayloads().has(`${itemId}:${section}`)
+    );
+  }
+
+  /**
+   * Renders the "Show all" label for a clipped payload, saying how much is hidden.
+   * @param text The full payload text.
+   * @returns Returns the label.
+   */
+  public payloadMoreLabel(text: string): string {
+    return `Show all (${(text.length - PAYLOAD_PREVIEW_CHARS).toLocaleString()} more characters)`;
+  }
+
+  /**
+   * Reveals a clipped payload in full.
+   * @param itemId The tool item's id.
+   * @param section Which payload of the item to reveal.
+   */
+  public revealPayload(itemId: string, section: 'input' | 'output'): void {
+    this.revealedPayloads.update((keys: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(keys);
+      next.add(`${itemId}:${section}`);
+      return next;
+    });
   }
 
   /**
