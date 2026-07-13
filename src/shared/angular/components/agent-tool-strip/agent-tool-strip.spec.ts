@@ -35,8 +35,12 @@ describe('AgentToolStrip', () => {
     const conversationStub: Partial<AgentConversation> = {
       isRunning: running,
       historyOpen,
+      contextTokens: signal<number>(0),
+      costUsd: signal<number>(0),
+      hasMessages: signal<boolean>(false),
       newChat: (): void => void (newChats += 1),
       stop: (): void => undefined,
+      compact: (): void => undefined,
       toggleHistory: (): void => void (historyToggles += 1),
     };
 

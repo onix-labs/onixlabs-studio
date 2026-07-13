@@ -15,8 +15,8 @@ const PROVIDERS: readonly AiProviderInfo[] = [
     available: true,
     detail: 'ok',
     models: [
-      { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+      { id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 },
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 1_000_000 },
     ],
     defaultModelId: 'claude-opus-4-8',
   },

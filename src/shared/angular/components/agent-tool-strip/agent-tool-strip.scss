@@ -27,6 +27,71 @@ app-ribbon-strip-button-small {
   min-inline-size: 0;
 }
 
+// The context readout: a small fill meter and the compact used-token label. Sits with the session
+// actions (right after Compact) so the number and the control that acts on it read as one unit. It
+// holds its size but is the first thing to give way after the fields when the strip is tight.
+.strip__context {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin-inline: 0.1rem;
+  color: var(--gray-500);
+}
+
+.strip__meter {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: 2.25rem;
+  block-size: 0.35rem;
+  overflow: hidden;
+  background: var(--gray-200);
+  border-radius: 0.2rem;
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+:host-context([data-theme-mode='dark']) .strip__meter {
+  background: var(--gray-800);
+}
+
+.strip__meter-fill {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 0.2rem;
+  background: var(--accent-color);
+  border-radius: inherit;
+  transition: inline-size 0.2s ease;
+}
+
+.strip__context-label {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// As the window fills, the meter and label shift to warning then critical colours — the visual cue to
+// compact the conversation.
+.strip__context--warn {
+  color: var(--accent-orange);
+
+  .strip__meter-fill {
+    background: var(--accent-orange);
+  }
+}
+
+.strip__context--high {
+  color: var(--accent-coral);
+
+  .strip__meter-fill {
+    background: var(--accent-coral);
+  }
+}
+
 // Pins the history toggle to the far end of the strip, past the provider/model fields.
 .strip__history {
   margin-inline-start: auto;

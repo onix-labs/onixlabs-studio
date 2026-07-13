@@ -23,6 +23,12 @@ export interface AiModelInfo {
    * Gets the model's human-readable label (e.g. `Opus 4.8`).
    */
   readonly label: string;
+
+  /**
+   * Gets the model's context window in tokens, so the renderer can show how full the conversation's
+   * context is (the token readout's denominator).
+   */
+  readonly contextWindow: number;
 }
 
 /**

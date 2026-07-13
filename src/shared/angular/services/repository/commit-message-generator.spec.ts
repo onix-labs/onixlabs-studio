@@ -36,7 +36,7 @@ function makeProvider(id: AiProviderInfo['id'], available: boolean): AiProviderI
     label: id,
     available,
     detail: '',
-    models: [{ id: 'model-1', label: 'Model 1' }],
+    models: [{ id: 'model-1', label: 'Model 1', contextWindow: 200_000 }],
     defaultModelId: 'model-1',
   };
 }

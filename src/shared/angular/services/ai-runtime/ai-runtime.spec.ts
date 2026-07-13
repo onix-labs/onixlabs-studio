@@ -21,7 +21,7 @@ const PROVIDERS: readonly AiProviderInfo[] = [
     label: 'Claude (Agent SDK)',
     available: true,
     detail: 'ok',
-    models: [{ id: 'claude-opus-4-8', label: 'Opus 4.8' }],
+    models: [{ id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 }],
     defaultModelId: 'claude-opus-4-8',
   },
 ];

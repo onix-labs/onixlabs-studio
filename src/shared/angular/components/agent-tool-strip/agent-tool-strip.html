@@ -16,8 +16,24 @@
     [icon]="Icon.COMPACT"
     label="Compact conversation"
     [iconOnly]="true"
-    [disabled]="true"
+    [disabled]="conversation.isRunning() || !conversation.hasMessages()"
+    (action)="conversation.compact()"
   />
+
+  @if (contextTokens() > 0) {
+    <div
+      class="strip__context"
+      [class.strip__context--warn]="contextLevel() === 'warn'"
+      [class.strip__context--high]="contextLevel() === 'high'"
+      [title]="contextTitle()"
+      aria-hidden="true"
+    >
+      <span class="strip__meter">
+        <span class="strip__meter-fill" [style.inline-size.%]="contextPercent()"></span>
+      </span>
+      <span class="strip__context-label">{{ contextLabel() }}</span>
+    </div>
+  }
 
   <app-dropdown
     class="strip__field"

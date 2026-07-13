@@ -151,6 +151,12 @@
         <span>⇧↵ for new line</span>
         <span class="agent__composer-sep">·</span>
         <span>{{ wordCount() }}</span>
+        @if (contextLabel()) {
+          <span class="agent__composer-sep">·</span>
+          <span title="Tokens this conversation occupies in the context window">
+            {{ contextLabel() }} ctx
+          </span>
+        }
       </p>
 
       <div class="agent__composer-actions">

@@ -16,8 +16,8 @@ import { AgentRibbon } from './agent-ribbon';
  * The models the stub agent offers.
  */
 const MODELS: readonly AiModelInfo[] = [
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', contextWindow: 200_000 },
 ];
 
 /**
