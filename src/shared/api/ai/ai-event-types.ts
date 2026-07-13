@@ -134,6 +134,12 @@ export interface AiPermissionEvent extends AiEventBase {
    * Gets a one-line summary of what the tool will do.
    */
   readonly detail: string;
+
+  /**
+   * Gets a value indicating whether the run is scoped to a workspace, so the prompt can offer to
+   * remember the decision for that workspace.
+   */
+  readonly hasWorkspace: boolean;
 }
 
 /**

@@ -48,5 +48,6 @@ export type {
   AiBridgeRequest,
   AiBridgeReply,
   AiPermissionReply,
+  AiPermissionRemember,
   AiInputReply,
 } from './ai/ai-bridge-types';

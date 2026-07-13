@@ -48,6 +48,13 @@ export interface AiBridgeReply {
 }
 
 /**
+ * How long a granted permission is remembered by the broker: for the rest of the app session, for
+ * the current workspace (persisted), or everywhere (persisted). A grant with no remember scope
+ * applies to this one tool use only.
+ */
+export type AiPermissionRemember = 'session' | 'workspace' | 'always';
+
+/**
  * The renderer's answer to a permission request carried by an `AiPermissionEvent`.
  */
 export interface AiPermissionReply {
@@ -60,6 +67,12 @@ export interface AiPermissionReply {
    * Gets a value indicating whether the user granted permission.
    */
   readonly granted: boolean;
+
+  /**
+   * Gets how long the broker remembers a grant (undefined for this one use only). Ignored on a
+   * denial — refusals are never remembered, so a mis-click can never silently brick a tool.
+   */
+  readonly remember?: AiPermissionRemember;
 }
 
 /**

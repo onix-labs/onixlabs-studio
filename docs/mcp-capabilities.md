@@ -192,6 +192,15 @@ These apply to every tab type:
   provider. Those providers still have no built-in file/shell tools, so their reach is limited to
   the studio tools — and on the `project` surface (whose only studio tool is `ask_user`) they can
   do nothing but converse and ask.
+- **Permission broker (remembered decisions)** — every gated prompt is brokered in the main
+  process (`AiManager.requestPermission` → `PermissionRuleStore`): the prompt offers _just this
+  once / for this session / for this workspace / always_, and a remembered grant short-circuits
+  future asks with no prompt at all. Session grants die with the app; workspace (keyed by the
+  run's workspace root) and always grants persist to `agent-permission-rules.json` under
+  `userData`. Only grants are remembered — denials never are, so a mis-click cannot silently
+  brick a tool. Rules key on the tool's display name and apply across providers, since both the
+  Claude and AI-SDK paths route through the same broker. (Per-tool default policies and an audit
+  log are #190's territory; the rule store is designed to be shared with it.)
 - **Interactive input** — `ask_user` blocks the run on the user's answer through the same
   main-process round-trip as permissions (`AiManager.requestInput` → `input-request` event →
   `resolveInput`). Declining ("Skip") or stopping the run resolves the question with no answer,

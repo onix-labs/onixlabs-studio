@@ -112,6 +112,12 @@
             </p>
             @if (row.item!.permissionState === 'pending') {
               <div class="agent__permission-actions">
+                <app-dropdown
+                  [options]="rememberOptions(row.item!)"
+                  [value]="rememberChoice()[row.item!.id] ?? 'once'"
+                  ariaLabel="Remember this decision"
+                  (valueChange)="setRemember(row.item!.id, $event)"
+                />
                 <button type="button" class="agent__btn" (click)="respond(row.item!, true)">
                   Allow
                 </button>
@@ -125,7 +131,7 @@
               </div>
             } @else {
               <span class="agent__permission-state">
-                {{ row.item!.permissionState === 'allowed' ? 'Allowed' : 'Denied' }}
+                {{ permissionStateLabel(row.item!) }}
               </span>
             }
           </div>
