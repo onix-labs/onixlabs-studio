@@ -26,6 +26,21 @@ function resolveBaseUrl(): string {
 }
 
 /**
+ * Appended to the system prompt on every Ollama run. Small local models reliably narrate what they
+ * "would" do instead of calling their function tools, so this spells the contract out bluntly; the
+ * hosted providers do not need (or get) this — the shared surface appendices already name the tools.
+ */
+const LOCAL_TOOL_USE_APPENDIX: string = [
+  'IMPORTANT: You have real function-calling tools, and they are your ONLY way to act. Never',
+  'describe, promise, or print a command, edit, or answer that a tool should produce — CALL THE',
+  'TOOL instead, immediately, without asking for permission first (the app handles permissions and',
+  'will ask the user for you). For terminal work: call write_terminal_input with the command, then',
+  'call read_terminal_output to see the result. For document or binary work: call the matching',
+  'read tool before answering and the matching write tool to change anything. Replying in prose',
+  'when a tool applies is a failure. Act first, then summarise briefly what happened.',
+].join('\n');
+
+/**
  * A local-model implementation of {@link AgentProvider} backed by an Ollama server. It runs open models
  * (e.g. Qwen) entirely on the user's machine through Ollama's OpenAI-compatible API, reusing the same
  * Vercel AI SDK streaming pathway as {@link VercelAiProvider} — so the stream-to-event mapping and the
@@ -82,8 +97,9 @@ export class OllamaProvider implements AgentProvider {
 
     // Expose the tool set (and prompt) for the run's surface and mode: chat runs read-only, and the
     // mutating tools' executors ask through the shared permission round-trip per the posture, so the
-    // safety rails match the Claude path despite the AI SDK having no per-tool permission hook.
-    const system: string = promptForSurface(context);
+    // safety rails match the Claude path despite the AI SDK having no per-tool permission hook. The
+    // local-model appendix bluntly directs the model to call its tools instead of narrating.
+    const system: string = `${promptForSurface(context)}\n\n${LOCAL_TOOL_USE_APPENDIX}`;
     const tools: ToolSet = await toolsForSurface(context);
 
     try {
