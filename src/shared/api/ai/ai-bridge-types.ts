@@ -76,6 +76,27 @@ export interface AiPermissionReply {
 }
 
 /**
+ * The user's decision on a staged edit preview: apply it, apply it and auto-accept further edits for
+ * the rest of the session, or reject it.
+ */
+export type AiEditDecision = 'yes' | 'yes-auto' | 'no';
+
+/**
+ * The renderer's answer to an edit-decision request carried by an `AiEditDecisionEvent`.
+ */
+export interface AiEditDecisionReply {
+  /**
+   * Gets the identifier of the edit decision being answered.
+   */
+  readonly decisionId: string;
+
+  /**
+   * Gets the user's decision.
+   */
+  readonly choice: AiEditDecision;
+}
+
+/**
  * The renderer's answer to a question carried by an `AiInputRequestEvent`.
  */
 export interface AiInputReply {

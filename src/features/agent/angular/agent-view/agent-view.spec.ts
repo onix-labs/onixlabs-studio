@@ -29,9 +29,9 @@ describe('AgentView', () => {
     );
     expect(chatEl).not.toBeNull();
 
-    const chat: AgentChat = fixture.debugElement
-      .query((node): boolean => node.nativeElement === chatEl)
-      .componentInstance as AgentChat;
+    const chat: AgentChat = fixture.debugElement.query(
+      (node): boolean => node.nativeElement === chatEl,
+    ).componentInstance as AgentChat;
     expect(chat.surface()).toBe('project');
   });
 });

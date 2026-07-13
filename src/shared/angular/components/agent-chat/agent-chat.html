@@ -101,6 +101,48 @@
             }
           </div>
         }
+        @case ('edit-decision') {
+          <div
+            class="agent__ask"
+            [class.agent__ask--pending]="row.item!.decisionState === 'pending'"
+          >
+            <p class="agent__ask-question">
+              Apply this edit to <strong>{{ row.item!.decisionName }}</strong
+              >?
+              @if (row.item!.decisionDetail) {
+                <span class="agent__permission-detail">{{ row.item!.decisionDetail }}</span>
+              }
+            </p>
+            @if (row.item!.decisionState === 'pending') {
+              <div class="agent__ask-footer">
+                <span class="agent__ask-hint">
+                  {{
+                    row.item!.decisionHasDiff
+                      ? 'Review the diff in the document well.'
+                      : 'The summary above describes the change.'
+                  }}
+                </span>
+                <div class="agent__ask-actions">
+                  <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes')">
+                    Yes
+                  </button>
+                  <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes-auto')">
+                    Yes, auto-accept edits
+                  </button>
+                  <button
+                    type="button"
+                    class="agent__btn agent__btn--ghost"
+                    (click)="decide(row.item!, 'no')"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>
+            }
+          </div>
+        }
         @case ('permission') {
           <div class="agent__permission">
             <p class="agent__permission-text">

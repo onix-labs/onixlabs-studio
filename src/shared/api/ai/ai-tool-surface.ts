@@ -95,6 +95,24 @@ export const WRITE_BINARY_ASSEMBLY: string = 'write_binary_assembly';
 export const ASK_USER: string = 'ask_user';
 
 /**
+ * The in-app capability that stages an editor mutation as a pending preview instead of applying it:
+ * the prospective change is computed, shown as a diff in the document well when the target has a
+ * diff editor (code; markdown has none), and held until committed or cancelled. Not a model tool —
+ * the edit tools call it internally under the `prompt` posture.
+ */
+export const PREVIEW_ACTIVE_DOCUMENT_EDIT: string = 'preview_active_document_edit';
+
+/**
+ * The in-app capability that applies a staged edit preview to its document and closes the diff.
+ */
+export const COMMIT_EDIT_PREVIEW: string = 'commit_edit_preview';
+
+/**
+ * The in-app capability that discards a staged edit preview and closes the diff.
+ */
+export const CANCEL_EDIT_PREVIEW: string = 'cancel_edit_preview';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
  * standalone agent tab, which has no owning document and works through the provider's built-in tools

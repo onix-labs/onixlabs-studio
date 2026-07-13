@@ -1,5 +1,8 @@
 import {
   ASK_USER,
+  CANCEL_EDIT_PREVIEW,
+  COMMIT_EDIT_PREVIEW,
+  PREVIEW_ACTIVE_DOCUMENT_EDIT,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -257,6 +260,63 @@ export async function writeTerminalInput(
 }
 
 /**
+ * Runs an editor mutation through the edit-preview flow when the posture asks before edits: the
+ * change is staged in the renderer (a diff opens in the document well for code targets), the user
+ * decides (Yes / Yes-and-auto-accept / No), and the staged change is committed or discarded. Under
+ * `auto-edits`/`auto-all` — or in chat mode, which never registers these tools — the direct apply
+ * runs as before.
+ * @param context The agent run context.
+ * @param previewInput The preview capability input describing the operation.
+ * @param direct Applies the mutation directly (the non-previewed path).
+ * @returns Returns the model-facing result.
+ */
+async function previewedEdit(
+  context: AgentRunContext,
+  previewInput: Record<string, unknown>,
+  direct: () => Promise<string>,
+): Promise<string> {
+  if (context.permissionPosture !== 'prompt' || context.mode !== 'agent') {
+    return direct();
+  }
+  const result: unknown = await context.bridge.request(PREVIEW_ACTIVE_DOCUMENT_EDIT, {
+    ...previewInput,
+    tabId: context.owningTabId,
+  });
+  const preview: {
+    available?: boolean;
+    previewId?: string;
+    name?: string;
+    summary?: string;
+    detail?: string;
+    diffShown?: boolean;
+  } = result ?? {};
+  if (preview.available !== true || typeof preview.previewId !== 'string') {
+    // Anchor failures and missing documents report straight back so the model can recover.
+    return preview.detail ?? 'No active document is open in the editor.';
+  }
+  const decision: 'yes' | 'no' = await context.requestEditDecision(
+    preview.name ?? 'the active document',
+    preview.summary ?? '',
+    preview.diffShown === true,
+  );
+  if (decision === 'yes') {
+    const committed: unknown = await context.bridge.request(COMMIT_EDIT_PREVIEW, {
+      previewId: preview.previewId,
+    });
+    const commit: { ok?: boolean; detail?: string } = committed ?? {};
+    return (
+      commit.detail ??
+      (commit.ok === true ? 'The edit was applied.' : 'The editor is no longer available.')
+    );
+  }
+  await context.bridge.request(CANCEL_EDIT_PREVIEW, { previewId: preview.previewId });
+  return (
+    'The user rejected this edit. Do not retry it as-is — ask what they would like instead, or ' +
+    'adjust your approach.'
+  );
+}
+
+/**
  * Reads the owning tab's editor document through the renderer bridge and renders the result for the
  * model.
  * @param context The agent run context (carries the bridge and the owning tab id).
@@ -280,14 +340,16 @@ export async function replaceActiveDocument(
   context: AgentRunContext,
   text: string,
 ): Promise<string> {
-  const result: unknown = await context.bridge.request(REPLACE_ACTIVE_DOCUMENT, {
-    text,
-    tabId: context.owningTabId,
+  return previewedEdit(context, { operation: 'replace', text }, async (): Promise<string> => {
+    const result: unknown = await context.bridge.request(REPLACE_ACTIVE_DOCUMENT, {
+      text,
+      tabId: context.owningTabId,
+    });
+    const replace: { ok?: boolean } = result ?? {};
+    return replace.ok === true
+      ? 'The active document was updated.'
+      : 'There is no active document to update.';
   });
-  const replace: { ok?: boolean } = result ?? {};
-  return replace.ok === true
-    ? 'The active document was updated.'
-    : 'There is no active document to update.';
 }
 
 /**
@@ -306,16 +368,22 @@ export async function editActiveDocument(
   newString: string,
   replaceAll: boolean = false,
 ): Promise<string> {
-  const result: unknown = await context.bridge.request(EDIT_ACTIVE_DOCUMENT, {
-    tabId: context.owningTabId,
-    oldString,
-    newString,
-    replaceAll,
-  });
-  const edit: { ok?: boolean; detail?: string } = result ?? {};
-  return (
-    edit.detail ??
-    (edit.ok === true ? 'The edit was applied.' : 'There is no active document to edit.')
+  return previewedEdit(
+    context,
+    { operation: 'edit', oldString, newString, replaceAll },
+    async (): Promise<string> => {
+      const result: unknown = await context.bridge.request(EDIT_ACTIVE_DOCUMENT, {
+        tabId: context.owningTabId,
+        oldString,
+        newString,
+        replaceAll,
+      });
+      const edit: { ok?: boolean; detail?: string } = result ?? {};
+      return (
+        edit.detail ??
+        (edit.ok === true ? 'The edit was applied.' : 'There is no active document to edit.')
+      );
+    },
   );
 }
 
@@ -334,16 +402,24 @@ export async function insertIntoActiveDocument(
   placement: InsertPlacement,
   anchor?: string,
 ): Promise<string> {
-  const result: unknown = await context.bridge.request(INSERT_ACTIVE_DOCUMENT, {
-    tabId: context.owningTabId,
-    text,
-    placement,
-    anchor,
-  });
-  const insert: { ok?: boolean; detail?: string } = result ?? {};
-  return (
-    insert.detail ??
-    (insert.ok === true ? 'The text was inserted.' : 'There is no active document to insert into.')
+  return previewedEdit(
+    context,
+    { operation: 'insert', text, placement, ...(anchor === undefined ? {} : { anchor }) },
+    async (): Promise<string> => {
+      const result: unknown = await context.bridge.request(INSERT_ACTIVE_DOCUMENT, {
+        tabId: context.owningTabId,
+        text,
+        placement,
+        anchor,
+      });
+      const insert: { ok?: boolean; detail?: string } = result ?? {};
+      return (
+        insert.detail ??
+        (insert.ok === true
+          ? 'The text was inserted.'
+          : 'There is no active document to insert into.')
+      );
+    },
   );
 }
 

@@ -188,6 +188,39 @@ export interface AiInputRequestEvent extends AiEventBase {
 }
 
 /**
+ * Asks the user to decide on a staged edit preview: the prospective change is showing as a diff in
+ * the document well (code targets) or summarised on the card (markdown, which has no diff editor),
+ * and the run blocks until they apply or reject it. Answered with an `AiEditDecisionReply`.
+ */
+export interface AiEditDecisionEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'edit-decision';
+
+  /**
+   * Gets the identifier the renderer answers the request with.
+   */
+  readonly decisionId: string;
+
+  /**
+   * Gets the display name of the document being edited.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a one-line summary of the staged change.
+   */
+  readonly detail: string;
+
+  /**
+   * Gets a value indicating whether the staged change is showing as a diff in the document well
+   * (code targets; markdown has no diff editor).
+   */
+  readonly hasDiff: boolean;
+}
+
+/**
  * Reports the provider session the run belongs to, so the renderer can resume it on the next turn and
  * the model keeps the conversation's context. Emitted for providers that support session continuation
  * (the Claude Agent SDK); the session id is stable across a resumed conversation.
@@ -265,6 +298,7 @@ export type AiEvent =
   | AiToolEndEvent
   | AiPermissionEvent
   | AiInputRequestEvent
+  | AiEditDecisionEvent
   | AiSessionEvent
   | AiStatusEvent
   | AiUsageEvent;

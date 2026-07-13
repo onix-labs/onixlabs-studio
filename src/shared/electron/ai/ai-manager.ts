@@ -3,6 +3,7 @@ import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electr
 import type {
   AgentContextRef,
   AgentMode,
+  AiEditDecisionReply,
   AiEvent,
   AiInputChoice,
   AiInputReply,
@@ -25,6 +26,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  EditDecisionOutcome,
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
@@ -111,6 +113,20 @@ export class AiManager {
   private readonly sessionAllowed: Set<string> = new Set<string>();
 
   /**
+   * Holds the resolvers of pending edit-decision prompts, keyed by decision id.
+   */
+  private readonly editDecisions: Map<string, (choice: EditDecisionOutcome) => void> = new Map<
+    string,
+    (choice: EditDecisionOutcome) => void
+  >();
+
+  /**
+   * Tracks whether the user chose to auto-accept edit previews for the rest of this app session
+   * ("Yes, and automatically accept edits"). Dies with the process.
+   */
+  private autoAcceptEdits: boolean = false;
+
+  /**
    * Holds the resolvers of pending input requests (agent questions), keyed by input id.
    */
   private readonly inputs: Map<string, (answer: string | null) => void> = new Map<
@@ -148,6 +164,11 @@ export class AiManager {
     ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
       if (this.isInputReply(reply)) {
         this.resolveInput(reply);
+      }
+    });
+    ipcMain.on(AiChannel.EditDecisionReply, (_event: IpcMainEvent, reply: unknown): void => {
+      if (this.isEditDecisionReply(reply)) {
+        this.resolveEditDecision(reply);
       }
     });
     ipcMain.handle(
@@ -273,6 +294,12 @@ export class AiManager {
         ),
       requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
+      requestEditDecision: (
+        name: string,
+        detail: string,
+        hasDiff: boolean,
+      ): Promise<EditDecisionOutcome> =>
+        this.requestEditDecision(request.requestId, controller.signal, name, detail, hasDiff),
       emit: (event: AiEvent): void => this.emit(event),
     };
     this.emit({
@@ -426,6 +453,76 @@ export class AiManager {
    */
   private resolveInput(reply: AiInputReply): void {
     this.inputs.get(reply.inputId)?.(reply.answer);
+  }
+
+  /**
+   * Asks the user to decide on a staged edit preview by emitting an edit-decision event and awaiting
+   * the renderer's answer — or resolves `yes` immediately while edits are auto-accepted for the
+   * session. Resolves `no` if the run aborts before the user answers.
+   * @param requestId The run the decision belongs to.
+   * @param signal The run's abort signal.
+   * @param name The display name of the document being edited.
+   * @param detail A one-line summary of the staged change.
+   * @param hasDiff Whether the staged change is showing as a diff in the document well.
+   * @returns Returns the decision.
+   */
+  private requestEditDecision(
+    requestId: string,
+    signal: AbortSignal,
+    name: string,
+    detail: string,
+    hasDiff: boolean,
+  ): Promise<EditDecisionOutcome> {
+    if (this.autoAcceptEdits) {
+      return Promise.resolve('yes');
+    }
+    const decisionId: string = randomUUID();
+    return new Promise<EditDecisionOutcome>(
+      (resolve: (choice: EditDecisionOutcome) => void): void => {
+        const settle: (choice: EditDecisionOutcome) => void = (
+          choice: EditDecisionOutcome,
+        ): void => {
+          if (this.editDecisions.delete(decisionId)) {
+            resolve(choice);
+          }
+        };
+        this.editDecisions.set(decisionId, settle);
+        if (signal.aborted) {
+          settle('no');
+          return;
+        }
+        signal.addEventListener('abort', (): void => settle('no'), { once: true });
+        this.emit({ requestId, kind: 'edit-decision', decisionId, name, detail, hasDiff });
+      },
+    );
+  }
+
+  /**
+   * Resolves the pending edit decision matching a reply, recording the session auto-accept flag
+   * when the user chose "yes, and automatically accept edits".
+   * @param reply The renderer's reply.
+   */
+  private resolveEditDecision(reply: AiEditDecisionReply): void {
+    if (reply.choice === 'yes-auto') {
+      this.autoAcceptEdits = true;
+    }
+    this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiEditDecisionReply}.
+   * @param value The payload.
+   * @returns Returns true when the payload has the required shape.
+   */
+  private isEditDecisionReply(value: unknown): value is AiEditDecisionReply {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof record['decisionId'] === 'string' &&
+      (record['choice'] === 'yes' || record['choice'] === 'yes-auto' || record['choice'] === 'no')
+    );
   }
 
   /**

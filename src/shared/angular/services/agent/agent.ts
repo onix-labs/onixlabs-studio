@@ -11,6 +11,7 @@ import type {
   AgentContextRef,
   AgentMode,
   AgentSurface,
+  AiEditDecision,
   AiEvent,
   AiInputChoice,
   AiModelInfo,
@@ -31,7 +32,8 @@ export type AgentItemKind =
   | 'thinking'
   | 'tool'
   | 'permission'
-  | 'input-request';
+  | 'input-request'
+  | 'edit-decision';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -48,6 +50,12 @@ export type AgentPermissionState = 'pending' | 'allowed' | 'denied';
  * answered, or dismissed (the user skipped it, or the run ended before an answer).
  */
 export type AgentInputState = 'pending' | 'answered' | 'dismissed';
+
+/**
+ * Identifies the state of an edit-decision (staged edit preview) item: awaiting the user's decision,
+ * applied, rejected, or dismissed (the run ended before a decision).
+ */
+export type AgentEditDecisionState = 'pending' | 'applied' | 'rejected' | 'dismissed';
 
 /**
  * A single item in the agent transcript. The fields used depend on {@link kind}: user/assistant/
@@ -145,6 +153,37 @@ export interface AgentItem {
    * Gets the answer the user gave (answered input requests only).
    */
   readonly inputAnswer?: string;
+
+  /**
+   * Gets the id used to answer an edit-decision request (a staged edit preview).
+   */
+  readonly decisionId?: string;
+
+  /**
+   * Gets the display name of the document a staged edit targets.
+   */
+  readonly decisionName?: string;
+
+  /**
+   * Gets the one-line summary of a staged edit.
+   */
+  readonly decisionDetail?: string;
+
+  /**
+   * Gets the edit decision's state.
+   */
+  readonly decisionState?: AgentEditDecisionState;
+
+  /**
+   * Gets a value indicating whether the staged change is showing as a diff in the document well.
+   */
+  readonly decisionHasDiff?: boolean;
+
+  /**
+   * Gets a value indicating whether the grant also turned on auto-accepting edits for the session
+   * (applied edit decisions only).
+   */
+  readonly decisionAuto?: boolean;
 
   /**
    * Gets the identifier of the sub-agent this item belongs to — the {@link toolId} of the Task tool
@@ -324,7 +363,8 @@ export class Agent {
     (): boolean =>
       this.log().some(
         (item: AgentItem): boolean =>
-          item.kind === 'permission' && item.permissionState === 'pending',
+          (item.kind === 'permission' && item.permissionState === 'pending') ||
+          (item.kind === 'edit-decision' && item.decisionState === 'pending'),
       ) || this.pendingInput() !== undefined,
   );
 
@@ -491,6 +531,9 @@ export class Agent {
     // by the earlier protocol as plain strings are lifted to labelled choices.
     this.log.set(
       items.map((item: AgentItem): AgentItem => {
+        if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
+          return { ...item, decisionState: 'dismissed' };
+        }
         if (item.kind !== 'input-request') {
           return item;
         }
@@ -529,6 +572,26 @@ export class Agent {
         ...existing,
         permissionState: granted ? 'allowed' : 'denied',
         ...(scope === undefined ? {} : { permissionRemember: scope }),
+      }),
+    );
+  }
+
+  /**
+   * Answers a pending edit decision (a staged edit preview), unblocking the run.
+   * @param item The edit-decision item.
+   * @param choice The user's decision.
+   */
+  public respondEditDecision(item: AgentItem, choice: AiEditDecision): void {
+    if (item.decisionId === undefined || item.decisionState !== 'pending') {
+      return;
+    }
+    this.runtime.respondEditDecision(item.decisionId, choice);
+    this.update(
+      item.id,
+      (existing: AgentItem): AgentItem => ({
+        ...existing,
+        decisionState: choice === 'no' ? 'rejected' : 'applied',
+        ...(choice === 'yes-auto' ? { decisionAuto: true } : {}),
       }),
     );
   }
@@ -612,6 +675,17 @@ export class Agent {
           inputQuestion: event.question,
           inputChoices: event.choices,
           inputState: 'pending',
+        });
+        break;
+      case 'edit-decision':
+        this.push({
+          kind: 'edit-decision',
+          text: '',
+          decisionId: event.decisionId,
+          decisionName: event.name,
+          decisionDetail: event.detail,
+          decisionState: 'pending',
+          decisionHasDiff: event.hasDiff,
         });
         break;
       case 'session':
@@ -784,19 +858,20 @@ export class Agent {
   }
 
   /**
-   * Marks every still-pending input request dismissed (the run ended before it was answered).
+   * Marks every still-pending input request and edit decision dismissed (the run ended before the
+   * user answered).
    */
   private dismissPendingInputs(): void {
-    if (this.pendingInput() === undefined) {
-      return;
-    }
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map(
-        (item: AgentItem): AgentItem =>
-          item.kind === 'input-request' && item.inputState === 'pending'
-            ? { ...item, inputState: 'dismissed' }
-            : item,
-      ),
+      items.map((item: AgentItem): AgentItem => {
+        if (item.kind === 'input-request' && item.inputState === 'pending') {
+          return { ...item, inputState: 'dismissed' };
+        }
+        if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
+          return { ...item, decisionState: 'dismissed' };
+        }
+        return item;
+      }),
     );
   }
 

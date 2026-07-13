@@ -15,7 +15,12 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import type { AgentContextRef, AgentSurface, AiPermissionRemember } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentSurface,
+  AiEditDecision,
+  AiPermissionRemember,
+} from '@shared/api/ai-types';
 import {
   Agent,
   AgentItem,
@@ -853,6 +858,33 @@ export class AgentChat {
         ? (scope as AiPermissionRemember)
         : undefined,
     );
+  }
+
+  /**
+   * Answers a pending edit-decision card.
+   * @param item The edit-decision item.
+   * @param choice The user's decision.
+   */
+  public decide(item: AgentItem, choice: AiEditDecision): void {
+    this.agent.respondEditDecision(item, choice);
+  }
+
+  /**
+   * Renders the settled state line of an edit-decision card.
+   * @param item The edit-decision item.
+   * @returns Returns the state label.
+   */
+  public decisionStateLabel(item: AgentItem): string {
+    switch (item.decisionState) {
+      case 'applied':
+        return item.decisionAuto === true
+          ? 'Applied · auto-accepting edits this session'
+          : 'Applied';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return 'Not decided';
+    }
   }
 
   /**

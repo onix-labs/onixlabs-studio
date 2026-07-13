@@ -57,7 +57,12 @@ describe('resolveInsert', () => {
   const source: string = '# Title\n\nBody paragraph.\n';
 
   it('afterAnchor_insertsAfterTheMatch', () => {
-    const outcome: EditOutcome = resolveInsert(source, '\n\nNew section.', 'after', 'Body paragraph.');
+    const outcome: EditOutcome = resolveInsert(
+      source,
+      '\n\nNew section.',
+      'after',
+      'Body paragraph.',
+    );
     expect(outcome.ok).toBe(true);
     expect(outcome.text).toBe('# Title\n\nBody paragraph.\n\nNew section.\n');
     expect(outcome.range).toEqual({ start: 24, length: 0, insert: '\n\nNew section.' });
