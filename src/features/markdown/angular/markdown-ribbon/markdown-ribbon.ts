@@ -219,6 +219,25 @@ export class MarkdownRibbon {
   protected readonly canRedo: Signal<boolean> = this.commands.canRedo;
 
   /**
+   * Gets a value indicating whether the active document has any headings, so the Outline toggle is
+   * disabled for a document with nothing to outline.
+   */
+  protected readonly hasHeadings: Signal<boolean> = computed(
+    (): boolean => this.commands.outline().length > 0,
+  );
+
+  /**
+   * Gets a value indicating whether the active document has no content, so the Review and Reader
+   * toggles are disabled for a document with nothing to review or read. Read from the document store
+   * (not the focus-scoped command state) so it stays correct while the editor is not focused.
+   */
+  protected readonly isDocumentEmpty: Signal<boolean> = computed((): boolean => {
+    const id: string | undefined = this.tabs.activeTabId();
+    const content: string = (id === undefined ? undefined : this.documents.get(id)?.content()) ?? '';
+    return content.trim().length === 0;
+  });
+
+  /**
    * Undoes the last edit in the active editor.
    */
   protected onUndo(): void {

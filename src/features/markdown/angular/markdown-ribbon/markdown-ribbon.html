@@ -150,6 +150,7 @@
       label="Outline"
       [toggle]="true"
       [pressed]="openPanels().has('outline')"
+      [disabled]="!hasHeadings()"
       (action)="onOutline()"
     />
     <app-ribbon-strip-button
@@ -157,6 +158,7 @@
       label="Review"
       [toggle]="true"
       [pressed]="openPanels().has('review')"
+      [disabled]="isDocumentEmpty()"
       (action)="onReview()"
     />
     <app-ribbon-strip-button
@@ -164,6 +166,7 @@
       label="Reader"
       [toggle]="true"
       [pressed]="openPanels().has('reader')"
+      [disabled]="isDocumentEmpty()"
       (action)="onReader()"
     />
     <app-ribbon-strip-button

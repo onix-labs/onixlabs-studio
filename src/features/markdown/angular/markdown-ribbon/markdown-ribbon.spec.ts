@@ -5,6 +5,8 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MarkdownRibbon } from './markdown-ribbon';
 
 /**
@@ -128,17 +130,42 @@ describe('MarkdownRibbon', () => {
     const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
     // The ribbon toggles the focused document's panel; simulate an active markdown document.
     panels.setActiveDocument('doc-1');
+    // The Outline toggle is only enabled when the document has headings to outline.
+    TestBed.inject(MarkdownCommands).setOutline([{ id: 'h1', level: 1, text: 'Title', index: 0 }]);
+    fixture.detectChanges();
     expect(panels.active().has('outline')).toBe(false);
 
-    const outline: HTMLButtonElement = Array.from(
-      element.querySelectorAll<HTMLButtonElement>('.ribbon-button'),
-    ).find(
-      (button: HTMLButtonElement): boolean =>
-        button.querySelector('span')?.textContent?.trim() === 'Outline',
-    )!;
-    outline.click();
+    toolButton('Outline').click();
 
     expect(panels.active().has('outline')).toBe(true);
+  });
+
+  it('outlineButton_whenNoHeadings_isDisabled', () => {
+    TestBed.inject(MarkdownCommands).setOutline([]);
+    fixture.detectChanges();
+
+    expect(toolButton('Outline').disabled).toBe(true);
+  });
+
+  it('outlineButton_whenHeadingsPresent_isEnabled', () => {
+    TestBed.inject(MarkdownCommands).setOutline([{ id: 'h1', level: 1, text: 'Title', index: 0 }]);
+    fixture.detectChanges();
+
+    expect(toolButton('Outline').disabled).toBe(false);
+  });
+
+  it('reviewAndReaderButtons_whenDocumentEmpty_areDisabled', () => {
+    openMarkdownTab('   \n  ');
+
+    expect(toolButton('Review').disabled).toBe(true);
+    expect(toolButton('Reader').disabled).toBe(true);
+  });
+
+  it('reviewAndReaderButtons_whenDocumentHasContent_areEnabled', () => {
+    openMarkdownTab('Some prose worth reading.');
+
+    expect(toolButton('Review').disabled).toBe(false);
+    expect(toolButton('Reader').disabled).toBe(false);
   });
 
   it('imageButton_whenClicked_opensTheImageModal', () => {
@@ -163,5 +190,34 @@ describe('MarkdownRibbon', () => {
       (button: HTMLButtonElement): boolean =>
         button.querySelector('span')?.textContent?.trim() === label,
     )!;
+  }
+
+  /**
+   * Finds a large ribbon button by its label.
+   * @param label The button's label text.
+   * @returns Returns the matching button.
+   */
+  function toolButton(label: string): HTMLButtonElement {
+    return Array.from(element.querySelectorAll<HTMLButtonElement>('.ribbon-button')).find(
+      (button: HTMLButtonElement): boolean =>
+        button.querySelector('span')?.textContent?.trim() === label,
+    )!;
+  }
+
+  /**
+   * Opens and activates a markdown tab with the given content, so the ribbon resolves a non/empty
+   * active document.
+   * @param content The document's markdown content.
+   * @returns Returns the opened tab's id.
+   */
+  function openMarkdownTab(content: string): string {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    const documents: Documents = TestBed.inject(Documents);
+    const id: string = tabs.open('markdown').id;
+    tabs.activate(id);
+    documents.ensure(id);
+    documents.setContent(id, content);
+    fixture.detectChanges();
+    return id;
   }
 });
