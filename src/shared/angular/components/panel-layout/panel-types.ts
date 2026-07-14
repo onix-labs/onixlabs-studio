@@ -9,6 +9,32 @@ export type PanelEdge = 'top' | 'right' | 'bottom' | 'left';
 export const PANEL_EDGES: readonly PanelEdge[] = ['left', 'right', 'top', 'bottom'];
 
 /**
+ * Gets the edges a panel may dock to by default: only the sides. Top and bottom docking is hidden for
+ * every view unless a panel opts back in (the Code view's terminal, which may also dock to the bottom).
+ * The capability itself is unchanged — the edges are simply not offered.
+ */
+export const DEFAULT_ALLOWED_EDGES: readonly PanelEdge[] = ['left', 'right'];
+
+/**
+ * Constrains a placement to a panel's allowed edges: a placement on an edge the panel may not dock to
+ * (for example an old layout saved on the top or bottom before those edges were hidden) is resolved
+ * back to the panel's default edge. The stored order and size are kept, so only the edge changes. The
+ * arrangement is not rewritten — the constraint is applied at resolve time, so other panels' saved
+ * placements are never disturbed.
+ * @param placement The placement to constrain.
+ * @param defaultEdge The edge to fall back to when the placement's edge is not allowed.
+ * @param allowedEdges The edges the panel may dock to.
+ * @returns Returns the placement unchanged when its edge is allowed, or moved to the default edge.
+ */
+export function constrainPlacementToEdges(
+  placement: PanelPlacement,
+  defaultEdge: PanelEdge,
+  allowedEdges: readonly PanelEdge[],
+): PanelPlacement {
+  return allowedEdges.includes(placement.edge) ? placement : { ...placement, edge: defaultEdge };
+}
+
+/**
  * An axis-aligned rectangle in viewport coordinates.
  */
 export interface PanelRect {

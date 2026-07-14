@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PanelArrangements } from './panel-arrangements';
 import { Panel } from './panel';
 import { PanelLayout } from './panel-layout';
+import { PanelEdge } from './panel-types';
 
 @Component({
   selector: 'app-panel-layout-host',
@@ -10,7 +11,13 @@ import { PanelLayout } from './panel-layout';
   template: `
     <app-panel-layout [layoutKey]="layoutKey">
       <div main class="main-content">MAIN</div>
-      <app-panel panelId="side" defaultEdge="right" [visible]="visible()" [defaultSize]="200">
+      <app-panel
+        panelId="side"
+        defaultEdge="right"
+        [allowedEdges]="allEdges"
+        [visible]="visible()"
+        [defaultSize]="200"
+      >
         <div class="side-content">SIDE</div>
       </app-panel>
       @if (extraMounted()) {
@@ -24,6 +31,8 @@ import { PanelLayout } from './panel-layout';
 })
 class PanelLayoutHost {
   public layoutKey: string | null = null;
+  // The re-home test moves the panel to the bottom edge, so the stub panel allows every edge.
+  public readonly allEdges: readonly PanelEdge[] = ['left', 'right', 'top', 'bottom'];
   public readonly visible: WritableSignal<boolean> = signal<boolean>(true);
   public readonly extraMounted: WritableSignal<boolean> = signal<boolean>(false);
 }

@@ -34,6 +34,7 @@ import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import type * as MonacoApi from 'monaco-editor';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
@@ -111,6 +112,13 @@ export class CodeView implements OnDestroy {
    * Holds the Monaco service, used to resolve the key codes for the find accelerator.
    */
   private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the edges the integrated terminal panel may dock to. Unlike the other panels — restricted
+   * to the sides — the terminal may also dock to the bottom, its default. A stable reference so the
+   * panel's allowed-edge input does not change identity each check.
+   */
+  protected readonly terminalDockEdges: readonly PanelEdge[] = ['left', 'right', 'bottom'];
 
   /**
    * Holds a value indicating whether the find panel is shown for this editor.

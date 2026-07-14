@@ -65,6 +65,6 @@ export class PanelDragHandle {
       height: rect.height,
     };
     const title: string = this.dragTitle() !== '' ? this.dragTitle() : this.panel.panelId();
-    this.drag.begin(this.panel.panelId(), title, source, event);
+    this.drag.begin(this.panel.panelId(), title, source, event, this.panel.allowedEdges());
   }
 }

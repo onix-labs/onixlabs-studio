@@ -4,6 +4,9 @@ import { PanelEdge, PanelRect } from './panel-types';
 
 const SOURCE: PanelRect = { left: 500, top: 100, width: 300, height: 400 };
 
+const ALL_EDGES: readonly PanelEdge[] = ['left', 'right', 'top', 'bottom'];
+const SIDES: readonly PanelEdge[] = ['left', 'right'];
+
 describe('PanelLayoutDrag', () => {
   let drag: PanelLayoutDrag;
   let drops: { panelId: string; edge: PanelEdge }[];
@@ -30,6 +33,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
     // A press alone arms but does not activate the drag.
     expect(drag.active()).toBe(false);
@@ -52,6 +56,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
 
     document.dispatchEvent(new MouseEvent('mouseup'));
@@ -66,6 +71,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 300 }));
@@ -83,6 +89,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 300 }));
@@ -100,6 +107,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 790, clientY: 300 }));
 
@@ -116,6 +124,7 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 300 }));
 
@@ -130,12 +139,83 @@ describe('PanelLayoutDrag', () => {
       'Agent',
       SOURCE,
       new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
     );
 
-    drag.begin('find', 'Find', SOURCE, new MouseEvent('mousedown', { clientX: 520, clientY: 110 }));
+    drag.begin(
+      'find',
+      'Find',
+      SOURCE,
+      new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      ALL_EDGES,
+    );
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 560, clientY: 150 }));
 
     expect(drag.panelId()).toBe('agent');
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('allowedEdges_whileDragging_reflectTheDraggedPanel', () => {
+    drag.begin(
+      'agent',
+      'Agent',
+      SOURCE,
+      new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      SIDES,
+    );
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 560, clientY: 150 }));
+
+    expect(drag.allowedEdges()).toEqual(SIDES);
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('onMove_overADisallowedEdge_targetsNoEdge', () => {
+    drag.begin(
+      'agent',
+      'Agent',
+      SOURCE,
+      new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      SIDES,
+    );
+
+    // The bottom border would normally target the bottom edge, but it is not an allowed edge.
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 590 }));
+
+    expect(drag.hotEdge()).toBeNull();
+    expect(drag.preview()).toBeNull();
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('onRelease_overADisallowedEdge_dropsNothing', () => {
+    drag.begin(
+      'agent',
+      'Agent',
+      SOURCE,
+      new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      SIDES,
+    );
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 590 }));
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    expect(drops).toEqual([]);
+  });
+
+  it('onMove_overAnAllowedEdge_whenOthersRestricted_stillTargetsIt', () => {
+    drag.begin(
+      'agent',
+      'Agent',
+      SOURCE,
+      new MouseEvent('mousedown', { clientX: 520, clientY: 110 }),
+      SIDES,
+    );
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 300 }));
+
+    expect(drag.hotEdge()).toBe('left');
 
     document.dispatchEvent(new MouseEvent('mouseup'));
   });

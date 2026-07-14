@@ -38,13 +38,25 @@ class StubLayoutContext implements PanelLayoutContext {
 @Component({
   imports: [Panel],
   template: `
-    <app-panel panelId="alpha" [defaultEdge]="defaultEdge()" [visible]="visible()">
+    <app-panel
+      panelId="alpha"
+      [defaultEdge]="defaultEdge()"
+      [allowedEdges]="allowedEdges()"
+      [visible]="visible()"
+    >
       <div class="probe">content</div>
     </app-panel>
   `,
 })
 class TestHost {
   public readonly defaultEdge: WritableSignal<PanelEdge> = signal<PanelEdge>('right');
+  // The tests exercise every edge, so the stub panel allows all of them unless a test narrows it.
+  public readonly allowedEdges: WritableSignal<readonly PanelEdge[]> = signal<readonly PanelEdge[]>([
+    'left',
+    'right',
+    'top',
+    'bottom',
+  ]);
   public readonly visible: WritableSignal<boolean> = signal<boolean>(true);
 }
 
@@ -90,6 +102,18 @@ describe('Panel', () => {
 
     const element: HTMLElement = panelElement();
     expect(element.getAttribute('data-edge')).toBe('left');
+    expect(element.style.flex).toBe('0 0 200px');
+  });
+
+  it('placement_whenStoredEdgeIsNotAllowed_fallsBackToTheDefaultEdge', () => {
+    fixture.componentInstance.allowedEdges.set(['left', 'right']);
+    // An old layout saved this panel on the (now hidden) bottom edge.
+    context.arrangement.set({ alpha: { edge: 'bottom', order: 0, size: 200 } });
+    fixture.detectChanges();
+
+    // It resolves back to the panel's default edge rather than a hidden one; the stored size is kept.
+    const element: HTMLElement = panelElement();
+    expect(element.getAttribute('data-edge')).toBe('right');
     expect(element.style.flex).toBe('0 0 200px');
   });
 

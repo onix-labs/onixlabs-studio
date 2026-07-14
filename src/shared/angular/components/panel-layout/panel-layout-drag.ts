@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import {
+  PANEL_EDGES,
   PanelEdge,
   panelEdgePreview,
   PanelRect,
@@ -75,6 +76,12 @@ interface ArmedDrag {
    * Gets the cursor offset from the ghost's top-left.
    */
   readonly offset: DragOffset;
+
+  /**
+   * Gets the edges the dragged panel may land on. Any other edge is not a target, so its guide is
+   * hidden and a release over it does nothing.
+   */
+  readonly allowedEdges: readonly PanelEdge[];
 }
 
 /**
@@ -135,6 +142,13 @@ export class PanelLayoutDrag {
   private readonly workspaceRect: WritableSignal<PanelRect | null> = signal<PanelRect | null>(null);
 
   /**
+   * Holds the edges the dragged panel may land on, fixed at the start of a drag. Defaults to every
+   * edge when idle.
+   */
+  private readonly allowedEdgeSet: WritableSignal<readonly PanelEdge[]> =
+    signal<readonly PanelEdge[]>(PANEL_EDGES);
+
+  /**
    * Holds the cursor offset from the ghost's top-left.
    */
   private offset: DragOffset = { x: 0, y: 0 };
@@ -186,6 +200,11 @@ export class PanelLayoutDrag {
   public readonly workspace: Signal<PanelRect | null> = this.workspaceRect.asReadonly();
 
   /**
+   * Gets the edges the dragged panel may land on, so the overlay only draws those guides.
+   */
+  public readonly allowedEdges: Signal<readonly PanelEdge[]> = this.allowedEdgeSet.asReadonly();
+
+  /**
    * Gets a value indicating whether a drag is in progress.
    */
   public readonly active: Signal<boolean> = computed((): boolean => this.draggedPanelId() !== null);
@@ -209,8 +228,16 @@ export class PanelLayoutDrag {
    * @param source The dragged panel's current rectangle, sizing the ghost, or null to use a
    * default.
    * @param event The originating mouse event.
+   * @param allowedEdges The edges the panel may land on; every other edge's guide is hidden and a
+   * release over it is ignored.
    */
-  public begin(panelId: string, title: string, source: PanelRect | null, event: MouseEvent): void {
+  public begin(
+    panelId: string,
+    title: string,
+    source: PanelRect | null,
+    event: MouseEvent,
+    allowedEdges: readonly PanelEdge[],
+  ): void {
     if (this.draggedPanelId() !== null || this.armed !== null) {
       return;
     }
@@ -229,6 +256,7 @@ export class PanelLayoutDrag {
         x: source !== null ? clamp(event.clientX - source.left, 8, width - 12) : 16,
         y: source !== null ? clamp(event.clientY - source.top, 6, 24) : 12,
       },
+      allowedEdges,
     };
 
     this.document.addEventListener('mousemove', this.moveHandler);
@@ -247,6 +275,7 @@ export class PanelLayoutDrag {
     }
     this.offset = armed.offset;
     this.workspaceRect.set(this.measureWorkspace());
+    this.allowedEdgeSet.set(armed.allowedEdges);
     this.ghostTitle.set(armed.title);
     this.draggedPanelId.set(armed.panelId);
     this.ghostRect.set({
@@ -284,10 +313,14 @@ export class PanelLayoutDrag {
     // Either the border-proximity band or the edge guide square itself targets an edge, so the
     // whole visible guide is droppable, not just the part within the border threshold.
     const workspace: PanelRect | null = this.workspaceRect();
-    const edge: PanelEdge | null =
+    const resolved: PanelEdge | null =
       workspace !== null
         ? (resolvePanelEdgeTarget(x, y, workspace) ?? resolvePanelEdgeGuideTarget(x, y, workspace))
         : null;
+    // A resolved edge the panel may not dock to is not a target, so no guide highlights and a
+    // release there does nothing — the top and bottom edges stay hidden for restricted panels.
+    const edge: PanelEdge | null =
+      resolved !== null && this.allowedEdgeSet().includes(resolved) ? resolved : null;
     this.hotEdgeSide.set(edge);
     this.previewRect.set(
       edge !== null && workspace !== null ? panelEdgePreview(edge, workspace) : null,
@@ -333,6 +366,7 @@ export class PanelLayoutDrag {
     this.hotEdgeSide.set(null);
     this.previewRect.set(null);
     this.workspaceRect.set(null);
+    this.allowedEdgeSet.set(PANEL_EDGES);
   }
 }
 

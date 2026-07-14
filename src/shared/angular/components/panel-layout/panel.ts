@@ -9,7 +9,13 @@ import {
   Signal,
 } from '@angular/core';
 import { PANEL_LAYOUT_CONTEXT, PanelLayoutContext } from './panel-layout-context';
-import { clampPanelWidth, PanelEdge, PanelPlacement } from './panel-types';
+import {
+  clampPanelWidth,
+  constrainPlacementToEdges,
+  DEFAULT_ALLOWED_EDGES,
+  PanelEdge,
+  PanelPlacement,
+} from './panel-types';
 
 /**
  * Represents a single edge-docked panel within an {@link PanelLayout}. The panel hosts arbitrary
@@ -77,6 +83,15 @@ export class Panel {
   public readonly defaultEdge: InputSignal<PanelEdge> = input<PanelEdge>('right');
 
   /**
+   * Gets the edges the panel may dock to. Defaults to the sides only, so top and bottom docking is
+   * hidden; a panel that should offer another edge (the Code view's terminal, which may dock to the
+   * bottom) declares it here. A stored placement on a disallowed edge resolves back to
+   * {@link defaultEdge}.
+   */
+  public readonly allowedEdges: InputSignal<readonly PanelEdge[]> =
+    input<readonly PanelEdge[]>(DEFAULT_ALLOWED_EDGES);
+
+  /**
    * Gets the cross-axis size, in pixels, the panel opens at when no placement is stored.
    */
   public readonly defaultSize: InputSignal<number> = input<number>(Panel.DEFAULT_SIZE);
@@ -103,7 +118,12 @@ export class Panel {
    */
   public readonly placement: Signal<PanelPlacement> = computed((): PanelPlacement => {
     const stored: PanelPlacement | undefined = this.context?.arrangement()[this.panelId()];
-    return stored ?? { edge: this.defaultEdge(), order: 0, size: this.defaultSize() };
+    const placement: PanelPlacement = stored ?? {
+      edge: this.defaultEdge(),
+      order: 0,
+      size: this.defaultSize(),
+    };
+    return constrainPlacementToEdges(placement, this.defaultEdge(), this.allowedEdges());
   });
 
   /**

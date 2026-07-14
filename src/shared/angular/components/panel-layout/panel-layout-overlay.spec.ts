@@ -15,6 +15,7 @@ describe('PanelLayoutOverlay', () => {
   let preview: WritableSignal<PanelRect | null>;
   let hotEdge: WritableSignal<PanelEdge | null>;
   let workspace: WritableSignal<PanelRect | null>;
+  let allowedEdges: WritableSignal<readonly PanelEdge[]>;
 
   beforeEach(async () => {
     active = signal<boolean>(false);
@@ -23,6 +24,7 @@ describe('PanelLayoutOverlay', () => {
     preview = signal<PanelRect | null>(null);
     hotEdge = signal<PanelEdge | null>(null);
     workspace = signal<PanelRect | null>(null);
+    allowedEdges = signal<readonly PanelEdge[]>(['left', 'right', 'top', 'bottom']);
     const dragStub: Partial<PanelLayoutDrag> = {
       active,
       title,
@@ -30,6 +32,7 @@ describe('PanelLayoutOverlay', () => {
       preview,
       hotEdge,
       workspace,
+      allowedEdges,
     };
 
     await TestBed.configureTestingModule({
@@ -71,6 +74,16 @@ describe('PanelLayoutOverlay', () => {
 
     expect(host.querySelectorAll('.panel-layout-overlay__edge').length).toBe(4);
     expect(host.querySelectorAll('.panel-layout-overlay__edge--hot').length).toBe(1);
+  });
+
+  it('render_whenEdgesRestricted_drawsOnlyTheAllowedGuides', () => {
+    active.set(true);
+    workspace.set({ left: 0, top: 0, width: 800, height: 600 });
+    allowedEdges.set(['left', 'right']);
+    fixture.detectChanges();
+
+    // Only the two side guides render; the hidden top and bottom guides are absent.
+    expect(host.querySelectorAll('.panel-layout-overlay__edge').length).toBe(2);
   });
 
   it('render_whenAnEdgeIsTargeted_showsTheDropPreviewSlab', () => {

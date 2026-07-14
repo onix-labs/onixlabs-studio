@@ -12,14 +12,16 @@
 
     @if (workspace(); as ws) {
       @for (edge of edges; track edge) {
-        <span
-          class="panel-layout-overlay__edge"
-          [class.panel-layout-overlay__edge--hot]="hotEdge() === edge"
-          [style.left.px]="edgePosition(edge, ws).left"
-          [style.top.px]="edgePosition(edge, ws).top"
-        >
-          <app-icon [icon]="guideIcon(edge)" [rotation]="guideRotation(edge)" />
-        </span>
+        @if (allowedEdges().includes(edge)) {
+          <span
+            class="panel-layout-overlay__edge"
+            [class.panel-layout-overlay__edge--hot]="hotEdge() === edge"
+            [style.left.px]="edgePosition(edge, ws).left"
+            [style.top.px]="edgePosition(edge, ws).top"
+          >
+            <app-icon [icon]="guideIcon(edge)" [rotation]="guideRotation(edge)" />
+          </span>
+        }
       }
     }
 

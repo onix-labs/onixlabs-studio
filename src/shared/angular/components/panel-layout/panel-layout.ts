@@ -21,6 +21,7 @@ import { PanelLayoutDrag } from './panel-layout-drag';
 import { PanelLayoutOverlay } from './panel-layout-overlay';
 import {
   clampPanelWidth,
+  constrainPlacementToEdges,
   movePanel,
   PANEL_EDGES,
   PanelArrangement,
@@ -621,13 +622,12 @@ export class PanelLayout implements PanelLayoutContext {
  * @returns Returns the panel's placement.
  */
 function placementOf(panel: Panel, arrangement: PanelArrangement): PanelPlacement {
-  return (
-    arrangement[panel.panelId()] ?? {
-      edge: panel.defaultEdge(),
-      order: 0,
-      size: panel.defaultSize(),
-    }
-  );
+  const placement: PanelPlacement = arrangement[panel.panelId()] ?? {
+    edge: panel.defaultEdge(),
+    order: 0,
+    size: panel.defaultSize(),
+  };
+  return constrainPlacementToEdges(placement, panel.defaultEdge(), panel.allowedEdges());
 }
 
 /**

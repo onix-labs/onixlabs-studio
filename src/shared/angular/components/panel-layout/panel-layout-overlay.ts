@@ -54,6 +54,12 @@ export class PanelLayoutOverlay {
   protected readonly workspace: Signal<PanelRect | null> = this.drag.workspace;
 
   /**
+   * Gets the edges the dragged panel may land on, so a guide is drawn only for an offered edge (top
+   * and bottom stay hidden for a restricted panel).
+   */
+  protected readonly allowedEdges: Signal<readonly PanelEdge[]> = this.drag.allowedEdges;
+
+  /**
    * Gets the edges, in render order.
    */
   protected readonly edges: readonly PanelEdge[] = PANEL_EDGES;
