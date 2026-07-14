@@ -8,6 +8,7 @@ import type {
   AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
+  AiConnection,
   AiConnectionAuthRequest,
   AiDiscoverModelsRequest,
   AiDiscoverModelsResult,
@@ -178,10 +179,13 @@ export interface AiClient {
   verifyAuthentication(): Promise<AiVerifyResult>;
 
   /**
-   * Lists the registered providers and their current availability.
+   * Rebuilds the main-process providers from the user's connections and lists them with their current
+   * availability. Passing the connections here makes the user's own connections (not just the built-in
+   * seeds) runnable, and keeps the main process's provider set in step with the settings.
+   * @param connections The user's configured connections.
    * @returns Returns the providers.
    */
-  listProviders(): Promise<readonly AiProviderInfo[]>;
+  listProviders(connections: readonly AiConnection[]): Promise<readonly AiProviderInfo[]>;
 
   /**
    * Discovers a connection's models from its `/models` endpoint, merging them into its existing list.

@@ -5,6 +5,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiBridgeRequest,
+  AiConnection,
   AiEditDecision,
   AiEvent,
   AiImageRef,
@@ -145,11 +146,13 @@ export class AiRuntime {
   }
 
   /**
-   * Lists the registered providers and their availability.
+   * Rebuilds the main-process providers from the user's connections and lists them with their
+   * availability.
+   * @param connections The user's configured connections.
    * @returns Returns the providers (empty outside Electron).
    */
-  public listProviders(): Promise<readonly AiProviderInfo[]> {
-    return this.api?.listProviders() ?? Promise.resolve([]);
+  public listProviders(connections: readonly AiConnection[]): Promise<readonly AiProviderInfo[]> {
+    return this.api?.listProviders(connections) ?? Promise.resolve([]);
   }
 
   /**

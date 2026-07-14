@@ -5,6 +5,7 @@ import type {
   AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
+  AiConnection,
   AiConnectionAuthRequest,
   AiDiscoverModelsRequest,
   AiDiscoverModelsResult,
@@ -39,7 +40,8 @@ function createClient(bridge: Bridge): AiClient {
     clearConnectionKey: (request: AiConnectionAuthRequest): Promise<AiAuthStatus> =>
       bridge.invoke(AiChannel.ClearConnectionKey, request),
     verifyAuthentication: (): Promise<AiVerifyResult> => bridge.invoke(AiChannel.Verify),
-    listProviders: (): Promise<readonly AiProviderInfo[]> => bridge.invoke(AiChannel.ListProviders),
+    listProviders: (connections: readonly AiConnection[]): Promise<readonly AiProviderInfo[]> =>
+      bridge.invoke(AiChannel.ListProviders, connections),
     discoverModels: (request: AiDiscoverModelsRequest): Promise<AiDiscoverModelsResult> =>
       bridge.invoke(AiChannel.DiscoverModels, request),
     run: (request: AiRunRequest): Promise<void> => bridge.invoke(AiChannel.Run, request),

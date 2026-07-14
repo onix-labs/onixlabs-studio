@@ -14,7 +14,6 @@ import type {
   AiModelInfo,
   AiPermissionPosture,
   AiPermissionReply,
-  AiProviderId,
   AiProviderInfo,
   AiRunRequest,
   AiRunState,
@@ -37,6 +36,7 @@ import type {
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import { AiSdkAdapter } from './ai-sdk-adapter';
+import { isConnection, sanitizeConnections } from './connection-guard';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
@@ -61,6 +61,28 @@ interface PendingPermission {
    * Gets the workspace root of the asking run, or null for none.
    */
   readonly workspaceRoot: string | null;
+}
+
+/**
+ * The result of building providers from a set of connections: the provider map keyed by connection id,
+ * the connection map the run path resolves credentials through, and the Claude provider (kept apart for
+ * the authentication verification turn).
+ */
+interface BuiltProviders {
+  /**
+   * Gets the Claude provider (the `claude-login` connection's provider).
+   */
+  readonly claude: ClaudeAgentProvider;
+
+  /**
+   * Gets the registered providers, keyed by connection id.
+   */
+  readonly providers: Map<string, AgentProvider>;
+
+  /**
+   * Gets the connections the providers were built from, keyed by connection id.
+   */
+  readonly connections: Map<string, AiConnection>;
 }
 
 /**
@@ -118,20 +140,22 @@ export class AiManager {
   private readonly auth: AiAuthManager = new AiAuthManager();
 
   /**
-   * Holds the Claude provider (also used for the authentication verification turn).
+   * Holds the Claude provider (also used for the authentication verification turn). Reassigned when the
+   * providers are rebuilt from the user's connections, always to the current `claude-login` provider.
    */
-  private readonly claude: ClaudeAgentProvider;
+  private claude: ClaudeAgentProvider;
 
   /**
-   * Holds the registered providers, keyed by connection id.
+   * Holds the registered providers, keyed by connection id. Rebuilt from the user's connections each
+   * time the renderer lists providers, so the user's own connections become runnable.
    */
-  private readonly providers: Map<string, AgentProvider>;
+  private providers: Map<string, AgentProvider>;
 
   /**
    * Holds the connections the providers were built from, keyed by connection id, so a run resolves the
    * per-connection credential (its auth kind) and the run path stays connection-driven.
    */
-  private readonly connections: Map<string, AiConnection>;
+  private connections: Map<string, AiConnection>;
 
   /**
    * Holds the HTTP fetch used for model discovery (the main-process global fetch), referenced through
@@ -221,13 +245,27 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
 
-    // Build one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
-    // (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
-    // adapter, configured by the connection's kind and endpoint. The connections are the built-in seeds
-    // for now; a later phase flows the user's own connections here.
+    // Start from the built-in seeds so the subsystem is runnable before the renderer has listed its
+    // connections; the first `listProviders` call rebuilds these from the user's own connections.
+    const built: BuiltProviders = this.buildProviders(SEED_CONNECTIONS);
+    this.claude = built.claude;
+    this.providers = built.providers;
+    this.connections = built.connections;
+  }
+
+  /**
+   * Builds one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
+   * (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
+   * adapter, configured by the connection's kind and endpoint. Falls back to the built-in seeds when
+   * no connection carries a `claude-login` auth, so a verification turn and the Claude provider are
+   * always available.
+   * @param connections The connections to build providers from.
+   * @returns Returns the built provider map, connection map, and the Claude provider.
+   */
+  private buildProviders(connections: readonly AiConnection[]): BuiltProviders {
     let claude: ClaudeAgentProvider | null = null;
     const providers: Map<string, AgentProvider> = new Map<string, AgentProvider>();
-    for (const connection of SEED_CONNECTIONS) {
+    for (const connection of connections) {
       if (connection.auth === 'claude-login') {
         claude = new ClaudeAgentProvider(connection.models, connection.defaultModelId);
         providers.set(connection.id, claude);
@@ -236,16 +274,35 @@ export class AiManager {
       }
     }
     if (claude === null) {
-      throw new Error('No Claude connection is seeded; cannot initialise the AI subsystem.');
+      // The user's connections lack a Claude login (the built-in seed cannot be removed, so this only
+      // happens defensively); rebuild from the seeds so the Claude path is never lost.
+      return this.buildProviders(SEED_CONNECTIONS);
     }
-    this.claude = claude;
-    this.providers = providers;
-    this.connections = new Map<string, AiConnection>(
-      SEED_CONNECTIONS.map((connection: AiConnection): [string, AiConnection] => [
-        connection.id,
-        connection,
-      ]),
+    return {
+      claude,
+      providers,
+      connections: new Map<string, AiConnection>(
+        connections.map((connection: AiConnection): [string, AiConnection] => [
+          connection.id,
+          connection,
+        ]),
+      ),
+    };
+  }
+
+  /**
+   * Rebuilds the providers from the user's connections. Provider instances hold no cross-run state
+   * (sessions resume via the per-run session id), so rebuilding wholesale is safe and never disturbs an
+   * in-flight run, which owns its own abort controller and executing promise.
+   * @param connections The user's connections.
+   */
+  private rebuildProviders(connections: readonly AiConnection[]): void {
+    const built: BuiltProviders = this.buildProviders(
+      connections.length > 0 ? connections : SEED_CONNECTIONS,
     );
+    this.claude = built.claude;
+    this.providers = built.providers;
+    this.connections = built.connections;
   }
 
   /**
@@ -273,7 +330,11 @@ export class AiManager {
       AiChannel.Verify,
       (): Promise<AiVerifyResult> => this.claude.verify(this.auth.resolveCredential()),
     );
-    ipcMain.handle(AiChannel.ListProviders, (): readonly AiProviderInfo[] => this.listProviders());
+    ipcMain.handle(
+      AiChannel.ListProviders,
+      (_event: IpcMainInvokeEvent, connections: unknown): readonly AiProviderInfo[] =>
+        this.listProviders(sanitizeConnections(connections)),
+    );
     ipcMain.handle(
       AiChannel.DiscoverModels,
       (_event: IpcMainInvokeEvent, request: unknown): Promise<AiDiscoverModelsResult> =>
@@ -330,10 +391,13 @@ export class AiManager {
   }
 
   /**
-   * Lists the registered providers and their current availability (resolved per connection).
+   * Rebuilds the providers from the user's connections, then lists them and their current availability
+   * (resolved per connection).
+   * @param connections The user's connections.
    * @returns Returns the provider descriptors.
    */
-  private listProviders(): readonly AiProviderInfo[] {
+  private listProviders(connections: readonly AiConnection[]): readonly AiProviderInfo[] {
+    this.rebuildProviders(connections);
     const infos: AiProviderInfo[] = [];
     for (const connection of this.connections.values()) {
       const provider: AgentProvider | undefined = this.providers.get(connection.id);
@@ -344,9 +408,7 @@ export class AiManager {
         this.authForConnection(connection.id),
       );
       infos.push({
-        // The renderer's provider contract still types the id as AiProviderId; every seeded
-        // connection's id is in that set. A later phase widens the contract to any connection id.
-        id: connection.id as AiProviderId,
+        id: connection.id,
         label: provider.label,
         available: availability.available,
         detail: availability.detail,
@@ -379,19 +441,7 @@ export class AiManager {
     if (typeof value !== 'object' || value === null || !('connection' in value)) {
       return false;
     }
-    const connection: unknown = value.connection;
-    return (
-      typeof connection === 'object' &&
-      connection !== null &&
-      'id' in connection &&
-      typeof connection.id === 'string' &&
-      'kind' in connection &&
-      typeof connection.kind === 'string' &&
-      'auth' in connection &&
-      typeof connection.auth === 'string' &&
-      'models' in connection &&
-      Array.isArray(connection.models)
-    );
+    return isConnection(value.connection);
   }
 
   /**

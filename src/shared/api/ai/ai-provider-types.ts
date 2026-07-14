@@ -2,13 +2,11 @@
 // back-end and the Angular front-end can import it.
 
 /**
- * Identifies an agent provider implementation.
- *
- * - `claude`: the Claude Agent SDK (local login or API key; deep local agentic capability).
- * - `vercel`: the Vercel AI SDK (API key only; the seam to additional model back-ends later).
- * - `ollama`: a local Ollama server (no credentials; runs open models like Qwen on the user's machine).
+ * Identifies an agent provider — the id of the {@link AiConnection} it runs. Since connections are
+ * user-authored data (add/remove/rename at runtime), this is any connection id rather than a fixed
+ * union; the built-in seeds keep the stable ids `claude`, `vercel`, and `ollama`.
  */
-export type AiProviderId = 'claude' | 'vercel' | 'ollama';
+export type AiProviderId = string;
 
 /**
  * Describes a model a provider can run a turn with.

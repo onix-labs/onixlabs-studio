@@ -2,6 +2,7 @@ import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { createTwoFilesPatch } from 'diff';
 import { AiEvent, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FileDiff } from '../source-control/source-control-provider';
 import { GitFileChange } from './repository-data';
 import { Repository } from './repository';
@@ -42,6 +43,11 @@ export class CommitMessageGenerator {
   private readonly runtime: AiRuntime = inject(AiRuntime);
 
   /**
+   * Holds the settings service, the source of the user's connections the providers are built from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the repository supplying the selected files' diff content.
    */
   private readonly repository: Repository = inject(Repository);
@@ -74,7 +80,9 @@ export class CommitMessageGenerator {
     }
     this.generatingSignal.set(true);
     try {
-      const providers: readonly AiProviderInfo[] = await this.runtime.listProviders();
+      const providers: readonly AiProviderInfo[] = await this.runtime.listProviders(
+        this.settings.aiConnections(),
+      );
       const provider: AiProviderInfo | undefined = providers.find(
         (candidate: AiProviderInfo): boolean => candidate.available,
       );

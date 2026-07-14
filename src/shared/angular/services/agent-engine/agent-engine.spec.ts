@@ -60,19 +60,19 @@ describe('AgentEngine', () => {
     expect(engine.model()).toBe('claude-opus-4-8');
   });
 
-  it('setProvider_whenCalled_persistsToSettings', async () => {
+  it('setProvider_whenCalled_persistsTheActiveConnection', async () => {
     await engine.loadProviders();
     const settings: Settings = TestBed.inject(Settings);
 
     engine.setProvider('claude');
 
-    expect(settings.aiProvider()).toBe('claude');
+    expect(settings.aiActiveConnectionId()).toBe('claude');
     expect(engine.provider()).toBe('claude');
   });
 
-  it('loadProviders_whenSelectionUnavailable_fallsBackToAnAvailableProvider', async () => {
+  it('loadProviders_whenSelectionUnavailable_fallsBackToAnAvailableConnection', async () => {
     const settings: Settings = TestBed.inject(Settings);
-    settings.setAiProvider('vercel');
+    settings.setActiveConnection('made-up-connection');
 
     await engine.loadProviders();
 

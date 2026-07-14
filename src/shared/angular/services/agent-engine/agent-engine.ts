@@ -1,14 +1,14 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
+import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AiConnection, AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
- * Owns the global engine selection shared by every agent conversation: the registered providers and
- * the user's provider/model choice (persisted through {@link Settings}). The provider/model picked
- * here is the same one the agent ribbon's Engine group and the AI settings section drive, and the one
- * each {@link Agent} session runs through. Selection is global by design — only the transcript is
- * per-tab.
+ * Owns the global engine selection shared by every agent conversation: the registered providers (built
+ * in the main process from the user's connections) and the user's connection/model choice (persisted
+ * through {@link Settings}). The connection/model picked here is the same one the agent ribbon's Engine
+ * group and the AI settings connection manager drive, and the one each {@link Agent} session runs
+ * through. Selection is global by design — only the transcript is per-tab.
  */
 @Service()
 export class AgentEngine {
@@ -18,7 +18,8 @@ export class AgentEngine {
   private readonly runtime: AiRuntime = inject(AiRuntime);
 
   /**
-   * Holds the settings service, the persisted source of truth for provider/model selection.
+   * Holds the settings service, the persisted source of truth for connection/model selection and the
+   * connection collection.
    */
   private readonly settings: Settings = inject(Settings);
 
@@ -35,9 +36,9 @@ export class AgentEngine {
   public readonly providers: Signal<readonly AiProviderInfo[]> = this.providerList.asReadonly();
 
   /**
-   * Gets the selected provider (persisted via {@link Settings}).
+   * Gets the selected connection id (persisted via {@link Settings}).
    */
-  public readonly provider: Signal<AiProviderId> = this.settings.aiProvider;
+  public readonly provider: Signal<AiProviderId> = this.settings.aiActiveConnectionId;
 
   /**
    * Gets the descriptor of the selected provider, or undefined before the providers load.
@@ -48,19 +49,19 @@ export class AgentEngine {
   );
 
   /**
-   * Gets the models offered by the selected provider, in display order.
+   * Gets the models offered by the selected connection, in display order.
    */
   public readonly models: Signal<readonly AiModelInfo[]> = computed(
     (): readonly AiModelInfo[] => this.providerInfo()?.models ?? [],
   );
 
   /**
-   * Gets the effective model identifier: the user's choice when the provider offers it, otherwise the
-   * provider's default (empty only before the providers load).
+   * Gets the effective model identifier: the user's choice when the connection offers it, otherwise the
+   * connection's default (empty only before the providers load).
    */
   public readonly model: Signal<string> = computed((): string => {
     const models: readonly AiModelInfo[] = this.models();
-    const chosen: string = this.settings.aiModelFor(this.provider());
+    const chosen: string = this.settings.connectionModelFor(this.provider());
     if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
       return chosen;
     }
@@ -68,18 +69,27 @@ export class AgentEngine {
   });
 
   /**
-   * Initializes a new instance of the {@link AgentEngine} class, loading the providers.
+   * Initializes a new instance of the {@link AgentEngine} class, loading the providers and reloading
+   * them whenever the user's connections change (so an added, edited, or credentialled connection
+   * becomes runnable live).
    */
   public constructor() {
-    void this.loadProviders();
+    effect((): void => {
+      const connections: readonly AiConnection[] = this.settings.aiConnections();
+      void this.loadProviders(connections);
+    });
   }
 
   /**
-   * Loads the providers and selects an available one when the current selection is unavailable.
+   * Rebuilds the main-process providers from the given connections and selects an available one when
+   * the current selection is unavailable.
+   * @param connections The user's connections; defaults to the current settings collection.
    * @returns Returns a promise that resolves once the providers are loaded.
    */
-  public async loadProviders(): Promise<void> {
-    const providers: readonly AiProviderInfo[] = await this.runtime.listProviders();
+  public async loadProviders(
+    connections: readonly AiConnection[] = this.settings.aiConnections(),
+  ): Promise<void> {
+    const providers: readonly AiProviderInfo[] = await this.runtime.listProviders(connections);
     this.providerList.set(providers);
     const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(
@@ -90,26 +100,26 @@ export class AgentEngine {
         (provider: AiProviderInfo): boolean => provider.available,
       );
       if (fallback !== undefined) {
-        this.settings.setAiProvider(fallback.id);
+        this.settings.setActiveConnection(fallback.id);
       }
     }
   }
 
   /**
-   * Selects the provider runs go through.
-   * @param id The provider id.
+   * Selects the connection runs go through.
+   * @param id The connection id.
    */
   public setProvider(id: AiProviderId): void {
-    this.settings.setAiProvider(id);
+    this.settings.setActiveConnection(id);
   }
 
   /**
-   * Selects the model runs go through, persisted per provider. The choice is honoured while the active
-   * provider offers it and is otherwise ignored in favour of the provider's default (see
+   * Selects the model runs go through, persisted per connection. The choice is honoured while the
+   * active connection offers it and is otherwise ignored in favour of the connection's default (see
    * {@link model}).
    * @param id The model id.
    */
   public setModel(id: string): void {
-    this.settings.setAiModel(this.provider(), id);
+    this.settings.setConnectionModel(this.provider(), id);
   }
 }
