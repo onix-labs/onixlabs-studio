@@ -17,7 +17,6 @@ import type {
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
-  AiVerifyResult,
 } from '@shared/api/ai-types';
 
 /**
@@ -30,16 +29,12 @@ import type {
  */
 function createClient(bridge: Bridge): AiClient {
   return {
-    getAuthStatus: (): Promise<AiAuthStatus> => bridge.invoke(AiChannel.AuthStatus),
-    setApiKey: (key: string): Promise<AiAuthStatus> => bridge.invoke(AiChannel.SetApiKey, key),
-    clearApiKey: (): Promise<AiAuthStatus> => bridge.invoke(AiChannel.ClearApiKey),
     getConnectionAuthStatus: (request: AiConnectionAuthRequest): Promise<AiAuthStatus> =>
       bridge.invoke(AiChannel.ConnectionAuthStatus, request),
     setConnectionKey: (request: AiSetConnectionKeyRequest): Promise<AiAuthStatus> =>
       bridge.invoke(AiChannel.SetConnectionKey, request),
     clearConnectionKey: (request: AiConnectionAuthRequest): Promise<AiAuthStatus> =>
       bridge.invoke(AiChannel.ClearConnectionKey, request),
-    verifyAuthentication: (): Promise<AiVerifyResult> => bridge.invoke(AiChannel.Verify),
     listProviders: (connections: readonly AiConnection[]): Promise<readonly AiProviderInfo[]> =>
       bridge.invoke(AiChannel.ListProviders, connections),
     discoverModels: (request: AiDiscoverModelsRequest): Promise<AiDiscoverModelsResult> =>

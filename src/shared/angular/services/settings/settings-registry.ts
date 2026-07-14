@@ -1,7 +1,7 @@
 import { Icon } from '@shared/angular/icons/icon';
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
-import type { AiConnection, AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
   BraceStyle,
@@ -20,12 +20,6 @@ import type {
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
 import type { ColorSwatch, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
-
-/**
- * Defines the per-provider AI model selection map. A missing entry means "use the provider's default
- * model".
- */
-export type AiModels = Readonly<Partial<Record<AiProviderId, string>>>;
 
 /**
  * Maps a connection id to the model the user last selected for it, so switching connections restores
@@ -78,8 +72,6 @@ export interface SettingsValues {
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
-  readonly 'ai.provider': AiProviderId;
-  readonly 'ai.models': AiModels;
   readonly 'ai.connections': readonly AiConnection[];
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
@@ -491,21 +483,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'ai',
     label: 'AI',
     settings: [
-      {
-        key: 'ai.provider',
-        title: 'Provider',
-        description: 'The AI provider used by the agent.',
-        control: { kind: 'custom', component: 'ai-provider' },
-        default: 'claude',
-      },
-      {
-        key: 'ai.models',
-        title: 'Models',
-        description:
-          "The selected model per provider. A missing entry uses the provider's default.",
-        control: { kind: 'custom', component: 'ai-model-map' },
-        default: {},
-      },
       {
         key: 'ai.connections',
         title: 'Connections',

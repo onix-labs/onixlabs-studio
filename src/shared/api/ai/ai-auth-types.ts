@@ -66,18 +66,3 @@ export interface AiAuthStatus {
    */
   readonly detail: string;
 }
-
-/**
- * Reports the outcome of an end-to-end authentication check (a minimal real agent turn).
- */
-export interface AiVerifyResult {
-  /**
-   * Gets a value indicating whether the agent authenticated and produced a response.
-   */
-  readonly ok: boolean;
-
-  /**
-   * Gets a short human-readable description of the outcome.
-   */
-  readonly detail: string;
-}

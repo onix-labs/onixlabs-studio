@@ -52,8 +52,21 @@ describe('restoreOverrides', () => {
   it('oldProviderChoice_carriesForwardOntoTheActiveConnection', () => {
     const result: SettingsOverrides = restoreOverrides({ 'ai.provider': 'ollama' });
 
-    expect(result['ai.provider']).toBe('ollama');
     expect(result['ai.activeConnectionId']).toBe('ollama');
+  });
+
+  it('oldProviderChoice_whenEmptyString_leavesTheActiveConnectionDefault', () => {
+    const result: SettingsOverrides = restoreOverrides({ 'ai.provider': '' });
+
+    expect('ai.activeConnectionId' in result).toBe(false);
+  });
+
+  it('oldPerProviderModels_whenEntriesAreNonString_areDropped', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'ai.models': { claude: 'claude-sonnet-4-6', bad: 42 },
+    });
+
+    expect(result['ai.connectionModels']).toEqual({ claude: 'claude-sonnet-4-6' });
   });
 
   it('oldPerProviderModels_carryForwardOntoTheConnectionModels', () => {

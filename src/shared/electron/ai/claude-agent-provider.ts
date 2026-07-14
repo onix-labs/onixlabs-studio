@@ -31,7 +31,6 @@ import {
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
-  type AiVerifyResult,
 } from '@shared/api/ai-types';
 import type {
   AgentAuth,
@@ -39,7 +38,6 @@ import type {
   AgentRunContext,
   ProviderAvailability,
 } from './agent-provider';
-import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
 import {
   ASK_USER_DESCRIPTION,
@@ -83,11 +81,6 @@ import {
   prettyToolName,
   summarizeToolInput,
 } from './tool-format';
-
-/**
- * Holds how long (ms) to wait for the verification turn before aborting.
- */
-const VERIFY_TIMEOUT_MS: number = 45_000;
 
 /**
  * Holds the built-in tools auto-allowed when a workspace is open: read-only project exploration.
@@ -746,52 +739,6 @@ export class ClaudeAgentProvider implements AgentProvider {
     // Every surface learns it can ask the user questions instead of guessing.
     const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
     return readOnly ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
-  }
-
-  /**
-   * Runs a single trivial turn to confirm the credential authenticates end-to-end.
-   * @param credential The credential to authenticate with.
-   * @returns Returns the {@link AiVerifyResult}; never throws.
-   */
-  public async verify(credential: AiCredential): Promise<AiVerifyResult> {
-    if (credential.source === 'none') {
-      return { ok: false, detail: 'No Claude credential is available.' };
-    }
-    const controller: AbortController = new AbortController();
-    const timeout: NodeJS.Timeout = setTimeout((): void => controller.abort(), VERIFY_TIMEOUT_MS);
-    try {
-      const { query } = await import('@anthropic-ai/claude-agent-sdk');
-      const auth: AgentAuth = {
-        hasLocalLogin: credential.source === 'local-login',
-        apiKey: credential.apiKey,
-      };
-      const options: Options = {
-        model: this.defaultModelId,
-        cwd: homedir(),
-        maxTurns: 1,
-        abortController: controller,
-        ...this.executableOption(),
-        ...(this.runEnv(auth) ?? {}),
-      };
-      const response: Query = query({ prompt: 'Reply with the single word: OK', options });
-      for await (const message of response) {
-        if (message.type === 'assistant') {
-          return {
-            ok: true,
-            detail:
-              credential.source === 'local-login'
-                ? 'Authenticated with your local Claude login.'
-                : 'Authenticated with your Anthropic API key.',
-          };
-        }
-      }
-      return { ok: false, detail: 'The agent did not produce a response.' };
-    } catch (error: unknown) {
-      const message: string = error instanceof Error ? error.message : String(error);
-      return { ok: false, detail: `Authentication check failed: ${message}` };
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 
   /**

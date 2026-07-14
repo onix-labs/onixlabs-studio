@@ -55,20 +55,29 @@ describe('Ai', () => {
     expect(service.client).toBeUndefined();
   });
 
-  it('authOperations_whenInvoked_forwardToTheirChannels', async () => {
-    stubBridge({ mode: 'api-key', hasKey: true });
+  it('connectionAuthOperations_whenInvoked_forwardToTheirChannels', async () => {
+    stubBridge({ source: 'api-key', available: true, hasStoredKey: true, detail: 'ok' });
     const service: Ai = TestBed.inject(Ai);
 
-    await service.client?.getAuthStatus();
-    await service.client?.setApiKey('sk-test');
-    await service.client?.clearApiKey();
+    await service.client?.getConnectionAuthStatus({
+      connectionId: 'openai-1',
+      authKind: 'api-key',
+    });
+    await service.client?.setConnectionKey({
+      connectionId: 'openai-1',
+      authKind: 'api-key',
+      key: 'sk-test',
+    });
+    await service.client?.clearConnectionKey({ connectionId: 'openai-1', authKind: 'api-key' });
 
     expect(invokes.map((call: RecordedCall): string => call.channel)).toEqual([
-      AiChannel.AuthStatus,
-      AiChannel.SetApiKey,
-      AiChannel.ClearApiKey,
+      AiChannel.ConnectionAuthStatus,
+      AiChannel.SetConnectionKey,
+      AiChannel.ClearConnectionKey,
     ]);
-    expect(invokes[1].args).toEqual(['sk-test']);
+    expect(invokes[1].args).toEqual([
+      { connectionId: 'openai-1', authKind: 'api-key', key: 'sk-test' },
+    ]);
   });
 
   it('run_whenInvoked_forwardsTheRequest', async () => {

@@ -1,8 +1,8 @@
+import { ANTHROPIC_KEY_CONNECTION_ID } from '@shared/api/ai-types';
 import type { AiAuthStatus } from '@shared/api/ai-types';
 import {
   CredentialStore,
   type CredentialStorePorts,
-  LEGACY_CREDENTIAL_ID,
   parseCredentialMap,
   removeKeyFrom,
   serializeCredentialMap,
@@ -53,9 +53,9 @@ describe('parseCredentialMap', () => {
     });
   });
 
-  it('legacyRawKey_migratesUnderTheLegacyId', () => {
+  it('legacyRawKey_migratesOntoTheAnthropicKeyConnection', () => {
     expect(parseCredentialMap('sk-ant-legacy')).toEqual({
-      [LEGACY_CREDENTIAL_ID]: 'sk-ant-legacy',
+      [ANTHROPIC_KEY_CONNECTION_ID]: 'sk-ant-legacy',
     });
   });
 
@@ -116,11 +116,16 @@ describe('CredentialStore keys', () => {
     expect(blob()).toBeNull();
   });
 
-  it('migratesALegacyRawKeyBlobOnFirstUse', () => {
+  it('migratesALegacyRawKeyBlobOntoTheAnthropicKeyConnection', () => {
     const { store } = fakeStore({ initialBlob: 'sk-ant-legacy' });
 
-    expect(store.storedKeyFor(LEGACY_CREDENTIAL_ID)).toBe('sk-ant-legacy');
-    expect(store.legacyApiKey()).toBe('sk-ant-legacy');
+    // A pre-connections app stored a single raw Anthropic key; it migrates onto the built-in Anthropic
+    // API-key connection so it keeps authenticating that connection after the upgrade.
+    expect(store.storedKeyFor(ANTHROPIC_KEY_CONNECTION_ID)).toBe('sk-ant-legacy');
+    expect(store.resolveCredentialFor(ANTHROPIC_KEY_CONNECTION_ID, 'api-key')).toEqual({
+      source: 'api-key',
+      apiKey: 'sk-ant-legacy',
+    });
   });
 });
 
@@ -196,23 +201,5 @@ describe('CredentialStore status', () => {
 
   it('noneStatus_isAlwaysAvailable', () => {
     expect(fakeStore().store.statusFor('ollama', 'none').available).toBe(true);
-  });
-
-  it('legacyStatus_mirrorsTheClaudeLoginPrecedence', () => {
-    expect(fakeStore({ hasLocalLogin: true }).store.legacyStatus().source).toBe('local-login');
-
-    const stored: FakeStore = fakeStore();
-    stored.store.setLegacyKey('sk-stored');
-    expect(stored.store.legacyStatus()).toMatchObject({ source: 'api-key', hasStoredKey: true });
-
-    expect(fakeStore().store.legacyStatus().source).toBe('none');
-  });
-
-  it('setLegacyKey_thenClear_roundTripsThroughStatus', () => {
-    const { store } = fakeStore();
-
-    expect(store.setLegacyKey('sk-stored')).toMatchObject({ source: 'api-key', available: true });
-    expect(store.clearLegacyKey()).toMatchObject({ source: 'none', available: false });
-    expect(store.legacyApiKey()).toBeNull();
   });
 });

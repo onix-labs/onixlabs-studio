@@ -18,7 +18,6 @@ import type {
   AiRunRequest,
   AiRunState,
   AiSteerRequest,
-  AiVerifyResult,
 } from '@shared/api/ai-types';
 import { SEED_CONNECTIONS } from '@shared/api/ai-types';
 
@@ -64,16 +63,10 @@ interface PendingPermission {
 }
 
 /**
- * The result of building providers from a set of connections: the provider map keyed by connection id,
- * the connection map the run path resolves credentials through, and the Claude provider (kept apart for
- * the authentication verification turn).
+ * The result of building providers from a set of connections: the provider map keyed by connection id
+ * and the connection map the run path resolves credentials through.
  */
 interface BuiltProviders {
-  /**
-   * Gets the Claude provider (the `claude-login` connection's provider).
-   */
-  readonly claude: ClaudeAgentProvider;
-
   /**
    * Gets the registered providers, keyed by connection id.
    */
@@ -138,12 +131,6 @@ export class AiManager {
    * Holds the agent credential manager.
    */
   private readonly auth: AiAuthManager = new AiAuthManager();
-
-  /**
-   * Holds the Claude provider (also used for the authentication verification turn). Reassigned when the
-   * providers are rebuilt from the user's connections, always to the current `claude-login` provider.
-   */
-  private claude: ClaudeAgentProvider;
 
   /**
    * Holds the registered providers, keyed by connection id. Rebuilt from the user's connections each
@@ -248,7 +235,6 @@ export class AiManager {
     // Start from the built-in seeds so the subsystem is runnable before the renderer has listed its
     // connections; the first `listProviders` call rebuilds these from the user's own connections.
     const built: BuiltProviders = this.buildProviders(SEED_CONNECTIONS);
-    this.claude = built.claude;
     this.providers = built.providers;
     this.connections = built.connections;
   }
@@ -256,30 +242,31 @@ export class AiManager {
   /**
    * Builds one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
    * (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
-   * adapter, configured by the connection's kind and endpoint. Falls back to the built-in seeds when
-   * no connection carries a `claude-login` auth, so a verification turn and the Claude provider are
-   * always available.
+   * adapter, configured by the connection's kind and endpoint. Falls back to the built-in seeds when no
+   * connection carries a `claude-login` auth, so the Claude path is always available.
    * @param connections The connections to build providers from.
-   * @returns Returns the built provider map, connection map, and the Claude provider.
+   * @returns Returns the built provider map and connection map.
    */
   private buildProviders(connections: readonly AiConnection[]): BuiltProviders {
-    let claude: ClaudeAgentProvider | null = null;
+    let hasClaude: boolean = false;
     const providers: Map<string, AgentProvider> = new Map<string, AgentProvider>();
     for (const connection of connections) {
       if (connection.auth === 'claude-login') {
-        claude = new ClaudeAgentProvider(connection.models, connection.defaultModelId);
-        providers.set(connection.id, claude);
+        hasClaude = true;
+        providers.set(
+          connection.id,
+          new ClaudeAgentProvider(connection.models, connection.defaultModelId),
+        );
       } else {
         providers.set(connection.id, new AiSdkAdapter(connection));
       }
     }
-    if (claude === null) {
+    if (!hasClaude) {
       // The user's connections lack a Claude login (the built-in seed cannot be removed, so this only
       // happens defensively); rebuild from the seeds so the Claude path is never lost.
       return this.buildProviders(SEED_CONNECTIONS);
     }
     return {
-      claude,
       providers,
       connections: new Map<string, AiConnection>(
         connections.map((connection: AiConnection): [string, AiConnection] => [
@@ -300,13 +287,12 @@ export class AiManager {
     const built: BuiltProviders = this.buildProviders(
       connections.length > 0 ? connections : SEED_CONNECTIONS,
     );
-    this.claude = built.claude;
     this.providers = built.providers;
     this.connections = built.connections;
   }
 
   /**
-   * Registers the agent IPC handlers (auth, provider listing, run/abort, and verification).
+   * Registers the agent IPC handlers (per-connection auth, provider listing, and run/abort).
    */
   public register(): void {
     this.auth.register();
@@ -326,10 +312,6 @@ export class AiManager {
         this.resolveEditDecision(reply);
       }
     });
-    ipcMain.handle(
-      AiChannel.Verify,
-      (): Promise<AiVerifyResult> => this.claude.verify(this.auth.resolveCredential()),
-    );
     ipcMain.handle(
       AiChannel.ListProviders,
       (_event: IpcMainInvokeEvent, connections: unknown): readonly AiProviderInfo[] =>

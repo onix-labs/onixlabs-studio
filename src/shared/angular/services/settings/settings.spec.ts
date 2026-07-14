@@ -147,22 +147,22 @@ describe('Settings', () => {
     expect(service.profiles()).toHaveLength(0);
   });
 
-  it('ai_whenDefaulted_usesClaudePromptAndNoCap', () => {
+  it('ai_whenDefaulted_usesClaudeConnectionPromptAndNoCap', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    expect(service.aiProvider()).toBe('claude');
+    expect(service.aiActiveConnectionId()).toBe('claude');
     expect(service.aiPermissionPosture()).toBe('prompt');
     expect(service.aiTokenCap()).toBe(0);
   });
 
-  it('setAiModel_whenCalled_persistsPerProvider', () => {
+  it('setConnectionModel_whenCalled_persistsPerConnection', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setAiModel('claude', 'claude-haiku-4-5');
-    service.setAiModel('vercel', 'claude-opus-4-8');
+    service.setConnectionModel('claude', 'claude-haiku-4-5');
+    service.setConnectionModel('vercel', 'claude-opus-4-8');
 
-    expect(service.aiModelFor('claude')).toBe('claude-haiku-4-5');
-    expect(service.aiModelFor('vercel')).toBe('claude-opus-4-8');
+    expect(service.connectionModelFor('claude')).toBe('claude-haiku-4-5');
+    expect(service.connectionModelFor('vercel')).toBe('claude-opus-4-8');
   });
 
   it('setAiTokenCap_whenNegative_clampsToZero', () => {
@@ -189,7 +189,9 @@ describe('Settings', () => {
     expect(service.aiPermissionPosture()).toBe('auto-all');
   });
 
-  it('ai_whenPersistedValuesExist_areRestoredOnCreation', () => {
+  it('ai_whenPreConnectionsBlobPersisted_migratesOntoConnections', () => {
+    // A pre-epic settings blob picked a provider and a per-provider model; the migration carries those
+    // onto the connection selection (the seeded connection ids match the old provider ids).
     localStorage.setItem(
       'settings',
       JSON.stringify({ ai: { provider: 'vercel', models: { vercel: 'claude-sonnet-4-6' } } }),
@@ -197,8 +199,8 @@ describe('Settings', () => {
 
     const service: Settings = TestBed.inject(Settings);
 
-    expect(service.aiProvider()).toBe('vercel');
-    expect(service.aiModelFor('vercel')).toBe('claude-sonnet-4-6');
+    expect(service.aiActiveConnectionId()).toBe('vercel');
+    expect(service.connectionModelFor('vercel')).toBe('claude-sonnet-4-6');
     expect(service.aiPermissionPosture()).toBe('prompt');
   });
 

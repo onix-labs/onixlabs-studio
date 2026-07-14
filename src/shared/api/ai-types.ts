@@ -28,7 +28,6 @@ export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type {
   AiAuthSource,
   AiAuthStatus,
-  AiVerifyResult,
   AiConnectionAuthRequest,
   AiSetConnectionKeyRequest,
 } from './ai/ai-auth-types';

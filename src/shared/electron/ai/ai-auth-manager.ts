@@ -11,9 +11,6 @@ import type {
 import { AiChannel } from '@shared/api/ai-channels';
 import type { AgentAuth } from './agent-provider';
 import { CredentialStore, type CredentialStorePorts } from './credential-store';
-import type { AiCredential } from './auth-strategies';
-
-export type { AiCredential };
 
 /**
  * The auth kinds a connection can use, for validating IPC requests before they reach the store.
@@ -38,10 +35,9 @@ const INVALID_REQUEST_STATUS: AiAuthStatus = {
  * only status, configuration, and the resolved credential (used internally) cross any boundary.
  *
  * This class is a thin Electron shell: the storage and environment primitives are wired into a pure
- * {@link CredentialStore}, which holds all the logic. The pre-connections single-key API
- * ({@link getStatus}, {@link setApiKey}, {@link clearApiKey}, {@link resolveCredential}, {@link apiKey})
- * is preserved and now backed by the store's legacy credential slot, so the existing runtime and UI are
- * unchanged while connections are wired up.
+ * {@link CredentialStore}, which holds all the logic. Every credential is keyed by connection id; a key
+ * stored by the pre-connections app is migrated onto the built-in Anthropic API-key connection when the
+ * store is first read.
  */
 export class AiAuthManager {
   /**
@@ -60,49 +56,6 @@ export class AiAuthManager {
    */
   public hasLocalLogin(): boolean {
     return existsSync(join(homedir(), '.claude'));
-  }
-
-  /**
-   * Resolves the API key available to providers (the legacy global stored key, then the development
-   * environment key), independent of the local-login precedence used for {@link getStatus}.
-   * @returns Returns the API key, or null when none is available.
-   */
-  public apiKey(): string | null {
-    return this.store.legacyApiKey();
-  }
-
-  /**
-   * Gets the current authentication status, safe to surface in the UI (never includes the key).
-   * @returns Returns the resolved {@link AiAuthStatus}.
-   */
-  public getStatus(): AiAuthStatus {
-    return this.store.legacyStatus();
-  }
-
-  /**
-   * Resolves the credential an agent run should authenticate with, applying the local-login → stored
-   * key → environment key → none precedence.
-   * @returns Returns the resolved credential.
-   */
-  public resolveCredential(): AiCredential {
-    return this.store.legacyResolve();
-  }
-
-  /**
-   * Stores a user-supplied API key, encrypted at rest. An empty key clears any stored key instead.
-   * @param key The Anthropic API key to store.
-   * @returns Returns the updated {@link AiAuthStatus}.
-   */
-  public setApiKey(key: string): AiAuthStatus {
-    return this.store.setLegacyKey(key);
-  }
-
-  /**
-   * Clears any stored API key.
-   * @returns Returns the updated {@link AiAuthStatus}.
-   */
-  public clearApiKey(): AiAuthStatus {
-    return this.store.clearLegacyKey();
   }
 
   /**
@@ -149,17 +102,10 @@ export class AiAuthManager {
   }
 
   /**
-   * Registers the IPC handlers for the renderer's auth status and key-management requests (both the
-   * legacy global-key channels and the per-connection channels).
+   * Registers the IPC handlers for the renderer's per-connection auth status and key-management
+   * requests.
    */
   public register(): void {
-    ipcMain.handle(AiChannel.AuthStatus, (): AiAuthStatus => this.getStatus());
-    ipcMain.handle(
-      AiChannel.SetApiKey,
-      (_event: IpcMainInvokeEvent, key: unknown): AiAuthStatus =>
-        typeof key === 'string' ? this.setApiKey(key) : this.getStatus(),
-    );
-    ipcMain.handle(AiChannel.ClearApiKey, (): AiAuthStatus => this.clearApiKey());
     ipcMain.handle(
       AiChannel.ConnectionAuthStatus,
       (_event: IpcMainInvokeEvent, request: unknown): AiAuthStatus =>

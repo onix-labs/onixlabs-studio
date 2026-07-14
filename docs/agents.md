@@ -193,10 +193,24 @@ modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift
 How Studio bounds what an AI agent can see and do. Enforcement lives in the main process
 (`src/shared/electron/ai/*`); the renderer runtime is `src/shared/angular/services/ai-runtime`.
 
-**Authentication.** The agent authenticates from the user's **local Claude login** (`~/.claude`, the
-same credential Claude Code uses) or, as a fallback, a user-supplied **API key** stored encrypted at
-rest via OS secure-storage (`safeStorage`, in `AiAuthManager`). The key **never crosses the
-contextBridge**; only narrow status, config, run-control, and verification calls are exposed.
+**Providers & connections.** Providers are **data, not code**. A user-editable list of
+**connections** (`AiConnection`: id, kind, label, base URL, auth kind, model list) is persisted in
+settings and managed in the AI settings section; the built-in seeds (Claude, an Anthropic API-key
+connection, and a local Ollama) can be extended with any OpenAI-compatible, xAI, Google, DeepSeek, or
+custom endpoint without new code. Only two provider implementations back them: `ClaudeAgentProvider`
+(the Claude Agent SDK, local-login path) for a `claude-login` connection, and the generic
+`AiSdkAdapter` (Vercel AI SDK, dispatched by kind + base URL) for every other. The renderer passes its
+connections to `AiManager.listProviders`, which **rebuilds** its provider set from them, so a user's
+own connection is immediately runnable; `AgentEngine` owns the active connection + per-connection
+model selection.
+
+**Authentication.** Each connection resolves its own credential, keyed by connection id, through an
+`AuthStrategy` (`api-key` / `none` / `claude-login`; OAuth is a future drop-in). A `claude-login`
+connection uses the user's **local Claude login** (`~/.claude`, the same credential Claude Code uses);
+an `api-key` connection uses a per-connection **API key** stored encrypted at rest via OS
+secure-storage (`safeStorage`, in `AiAuthManager` over a pure `CredentialStore`). Keys **never cross
+the contextBridge**; only narrow per-connection status, config, and run-control calls are exposed. A
+key stored by a pre-connections build migrates onto the built-in Anthropic API-key connection.
 
 **Scope of a run.** The working directory is the open workspace root (or the user's home when none is
 open) — never Studio's install directory. Every run is cancellable; aborting stops the underlying

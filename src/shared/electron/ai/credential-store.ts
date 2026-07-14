@@ -5,19 +5,13 @@
 //
 // Persistence is a single encrypted blob holding a JSON map of connection id -> API key. A blob written
 // by the pre-connections app was a single raw Anthropic key string; {@link parseCredentialMap} migrates
-// that forward under {@link LEGACY_CREDENTIAL_ID}, so an upgrading user's stored key keeps working
-// through the unchanged global-key API.
+// that forward onto the built-in Anthropic API-key connection, so an upgrading user's stored key keeps
+// authenticating that connection.
 
+import { ANTHROPIC_KEY_CONNECTION_ID } from '@shared/api/ai-types';
 import type { AiAuthKind, AiAuthStatus } from '@shared/api/ai-types';
 import type { AgentAuth } from './agent-provider';
 import { type AiCredential, type AuthContext, strategyFor } from './auth-strategies';
-
-/**
- * The reserved id under which the single global key stored by the pre-connections app is kept, so the
- * legacy global-key API (the `claude-login` credential) keeps resolving it after the store became
- * keyed. User connections use their own ids.
- */
-export const LEGACY_CREDENTIAL_ID: string = '__legacy__';
 
 /**
  * Determines whether a value is a flat record of string values (the parsed credential map).
@@ -36,8 +30,8 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 /**
  * Parses the decrypted credential blob into a connection-id-to-key map, migrating the legacy raw-key
  * format forward. An empty or absent blob yields an empty map; a JSON object is used directly; anything
- * else (a bare key string written by the pre-connections app) is migrated under {@link
- * LEGACY_CREDENTIAL_ID}.
+ * else (a bare Anthropic key string written by the pre-connections app) is migrated onto the built-in
+ * Anthropic API-key connection, so it authenticates that connection after the upgrade.
  * @param plaintext The decrypted blob, or null when none is stored.
  * @returns Returns the credential map.
  */
@@ -53,7 +47,7 @@ export function parseCredentialMap(plaintext: string | null): Record<string, str
   } catch {
     // Not JSON — a legacy single raw key. Fall through to migrate it.
   }
-  return { [LEGACY_CREDENTIAL_ID]: plaintext };
+  return { [ANTHROPIC_KEY_CONNECTION_ID]: plaintext };
 }
 
 /**
@@ -241,50 +235,5 @@ export class CredentialStore {
       hasLocalLogin: this.ports.hasLocalLogin(),
       apiKey: this.resolveCredentialFor(id, kind).apiKey,
     };
-  }
-
-  /**
-   * Gets the status of the legacy global credential (the `claude-login` credential), for the
-   * unchanged global-key API.
-   * @returns Returns the status.
-   */
-  public legacyStatus(): AiAuthStatus {
-    return this.statusFor(LEGACY_CREDENTIAL_ID, 'claude-login');
-  }
-
-  /**
-   * Gets the API key available to the legacy global credential (its stored key, then the environment
-   * key), independent of the local-login precedence used for the status.
-   * @returns Returns the key, or null when none is available.
-   */
-  public legacyApiKey(): string | null {
-    return this.storedKeyFor(LEGACY_CREDENTIAL_ID) ?? this.ports.envKey();
-  }
-
-  /**
-   * Resolves the legacy global credential.
-   * @returns Returns the resolved credential.
-   */
-  public legacyResolve(): AiCredential {
-    return this.resolveCredentialFor(LEGACY_CREDENTIAL_ID, 'claude-login');
-  }
-
-  /**
-   * Stores the legacy global key (a blank key clears it) and returns the updated status.
-   * @param key The key to store.
-   * @returns Returns the updated status.
-   */
-  public setLegacyKey(key: string): AiAuthStatus {
-    this.setKey(LEGACY_CREDENTIAL_ID, key);
-    return this.legacyStatus();
-  }
-
-  /**
-   * Clears the legacy global key and returns the updated status.
-   * @returns Returns the updated status.
-   */
-  public clearLegacyKey(): AiAuthStatus {
-    this.clearKey(LEGACY_CREDENTIAL_ID);
-    return this.legacyStatus();
   }
 }

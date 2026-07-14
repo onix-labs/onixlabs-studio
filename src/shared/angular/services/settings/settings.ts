@@ -1,8 +1,7 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiConnection, AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture } from '@shared/api/ai-types';
 import {
   AiConnectionModels,
-  AiModels,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -288,17 +287,6 @@ export interface MarkdownEditorSettings {
  */
 export interface AiSettings {
   /**
-   * Gets the selected provider.
-   */
-  readonly provider: AiProviderId;
-
-  /**
-   * Gets the selected model per provider, keyed by provider id. A missing entry means "use the
-   * provider's default model".
-   */
-  readonly models: AiModels;
-
-  /**
    * Gets the configured provider connections (each a back-end, credential, and model list). Seeded
    * with the built-in connections on a fresh install; fully user-editable.
    */
@@ -567,8 +555,6 @@ export class Settings {
    */
   public readonly ai: Signal<AiSettings> = computed(
     (): AiSettings => ({
-      provider: this.read('ai.provider'),
-      models: this.read('ai.models'),
       connections: this.read('ai.connections'),
       activeConnectionId: this.read('ai.activeConnectionId'),
       connectionModels: this.read('ai.connectionModels'),
@@ -577,11 +563,6 @@ export class Settings {
       runTimeoutMinutes: this.read('ai.runTimeoutMinutes'),
     }),
   );
-
-  /**
-   * Gets the selected AI provider.
-   */
-  public readonly aiProvider: Signal<AiProviderId> = this.value('ai.provider');
 
   /**
    * Gets the configured provider connections.
@@ -831,38 +812,11 @@ export class Settings {
   }
 
   /**
-   * Gets the model selected for a provider, or an empty string when none is selected (use the
-   * provider's default).
-   * @param provider The provider id.
-   * @returns Returns the selected model id, or an empty string.
-   */
-  public aiModelFor(provider: AiProviderId): string {
-    return this.read('ai.models')[provider] ?? '';
-  }
-
-  /**
    * Updates the AI agent settings.
    * @param updates The partial AI settings to apply.
    */
   public updateAiSettings(updates: Partial<AiSettings>): void {
     this.assignSection('ai', updates);
-  }
-
-  /**
-   * Sets the selected AI provider.
-   * @param provider The provider id.
-   */
-  public setAiProvider(provider: AiProviderId): void {
-    this.set('ai.provider', provider);
-  }
-
-  /**
-   * Sets the selected model for a provider.
-   * @param provider The provider id.
-   * @param model The model id.
-   */
-  public setAiModel(provider: AiProviderId, model: string): void {
-    this.set('ai.models', { ...this.read('ai.models'), [provider]: model });
   }
 
   /**
