@@ -72,6 +72,42 @@ describe('AiConnections', () => {
     ).toBe(false);
   });
 
+  it('restoreDefaults_whenSeedsRemoved_addsThemBackAndKeepsCustom', () => {
+    const custom: AiConnection = service.add('openai');
+    for (const seed of [...service.connections()]) {
+      if (seed.id !== custom.id) {
+        service.remove(seed.id);
+      }
+    }
+    expect(service.connections().map((c: AiConnection): string => c.id)).toEqual([custom.id]);
+
+    service.restoreDefaults();
+
+    const ids: string[] = service.connections().map((c: AiConnection): string => c.id);
+    expect(ids).toEqual(['claude', 'vercel', 'ollama', custom.id]);
+  });
+
+  it('restoreDefaults_whenSeedEdited_resetsItToTheShippedDefinition', () => {
+    service.update('claude', { label: 'My Claude', models: [] });
+    expect(current('claude').label).toBe('My Claude');
+
+    service.restoreDefaults();
+
+    expect(current('claude').label).toBe('Claude');
+    expect(current('claude').models.length).toBeGreaterThan(0);
+  });
+
+  it('restoreDefaults_whenActiveWasRemoved_returnsSelectionToTheDefault', () => {
+    settings.setActiveConnection('ollama');
+    for (const seed of [...service.connections()]) {
+      service.remove(seed.id);
+    }
+
+    service.restoreDefaults();
+
+    expect(settings.aiActiveConnectionId()).toBe('claude');
+  });
+
   it('move_whenCalled_reordersTheConnection', () => {
     const created: AiConnection = service.add('openai');
     const lastIndex: number = service.connections().length - 1;

@@ -6,16 +6,22 @@
         Providers the agent can run through. Each keeps its own credential and model list.
       </p>
     </div>
-    <div class="ai-connections__add">
-      <app-dropdown
-        [options]="addKindOptions"
-        [value]="selectedAddKind()"
-        (valueChange)="onAddKindChange($event)"
-      />
-      <button type="button" class="ai-connections__add-button" (click)="addConnection()">
-        <app-icon [icon]="Icon.PLUS" />
-        <span>Add</span>
+    <div class="ai-connections__actions">
+      <button type="button" class="ai-connections__restore-button" (click)="restoreDefaults()">
+        <app-icon [icon]="Icon.RESTART" />
+        <span>Restore defaults</span>
       </button>
+      <div class="ai-connections__add">
+        <app-dropdown
+          [options]="addKindOptions"
+          [value]="selectedAddKind()"
+          (valueChange)="onAddKindChange($event)"
+        />
+        <button type="button" class="ai-connections__add-button" (click)="addConnection()">
+          <app-icon [icon]="Icon.PLUS" />
+          <span>Add</span>
+        </button>
+      </div>
     </div>
   </div>
 

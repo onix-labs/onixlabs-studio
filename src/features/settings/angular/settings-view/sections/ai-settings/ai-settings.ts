@@ -145,6 +145,13 @@ export class AiSettingsSection {
   }
 
   /**
+   * Restores the default connections (resets the seeds and keeps the user's own).
+   */
+  protected restoreDefaults(): void {
+    this.connectionsService.restoreDefaults();
+  }
+
+  /**
    * Moves a connection up one place.
    * @param id The connection id.
    */

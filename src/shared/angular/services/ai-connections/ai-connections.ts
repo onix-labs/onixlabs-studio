@@ -7,6 +7,7 @@ import type {
   AiModelInfo,
   AiProviderKind,
 } from '@shared/api/ai-types';
+import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Ai } from '@shared/angular/services/ai/ai';
 
@@ -149,6 +150,29 @@ export class AiConnections {
    */
   public remove(id: string): void {
     this.settings.removeConnection(id);
+  }
+
+  /**
+   * Restores the default connections: every seeded connection is reset to its shipped definition (added
+   * back when removed, or overwritten when edited) and placed first, in their canonical order; the
+   * user's own connections are kept, after them. When the active connection no longer resolves (for
+   * example it was a removed seed), selection returns to the default connection.
+   */
+  public restoreDefaults(): void {
+    const seedIds: Set<string> = new Set<string>(
+      SEED_CONNECTIONS.map((connection: AiConnection): string => connection.id),
+    );
+    const custom: readonly AiConnection[] = this.connections().filter(
+      (connection: AiConnection): boolean => !seedIds.has(connection.id),
+    );
+    const restored: readonly AiConnection[] = [...SEED_CONNECTIONS, ...custom];
+    this.settings.setAiConnections(restored);
+
+    const active: string = this.settings.aiActiveConnectionId();
+    if (!restored.some((connection: AiConnection): boolean => connection.id === active)) {
+      this.settings.setActiveConnection(DEFAULT_CONNECTION_ID);
+    }
+    void this.refreshAllAuth();
   }
 
   /**
