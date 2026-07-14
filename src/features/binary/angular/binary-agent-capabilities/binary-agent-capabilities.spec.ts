@@ -165,7 +165,11 @@ function fakeDocument(overrides: Partial<FakeDocumentState> = {}): FakeDocument 
       deletes.push({ offset, count });
       return Promise.resolve(state.resizeOk);
     },
-    assemble: (assembly: string, architecture: string, address: number): Promise<AssembleResult> => {
+    assemble: (
+      assembly: string,
+      architecture: string,
+      address: number,
+    ): Promise<AssembleResult> => {
       assembles.push({ assembly, architecture, address });
       return Promise.resolve(state.assemble(assembly, architecture, address));
     },

@@ -1,6 +1,6 @@
-import {bootstrapApplication} from '@angular/platform-browser';
-import {config} from './config';
-import {Root} from './root/root';
+import { bootstrapApplication } from '@angular/platform-browser';
+import { config } from './config';
+import { Root } from './root/root';
 
 /**
  * Resolves whether the heavier UI effects should be reduced for the first paint, mirroring the
@@ -15,7 +15,8 @@ function shouldReduceEffects(): boolean {
   try {
     const raw: string | null = localStorage.getItem('settings');
     const choice: unknown = raw
-      ? (JSON.parse(raw) as { appearance?: { modernUiFeatures?: unknown } }).appearance?.modernUiFeatures
+      ? (JSON.parse(raw) as { appearance?: { modernUiFeatures?: unknown } }).appearance
+          ?.modernUiFeatures
       : undefined;
 
     if (choice === 'on') return false;

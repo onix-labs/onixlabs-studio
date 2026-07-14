@@ -466,8 +466,7 @@ export class LspClient implements OnDestroy {
       );
       await Promise.all(
         documents.map(
-          (tracked: TrackedDocument): Promise<void> =>
-            this.pullDiagnostics(sessionId, tracked.uri),
+          (tracked: TrackedDocument): Promise<void> => this.pullDiagnostics(sessionId, tracked.uri),
         ),
       );
       // The pass ran after the session's refresh signals went quiet, so the server's compilation is

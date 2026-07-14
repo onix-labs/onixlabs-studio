@@ -90,7 +90,11 @@
   }
 
   .welcome__glow-blob--b {
-    background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.1), transparent 70%);
+    background: radial-gradient(
+      circle at center,
+      rgba(var(--accent-color-rgb), 0.1),
+      transparent 70%
+    );
   }
 
   // The recent-list surface (a translucent white on dark) becomes the plain panel colour on light.
@@ -144,7 +148,11 @@
   block-size: 46rem;
   inset-block-start: -15rem;
   inset-inline-end: -12rem;
-  background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.5), transparent 68%);
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--accent-color-rgb), 0.5),
+    transparent 68%
+  );
 }
 
 .welcome__glow-blob--b {
@@ -152,7 +160,11 @@
   block-size: 40rem;
   inset-block-end: -18rem;
   inset-inline-start: 24%;
-  background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.32), transparent 70%);
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--accent-color-rgb), 0.32),
+    transparent 70%
+  );
 }
 
 // Logo on the left, identity text beside it.
