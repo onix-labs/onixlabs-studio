@@ -4,6 +4,8 @@ import type {
   AgentContextRef,
   AgentMode,
   AiConnection,
+  AiDiscoverModelsRequest,
+  AiDiscoverModelsResult,
   AiEditDecisionReply,
   AiEvent,
   AiImageRef,
@@ -36,6 +38,7 @@ import type {
 import { AiAuthManager } from './ai-auth-manager';
 import { AiSdkAdapter } from './ai-sdk-adapter';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 
@@ -129,6 +132,15 @@ export class AiManager {
    * per-connection credential (its auth kind) and the run path stays connection-driven.
    */
   private readonly connections: Map<string, AiConnection>;
+
+  /**
+   * Holds the HTTP fetch used for model discovery (the main-process global fetch), referenced through
+   * `globalThis` so this module carries no ambient fetch-type dependency.
+   */
+  private readonly httpFetch: HttpFetch = (
+    url: string,
+    init?: { headers?: Record<string, string> },
+  ): ReturnType<HttpFetch> => (globalThis as unknown as { fetch: HttpFetch }).fetch(url, init);
 
   /**
    * Holds the abort controllers of in-flight runs, keyed by request id.
@@ -262,6 +274,18 @@ export class AiManager {
       (): Promise<AiVerifyResult> => this.claude.verify(this.auth.resolveCredential()),
     );
     ipcMain.handle(AiChannel.ListProviders, (): readonly AiProviderInfo[] => this.listProviders());
+    ipcMain.handle(
+      AiChannel.DiscoverModels,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiDiscoverModelsResult> =>
+        this.isDiscoverModelsRequest(request)
+          ? this.discoverModels(request.connection)
+          : Promise.resolve({
+              ok: false,
+              models: [],
+              added: 0,
+              detail: 'Invalid discovery request.',
+            }),
+    );
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       if (this.isRunRequest(request)) {
         this.run(request);
@@ -332,6 +356,42 @@ export class AiManager {
       });
     }
     return infos;
+  }
+
+  /**
+   * Discovers a connection's models from its `/models` endpoint, resolving the connection's credential
+   * by id, and returns the merged list (or the existing list unchanged when discovery cannot run).
+   * @param connection The connection to discover models for.
+   * @returns Returns the discovery result.
+   */
+  private discoverModels(connection: AiConnection): Promise<AiDiscoverModelsResult> {
+    const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
+    return runDiscovery(connection, apiKey, process.env, this.httpFetch);
+  }
+
+  /**
+   * Determines whether a value is a well-formed discover-models request (its connection carries the
+   * fields discovery reads).
+   * @param value The value to test.
+   * @returns Returns true when the value is a discover-models request.
+   */
+  private isDiscoverModelsRequest(value: unknown): value is AiDiscoverModelsRequest {
+    if (typeof value !== 'object' || value === null || !('connection' in value)) {
+      return false;
+    }
+    const connection: unknown = value.connection;
+    return (
+      typeof connection === 'object' &&
+      connection !== null &&
+      'id' in connection &&
+      typeof connection.id === 'string' &&
+      'kind' in connection &&
+      typeof connection.kind === 'string' &&
+      'auth' in connection &&
+      typeof connection.auth === 'string' &&
+      'models' in connection &&
+      Array.isArray(connection.models)
+    );
   }
 
   /**

@@ -9,6 +9,8 @@ import type {
   AiBridgeReply,
   AiBridgeRequest,
   AiConnectionAuthRequest,
+  AiDiscoverModelsRequest,
+  AiDiscoverModelsResult,
   AiEditDecisionReply,
   AiEvent,
   AiInputReply,
@@ -66,6 +68,11 @@ export enum AiChannel {
    * Lists the registered providers and their current availability (invoke).
    */
   ListProviders = 'ai:list-providers',
+
+  /**
+   * Discovers a connection's models from its `/models` endpoint and returns the merged list (invoke).
+   */
+  DiscoverModels = 'ai:discover-models',
 
   /**
    * Starts an agent turn; events stream back over {@link AiChannel.Event} (invoke).
@@ -175,6 +182,13 @@ export interface AiClient {
    * @returns Returns the providers.
    */
   listProviders(): Promise<readonly AiProviderInfo[]>;
+
+  /**
+   * Discovers a connection's models from its `/models` endpoint, merging them into its existing list.
+   * @param request The connection to discover models for.
+   * @returns Returns the discovery result (the merged list, or the existing list on failure).
+   */
+  discoverModels(request: AiDiscoverModelsRequest): Promise<AiDiscoverModelsResult>;
 
   /**
    * Starts an agent turn. Events stream back through {@link onEvent}; the call resolves once the turn

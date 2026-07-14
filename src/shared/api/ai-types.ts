@@ -34,6 +34,7 @@ export type {
 } from './ai/ai-auth-types';
 export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {
   SEED_CONNECTIONS,
   CLAUDE_CONNECTION_ID,

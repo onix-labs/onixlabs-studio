@@ -6,6 +6,8 @@ import type {
   AiBridgeReply,
   AiBridgeRequest,
   AiConnectionAuthRequest,
+  AiDiscoverModelsRequest,
+  AiDiscoverModelsResult,
   AiEditDecisionReply,
   AiEvent,
   AiInputReply,
@@ -38,6 +40,8 @@ function createClient(bridge: Bridge): AiClient {
       bridge.invoke(AiChannel.ClearConnectionKey, request),
     verifyAuthentication: (): Promise<AiVerifyResult> => bridge.invoke(AiChannel.Verify),
     listProviders: (): Promise<readonly AiProviderInfo[]> => bridge.invoke(AiChannel.ListProviders),
+    discoverModels: (request: AiDiscoverModelsRequest): Promise<AiDiscoverModelsResult> =>
+      bridge.invoke(AiChannel.DiscoverModels, request),
     run: (request: AiRunRequest): Promise<void> => bridge.invoke(AiChannel.Run, request),
     abort: (requestId: string): Promise<void> => bridge.invoke(AiChannel.Abort, requestId),
     steer: (request: AiSteerRequest): Promise<boolean> => bridge.invoke(AiChannel.Steer, request),
