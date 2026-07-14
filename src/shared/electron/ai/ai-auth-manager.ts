@@ -2,38 +2,57 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, ipcMain, IpcMainInvokeEvent, safeStorage } from 'electron';
-import type { AiAuthSource, AiAuthStatus } from '@shared/api/ai-types';
+import type {
+  AiAuthKind,
+  AiAuthStatus,
+  AiConnectionAuthRequest,
+  AiSetConnectionKeyRequest,
+} from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
+import type { AgentAuth } from './agent-provider';
+import { CredentialStore, type CredentialStorePorts } from './credential-store';
+import type { AiCredential } from './auth-strategies';
+
+export type { AiCredential };
 
 /**
- * A resolved credential for running an agent turn. The API key, when present, never leaves the main
- * process — it is read here and handed directly to the agent SDK.
+ * The auth kinds a connection can use, for validating IPC requests before they reach the store.
  */
-export interface AiCredential {
-  /**
-   * Gets the credential source.
-   */
-  readonly source: AiAuthSource;
-
-  /**
-   * Gets the API key to authenticate with, or null when the source is the local login (which
-   * authenticates from `~/.claude`) or when no credential is available.
-   */
-  readonly apiKey: string | null;
-}
+const AUTH_KINDS: readonly string[] = ['api-key', 'none', 'claude-login'];
 
 /**
- * Owns the agent's Anthropic credentials in the main process. It prefers the user's **local Claude
- * login** (`~/.claude`, the same credential Claude Code uses) and falls back to a user-supplied API
- * key stored encrypted at rest (via the OS secure-storage facility), then to `ANTHROPIC_API_KEY` for
- * development. The key is never exposed to the renderer; only status, configuration, and the resolved
- * credential (used internally) cross any boundary.
+ * The status returned when a keyed auth request arrives malformed (it never should from the renderer).
+ */
+const INVALID_REQUEST_STATUS: AiAuthStatus = {
+  source: 'none',
+  available: false,
+  hasStoredKey: false,
+  detail: 'Invalid authentication request.',
+};
+
+/**
+ * Owns the agent's credentials in the main process. It keeps a per-connection API key encrypted at rest
+ * (via the OS secure-storage facility) and resolves each connection's credential through the auth
+ * strategies, preferring the user's **local Claude login** (`~/.claude`) and falling back to
+ * `ANTHROPIC_API_KEY` for development where the strategy allows. Keys are never exposed to the renderer;
+ * only status, configuration, and the resolved credential (used internally) cross any boundary.
+ *
+ * This class is a thin Electron shell: the storage and environment primitives are wired into a pure
+ * {@link CredentialStore}, which holds all the logic. The pre-connections single-key API
+ * ({@link getStatus}, {@link setApiKey}, {@link clearApiKey}, {@link resolveCredential}, {@link apiKey})
+ * is preserved and now backed by the store's legacy credential slot, so the existing runtime and UI are
+ * unchanged while connections are wired up.
  */
 export class AiAuthManager {
   /**
-   * Holds the absolute path of the encrypted API-key file in the app's user-data directory.
+   * Holds the absolute path of the encrypted credential file in the app's user-data directory.
    */
   private readonly keyFile: string = join(app.getPath('userData'), 'ai-credentials.bin');
+
+  /**
+   * Holds the pure credential store, wired to this shell's storage and environment primitives.
+   */
+  private readonly store: CredentialStore = new CredentialStore(this.ports());
 
   /**
    * Reports whether the user has a local Claude login.
@@ -44,28 +63,137 @@ export class AiAuthManager {
   }
 
   /**
-   * Resolves the API key available to providers (a stored key, then the development environment key),
-   * independent of the local-login precedence used for {@link getStatus}.
+   * Resolves the API key available to providers (the legacy global stored key, then the development
+   * environment key), independent of the local-login precedence used for {@link getStatus}.
    * @returns Returns the API key, or null when none is available.
    */
   public apiKey(): string | null {
-    return this.readStoredKey() ?? this.envKey();
+    return this.store.legacyApiKey();
   }
 
   /**
-   * Reads and decrypts the stored API key, if any.
-   * @returns Returns the stored key, or null when none is stored or it cannot be decrypted.
+   * Gets the current authentication status, safe to surface in the UI (never includes the key).
+   * @returns Returns the resolved {@link AiAuthStatus}.
    */
-  private readStoredKey(): string | null {
-    if (!existsSync(this.keyFile) || !safeStorage.isEncryptionAvailable()) {
-      return null;
-    }
-    try {
-      const decrypted: string = safeStorage.decryptString(readFileSync(this.keyFile));
-      return decrypted.length > 0 ? decrypted : null;
-    } catch {
-      return null;
-    }
+  public getStatus(): AiAuthStatus {
+    return this.store.legacyStatus();
+  }
+
+  /**
+   * Resolves the credential an agent run should authenticate with, applying the local-login → stored
+   * key → environment key → none precedence.
+   * @returns Returns the resolved credential.
+   */
+  public resolveCredential(): AiCredential {
+    return this.store.legacyResolve();
+  }
+
+  /**
+   * Stores a user-supplied API key, encrypted at rest. An empty key clears any stored key instead.
+   * @param key The Anthropic API key to store.
+   * @returns Returns the updated {@link AiAuthStatus}.
+   */
+  public setApiKey(key: string): AiAuthStatus {
+    return this.store.setLegacyKey(key);
+  }
+
+  /**
+   * Clears any stored API key.
+   * @returns Returns the updated {@link AiAuthStatus}.
+   */
+  public clearApiKey(): AiAuthStatus {
+    return this.store.clearLegacyKey();
+  }
+
+  /**
+   * Gets the authentication status of a connection under its auth kind (never carries the key).
+   * @param connectionId The connection id.
+   * @param authKind The connection's auth kind.
+   * @returns Returns the status.
+   */
+  public statusFor(connectionId: string, authKind: AiAuthKind): AiAuthStatus {
+    return this.store.statusFor(connectionId, authKind);
+  }
+
+  /**
+   * Resolves a connection's credential into the {@link AgentAuth} shape the adapters consume.
+   * @param connectionId The connection id.
+   * @param authKind The connection's auth kind.
+   * @returns Returns the agent auth.
+   */
+  public authFor(connectionId: string, authKind: AiAuthKind): AgentAuth {
+    return this.store.authFor(connectionId, authKind);
+  }
+
+  /**
+   * Stores a connection's API key (a blank key clears it) and returns the connection's updated status.
+   * @param connectionId The connection id.
+   * @param authKind The connection's auth kind.
+   * @param key The API key to store.
+   * @returns Returns the connection's updated status.
+   */
+  public setConnectionKey(connectionId: string, authKind: AiAuthKind, key: string): AiAuthStatus {
+    this.store.setKey(connectionId, key);
+    return this.store.statusFor(connectionId, authKind);
+  }
+
+  /**
+   * Clears a connection's stored API key and returns the connection's updated status.
+   * @param connectionId The connection id.
+   * @param authKind The connection's auth kind.
+   * @returns Returns the connection's updated status.
+   */
+  public clearConnectionKey(connectionId: string, authKind: AiAuthKind): AiAuthStatus {
+    this.store.clearKey(connectionId);
+    return this.store.statusFor(connectionId, authKind);
+  }
+
+  /**
+   * Registers the IPC handlers for the renderer's auth status and key-management requests (both the
+   * legacy global-key channels and the per-connection channels).
+   */
+  public register(): void {
+    ipcMain.handle(AiChannel.AuthStatus, (): AiAuthStatus => this.getStatus());
+    ipcMain.handle(
+      AiChannel.SetApiKey,
+      (_event: IpcMainInvokeEvent, key: unknown): AiAuthStatus =>
+        typeof key === 'string' ? this.setApiKey(key) : this.getStatus(),
+    );
+    ipcMain.handle(AiChannel.ClearApiKey, (): AiAuthStatus => this.clearApiKey());
+    ipcMain.handle(
+      AiChannel.ConnectionAuthStatus,
+      (_event: IpcMainInvokeEvent, request: unknown): AiAuthStatus =>
+        this.isConnectionAuthRequest(request)
+          ? this.statusFor(request.connectionId, request.authKind)
+          : INVALID_REQUEST_STATUS,
+    );
+    ipcMain.handle(
+      AiChannel.SetConnectionKey,
+      (_event: IpcMainInvokeEvent, request: unknown): AiAuthStatus =>
+        this.isSetConnectionKeyRequest(request)
+          ? this.setConnectionKey(request.connectionId, request.authKind, request.key)
+          : INVALID_REQUEST_STATUS,
+    );
+    ipcMain.handle(
+      AiChannel.ClearConnectionKey,
+      (_event: IpcMainInvokeEvent, request: unknown): AiAuthStatus =>
+        this.isConnectionAuthRequest(request)
+          ? this.clearConnectionKey(request.connectionId, request.authKind)
+          : INVALID_REQUEST_STATUS,
+    );
+  }
+
+  /**
+   * Builds the store's persistence and environment primitives from this shell's Electron facilities.
+   * @returns Returns the ports.
+   */
+  private ports(): CredentialStorePorts {
+    return {
+      load: (): string | null => this.loadBlob(),
+      save: (plaintext: string | null): void => this.saveBlob(plaintext),
+      hasLocalLogin: (): boolean => this.hasLocalLogin(),
+      envKey: (): string | null => this.envKey(),
+    };
   }
 
   /**
@@ -78,95 +206,62 @@ export class AiAuthManager {
   }
 
   /**
-   * Gets the current authentication status, safe to surface in the UI (never includes the key).
-   * @returns Returns the resolved {@link AiAuthStatus}.
+   * Reads and decrypts the stored credential blob, if any.
+   * @returns Returns the decrypted blob, or null when none is stored or it cannot be decrypted.
    */
-  public getStatus(): AiAuthStatus {
-    const hasStoredKey: boolean = this.readStoredKey() !== null;
-    if (this.hasLocalLogin()) {
-      return {
-        source: 'local-login',
-        available: true,
-        hasStoredKey,
-        detail: 'Using your local Claude login (~/.claude).',
-      };
+  private loadBlob(): string | null {
+    if (!existsSync(this.keyFile) || !safeStorage.isEncryptionAvailable()) {
+      return null;
     }
-    if (hasStoredKey) {
-      return {
-        source: 'api-key',
-        available: true,
-        hasStoredKey: true,
-        detail: 'Using your stored Anthropic API key.',
-      };
+    try {
+      const decrypted: string = safeStorage.decryptString(readFileSync(this.keyFile));
+      return decrypted.length > 0 ? decrypted : null;
+    } catch {
+      return null;
     }
-    if (this.envKey() !== null) {
-      return {
-        source: 'api-key',
-        available: true,
-        hasStoredKey: false,
-        detail: 'Using ANTHROPIC_API_KEY from the environment.',
-      };
-    }
-    return {
-      source: 'none',
-      available: false,
-      hasStoredKey: false,
-      detail: 'Run `claude` to log in, or add an Anthropic API key.',
-    };
   }
 
   /**
-   * Resolves the credential an agent run should authenticate with, applying the local-login → stored
-   * key → environment key → none precedence.
-   * @returns Returns the resolved {@link AiCredential}.
+   * Encrypts and writes the credential blob, or removes the file when passed null.
+   * @param plaintext The blob to store, or null to clear.
    */
-  public resolveCredential(): AiCredential {
-    if (this.hasLocalLogin()) {
-      return { source: 'local-login', apiKey: null };
-    }
-    const key: string | null = this.readStoredKey() ?? this.envKey();
-    return key !== null ? { source: 'api-key', apiKey: key } : { source: 'none', apiKey: null };
-  }
-
-  /**
-   * Stores a user-supplied API key, encrypted at rest. An empty key clears any stored key instead.
-   * @param key The Anthropic API key to store.
-   * @returns Returns the updated {@link AiAuthStatus}.
-   */
-  public setApiKey(key: string): AiAuthStatus {
-    const trimmed: string = key.trim();
-    if (trimmed.length === 0) {
-      return this.clearApiKey();
+  private saveBlob(plaintext: string | null): void {
+    if (plaintext === null) {
+      if (existsSync(this.keyFile)) {
+        rmSync(this.keyFile);
+      }
+      return;
     }
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('Operating-system secure storage is unavailable; cannot store the API key.');
     }
     mkdirSync(dirname(this.keyFile), { recursive: true });
-    writeFileSync(this.keyFile, safeStorage.encryptString(trimmed), { mode: 0o600 });
-    return this.getStatus();
+    writeFileSync(this.keyFile, safeStorage.encryptString(plaintext), { mode: 0o600 });
   }
 
   /**
-   * Clears any stored API key.
-   * @returns Returns the updated {@link AiAuthStatus}.
+   * Determines whether a value is a well-formed connection auth request.
+   * @param value The value to test.
+   * @returns Returns true when the value is a connection auth request.
    */
-  public clearApiKey(): AiAuthStatus {
-    if (existsSync(this.keyFile)) {
-      rmSync(this.keyFile);
-    }
-    return this.getStatus();
-  }
-
-  /**
-   * Registers the IPC handlers for the renderer's auth status and key-management requests.
-   */
-  public register(): void {
-    ipcMain.handle(AiChannel.AuthStatus, (): AiAuthStatus => this.getStatus());
-    ipcMain.handle(
-      AiChannel.SetApiKey,
-      (_event: IpcMainInvokeEvent, key: unknown): AiAuthStatus =>
-        typeof key === 'string' ? this.setApiKey(key) : this.getStatus(),
+  private isConnectionAuthRequest(value: unknown): value is AiConnectionAuthRequest {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'connectionId' in value &&
+      typeof value.connectionId === 'string' &&
+      'authKind' in value &&
+      typeof value.authKind === 'string' &&
+      AUTH_KINDS.includes(value.authKind)
     );
-    ipcMain.handle(AiChannel.ClearApiKey, (): AiAuthStatus => this.clearApiKey());
+  }
+
+  /**
+   * Determines whether a value is a well-formed set-connection-key request.
+   * @param value The value to test.
+   * @returns Returns true when the value is a set-connection-key request.
+   */
+  private isSetConnectionKeyRequest(value: unknown): value is AiSetConnectionKeyRequest {
+    return this.isConnectionAuthRequest(value) && 'key' in value && typeof value.key === 'string';
   }
 }

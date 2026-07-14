@@ -8,12 +8,14 @@ import type {
   AiAuthStatus,
   AiBridgeReply,
   AiBridgeRequest,
+  AiConnectionAuthRequest,
   AiEditDecisionReply,
   AiEvent,
   AiInputReply,
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
+  AiSetConnectionKeyRequest,
   AiSteerRequest,
   AiVerifyResult,
 } from '@shared/api/ai-types';
@@ -38,6 +40,22 @@ export enum AiChannel {
    * Clears any stored API key and returns the updated status (invoke).
    */
   ClearApiKey = 'ai:clear-api-key',
+
+  /**
+   * Gets the authentication status of a specific connection (invoke).
+   */
+  ConnectionAuthStatus = 'ai:connection-auth-status',
+
+  /**
+   * Stores a user-supplied API key for a connection, encrypted at rest, and returns the connection's
+   * updated status (invoke).
+   */
+  SetConnectionKey = 'ai:set-connection-key',
+
+  /**
+   * Clears a connection's stored API key and returns its updated status (invoke).
+   */
+  ClearConnectionKey = 'ai:clear-connection-key',
 
   /**
    * Runs a minimal agent turn to confirm the resolved credential authenticates end-to-end (invoke).
@@ -123,6 +141,28 @@ export interface AiClient {
    * @returns Returns the updated {@link AiAuthStatus}.
    */
   clearApiKey(): Promise<AiAuthStatus>;
+
+  /**
+   * Gets the authentication status of a specific connection.
+   * @param request The connection and its auth kind.
+   * @returns Returns the connection's {@link AiAuthStatus}.
+   */
+  getConnectionAuthStatus(request: AiConnectionAuthRequest): Promise<AiAuthStatus>;
+
+  /**
+   * Stores a user-supplied API key for a connection, encrypted at rest, and returns the connection's
+   * updated status.
+   * @param request The connection, its auth kind, and the key to store.
+   * @returns Returns the connection's updated {@link AiAuthStatus}.
+   */
+  setConnectionKey(request: AiSetConnectionKeyRequest): Promise<AiAuthStatus>;
+
+  /**
+   * Clears a connection's stored API key and returns its updated status.
+   * @param request The connection and its auth kind.
+   * @returns Returns the connection's updated {@link AiAuthStatus}.
+   */
+  clearConnectionKey(request: AiConnectionAuthRequest): Promise<AiAuthStatus>;
 
   /**
    * Runs a minimal agent turn to confirm the resolved credential authenticates end-to-end.

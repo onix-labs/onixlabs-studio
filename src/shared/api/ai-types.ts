@@ -25,7 +25,13 @@ export {
   CANCEL_EDIT_PREVIEW,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
-export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
+export type {
+  AiAuthSource,
+  AiAuthStatus,
+  AiVerifyResult,
+  AiConnectionAuthRequest,
+  AiSetConnectionKeyRequest,
+} from './ai/ai-auth-types';
 export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
 export {

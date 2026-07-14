@@ -1,6 +1,35 @@
 // Shared AI-agent authentication contract, platform-neutral (types only) so both the Electron
 // back-end and the Angular front-end can import it.
 
+import type { AiAuthKind } from './ai-connection-types';
+
+/**
+ * Identifies a connection whose credential is being read or changed. Carries the connection's auth
+ * kind so the main process picks the right auth strategy without re-reading settings.
+ */
+export interface AiConnectionAuthRequest {
+  /**
+   * Gets the id of the connection.
+   */
+  readonly connectionId: string;
+
+  /**
+   * Gets the connection's auth kind.
+   */
+  readonly authKind: AiAuthKind;
+}
+
+/**
+ * Requests storing an API key for a connection. The key crosses the bridge once, renderer→main, and is
+ * held encrypted in the main process thereafter; it is never read back out.
+ */
+export interface AiSetConnectionKeyRequest extends AiConnectionAuthRequest {
+  /**
+   * Gets the API key to store (a blank value clears any stored key).
+   */
+  readonly key: string;
+}
+
 /**
  * Identifies where the agent's Anthropic credentials come from.
  *
