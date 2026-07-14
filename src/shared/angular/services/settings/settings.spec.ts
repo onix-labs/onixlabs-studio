@@ -1,7 +1,24 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
+import type { AiConnection } from '@shared/api/ai-types';
 import { EditorProfile, Settings, TextEditorSettings } from './settings';
+
+/**
+ * Builds a minimal user connection for the connection-management tests.
+ * @param id The connection id.
+ * @returns Returns a connection.
+ */
+function connection(id: string): AiConnection {
+  return {
+    id,
+    kind: 'openai',
+    label: id,
+    auth: 'api-key',
+    models: [{ id: 'gpt-4o', label: 'GPT-4o', contextWindow: 128_000 }],
+    defaultModelId: 'gpt-4o',
+  };
+}
 
 describe('Settings', () => {
   beforeEach(() => {
@@ -183,5 +200,69 @@ describe('Settings', () => {
     expect(service.aiProvider()).toBe('vercel');
     expect(service.aiModelFor('vercel')).toBe('claude-sonnet-4-6');
     expect(service.aiPermissionPosture()).toBe('prompt');
+  });
+
+  it('connections_whenDefaulted_seedTheBuiltInsWithClaudeActive', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    expect(service.aiConnections().map((c: AiConnection): string => c.id)).toEqual([
+      'claude',
+      'vercel',
+      'ollama',
+    ]);
+    expect(service.aiActiveConnectionId()).toBe('claude');
+    expect(service.aiActiveConnection()?.kind).toBe('anthropic');
+  });
+
+  it('upsertConnection_whenNew_appendsAndWhenExisting_replaces', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.upsertConnection(connection('my-openai'));
+    expect(service.aiConnections()).toHaveLength(4);
+
+    service.upsertConnection({ ...connection('my-openai'), label: 'Renamed' });
+    expect(service.aiConnections()).toHaveLength(4);
+    expect(
+      service.aiConnections().find((c: AiConnection): boolean => c.id === 'my-openai')?.label,
+    ).toBe('Renamed');
+  });
+
+  it('setActiveConnection_andSetConnectionModel_roundTrip', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    service.setActiveConnection('ollama');
+    service.setConnectionModel('ollama', 'qwen3:8b');
+
+    expect(service.aiActiveConnectionId()).toBe('ollama');
+    expect(service.aiActiveConnection()?.id).toBe('ollama');
+    expect(service.connectionModelFor('ollama')).toBe('qwen3:8b');
+  });
+
+  it('removeConnection_whenActive_fallsBackAndDropsItsModel', () => {
+    const service: Settings = TestBed.inject(Settings);
+    service.upsertConnection(connection('my-openai'));
+    service.setActiveConnection('my-openai');
+    service.setConnectionModel('my-openai', 'gpt-4o');
+
+    service.removeConnection('my-openai');
+
+    expect(service.aiConnections().some((c: AiConnection): boolean => c.id === 'my-openai')).toBe(
+      false,
+    );
+    expect(service.aiActiveConnectionId()).toBe('claude');
+    expect(service.connectionModelFor('my-openai')).toBe('');
+  });
+
+  it('connections_whenUpgradingFromOldProviderSettings_migrateOntoConnections', () => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ ai: { provider: 'ollama', models: { ollama: 'qwen3:8b' } } }),
+    );
+
+    const service: Settings = TestBed.inject(Settings);
+
+    expect(service.aiActiveConnectionId()).toBe('ollama');
+    expect(service.aiActiveConnection()?.id).toBe('ollama');
+    expect(service.connectionModelFor('ollama')).toBe('qwen3:8b');
   });
 });

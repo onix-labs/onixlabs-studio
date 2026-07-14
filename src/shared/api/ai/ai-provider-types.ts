@@ -29,6 +29,18 @@ export interface AiModelInfo {
    * context is (the token readout's denominator).
    */
   readonly contextWindow: number;
+
+  /**
+   * Gets a value indicating whether the user pinned this model to the top of the picker. Absent means
+   * not pinned.
+   */
+  readonly pinned?: boolean;
+
+  /**
+   * Gets a value indicating whether the user hid this model from the picker (kept in the list but not
+   * offered for selection). Absent means visible.
+   */
+  readonly hidden?: boolean;
 }
 
 /**

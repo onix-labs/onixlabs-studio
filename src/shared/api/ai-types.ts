@@ -27,6 +27,14 @@ export {
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type { AiAuthSource, AiAuthStatus, AiVerifyResult } from './ai/ai-auth-types';
 export type { AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
+export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export {
+  SEED_CONNECTIONS,
+  CLAUDE_CONNECTION_ID,
+  ANTHROPIC_KEY_CONNECTION_ID,
+  OLLAMA_CONNECTION_ID,
+  DEFAULT_CONNECTION_ID,
+} from './ai/ai-seed-connections';
 export type {
   AiPermissionPosture,
   AiRunRequest,

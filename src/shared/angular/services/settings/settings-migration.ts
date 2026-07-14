@@ -64,11 +64,37 @@ export function restoreOverrides(raw: unknown): SettingsOverrides {
   }
 
   const record: Record<string, unknown> = raw as Record<string, unknown>;
-  if (Object.keys(record).some((key: string): boolean => key.includes('.'))) {
-    return { ...record };
+  const flat: SettingsOverrides = Object.keys(record).some((key: string): boolean =>
+    key.includes('.'),
+  )
+    ? { ...record }
+    : migrateLegacy(record);
+
+  return migrateAiConnections(flat);
+}
+
+/**
+ * Carries a pre-connections user's AI choices forward onto the seeded connections: their selected
+ * provider becomes the active connection and their per-provider model selections become the
+ * per-connection selections (the seeded connection ids match the old provider ids, so the mapping is
+ * one-to-one). The seeded connection list itself comes from the registry default, so this only fills
+ * the active id and model map when they are absent — it never overwrites values the user already has.
+ * @param overrides The restored override map.
+ * @returns Returns the override map with the AI connection selections forward-filled.
+ */
+function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
+  const result: Record<string, unknown> = { ...overrides };
+
+  if (!('ai.activeConnectionId' in result) && typeof result['ai.provider'] === 'string') {
+    result['ai.activeConnectionId'] = result['ai.provider'];
   }
 
-  return migrateLegacy(record);
+  const models: unknown = result['ai.models'];
+  if (!('ai.connectionModels' in result) && typeof models === 'object' && models !== null) {
+    result['ai.connectionModels'] = { ...(models as Record<string, unknown>) };
+  }
+
+  return result;
 }
 
 /**

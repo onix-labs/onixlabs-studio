@@ -1,6 +1,7 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
 import {
+  AiConnectionModels,
   AiModels,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
@@ -298,6 +299,23 @@ export interface AiSettings {
   readonly models: AiModels;
 
   /**
+   * Gets the configured provider connections (each a back-end, credential, and model list). Seeded
+   * with the built-in connections on a fresh install; fully user-editable.
+   */
+  readonly connections: readonly AiConnection[];
+
+  /**
+   * Gets the id of the connection the agent runs turns through.
+   */
+  readonly activeConnectionId: string;
+
+  /**
+   * Gets the model last selected per connection, keyed by connection id. A missing entry means "use
+   * the connection's default model".
+   */
+  readonly connectionModels: AiConnectionModels;
+
+  /**
    * Gets how much the agent may do without asking the user first.
    */
   readonly permissionPosture: AiPermissionPosture;
@@ -551,6 +569,9 @@ export class Settings {
     (): AiSettings => ({
       provider: this.read('ai.provider'),
       models: this.read('ai.models'),
+      connections: this.read('ai.connections'),
+      activeConnectionId: this.read('ai.activeConnectionId'),
+      connectionModels: this.read('ai.connectionModels'),
       permissionPosture: this.read('ai.permissionPosture'),
       tokenCap: this.read('ai.tokenCap'),
       runTimeoutMinutes: this.read('ai.runTimeoutMinutes'),
@@ -561,6 +582,33 @@ export class Settings {
    * Gets the selected AI provider.
    */
   public readonly aiProvider: Signal<AiProviderId> = this.value('ai.provider');
+
+  /**
+   * Gets the configured provider connections.
+   */
+  public readonly aiConnections: Signal<readonly AiConnection[]> = this.value('ai.connections');
+
+  /**
+   * Gets the id of the active connection.
+   */
+  public readonly aiActiveConnectionId: Signal<string> = this.value('ai.activeConnectionId');
+
+  /**
+   * Gets the model-per-connection selection map.
+   */
+  public readonly aiConnectionModels: Signal<AiConnectionModels> =
+    this.value('ai.connectionModels');
+
+  /**
+   * Gets the active connection, or undefined when no connection matches the active id (for example
+   * after the active connection was removed).
+   */
+  public readonly aiActiveConnection: Signal<AiConnection | undefined> = computed(
+    (): AiConnection | undefined => {
+      const id: string = this.aiActiveConnectionId();
+      return this.aiConnections().find((connection: AiConnection): boolean => connection.id === id);
+    },
+  );
 
   /**
    * Gets the agent permission posture.
@@ -815,6 +863,91 @@ export class Settings {
    */
   public setAiModel(provider: AiProviderId, model: string): void {
     this.set('ai.models', { ...this.read('ai.models'), [provider]: model });
+  }
+
+  /**
+   * Gets the model selected for a connection, or an empty string when none is selected (use the
+   * connection's default).
+   * @param connectionId The connection id.
+   * @returns Returns the selected model id, or an empty string.
+   */
+  public connectionModelFor(connectionId: string): string {
+    return this.read('ai.connectionModels')[connectionId] ?? '';
+  }
+
+  /**
+   * Replaces the whole connection list.
+   * @param connections The connections to persist.
+   */
+  public setAiConnections(connections: readonly AiConnection[]): void {
+    this.set('ai.connections', connections);
+  }
+
+  /**
+   * Adds a connection, or replaces an existing one with the same id.
+   * @param connection The connection to add or update.
+   */
+  public upsertConnection(connection: AiConnection): void {
+    const existing: readonly AiConnection[] = this.read('ai.connections');
+    const index: number = existing.findIndex(
+      (candidate: AiConnection): boolean => candidate.id === connection.id,
+    );
+    const next: AiConnection[] =
+      index === -1
+        ? [...existing, connection]
+        : existing.map(
+            (candidate: AiConnection, i: number): AiConnection =>
+              i === index ? connection : candidate,
+          );
+    this.set('ai.connections', next);
+  }
+
+  /**
+   * Removes the connection with the given id. When the removed connection was active, the active id
+   * falls back to the first remaining connection (or an empty string when none remain), and its
+   * remembered model selection is dropped.
+   * @param connectionId The id of the connection to remove.
+   */
+  public removeConnection(connectionId: string): void {
+    const remaining: readonly AiConnection[] = this.read('ai.connections').filter(
+      (connection: AiConnection): boolean => connection.id !== connectionId,
+    );
+    this.set('ai.connections', remaining);
+
+    if (this.read('ai.activeConnectionId') === connectionId) {
+      this.set('ai.activeConnectionId', remaining[0]?.id ?? '');
+    }
+
+    const models: AiConnectionModels = this.read('ai.connectionModels');
+    if (connectionId in models) {
+      const rest: Record<string, string> = {};
+      for (const [id, model] of Object.entries(models)) {
+        if (id !== connectionId) {
+          rest[id] = model;
+        }
+      }
+      this.set('ai.connectionModels', rest);
+    }
+  }
+
+  /**
+   * Sets the active connection.
+   * @param connectionId The id of the connection to make active.
+   */
+  public setActiveConnection(connectionId: string): void {
+    this.set('ai.activeConnectionId', connectionId);
+  }
+
+  /**
+   * Sets the selected model for a connection.
+   * @param connectionId The connection id.
+   * @param model The model id.
+   */
+  public setConnectionModel(connectionId: string, model: string): void {
+    this.set('ai.connectionModels', {
+      ...this.read('ai.connectionModels'),
+      [connectionId]: model,
+    });
   }
 
   /**

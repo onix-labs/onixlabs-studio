@@ -1,7 +1,8 @@
 import { Icon } from '@shared/angular/icons/icon';
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
-import type { AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture, AiProviderId } from '@shared/api/ai-types';
+import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
   BraceStyle,
   CurrentLineHighlightStyle,
@@ -25,6 +26,12 @@ import type { ColorSwatch, SectionDef, SettingDef, SettingsOwnedDef } from './se
  * model".
  */
 export type AiModels = Readonly<Partial<Record<AiProviderId, string>>>;
+
+/**
+ * Maps a connection id to the model the user last selected for it, so switching connections restores
+ * the prior model. A missing entry means "use the connection's default model".
+ */
+export type AiConnectionModels = Readonly<Record<string, string>>;
 
 /**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
@@ -73,6 +80,9 @@ export interface SettingsValues {
 
   readonly 'ai.provider': AiProviderId;
   readonly 'ai.models': AiModels;
+  readonly 'ai.connections': readonly AiConnection[];
+  readonly 'ai.activeConnectionId': string;
+  readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
@@ -494,6 +504,29 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           "The selected model per provider. A missing entry uses the provider's default.",
         control: { kind: 'custom', component: 'ai-model-map' },
+        default: {},
+      },
+      {
+        key: 'ai.connections',
+        title: 'Connections',
+        description:
+          'The configured AI provider connections (each a back-end, credential, and model list).',
+        control: { kind: 'custom', component: 'ai-connections' },
+        default: SEED_CONNECTIONS,
+      },
+      {
+        key: 'ai.activeConnectionId',
+        title: 'Active connection',
+        description: 'The connection the agent runs turns through.',
+        control: { kind: 'custom', component: 'ai-connections' },
+        default: DEFAULT_CONNECTION_ID,
+      },
+      {
+        key: 'ai.connectionModels',
+        title: 'Selected models',
+        description:
+          "The model last selected per connection. A missing entry uses the connection's default.",
+        control: { kind: 'custom', component: 'ai-connections' },
         default: {},
       },
       {
