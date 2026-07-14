@@ -138,15 +138,6 @@
   font-size: 0.9rem;
 }
 
-.ai-connections__badge {
-  padding: 0.05rem 0.35rem;
-  font-size: 0.68rem;
-  color: var(--settings-muted-foreground-color);
-  border: 0.0625rem solid var(--settings-border-color);
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
 .ai-connections__status {
   color: var(--settings-muted-foreground-color);
 

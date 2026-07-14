@@ -30,7 +30,7 @@ export function isConnection(value: unknown): value is AiConnection {
 /**
  * Coerces an untrusted value from the renderer into a list of well-formed connections, dropping any
  * entry that does not carry the fields the providers are built from. A non-array or fully-malformed
- * value yields an empty list (which makes the caller fall back to the built-in seeds).
+ * value yields an empty list (from which no providers are built).
  * @param value The untrusted value.
  * @returns Returns the accepted connections.
  */

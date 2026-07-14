@@ -88,11 +88,4 @@ export interface AiConnection {
    * Gets the identifier of the connection's default model (used when the user has not picked one).
    */
   readonly defaultModelId: string;
-
-  /**
-   * Gets a value indicating whether this is a built-in seeded connection (present by default rather
-   * than user-created). Absent means user-created. Lets the settings UI treat seeds specially (for
-   * example offer "reset" rather than "delete").
-   */
-  readonly builtIn?: boolean;
 }

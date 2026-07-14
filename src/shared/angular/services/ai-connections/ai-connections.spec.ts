@@ -49,17 +49,15 @@ describe('AiConnections', () => {
     expect(updated?.baseUrl).toBe('https://example/v1');
   });
 
-  it('remove_whenBuiltIn_keepsTheConnection', () => {
-    const builtIn: AiConnection | undefined = service
-      .connections()
-      .find((connection: AiConnection): boolean => connection.builtIn === true);
-    expect(builtIn).toBeDefined();
+  it('remove_whenSeedConnection_dropsItLikeAnyOther', () => {
+    // Seed connections are ordinary defaults with no privileged status; every one is removable.
+    const seed: AiConnection = service.connections()[0];
 
-    service.remove(builtIn!.id);
+    service.remove(seed.id);
 
     expect(
-      service.connections().some((connection: AiConnection): boolean => connection.id === builtIn!.id),
-    ).toBe(true);
+      service.connections().some((connection: AiConnection): boolean => connection.id === seed.id),
+    ).toBe(false);
   });
 
   it('remove_whenUserConnection_dropsIt', () => {
@@ -68,7 +66,9 @@ describe('AiConnections', () => {
     service.remove(created.id);
 
     expect(
-      service.connections().some((connection: AiConnection): boolean => connection.id === created.id),
+      service
+        .connections()
+        .some((connection: AiConnection): boolean => connection.id === created.id),
     ).toBe(false);
   });
 

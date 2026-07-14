@@ -144,13 +144,11 @@ export class AiConnections {
   }
 
   /**
-   * Removes a connection (built-in connections cannot be removed).
+   * Removes a connection.
    * @param id The connection id.
    */
   public remove(id: string): void {
-    if (this.find(id)?.builtIn !== true) {
-      this.settings.removeConnection(id);
-    }
+    this.settings.removeConnection(id);
   }
 
   /**
@@ -173,13 +171,13 @@ export class AiConnections {
   }
 
   /**
-   * Changes a connection's auth kind (built-in connections keep theirs).
+   * Changes a connection's auth kind and refreshes its status.
    * @param id The connection id.
    * @param auth The new auth kind.
    */
   public setAuthKind(id: string, auth: AiAuthKind): void {
     const connection: AiConnection | undefined = this.find(id);
-    if (connection !== undefined && connection.builtIn !== true) {
+    if (connection !== undefined) {
       this.update(id, { auth });
       void this.refreshAuth({ ...connection, auth });
     }

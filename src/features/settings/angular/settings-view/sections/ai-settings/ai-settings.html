@@ -46,9 +46,6 @@
               [icon]="Icon.CARET_RIGHT"
             />
             <span class="ai-connections__label">{{ connection.label }}</span>
-            @if (connection.builtIn) {
-              <span class="ai-connections__badge">Built-in</span>
-            }
             <app-icon
               class="ai-connections__status"
               [class.ai-connections__status--ok]="status(connection.id).available"

@@ -13,21 +13,18 @@
     <app-dropdown
       [options]="kindOptions"
       [value]="connection().kind"
-      [disabled]="isBuiltIn()"
       (valueChange)="onKind($event)"
     />
   </div>
 
-  @if (!isBuiltIn()) {
-    <div class="conn-editor__field">
-      <span class="conn-editor__label">Authentication</span>
-      <app-dropdown
-        [options]="authOptions"
-        [value]="connection().auth"
-        (valueChange)="onAuthKind($event)"
-      />
-    </div>
-  }
+  <div class="conn-editor__field">
+    <span class="conn-editor__label">Authentication</span>
+    <app-dropdown
+      [options]="authOptions"
+      [value]="connection().auth"
+      (valueChange)="onAuthKind($event)"
+    />
+  </div>
 
   @if (showBaseUrl()) {
     <div class="conn-editor__field">
@@ -161,15 +158,13 @@
     }
   </div>
 
-  @if (!isBuiltIn()) {
-    <div class="conn-editor__footer">
-      <button
-        type="button"
-        class="conn-editor__button conn-editor__button--danger"
-        (click)="removeConnection()"
-      >
-        Remove connection
-      </button>
-    </div>
-  }
+  <div class="conn-editor__footer">
+    <button
+      type="button"
+      class="conn-editor__button conn-editor__button--danger"
+      (click)="removeConnection()"
+    >
+      Remove connection
+    </button>
+  </div>
 </div>

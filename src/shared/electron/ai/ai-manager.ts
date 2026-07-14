@@ -232,8 +232,9 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
 
-    // Start from the built-in seeds so the subsystem is runnable before the renderer has listed its
-    // connections; the first `listProviders` call rebuilds these from the user's own connections.
+    // Seed the subsystem so it is runnable before the renderer has listed its connections; the first
+    // `listProviders` call replaces these with the user's own connections (which default to the same
+    // seeds on a fresh install but are fully editable — including removing every one).
     const built: BuiltProviders = this.buildProviders(SEED_CONNECTIONS);
     this.providers = built.providers;
     this.connections = built.connections;
@@ -242,17 +243,15 @@ export class AiManager {
   /**
    * Builds one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
    * (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
-   * adapter, configured by the connection's kind and endpoint. Falls back to the built-in seeds when no
-   * connection carries a `claude-login` auth, so the Claude path is always available.
+   * adapter, configured by the connection's kind and endpoint. Whatever connections the user configures
+   * are built exactly as given — none is privileged, and an empty list yields no providers.
    * @param connections The connections to build providers from.
    * @returns Returns the built provider map and connection map.
    */
   private buildProviders(connections: readonly AiConnection[]): BuiltProviders {
-    let hasClaude: boolean = false;
     const providers: Map<string, AgentProvider> = new Map<string, AgentProvider>();
     for (const connection of connections) {
       if (connection.auth === 'claude-login') {
-        hasClaude = true;
         providers.set(
           connection.id,
           new ClaudeAgentProvider(connection.models, connection.defaultModelId),
@@ -260,11 +259,6 @@ export class AiManager {
       } else {
         providers.set(connection.id, new AiSdkAdapter(connection));
       }
-    }
-    if (!hasClaude) {
-      // The user's connections lack a Claude login (the built-in seed cannot be removed, so this only
-      // happens defensively); rebuild from the seeds so the Claude path is never lost.
-      return this.buildProviders(SEED_CONNECTIONS);
     }
     return {
       providers,
@@ -278,15 +272,14 @@ export class AiManager {
   }
 
   /**
-   * Rebuilds the providers from the user's connections. Provider instances hold no cross-run state
+   * Rebuilds the providers from exactly the user's connections (adding, editing, or removing any of
+   * them is honoured verbatim — no connection is re-seeded). Provider instances hold no cross-run state
    * (sessions resume via the per-run session id), so rebuilding wholesale is safe and never disturbs an
    * in-flight run, which owns its own abort controller and executing promise.
    * @param connections The user's connections.
    */
   private rebuildProviders(connections: readonly AiConnection[]): void {
-    const built: BuiltProviders = this.buildProviders(
-      connections.length > 0 ? connections : SEED_CONNECTIONS,
-    );
+    const built: BuiltProviders = this.buildProviders(connections);
     this.providers = built.providers;
     this.connections = built.connections;
   }

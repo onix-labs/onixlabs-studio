@@ -1,4 +1,4 @@
-// The built-in connections seeded for a fresh install and used as the migration target for users
+// The default connections seeded for a fresh install and used as the migration target for users
 // upgrading from the old `{provider, models}` settings. Their ids match the old provider ids
 // (`claude`, `vercel`, `ollama`) so a user's previous provider and per-provider model choices carry
 // over one-to-one onto these connections. This is DATA, not a runtime source of truth — the user may
@@ -51,8 +51,9 @@ export const OLLAMA_CONNECTION_ID: string = 'ollama';
 export const DEFAULT_CONNECTION_ID: string = CLAUDE_CONNECTION_ID;
 
 /**
- * The built-in connections present on a fresh install, mirroring the three providers that existed
- * before connections were user-configurable.
+ * The connections seeded on a fresh install (and the migration target for users upgrading from before
+ * connections were configurable), mirroring the three providers that existed then. These are ordinary
+ * defaults, not privileged: the user can edit, reorder, or remove any of them like any other.
  */
 export const SEED_CONNECTIONS: readonly AiConnection[] = [
   {
@@ -62,7 +63,6 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
     auth: 'claude-login',
     models: ANTHROPIC_SEED_MODELS,
     defaultModelId: 'claude-opus-4-8',
-    builtIn: true,
   },
   {
     id: ANTHROPIC_KEY_CONNECTION_ID,
@@ -71,7 +71,6 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
     auth: 'api-key',
     models: ANTHROPIC_SEED_MODELS,
     defaultModelId: 'claude-opus-4-8',
-    builtIn: true,
   },
   {
     id: OLLAMA_CONNECTION_ID,
@@ -80,6 +79,5 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
     auth: 'none',
     models: OLLAMA_SEED_MODELS,
     defaultModelId: 'qwen3:8b',
-    builtIn: true,
   },
 ];

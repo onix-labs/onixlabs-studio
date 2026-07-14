@@ -29,11 +29,13 @@ const KIND_OPTIONS: readonly DropdownOption[] = [
 ];
 
 /**
- * The auth-kind options offered for a user connection.
+ * The auth-kind options offered for a connection. `claude-login` routes the connection through the
+ * Claude Agent SDK using the user's local `~/.claude` login.
  */
 const AUTH_OPTIONS: readonly DropdownOption[] = [
   { value: 'api-key', label: 'API key' },
   { value: 'none', label: 'None' },
+  { value: 'claude-login', label: 'Local Claude login' },
 ];
 
 /**
@@ -109,14 +111,6 @@ export class AiConnectionEditor {
    */
   protected readonly status: Signal<AiAuthStatus> = computed(
     (): AiAuthStatus => this.connections.authStatus(this.connection().id),
-  );
-
-  /**
-   * Gets a value indicating whether the connection is a built-in seed (its kind and removal are
-   * locked).
-   */
-  protected readonly isBuiltIn: Signal<boolean> = computed(
-    (): boolean => this.connection().builtIn === true,
   );
 
   /**

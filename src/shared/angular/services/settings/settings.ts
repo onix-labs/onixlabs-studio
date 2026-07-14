@@ -288,7 +288,7 @@ export interface MarkdownEditorSettings {
 export interface AiSettings {
   /**
    * Gets the configured provider connections (each a back-end, credential, and model list). Seeded
-   * with the built-in connections on a fresh install; fully user-editable.
+   * with the default connections on a fresh install; fully user-editable.
    */
   readonly connections: readonly AiConnection[];
 
