@@ -2,17 +2,18 @@
   display: contents;
 }
 
-// Theme the reusable modal for the welcome presentation. The welcome screen pins its own palette here
-// as scoped custom properties rather than following the app's accent. This block is the dark, purple-
-// accented treatment (the default); a clean light-mode variant re-tunes it below via
-// :host-context([data-theme-mode='light']). `--accent-color` (and its RGB triplet),
-// `--body-foreground-color` and `--welcome-muted-foreground-color` are overridden too, so the modal
-// chrome (close button, focus rings) and any inherited defaults adopt the same palette. All of these
-// inherit down into the projected content and into the modal component.
+// Theme the reusable modal for the welcome presentation. The welcome screen follows the app's selected
+// accent: `--wl-accent` (and its RGB triplet) alias `--accent-color`/`--accent-color-rgb`, so every
+// accent-tinted glow, border and focus ring below tracks the user's chosen colour. This block is the
+// dark treatment (the default); a clean light-mode variant re-tunes the neutrals below via
+// :host-context([data-theme-mode='light']). `--body-foreground-color` and
+// `--welcome-muted-foreground-color` are overridden too, so the modal chrome (close button, focus
+// rings) and any inherited defaults adopt the same palette. All of these inherit down into the
+// projected content and into the modal component.
 .welcome-modal {
-  // Fixed palette.
-  --wl-accent: #8b5cf6;
-  --wl-accent-rgb: 139, 92, 246;
+  // Follow the app accent, plus a fixed set of neutrals for the dark treatment.
+  --wl-accent: var(--accent-color);
+  --wl-accent-rgb: var(--accent-color-rgb);
   --wl-text: #f4f4fa;
   --wl-muted: #b7b7cc;
   --wl-faint: #7c7c95;
@@ -21,9 +22,7 @@
   --wl-surface-border: rgba(255, 255, 255, 0.08);
   --wl-border: rgba(255, 255, 255, 0.08);
 
-  // Pin the accent and inherited foregrounds to the fixed palette within the welcome.
-  --accent-color: var(--wl-accent);
-  --accent-color-rgb: var(--wl-accent-rgb);
+  // Pin the inherited foregrounds to the fixed palette within the welcome.
   --body-foreground-color: var(--wl-text);
   --welcome-muted-foreground-color: var(--wl-muted);
 
@@ -36,23 +35,23 @@
   --modal-panel-padding: 1rem;
   --modal-panel-radius: 2rem;
   --modal-panel-background:
-    radial-gradient(130% 90% at 88% -12%, rgba(139, 92, 246, 0.16), transparent 55%),
-    linear-gradient(158deg, #16172a 0%, #0d0e18 62%);
+    radial-gradient(130% 90% at 88% -12%, rgba(var(--accent-color-rgb), 0.16), transparent 55%),
+    linear-gradient(158deg, var(--gray-900) 0%, var(--gray-950) 62%);
   --modal-panel-backdrop-filter: none;
   --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.35);
   --modal-panel-shadow: 0 2rem 4.5rem rgba(0, 0, 0, 0.6);
-  --modal-backdrop-color: rgba(6, 7, 16, 0.55);
+  --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 55%, transparent);
 }
 
 // Cold-start scene: a near-opaque dark canvas so the static glow reads against it, with no content
 // behind to blur.
 .welcome-modal--ambient {
-  --modal-backdrop-color: rgba(5, 6, 14, 0.98);
+  --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 98%, transparent);
   --modal-backdrop-blur: 0;
 }
 
 // Light-mode variant (see resources/img.png): a clean, near-white card with dark text and thin gray
-// borders, not a dark hero. The purple only survives in the logo, the active filter pill, and a faint
+// borders, not a dark hero. The accent only survives in the logo, the active filter pill, and a faint
 // corner glow on the canvas. Additive over the dark defaults above — :host-context outranks each base
 // rule — so the dark design is untouched.
 :host-context([data-theme-mode='light']) {
@@ -67,7 +66,7 @@
     --wl-border: var(--gray-300);
 
     // A clean near-white panel with a soft, diffuse shadow; no gradient or glow on the panel itself.
-    // The border keeps the accent violet so the panel edge reads purple (as in the dark treatment).
+    // The border keeps the app accent so the panel edge reads coloured (as in the dark treatment).
     --modal-panel-background: var(--gray-100);
     --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.45);
     --modal-panel-shadow: 0 1.5rem 3.5rem rgba(30, 27, 60, 0.12);
@@ -76,7 +75,7 @@
     --modal-backdrop-color: color-mix(in srgb, var(--gray-150) 72%, transparent);
   }
 
-  // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only violet.
+  // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only accent tint.
   .welcome-modal--ambient {
     --modal-backdrop-color: var(--gray-150);
   }
@@ -91,7 +90,7 @@
   }
 
   .welcome__glow-blob--b {
-    background: radial-gradient(circle at center, rgba(99, 102, 241, 0.1), transparent 70%);
+    background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.1), transparent 70%);
   }
 
   // The recent-list surface (a translucent white on dark) becomes the plain panel colour on light.
@@ -115,7 +114,7 @@
   }
 }
 
-// A calm, static purple glow projected behind the panel. Shown (faded in) only in the ambient
+// A calm, static accent glow projected behind the panel. Shown (faded in) only in the ambient
 // cold-start scene; purely decorative.
 .welcome__glow {
   position: absolute;
@@ -139,13 +138,13 @@
   filter: blur(6rem);
 }
 
-// A large violet bloom top-right, and a softer, cooler one drifting up from the lower edge.
+// A large accent bloom top-right, and a softer one drifting up from the lower edge.
 .welcome__glow-blob--a {
   inline-size: 46rem;
   block-size: 46rem;
   inset-block-start: -15rem;
   inset-inline-end: -12rem;
-  background: radial-gradient(circle at center, rgba(139, 92, 246, 0.5), transparent 68%);
+  background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.5), transparent 68%);
 }
 
 .welcome__glow-blob--b {
@@ -153,7 +152,7 @@
   block-size: 40rem;
   inset-block-end: -18rem;
   inset-inline-start: 24%;
-  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.32), transparent 70%);
+  background: radial-gradient(circle at center, rgba(var(--accent-color-rgb), 0.32), transparent 70%);
 }
 
 // Logo on the left, identity text beside it.
@@ -239,7 +238,7 @@
     transform: scale(1.02);
 
     .welcome__action-icon {
-      color: #d9ccff;
+      color: color-mix(in srgb, var(--accent-color) 45%, white);
     }
 
     .welcome__action-chevron {
