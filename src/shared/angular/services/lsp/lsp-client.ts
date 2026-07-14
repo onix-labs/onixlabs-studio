@@ -220,6 +220,20 @@ const START_RETRY_COOLDOWN_MS: number = 30_000;
 const MAX_START_ATTEMPTS: number = 3;
 
 /**
+ * The servers that answer semantic-token requests from frozen, partially-loaded compilations while
+ * their workspace loads (every identifier classifies as a plain variable). Their tokens are held back
+ * in favour of the heuristic colouring until the session settles.
+ */
+const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
+
+/**
+ * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
+ * server emits several `workspace/semanticTokens/refresh` requests as projects land; only a pull
+ * issued after the burst settles reliably sees the fully-loaded compilation.
+ */
+const RECOLOR_QUIET_MS: number = 750;
+
+/**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
  * first time a document of a supported language opens, mirrors each open document's text to that
  * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
@@ -358,6 +372,26 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Tracks the sessions with a recolour pass in flight; the value records whether another pass was
+   * requested while it ran, so bursts of refresh signals coalesce into at most one trailing rerun.
+   */
+  private readonly recoloring: Map<string, boolean> = new Map<string, boolean>();
+
+  /**
+   * Holds the pending recolour timer per session, so refresh signals debounce into one trailing pass.
+   */
+  private readonly recolorTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
+   * Holds the sessions whose semantics have settled (a recolour pass completed after their refresh
+   * signals went quiet), so their servers' tokens are trusted over the heuristic colouring.
+   */
+  private readonly settledSessions: Set<string> = new Set<string>();
+
+  /**
    * Initializes a new instance of the {@link LspClient} class, registering its diagnostics provider
    * and subscribing to server notifications when the bridge is available.
    */
@@ -409,6 +443,88 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Recomputes a session's semantic colouring after its server signals that classification has
+   * improved (a project, or a standalone file's virtual project, finished loading). Heavy servers
+   * (Roslyn) answer semantic-token requests from frozen, partially-loaded compilations and keep
+   * serving that snapshot even after the load completes — types stay classified as plain identifiers
+   * no matter how often the tokens are re-requested. Pulling diagnostics forces the server to build
+   * each document's full semantic model; only then are Monaco's tokens re-requested, so the upgraded
+   * classification actually paints. Signals arriving while a pass runs coalesce into one trailing
+   * rerun.
+   * @param sessionId The session to recolour.
+   */
+  private async recolorSession(sessionId: string): Promise<void> {
+    if (this.recoloring.has(sessionId)) {
+      this.recoloring.set(sessionId, true);
+      return;
+    }
+    this.recoloring.set(sessionId, false);
+    try {
+      const documents: TrackedDocument[] = [...this.tracked.values()].filter(
+        (tracked: TrackedDocument): boolean =>
+          tracked.opened && `${tracked.rootPath}::${tracked.serverId}` === sessionId,
+      );
+      await Promise.all(
+        documents.map(
+          (tracked: TrackedDocument): Promise<void> =>
+            this.pullDiagnostics(sessionId, tracked.uri),
+        ),
+      );
+      // The pass ran after the session's refresh signals went quiet, so the server's compilation is
+      // loaded and its tokens are trustworthy from here on.
+      this.settledSessions.add(sessionId);
+      this.markReady(sessionId);
+      this.features.refreshSemanticTokens(this.sessionLanguages(sessionId));
+    } finally {
+      const rerun: boolean = this.recoloring.get(sessionId) === true;
+      this.recoloring.delete(sessionId);
+      if (rerun) {
+        void this.recolorSession(sessionId);
+      }
+    }
+  }
+
+  /**
+   * Schedules a session's recolour pass to run once its refresh signals have stayed quiet for
+   * {@link RECOLOR_QUIET_MS}. A loading server emits a burst of refresh requests as projects land;
+   * recolouring on the first would pull against a still-loading compilation and trust its degraded
+   * tokens, so only the trailing edge of the burst runs the pass.
+   * @param sessionId The session to recolour.
+   */
+  private scheduleRecolor(sessionId: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(sessionId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+    }
+    this.recolorTimers.set(
+      sessionId,
+      setTimeout((): void => {
+        this.recolorTimers.delete(sessionId);
+        void this.recolorSession(sessionId);
+      }, RECOLOR_QUIET_MS),
+    );
+  }
+
+  /**
+   * Pulls a document's diagnostics from its server and discards the result. The pull is not used for
+   * markers (published diagnostics remain the source); it exists to force servers that answer feature
+   * requests against frozen snapshots (Roslyn) to build the document's full semantic model, after
+   * which their semantic tokens carry real classifications. Servers without pull-diagnostic support
+   * reject the request; the poke is best-effort.
+   * @param sessionId The session that owns the document.
+   * @param uri The document's `file:` URI.
+   */
+  private async pullDiagnostics(sessionId: string, uri: string): Promise<void> {
+    try {
+      await this.bridge?.invoke(LspChannel.Request, sessionId, 'textDocument/diagnostic', {
+        textDocument: { uri },
+      });
+    } catch {
+      // Best-effort: the server either lacks pull-diagnostic support or is not ready yet.
+    }
+  }
+
+  /**
    * Collects the Monaco language identifiers of the documents a session serves, so a semantic-token
    * refresh can be scoped to them.
    * @param sessionId The session whose languages are collected.
@@ -436,7 +552,16 @@ export class LspClient implements OnDestroy {
       return null;
     }
     const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
-    return { sessionId, uri: tracked.uri, semanticLegend: this.legends.get(sessionId) ?? null };
+    return {
+      sessionId,
+      uri: tracked.uri,
+      semanticLegend: this.legends.get(sessionId) ?? null,
+      // Roslyn serves degraded tokens (every identifier a plain variable) from frozen partial
+      // compilations while its workspace loads; hold its tokens back until the session settles so the
+      // editor goes heuristic → correct in one step instead of flashing the degraded colours between.
+      suppressServerTokens:
+        FROZEN_TOKEN_SERVERS.has(tracked.serverId) && !this.settledSessions.has(sessionId),
+    };
   }
 
   /**
@@ -637,6 +762,11 @@ export class LspClient implements OnDestroy {
     // that the document is open against a running server, ask it to request them again (for this
     // document's language only) so they paint.
     this.features.refreshSemanticTokens([tracked.languageId]);
+    // Force the server to build this document's full semantic model (heavy servers otherwise answer
+    // token requests from a frozen, reference-less snapshot indefinitely), then repaint once it has.
+    void this.pullDiagnostics(sessionId, tracked.uri).then((): void => {
+      this.features.refreshSemanticTokens([tracked.languageId]);
+    });
   }
 
   /**
@@ -877,6 +1007,13 @@ export class LspClient implements OnDestroy {
     // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
     if (message.method === 'workspace/projectInitializationComplete') {
       this.markReady(message.sessionId);
+      this.scheduleRecolor(message.sessionId);
+      return;
+    }
+    // The server's semantic classification improved after it last served tokens (its project or a
+    // standalone file's virtual project finished loading): recompute and repaint.
+    if (message.method === 'workspace/semanticTokens/refresh') {
+      this.scheduleRecolor(message.sessionId);
       return;
     }
     if (message.method !== 'textDocument/publishDiagnostics') {
@@ -962,6 +1099,15 @@ export class LspClient implements OnDestroy {
     ]);
     this.legends.delete(exit.sessionId);
     this.status.remove(exit.sessionId);
+    // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
+    this.settledSessions.delete(exit.sessionId);
+    const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
+      exit.sessionId,
+    );
+    if (recolorTimer !== undefined) {
+      clearTimeout(recolorTimer);
+      this.recolorTimers.delete(exit.sessionId);
+    }
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;

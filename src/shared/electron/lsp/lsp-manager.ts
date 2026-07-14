@@ -181,7 +181,7 @@ export class LspManager {
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),
     );
-    this.answerServerRequests(connection);
+    this.answerServerRequests(connection, parsed.sessionId);
     connection.onNotification((method: string, params: unknown): void =>
       this.forwardNotification(parsed.sessionId, method, params),
     );
@@ -339,11 +339,18 @@ export class LspManager {
    * Registers handlers for the server-to-client requests a server issues during startup. Answering
    * these (rather than leaving them pending) is required or heavy servers stall mid-initialization.
    * @param connection The server connection to answer requests on.
+   * @param sessionId The session the connection belongs to, for requests forwarded to the renderer.
    */
-  private answerServerRequests(connection: MessageConnection): void {
+  private answerServerRequests(connection: MessageConnection, sessionId: string): void {
     connection.onRequest('client/registerCapability', (): null => null);
     connection.onRequest('client/unregisterCapability', (): null => null);
     connection.onRequest('window/workDoneProgress/create', (): null => null);
+    // A server sends this when its semantic classification has improved (a project finished loading)
+    // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
+    connection.onRequest('workspace/semanticTokens/refresh', (): null => {
+      this.forwardNotification(sessionId, 'workspace/semanticTokens/refresh', undefined);
+      return null;
+    });
     // Answer each requested configuration item with null (rather than an empty object): null tells a
     // server to use its default for that setting, whereas `{}` is parsed as a value and rejected by
     // servers (such as Roslyn) that expect a scalar per key.
@@ -456,7 +463,14 @@ export class LspManager {
           multilineTokenSupport: false,
         },
       },
-      workspace: { workspaceFolders: true, configuration: true },
+      // `refreshSupport` tells a server it may send `workspace/semanticTokens/refresh` when its
+      // classification improves (a project finishes loading); without it heavy servers never signal
+      // that their initial, degraded tokens should be re-requested.
+      workspace: {
+        workspaceFolders: true,
+        configuration: true,
+        semanticTokens: { refreshSupport: true },
+      },
       window: { workDoneProgress: true },
     };
   }

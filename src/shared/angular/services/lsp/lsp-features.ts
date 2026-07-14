@@ -33,6 +33,15 @@ export interface LspDocumentRef {
    * Gets the server's semantic token legend, or null when the server does not provide semantic tokens.
    */
   readonly semanticLegend?: LspSemanticTokensLegend | null;
+
+  /**
+   * Gets whether the server's semantic tokens should be held back in favour of the heuristic
+   * colouring. Heavy servers (Roslyn) serve tokens from frozen, partially-loaded compilations while
+   * their workspace loads — every identifier classifies as a plain variable — so painting them would
+   * visibly downgrade the colouring only to upgrade it again seconds later. The owning client flips
+   * this off once the session's semantics have demonstrably settled.
+   */
+  readonly suppressServerTokens?: boolean;
 }
 
 /**
@@ -420,6 +429,11 @@ export class LspFeatures {
     const legend: LspSemanticTokensLegend | null | undefined = ref.semanticLegend;
     if (legend === undefined || legend === null) {
       return undefined;
+    }
+    // While the server's compilation is still loading its tokens are degraded (see the ref's
+    // `suppressServerTokens`); keep the heuristic colouring rather than briefly painting worse.
+    if (ref.suppressServerTokens === true) {
+      return this.heuristicFallback(model);
     }
     let result: unknown;
     try {
