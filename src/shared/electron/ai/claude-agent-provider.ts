@@ -41,7 +41,6 @@ import type {
 } from './agent-provider';
 import type { AiCredential } from './ai-auth-manager';
 import { resolveBundledClaudeExecutable } from './claude-executable';
-import { ANTHROPIC_MODELS, DEFAULT_ANTHROPIC_MODEL } from './models';
 import {
   ASK_USER_DESCRIPTION,
   ASK_USER_FQN,
@@ -84,12 +83,6 @@ import {
   prettyToolName,
   summarizeToolInput,
 } from './tool-format';
-
-/**
- * Holds the model the verification turn runs with (the default; verification does not depend on the
- * user's per-run model choice).
- */
-const VERIFY_MODEL: string = DEFAULT_ANTHROPIC_MODEL;
 
 /**
  * Holds how long (ms) to wait for the verification turn before aborting.
@@ -158,17 +151,27 @@ export class ClaudeAgentProvider implements AgentProvider {
   /**
    * Gets the models Claude can run a turn with, in display order.
    */
-  public readonly models: readonly AiModelInfo[] = ANTHROPIC_MODELS;
+  public readonly models: readonly AiModelInfo[];
 
   /**
    * Gets the identifier of Claude's default model.
    */
-  public readonly defaultModelId: string = DEFAULT_ANTHROPIC_MODEL;
+  public readonly defaultModelId: string;
 
   /**
    * Gets a value indicating whether the provider accepts image input (Claude models are multimodal).
    */
   public readonly supportsImages: boolean = true;
+
+  /**
+   * Initialises a new instance of the {@link ClaudeAgentProvider} class.
+   * @param models The models the connection offers, in display order.
+   * @param defaultModelId The identifier of the connection's default model.
+   */
+  public constructor(models: readonly AiModelInfo[], defaultModelId: string) {
+    this.models = models;
+    this.defaultModelId = defaultModelId;
+  }
 
   /**
    * Reports whether Claude can run: a local login or an API key is enough.
@@ -763,7 +766,7 @@ export class ClaudeAgentProvider implements AgentProvider {
         apiKey: credential.apiKey,
       };
       const options: Options = {
-        model: VERIFY_MODEL,
+        model: this.defaultModelId,
         cwd: homedir(),
         maxTurns: 1,
         abortController: controller,

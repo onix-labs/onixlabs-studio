@@ -3,6 +3,7 @@ import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electr
 import type {
   AgentContextRef,
   AgentMode,
+  AiConnection,
   AiEditDecisionReply,
   AiEvent,
   AiImageRef,
@@ -18,6 +19,7 @@ import type {
   AiSteerRequest,
   AiVerifyResult,
 } from '@shared/api/ai-types';
+import { SEED_CONNECTIONS } from '@shared/api/ai-types';
 
 /**
  * The permission postures accepted from the renderer, used to validate the untrusted run request.
@@ -32,11 +34,10 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
+import { AiSdkAdapter } from './ai-sdk-adapter';
 import { ClaudeAgentProvider } from './claude-agent-provider';
-import { OllamaProvider } from './ollama-provider';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
-import { VercelAiProvider } from './vercel-ai-provider';
 
 /**
  * A pending permission prompt: the resolver, plus the tool and workspace the request was for so a
@@ -116,12 +117,18 @@ export class AiManager {
   /**
    * Holds the Claude provider (also used for the authentication verification turn).
    */
-  private readonly claude: ClaudeAgentProvider = new ClaudeAgentProvider();
+  private readonly claude: ClaudeAgentProvider;
 
   /**
-   * Holds the registered providers, keyed by id.
+   * Holds the registered providers, keyed by connection id.
    */
-  private readonly providers: Map<AiProviderId, AgentProvider>;
+  private readonly providers: Map<string, AgentProvider>;
+
+  /**
+   * Holds the connections the providers were built from, keyed by connection id, so a run resolves the
+   * per-connection credential (its auth kind) and the run path stays connection-driven.
+   */
+  private readonly connections: Map<string, AiConnection>;
 
   /**
    * Holds the abort controllers of in-flight runs, keyed by request id.
@@ -201,13 +208,32 @@ export class AiManager {
   public constructor(windowGetter: () => BrowserWindow | null) {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
-    const vercel: VercelAiProvider = new VercelAiProvider();
-    const ollama: OllamaProvider = new OllamaProvider();
-    this.providers = new Map<AiProviderId, AgentProvider>([
-      [this.claude.id, this.claude],
-      [vercel.id, vercel],
-      [ollama.id, ollama],
-    ]);
+
+    // Build one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
+    // (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
+    // adapter, configured by the connection's kind and endpoint. The connections are the built-in seeds
+    // for now; a later phase flows the user's own connections here.
+    let claude: ClaudeAgentProvider | null = null;
+    const providers: Map<string, AgentProvider> = new Map<string, AgentProvider>();
+    for (const connection of SEED_CONNECTIONS) {
+      if (connection.auth === 'claude-login') {
+        claude = new ClaudeAgentProvider(connection.models, connection.defaultModelId);
+        providers.set(connection.id, claude);
+      } else {
+        providers.set(connection.id, new AiSdkAdapter(connection));
+      }
+    }
+    if (claude === null) {
+      throw new Error('No Claude connection is seeded; cannot initialise the AI subsystem.');
+    }
+    this.claude = claude;
+    this.providers = providers;
+    this.connections = new Map<string, AiConnection>(
+      SEED_CONNECTIONS.map((connection: AiConnection): [string, AiConnection] => [
+        connection.id,
+        connection,
+      ]),
+    );
   }
 
   /**
@@ -268,31 +294,44 @@ export class AiManager {
   }
 
   /**
-   * Resolves the current credential material for providers.
+   * Resolves the credential material for a connection from its auth kind.
+   * @param connectionId The connection id.
    * @returns Returns the {@link AgentAuth}.
    */
-  private currentAuth(): AgentAuth {
-    return { hasLocalLogin: this.auth.hasLocalLogin(), apiKey: this.auth.apiKey() };
+  private authForConnection(connectionId: string): AgentAuth {
+    const connection: AiConnection | undefined = this.connections.get(connectionId);
+    return connection === undefined
+      ? { hasLocalLogin: this.auth.hasLocalLogin(), apiKey: null }
+      : this.auth.authFor(connectionId, connection.auth);
   }
 
   /**
-   * Lists the registered providers and their current availability.
+   * Lists the registered providers and their current availability (resolved per connection).
    * @returns Returns the provider descriptors.
    */
   private listProviders(): readonly AiProviderInfo[] {
-    const auth: AgentAuth = this.currentAuth();
-    return [...this.providers.values()].map((provider: AgentProvider): AiProviderInfo => {
-      const availability: ProviderAvailability = provider.describeAvailability(auth);
-      return {
-        id: provider.id,
+    const infos: AiProviderInfo[] = [];
+    for (const connection of this.connections.values()) {
+      const provider: AgentProvider | undefined = this.providers.get(connection.id);
+      if (provider === undefined) {
+        continue;
+      }
+      const availability: ProviderAvailability = provider.describeAvailability(
+        this.authForConnection(connection.id),
+      );
+      infos.push({
+        // The renderer's provider contract still types the id as AiProviderId; every seeded
+        // connection's id is in that set. A later phase widens the contract to any connection id.
+        id: connection.id as AiProviderId,
         label: provider.label,
         available: availability.available,
         detail: availability.detail,
         models: provider.models,
         defaultModelId: provider.defaultModelId,
         supportsImages: provider.supportsImages,
-      };
-    });
+      });
+    }
+    return infos;
   }
 
   /**
@@ -301,7 +340,8 @@ export class AiManager {
    */
   private run(request: AiRunRequest): void {
     const provider: AgentProvider | undefined = this.providers.get(request.providerId);
-    if (provider === undefined) {
+    const connection: AiConnection | undefined = this.connections.get(request.providerId);
+    if (provider === undefined || connection === undefined) {
       this.emit({
         requestId: request.requestId,
         kind: 'status',
@@ -368,7 +408,7 @@ export class AiManager {
           ? request.resumeSessionAt
           : null,
       forkSession: request.forkSession === true,
-      auth: this.currentAuth(),
+      auth: this.authForConnection(connection.id),
       signal: controller.signal,
       bridge: {
         request: (capability: string, input: unknown): Promise<unknown> =>

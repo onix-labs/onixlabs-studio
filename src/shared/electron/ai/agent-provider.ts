@@ -7,7 +7,6 @@ import type {
   AiInputChoice,
   AiModelInfo,
   AiPermissionPosture,
-  AiProviderId,
 } from '@shared/api/ai-types';
 
 /**
@@ -214,9 +213,9 @@ export interface AgentRunContext {
  */
 export interface AgentProvider {
   /**
-   * Gets the provider's stable identifier.
+   * Gets the provider's stable identifier — the id of the connection it serves.
    */
-  readonly id: AiProviderId;
+  readonly id: string;
 
   /**
    * Gets the provider's human-readable label.
