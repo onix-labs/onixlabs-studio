@@ -23,7 +23,7 @@ import type { Node as ProseMirrorNode, NodeType } from '@milkdown/prose/model';
 import type { MarkdownNode, NodeSchema, ParserState, SerializerState } from '@milkdown/transformer';
 import type { Root, RootContent, Code, Parent } from 'mdast';
 import { visit } from 'unist-util-visit';
-import mermaid from 'mermaid';
+import type { Mermaid, MermaidConfig } from 'mermaid';
 
 /**
  * Custom mdast node type for mermaid diagram blocks.
@@ -95,7 +95,7 @@ const MERMAID_THEME_CSS: string = `
  * @param isDark Whether to use the dark theme variant for the diagram.
  * @returns The mermaid initialization configuration object.
  */
-function getMermaidConfig(isDark: boolean): Parameters<typeof mermaid.initialize>[0] {
+function getMermaidConfig(isDark: boolean): MermaidConfig {
   return {
     startOnLoad: false,
     theme: isDark ? 'dark' : 'default',
@@ -152,15 +152,30 @@ function getMermaidConfig(isDark: boolean): Parameters<typeof mermaid.initialize
 }
 
 /**
- * Initialize mermaid with default configuration.
+ * Caches the in-flight (then resolved) mermaid import so the ~400&nbsp;kB library is fetched at most
+ * once, and only when a diagram is first rendered — keeping it out of the initial bundle.
  */
-mermaid.initialize(getMermaidConfig(false));
+let mermaidLoad: Promise<Mermaid> | undefined;
+
+/**
+ * Lazily imports mermaid, initialising it with the default configuration on first load. The dynamic
+ * import splits mermaid into its own chunk, loaded on demand when a diagram first renders.
+ * @returns Returns the mermaid instance.
+ */
+function loadMermaid(): Promise<Mermaid> {
+  mermaidLoad ??= import('mermaid').then(({ default: mermaid }): Mermaid => {
+    mermaid.initialize(getMermaidConfig(false));
+    return mermaid;
+  });
+  return mermaidLoad;
+}
 
 /**
  * Updates mermaid theme based on the document's resolved colour scheme. The Theme service writes the
  * already-resolved mode (`light` or `dark`, never `system`) to the `data-theme-mode` attribute.
+ * @param mermaid The mermaid instance to reconfigure.
  */
-function updateMermaidTheme(): void {
+function updateMermaidTheme(mermaid: Mermaid): void {
   const isDark: boolean = document.documentElement.getAttribute('data-theme-mode') === 'dark';
   mermaid.initialize(getMermaidConfig(isDark));
 }
@@ -180,7 +195,8 @@ export async function renderMermaidDiagram(code: string, id: string): Promise<st
     // then render with the actual fonts, causing text clipping
     await document.fonts.ready;
 
-    updateMermaidTheme();
+    const mermaid: Mermaid = await loadMermaid();
+    updateMermaidTheme(mermaid);
     const { svg }: { svg: string } = await mermaid.render(id, code);
     return svg;
   } catch (error) {
