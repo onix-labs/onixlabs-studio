@@ -744,9 +744,8 @@ export class AgentChat {
    * Holds the remember scope selected on each pending permission card, keyed by item id ('once' when
    * unset). Parallel sub-agents can raise concurrent prompts, so the selection is per card.
    */
-  protected readonly rememberChoice: WritableSignal<Readonly<Record<string, string>>> = signal<
-    Readonly<Record<string, string>>
-  >({});
+  protected readonly rememberChoice: WritableSignal<Readonly<Record<string, string | undefined>>> =
+    signal<Readonly<Record<string, string | undefined>>>({});
 
   /**
    * Holds the id of the transcript item whose text was just copied, driving the transient "Copied"
@@ -1714,7 +1713,9 @@ export class AgentChat {
    */
   public setRemember(itemId: string, scope: string): void {
     this.rememberChoice.update(
-      (choices: Readonly<Record<string, string>>): Readonly<Record<string, string>> => ({
+      (
+        choices: Readonly<Record<string, string | undefined>>,
+      ): Readonly<Record<string, string | undefined>> => ({
         ...choices,
         [itemId]: scope,
       }),

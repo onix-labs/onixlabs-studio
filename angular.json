@@ -56,6 +56,7 @@
             "allowedCommonJsDependencies": [
               "@xterm/xterm",
               "@xterm/addon-fit",
+              "@xterm/addon-search",
               "dayjs",
               "dayjs/plugin/advancedFormat.js",
               "dayjs/plugin/duration.js",
