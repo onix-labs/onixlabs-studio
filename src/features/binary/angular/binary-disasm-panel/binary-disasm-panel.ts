@@ -155,7 +155,20 @@ export class BinaryDisasmPanel implements OnDestroy {
   private readonly disposables: MonacoApi.IDisposable[] = [];
 
   /**
-   * Wires the cross-highlight effect.
+   * Holds the last reveal request (the document's reveal version) this panel has scrolled to, so a
+   * given jump-to-offset is honoured exactly once rather than fighting the user's later scrolling.
+   */
+  private lastRevealedVersion: number = -1;
+
+  /**
+   * Holds the one-based line a pending jump-to-offset should centre, or null when none is pending. The
+   * scroll is deferred to {@link flushPendingReveal} so it runs only once the freshly-shown editor has
+   * real dimensions — a reveal on a zero-height editor is silently dropped.
+   */
+  private pendingRevealLine: number | null = null;
+
+  /**
+   * Wires the cross-highlight and jump-to-offset effects.
    */
   public constructor() {
     // Highlight and reveal the lines whose bytes overlap the current selection. Re-runs when the
@@ -165,6 +178,46 @@ export class BinaryDisasmPanel implements OnDestroy {
       const selection: BinarySelection | null = this.document()?.selection() ?? null;
       this.applyHighlight(selection);
     });
+
+    // Queue a scroll to a requested offset (the entry-point jump on open, or a go-to-offset) once its
+    // instruction is present in the listing. Re-runs when the listing changes so a reveal made before
+    // the target byte was decoded is honoured the moment the instruction arrives; the version guard
+    // scrolls each request once, so it does not override where the user later scrolls to.
+    effect((): void => {
+      const content: DisasmContent = this.content();
+      const document: BinaryDocumentEntry | undefined = this.document();
+      const version: number = document?.revealVersion() ?? 0;
+      const offset: number | null = document?.revealOffset ?? null;
+      if (offset === null || version === this.lastRevealedVersion) {
+        return;
+      }
+      const line: number | null = lineForOffset(content, offset);
+      if (line === null) {
+        return;
+      }
+      this.lastRevealedVersion = version;
+      this.pendingRevealLine = line;
+      this.flushPendingReveal();
+    });
+  }
+
+  /**
+   * Scrolls a pending jump-to-offset line to the centre, but only once the editor has laid out with a
+   * real height — otherwise the reveal is a no-op, so the request is left pending for the next layout.
+   */
+  private flushPendingReveal(): void {
+    const line: number | null = this.pendingRevealLine;
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.pane()?.getEditor() ?? null;
+    if (
+      line === null ||
+      editor === null ||
+      !this.editorReady() ||
+      editor.getLayoutInfo().height <= 0
+    ) {
+      return;
+    }
+    editor.revealLineInCenter(line);
+    this.pendingRevealLine = null;
   }
 
   /**
@@ -206,9 +259,13 @@ export class BinaryDisasmPanel implements OnDestroy {
       editor.onDidChangeModelContent((): void =>
         this.applyHighlight(this.document()?.selection() ?? null),
       ),
+      // A jump-to-offset queued before the panel had a size (e.g. the entry-point reveal that runs as
+      // the panel is toggled on) lands the moment the editor lays out with a real height.
+      editor.onDidLayoutChange((): void => this.flushPendingReveal()),
     );
     this.editorReady.set(true);
     this.applyHighlight(this.document()?.selection() ?? null);
+    this.flushPendingReveal();
   }
 
   /**
@@ -264,6 +321,20 @@ export class BinaryDisasmPanel implements OnDestroy {
     document.cursor.set(line.startOffset);
     document.selection.set({ start: line.startOffset, end: line.startOffset + line.byteLength });
   }
+}
+
+/**
+ * Finds the one-based listing line whose instruction covers a byte offset.
+ * @param content The built listing and its line map.
+ * @param offset The byte offset to locate.
+ * @returns Returns the one-based line number, or null when no line covers the offset.
+ */
+function lineForOffset(content: DisasmContent, offset: number): number | null {
+  const index: number = content.lines.findIndex(
+    (line: LineInstruction): boolean =>
+      line.startOffset <= offset && offset < line.startOffset + line.byteLength,
+  );
+  return index === -1 ? null : index + 1;
 }
 
 /**

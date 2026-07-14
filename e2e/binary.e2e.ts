@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { Locator } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { ribbonButton } from './helpers';
 
@@ -62,6 +62,31 @@ fs.writeFileSync(FIXTURE_PATH, buildElfFixture());
 test.use({ trustedPaths: [FIXTURE_PATH] });
 
 /**
+ * Reads the full assembly listing from the disassembly panel's Monaco model — the whole decoded
+ * listing, not just the lines the virtualized viewport has rendered into the DOM. The listing model is
+ * the one whose lines begin with an eight-hex-digit address.
+ * @param page The page driving the app.
+ * @returns Returns the listing text, or an empty string before it has decoded.
+ */
+function readDisasmListing(page: Page): Promise<string> {
+  return page.evaluate((): string => {
+    const monaco: { editor: { getModels(): { getValue(): string }[] } } | undefined = (
+      window as unknown as { monaco?: { editor: { getModels(): { getValue(): string }[] } } }
+    ).monaco;
+    if (monaco === undefined) {
+      return '';
+    }
+    for (const model of monaco.editor.getModels()) {
+      const value: string = model.getValue();
+      if (/^[0-9A-F]{8} {2}/m.test(value)) {
+        return value;
+      }
+    }
+    return '';
+  });
+}
+
+/**
  * The full binary pipeline: a recent binary file re-opens from the welcome screen into the binary
  * editor, the format is sniffed, and the disassembly column decodes real instructions at the
  * expected offset — exercising windowed IPC reads, Capstone in the main process, and the rendered
@@ -97,8 +122,12 @@ test.describe('binary editor', () => {
     await page.keyboard.press('Escape');
     const disasm: Locator = page.locator('app-binary-disasm-panel');
     await expect(disasm).toBeVisible();
-    await expect(disasm).toContainText('push');
-    await expect(disasm).toContainText('rbp');
-    await expect(disasm).toContainText('ret');
+
+    // Assert the decoded entry against the disassembly editor's model, which holds the whole listing —
+    // the Monaco viewport only renders (and so exposes to the DOM) the handful of lines it has scrolled
+    // to, which would make a text assertion depend on where the entry-point jump happens to land.
+    await expect
+      .poll((): Promise<string> => readDisasmListing(page))
+      .toMatch(/00000078 {2}push rbp[\s\S]*mov rbp, rsp[\s\S]*\bnop\b[\s\S]*\bret\b/);
   });
 });

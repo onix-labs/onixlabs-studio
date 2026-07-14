@@ -51,6 +51,8 @@ function fakeDocument(format: BinaryFormat): FakeDocument {
     format: formatSignal,
     selection: signal<BinarySelection | null>(null),
     cursor: signal<number | null>(null),
+    revealVersion: signal<number>(0),
+    revealOffset: null,
   } as unknown as BinaryDocumentEntry;
   return { entry, instructions, format: formatSignal };
 }

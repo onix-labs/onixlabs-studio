@@ -7,9 +7,7 @@ import {
   input,
   InputSignal,
   OnDestroy,
-  signal,
   Signal,
-  WritableSignal,
 } from '@angular/core';
 import {
   BinaryEditOp,
@@ -30,6 +28,34 @@ import { BinaryDisasmPanel } from '../binary-disasm-panel/binary-disasm-panel';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryStatus } from '../binary-status/binary-status';
+
+/**
+ * The number of bytes decoded before the focus offset in the disassembly window, giving the listing a
+ * little context above the focused instruction.
+ */
+const DISASM_WINDOW_LEAD: number = 256;
+
+/**
+ * The length, in bytes, of the disassembly window decoded around the focus offset. Bounded so the
+ * listing stays a screenful — a focus deep inside a multi-gigabyte file decodes only its neighbourhood
+ * rather than everything from the file start.
+ */
+const DISASM_WINDOW_SPAN: number = 2048;
+
+/**
+ * A decoded byte window: its start offset and length.
+ */
+interface DisasmWindow {
+  /**
+   * Gets the window's start offset.
+   */
+  readonly offset: number;
+
+  /**
+   * Gets the window's length in bytes.
+   */
+  readonly length: number;
+}
 
 /**
  * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the centre, with
@@ -62,11 +88,12 @@ export class BinaryView implements OnDestroy {
   private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
 
   /**
-   * Holds the byte window the editor last reported visible, used to (re)load disassembly when the
-   * format resolves or the viewport moves.
+   * Holds the byte window currently decoded into the disassembly listing, or null before the first
+   * window is cut. The window follows the focus (cursor), not the hex viewport, and is re-cut only when
+   * the focus leaves it — so the disassembly panel owns where it looks and does not churn as the cursor
+   * moves within the shown code.
    */
-  private readonly visibleRange: WritableSignal<BinaryVisibleRange | null> =
-    signal<BinaryVisibleRange | null>(null);
+  private disasmWindow: DisasmWindow | null = null;
 
   /**
    * Gets the identifier of the tab this view represents.
@@ -95,16 +122,28 @@ export class BinaryView implements OnDestroy {
    * Initializes the view: loads disassembly for the visible range and publishes status while active.
    */
   public constructor() {
-    // Load disassembly for the visible range (debounced in the document), re-running when the format
-    // resolves or the viewport moves.
+    // Decode a bounded window of instructions around the focus — the cursor, which the entry-point jump
+    // on open, the go-to-offset action, and clicking a byte or a disassembly line all set. The panel
+    // owns where it looks rather than mirroring the hex viewport's scroll, so the entry jump reliably
+    // decodes and centres the code. Re-runs when the format resolves and when freshly-loaded bytes
+    // arrive (so a window awaiting its bytes decodes once they land); the window is re-cut only when the
+    // focus leaves it, and loadDisassembly caches by range, so this settles to a cache hit.
     effect((): void => {
       const document: BinaryDocumentEntry | undefined = this.document();
-      const range: BinaryVisibleRange | null = this.visibleRange();
-      if (document === undefined || range === null) {
+      if (document === undefined) {
         return;
       }
       document.format();
-      document.loadDisassembly(range.offset, range.length);
+      document.loadedVersion();
+      const focus: number = document.cursor() ?? 0;
+      let active: DisasmWindow | null = this.disasmWindow;
+      if (active === null || focus < active.offset || focus >= active.offset + active.length) {
+        const offset: number = Math.max(0, focus - DISASM_WINDOW_LEAD);
+        active = { offset, length: DISASM_WINDOW_SPAN };
+        this.disasmWindow = active;
+        document.ensureRange(offset, DISASM_WINDOW_SPAN);
+      }
+      document.loadDisassembly(active.offset, active.length);
     });
 
     // Publish this view's context to the status strip while it is the active tab.
@@ -208,7 +247,6 @@ export class BinaryView implements OnDestroy {
     if (document === undefined) {
       return;
     }
-    this.visibleRange.set(range);
     document.ensureRange(range.offset, range.length);
   }
 
