@@ -1,0 +1,217 @@
+.conn-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-block: 0.25rem 0.6rem;
+}
+
+.conn-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  &--inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.6rem;
+  }
+}
+
+.conn-editor__label {
+  font-size: 0.78rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.conn-editor__auth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.conn-editor__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.conn-editor__status-icon {
+  color: var(--settings-muted-foreground-color);
+
+  &--ok {
+    color: var(--accent-color);
+  }
+}
+
+.conn-editor__status-detail {
+  flex: 1;
+  font-size: 0.82rem;
+}
+
+.conn-editor__key {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.conn-editor__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.conn-editor__models {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 0.0625rem solid var(--settings-border-color);
+}
+
+.conn-editor__models-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.conn-editor__model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conn-editor__model {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &:hover {
+    background: var(--settings-button-background-color--hover);
+  }
+
+  &--hidden {
+    opacity: 0.5;
+  }
+}
+
+.conn-editor__model-id {
+  flex: 1;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conn-editor__model-ctx {
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.conn-editor__add-model {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.conn-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-block-start: 0.3rem;
+}
+
+.conn-editor__button {
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid var(--settings-button-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    border-color 150ms ease-in-out,
+    background-color 150ms ease-in-out;
+
+  &:hover:not(:disabled) {
+    border-color: var(--settings-button-border-color--hover);
+    background: var(--settings-button-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+  }
+
+  &--ghost {
+    color: var(--settings-muted-foreground-color);
+  }
+
+  &--danger {
+    color: var(--settings-muted-foreground-color);
+
+    &:hover:not(:disabled) {
+      color: var(--accent-color);
+      border-color: var(--accent-color);
+      background: transparent;
+    }
+  }
+}
+
+.conn-editor__text-button {
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover {
+    color: inherit;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.conn-editor__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--settings-muted-foreground-color);
+  background: transparent;
+  border: none;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+
+  &:hover {
+    color: inherit;
+    background: var(--settings-button-background-color--hover);
+  }
+
+  &--on {
+    color: var(--accent-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}

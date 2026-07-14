@@ -1,39 +1,49 @@
-// The authentication block sits between setting rows but is not a single labelled control, so it is
-// laid out by hand rather than through app-setting-row.
-.ai-auth {
+// The connection manager sits above the section's setting rows and is laid out by hand rather than
+// through app-setting-row, since it is a list of expandable editors rather than a single control.
+.ai-connections {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding-block: 0.85rem;
-  border-block-start: 0.0625rem solid var(--settings-border-color);
+  padding-block-end: 0.85rem;
+  border-block-end: 0.0625rem solid var(--settings-border-color);
 }
 
-.ai-auth__status {
+.ai-connections__head {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.ai-auth__icon {
+.ai-connections__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ai-connections__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.ai-connections__subtitle {
+  margin: 0;
+  font-size: 0.78rem;
   color: var(--settings-muted-foreground-color);
-
-  &--ok {
-    color: var(--accent-color);
-  }
 }
 
-.ai-auth__detail {
-  flex: 1;
-  font-size: 0.85rem;
-}
-
-.ai-auth__key {
+.ai-connections__add {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
-.ai-auth__button {
+.ai-connections__add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.35rem 0.6rem;
   font: inherit;
   font-size: 0.8rem;
@@ -43,6 +53,7 @@
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
+  white-space: nowrap;
   transition:
     border-color 150ms ease-in-out,
     background-color 150ms ease-in-out;
@@ -56,29 +67,126 @@
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: 0.0625rem;
   }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  &--ghost {
-    color: var(--settings-muted-foreground-color);
-  }
 }
 
-.ai-auth__result {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--accent-color);
-
-  &--error {
-    color: var(--settings-muted-foreground-color);
-  }
-}
-
-.ai-auth__hint {
+.ai-connections__hint {
   margin: 0;
   font-size: 0.75rem;
   color: var(--settings-muted-foreground-color);
+}
+
+.ai-connections__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-connections__item {
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  overflow: hidden;
+}
+
+.ai-connections__row {
+  display: flex;
+  align-items: center;
+}
+
+.ai-connections__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+  text-align: start;
+
+  &:hover {
+    background: var(--settings-button-background-color--hover);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.ai-connections__chevron {
+  color: var(--settings-muted-foreground-color);
+  transition: transform 150ms ease-in-out;
+
+  &--open {
+    transform: rotate(90deg);
+  }
+}
+
+.ai-connections__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.ai-connections__badge {
+  padding: 0.05rem 0.35rem;
+  font-size: 0.68rem;
+  color: var(--settings-muted-foreground-color);
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.ai-connections__status {
+  color: var(--settings-muted-foreground-color);
+
+  &--ok {
+    color: var(--accent-color);
+  }
+}
+
+.ai-connections__reorder {
+  display: flex;
+  align-items: center;
+  padding-inline-end: 0.4rem;
+}
+
+.ai-connections__move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover:not(:disabled) {
+    color: inherit;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:disabled {
+    opacity: 0.3;
+  }
+}
+
+.ai-connections__body {
+  padding: 0 0.6rem;
+  border-block-start: 0.0625rem solid var(--settings-border-color);
 }

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import type { AiConnection } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { AiSettingsSection } from './ai-settings';
 
@@ -25,6 +26,14 @@ describe('AiSettingsSection', () => {
     return select;
   }
 
+  /**
+   * Gets the connection-list item elements.
+   * @returns Returns the item elements.
+   */
+  function items(): HTMLElement[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__item'));
+  }
+
   beforeEach(async () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
@@ -42,8 +51,14 @@ describe('AiSettingsSection', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_whenShown_rendersARowPerControl', () => {
-    expect(host.querySelectorAll('app-setting-row').length).toBe(4);
+  it('render_whenShown_rendersARowPerGlobalControl', () => {
+    expect(host.querySelectorAll('app-setting-row').length).toBe(3);
+  });
+
+  it('render_whenShown_rendersAnItemPerSeedConnection', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    expect(items().length).toBe(settings.aiConnections().length);
+    expect(items().length).toBeGreaterThan(0);
   });
 
   it('posture_whenChanged_persistsToSettings', () => {
@@ -56,27 +71,34 @@ describe('AiSettingsSection', () => {
     expect(settings.aiPermissionPosture()).toBe('auto-all');
   });
 
-  it('tokenCap_whenChanged_persistsToSettings', () => {
+  it('add_whenClicked_appendsAConnectionAndExpandsIt', () => {
     const settings: Settings = TestBed.inject(Settings);
-    const row: Element | undefined = Array.from(host.querySelectorAll('app-setting-row')).find(
-      (element: Element): boolean =>
-        element.querySelector('.setting-row__label')?.textContent?.trim() ===
-        'Per-request token cap',
-    );
-    const input: HTMLInputElement | null | undefined = row?.querySelector('input');
-    if (input !== null && input !== undefined) {
-      input.value = '8000';
-      input.dispatchEvent(new Event('change'));
-    }
+    const before: number = settings.aiConnections().length;
 
-    expect(settings.aiTokenCap()).toBe(8000);
+    const add: HTMLButtonElement | undefined = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.ai-connections__add-button'),
+    )[0];
+    add?.click();
+    fixture.detectChanges();
+
+    const after: readonly AiConnection[] = settings.aiConnections();
+    expect(after.length).toBe(before + 1);
+    // The newly-added connection is expanded, so exactly one editor is rendered.
+    expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
   });
 
-  it('auth_whenOutsideElectron_disablesTheVerifyButton', () => {
-    const verify: HTMLButtonElement | undefined = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('button'),
-    ).find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Verify');
+  it('toggle_whenClicked_expandsTheConnectionEditor', () => {
+    expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 
-    expect(verify?.disabled).toBe(true);
+    const toggle: HTMLButtonElement | null =
+      host.querySelector<HTMLButtonElement>('.ai-connections__toggle');
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
   });
 });

@@ -1,0 +1,175 @@
+<div class="conn-editor">
+  <div class="conn-editor__field">
+    <span class="conn-editor__label">Name</span>
+    <app-text-field
+      [value]="connection().label"
+      placeholder="Connection name"
+      (valueChange)="onLabel($event)"
+    />
+  </div>
+
+  <div class="conn-editor__field">
+    <span class="conn-editor__label">Provider</span>
+    <app-dropdown
+      [options]="kindOptions"
+      [value]="connection().kind"
+      [disabled]="isBuiltIn()"
+      (valueChange)="onKind($event)"
+    />
+  </div>
+
+  @if (!isBuiltIn()) {
+    <div class="conn-editor__field">
+      <span class="conn-editor__label">Authentication</span>
+      <app-dropdown
+        [options]="authOptions"
+        [value]="connection().auth"
+        (valueChange)="onAuthKind($event)"
+      />
+    </div>
+  }
+
+  @if (showBaseUrl()) {
+    <div class="conn-editor__field">
+      <span class="conn-editor__label">Base URL</span>
+      <app-text-field
+        [value]="connection().baseUrl ?? ''"
+        placeholder="https://…/v1"
+        (valueChange)="onBaseUrl($event)"
+      />
+    </div>
+  }
+
+  <!-- Credential -->
+  @if (usesLocalLogin()) {
+    <p class="conn-editor__hint">Uses your local Claude login (~/.claude).</p>
+  } @else if (usesKey()) {
+    <div class="conn-editor__auth">
+      <div class="conn-editor__status">
+        <app-icon
+          class="conn-editor__status-icon"
+          [class.conn-editor__status-icon--ok]="status().available"
+          [icon]="status().available ? Icon.SUCCESS : Icon.WARNING"
+        />
+        <span class="conn-editor__status-detail">{{ status().detail }}</span>
+      </div>
+      <div class="conn-editor__key">
+        <app-password-field
+          [value]="apiKeyDraft()"
+          [disabled]="!isAvailable || keyBusy()"
+          placeholder="API key"
+          (valueChange)="onApiKeyInput($event)"
+        />
+        <button
+          type="button"
+          class="conn-editor__button"
+          [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
+          (click)="saveKey()"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          class="conn-editor__button conn-editor__button--ghost"
+          [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
+          (click)="clearKey()"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  } @else {
+    <p class="conn-editor__hint">No credentials required.</p>
+  }
+
+  <!-- Models -->
+  <div class="conn-editor__models">
+    <div class="conn-editor__models-head">
+      <span class="conn-editor__label">Models</span>
+      <button
+        type="button"
+        class="conn-editor__button"
+        [disabled]="!isAvailable || discovering()"
+        (click)="refresh()"
+      >
+        {{ discovering() ? 'Refreshing…' : '↻ Refresh' }}
+      </button>
+    </div>
+
+    @if (discoverDetail(); as detail) {
+      <p class="conn-editor__hint">{{ detail }}</p>
+    }
+
+    @if (connection().models.length === 0) {
+      <p class="conn-editor__hint">No models yet. Refresh to discover them, or add one below.</p>
+    } @else {
+      <ul class="conn-editor__model-list">
+        @for (model of connection().models; track model.id) {
+          <li class="conn-editor__model" [class.conn-editor__model--hidden]="model.hidden">
+            <span class="conn-editor__model-id">{{ model.label }}</span>
+            <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+            <button
+              type="button"
+              class="conn-editor__icon-button"
+              [class.conn-editor__icon-button--on]="model.pinned"
+              [attr.aria-label]="model.pinned ? 'Unpin model' : 'Pin model'"
+              (click)="togglePin(model.id)"
+            >
+              <app-icon [icon]="model.pinned ? Icon.PIN_FILLED : Icon.PIN" />
+            </button>
+            <button type="button" class="conn-editor__text-button" (click)="toggleHide(model.id)">
+              {{ model.hidden ? 'Show' : 'Hide' }}
+            </button>
+            <button
+              type="button"
+              class="conn-editor__icon-button"
+              aria-label="Remove model"
+              (click)="removeModel(model.id)"
+            >
+              <app-icon [icon]="Icon.TRASH" />
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
+    <div class="conn-editor__add-model">
+      <app-text-field
+        [value]="newModelDraft()"
+        placeholder="Add a model id (e.g. gpt-4o)"
+        (valueChange)="onNewModelInput($event)"
+      />
+      <button
+        type="button"
+        class="conn-editor__button"
+        [disabled]="newModelDraft().trim().length === 0"
+        (click)="addModel()"
+      >
+        Add
+      </button>
+    </div>
+
+    @if (connection().models.length > 0) {
+      <div class="conn-editor__field conn-editor__field--inline">
+        <span class="conn-editor__label">Default model</span>
+        <app-dropdown
+          [options]="modelOptions()"
+          [value]="connection().defaultModelId"
+          (valueChange)="setDefault($event)"
+        />
+      </div>
+    }
+  </div>
+
+  @if (!isBuiltIn()) {
+    <div class="conn-editor__footer">
+      <button
+        type="button"
+        class="conn-editor__button conn-editor__button--danger"
+        (click)="removeConnection()"
+      >
+        Remove connection
+      </button>
+    </div>
+  }
+</div>

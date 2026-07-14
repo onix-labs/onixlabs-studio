@@ -1,75 +1,90 @@
-<app-setting-row label="Provider" description="The agent back-end runs go through.">
-  <app-dropdown
-    [options]="providerOptions()"
-    [value]="provider()"
-    (valueChange)="onProviderChange($event)"
-  />
-</app-setting-row>
-
-<div class="ai-auth">
-  <div class="ai-auth__status">
-    <app-icon
-      class="ai-auth__icon"
-      [class.ai-auth__icon--ok]="authStatus().available"
-      [icon]="authStatus().available ? Icon.SUCCESS : Icon.WARNING"
-    />
-    <span class="ai-auth__detail">{{ authStatus().detail }}</span>
-    <button
-      type="button"
-      class="ai-auth__button"
-      [disabled]="!isAvailable || isVerifying()"
-      (click)="verify()"
-    >
-      {{ isVerifying() ? 'Verifying…' : 'Verify' }}
-    </button>
+<div class="ai-connections">
+  <div class="ai-connections__head">
+    <div class="ai-connections__heading">
+      <h3 class="ai-connections__title">Connections</h3>
+      <p class="ai-connections__subtitle">
+        Providers the agent can run through. Each keeps its own credential and model list.
+      </p>
+    </div>
+    <div class="ai-connections__add">
+      <app-dropdown
+        [options]="addKindOptions"
+        [value]="selectedAddKind()"
+        (valueChange)="onAddKindChange($event)"
+      />
+      <button type="button" class="ai-connections__add-button" (click)="addConnection()">
+        <app-icon [icon]="Icon.PLUS" />
+        <span>Add</span>
+      </button>
+    </div>
   </div>
 
-  @if (verifyResult(); as result) {
-    <p class="ai-auth__result" [class.ai-auth__result--error]="!result.ok">{{ result.detail }}</p>
+  @if (!isAvailable) {
+    <p class="ai-connections__hint">
+      Credentials and model discovery are only available inside Studio.
+    </p>
   }
 
-  <div class="ai-auth__key">
-    <app-password-field
-      [value]="apiKey()"
-      [disabled]="!isAvailable || keyPending()"
-      placeholder="Anthropic API key (sk-ant-…)"
-      (valueChange)="onApiKeyInput($event)"
-    />
-    <button
-      type="button"
-      class="ai-auth__button"
-      [disabled]="!isAvailable || keyPending() || apiKey().trim().length === 0"
-      (click)="saveApiKey()"
-    >
-      Save key
-    </button>
-    <button
-      type="button"
-      class="ai-auth__button ai-auth__button--ghost"
-      [disabled]="!isAvailable || keyPending() || !authStatus().hasStoredKey"
-      (click)="clearApiKey()"
-    >
-      Clear
-    </button>
-  </div>
-
-  <p class="ai-auth__hint">
-    @if (authStatus().hasStoredKey) {
-      A key is stored. It is encrypted at rest and never leaves the main process.
-    } @else {
-      No key stored. The agent uses your local Claude login when available.
+  <ul class="ai-connections__list">
+    @for (
+      connection of connections();
+      track connection.id;
+      let index = $index;
+      let count = $count
+    ) {
+      <li class="ai-connections__item">
+        <div class="ai-connections__row">
+          <button
+            type="button"
+            class="ai-connections__toggle"
+            [attr.aria-expanded]="isExpanded(connection.id)"
+            (click)="toggle(connection.id)"
+          >
+            <app-icon
+              class="ai-connections__chevron"
+              [class.ai-connections__chevron--open]="isExpanded(connection.id)"
+              [icon]="Icon.CARET_RIGHT"
+            />
+            <span class="ai-connections__label">{{ connection.label }}</span>
+            @if (connection.builtIn) {
+              <span class="ai-connections__badge">Built-in</span>
+            }
+            <app-icon
+              class="ai-connections__status"
+              [class.ai-connections__status--ok]="status(connection.id).available"
+              [icon]="status(connection.id).available ? Icon.SUCCESS : Icon.WARNING"
+            />
+          </button>
+          <div class="ai-connections__reorder">
+            <button
+              type="button"
+              class="ai-connections__move"
+              aria-label="Move up"
+              [disabled]="index === 0"
+              (click)="moveUp(connection.id)"
+            >
+              <app-icon [icon]="Icon.CARET_UP" />
+            </button>
+            <button
+              type="button"
+              class="ai-connections__move"
+              aria-label="Move down"
+              [disabled]="index === count - 1"
+              (click)="moveDown(connection.id)"
+            >
+              <app-icon [icon]="Icon.CARET_DOWN" />
+            </button>
+          </div>
+        </div>
+        @if (isExpanded(connection.id)) {
+          <div class="ai-connections__body">
+            <app-ai-connection-editor [connection]="connection" />
+          </div>
+        }
+      </li>
     }
-  </p>
+  </ul>
 </div>
-
-<app-setting-row label="Model" description="The model the selected provider runs with.">
-  <app-dropdown
-    [options]="modelOptions()"
-    [value]="model()"
-    [disabled]="modelOptions().length === 0"
-    (valueChange)="onModelChange($event)"
-  />
-</app-setting-row>
 
 <app-setting-row
   label="Permission posture"
@@ -83,4 +98,11 @@
   description="Token budget per turn. 0 means no cap (the provider default)."
 >
   <app-setting-control key="ai.tokenCap" />
+</app-setting-row>
+
+<app-setting-row
+  label="Run timeout"
+  description="How long a single agent run may take before it is cancelled, in minutes."
+>
+  <app-setting-control key="ai.runTimeoutMinutes" />
 </app-setting-row>

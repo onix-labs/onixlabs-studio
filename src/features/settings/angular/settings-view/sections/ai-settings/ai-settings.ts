@@ -1,38 +1,43 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   inject,
   signal,
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type {
-  AiAuthStatus,
-  AiModelInfo,
-  AiProviderId,
-  AiProviderInfo,
-  AiVerifyResult,
-} from '@shared/api/ai-types';
-import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
-import { AiAuth } from '@shared/angular/services/ai-auth/ai-auth';
+import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
+import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { SettingControl } from '../../setting-control/setting-control';
-import { Icon } from '@shared/angular/icons/icon';
+import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
- * Represents the AI section of the settings view: provider and per-provider model selection, the
- * authentication state (with an API-key entry and an end-to-end verification check), the default
- * permission posture, and the per-request token cap. Provider/model selection is shared with the agent
- * through {@link AgentEngine} (both persist via {@link Settings}); auth is driven through
- * {@link AiAuth}, which keeps the key in the main process.
+ * The provider-kind options offered when adding a connection.
+ */
+const ADD_KIND_OPTIONS: readonly DropdownOption[] = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'xai', label: 'xAI (Grok)' },
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'ollama', label: 'Ollama (local)' },
+  { value: 'openai-compatible', label: 'OpenAI-compatible' },
+  { value: 'custom', label: 'Custom' },
+];
+
+/**
+ * Represents the AI section of the settings view: a manager for the user's provider connections (add,
+ * edit, reorder, and remove; each with its credential and model list) plus the default permission
+ * posture and per-request token cap. Connection state is owned by {@link AiConnections}, which persists
+ * the collection and keeps each key in the main process.
  */
 @Component({
   selector: 'app-ai-settings',
-  imports: [SettingRow, Dropdown, PasswordField, AppIcon, SettingControl],
+  imports: [Dropdown, SettingRow, SettingControl, AiConnectionEditor, AppIcon],
   templateUrl: './ai-settings.html',
   styleUrls: ['../section.scss', './ai-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,175 +49,114 @@ export class AiSettingsSection {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the engine service, the shared source of provider/model selection.
+   * Gets the kind options for the add-connection picker.
    */
-  private readonly engine: AgentEngine = inject(AgentEngine);
+  protected readonly addKindOptions: readonly DropdownOption[] = ADD_KIND_OPTIONS;
 
   /**
-   * Holds the agent authentication service.
+   * Holds the connection-management service.
    */
-  private readonly aiAuth: AiAuth = inject(AiAuth);
+  private readonly connectionsService: AiConnections = inject(AiConnections);
 
   /**
-   * Holds the API-key draft entered in the field but not yet saved.
+   * Holds the ids of the currently-expanded connections.
    */
-  private readonly apiKeyDraft: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds a value indicating whether a key operation (save/clear) is in flight.
-   */
-  private readonly keyBusy: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds a value indicating whether a verification check is in flight.
-   */
-  private readonly verifying: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds the latest verification result, or null when none has run.
-   */
-  private readonly verifyOutcome: WritableSignal<AiVerifyResult | null> =
-    signal<AiVerifyResult | null>(null);
-
-  /**
-   * Gets a value indicating whether the agent bridge is available (running inside Studio).
-   */
-  protected readonly isAvailable: boolean = this.aiAuth.isAvailable;
-
-  /**
-   * Gets the current authentication status.
-   */
-  protected readonly authStatus: Signal<AiAuthStatus> = this.aiAuth.status;
-
-  /**
-   * Gets the selected provider.
-   */
-  protected readonly provider: Signal<AiProviderId> = this.engine.provider;
-
-  /**
-   * Gets the selected model.
-   */
-  protected readonly model: Signal<string> = this.engine.model;
-
-  /**
-   * Gets the API-key draft.
-   */
-  protected readonly apiKey: Signal<string> = this.apiKeyDraft.asReadonly();
-
-  /**
-   * Gets a value indicating whether a key operation is in flight.
-   */
-  protected readonly keyPending: Signal<boolean> = this.keyBusy.asReadonly();
-
-  /**
-   * Gets a value indicating whether a verification check is in flight.
-   */
-  protected readonly isVerifying: Signal<boolean> = this.verifying.asReadonly();
-
-  /**
-   * Gets the latest verification result, or null when none has run.
-   */
-  protected readonly verifyResult: Signal<AiVerifyResult | null> = this.verifyOutcome.asReadonly();
-
-  /**
-   * Gets the provider options for the provider dropdown.
-   */
-  protected readonly providerOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.engine
-        .providers()
-        .map((info: AiProviderInfo): DropdownOption => ({ value: info.id, label: info.label })),
+  private readonly expandedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
   );
 
   /**
-   * Gets the model options for the model dropdown.
+   * Holds the kind selected in the add-connection picker.
    */
-  protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.engine
-        .models()
-        .map((info: AiModelInfo): DropdownOption => ({ value: info.id, label: info.label })),
-  );
+  private readonly addKind: WritableSignal<AiProviderKind> = signal<AiProviderKind>('openai');
 
   /**
-   * Initialises the section, refreshing the authentication status.
+   * Gets the configured connections.
+   */
+  protected readonly connections: Signal<readonly AiConnection[]> =
+    this.connectionsService.connections;
+
+  /**
+   * Gets a value indicating whether the agent bridge is available.
+   */
+  protected readonly isAvailable: boolean = this.connectionsService.isAvailable;
+
+  /**
+   * Gets the kind selected in the add-connection picker.
+   */
+  protected readonly selectedAddKind: Signal<AiProviderKind> = this.addKind.asReadonly();
+
+  /**
+   * Initialises the section, refreshing every connection's auth status.
    */
   public constructor() {
-    void this.aiAuth.refresh();
+    void this.connectionsService.refreshAllAuth();
   }
 
   /**
-   * Selects the provider.
-   * @param id The provider id.
+   * Reports whether a connection is expanded.
+   * @param id The connection id.
+   * @returns Returns true when the connection is expanded.
    */
-  protected onProviderChange(id: string): void {
-    this.engine.setProvider(id as AiProviderId);
+  protected isExpanded(id: string): boolean {
+    return this.expandedIds().has(id);
   }
 
   /**
-   * Selects the model for the active provider.
-   * @param id The model id.
+   * Toggles a connection's expanded state.
+   * @param id The connection id.
    */
-  protected onModelChange(id: string): void {
-    this.engine.setModel(id);
+  protected toggle(id: string): void {
+    this.expandedIds.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   /**
-   * Records the API-key draft.
-   * @param value The new draft value.
+   * Gets a connection's auth status.
+   * @param id The connection id.
+   * @returns Returns the status.
    */
-  protected onApiKeyInput(value: string): void {
-    this.apiKeyDraft.set(value);
+  protected status(id: string): AiAuthStatus {
+    return this.connectionsService.authStatus(id);
   }
 
   /**
-   * Stores the entered API key and clears the field. Blank drafts are ignored.
-   * @returns Returns a promise that resolves once the key has been stored.
+   * Records the kind selected in the add-connection picker.
+   * @param kind The selected kind.
    */
-  protected async saveApiKey(): Promise<void> {
-    const key: string = this.apiKeyDraft().trim();
-    if (key.length === 0 || this.keyBusy()) {
-      return;
-    }
-    this.keyBusy.set(true);
-    try {
-      await this.aiAuth.setApiKey(key);
-      this.apiKeyDraft.set('');
-    } finally {
-      this.keyBusy.set(false);
-    }
+  protected onAddKindChange(kind: string): void {
+    this.addKind.set(kind as AiProviderKind);
   }
 
   /**
-   * Clears any stored API key.
-   * @returns Returns a promise that resolves once the key has been cleared.
+   * Adds a connection of the selected kind and expands it.
    */
-  protected async clearApiKey(): Promise<void> {
-    if (this.keyBusy()) {
-      return;
-    }
-    this.keyBusy.set(true);
-    try {
-      await this.aiAuth.clearApiKey();
-    } finally {
-      this.keyBusy.set(false);
-    }
+  protected addConnection(): void {
+    const connection: AiConnection = this.connectionsService.add(this.addKind());
+    this.expandedIds.update(
+      (current: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>(current).add(connection.id),
+    );
   }
 
   /**
-   * Runs an end-to-end authentication check and records the outcome.
-   * @returns Returns a promise that resolves once the check completes.
+   * Moves a connection up one place.
+   * @param id The connection id.
    */
-  protected async verify(): Promise<void> {
-    if (this.verifying()) {
-      return;
-    }
-    this.verifying.set(true);
-    this.verifyOutcome.set(null);
-    try {
-      this.verifyOutcome.set(await this.aiAuth.verifyAuthentication());
-    } finally {
-      this.verifying.set(false);
-    }
+  protected moveUp(id: string): void {
+    this.connectionsService.move(id, -1);
+  }
+
+  /**
+   * Moves a connection down one place.
+   * @param id The connection id.
+   */
+  protected moveDown(id: string): void {
+    this.connectionsService.move(id, 1);
   }
 }
