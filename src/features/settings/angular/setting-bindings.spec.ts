@@ -23,14 +23,6 @@ describe('SettingBindings', () => {
     expect(binding.value()).toBe(250);
   });
 
-  it('resolve_whenSettingsOwnedNumber_clampsThroughTheStore', () => {
-    const binding: SettingBinding = bindings.resolve('application.undoStackSize', undefined);
-
-    binding.set(99999);
-
-    expect(binding.value()).toBe(1000);
-  });
-
   it('resolve_whenLspServerEnabledKey_reflectsTheDisabledState', () => {
     const binding: SettingBinding = bindings.resolve('lsp.server.typescript.enabled', 'lsp');
 

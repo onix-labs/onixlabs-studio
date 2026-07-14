@@ -55,11 +55,6 @@ export type ImageSizing = 'fixed' | 'sizable';
 export type ImageAlignment = 'left' | 'center' | 'right';
 
 /**
- * Identifies the document type created by default for new documents.
- */
-export type DefaultDocumentType = 'code' | 'markdown';
-
-/**
  * Identifies the page margin applied when printing or exporting a document: `narrow` is the tightest,
  * `regular` doubles it, and `wide` doubles it again.
  */
@@ -208,20 +203,9 @@ export interface TextEditorSettingsWithProfiles {
  */
 export interface ApplicationSettings {
   /**
-   * Gets the document type created by default for new documents.
-   */
-  readonly defaultDocumentType: DefaultDocumentType;
-
-  /**
-   * Gets the maximum number of undo steps kept in history. Clamped to 10-1000.
+   * Gets the maximum number of undo steps kept in history.
    */
   readonly undoStackSize: number;
-
-  /**
-   * Gets a value indicating whether the title strip shows the quick-action launcher buttons (open,
-   * new code/markdown/terminal/agent) in place of the single welcome button.
-   */
-  readonly showLauncherActions: boolean;
 
   /**
    * Gets the page margin applied when printing or exporting a document.
@@ -431,9 +415,7 @@ export class Settings {
    */
   public readonly application: Signal<ApplicationSettings> = computed(
     (): ApplicationSettings => ({
-      defaultDocumentType: this.read('application.defaultDocumentType'),
       undoStackSize: this.read('application.undoStackSize'),
-      showLauncherActions: this.read('application.showLauncherActions'),
       printMargin: this.read('application.printMargin'),
     }),
   );
@@ -464,24 +446,9 @@ export class Settings {
   );
 
   /**
-   * Gets the default document type for new documents.
-   */
-  public readonly defaultDocumentType: Signal<DefaultDocumentType> = this.value(
-    'application.defaultDocumentType',
-  );
-
-  /**
    * Gets the undo stack size.
    */
   public readonly undoStackSize: Signal<number> = this.value('application.undoStackSize');
-
-  /**
-   * Gets a value indicating whether the title strip shows the quick-action launcher buttons in place
-   * of the single welcome button.
-   */
-  public readonly showLauncherActions: Signal<boolean> = this.value(
-    'application.showLauncherActions',
-  );
 
   /**
    * Gets the text editor settings with profiles.
@@ -682,14 +649,6 @@ export class Settings {
   }
 
   /**
-   * Sets the default document type for new documents.
-   * @param type The default document type.
-   */
-  public setDefaultDocumentType(type: DefaultDocumentType): void {
-    this.set('application.defaultDocumentType', type);
-  }
-
-  /**
    * Updates the appearance settings.
    * @param updates The partial appearance settings to apply.
    */
@@ -714,20 +673,11 @@ export class Settings {
   }
 
   /**
-   * Sets the undo stack size. The value is rounded and clamped to the registry range (10-1000).
+   * Sets the undo stack size.
    * @param size The requested undo stack size.
    */
   public setUndoStackSize(size: number): void {
     this.set('application.undoStackSize', size);
-  }
-
-  /**
-   * Sets whether the title strip shows the quick-action launcher buttons in place of the single
-   * welcome button.
-   * @param value True to show the launcher buttons; false to show the welcome button.
-   */
-  public setShowLauncherActions(value: boolean): void {
-    this.set('application.showLauncherActions', value);
   }
 
   /**

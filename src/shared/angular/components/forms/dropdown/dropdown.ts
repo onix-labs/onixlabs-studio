@@ -27,6 +27,12 @@ export interface DropdownOption {
   readonly label: string;
 
   /**
+   * Gets an optional CSS colour shown as a small chip before the label (for colour pickers). Options
+   * without a colour render label-only, so this is backward-compatible with plain dropdowns.
+   */
+  readonly color?: string;
+
+  /**
    * Gets a value indicating whether the option is offered but cannot be selected.
    */
   readonly disabled?: boolean;
@@ -99,6 +105,15 @@ export class Dropdown {
     return (
       this.options().find((option: DropdownOption): boolean => option.value === value)?.label ?? ''
     );
+  });
+
+  /**
+   * Gets the selected option's colour chip, shown in the control's face for colour options, or
+   * undefined when the selected option carries no colour.
+   */
+  protected readonly selectedColor: Signal<string | undefined> = computed((): string | undefined => {
+    const value: string = this.value();
+    return this.options().find((option: DropdownOption): boolean => option.value === value)?.color;
   });
 
   /**

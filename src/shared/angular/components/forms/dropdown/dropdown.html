@@ -9,6 +9,9 @@
        whose text wraps freely. The label is rendered by the component (not <selectedcontent>,
        whose mirroring the runtime lacks) so the stylesheet can keep it to one ellipsized line. -->
   <button type="button" class="dropdown__face">
+    @if (selectedColor(); as color) {
+      <span class="dropdown__chip" [style.background]="color"></span>
+    }
     <span class="dropdown__label">{{ selectedLabel() }}</span>
   </button>
   @for (option of options(); track option.value) {
@@ -17,6 +20,9 @@
       [disabled]="option.disabled"
       [selected]="option.value === value()"
     >
+      @if (option.color; as color) {
+        <span class="dropdown__chip" [style.background]="color"></span>
+      }
       {{ option.label }}
     </option>
   }

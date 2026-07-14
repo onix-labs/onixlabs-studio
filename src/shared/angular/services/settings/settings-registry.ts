@@ -1,4 +1,3 @@
-import { Icon } from '@shared/angular/icons/icon';
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
 import type { AiConnection, AiPermissionPosture } from '@shared/api/ai-types';
@@ -8,7 +7,6 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
-  DefaultDocumentType,
   EditorProfile,
   FileExplorerExpandAll,
   ImageAlignment,
@@ -38,9 +36,7 @@ export interface SettingsValues {
   readonly 'appearance.ribbonAlignment': RibbonAlignment;
   readonly 'appearance.modernUiFeatures': ModernUiFeatures;
 
-  readonly 'application.defaultDocumentType': DefaultDocumentType;
   readonly 'application.undoStackSize': number;
-  readonly 'application.showLauncherActions': boolean;
   readonly 'application.printMargin': PrintMargin;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
@@ -106,7 +102,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
             (color: AccentColor): ColorSwatch => ({
               value: color,
               color: `var(--accent-${color})`,
-              label: color,
+              label: `${color.charAt(0).toUpperCase()}${color.slice(1)}`,
             }),
           ),
         },
@@ -117,11 +113,11 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Theme',
         description: 'Light, dark, or follow the operating system.',
         control: {
-          kind: 'buttonGroup',
+          kind: 'select',
           options: [
-            { value: 'light', label: 'Light', icon: Icon.THEME_LIGHT },
-            { value: 'dark', label: 'Dark', icon: Icon.THEME_DARK },
-            { value: 'system', label: 'System', icon: Icon.THEME_SYSTEM },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+            { value: 'system', label: 'System' },
           ],
         },
       },
@@ -130,11 +126,11 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Ribbon Alignment',
         description: "How the ribbon's controls are aligned within the ribbon strip.",
         control: {
-          kind: 'buttonGroup',
+          kind: 'select',
           options: [
-            { value: 'left', label: 'Left', icon: Icon.ALIGN_LEFT },
-            { value: 'center', label: 'Center', icon: Icon.ALIGN_CENTER },
-            { value: 'right', label: 'Right', icon: Icon.ALIGN_RIGHT },
+            { value: 'left', label: 'Left' },
+            { value: 'center', label: 'Center' },
+            { value: 'right', label: 'Right' },
           ],
         },
         default: 'left',
@@ -144,7 +140,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Modern UI Features',
         description: 'Squircle corners and richer visual effects.',
         control: {
-          kind: 'buttonGroup',
+          kind: 'select',
           options: [
             { value: 'auto', label: 'Auto' },
             { value: 'on', label: 'On' },
@@ -169,32 +165,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Application',
     settings: [
       {
-        key: 'application.defaultDocumentType',
-        title: 'Default document type',
-        description: 'The document type created when you open a new tab.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'code', label: 'Code' },
-            { value: 'markdown', label: 'Markdown' },
-          ],
-        },
-        default: 'code',
-      },
-      {
         key: 'application.undoStackSize',
         title: 'Undo history',
-        description: 'Number of undo steps kept (10-1000).',
-        control: { kind: 'number', min: 10, max: 1000, step: 1 },
+        description: 'Number of undo steps kept.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '25', label: '25' },
+            { value: '50', label: '50' },
+            { value: '75', label: '75' },
+            { value: '100', label: '100' },
+            { value: '150', label: '150' },
+            { value: '200', label: '200' },
+          ],
+        },
         default: 100,
-      },
-      {
-        key: 'application.showLauncherActions',
-        title: 'Title bar quick actions',
-        description:
-          'Replace the welcome button in the title bar with buttons for opening files and creating new code, markdown, terminal, and agent tabs.',
-        control: { kind: 'toggle' },
-        default: false,
       },
       {
         key: 'application.printMargin',
@@ -238,20 +224,79 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Text Editor',
     settings: [
       {
-        key: 'textEditor.global.showLineNumbers',
-        title: 'Line numbers',
-        description: 'Show line numbers in the gutter.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
+        key: 'textEditor.global.fontFamily',
+        title: 'Font family',
+        description: 'The editor font family.',
+        control: {
+          kind: 'select',
+          options: [{ value: 'JetBrains Mono', label: 'JetBrains Mono' }],
+        },
+        default: 'JetBrains Mono',
       },
       {
-        key: 'textEditor.global.showMinimap',
-        title: 'Minimap',
-        description: 'Show the minimap.',
-        control: { kind: 'toggle' },
+        key: 'textEditor.global.fontSize',
+        title: 'Font size',
+        description: 'The editor font size in pixels.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '12', label: '12' },
+            { value: '14', label: '14' },
+            { value: '16', label: '16' },
+            { value: '18', label: '18' },
+            { value: '20', label: '20' },
+            { value: '22', label: '22' },
+            { value: '24', label: '24' },
+            { value: '26', label: '26' },
+            { value: '28', label: '28' },
+            { value: '30', label: '30' },
+            { value: '32', label: '32' },
+          ],
+        },
+        default: 14,
+      },
+      {
+        key: 'textEditor.global.lineHeight',
+        title: 'Line height',
+        description: 'The line height as a multiple of the font size; Auto derives it automatically.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Auto' },
+            { value: '1', label: '1.0' },
+            { value: '1.1', label: '1.1' },
+            { value: '1.2', label: '1.2' },
+            { value: '1.3', label: '1.3' },
+            { value: '1.4', label: '1.4' },
+            { value: '1.5', label: '1.5' },
+            { value: '1.6', label: '1.6' },
+            { value: '1.7', label: '1.7' },
+            { value: '1.8', label: '1.8' },
+            { value: '1.9', label: '1.9' },
+            { value: '2', label: '2.0' },
+          ],
+        },
         profileOverridable: true,
-        default: true,
+        default: 0,
+      },
+      {
+        key: 'textEditor.global.tabSize',
+        title: 'Tab size',
+        description: 'The number of spaces a single indentation level occupies.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '2', label: '2' },
+            { value: '4', label: '4' },
+            { value: '6', label: '6' },
+            { value: '8', label: '8' },
+          ],
+        },
+        profileOverridable: true,
+        default: 2,
       },
       {
         key: 'textEditor.global.currentLineHighlight',
@@ -267,28 +312,19 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'outline',
       },
       {
-        key: 'textEditor.global.colorBrackets',
-        title: 'Coloured brackets',
-        description: 'Colour matching bracket pairs by their nesting depth.',
-        control: { kind: 'toggle' },
+        key: 'textEditor.global.braceStyle',
+        title: 'Brace style',
+        description: 'The brace placement style the editor formats to.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'kr', label: 'K&R (same line)' },
+            { value: 'allman', label: 'Allman (own line)' },
+            { value: 'gnu', label: 'GNU (own line, indented)' },
+          ],
+        },
         profileOverridable: true,
-        default: true,
-      },
-      {
-        key: 'textEditor.global.wordWrap',
-        title: 'Word wrap',
-        description: 'Wrap long lines.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: false,
-      },
-      {
-        key: 'textEditor.global.stickyScroll',
-        title: 'Sticky scroll',
-        description: 'Pin scope context to the top while scrolling.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
+        default: 'kr',
       },
       {
         key: 'textEditor.global.cursorBlinking',
@@ -321,57 +357,52 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'off',
       },
       {
+        key: 'textEditor.global.showLineNumbers',
+        title: 'Line numbers',
+        description: 'Show line numbers in the gutter.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.showMinimap',
+        title: 'Minimap',
+        description: 'Show the minimap.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.colorBrackets',
+        title: 'Coloured brackets',
+        description: 'Colour matching bracket pairs by their nesting depth.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.wordWrap',
+        title: 'Word wrap',
+        description: 'Wrap long lines.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.stickyScroll',
+        title: 'Sticky scroll',
+        description: 'Pin scope context to the top while scrolling.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
         key: 'textEditor.global.insertSpaces',
         title: 'Insert spaces',
         description: 'Insert spaces instead of tabs when indenting.',
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,
-      },
-      {
-        key: 'textEditor.global.tabSize',
-        title: 'Tab size',
-        description: 'The number of spaces a single indentation level occupies.',
-        control: { kind: 'number', min: 1, max: 8, step: 1, unit: 'spaces' },
-        profileOverridable: true,
-        default: 2,
-      },
-      {
-        key: 'textEditor.global.fontFamily',
-        title: 'Font family',
-        description: 'The editor font family.',
-        control: { kind: 'text', placeholder: 'JetBrains Mono' },
-        default: 'JetBrains Mono',
-      },
-      {
-        key: 'textEditor.global.fontSize',
-        title: 'Font size',
-        description: 'The editor font size in pixels.',
-        control: { kind: 'number', min: 6, max: 72, step: 1, unit: 'px' },
-        default: 14,
-      },
-      {
-        key: 'textEditor.global.lineHeight',
-        title: 'Line height',
-        description: 'The line height as a multiple of the font size; 0 derives it automatically.',
-        control: { kind: 'number', min: 0, max: 4, step: 0.1 },
-        profileOverridable: true,
-        default: 0,
-      },
-      {
-        key: 'textEditor.global.braceStyle',
-        title: 'Brace style',
-        description: 'The brace placement style the editor formats to.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'kr', label: 'K&R (same line)' },
-            { value: 'allman', label: 'Allman (own line)' },
-            { value: 'gnu', label: 'GNU (own line, indented)' },
-          ],
-        },
-        profileOverridable: true,
-        default: 'kr',
       },
       {
         key: 'textEditor.profiles',
@@ -390,28 +421,50 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'markdownEditor.fontFamily',
         title: 'Body font',
         description: 'Font family used for body text.',
-        control: { kind: 'text', placeholder: 'System Default' },
+        control: {
+          kind: 'select',
+          options: [{ value: 'System Default', label: 'System Default' }],
+        },
         default: 'System Default',
       },
       {
         key: 'markdownEditor.monospaceFontFamily',
         title: 'Monospace font',
         description: 'Font family used for code blocks.',
-        control: { kind: 'text', placeholder: 'JetBrains Mono' },
+        control: {
+          kind: 'select',
+          options: [{ value: 'JetBrains Mono', label: 'JetBrains Mono' }],
+        },
         default: 'JetBrains Mono',
       },
       {
         key: 'markdownEditor.fontSize',
         title: 'Font size',
         description: 'Base font size in pixels.',
-        control: { kind: 'number', min: 8, max: 48, step: 1, unit: 'px' },
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '12', label: '12' },
+            { value: '14', label: '14' },
+            { value: '16', label: '16' },
+            { value: '18', label: '18' },
+            { value: '20', label: '20' },
+            { value: '22', label: '22' },
+            { value: '24', label: '24' },
+            { value: '26', label: '26' },
+            { value: '28', label: '28' },
+            { value: '30', label: '30' },
+            { value: '32', label: '32' },
+          ],
+        },
         default: 16,
       },
       {
         key: 'markdownEditor.marginSize',
         title: 'Container width',
         description:
-          'Maximum content width. Steps down to the next breakpoint when the editor is too narrow, and goes fluid below 1024px.',
+          'Maximum content width. Content is centred and capped at this width, and becomes fluid when the editor is narrower.',
         control: {
           kind: 'select',
           options: [
@@ -523,16 +576,40 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'ai.tokenCap',
         title: 'Token cap',
-        description: 'The per-request token budget (0 for the provider default).',
-        control: { kind: 'number', min: 0, max: 1_000_000, step: 1000, unit: 'tokens' },
+        description: 'The per-request token budget.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Default (no cap)' },
+            { value: '4000', label: '4,000' },
+            { value: '8000', label: '8,000' },
+            { value: '16000', label: '16,000' },
+            { value: '32000', label: '32,000' },
+            { value: '64000', label: '64,000' },
+            { value: '128000', label: '128,000' },
+          ],
+        },
         default: 0,
       },
       {
         key: 'ai.runTimeoutMinutes',
         title: 'Run time limit',
         description:
-          'Aborts a run after this many minutes (0 for no limit). The clock pauses while the agent waits for your input.',
-        control: { kind: 'number', min: 0, max: 120, step: 1, unit: 'minutes' },
+          'Aborts a run after this long. The clock pauses while the agent waits for your input.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'No limit' },
+            { value: '1', label: '1 minute' },
+            { value: '2', label: '2 minutes' },
+            { value: '5', label: '5 minutes' },
+            { value: '10', label: '10 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '60 minutes' },
+          ],
+        },
         default: 10,
       },
     ],

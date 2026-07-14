@@ -27,7 +27,7 @@
   @case ('select') {
     <app-dropdown
       [options]="options()"
-      [value]="$any(current())"
+      [value]="currentString()"
       [disabled]="disabled()"
       (valueChange)="onChange($event)"
     />
@@ -40,9 +40,10 @@
     />
   }
   @case ('color') {
-    <app-color-swatches
-      [options]="swatches()"
-      [value]="$any(current())"
+    <app-dropdown
+      [options]="colorOptions()"
+      [value]="currentString()"
+      [disabled]="disabled()"
       (valueChange)="onChange($event)"
     />
   }

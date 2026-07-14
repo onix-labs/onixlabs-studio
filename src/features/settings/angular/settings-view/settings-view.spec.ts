@@ -24,40 +24,50 @@ describe('SettingsView', () => {
     expect(component).toBeTruthy();
   });
 
-  it('selectMode_whenAModeOptionClicked_setsThatModeOnTheTheme', () => {
-    const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const darkOption: HTMLButtonElement | null =
-      Array.from(element.querySelectorAll<HTMLButtonElement>('.segmented__option')).find(
-        (button: HTMLButtonElement): boolean => button.textContent?.includes('Dark') ?? false,
-      ) ?? null;
+  /**
+   * Finds the dropdown whose options include the given value, so a specific appearance control (theme
+   * or accent) can be targeted without depending on row order.
+   * @param element The rendered settings view.
+   * @param value The option value the target dropdown offers.
+   * @returns Returns the matching select, or null.
+   */
+  function dropdownWithOption(element: HTMLElement, value: string): HTMLSelectElement | null {
+    return (
+      Array.from(element.querySelectorAll<HTMLSelectElement>('select')).find(
+        (select: HTMLSelectElement): boolean =>
+          Array.from(select.options).some((option: HTMLOptionElement): boolean => option.value === value),
+      ) ?? null
+    );
+  }
 
-    darkOption?.click();
+  it('selectMode_whenAModeOptionPicked_setsThatModeOnTheTheme', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const select: HTMLSelectElement | null = dropdownWithOption(element, 'dark');
+
+    select!.value = 'dark';
+    select!.dispatchEvent(new Event('change'));
 
     expect(theme.mode()).toBe('dark');
   });
 
-  it('selectAccent_whenASwatchClicked_setsThatAccentOnTheTheme', () => {
+  it('selectAccent_whenAnAccentPicked_setsThatAccentOnTheTheme', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const greenSwatch: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
-      '.swatch[aria-label="green"]',
-    );
+    const select: HTMLSelectElement | null = dropdownWithOption(element, 'green');
 
-    greenSwatch?.click();
+    select!.value = 'green';
+    select!.dispatchEvent(new Event('change'));
 
     expect(theme.accent()).toBe('green');
   });
 
-  it('render_whenAccentIsSelected_marksTheActiveSwatch', async () => {
+  it('render_whenAccentIsSelected_reflectsItInTheAccentDropdown', async () => {
     theme.setAccent('pink');
     fixture.detectChanges();
     await fixture.whenStable();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const pinkSwatch: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>(
-      '.swatch[aria-label="pink"]',
-    );
+    const select: HTMLSelectElement | null = dropdownWithOption(element, 'pink');
 
-    expect(pinkSwatch?.classList.contains('swatch--selected')).toBe(true);
-    expect(pinkSwatch?.getAttribute('aria-checked')).toBe('true');
+    expect(select?.value).toBe('pink');
   });
 });

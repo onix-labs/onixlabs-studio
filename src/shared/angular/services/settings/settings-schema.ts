@@ -61,7 +61,16 @@ export type ControlDef =
       readonly step?: number;
       readonly unit?: string;
     }
-  | { readonly kind: 'select'; readonly options: readonly ChoiceOption[] }
+  | {
+      readonly kind: 'select';
+      readonly options: readonly ChoiceOption[];
+      /**
+       * Gets how the option value (always a string in the UI) is stored. `number` coerces the picked
+       * value with `Number()` before writing, so a numeric setting keeps its numeric type; the default
+       * `string` writes the value unchanged.
+       */
+      readonly valueType?: 'string' | 'number';
+    }
   | { readonly kind: 'buttonGroup'; readonly options: readonly ChoiceOption[] }
   | { readonly kind: 'color'; readonly swatches: readonly ColorSwatch[] }
   | { readonly kind: 'custom'; readonly component: string };

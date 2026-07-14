@@ -39,34 +39,24 @@
   // block, so it reads as editable. Interactive elements inside the document override this.
   cursor: text;
 
-  // Bootstrap-like container with breakpoints. The selected level (narrow/medium/wide) is the
-  // ceiling; the content steps up to the next breakpoint as the editor's available width grows (see
-  // the @container rules below), and is fully fluid below the narrow breakpoint.
-  &.narrow,
-  &.medium,
-  &.wide {
+  // Each level is a single fixed ceiling. `margin: 0 auto` (above) centres the content in the
+  // available space and caps it at this width; when the editor is narrower than the ceiling the
+  // content stays fluid and fills the pane, with no stepping between breakpoints.
+  &.narrow {
     max-inline-size: 1024px;
+  }
+
+  &.medium {
+    max-inline-size: 1440px;
+  }
+
+  &.wide {
+    max-inline-size: 1600px;
   }
 
   &.full-width {
     max-inline-size: 100%;
     padding-inline: 2rem;
-  }
-}
-
-// Step the container up at each breakpoint, gated by the selected level so it never exceeds the
-// user's chosen ceiling. Queried against the :host container context — the editor's available width,
-// not the window — so it falls back correctly when side panels narrow the editor.
-@container (min-inline-size: 1440px) {
-  .editor-wrapper.medium,
-  .editor-wrapper.wide {
-    max-inline-size: 1440px;
-  }
-}
-
-@container (min-inline-size: 1600px) {
-  .editor-wrapper.wide {
-    max-inline-size: 1600px;
   }
 }
 

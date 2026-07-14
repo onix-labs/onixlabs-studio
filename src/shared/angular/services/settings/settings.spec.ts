@@ -30,36 +30,20 @@ describe('Settings', () => {
     expect(TestBed.inject(Settings)).toBeTruthy();
   });
 
-  it('setDefaultDocumentType_whenCalled_updatesTheSignal', () => {
+  it('set_whenCalled_updatesTheSignal', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setDefaultDocumentType('markdown');
+    service.set('application.printMargin', 'wide');
 
-    expect(service.defaultDocumentType()).toBe('markdown');
+    expect(service.get('application.printMargin')).toBe('wide');
   });
 
-  it('setUndoStackSize_whenAboveMaximum_clampsToMaximum', () => {
+  it('setUndoStackSize_whenCalled_updatesTheSignal', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setUndoStackSize(5000);
+    service.setUndoStackSize(200);
 
-    expect(service.undoStackSize()).toBe(1000);
-  });
-
-  it('setUndoStackSize_whenBelowMinimum_clampsToMinimum', () => {
-    const service: Settings = TestBed.inject(Settings);
-
-    service.setUndoStackSize(1);
-
-    expect(service.undoStackSize()).toBe(10);
-  });
-
-  it('setUndoStackSize_whenFractional_roundsToInteger', () => {
-    const service: Settings = TestBed.inject(Settings);
-
-    service.setUndoStackSize(42.7);
-
-    expect(service.undoStackSize()).toBe(43);
+    expect(service.undoStackSize()).toBe(200);
   });
 
   it('updateTextEditorSettings_whenCalled_updatesGlobalSettings', () => {
@@ -120,7 +104,7 @@ describe('Settings', () => {
   it('settings_whenChanged_persistsChangedKeyToTheStore', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setDefaultDocumentType('markdown');
+    service.setUndoStackSize(200);
     TestBed.inject(ApplicationRef).tick();
 
     // Persistence is a sparse, flat map keyed by the registry setting keys: only changed keys are
@@ -128,7 +112,7 @@ describe('Settings', () => {
     const stored: Record<string, unknown> = JSON.parse(
       localStorage.getItem('settings') ?? '{}',
     ) as Record<string, unknown>;
-    expect(stored['application.defaultDocumentType']).toBe('markdown');
+    expect(stored['application.undoStackSize']).toBe(200);
   });
 
   it('settings_whenPersistedValuesExist_areRestoredOnCreation', () => {
@@ -165,20 +149,12 @@ describe('Settings', () => {
     expect(service.connectionModelFor('vercel')).toBe('claude-opus-4-8');
   });
 
-  it('setAiTokenCap_whenNegative_clampsToZero', () => {
+  it('setAiTokenCap_whenCalled_updatesTheSignal', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setAiTokenCap(-500);
+    service.setAiTokenCap(32000);
 
-    expect(service.aiTokenCap()).toBe(0);
-  });
-
-  it('setAiTokenCap_whenFractional_roundsToInteger', () => {
-    const service: Settings = TestBed.inject(Settings);
-
-    service.setAiTokenCap(4096.6);
-
-    expect(service.aiTokenCap()).toBe(4097);
+    expect(service.aiTokenCap()).toBe(32000);
   });
 
   it('setAiPermissionPosture_whenCalled_updatesTheSignal', () => {

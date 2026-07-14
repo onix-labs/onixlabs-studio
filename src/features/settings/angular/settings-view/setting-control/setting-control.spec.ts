@@ -29,45 +29,32 @@ describe('SettingControl', () => {
   }
 
   it('should create', async () => {
-    await render('application.showLauncherActions');
+    await render('textEditor.global.showLineNumbers');
     expect(fixture.componentInstance).toBeTruthy();
   });
 
   it('render_whenToggleControl_rendersAToggle', async () => {
-    const element: HTMLElement = await render('application.showLauncherActions');
+    const element: HTMLElement = await render('textEditor.global.showLineNumbers');
     expect(element.querySelector('app-toggle')).toBeTruthy();
   });
 
   it('render_whenSelectControl_rendersADropdownWithAnOptionPerChoice', async () => {
-    const element: HTMLElement = await render('application.defaultDocumentType');
+    const element: HTMLElement = await render('application.printMargin');
     expect(element.querySelector('app-dropdown')).toBeTruthy();
-    expect(element.querySelectorAll('option').length).toBe(2);
+    expect(element.querySelectorAll('option').length).toBe(3);
   });
 
-  it('render_whenButtonGroupControl_rendersAButtonGroupWithAnOptionPerChoice', async () => {
-    const element: HTMLElement = await render('appearance.ribbonAlignment');
-    expect(element.querySelector('app-button-group')).toBeTruthy();
-    expect(element.querySelectorAll('.segmented__option').length).toBe(3);
-  });
-
-  it('render_whenColorControl_rendersColorSwatches', async () => {
+  it('render_whenColorControl_rendersADropdownWithAColourChipPerSwatch', async () => {
     const element: HTMLElement = await render('appearance.accent');
-    expect(element.querySelector('app-color-swatches')).toBeTruthy();
-    expect(element.querySelectorAll('.swatch').length).toBe(ACCENT_COLORS.length);
-  });
-
-  it('render_whenNumberControl_rendersANumberFieldWithTheRegistryRange', async () => {
-    const element: HTMLElement = await render('application.undoStackSize');
-    const input: HTMLInputElement =
-      element.querySelector<HTMLInputElement>('input[type="number"]')!;
-    expect(input.min).toBe('10');
-    expect(input.max).toBe('1000');
+    expect(element.querySelector('app-dropdown')).toBeTruthy();
+    expect(element.querySelectorAll('option').length).toBe(ACCENT_COLORS.length);
+    expect(element.querySelectorAll('.dropdown__chip').length).toBeGreaterThan(0);
   });
 
   it('render_whenTextControl_rendersATextFieldWithTheRegistryPlaceholder', async () => {
-    const element: HTMLElement = await render('markdownEditor.fontFamily');
+    const element: HTMLElement = await render('lsp.path.typescriptServer');
     const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="text"]')!;
-    expect(input.placeholder).toBe('System Default');
+    expect(input.placeholder).toBe('Bundled');
   });
 
   it('render_whenCustomControl_rendersNoGenericControl', async () => {
@@ -91,53 +78,43 @@ describe('SettingControl', () => {
   });
 
   it('render_whenValueSet_reflectsTheCurrentValue', async () => {
-    settings.setShowLauncherActions(true);
-    const element: HTMLElement = await render('application.showLauncherActions');
+    settings.set('textEditor.global.showLineNumbers', false);
+    const element: HTMLElement = await render('textEditor.global.showLineNumbers');
 
     const checkbox: HTMLInputElement =
       element.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(checkbox.checked).toBe(true);
+    expect(checkbox.checked).toBe(false);
   });
 
   it('onChange_whenToggled_writesTheValueThroughTheService', async () => {
-    const element: HTMLElement = await render('application.showLauncherActions');
+    settings.set('textEditor.global.showLineNumbers', true);
+    const element: HTMLElement = await render('textEditor.global.showLineNumbers');
 
     const checkbox: HTMLInputElement =
       element.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    checkbox.checked = true;
+    checkbox.checked = false;
     checkbox.dispatchEvent(new Event('change'));
 
-    expect(settings.get('application.showLauncherActions')).toBe(true);
-  });
-
-  it('onChange_whenButtonGroupOptionPicked_writesTheValueThroughTheService', async () => {
-    const element: HTMLElement = await render('appearance.ribbonAlignment');
-
-    const buttons: NodeListOf<HTMLButtonElement> =
-      element.querySelectorAll<HTMLButtonElement>('.segmented__option');
-    buttons[2].click();
-
-    expect(settings.get('appearance.ribbonAlignment')).toBe('right');
+    expect(settings.get('textEditor.global.showLineNumbers')).toBe(false);
   });
 
   it('onChange_whenSelectionPicked_writesTheValueThroughTheService', async () => {
-    const element: HTMLElement = await render('application.defaultDocumentType');
+    const element: HTMLElement = await render('application.printMargin');
 
     const select: HTMLSelectElement = element.querySelector<HTMLSelectElement>('select')!;
-    select.value = 'markdown';
+    select.value = 'wide';
     select.dispatchEvent(new Event('change'));
 
-    expect(settings.get('application.defaultDocumentType')).toBe('markdown');
+    expect(settings.get('application.printMargin')).toBe('wide');
   });
 
-  it('onChange_whenNumberOutOfRange_clampsViaTheRegistry', async () => {
+  it('onChange_whenNumericSelectionPicked_writesANumberThroughTheService', async () => {
     const element: HTMLElement = await render('application.undoStackSize');
 
-    const input: HTMLInputElement =
-      element.querySelector<HTMLInputElement>('input[type="number"]')!;
-    input.value = '5000';
-    input.dispatchEvent(new Event('change'));
+    const select: HTMLSelectElement = element.querySelector<HTMLSelectElement>('select')!;
+    select.value = '200';
+    select.dispatchEvent(new Event('change'));
 
-    expect(settings.get('application.undoStackSize')).toBe(1000);
+    expect(settings.get('application.undoStackSize')).toBe(200);
   });
 });

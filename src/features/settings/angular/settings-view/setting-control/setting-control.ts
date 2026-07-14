@@ -8,12 +8,12 @@ import {
   Signal,
 } from '@angular/core';
 import { ButtonGroup } from '@shared/angular/components/forms/button-group/button-group';
-import { ColorSwatches } from '@shared/angular/components/forms/color-swatches/color-swatches';
-import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
+import { SettingOptions } from '@features/settings/angular/setting-options';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import {
   ChoiceOption,
@@ -32,7 +32,7 @@ import {
  */
 @Component({
   selector: 'app-setting-control',
-  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup, ColorSwatches],
+  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup],
   templateUrl: './setting-control.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -41,6 +41,11 @@ export class SettingControl {
    * Holds the binding resolver the control reads and writes through.
    */
   private readonly bindings: SettingBindings = inject(SettingBindings);
+
+  /**
+   * Holds the resolver for settings whose options are computed at runtime (the font pickers).
+   */
+  private readonly settingOptions: SettingOptions = inject(SettingOptions);
 
   /**
    * Gets the key of the setting rendered by this control.
@@ -81,6 +86,18 @@ export class SettingControl {
   protected readonly current: Signal<unknown> = computed((): unknown => this.binding().value());
 
   /**
+   * Gets the current value coerced to a string for controls that exchange strings (the dropdown). A
+   * numeric setting is stringified so its option matches, and written back through {@link onChange}.
+   */
+  protected readonly currentString: Signal<string> = computed((): string => {
+    const value: unknown = this.current();
+    if (typeof value === 'string') {
+      return value;
+    }
+    return typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+  });
+
+  /**
    * Gets whether the control is disabled (for example when the owning bridge is unavailable).
    */
   protected readonly disabled: Signal<boolean> = computed(
@@ -93,7 +110,10 @@ export class SettingControl {
   protected readonly options: Signal<readonly ChoiceOption[]> = computed(
     (): readonly ChoiceOption[] => {
       const control: ControlDef | undefined = this.control();
-      return control?.kind === 'select' || control?.kind === 'buttonGroup' ? control.options : [];
+      if (control?.kind !== 'select' && control?.kind !== 'buttonGroup') {
+        return [];
+      }
+      return this.settingOptions.resolve(this.key()) ?? control.options;
     },
   );
 
@@ -105,6 +125,21 @@ export class SettingControl {
       const control: ControlDef | undefined = this.control();
       return control?.kind === 'color' ? control.swatches : [];
     },
+  );
+
+  /**
+   * Gets the colour swatches projected onto dropdown options, so a colour setting renders through the
+   * shared dropdown with a colour chip beside each label.
+   */
+  protected readonly colorOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.swatches().map(
+        (swatch: ColorSwatch): DropdownOption => ({
+          value: swatch.value,
+          label: swatch.label,
+          color: swatch.color,
+        }),
+      ),
   );
 
   /**
@@ -140,10 +175,16 @@ export class SettingControl {
   });
 
   /**
-   * Writes a new value for the current setting through its binding.
+   * Writes a new value for the current setting through its binding, coercing a numeric dropdown's
+   * string pick back to a number so the stored value keeps its type.
    * @param value The value picked or entered in the control.
    */
   protected onChange(value: unknown): void {
+    const control: ControlDef | undefined = this.control();
+    if (control?.kind === 'select' && control.valueType === 'number' && typeof value === 'string') {
+      this.binding().set(Number(value));
+      return;
+    }
     this.binding().set(value);
   }
 }
