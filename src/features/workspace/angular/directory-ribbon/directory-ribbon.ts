@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal, WritableSignal } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
-import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
+import { Builds } from '@shared/angular/services/tasks/builds';
+import { StudioConfig } from '@shared/angular/services/studio/studio-config';
+import { RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -16,8 +19,11 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
 /**
  * Represents the contextual ribbon shown when a directory tab is active. The Edit group routes edit
  * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
- * the {@link Builds} seam to the active workspace's build runner (the Task picker chooses what Start
- * runs). The Target and Source-Control groups remain static scaffolding.
+ * the {@link Builds} seam to the active workspace's build runner. The Run group is the Tier-1 universal
+ * widget: a Start button that toggles to Stop while a run is in flight, a run-configuration dropdown
+ * (sourced from the workspace's `.studio` configurations, falling back to discovered tasks), an inert
+ * Debug pending the DAP epic, and an inert Configure pending its editor. The Target and Source-Control
+ * groups remain static scaffolding.
  */
 @Component({
   selector: 'app-directory-ribbon',
@@ -25,10 +31,11 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripOverflow,
     RibbonStripGroup,
     RibbonStripColumn,
-    RibbonStripRow,
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripField,
+    RibbonStripRow,
+    Dropdown,
   ],
   templateUrl: './directory-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -56,6 +63,16 @@ export class DirectoryRibbon {
   private readonly builds: Builds = inject(Builds);
 
   /**
+   * Holds the active workspace's `.studio` configuration, the source of the run dropdown's items.
+   */
+  private readonly studio: StudioConfig = inject(StudioConfig);
+
+  /**
+   * Holds the run item the user has explicitly picked in the dropdown, or null to use the default.
+   */
+  private readonly picked: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Holds the source-control seam the Source Control group dispatches through to the active workspace.
    */
   private readonly sourceControl: WorkspaceSourceControlCommands = inject(
@@ -74,25 +91,59 @@ export class DirectoryRibbon {
   protected readonly canBuild: Signal<boolean> = this.builds.canBuild;
 
   /**
-   * Gets whether the active workspace has a task the Start action can run.
-   */
-  protected readonly canStart: Signal<boolean> = this.builds.canStart;
-
-  /**
-   * Gets the label of the task the Start action runs.
-   */
-  protected readonly startLabel: Signal<string> = this.builds.startLabel;
-
-  /**
    * Gets whether the active workspace is running a task.
    */
   protected readonly running: Signal<boolean> = this.builds.running;
 
   /**
-   * Gets the labels of the discovered tasks offered by the picker.
+   * Gets the run configurations offered by the dropdown, sourced from the workspace's `.studio`
+   * configurations when it has any, otherwise from the discovered build tasks as a fallback.
    */
-  protected readonly taskLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.builds.tasks().map((task: BuildTask): string => task.label),
+  protected readonly runOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const configurations: readonly RunConfiguration[] = this.studio.runConfigurations();
+      if (configurations.length > 0) {
+        return configurations.map(
+          (configuration: RunConfiguration): DropdownOption => ({
+            value: configuration.id,
+            label: configuration.name,
+          }),
+        );
+      }
+      return this.builds
+        .tasks()
+        .map((task): DropdownOption => ({ value: task.id, label: task.label }));
+    },
+  );
+
+  /**
+   * Gets the id of the effective selected run item: the user's pick when it is still offered, otherwise
+   * the default (the `.studio` selection, or the default build task), or null when there is nothing to
+   * run.
+   */
+  protected readonly selectedRunId: Signal<string | null> = computed((): string | null => {
+    const options: readonly DropdownOption[] = this.runOptions();
+    if (options.length === 0) {
+      return null;
+    }
+    const picked: DropdownOption | undefined = options.find(
+      (option: DropdownOption): boolean => option.value === this.picked(),
+    );
+    if (picked !== undefined) {
+      return picked.value;
+    }
+    const fallback: string | undefined =
+      this.studio.runConfigurations().length > 0
+        ? this.studio.selectedRunConfiguration()?.id
+        : this.builds.startTask()?.id;
+    return fallback ?? options[0].value;
+  });
+
+  /**
+   * Gets whether there is a run item the Start action can launch.
+   */
+  protected readonly canRun: Signal<boolean> = computed(
+    (): boolean => this.selectedRunId() !== null,
   );
 
   /**
@@ -145,23 +196,34 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Selects the task the Start action runs.
-   * @param label The label of the chosen task.
+   * Runs the selected run item on the active workspace: a `.studio` run configuration through the
+   * configuration path, or a discovered task through the task path.
    */
-  protected onSelectTask(label: string): void {
-    const task: BuildTask | undefined = this.builds
-      .tasks()
-      .find((candidate: BuildTask): boolean => candidate.label === label);
-    if (task !== undefined) {
-      this.builds.select(task.id);
+  protected onRun(): void {
+    const id: string | null = this.selectedRunId();
+    if (id === null) {
+      return;
+    }
+    const configuration: RunConfiguration | undefined = this.studio
+      .runConfigurations()
+      .find((candidate: RunConfiguration): boolean => candidate.id === id);
+    if (configuration !== undefined) {
+      this.builds.runConfiguration(configuration);
+    } else {
+      this.builds.runTask(id);
     }
   }
 
   /**
-   * Runs the selected (or default) task on the active workspace.
+   * Picks the chosen run item from the dropdown, persisting the choice when it is a `.studio`
+   * configuration.
+   * @param id The id of the chosen run item.
    */
-  protected onStart(): void {
-    this.builds.start();
+  protected onSelectRunItem(id: string): void {
+    this.picked.set(id);
+    if (this.studio.runConfigurations().some((c: RunConfiguration): boolean => c.id === id)) {
+      void this.studio.setSelectedRunConfiguration(id);
+    }
   }
 
   /**

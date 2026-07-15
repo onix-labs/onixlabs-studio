@@ -1,4 +1,5 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { RunConfiguration } from '@shared/api/studio';
 
 /**
  * Categorises a build task so the ribbon can offer a Build / Run / Test action for the active
@@ -56,6 +57,12 @@ export interface BuildHandler {
    * @param taskId The task to run.
    */
   run(taskId: string): void;
+
+  /**
+   * Runs a `.studio` run configuration, compiling it to a command and executing it like a task.
+   * @param configuration The run configuration to run.
+   */
+  runConfiguration(configuration: RunConfiguration): void;
 
   /**
    * Cancels the running task, if any.
@@ -168,6 +175,14 @@ export class Builds {
    */
   public runTask(taskId: string): void {
     this.handler()?.run(taskId);
+  }
+
+  /**
+   * Runs a `.studio` run configuration on the active workspace.
+   * @param configuration The run configuration to run.
+   */
+  public runConfiguration(configuration: RunConfiguration): void {
+    this.handler()?.runConfiguration(configuration);
   }
 
   /**

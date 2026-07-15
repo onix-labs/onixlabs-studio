@@ -24,26 +24,28 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Run">
+    @if (running()) {
+      <app-ribbon-strip-button [icon]="Icon.STOP" label="Stop" (action)="onStop()" />
+    } @else {
+      <app-ribbon-strip-button
+        [icon]="Icon.PLAY"
+        label="Start"
+        [disabled]="!canRun()"
+        (action)="onRun()"
+      />
+    }
     <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-field
-        label="Task"
-        [options]="taskLabels()"
-        [value]="startLabel()"
-        [disabled]="taskLabels().length === 0"
-        (changed)="onSelectTask($event)"
+      <app-dropdown
+        [options]="runOptions()"
+        [value]="selectedRunId() ?? ''"
+        [disabled]="running() || !canRun()"
+        [fullWidth]="true"
+        ariaLabel="Run configuration"
+        (valueChange)="onSelectRunItem($event)"
       />
       <app-ribbon-strip-row>
-        <app-ribbon-strip-button-small
-          [icon]="Icon.PLAY"
-          label="Start"
-          [disabled]="!canStart() || running()"
-          (action)="onStart()"
-        />
-        <app-ribbon-strip-button-small
-          [icon]="Icon.DEBUG"
-          label="Debug"
-          [disabled]="!canStart() || running()"
-        />
+        <app-ribbon-strip-button-small [icon]="Icon.DEBUG" label="Debug" [disabled]="true" />
+        <app-ribbon-strip-button-small [icon]="Icon.SETTINGS" label="Configure" [disabled]="true" />
       </app-ribbon-strip-row>
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

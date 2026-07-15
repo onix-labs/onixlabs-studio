@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { TaskChannel, TaskRunRequest } from '@shared/api/task-channels';
+import { RunConfiguration } from '@shared/api/studio';
 import {
   Diagnostic,
   Diagnostics,
@@ -200,5 +201,57 @@ describe('BuildRunner', () => {
 
     runner.run('dotnet:build');
     expect(diagnostics.published).toHaveLength(0);
+  });
+
+  it('runConfiguration_dotnetProject_runsDotnetRunAgainstTheProject', async () => {
+    const runner: BuildRunner = await discover();
+    const configuration: RunConfiguration = {
+      id: '/w/App.csproj',
+      name: 'App',
+      providerKind: 'dotnet',
+      mode: 'run',
+    };
+
+    runner.runConfiguration(configuration);
+
+    expect(api.runCalls[0].command).toBe('dotnet run --project /w/App.csproj');
+    expect(api.runCalls[0].cwd).toBe('/w');
+  });
+
+  it('runConfiguration_nodeScript_runsNpmRun', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('npm run build');
+  });
+
+  it('runConfiguration_explicitProgram_runsTheProgramWithItsArguments', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({
+      id: 'x',
+      name: 'X',
+      providerKind: 'dotnet',
+      program: './run.sh',
+      args: ['--fast', '-v'],
+      mode: 'run',
+    });
+
+    expect(api.runCalls[0].command).toBe('./run.sh --fast -v');
+  });
+
+  it('runConfiguration_usesTheConfigurationsWorkingDirectoryWhenSet', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({
+      id: 'build',
+      name: 'build',
+      providerKind: 'node',
+      cwd: '/w/sub',
+      mode: 'run',
+    });
+
+    expect(api.runCalls[0].cwd).toBe('/w/sub');
   });
 });

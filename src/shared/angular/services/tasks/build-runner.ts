@@ -1,6 +1,7 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
+import { RunConfiguration } from '@shared/api/studio';
 import { TaskChannel } from '@shared/api/task-channels';
 import {
   Diagnostic,
@@ -225,13 +226,34 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @param taskId The task to run.
    */
   public run(taskId: string): void {
-    if (this.bridge === undefined || this.activeRunId !== null) {
-      return;
-    }
     const task: BuildTask | undefined = this.discovered().find(
       (candidate: BuildTask): boolean => candidate.id === taskId,
     );
-    if (task === undefined) {
+    if (task !== undefined) {
+      this.launch(task);
+    }
+  }
+
+  /**
+   * Runs a `.studio` run configuration: compiles it to a command and launches it through the same
+   * pipeline as a task, so its output streams and its problems are matched. Does nothing when the
+   * configuration cannot be compiled to a command.
+   * @param configuration The run configuration to run.
+   */
+  public runConfiguration(configuration: RunConfiguration): void {
+    const task: BuildTask | null = this.toTask(configuration);
+    if (task !== null) {
+      this.launch(task);
+    }
+  }
+
+  /**
+   * Launches a task as a captured child process, streaming its output and clearing prior problems.
+   * Does nothing when a run is already in flight or Electron is unavailable.
+   * @param task The task to launch.
+   */
+  private launch(task: BuildTask): void {
+    if (this.bridge === undefined || this.activeRunId !== null) {
       return;
     }
     const runId: string = crypto.randomUUID();
@@ -242,6 +264,44 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     this.setProblems([]);
     this.output.appendLine(`> ${task.label}`);
     void this.bridge.invoke(TaskChannel.Run, { runId, command: task.command, cwd: task.cwd });
+  }
+
+  /**
+   * Compiles a run configuration into a runnable task, or null when it names neither a program nor a
+   * kind this runner knows how to launch. An explicit program (with its arguments) wins; otherwise the
+   * command is derived from the provider kind — a .NET project run or an npm script. Build-configuration
+   * and target selection, and environment variables, are layered on by later phases.
+   * @param configuration The run configuration to compile.
+   * @returns Returns the task, or null when it cannot be compiled.
+   */
+  private toTask(configuration: RunConfiguration): BuildTask | null {
+    const cwd: string = configuration.cwd ?? this.workspace.root()?.path ?? '';
+    const command: string | null = this.commandFor(configuration);
+    if (command === null) {
+      return null;
+    }
+    return { id: configuration.id, label: configuration.name, group: 'run', command, cwd };
+  }
+
+  /**
+   * Derives the shell command a run configuration launches: an explicit program and its arguments when
+   * set, otherwise a provider-kind default (`dotnet run --project <id>` or `npm run <id>`), or null for
+   * an unknown provider with no program.
+   * @param configuration The run configuration.
+   * @returns Returns the command line, or null when none can be derived.
+   */
+  private commandFor(configuration: RunConfiguration): string | null {
+    if (configuration.program !== undefined) {
+      const args: string = configuration.args?.join(' ') ?? '';
+      return args.length > 0 ? `${configuration.program} ${args}` : configuration.program;
+    }
+    if (configuration.providerKind === 'dotnet') {
+      return `dotnet run --project ${configuration.id}`;
+    }
+    if (configuration.providerKind === 'node') {
+      return `npm run ${configuration.id}`;
+    }
+    return null;
   }
 
   /**
