@@ -56,6 +56,7 @@ import {
 } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { Builds } from '@shared/angular/services/tasks/builds';
+import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -190,6 +191,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly builds: Builds = inject(Builds);
 
   /**
+   * Holds the seam routing this workspace's declared capabilities to the root ribbon while active.
+   */
+  private readonly workspaceCapabilities: WorkspaceCapabilities = inject(WorkspaceCapabilities);
+
+  /**
    * Holds this tab's scoped repository model, bound lazily to the workspace's git repository the first
    * time a source-control action is taken, and powering the reused commit panel and push/pull.
    */
@@ -288,8 +294,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.isActive()) {
         this.builds.register(this.buildRunner);
+        this.workspaceCapabilities.register(this.solutionModel.capabilities);
       } else {
         this.builds.unregister(this.buildRunner);
+        this.workspaceCapabilities.unregister(this.solutionModel.capabilities);
       }
     });
 

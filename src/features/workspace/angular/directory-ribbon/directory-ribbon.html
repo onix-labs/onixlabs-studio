@@ -6,8 +6,18 @@
       [disabled]="!canBuild() || running()"
       (action)="onBuild()"
     />
-    <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" />
-    <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" />
+    <app-ribbon-strip-button
+      [icon]="Icon.REBUILD"
+      label="Rebuild"
+      [disabled]="!canRebuild() || running()"
+      (action)="onRebuild()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.CLEAN"
+      label="Clean"
+      [disabled]="!canClean() || running()"
+      (action)="onClean()"
+    />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Edit">
@@ -50,20 +60,28 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="Target">
-    <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-field
-        label="Configuration"
-        [options]="['Debug', 'Release']"
-        value="Debug"
-      />
-      <app-ribbon-strip-field
-        label="Platform"
-        [options]="['Any CPU', 'x64', 'ARM64']"
-        value="Any CPU"
-      />
-    </app-ribbon-strip-column>
-  </app-ribbon-strip-group>
+  @if (targetGroupVisible()) {
+    <app-ribbon-strip-group title="Target">
+      <app-ribbon-strip-column [spread]="true">
+        @if (buildConfigNames().length > 0) {
+          <app-ribbon-strip-field
+            label="Configuration"
+            [options]="buildConfigNames()"
+            [value]="buildConfigValue()"
+            (changed)="onSelectBuildConfiguration($event)"
+          />
+        }
+        @if (targetAxis() !== null) {
+          <app-ribbon-strip-field
+            [label]="targetAxis()!.label"
+            [options]="targetNames()"
+            [value]="targetValue()"
+            (changed)="onSelectTarget($event)"
+          />
+        }
+      </app-ribbon-strip-column>
+    </app-ribbon-strip-group>
+  }
 
   <app-ribbon-strip-group title="Source Control">
     <app-ribbon-strip-column>
