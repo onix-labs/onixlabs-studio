@@ -2,6 +2,28 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 import { RunConfiguration } from '@shared/api/studio';
 
 /**
+ * A source location the debuggee is paused at: the file and the 1-based line and column of the current
+ * stack frame. Exposed app-level so the code editor can draw a current-execution-line marker for the
+ * file, regardless of which workspace owns the running session.
+ */
+export interface DebugLocation {
+  /**
+   * Gets the absolute path of the file the debuggee is paused in.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the 1-based line the debuggee is paused on.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the 1-based column the debuggee is paused at.
+   */
+  readonly column: number;
+}
+
+/**
  * The lifecycle state of a debug session, driving what the ribbon's debug controls offer.
  */
 export type DebugState =
@@ -27,6 +49,11 @@ export interface DebugHandler {
    * Gets the session's lifecycle state.
    */
   readonly state: Signal<DebugState>;
+
+  /**
+   * Gets the source location the debuggee is currently paused at, or null when it is not paused.
+   */
+  readonly location: Signal<DebugLocation | null>;
 
   /**
    * Launches a run configuration under the debugger.
@@ -97,6 +124,14 @@ export class Debugger {
    * Gets whether the debuggee is paused and can be resumed or stepped.
    */
   public readonly stopped: Signal<boolean> = computed((): boolean => this.state() === 'stopped');
+
+  /**
+   * Gets the source location the active workspace's debuggee is paused at, or null when none is paused.
+   * The code editor reads this to draw a current-execution-line marker.
+   */
+  public readonly stoppedLocation: Signal<DebugLocation | null> = computed(
+    (): DebugLocation | null => this.handler()?.location() ?? null,
+  );
 
   /**
    * Registers the active workspace's debug handler.

@@ -28,6 +28,15 @@ interface RecordedInvoke {
 class FakeBridge implements Bridge {
   public startResult: DebugStartResult = { success: true, capabilities: {} };
   public setBreakpointsBody: unknown = { breakpoints: [] };
+  /**
+   * Canned response bodies keyed by DAP command, for requests the test drives (stackTrace, scopes,
+   * variables, evaluate). A command absent from the map resolves undefined.
+   */
+  public readonly responses: Map<string, unknown> = new Map<string, unknown>();
+  /**
+   * Commands the fake should reject, to exercise failure paths.
+   */
+  public readonly rejects: Set<string> = new Set<string>();
   public readonly invokes: RecordedInvoke[] = [];
   private readonly listeners: Map<string, (...args: unknown[]) => void> = new Map<
     string,
@@ -39,8 +48,17 @@ class FakeBridge implements Bridge {
     if (channel === (DebugChannel.Start as string)) {
       return Promise.resolve(this.startResult as T);
     }
-    if (channel === (DebugChannel.Request as string) && args[1] === 'setBreakpoints') {
-      return Promise.resolve(this.setBreakpointsBody as T);
+    if (channel === (DebugChannel.Request as string)) {
+      const command: string = args[1] as string;
+      if (this.rejects.has(command)) {
+        return Promise.reject(new Error(`${command} failed`));
+      }
+      if (command === 'setBreakpoints') {
+        return Promise.resolve(this.setBreakpointsBody as T);
+      }
+      if (this.responses.has(command)) {
+        return Promise.resolve(this.responses.get(command) as T);
+      }
     }
     return Promise.resolve(undefined as T);
   }
@@ -388,6 +406,174 @@ describe('DebugSession', () => {
     await flush();
 
     expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(1);
+  });
+
+  it('stopped_fetchesCallStackScopesAndLocation', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [
+        { id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 13, column: 5 },
+        { id: 1001, name: 'outer', line: 1, column: 1 },
+      ],
+    });
+    bridge.responses.set('scopes', {
+      scopes: [{ name: 'Locals', variablesReference: 2000, expensive: false }],
+    });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+
+    expect(session.callStack().map((f) => f.name)).toEqual(['Main', 'outer']);
+    expect(session.currentFrame()).toBe(1000);
+    expect(session.scopes()).toEqual([
+      { name: 'Locals', variablesReference: 2000, expensive: false },
+    ]);
+    expect(session.location()).toEqual({ path: '/ws/Program.cs', line: 13, column: 5 });
+    const stack: { command: string; args: unknown } | undefined = bridge
+      .requests()
+      .find((r) => r.command === 'stackTrace');
+    expect(stack?.args).toMatchObject({ threadId: 1 });
+  });
+
+  it('selectFrame_loadsScopesForThatFrameAndMovesLocation', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [
+        { id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 13, column: 5 },
+        { id: 1001, name: 'Outer', source: { path: '/ws/Outer.cs' }, line: 4, column: 2 },
+      ],
+    });
+    bridge.responses.set('scopes', { scopes: [] });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+
+    await session.selectFrame(1001);
+
+    expect(session.currentFrame()).toBe(1001);
+    expect(session.location()).toEqual({ path: '/ws/Outer.cs', line: 4, column: 2 });
+    const scopeRequests: { command: string; args: unknown }[] = bridge
+      .requests()
+      .filter((r) => r.command === 'scopes');
+    expect(scopeRequests.some((r) => (r.args as { frameId: number }).frameId === 1001)).toBe(true);
+  });
+
+  it('variables_fetchesChildrenAndSkipsLeafReferences', async () => {
+    bridge.responses.set('variables', {
+      variables: [{ name: 'x', value: '1', type: 'int', variablesReference: 0 }],
+    });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    const children: readonly { name: string }[] = await session.variables(2000);
+    expect(children).toEqual([{ name: 'x', value: '1', type: 'int', variablesReference: 0 }]);
+
+    // A leaf reference (0) does not hit the adapter.
+    const none: readonly unknown[] = await session.variables(0);
+    expect(none).toEqual([]);
+    expect(bridge.requests().filter((r) => r.command === 'variables')).toHaveLength(1);
+  });
+
+  it('evaluate_returnsResultAgainstTheSelectedFrame', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+    });
+    bridge.responses.set('scopes', { scopes: [] });
+    bridge.responses.set('evaluate', { result: '42', variablesReference: 0 });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+
+    const result: { result: string; failed: boolean } = await session.evaluate('x + 1');
+    expect(result).toEqual({ result: '42', variablesReference: 0, failed: false });
+    const evaluate: { command: string; args: unknown } | undefined = bridge
+      .requests()
+      .find((r) => r.command === 'evaluate');
+    expect(evaluate?.args).toMatchObject({ expression: 'x + 1', frameId: 1000, context: 'watch' });
+  });
+
+  it('evaluate_failureReturnsFailedWithMessage', async () => {
+    bridge.rejects.add('evaluate');
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    const result: { failed: boolean } = await session.evaluate('bad');
+    expect(result.failed).toBe(true);
+  });
+
+  it('continued_clearsInspection', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+    });
+    bridge.responses.set('scopes', { scopes: [{ name: 'Locals', variablesReference: 2, expensive: false }] });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+    expect(session.callStack()).toHaveLength(1);
+
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'continued',
+      body: { threadId: 1 },
+    } satisfies DebugEventMessage);
+
+    expect(session.state()).toBe('running');
+    expect(session.callStack()).toHaveLength(0);
+    expect(session.scopes()).toHaveLength(0);
+    expect(session.currentFrame()).toBeNull();
+    expect(session.location()).toBeNull();
+  });
+
+  it('terminated_clearsInspection', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+    });
+    bridge.responses.set('scopes', { scopes: [] });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+    bridge.emit(DebugChannel.Event, {
+      sessionId,
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+    expect(session.location()).not.toBeNull();
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'terminated'));
+
+    expect(session.callStack()).toHaveLength(0);
+    expect(session.location()).toBeNull();
   });
 });
 
