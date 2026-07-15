@@ -4,13 +4,38 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import {
+  ProjectCapabilities,
   ProjectEntry,
   ProjectItemNode,
   ProjectItems,
   ProjectModel,
   ProjectNode,
+  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+
+/**
+ * The .NET project system's root-independent capabilities: Build/Clean/Rebuild, the conventional
+ * Debug/Release build configurations, and the CPU platform axis. Debugging is declared once a DAP
+ * adapter (netcoredbg) is provisioned; until then it is absent so the ribbon's Debug button stays inert.
+ */
+const DOTNET_CAPABILITIES: ProjectCapabilities = {
+  actions: ['build', 'clean', 'rebuild'],
+  buildConfigurations: [
+    { id: 'debug', name: 'Debug' },
+    { id: 'release', name: 'Release' },
+  ],
+  target: {
+    kind: 'platform',
+    label: 'Platform',
+    options: [
+      { id: 'any-cpu', name: 'Any CPU' },
+      { id: 'x64', name: 'x64' },
+      { id: 'arm64', name: 'ARM64' },
+    ],
+  },
+  debug: null,
+};
 
 /**
  * Runs a child process and resolves with its standard output and error.
@@ -77,6 +102,11 @@ export class DotnetProjectSystem implements ProjectSystem {
   public readonly kind: string = 'dotnet';
 
   /**
+   * Gets the root-independent capabilities this project system declares.
+   */
+  public readonly capabilities: ProjectCapabilities = DOTNET_CAPABILITIES;
+
+  /**
    * Caches the detected `dotnet` executable lookup, so detection runs once per session.
    */
   private dotnetProbe: Promise<string | null> | null = null;
@@ -112,7 +142,15 @@ export class DotnetProjectSystem implements ProjectSystem {
     if (solution !== null) {
       const tree: readonly ProjectNode[] = await this.parseSolution(solution.path);
       const projects: readonly ProjectEntry[] = this.flatten(tree);
-      return { kind: this.kind, root, solution, projects, tree };
+      return {
+        kind: this.kind,
+        root,
+        solution,
+        projects,
+        tree,
+        capabilities: this.capabilities,
+        runConfigurations: this.runConfigurations(projects),
+      };
     }
     const files: string[] = await this.findProjects(root, PROJECT_SCAN_DEPTH);
     if (files.length === 0) {
@@ -121,7 +159,35 @@ export class DotnetProjectSystem implements ProjectSystem {
     const tree: readonly ProjectNode[] = files.map(
       (file: string): ProjectNode => this.toNode(file),
     );
-    return { kind: this.kind, root, solution: null, projects: this.flatten(tree), tree };
+    const projects: readonly ProjectEntry[] = this.flatten(tree);
+    return {
+      kind: this.kind,
+      root,
+      solution: null,
+      projects,
+      tree,
+      capabilities: this.capabilities,
+      runConfigurations: this.runConfigurations(projects),
+    };
+  }
+
+  /**
+   * Derives the discovered run configurations for a model: one per project, run by its project file.
+   * These are the Run dropdown's fallback until persisted `.studio` run configurations exist.
+   * @param projects The model's flattened projects.
+   * @returns Returns a run configuration per project.
+   */
+  private runConfigurations(
+    projects: readonly ProjectEntry[],
+  ): readonly RunConfigurationDescriptor[] {
+    return projects.map(
+      (project: ProjectEntry): RunConfigurationDescriptor => ({
+        id: project.path,
+        name: project.name,
+        kind: 'project',
+        detail: project.path,
+      }),
+    );
   }
 
   /**

@@ -3,11 +3,13 @@ import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import {
+  ProjectCapabilities,
   ProjectEntry,
   ProjectItemNode,
   ProjectItems,
   ProjectModel,
   ProjectNode,
+  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -162,6 +164,22 @@ export class SolutionModel {
    * Gets the current project model, or null when there is none.
    */
   public readonly model: Signal<ProjectModel | null> = this.current.asReadonly();
+
+  /**
+   * Gets the active project's declared capabilities, or null when there is no model. Exposed so the
+   * ribbon can gate its optional controls from data; the model itself carries the descriptor.
+   */
+  public readonly capabilities: Signal<ProjectCapabilities | null> = computed(
+    (): ProjectCapabilities | null => this.current()?.capabilities ?? null,
+  );
+
+  /**
+   * Gets the run configurations discovered from the active root — the Run dropdown's fallback until
+   * persisted `.studio` run configurations exist.
+   */
+  public readonly runConfigurations: Signal<readonly RunConfigurationDescriptor[]> = computed(
+    (): readonly RunConfigurationDescriptor[] => this.current()?.runConfigurations ?? [],
+  );
 
   /**
    * Gets the active search query, exposed so the panel can highlight the matched text.

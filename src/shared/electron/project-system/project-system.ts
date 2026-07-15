@@ -1,4 +1,4 @@
-import { ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
 
 /**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm
@@ -11,6 +11,14 @@ export interface ProjectSystem {
    * Gets the kind identifier of the project system (for example `dotnet`).
    */
   readonly kind: string;
+
+  /**
+   * Gets the root-independent capabilities this project system declares (its supported actions, build
+   * configurations, target axis, and debug adapter). The provider stamps these onto every model it
+   * loads, so the ribbon gates its optional controls from data. Root-dependent run configurations are
+   * discovered per-load and travel on {@link ProjectModel.runConfigurations}, not here.
+   */
+  readonly capabilities: ProjectCapabilities;
 
   /**
    * Determines whether this project system applies to a workspace root (its manifests are present).

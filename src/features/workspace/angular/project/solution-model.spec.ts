@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
-import { ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
@@ -60,6 +60,22 @@ class FakeProject implements Bridge {
 }
 
 /**
+ * A representative capability descriptor (the .NET shape) the fake transport stamps onto its model.
+ * @returns Returns the capabilities.
+ */
+function sampleCapabilities(): ProjectCapabilities {
+  return {
+    actions: ['build', 'clean', 'rebuild'],
+    buildConfigurations: [
+      { id: 'debug', name: 'Debug' },
+      { id: 'release', name: 'Release' },
+    ],
+    target: { kind: 'platform', label: 'Platform', options: [{ id: 'any-cpu', name: 'Any CPU' }] },
+    debug: null,
+  };
+}
+
+/**
  * A model with a solution folder holding project A and a top-level project B.
  * @returns Returns the model.
  */
@@ -79,6 +95,11 @@ function sampleModel(): ProjectModel {
         children: [{ type: 'project', name: 'A', path: '/root/A/A.csproj' }],
       },
       { type: 'project', name: 'B', path: '/root/B/B.csproj' },
+    ],
+    capabilities: sampleCapabilities(),
+    runConfigurations: [
+      { id: '/root/A/A.csproj', name: 'A', kind: 'project', detail: '/root/A/A.csproj' },
+      { id: '/root/B/B.csproj', name: 'B', kind: 'project', detail: '/root/B/B.csproj' },
     ],
   };
 }
@@ -189,6 +210,29 @@ describe('SolutionModel', () => {
     expect(rowFor(model, 'Group')?.expanded).toBe(false);
   });
 
+  it('rootOpens_withModel_exposesTheCapabilitiesAndRunConfigurationsFromTheLoadedModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    // The capability descriptor and discovered run configurations ride the model over the ModelLoad
+    // channel, so the renderer exposes exactly what the provider stamped on in the main process.
+    expect(model.capabilities()?.actions).toEqual(['build', 'clean', 'rebuild']);
+    expect(model.capabilities()?.buildConfigurations.map((c) => c.name)).toEqual(['Debug', 'Release']);
+    expect(model.capabilities()?.target?.label).toBe('Platform');
+    expect(model.capabilities()?.debug).toBeNull();
+    expect(model.runConfigurations().map((r) => r.name)).toEqual(['A', 'B']);
+  });
+
+  it('rootOpens_withoutModel_hasNoCapabilities', async () => {
+    project.model = null;
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(model.capabilities()).toBeNull();
+    expect(model.runConfigurations()).toEqual([]);
+  });
+
   it('rootOpens_withoutSolution_namesTheRootAfterTheFolder', async () => {
     project.model = {
       kind: 'dotnet',
@@ -196,6 +240,8 @@ describe('SolutionModel', () => {
       solution: null,
       projects: [],
       tree: [],
+      capabilities: sampleCapabilities(),
+      runConfigurations: [],
     };
     const model: SolutionModel = build();
     root.set({ path: '/path/to/MyApp', name: 'MyApp', entries: [] });
