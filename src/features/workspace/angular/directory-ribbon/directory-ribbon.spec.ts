@@ -77,6 +77,14 @@ function nodeCapabilities(): ProjectCapabilities {
 }
 
 /**
+ * The .NET descriptor once a debug adapter is declared (as P5 will), for the Debug-button tests.
+ * @returns Returns the capabilities with a debug adapter.
+ */
+function dotnetWithDebug(): ProjectCapabilities {
+  return { ...dotnetCapabilities(), debug: { adapter: 'netcoredbg' } };
+}
+
+/**
  * A controllable fake of the build seam.
  */
 class FakeBuilds {
@@ -270,6 +278,7 @@ describe('DirectoryRibbon', () => {
   it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {
     const config: RunConfiguration = configuration('a', 'A');
     studio.runConfigurations.set([config]);
+    capabilities.capabilities.set(dotnetWithDebug());
 
     expect(internals().canDebug()).toBe(true);
     internals().onDebug();
@@ -277,14 +286,26 @@ describe('DirectoryRibbon', () => {
     expect(debuggerSeam.launchCalls).toEqual([config]);
   });
 
-  it('debugIsDisabledForADiscoveredTaskAndWhileAlreadyRunning', () => {
-    // A discovered task (no run configuration) cannot be debugged.
+  it('debugIsDisabledWithoutADeclaredAdapterOrAConfigurationOrWhileRunning', () => {
+    const config: RunConfiguration = configuration('a', 'A');
+    studio.runConfigurations.set([config]);
+
+    // A configuration is selected but the provider declares no debug adapter (the .NET default today).
+    capabilities.capabilities.set(dotnetCapabilities());
+    expect(internals().canDebug()).toBe(false);
+
+    // With a declared adapter the button enables.
+    capabilities.capabilities.set(dotnetWithDebug());
+    expect(internals().canDebug()).toBe(true);
+
+    // A discovered task (no run configuration) cannot be debugged, even with an adapter.
+    studio.runConfigurations.set([]);
     builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
     builds.startTask.set(task({ id: 't', label: 'dotnet run' }));
     expect(internals().canDebug()).toBe(false);
 
-    // A selected configuration can be debugged, but not while a session is already running.
-    studio.runConfigurations.set([configuration('a', 'A')]);
+    // Not while a session is already running.
+    studio.runConfigurations.set([config]);
     expect(internals().canDebug()).toBe(true);
     debuggerSeam.running.set(true);
     expect(internals().canDebug()).toBe(false);

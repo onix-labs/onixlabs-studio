@@ -269,11 +269,16 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether the Debug button can launch: a run configuration is selected and no debug session is
-   * already running.
+   * Gets whether the Debug button can launch: the active provider declares a debug adapter, a run
+   * configuration is selected, and no debug session is already running. Providers that declare no
+   * adapter (or none at all) leave the button disabled rather than launching a session that would
+   * immediately report it has nowhere to attach.
    */
   protected readonly canDebug: Signal<boolean> = computed(
-    (): boolean => this.debugConfiguration() !== undefined && !this.debugger.running(),
+    (): boolean =>
+      this.capabilities()?.debug != null &&
+      this.debugConfiguration() !== undefined &&
+      !this.debugger.running(),
   );
 
   /**
