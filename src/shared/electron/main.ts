@@ -355,7 +355,10 @@ class Program {
    * each adapter's executable.
    */
   private readonly debugAdapterRegistry: DebugAdapterRegistry = new DebugAdapterRegistry(
-    new DebugProvisioner(),
+    new DebugProvisioner(
+      new Map<string, string>(),
+      path.join(app.getPath('userData'), 'debug-adapters'),
+    ),
   );
 
   /**
