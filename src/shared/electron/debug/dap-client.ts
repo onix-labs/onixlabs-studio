@@ -1,8 +1,7 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DebugAdapterId } from '@shared/api/debug-channels';
 import { DapMessageDecoder, DapProtocol, encodeMessage } from './dap-protocol';
-import { DebugAdapterSpec } from './debug-adapter-registry';
+import { DapTransport } from './dap-transport';
 
 /**
  * Specifies how long, in milliseconds, to wait for an adapter's `initialize` handshake before giving up
@@ -17,95 +16,117 @@ const INITIALIZE_TIMEOUT_MS: number = 30000;
 const CLIENT_ID: string = 'onixlabs-studio';
 
 /**
- * Drives a single debug adapter over its standard streams: it spawns the adapter, frames DAP messages
- * with the same `Content-Length` transport the LSP layer uses, and correlates requests, responses, and
- * events through the pure {@link DapProtocol}. It is the Node-side shell around that protocol; the
- * main-process debug manager (a later phase) owns one client per session and bridges it to the renderer.
- *
- * A client is used once: {@link start} spawns and initializes the adapter, thereafter {@link sendRequest}
- * and {@link onEvent} drive and observe it, and {@link dispose} tears it down.
+ * The surface the {@link import('./debug-manager').DebugManager} drives a debug session through, whether
+ * it is a single stdio adapter ({@link DapClient}) or a multi-connection compound session ({@link
+ * import('./js-debug-session').JsDebugSession}). The manager only ever sees this interface, so the
+ * multiplexing js-debug requires stays hidden behind it.
  */
-export class DapClient {
+export interface DebugAdapterConnection {
   /**
-   * Holds the adapter spawn specification.
+   * Establishes the connection (spawns or connects the adapter). Rejects when it cannot be established.
+   * @returns Returns a promise that resolves once the connection is ready.
    */
-  private readonly spec: DebugAdapterSpec;
+  start(): Promise<void>;
 
   /**
-   * Holds the absolute working directory the adapter is spawned in.
+   * Runs the `initialize` handshake and resolves with the adapter's advertised capabilities.
+   * @param adapterId The adapter id, advertised as the `adapterID`.
+   * @returns Returns the adapter's capabilities.
    */
-  private readonly cwd: string;
+  initialize(adapterId: DebugAdapterId): Promise<DebugProtocol.Capabilities>;
 
   /**
-   * Reassembles whole DAP messages from the adapter's output stream.
+   * Sends a DAP request and resolves with its response body.
+   * @param command The DAP request command.
+   * @param args The request arguments, or undefined when the command takes none.
+   * @returns Returns the response body.
+   */
+  sendRequest<T = unknown>(command: string, args?: unknown): Promise<T>;
+
+  /**
+   * Registers a listener for adapter events.
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  onEvent(listener: (event: DebugProtocol.Event) => void): () => void;
+
+  /**
+   * Registers a listener for the connection closing (the adapter process or server exiting).
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  onExit(listener: (code: number | null, signal: string | null) => void): () => void;
+
+  /**
+   * Tears the connection down. Safe to call repeatedly.
+   */
+  dispose(): void;
+}
+
+/**
+ * Drives a single debug adapter over a {@link DapTransport}: it frames DAP messages with the same
+ * `Content-Length` transport the LSP layer uses and correlates requests, responses, events, and reverse
+ * requests through the pure {@link DapProtocol}. It is the Node-side shell around that protocol; the
+ * main-process debug manager owns one client per session (or several, for a compound js-debug session)
+ * and bridges it to the renderer.
+ *
+ * A client is used once: {@link start} establishes the transport, {@link initialize} handshakes, and
+ * thereafter {@link sendRequest} and {@link onEvent} drive and observe the adapter until {@link dispose}
+ * tears it down.
+ */
+export class DapClient implements DebugAdapterConnection {
+  /**
+   * Carries DAP bytes to and from the adapter.
+   */
+  private readonly transport: DapTransport;
+
+  /**
+   * Reassembles whole DAP messages from the adapter's inbound stream.
    */
   private readonly decoder: DapMessageDecoder = new DapMessageDecoder();
 
   /**
-   * Correlates requests, responses, and events; wired to write to the adapter's input on construction.
+   * Correlates requests, responses, events, and reverse requests; wired to write to the transport on
+   * construction.
    */
   private readonly protocol: DapProtocol;
 
   /**
-   * Holds the spawned adapter process once started.
-   */
-  private child: ChildProcessWithoutNullStreams | null = null;
-
-  /**
-   * Holds the registered process-exit listeners.
+   * Holds the registered connection-close listeners.
    */
   private readonly exitListeners: Set<(code: number | null, signal: string | null) => void> =
     new Set<(code: number | null, signal: string | null) => void>();
 
   /**
    * Initializes a new instance of the {@link DapClient} class.
-   * @param spec The adapter spawn specification.
-   * @param cwd The absolute working directory to spawn the adapter in.
+   * @param transport The transport carrying DAP bytes to and from the adapter.
    */
-  public constructor(spec: DebugAdapterSpec, cwd: string) {
-    this.spec = spec;
-    this.cwd = cwd;
+  public constructor(transport: DapTransport) {
+    this.transport = transport;
     this.protocol = new DapProtocol((message: DebugProtocol.ProtocolMessage): void =>
-      this.write(message),
+      this.transport.send(encodeMessage(message)),
     );
   }
 
   /**
-   * Spawns the adapter and wires its streams. Rejects when the process cannot be spawned.
-   * @returns Returns a promise that resolves once the adapter process is running and wired.
+   * Establishes the transport and wires its data flow and close.
+   * @returns Returns a promise that resolves once the transport is ready.
    */
-  public start(): Promise<void> {
-    return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
-      let child: ChildProcessWithoutNullStreams;
-      try {
-        child = spawn(this.spec.command, [...this.spec.args], {
-          cwd: this.cwd,
-          env: { ...process.env, ...this.spec.env },
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-      } catch (error: unknown) {
-        reject(error instanceof Error ? error : new Error('Failed to spawn adapter'));
-        return;
-      }
-      // Drain stderr so a chatty adapter cannot stall on a full pipe; its contents are diagnostic only.
-      child.stderr.resume();
-      child.stdout.on('data', (chunk: Buffer): void => this.receive(chunk));
-      child.on('error', (error: Error): void => reject(error));
-      child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
-        this.handleExit(code, signal),
-      );
-      this.child = child;
-      resolve();
-    });
+  public async start(): Promise<void> {
+    this.transport.onData((chunk: Uint8Array): void => this.receive(chunk));
+    this.transport.onClose((code: number | null, signal: string | null): void =>
+      this.handleClose(code, signal),
+    );
+    await this.transport.start();
   }
 
   /**
    * Runs the `initialize` request and resolves with the adapter's advertised capabilities, bounded by a
    * timeout. It deliberately does **not** wait for the `initialized` event: per the DAP specification
    * that event fires only after the client has sent `launch`/`attach`, so awaiting it here would
-   * deadlock a spec-compliant adapter (netcoredbg). The event flows through {@link onEvent} instead, so
-   * the launch orchestration can send configuration (`setBreakpoints`, `configurationDone`) when it
-   * arrives.
+   * deadlock a spec-compliant adapter (netcoredbg, js-debug). The event flows through {@link onEvent}
+   * instead, so the launch orchestration can send configuration (`setBreakpoints`, `configurationDone`)
+   * when it arrives.
    * @param adapterId The adapter id, advertised to the adapter as the `adapterID`.
    * @returns Returns the adapter's advertised capabilities.
    */
@@ -120,6 +141,9 @@ export class DapClient {
       pathFormat: 'path',
       supportsRunInTerminalRequest: false,
       supportsProgressReporting: false,
+      // js-debug spawns a child target session per debuggee and asks the client to start it with a
+      // `startDebugging` reverse request; the compound session handles that, so it is advertised here.
+      supportsStartDebuggingRequest: true,
     };
     const capabilities: DebugProtocol.Capabilities = await this.withTimeout(
       this.protocol.sendRequest<DebugProtocol.Capabilities>('initialize', args),
@@ -148,7 +172,27 @@ export class DapClient {
   }
 
   /**
-   * Registers a listener for the adapter process exiting.
+   * Registers a listener for reverse requests the adapter makes of the client (such as js-debug's
+   * `startDebugging`).
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  public onReverseRequest(listener: (request: DebugProtocol.Request) => void): () => void {
+    return this.protocol.onReverseRequest(listener);
+  }
+
+  /**
+   * Sends a response to a reverse request the adapter made of the client.
+   * @param request The reverse request being answered.
+   * @param body The response body, or undefined when the command returns none.
+   * @param success Whether the client handled the request; defaults to true.
+   */
+  public respondTo(request: DebugProtocol.Request, body?: unknown, success: boolean = true): void {
+    this.protocol.respondTo(request, body, success);
+  }
+
+  /**
+   * Registers a listener for the connection closing.
    * @param listener The listener to add.
    * @returns Returns a disposer that removes the listener.
    */
@@ -160,48 +204,33 @@ export class DapClient {
   }
 
   /**
-   * Tears the client down: rejects in-flight requests and kills the adapter process. Safe to call
+   * Tears the client down: rejects in-flight requests and disposes the transport. Safe to call
    * repeatedly.
    */
   public dispose(): void {
     this.protocol.dispose('The debug adapter connection was closed.');
-    if (this.child !== null) {
-      try {
-        this.child.kill();
-      } catch {
-        // Best-effort cleanup; ignore kill failures.
-      }
-      this.child = null;
-    }
+    this.transport.dispose();
   }
 
   /**
-   * Feeds a received output chunk through the decoder and dispatches every complete message.
+   * Feeds a received chunk through the decoder and dispatches every complete message.
    * @param chunk The received bytes.
    */
-  private receive(chunk: Buffer): void {
+  private receive(chunk: Uint8Array): void {
     for (const message of this.decoder.append(chunk)) {
       this.protocol.handleMessage(message);
     }
   }
 
   /**
-   * Writes an outgoing message to the adapter's standard input, framed for the wire.
-   * @param message The message to send.
+   * Handles the transport closing: notifies listeners and rejects any in-flight requests.
+   * @param code The process exit code, or null when closed by a socket or signal.
+   * @param signal The terminating signal, or null.
    */
-  private write(message: DebugProtocol.ProtocolMessage): void {
-    this.child?.stdin.write(encodeMessage(message));
-  }
-
-  /**
-   * Handles the adapter process exiting: notifies listeners and rejects any in-flight requests.
-   * @param code The process exit code, or null when terminated by a signal.
-   * @param signal The terminating signal, or null when exited normally.
-   */
-  private handleExit(code: number | null, signal: NodeJS.Signals | null): void {
-    this.protocol.dispose('The debug adapter process exited.');
+  private handleClose(code: number | null, signal: string | null): void {
+    this.protocol.dispose('The debug adapter connection closed.');
     for (const listener of this.exitListeners) {
-      listener(code, signal ?? null);
+      listener(code, signal);
     }
   }
 
