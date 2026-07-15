@@ -1,6 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import { DebugChannel, DebugEventMessage, DebugStartResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
@@ -8,6 +8,8 @@ import { ProjectCapabilities } from '@shared/api/project-system';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Output } from '@shared/angular/services/output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { Breakpoints } from '@shared/angular/services/debug/breakpoints';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { DebugSession } from './debug-session';
 
@@ -25,6 +27,7 @@ interface RecordedInvoke {
  */
 class FakeBridge implements Bridge {
   public startResult: DebugStartResult = { success: true, capabilities: {} };
+  public setBreakpointsBody: unknown = { breakpoints: [] };
   public readonly invokes: RecordedInvoke[] = [];
   private readonly listeners: Map<string, (...args: unknown[]) => void> = new Map<
     string,
@@ -35,6 +38,9 @@ class FakeBridge implements Bridge {
     this.invokes.push({ channel, args });
     if (channel === (DebugChannel.Start as string)) {
       return Promise.resolve(this.startResult as T);
+    }
+    if (channel === (DebugChannel.Request as string) && args[1] === 'setBreakpoints') {
+      return Promise.resolve(this.setBreakpointsBody as T);
     }
     return Promise.resolve(undefined as T);
   }
@@ -129,6 +135,8 @@ describe('DebugSession', () => {
     TestBed.configureTestingModule({
       providers: [
         DebugSession,
+        Breakpoints,
+        { provide: SettingsStore, useValue: { get: <T>(_k: string, f: T): T => f, set: (): void => undefined } },
         { provide: Workspace, useValue: { root } },
         { provide: Output, useValue: output },
         { provide: SolutionModel, useValue: { capabilities: caps } },
@@ -143,6 +151,11 @@ describe('DebugSession', () => {
     root = signal<DirectoryListing | null>({ path: '/ws', name: 'ws', entries: [] });
     caps = signal<ProjectCapabilities | null>(capabilities('netcoredbg'));
     (window as unknown as { bridge: Bridge }).bridge = bridge;
+  });
+
+  afterEach(() => {
+    // Remove the fake bridge so a later spec asserting its absence is not polluted by this one.
+    delete (window as unknown as { bridge?: Bridge }).bridge;
   });
 
   it('launch_withNoAdapter_reportsAndStaysIdle', async () => {
@@ -191,6 +204,7 @@ describe('DebugSession', () => {
     const sessionId: string = currentSessionId(bridge);
 
     bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
 
     expect(bridge.requests().some((r) => r.command === 'configurationDone')).toBe(true);
   });
@@ -308,6 +322,62 @@ describe('DebugSession', () => {
 
     expect(session.state()).toBe('idle');
     expect(bridge.invokesOn(DebugChannel.Stop)).toHaveLength(1);
+  });
+
+  it('onInitialized_sendsSetBreakpointsBeforeConfigurationDone', async () => {
+    bridge.startResult = { success: true, capabilities: { supportsConfigurationDoneRequest: true } };
+    const session: DebugSession = build();
+    const breakpoints: Breakpoints = TestBed.inject(Breakpoints);
+    breakpoints.add('/ws/main.ts', 12, { condition: 'x > 1' });
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
+
+    const commands: string[] = bridge.requests().map((r) => r.command);
+    expect(commands.indexOf('setBreakpoints')).toBeGreaterThanOrEqual(0);
+    expect(commands.indexOf('setBreakpoints')).toBeLessThan(commands.indexOf('configurationDone'));
+    const set: { command: string; args: unknown } | undefined = bridge
+      .requests()
+      .find((r) => r.command === 'setBreakpoints');
+    expect(set?.args).toMatchObject({
+      source: { path: '/ws/main.ts' },
+      breakpoints: [{ line: 12, condition: 'x > 1' }],
+    });
+  });
+
+  it('appliesVerificationFromSetBreakpointsResponse', async () => {
+    bridge.setBreakpointsBody = { breakpoints: [{ line: 12, verified: true }] };
+    const session: DebugSession = build();
+    const breakpoints: Breakpoints = TestBed.inject(Breakpoints);
+    breakpoints.add('/ws/main.ts', 12);
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
+
+    expect(breakpoints.forPath('/ws/main.ts')[0].verified).toBe(true);
+  });
+
+  it('terminated_clearsBreakpointVerification', async () => {
+    bridge.setBreakpointsBody = { breakpoints: [{ line: 12, verified: true }] };
+    const session: DebugSession = build();
+    const breakpoints: Breakpoints = TestBed.inject(Breakpoints);
+    breakpoints.add('/ws/main.ts', 12);
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
+    expect(breakpoints.forPath('/ws/main.ts')[0].verified).toBe(true);
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'terminated'));
+
+    expect(breakpoints.forPath('/ws/main.ts')[0].verified).toBe(false);
   });
 
   it('doesNotStartASecondSessionWhileOneIsRunning', async () => {
