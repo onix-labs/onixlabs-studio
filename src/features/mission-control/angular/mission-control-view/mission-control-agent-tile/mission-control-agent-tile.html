@@ -1,6 +1,6 @@
 <header class="tile__header">
   <div class="tile__identity">
-    <span class="tile__name" [title]="tab().title">{{ tab().title }}</span>
+    <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
     <span class="tile__kind">Agent</span>
   </div>
   <div class="tile__actions">
@@ -18,6 +18,7 @@
       class="tile__action"
       title="Open source tab"
       aria-label="Open source tab"
+      [disabled]="host.tabId === null"
       (click)="onOpenTab()"
     >
       <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
@@ -31,12 +32,19 @@
 </div>
 
 <div class="tile__body">
-  <app-agent-conversation-panel
-    [tabId]="tabId()"
-    [isActive]="isActive()"
-    [context]="context()"
-    [surface]="surface()"
-  />
+  <app-agent-tool-strip />
+  @if (conversation.historyOpen()) {
+    <app-agent-conversation-list class="tile__panel-body" />
+  } @else {
+    <app-agent-chat
+      class="tile__panel-body"
+      [mirror]="true"
+      [tabId]="tabId()"
+      [isActive]="active()"
+      [surface]="host.surface"
+      [autoScroll]="conversation.autoScroll()"
+    />
+  }
 </div>
 
 <div

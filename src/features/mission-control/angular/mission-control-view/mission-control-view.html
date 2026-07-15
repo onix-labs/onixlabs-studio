@@ -1,16 +1,21 @@
 <app-panel-layout layoutKey="mission-control">
   <div main class="mc-main">
-    @if (agentTabs().length === 0) {
+    @if (hosts().length === 0) {
       <div class="mc-empty">
-        <p class="mc-empty__title">No agents to manage</p>
+        <p class="mc-empty__title">No active agents</p>
         <p class="mc-empty__text">
-          Open a file, terminal, workspace or agent tab and it will appear here as a column.
+          Open an agent tab, or the agent panel in any editor or terminal, and it will appear here as a
+          live column.
         </p>
       </div>
     } @else {
       <div class="mc-row">
-        @for (tab of agentTabs(); track tab.id) {
-          <app-mission-control-agent-tile [tab]="tab" [isActive]="isActive()" />
+        @for (host of hosts(); track host.id) {
+          <ng-container
+            [ngComponentOutlet]="Tile"
+            [ngComponentOutletInjector]="injectorFor(host)"
+            [ngComponentOutletInputs]="tileInputs()"
+          />
         }
       </div>
     }

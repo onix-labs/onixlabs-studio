@@ -130,12 +130,20 @@
 }
 
 .tile__body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-block-size: 0;
 
-  app-agent-conversation-panel {
-    block-size: 100%;
+  app-agent-tool-strip {
+    flex: none;
   }
+}
+
+// The chat/history fills the remaining height below the tool strip.
+.tile__panel-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 // A slim grip over the tile's trailing edge: transparent at rest, accent while hovered/dragged, so a

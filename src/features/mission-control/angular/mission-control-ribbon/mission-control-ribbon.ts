@@ -4,6 +4,7 @@ import {
   AgentRequestEntry,
   AgentRequests,
 } from '@shared/angular/services/agent-requests/agent-requests';
+import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -27,11 +28,10 @@ const POLICY_MODES: readonly { readonly value: AiPermissionPosture; readonly lab
 ];
 
 /**
- * The contextual ribbon shown while the Mission Control tab is active. The Agents group re-syncs every
- * tile to its origin tab's latest conversation and stops every running agent at once; the Permissions
- * group answers all pending permission requests in bulk and drives the global policy mode; the View
- * group resets the tile widths and toggles idle-agent columns. It shares the {@link MissionControl}
- * state with the view (provided at the view level, injected here).
+ * The contextual ribbon shown while the Mission Control tab is active. The Agents group stops every
+ * running agent at once ({@link AgentHosts}); the Permissions group answers all pending permission
+ * requests in bulk and drives the global policy mode; the View group resets the tile widths and
+ * toggles idle-agent columns via the shared {@link MissionControl} state.
  */
 @Component({
   selector: 'app-mission-control-ribbon',
@@ -56,9 +56,14 @@ export class MissionControlRibbon {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the shared Mission Control state provided by the view.
+   * Holds the shared Mission Control state (tile widths, idle toggle).
    */
   private readonly missionControl: MissionControl = inject(MissionControl);
+
+  /**
+   * Holds the app-wide live-hosts registry, the source of the running count and the Stop All action.
+   */
+  private readonly agentHosts: AgentHosts = inject(AgentHosts);
 
   /**
    * Holds the app-wide agent-requests registry used for bulk answers.
@@ -71,9 +76,9 @@ export class MissionControlRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets the number of tiles whose agent is running, disabling Stop All when none are.
+   * Gets the number of live hosts whose agent is running, disabling Stop All when none are.
    */
-  protected readonly runningCount: Signal<number> = this.missionControl.runningCount;
+  protected readonly runningCount: Signal<number> = this.agentHosts.runningCount;
 
   /**
    * Gets whether idle agent columns are shown.
@@ -111,17 +116,10 @@ export class MissionControlRibbon {
   });
 
   /**
-   * Re-synchronises every tile to its origin tab's latest stored conversation.
-   */
-  protected onSyncAll(): void {
-    this.missionControl.syncAll();
-  }
-
-  /**
-   * Stops every running agent.
+   * Stops every running agent across all live hosts.
    */
   protected onStopAll(): void {
-    this.missionControl.stopAll();
+    this.agentHosts.stopAll();
   }
 
   /**
