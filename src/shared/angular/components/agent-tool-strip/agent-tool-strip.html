@@ -62,7 +62,7 @@
     label="Conversation history"
     [iconOnly]="true"
     [toggle]="true"
-    [pressed]="conversation.historyOpen()"
-    (action)="conversation.toggleHistory()"
+    [pressed]="historyPressed()"
+    (action)="onHistoryToggle()"
   />
 </div>

@@ -32,8 +32,8 @@
 </div>
 
 <div class="tile__body">
-  <app-agent-tool-strip />
-  @if (conversation.historyOpen()) {
+  <app-agent-tool-strip [history]="historyOpen()" (historyToggle)="toggleHistory()" />
+  @if (historyOpen()) {
     <app-agent-conversation-list class="tile__panel-body" />
   } @else {
     <app-agent-chat

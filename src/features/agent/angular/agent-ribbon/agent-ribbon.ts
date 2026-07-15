@@ -15,8 +15,9 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 /**
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
  * active tab's conversation through {@link AgentSessions} — New Chat clears its transcript and Stop
- * aborts its in-flight run — while the Engine group's Provider and Model fields drive the global
- * selection owned by {@link AgentEngine}. The Context group attaches files, folders, and the current
+ * aborts its in-flight run — while the Engine group's Provider and Model fields drive the active tab's
+ * own connection/model selection (also through {@link AgentSessions}), with the option list drawn from
+ * {@link AgentEngine}. The Context group attaches files, folders, and the current
  * editor selection to the conversation (and clears everything attached); the Options group drives the
  * autonomy mode and the follow-the-tail preference.
  */
@@ -42,7 +43,7 @@ export class AgentRibbon {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the global engine selection the Engine group drives.
+   * Holds the global engine, the source of the Provider field's option list.
    */
   private readonly engine: AgentEngine = inject(AgentEngine);
 
@@ -86,30 +87,31 @@ export class AgentRibbon {
   );
 
   /**
-   * Gets the label of the selected provider, for the Provider field's value.
+   * Gets the label of the active tab's selected provider, for the Provider field's value.
    */
   protected readonly providerLabel: Signal<string> = computed(
     (): string =>
       this.engine
         .providers()
-        .find((provider: AiProviderInfo): boolean => provider.id === this.engine.provider())
+        .find((provider: AiProviderInfo): boolean => provider.id === this.sessions.provider())
         ?.label ?? '',
   );
 
   /**
-   * Gets the model labels offered by the Model field.
+   * Gets the model labels offered by the Model field (the active tab's effective provider's models).
    */
   protected readonly modelLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.engine.models().map((model: AiModelInfo): string => model.label),
+    this.sessions.models().map((model: AiModelInfo): string => model.label),
   );
 
   /**
-   * Gets the label of the selected model, for the Model field's value.
+   * Gets the label of the active tab's selected model, for the Model field's value.
    */
   protected readonly modelLabel: Signal<string> = computed(
     (): string =>
-      this.engine.models().find((model: AiModelInfo): boolean => model.id === this.engine.model())
-        ?.label ?? '',
+      this.sessions
+        .models()
+        .find((model: AiModelInfo): boolean => model.id === this.sessions.model())?.label ?? '',
   );
 
   /**
@@ -202,7 +204,7 @@ export class AgentRibbon {
       .providers()
       .find((provider: AiProviderInfo): boolean => provider.label === label);
     if (match !== undefined) {
-      this.engine.setProvider(match.id);
+      this.sessions.setProvider(match.id);
     }
   }
 
@@ -211,11 +213,11 @@ export class AgentRibbon {
    * @param label The label emitted by the Model field.
    */
   protected onModelLabel(label: string): void {
-    const match: AiModelInfo | undefined = this.engine
+    const match: AiModelInfo | undefined = this.sessions
       .models()
       .find((model: AiModelInfo): boolean => model.label === label);
     if (match !== undefined) {
-      this.engine.setModel(match.id);
+      this.sessions.setModel(match.id);
     }
   }
 }

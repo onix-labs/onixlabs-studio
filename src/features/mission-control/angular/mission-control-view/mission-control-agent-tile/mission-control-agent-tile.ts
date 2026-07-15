@@ -2,10 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  untracked,
+  WritableSignal,
 } from '@angular/core';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AGENT_HOST, AgentHost } from '@shared/angular/services/agent-hosts/agent-hosts';
@@ -77,6 +81,13 @@ export class MissionControlAgentTile {
   public readonly active: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether this tile shows the conversation-history list. Local to the tile so toggling history
+   * here does not open the origin's history view — the transcript/session stay shared, but the
+   * history-list view is per-tile.
+   */
+  protected readonly historyOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the tile's stable key — the origin tab id, or the host's own id for hosts with no tab.
    */
   protected readonly key: Signal<string> = computed(
@@ -122,6 +133,31 @@ export class MissionControlAgentTile {
   protected readonly statusLabel: Signal<string> = computed((): string =>
     this.agent.isRunning() ? 'Working' : this.agent.items().length > 0 ? 'Idle' : 'Ready',
   );
+
+  /**
+   * Initializes a new instance of the {@link MissionControlAgentTile} class, closing the local history
+   * view whenever a conversation is opened (its id changes) so picking one from the list returns to the
+   * chat, matching the shared panel's behaviour.
+   */
+  public constructor() {
+    let previousId: string | null | undefined = undefined;
+    effect((): void => {
+      const id: string | null = this.conversation.currentId();
+      untracked((): void => {
+        if (previousId !== undefined && id !== previousId) {
+          this.historyOpen.set(false);
+        }
+        previousId = id;
+      });
+    });
+  }
+
+  /**
+   * Toggles this tile's local history view.
+   */
+  protected toggleHistory(): void {
+    this.historyOpen.update((open: boolean): boolean => !open);
+  }
 
   /**
    * Stops the host's running agent.
