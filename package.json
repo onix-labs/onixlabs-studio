@@ -92,6 +92,7 @@
     "@types/diff": "^7.0.2",
     "@types/node": "^24.13.1",
     "@vitest/coverage-v8": "^4.1.8",
+    "@vscode/debugprotocol": "^1.68.0",
     "angular-eslint": "^22.0.0",
     "concurrently": "^10.0.3",
     "cross-env": "^10.1.0",
