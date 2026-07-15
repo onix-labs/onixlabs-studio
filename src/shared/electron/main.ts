@@ -27,6 +27,9 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger } from '@shared/electron/logger';
+import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
+import { DebugManager } from './debug/debug-manager';
+import { DebugProvisioner } from './debug/debug-provisioner';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
@@ -348,6 +351,24 @@ class Program {
   );
 
   /**
+   * Resolves debug-adapter identifiers into spawn specifications for the {@link DebugManager}, locating
+   * each adapter's executable.
+   */
+  private readonly debugAdapterRegistry: DebugAdapterRegistry = new DebugAdapterRegistry(
+    new DebugProvisioner(),
+  );
+
+  /**
+   * Owns debug-adapter sessions: spawns adapters, runs the DAP handshake, and bridges the adapter's
+   * events and the renderer's requests.
+   */
+  private readonly debugManager: DebugManager = new DebugManager(
+    (): BrowserWindow | null => this.window,
+    this.workspaceContext,
+    this.debugAdapterRegistry,
+  );
+
+  /**
    * Initializes a new instance of the Program class.
    */
   private constructor() {
@@ -599,6 +620,7 @@ class Program {
     this.agentConversationStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();
+    this.debugManager.register();
   }
 
   /**
@@ -813,6 +835,7 @@ class Program {
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();
     this.lspManager.disposeAll();
+    this.debugManager.disposeAll();
   }
 
   /**

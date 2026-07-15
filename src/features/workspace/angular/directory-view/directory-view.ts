@@ -56,6 +56,8 @@ import {
 } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { Builds } from '@shared/angular/services/tasks/builds';
+import { Debugger } from '@shared/angular/services/debug/debugger';
+import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -84,6 +86,7 @@ import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
     Output,
     Diagnostics,
     BuildRunner,
+    DebugSession,
     LspClient,
     SolutionModel,
     FileOpener,
@@ -191,6 +194,17 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly builds: Builds = inject(Builds);
 
   /**
+   * Holds this tab's scoped debug session, registered as the active debug handler while the tab is
+   * active so the root ribbon's debug actions reach this workspace.
+   */
+  private readonly debugSession: DebugSession = inject(DebugSession);
+
+  /**
+   * Holds the root debug seam this tab registers its session with while active.
+   */
+  private readonly debugger: Debugger = inject(Debugger);
+
+  /**
    * Holds the seam routing this workspace's declared capabilities to the root ribbon while active.
    */
   private readonly workspaceCapabilities: WorkspaceCapabilities = inject(WorkspaceCapabilities);
@@ -294,9 +308,11 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.isActive()) {
         this.builds.register(this.buildRunner);
+        this.debugger.register(this.debugSession);
         this.workspaceCapabilities.register(this.solutionModel.model);
       } else {
         this.builds.unregister(this.buildRunner);
+        this.debugger.unregister(this.debugSession);
         this.workspaceCapabilities.unregister(this.solutionModel.model);
       }
     });
@@ -445,6 +461,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.builds.unregister(this.buildRunner);
+    this.debugger.unregister(this.debugSession);
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
     this.keybindings.forget(this.tabId());
     this.workspaceFind.unregister(this.revealSearchHandler);

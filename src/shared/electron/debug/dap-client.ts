@@ -100,10 +100,12 @@ export class DapClient {
   }
 
   /**
-   * Runs the `initialize` handshake: sends the `initialize` request and resolves once both its response
-   * (carrying the adapter's capabilities) and the adapter's `initialized` event have arrived, bounded by
-   * a timeout. The `initialized` event signals that configuration (breakpoints, `configurationDone`) may
-   * be sent — driven in a later phase.
+   * Runs the `initialize` request and resolves with the adapter's advertised capabilities, bounded by a
+   * timeout. It deliberately does **not** wait for the `initialized` event: per the DAP specification
+   * that event fires only after the client has sent `launch`/`attach`, so awaiting it here would
+   * deadlock a spec-compliant adapter (netcoredbg). The event flows through {@link onEvent} instead, so
+   * the launch orchestration can send configuration (`setBreakpoints`, `configurationDone`) when it
+   * arrives.
    * @param adapterId The adapter id, advertised to the adapter as the `adapterID`.
    * @returns Returns the adapter's advertised capabilities.
    */
@@ -119,11 +121,8 @@ export class DapClient {
       supportsRunInTerminalRequest: false,
       supportsProgressReporting: false,
     };
-    const initialized: Promise<void> = this.once('initialized');
-    const response: Promise<DebugProtocol.Capabilities> =
-      this.protocol.sendRequest<DebugProtocol.Capabilities>('initialize', args);
-    const [capabilities]: [DebugProtocol.Capabilities, void] = await this.withTimeout(
-      Promise.all([response, initialized]),
+    const capabilities: DebugProtocol.Capabilities = await this.withTimeout(
+      this.protocol.sendRequest<DebugProtocol.Capabilities>('initialize', args),
       INITIALIZE_TIMEOUT_MS,
     );
     return capabilities ?? {};
@@ -192,22 +191,6 @@ export class DapClient {
    */
   private write(message: DebugProtocol.ProtocolMessage): void {
     this.child?.stdin.write(encodeMessage(message));
-  }
-
-  /**
-   * Resolves once the named adapter event fires, then removes its listener.
-   * @param event The event name to wait for.
-   * @returns Returns a promise that resolves on the first matching event.
-   */
-  private once(event: string): Promise<void> {
-    return new Promise<void>((resolve: () => void): void => {
-      const dispose: () => void = this.protocol.onEvent((received: DebugProtocol.Event): void => {
-        if (received.event === event) {
-          dispose();
-          resolve();
-        }
-      });
-    });
   }
 
   /**
