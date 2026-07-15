@@ -1,5 +1,5 @@
 import { DebugAdapterId } from '@shared/api/debug-channels';
-import { DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
+import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
 
 /**
  * The pinned netcoredbg releases. Upstream stopped publishing an osx-amd64 build after 3.1.3, and does
@@ -50,6 +50,39 @@ const NETCOREDBG_PROVISION: DebugAdapterProvision = {
 };
 
 /**
+ * js-debug (Microsoft's Node/Chrome debugger) ships as a platform-independent bundle of JavaScript, so
+ * every platform downloads the same checksum-verified archive; the debug server is a script inside it,
+ * run under the Node runtime.
+ */
+const JS_DEBUG_BASE: string = 'https://github.com/microsoft/vscode-js-debug/releases/download';
+
+/**
+ * The one js-debug archive, reused for every platform (its contents are pure JavaScript).
+ */
+const JS_DEBUG_DOWNLOAD: DebugAdapterDownload = {
+  url: `${JS_DEBUG_BASE}/v1.117.0/js-debug-dap-v1.117.0.tar.gz`,
+  sha256: 'ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772',
+  archive: 'tar.gz',
+  executablePath: 'js-debug/src/dapDebugServer.js',
+};
+
+/**
+ * The js-debug provisioning recipe: the same pinned, checksum-verified archive for every supported
+ * platform, since the bundle is platform-independent JavaScript.
+ */
+const JS_DEBUG_PROVISION: DebugAdapterProvision = {
+  id: 'js-debug',
+  version: '1.117.0',
+  downloads: {
+    'darwin-arm64': JS_DEBUG_DOWNLOAD,
+    'darwin-x64': JS_DEBUG_DOWNLOAD,
+    'linux-x64': JS_DEBUG_DOWNLOAD,
+    'linux-arm64': JS_DEBUG_DOWNLOAD,
+    'win32-x64': JS_DEBUG_DOWNLOAD,
+  },
+};
+
+/**
  * Describes how to spawn a debug adapter. The command and arguments are decided entirely by the main
  * process; the renderer only ever names an adapter by its {@link DebugAdapterId}. Mirrors the LSP
  * layer's `LspServerSpec`.
@@ -70,6 +103,13 @@ export interface DebugAdapterSpec {
    * current environment unchanged.
    */
   readonly env?: Readonly<Record<string, string>>;
+
+  /**
+   * Gets how the adapter is spoken to: `stdio` spawns it and uses its standard streams (netcoredbg);
+   * `tcp-server` spawns a debug server and connects over TCP, hosting a tree of sessions (js-debug).
+   * Defaults to `stdio` when omitted.
+   */
+  readonly transport?: 'stdio' | 'tcp-server';
 }
 
 /**
@@ -145,6 +185,21 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
       buildSpec: (binaryPath: string): DebugAdapterSpec => ({
         command: binaryPath,
         args: ['--interpreter=vscode'],
+      }),
+    },
+    {
+      id: 'js-debug',
+      displayName: 'Node (js-debug)',
+      binary: 'js-debug-dap',
+      provision: JS_DEBUG_PROVISION,
+      // js-debug is a DAP *server*: run its bundled server script under the current Node runtime (Electron
+      // as Node), let it pick a free port (`0`), and connect over TCP. It hosts a parent session plus a
+      // child target session per debuggee process — the compound session handles that tree.
+      buildSpec: (serverScript: string): DebugAdapterSpec => ({
+        command: process.execPath,
+        args: [serverScript, '0', '127.0.0.1'],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+        transport: 'tcp-server',
       }),
     },
   ];
