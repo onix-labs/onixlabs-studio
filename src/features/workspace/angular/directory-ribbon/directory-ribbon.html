@@ -54,7 +54,12 @@
         (valueChange)="onSelectRunItem($event)"
       />
       <app-ribbon-strip-row>
-        <app-ribbon-strip-button-small [icon]="Icon.DEBUG" label="Debug" [disabled]="true" />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.DEBUG"
+          label="Debug"
+          [disabled]="!canDebug()"
+          (action)="onDebug()"
+        />
         <app-ribbon-strip-button-small
           [icon]="Icon.SETTINGS"
           label="Configure"
