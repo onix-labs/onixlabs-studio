@@ -35,19 +35,24 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-row>
-        <app-ribbon-strip-button-small
-          [icon]="Icon.LAYOUT_SPLIT"
-          label="Reset widths"
-          (action)="onResetLayout()"
-        />
-      </app-ribbon-strip-row>
-      <app-ribbon-strip-check
-        label="Show idle"
-        [checked]="showIdle()"
-        (toggled)="onShowIdle($event)"
-      />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_EMPTY"
+      label="Hide Empty"
+      [toggle]="true"
+      [pressed]="hideEmpty()"
+      (action)="onToggleHideEmpty()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_IDLE"
+      label="Hide Idle"
+      [toggle]="true"
+      [pressed]="hideIdle()"
+      (action)="onToggleHideIdle()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.LAYOUT_SPLIT"
+      label="Reset Widths"
+      (action)="onResetLayout()"
+    />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

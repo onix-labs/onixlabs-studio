@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -38,7 +39,9 @@ import { MissionControl } from '@features/mission-control/angular/mission-contro
   styleUrl: './mission-control-agent-tile.scss',
   host: {
     class: 'tile',
-    '[style.inline-size.px]': 'width()',
+    // The set width is the flex basis: tiles grow together to fill spare space, and hold their width
+    // (scrolling the row) once they overflow.
+    '[style.flex-basis.px]': 'width()',
     '[class.tile--hidden]': 'hidden()',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -73,6 +76,11 @@ export class MissionControlAgentTile {
    * Holds the tab registry, used to jump to the host's origin tab.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the tile's host element, measured at the start of a resize drag.
+   */
+  private readonly elementRef: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
    * Gets a value indicating whether the Mission Control tab is the active tab, forwarded to the chat so
@@ -114,17 +122,33 @@ export class MissionControlAgentTile {
   protected readonly isRunning: Signal<boolean> = this.agent.isRunning;
 
   /**
-   * Gets a value indicating whether the host is idle: no conversation started and not running.
+   * Gets a value indicating whether the host is empty: no conversation at all and not running.
    */
-  protected readonly isIdle: Signal<boolean> = computed(
+  protected readonly isEmpty: Signal<boolean> = computed(
     (): boolean => !this.agent.isRunning() && this.agent.items().length === 0,
   );
 
   /**
-   * Gets a value indicating whether the tile is hidden — an idle host while idle tiles are suppressed.
+   * Gets a value indicating whether the host is idle: a settled conversation awaiting the next prompt
+   * (it has messages but no run in flight).
+   */
+  protected readonly isIdle: Signal<boolean> = computed(
+    (): boolean => !this.agent.isRunning() && this.agent.items().length > 0,
+  );
+
+  /**
+   * Gets a value indicating whether the host has an owning tab to jump to (its title is clickable).
+   */
+  protected readonly hasTab: Signal<boolean> = computed((): boolean => this.host.tabId !== null);
+
+  /**
+   * Gets a value indicating whether the tile is hidden — an empty host while empty tiles are
+   * suppressed, or an idle host while idle tiles are suppressed.
    */
   protected readonly hidden: Signal<boolean> = computed(
-    (): boolean => this.isIdle() && !this.missionControl.showIdle(),
+    (): boolean =>
+      (this.isEmpty() && this.missionControl.hideEmpty()) ||
+      (this.isIdle() && this.missionControl.hideIdle()),
   );
 
   /**
@@ -183,7 +207,9 @@ export class MissionControlAgentTile {
   protected onResizeDown(event: PointerEvent): void {
     event.preventDefault();
     const startX: number = event.clientX;
-    const startWidth: number = this.width();
+    // Measure the actual rendered width (which may exceed the set width when tiles have grown to fill
+    // spare space), so the drag tracks the pointer exactly rather than jumping.
+    const startWidth: number = this.elementRef.nativeElement.getBoundingClientRect().width;
     const grip: HTMLElement = event.target as HTMLElement;
     grip.setPointerCapture(event.pointerId);
 

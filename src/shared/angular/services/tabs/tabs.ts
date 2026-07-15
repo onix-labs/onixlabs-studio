@@ -9,6 +9,13 @@ import { Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
 const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['settings', 'mission-control']);
 
 /**
+ * Specifies the tab types pinned to the front of the strip, in their fixed left-to-right order. A
+ * pinned tab is immovable and always sits ahead of every ordinary tab, and never lands out of this
+ * order: Settings is leftmost, Mission Control next. Ordinary tabs follow, in the order opened.
+ */
+const PINNED_TAB_ORDER: readonly TabType[] = ['settings', 'mission-control'];
+
+/**
  * Represents the registry of open top-level tabs and the currently active selection.
  */
 @Service()
@@ -83,10 +90,25 @@ export class Tabs {
     const tab: Tab = this.createTab(type, resourceKey);
     const current: readonly Tab[] = this.tabList();
 
-    // The settings tab is pinned to the front; every other tab opens at the end.
-    this.tabList.set(type === 'settings' ? [tab, ...current] : [...current, tab]);
+    // Pinned tabs (Settings, then Mission Control) hold a fixed front prefix; a new tab slots in after
+    // every existing tab of the same or higher pin priority, so ordinary tabs open at the end and each
+    // pinned tab lands in its reserved place.
+    const rank: number = this.pinRank(type);
+    const index: number = current.filter((existing: Tab): boolean => this.pinRank(existing.type) <= rank).length;
+    this.tabList.set([...current.slice(0, index), tab, ...current.slice(index)]);
     this.activeId.set(tab.id);
     return tab;
+  }
+
+  /**
+   * Gets the pin priority of a tab type: its index in {@link PINNED_TAB_ORDER} for a pinned type, or a
+   * rank past the end for an ordinary type (which sorts after every pinned tab).
+   * @param type The tab type.
+   * @returns Returns the pin rank.
+   */
+  private pinRank(type: TabType): number {
+    const index: number = PINNED_TAB_ORDER.indexOf(type);
+    return index === -1 ? PINNED_TAB_ORDER.length : index;
   }
 
   /**
@@ -203,13 +225,16 @@ export class Tabs {
       return;
     }
 
-    // The settings tab is pinned to the front: it can never be moved, and no other tab may land
-    // ahead of it, so a move targeting index 0 is clamped to index 1.
-    const settingsPinned: boolean = current[0]?.type === 'settings';
-    if (settingsPinned && fromIndex === 0) {
+    // The pinned tabs (Settings, then Mission Control) hold an immovable front prefix: none of them can
+    // be moved, and no ordinary tab may land ahead of them, so a move out of or into the prefix is
+    // rejected or clamped to the first ordinary slot.
+    const pinnedCount: number = current.filter(
+      (tab: Tab): boolean => this.pinRank(tab.type) < PINNED_TAB_ORDER.length,
+    ).length;
+    if (fromIndex < pinnedCount) {
       return;
     }
-    const targetIndex: number = settingsPinned ? Math.max(toIndex, 1) : toIndex;
+    const targetIndex: number = Math.max(toIndex, pinnedCount);
     if (fromIndex === targetIndex) {
       return;
     }

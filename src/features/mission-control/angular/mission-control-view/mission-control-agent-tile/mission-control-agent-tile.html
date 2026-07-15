@@ -1,6 +1,17 @@
 <header class="tile__header">
   <div class="tile__identity">
-    <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
+    @if (hasTab()) {
+      <button
+        type="button"
+        class="tile__name tile__name--link"
+        [title]="'Go to ' + host.label()"
+        (click)="onOpenTab()"
+      >
+        {{ host.label() }}
+      </button>
+    } @else {
+      <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
+    }
     <span class="tile__kind">Agent</span>
   </div>
   <div class="tile__actions">
@@ -13,16 +24,6 @@
         <app-icon [icon]="Icon.PLAY" />
       </button>
     }
-    <button
-      type="button"
-      class="tile__action"
-      title="Open source tab"
-      aria-label="Open source tab"
-      [disabled]="host.tabId === null"
-      (click)="onOpenTab()"
-    >
-      <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-    </button>
   </div>
 </header>
 

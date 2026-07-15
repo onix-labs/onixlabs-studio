@@ -1,10 +1,11 @@
-// A single agent column in the Mission Control row. It carries a fixed pixel width (set on the host by
-// the component) so the row of tiles overflows and scrolls horizontally rather than squeezing; a
-// trailing grip resizes it. A right-hand seam separates it from the next tile.
+// A single agent column in the Mission Control row. Its set width is the flex basis: columns grow
+// together to fill spare space when they fit, and hold their width (scrolling the row) once they
+// overflow. A trailing grip resizes it; a right-hand seam separates it from the next column.
 :host {
   position: relative;
   display: flex;
-  flex: none;
+  flex-grow: 1;
+  flex-shrink: 0;
   flex-direction: column;
   min-inline-size: 0;
   block-size: 100%;
@@ -13,7 +14,7 @@
   background: var(--panel-surface-color);
 }
 
-// An idle tile suppressed by the ribbon's Show Idle toggle: collapsed out of the row entirely.
+// A tile suppressed by the ribbon's Hide Empty / Hide Idle toggles: collapsed out of the row entirely.
 :host(.tile--hidden) {
   display: none;
 }
@@ -34,12 +35,38 @@
 }
 
 .tile__name {
+  flex: 0 1 auto;
+  min-inline-size: 0;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--dock-title-foreground-color--focused);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+// The title is a button when the column has an origin tab: clicking it activates that tab. Reset the
+// button chrome so it reads as the title, with an accent underline on hover.
+button.tile__name {
+  display: block;
+  max-inline-size: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-align: start;
+  cursor: pointer;
+  transition: color 150ms ease-in-out;
+
+  &:hover {
+    color: var(--accent-color);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+    border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  }
 }
 
 .tile__kind {

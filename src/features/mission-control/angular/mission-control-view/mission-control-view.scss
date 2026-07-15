@@ -10,13 +10,15 @@
   min-inline-size: 0;
 }
 
-// The agent columns tile left to right at their own widths and scroll horizontally once they overrun
-// the available space, rather than squeezing below a usable width.
+// The agent columns tile left to right: they grow together to fill spare space when they fit, and
+// scroll horizontally once they overrun the available space. A leading seam sets the row apart from
+// the Global Permissions panel to its left.
 .mc-row {
   display: flex;
   block-size: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+  border-inline-start: 0.0625rem solid var(--dock-border-color);
 }
 
 .mc-empty {

@@ -9,7 +9,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -43,7 +42,6 @@ const POLICY_MODES: readonly { readonly value: AiPermissionPosture; readonly lab
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripField,
-    RibbonStripCheck,
   ],
   templateUrl: './mission-control-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -81,9 +79,14 @@ export class MissionControlRibbon {
   protected readonly runningCount: Signal<number> = this.agentHosts.runningCount;
 
   /**
-   * Gets whether idle agent columns are shown.
+   * Gets whether empty agent columns (no conversation) are hidden.
    */
-  protected readonly showIdle: Signal<boolean> = this.missionControl.showIdle;
+  protected readonly hideEmpty: Signal<boolean> = this.missionControl.hideEmpty;
+
+  /**
+   * Gets whether idle agent columns (a settled conversation) are hidden.
+   */
+  protected readonly hideIdle: Signal<boolean> = this.missionControl.hideIdle;
 
   /**
    * Gets the number of pending permission requests, disabling the bulk answers when none are.
@@ -144,11 +147,17 @@ export class MissionControlRibbon {
   }
 
   /**
-   * Toggles whether idle agent columns are shown.
-   * @param value The new checked state.
+   * Toggles whether empty agent columns are hidden.
    */
-  protected onShowIdle(value: boolean): void {
-    this.missionControl.setShowIdle(value);
+  protected onToggleHideEmpty(): void {
+    this.missionControl.setHideEmpty(!this.missionControl.hideEmpty());
+  }
+
+  /**
+   * Toggles whether idle agent columns are hidden.
+   */
+  protected onToggleHideIdle(): void {
+    this.missionControl.setHideIdle(!this.missionControl.hideIdle());
   }
 
   /**

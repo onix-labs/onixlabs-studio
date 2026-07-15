@@ -5,15 +5,14 @@ import { MissionControlView } from './mission-control-view/mission-control-view'
 
 /**
  * Describes the Mission Control feature's contribution to the application shell: the view mounted for
- * the Mission Control tab and its contextual ribbon. The status strip is hidden — the view is a
- * management surface, not a document. The shell renders both by looking the `mission-control` type up
- * in the feature registry, with no hard-coded knowledge of the feature.
+ * the Mission Control tab and its contextual ribbon (and the default chrome — ribbon and status strip).
+ * The shell renders them by looking the `mission-control` type up in the feature registry, with no
+ * hard-coded knowledge of the feature.
  */
 const missionControlFeature: FeatureDescriptor = {
   type: 'mission-control',
   view: MissionControlView,
   ribbon: MissionControlRibbon,
-  chrome: { status: false },
 };
 
 /**

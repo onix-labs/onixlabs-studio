@@ -36,6 +36,16 @@ export class Icon {
   public static readonly ROCKET_LAUNCH: Icon = new Icon('ph-duotone ph-rocket-launch');
 
   /**
+   * Gets the hide-empty-agents icon shown on Mission Control's View group toggle.
+   */
+  public static readonly HIDE_EMPTY: Icon = new Icon('ph-duotone ph-circle-dashed');
+
+  /**
+   * Gets the hide-idle-agents icon shown on Mission Control's View group toggle.
+   */
+  public static readonly HIDE_IDLE: Icon = new Icon('ph-duotone ph-pause-circle');
+
+  /**
    * Gets the close icon shown on tab close buttons.
    */
   public static readonly CLOSE: Icon = new Icon('ph ph-x');

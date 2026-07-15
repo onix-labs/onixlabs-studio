@@ -28,14 +28,24 @@ export class MissionControl {
   >(new Map<string, number>());
 
   /**
-   * Holds whether tiles whose agent is idle (no conversation and not running) are shown.
+   * Holds whether empty agent tiles (no conversation, not running) are hidden.
    */
-  private readonly showIdleState: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly hideEmptyState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Gets whether idle agent tiles are shown.
+   * Holds whether idle agent tiles (a settled conversation awaiting the next prompt) are hidden.
    */
-  public readonly showIdle: Signal<boolean> = this.showIdleState.asReadonly();
+  private readonly hideIdleState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether empty agent tiles are hidden.
+   */
+  public readonly hideEmpty: Signal<boolean> = this.hideEmptyState.asReadonly();
+
+  /**
+   * Gets whether idle agent tiles are hidden.
+   */
+  public readonly hideIdle: Signal<boolean> = this.hideIdleState.asReadonly();
 
   /**
    * Gets the width, in pixels, a tile should render at: the user's override for that key, or the
@@ -69,10 +79,18 @@ export class MissionControl {
   }
 
   /**
-   * Sets whether idle agent tiles are shown.
-   * @param value Whether to show idle tiles.
+   * Sets whether empty agent tiles are hidden.
+   * @param value Whether to hide empty tiles.
    */
-  public setShowIdle(value: boolean): void {
-    this.showIdleState.set(value);
+  public setHideEmpty(value: boolean): void {
+    this.hideEmptyState.set(value);
+  }
+
+  /**
+   * Sets whether idle agent tiles are hidden.
+   * @param value Whether to hide idle tiles.
+   */
+  public setHideIdle(value: boolean): void {
+    this.hideIdleState.set(value);
   }
 }

@@ -6,9 +6,9 @@ import { TitleStripButton } from '../title-strip-button/title-strip-button';
 import { TitleStripTabMenu } from '../title-strip-tab-menu/title-strip-tab-menu';
 
 /**
- * Represents the action buttons in the title strip: the settings button, the Mission Control button
- * that opens the all-agents management view, followed by the welcome button that summons the welcome
- * screen for creating a new tab.
+ * Represents the action buttons in the title strip: the settings button, the welcome button that
+ * summons the welcome screen for creating a new tab, then the Mission Control button that opens the
+ * all-agents management view.
  */
 @Component({
   selector: 'app-title-strip-button-list',
