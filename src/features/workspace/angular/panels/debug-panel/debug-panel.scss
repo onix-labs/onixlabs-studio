@@ -1,0 +1,204 @@
+// The Debug panel body sits in the bottom dock tool-stack (short and wide), so it lays its three
+// surfaces — call stack, variables, watch — out as equal columns beneath a transport toolbar, each
+// scrolling independently. The dock chrome supplies the title bar.
+:host {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+}
+
+.debug-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border-block-end: 0.0625rem solid var(--gray-200);
+}
+
+:host-context([data-theme-mode='dark']) .debug-toolbar {
+  border-block-end-color: var(--gray-800);
+}
+
+.debug-toolbar__spacer {
+  flex: 1;
+}
+
+.debug-toolbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.65rem;
+  block-size: 1.65rem;
+  font-size: 0.95rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+
+  &:hover:not(:disabled) {
+    background: var(--gray-150, var(--gray-200));
+  }
+
+  &:disabled {
+    opacity: 0.35;
+  }
+
+  &--stop:not(:disabled):hover {
+    color: var(--accent-color);
+  }
+}
+
+:host-context([data-theme-mode='dark']) .debug-toolbar__button:hover:not(:disabled) {
+  background: var(--gray-800);
+}
+
+.debug-body {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.debug-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+  border-inline-end: 0.0625rem solid var(--gray-200);
+  overflow: hidden;
+
+  &:last-child {
+    border-inline-end: none;
+  }
+}
+
+:host-context([data-theme-mode='dark']) .debug-column {
+  border-inline-end-color: var(--gray-800);
+}
+
+.debug-column__title {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--gray-500);
+}
+
+.debug-column app-tree-view {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.debug-empty {
+  margin: 0;
+  padding: 0.3rem 0.6rem;
+  color: var(--gray-500);
+}
+
+// Call-stack row: frame name, then a muted line number.
+.debug-frame__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.debug-frame__loc {
+  margin-inline-start: auto;
+  padding-inline-start: 0.5rem;
+  color: var(--gray-500);
+}
+
+// Variables row: a scope header, or a name = value pair.
+.debug-var__scope {
+  font-weight: 600;
+}
+
+.debug-var__name {
+  color: var(--gray-700);
+}
+
+:host-context([data-theme-mode='dark']) .debug-var__name {
+  color: var(--gray-300);
+}
+
+.debug-var__value {
+  margin-inline-start: 0.5rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent-color);
+}
+
+// Watch column: an add field over a list of expression/value rows.
+.debug-watch__add {
+  padding: 0.3rem 0.5rem;
+}
+
+.debug-watch__list {
+  flex: 1;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.debug-watch__item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+
+  &:hover {
+    background: var(--gray-100);
+  }
+}
+
+:host-context([data-theme-mode='dark']) .debug-watch__item:hover {
+  background: var(--gray-850, var(--gray-900));
+}
+
+.debug-watch__expr {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.debug-watch__value {
+  margin-inline-start: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent-color);
+
+  &--error {
+    color: var(--gray-500);
+  }
+}
+
+.debug-watch__remove {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  color: var(--gray-500);
+  background: transparent;
+  border: none;
+  cursor: default;
+  opacity: 0;
+
+  &:hover {
+    color: var(--accent-color);
+  }
+
+  .debug-watch__item:hover & {
+    opacity: 1;
+  }
+}

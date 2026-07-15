@@ -22,6 +22,7 @@ import {
 } from '@shared/angular/components/text-editor/text-editor';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
+import { DebugLocation, Debugger } from '@shared/angular/services/debug/debugger';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
@@ -82,6 +83,18 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * Holds the registry that attaches a breakpoint-gutter controller to this editor's Monaco instance.
    */
   private readonly breakpointGutter: BreakpointGutter = inject(BreakpointGutter);
+
+  /**
+   * Holds the app-level debugger seam, read for the current-execution-line marker so the editor
+   * highlights the line the active workspace's debuggee is paused on.
+   */
+  private readonly debugger: Debugger = inject(Debugger);
+
+  /**
+   * Holds the decorations collection drawing the current-execution-line marker, or null before the
+   * editor is ready.
+   */
+  private stoppedDecorations: MonacoApi.editor.IEditorDecorationsCollection | null = null;
 
   /**
    * Holds the breakpoint-gutter controller once the pane's editor is ready, or null before then (and
@@ -196,6 +209,35 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
       const path: string | null = document.filePath();
       controller.render(path === null ? [] : this.breakpoints.forPath(path));
     });
+    // Mark the current-execution line when the active workspace's debuggee is paused in this document.
+    effect((): void => {
+      const location: DebugLocation | null = this.debugger.stoppedLocation();
+      const path: string | null = this.backingDocument()?.filePath() ?? null;
+      const collection: MonacoApi.editor.IEditorDecorationsCollection | null =
+        this.stoppedDecorations;
+      if (collection === null) {
+        return;
+      }
+      if (location !== null && path !== null && location.path === path) {
+        collection.set([
+          {
+            range: {
+              startLineNumber: location.line,
+              startColumn: 1,
+              endLineNumber: location.line,
+              endColumn: 1,
+            },
+            options: {
+              isWholeLine: true,
+              className: 'debug-current-line',
+              glyphMarginClassName: 'debug-current-line-glyph',
+            },
+          },
+        ]);
+      } else {
+        collection.clear();
+      }
+    });
   }
 
   /**
@@ -269,6 +311,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
           (line: number): void => this.openBreakpointEditor(line),
         ),
       );
+      this.stoppedDecorations = editor.createDecorationsCollection([]);
     }
     this.ready.emit();
   }
