@@ -278,12 +278,20 @@ class Program {
   private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
-   * Handles workspace (open folder) and directory operations on behalf of the renderer.
+   * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
+   * {@link workspaceContext} tracks.
+   */
+  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
+
+  /**
+   * Handles workspace (open folder) and directory operations on behalf of the renderer. Seeds default
+   * run configurations into `.studio` through the {@link studioStore} when a project first opens.
    */
   private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
     (): BrowserWindow | null => this.window,
     this.workspaceContext,
     this.trustedPaths,
+    this.studioStore,
   );
 
   /**
@@ -291,12 +299,6 @@ class Program {
    * workspace roots the {@link workspaceContext} tracks.
    */
   private readonly searchManager: SearchManager = new SearchManager(this.workspaceContext);
-
-  /**
-   * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
-   * {@link workspaceContext} tracks.
-   */
-  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
 
   /**
    * Writes application log lines — the renderer's forwarded console entries and main's own — to
