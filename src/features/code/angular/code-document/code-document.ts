@@ -34,9 +34,19 @@ const NEW_DOCUMENT_NAME: string = 'New Document';
 
 /**
  * Editor options applied to the code editor: the glyph margin is enabled so the breakpoint gutter has a
- * lane to draw in (the shared text-editor leaves it off by default; only the code editor uses it).
+ * lane to draw in (the shared text-editor leaves it off by default; only the code editor uses it). The
+ * glyph-margin lane's width is fixed to the line height by Monaco and cannot be trimmed, so the left
+ * gutter is tightened by the two lanes that can be: the line-number lane, whose default reserves room
+ * for five digits (right-aligned, leaving a wide gap between the breakpoint dot and one- or two-digit
+ * numbers) is floored at three digits (Monaco still grows it for larger files), and the line-decorations
+ * lane (the change-margin bar's home, right of the line numbers) is narrowed to close the gap to the
+ * code.
  */
-const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = { glyphMargin: true };
+const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
+  glyphMargin: true,
+  lineNumbersMinChars: 3,
+  lineDecorationsWidth: 6,
+};
 
 /**
  * Represents the document-bound code editor: the shared {@link TextEditor} pane wired to its backing
