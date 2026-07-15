@@ -12,7 +12,7 @@ import {
   StudioWorkspace,
 } from '@shared/api/studio';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
-import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 
 /**
  * How long, in milliseconds, `.studio` change notifications are ignored after the service writes a
@@ -36,9 +36,12 @@ const SELF_WRITE_GUARD_MS: number = 1000;
 @Service()
 export class StudioConfig {
   /**
-   * Holds the active workspace state (the open root).
+   * Holds the app-level active-workspace seam projecting the active tab's open root. This is read
+   * rather than the scoped {@link Workspace} because {@link StudioConfig} is an app-level singleton and
+   * each directory tab's open folder lives in that tab's own scoped {@link Workspace}; only
+   * {@link ActiveWorkspace} resolves the active tab back to its root from here.
    */
-  private readonly workspace: Workspace = inject(Workspace);
+  private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
    * Holds the directory-watch service the `.studio` folder is observed through.
@@ -100,7 +103,7 @@ export class StudioConfig {
    */
   public constructor() {
     effect((onCleanup: (fn: () => void) => void): void => {
-      const root: string | null = this.workspace.root()?.path ?? null;
+      const root: string | null = this.activeWorkspace.rootPath();
       void this.reload(root);
       if (root === null) {
         return;
@@ -177,7 +180,7 @@ export class StudioConfig {
    * @param payload The shared or user configuration to write.
    */
   private async persist(channel: StudioChannel, payload: StudioWorkspace | StudioUser): Promise<void> {
-    const root: string | null = this.workspace.root()?.path ?? null;
+    const root: string | null = this.activeWorkspace.rootPath();
     if (this.bridge === undefined || root === null) {
       return;
     }

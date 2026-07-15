@@ -5,9 +5,8 @@ import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { StudioChannel } from '@shared/api/studio-channels';
 import { RunConfiguration, StudioSnapshot } from '@shared/api/studio';
-import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
-import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { StudioConfig } from './studio-config';
 
 /**
@@ -99,7 +98,7 @@ function flush(): Promise<void> {
 describe('StudioConfig', () => {
   let bridge: FakeBridge;
   let watch: FakeDirectoryWatch;
-  let root: WritableSignal<DirectoryListing | null>;
+  let rootPath: WritableSignal<string | null>;
 
   /**
    * Builds the service under test with the fakes wired in.
@@ -109,7 +108,7 @@ describe('StudioConfig', () => {
     TestBed.configureTestingModule({
       providers: [
         StudioConfig,
-        { provide: Workspace, useValue: { root } },
+        { provide: ActiveWorkspace, useValue: { rootPath } },
         { provide: DirectoryWatch, useValue: watch },
       ],
     });
@@ -128,14 +127,14 @@ describe('StudioConfig', () => {
   beforeEach(() => {
     bridge = new FakeBridge();
     watch = new FakeDirectoryWatch();
-    root = signal<DirectoryListing | null>(null);
+    rootPath = signal<string | null>(null);
     (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
   it('loadsTheSnapshotWhenARootOpens', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     expect(studio.runConfigurations().map((c) => c.id)).toEqual(['a', 'b']);
@@ -155,7 +154,7 @@ describe('StudioConfig', () => {
 
   it('savesTheSharedConfigurationThroughTheWorkspaceChannel', async () => {
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     await studio.saveWorkspace({ version: 1, runConfigurations: [config('x', 'X')] });
@@ -172,7 +171,7 @@ describe('StudioConfig', () => {
       user: { version: 1 },
     };
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     await studio.saveRunConfigurations([config('x', 'X')]);
@@ -189,7 +188,7 @@ describe('StudioConfig', () => {
   it('persistsAndAppliesASelectionThroughTheUserChannel', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     await studio.setSelectedRunConfiguration('a');
@@ -201,7 +200,7 @@ describe('StudioConfig', () => {
   it('reloadsWhenTheStudioFolderChangesExternally', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     bridge.snapshot = { workspace: { version: 1, runConfigurations: [config('z', 'Z')] }, user: { version: 1 } };
@@ -214,7 +213,7 @@ describe('StudioConfig', () => {
   it('ignoresChangesOutsideTheStudioFolder', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     bridge.snapshot = { workspace: { version: 1, runConfigurations: [config('z', 'Z')] }, user: { version: 1 } };
@@ -226,7 +225,7 @@ describe('StudioConfig', () => {
 
   it('doesNotReloadFromItsOwnWrite', async () => {
     const studio: StudioConfig = build();
-    root.set({ path: '/root', name: 'root', entries: [] });
+    rootPath.set('/root');
     await settle();
 
     // A save sets the self-write guard; the change event it would raise must not overwrite what we set.

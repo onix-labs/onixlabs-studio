@@ -186,6 +186,41 @@ router, and the allowlist never intercepts incidental typing. Chords use the pla
 modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift` chords** — a bare
 `Mod` is Ctrl on Windows/Linux and collides with the shell's own control codes.
 
+### 4.6 Project systems, capabilities & `.studio`
+
+The directory workspace is **language-agnostic**: it never hard-codes an ecosystem. A `ProjectSystem`
+provider (`shared/electron/project-system`, e.g. `dotnet`, `node`) turns a workspace root into a
+`ProjectModel` *and* declares a **capability descriptor** — `actions` (Build/Clean/Rebuild…),
+`buildConfigurations`, a `target` axis, and a `debug` adapter — plus discovered `runConfigurations`.
+The model (with its capabilities and kind) travels to the renderer over `ProjectChannel.ModelLoad`;
+adding an ecosystem means adding a provider, **never touching the shell or ribbon**.
+
+Three renderer seams carry the active workspace's state to the root ribbon. Each is an **app-level
+singleton** — the ribbon lives above the tabs, so it can never inject a tab's scoped services. They
+resolve the active tab's workspace instead: `WorkspaceCapabilities`/`Builds` are *registered into* by
+the active tab's per-workspace services (mirroring how a tab registers its build handler), while
+`StudioConfig` reads the active root from the `ActiveWorkspace` seam. Injecting the scoped `Workspace`
+here is a bug — its root is never set at the root injector, so `.studio` would never load.
+
+- **`WorkspaceCapabilities`** — the active model's capabilities + provider kind. The Solution group
+  gates Build/Clean/Rebuild on `actions`; the Target group's configuration/target selectors are driven
+  by `buildConfigurations`/`target` and hidden when absent. Capabilities are authoritative; a root with
+  no provider falls back to discovered tasks so Gradle/Make still build.
+- **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()`/`runTask()` (discovered
+  tasks), `runConfiguration()` (a `.studio` run configuration compiled to a command), and `runAction()`
+  (Clean/Rebuild, compiled per ecosystem and kept out of the Run dropdown).
+- **`StudioConfig`** — the active workspace's `.studio` persistence.
+
+**`.studio`** (`shared/electron/studio`, platform-neutral model in `shared/api/studio.ts`) persists
+run configurations per project: `workspace.json` is shared and committed (the run configurations);
+`workspace.user.json` is git-ignored and holds only transient selections (last configuration, target,
+build configuration). The main-process `StudioStore` owns atomic reads/writes, seeds a `.gitignore`
+entry on first write, and seeds default run configurations from the model when a project first opens
+(idempotent — never overwriting an existing `workspace.json`). The renderer reloads on external edits
+through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists these
+configurations (falling back to discovered tasks until they are seeded), and the Configure dialog edits
+them.
+
 ---
 
 ## 5. AI agent — access & permission model
