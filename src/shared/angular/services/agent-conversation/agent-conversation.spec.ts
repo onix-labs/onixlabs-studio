@@ -1,7 +1,7 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef, AiProviderId } from '@shared/api/ai-types';
+import type { AgentContextRef, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import {
   AgentConversationSummary,
@@ -37,6 +37,9 @@ function agentStub(
   return {
     items,
     isRunning: signal<boolean>(false),
+    provider: signal<AiProviderId>('claude'),
+    model: signal<string>('claude-opus-4-8'),
+    models: signal<readonly AiModelInfo[]>([]),
     queued: signal<readonly AgentQueuedMessage[]>([]),
     branch,
     clear: (): void => {

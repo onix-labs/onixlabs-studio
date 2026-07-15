@@ -1,7 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
+import type { AgentContextRef, AgentMode, AiModelInfo } from '@shared/api/ai-types';
 import { AgentSessionHandle, AgentSessions } from './agent-sessions';
 
 /**
@@ -46,6 +46,15 @@ function createSession(): FakeSession {
     contextPaths: contextPaths.asReadonly(),
     historyOpen: signal<boolean>(true).asReadonly(),
     autoScroll: signal<boolean>(false).asReadonly(),
+    provider: signal<string>('claude').asReadonly(),
+    model: signal<string>('claude-opus-4-8').asReadonly(),
+    models: signal<readonly AiModelInfo[]>([]).asReadonly(),
+    setProvider: (id: string): void => {
+      calls.push(`setProvider:${id}`);
+    },
+    setModel: (id: string): void => {
+      calls.push(`setModel:${id}`);
+    },
     newChat: (): void => {
       calls.push('newChat');
     },

@@ -9,7 +9,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
+import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 import {
   AgentConversationSummary,
   ConversationContext,
@@ -32,7 +32,6 @@ import {
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
-import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessionHandle } from '@shared/angular/services/agent-sessions/agent-sessions';
 
 /**
@@ -66,12 +65,6 @@ export class AgentConversation implements AgentSessionHandle {
    * Holds the conversation store client used to list, load, save, and delete conversations.
    */
   private readonly store: AgentConversations = inject(AgentConversations);
-
-  /**
-   * Holds the global engine selection, the source of the provider/model a persisted conversation ran
-   * under.
-   */
-  private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
    * Holds the file-system client used to prompt for a file or folder when attaching context.
@@ -130,6 +123,22 @@ export class AgentConversation implements AgentSessionHandle {
    * Gets a value indicating whether a run is in flight (part of {@link AgentSessionHandle}).
    */
   public readonly isRunning: Signal<boolean> = this.agent.isRunning;
+
+  /**
+   * Gets the connection this conversation's runs go through (part of {@link AgentSessionHandle}).
+   */
+  public readonly provider: Signal<AiProviderId> = this.agent.provider;
+
+  /**
+   * Gets the model this conversation's runs go through (part of {@link AgentSessionHandle}).
+   */
+  public readonly model: Signal<string> = this.agent.model;
+
+  /**
+   * Gets the models offered by this conversation's effective provider (part of
+   * {@link AgentSessionHandle}).
+   */
+  public readonly models: Signal<readonly AiModelInfo[]> = this.agent.models;
 
   /**
    * Gets how much autonomy the conversation's runs use (part of {@link AgentSessionHandle}).
@@ -324,6 +333,22 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
+   * Selects the connection this conversation's runs go through (part of {@link AgentSessionHandle}).
+   * @param id The connection id.
+   */
+  public setProvider(id: AiProviderId): void {
+    this.agent.setProvider(id);
+  }
+
+  /**
+   * Selects the model this conversation's runs go through (part of {@link AgentSessionHandle}).
+   * @param id The model id.
+   */
+  public setModel(id: string): void {
+    this.agent.setModel(id);
+  }
+
+  /**
    * Prompts for a file and attaches it to the conversation's context (part of
    * {@link AgentSessionHandle}).
    */
@@ -461,8 +486,8 @@ export class AgentConversation implements AgentSessionHandle {
       id,
       contextId: contextIdOf(this.context()),
       title: this.deriveTitle(branch.origin),
-      provider: this.engine.provider(),
-      model: this.engine.model(),
+      provider: this.agent.provider(),
+      model: this.agent.model(),
       createdAt,
       updatedAt: Date.now(),
       messageCount: branch.origin.filter(
@@ -522,8 +547,8 @@ export class AgentConversation implements AgentSessionHandle {
       id,
       contextId: contextIdOf(context),
       title: this.deriveTitle(items),
-      provider: this.engine.provider(),
-      model: this.engine.model(),
+      provider: this.agent.provider(),
+      model: this.agent.model(),
       createdAt: this.createdAt,
       updatedAt: Date.now(),
       messageCount,

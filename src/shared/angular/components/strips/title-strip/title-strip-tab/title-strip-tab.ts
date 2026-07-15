@@ -20,6 +20,7 @@ import {
   Signal,
 } from '@angular/core';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { isPinnedTabType } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
@@ -81,11 +82,11 @@ export class TitleStripTab {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets a value indicating whether the tab is pinned, and therefore cannot be dragged. The
-   * settings tab is pinned to the front of the strip.
+   * Gets a value indicating whether the tab is pinned, and therefore cannot be dragged. The Settings
+   * and Mission Control tabs are pinned to the front of the strip.
    */
-  protected readonly isPinned: Signal<boolean> = computed(
-    (): boolean => this.tab().type === 'settings',
+  protected readonly isPinned: Signal<boolean> = computed((): boolean =>
+    isPinnedTabType(this.tab().type),
   );
 
   /**

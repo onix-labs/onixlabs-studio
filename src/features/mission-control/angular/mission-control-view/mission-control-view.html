@@ -1,0 +1,33 @@
+<app-panel-layout layoutKey="mission-control">
+  <div main class="mc-main">
+    @if (hosts().length === 0) {
+      <div class="mc-empty">
+        <p class="mc-empty__title">No active agents</p>
+        <p class="mc-empty__text">
+          Open an agent tab, or the agent panel in any editor or terminal, and it will appear here as a
+          live column.
+        </p>
+      </div>
+    } @else {
+      <div class="mc-row">
+        @for (host of hosts(); track host.id) {
+          <ng-container
+            [ngComponentOutlet]="Tile"
+            [ngComponentOutletInjector]="injectorFor(host)"
+            [ngComponentOutletInputs]="tileInputs()"
+          />
+        }
+      </div>
+    }
+  </div>
+
+  <app-panel
+    panelId="permissions"
+    defaultEdge="left"
+    [defaultSize]="300"
+    [minSize]="240"
+    [maxSize]="480"
+  >
+    <app-global-permissions-panel />
+  </app-panel>
+</app-panel-layout>

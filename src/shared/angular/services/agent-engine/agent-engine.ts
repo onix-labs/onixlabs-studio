@@ -89,7 +89,8 @@ export class AgentEngine {
   public async loadProviders(
     connections: readonly AiConnection[] = this.settings.aiConnections(),
   ): Promise<void> {
-    const providers: readonly AiProviderInfo[] = await this.runtime.listProviders(connections);
+    const providers: readonly AiProviderInfo[] =
+      (await this.runtime.listProviders(connections)) ?? [];
     this.providerList.set(providers);
     const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(

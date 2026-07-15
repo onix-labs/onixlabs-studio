@@ -222,14 +222,6 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
-   * Gets whether the agent panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected agentMounted(): boolean {
-    return this.binaryPanels.isMounted(this.tabId(), 'agent');
-  }
-
-  /**
    * Gets whether the agent panel is currently visible.
    * @returns Returns true when the panel is shown.
    */

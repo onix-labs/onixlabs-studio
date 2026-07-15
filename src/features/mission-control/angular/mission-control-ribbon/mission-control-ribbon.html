@@ -1,0 +1,58 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Agents">
+    <app-ribbon-strip-button
+      [icon]="Icon.STOP"
+      label="Stop All"
+      [disabled]="runningCount() === 0"
+      (action)="onStopAll()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Permissions">
+    <app-ribbon-strip-column [spread]="true">
+      <app-ribbon-strip-row>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.CHECK"
+          label="Allow all"
+          [disabled]="pendingPermissions() === 0"
+          (action)="onAllowAll()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.CLOSE"
+          label="Deny all"
+          [disabled]="pendingPermissions() === 0"
+          (action)="onDenyAll()"
+        />
+      </app-ribbon-strip-row>
+      <app-ribbon-strip-field
+        label="Policy"
+        [options]="policyOptions"
+        [value]="policyLabel()"
+        [fullWidth]="false"
+        (changed)="onPolicy($event)"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_EMPTY"
+      label="Hide Empty"
+      [toggle]="true"
+      [pressed]="hideEmpty()"
+      (action)="onToggleHideEmpty()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_IDLE"
+      label="Hide Idle"
+      [toggle]="true"
+      [pressed]="hideIdle()"
+      (action)="onToggleHideIdle()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.LAYOUT_SPLIT"
+      label="Reset Widths"
+      (action)="onResetLayout()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

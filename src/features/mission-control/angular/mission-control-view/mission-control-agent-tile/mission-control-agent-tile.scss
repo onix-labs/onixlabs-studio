@@ -1,0 +1,197 @@
+// A single agent column in the Mission Control row. Its set width is the flex basis: columns grow
+// together to fill spare space when they fit, and hold their width (scrolling the row) once they
+// overflow. A trailing grip resizes it; a right-hand seam separates it from the next column.
+:host {
+  position: relative;
+  display: flex;
+  flex-grow: 1;
+  flex-shrink: 0;
+  flex-direction: column;
+  min-inline-size: 0;
+  block-size: 100%;
+  box-sizing: border-box;
+  border-inline-end: 0.0625rem solid var(--dock-border-color);
+  background: var(--panel-surface-color);
+}
+
+// A tile suppressed by the ribbon's Hide Empty / Hide Idle toggles: collapsed out of the row entirely.
+:host(.tile--hidden) {
+  display: none;
+}
+
+.tile__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.75rem 0.25rem;
+}
+
+.tile__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.tile__name {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--dock-title-foreground-color--focused);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The title is a button when the column has an origin tab: clicking it activates that tab. Reset the
+// button chrome so it reads as the title, with an accent underline on hover.
+button.tile__name {
+  display: block;
+  max-inline-size: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-align: start;
+  cursor: pointer;
+  transition: color 150ms ease-in-out;
+
+  &:hover {
+    color: var(--accent-color);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+    border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  }
+}
+
+.tile__kind {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+
+  &::before {
+    content: '(';
+  }
+
+  &::after {
+    content: ')';
+  }
+}
+
+.tile__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex: none;
+}
+
+.tile__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 1.5rem;
+  inline-size: 1.5rem;
+  font-size: 0.95rem;
+  color: var(--gray-500);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: var(--hover-transition);
+
+  &:hover:not(:disabled) {
+    color: var(--accent-surface-foreground-color);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.tile__status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.85rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+
+.tile__status-dot {
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background: var(--gray-500);
+}
+
+.tile__status--busy {
+  color: var(--accent-color);
+
+  .tile__status-dot {
+    background: var(--accent-color);
+    animation: tile-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes tile-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.tile__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+
+  app-agent-tool-strip {
+    flex: none;
+  }
+}
+
+// The chat/history fills the remaining height below the tool strip.
+.tile__panel-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// A slim grip over the tile's trailing edge: transparent at rest, accent while hovered/dragged, so a
+// tile can be widened or narrowed within the scrolling row.
+.tile__resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 0.375rem;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+  z-index: 5;
+  transition: background 150ms ease-in-out;
+
+  &:hover {
+    background: var(--panel-grip-hover-color);
+  }
+
+  &:active {
+    background: var(--accent-surface-border-color);
+  }
+}

@@ -11,6 +11,7 @@ import {
   inject,
   input,
   InputSignal,
+  OnInit,
   signal,
   Signal,
   untracked,
@@ -37,6 +38,8 @@ import { formatCost, formatTokens } from '@shared/angular/services/agent/token-f
 import { Search } from '@shared/angular/services/search/search';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -322,7 +325,7 @@ interface ContextChip {
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AgentChat {
+export class AgentChat implements OnInit {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -348,6 +351,25 @@ export class AgentChat {
    * Holds the app-wide agent-requests registry this conversation reports its pending requests to.
    */
   private readonly requests: AgentRequests = inject(AgentRequests);
+
+  /**
+   * Holds the app-wide live-hosts registry this conversation registers with, so surfaces such as
+   * Mission Control can mirror it. Skipped when this chat is itself a mirror.
+   */
+  private readonly hosts: AgentHosts = inject(AgentHosts);
+
+  /**
+   * Holds the host-provided conversation, registered with {@link AgentHosts} so a mirror can drive the
+   * same session. Optional so the component still stands up in isolation (tests).
+   */
+  private readonly conversation: AgentConversation | null = inject(AgentConversation, {
+    optional: true,
+  });
+
+  /**
+   * Holds the destroy notifier used to unregister this conversation's registrations.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
    * Holds the global engine selection, read to gate image input on the selected provider's support.
@@ -393,6 +415,13 @@ export class AgentChat {
    * the follow without changing the preference, and scrolling back to the bottom resumes it.
    */
   public readonly autoScroll: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets a value indicating whether this chat is a mirror of another host's conversation (a Mission
+   * Control tile). A mirror drives the shared session but does not register as its own host, report its
+   * pending requests again, or light the tab's attention dot — the origin already does.
+   */
+  public readonly mirror: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Holds the current composer text.
@@ -950,27 +979,13 @@ export class AgentChat {
    * while the conversation awaits a permission decision in the background.
    */
   public constructor() {
-    // Report this conversation's pending requests to the app-wide registry (the title strip's
-    // agent-requests bell), attributed to the hosting tab when there is one.
-    const unregister: () => void = this.requests.register({
-      agent: this.agent,
-      tabId: (): string | null => this.tabId() ?? null,
-      label: (): string => {
-        const id: string | undefined = this.tabId();
-        if (id !== undefined) {
-          return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id)?.title ?? 'Agent';
-        }
-        return 'Agent panel';
-      },
-    });
-    inject(DestroyRef).onDestroy(unregister);
-
     effect((): void => {
       const id: string | undefined = this.tabId();
       const waiting: boolean = this.awaitingDecision();
       const active: boolean = this.isActive();
       untracked((): void => {
-        if (id !== undefined) {
+        // A mirror never lights the tab — the origin conversation already owns the attention dot.
+        if (id !== undefined && !this.mirror()) {
           this.tabs.setAttention(id, waiting && !active);
         }
       });
@@ -1020,6 +1035,51 @@ export class AgentChat {
         element.scrollTop = element.scrollHeight;
       }
     });
+  }
+
+  /**
+   * Gets the display label this conversation is attributed to: the hosting tab's title, or a generic
+   * panel name when there is no owning tab. Reactive, so a renamed tab updates its Mission Control
+   * column and its requests-inbox heading.
+   */
+  private readonly hostLabel: Signal<string> = computed((): string => {
+    const id: string | undefined = this.tabId();
+    if (id !== undefined) {
+      return this.tabs.tabs().find((tab: Tab): boolean => tab.id === id)?.title ?? 'Agent';
+    }
+    return 'Agent panel';
+  });
+
+  /**
+   * Registers this conversation once its inputs are available: its pending requests with the app-wide
+   * requests registry (the title strip's bell), and — when it owns a conversation — its live session
+   * with {@link AgentHosts} so surfaces such as Mission Control can mirror the same transcript and run.
+   * A mirror registers neither: the origin conversation already does, and a second registration would
+   * double-count its requests and list it twice.
+   */
+  public ngOnInit(): void {
+    if (this.mirror()) {
+      return;
+    }
+
+    const unregisterRequests: () => void = this.requests.register({
+      agent: this.agent,
+      tabId: (): string | null => this.tabId() ?? null,
+      label: (): string => this.hostLabel(),
+    });
+    this.destroyRef.onDestroy(unregisterRequests);
+
+    if (this.conversation !== null) {
+      const unregisterHost: () => void = this.hosts.register({
+        tabId: this.tabId() ?? null,
+        label: this.hostLabel,
+        surface: this.surface(),
+        agent: this.agent,
+        conversation: this.conversation,
+        isActive: this.isActive,
+      });
+      this.destroyRef.onDestroy(unregisterHost);
+    }
   }
 
   /**

@@ -17,6 +17,7 @@ import type {
   AiInputChoice,
   AiModelInfo,
   AiPermissionRemember,
+  AiProviderId,
   AiProviderInfo,
   AiRunState,
 } from '@shared/api/ai-types';
@@ -339,9 +340,79 @@ export class Agent {
   private readonly runtime: AiRuntime = inject(AiRuntime);
 
   /**
-   * Holds the global engine selection, the source of the provider and model a run goes through.
+   * Holds the global engine: the registered providers and the app-wide default selection this
+   * conversation falls back to until it picks its own provider/model.
    */
   private readonly engine: AgentEngine = inject(AgentEngine);
+
+  /**
+   * Holds this conversation's own connection choice, or null to follow the global default. Set per
+   * conversation so each agent can run through a different connection.
+   */
+  private readonly providerOverride: WritableSignal<AiProviderId | null> =
+    signal<AiProviderId | null>(null);
+
+  /**
+   * Holds this conversation's own model choice, or null to follow the effective provider's default.
+   */
+  private readonly modelOverride: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the connection this conversation's runs go through: its own choice, or the global default.
+   */
+  public readonly provider: Signal<AiProviderId> = computed(
+    (): AiProviderId => this.providerOverride() ?? this.engine.provider(),
+  );
+
+  /**
+   * Gets the descriptor of this conversation's effective provider, or undefined before providers load.
+   */
+  private readonly providerInfo: Signal<AiProviderInfo | undefined> = computed(
+    (): AiProviderInfo | undefined =>
+      this.engine.providers().find((info: AiProviderInfo): boolean => info.id === this.provider()),
+  );
+
+  /**
+   * Gets the models offered by this conversation's effective provider, in display order.
+   */
+  public readonly models: Signal<readonly AiModelInfo[]> = computed(
+    (): readonly AiModelInfo[] => this.providerInfo()?.models ?? [],
+  );
+
+  /**
+   * Gets the model this conversation's runs go through: its own valid choice, else — when it follows
+   * the global connection — the global model, else the effective provider's default.
+   */
+  public readonly model: Signal<string> = computed((): string => {
+    const chosen: string | null = this.modelOverride();
+    const models: readonly AiModelInfo[] = this.models();
+    if (chosen !== null && models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
+      return chosen;
+    }
+    if (this.providerOverride() === null) {
+      return this.engine.model();
+    }
+    return this.providerInfo()?.defaultModelId ?? '';
+  });
+
+  /**
+   * Selects the connection this conversation's runs go through, resetting its model to that
+   * connection's default. Choosing the global connection clears the override so the conversation
+   * resumes following the global default.
+   * @param id The connection id.
+   */
+  public setProvider(id: AiProviderId): void {
+    this.providerOverride.set(id === this.engine.provider() ? null : id);
+    this.modelOverride.set(null);
+  }
+
+  /**
+   * Selects the model this conversation's runs go through.
+   * @param id The model id.
+   */
+  public setModel(id: string): void {
+    this.modelOverride.set(id);
+  }
 
   /**
    * Holds the workspace, used to scope runs to the open folder.
@@ -534,13 +605,12 @@ export class Agent {
 
   /**
    * Gets the selected model's context window in tokens (the readout's denominator), or zero when it is
-   * unknown. Sourced from the global engine selection the run goes through.
+   * unknown. Sourced from this conversation's own effective model.
    */
   public readonly contextWindow: Signal<number> = computed((): number => {
-    const id: string = this.engine.model();
+    const id: string = this.model();
     return (
-      this.engine.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ??
-      0
+      this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0
     );
   });
 
@@ -792,9 +862,9 @@ export class Agent {
     const forkAt: string | null = this.forkAt;
     this.forkAt = null;
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.engine.provider(), prompt, {
+    this.activeRequestId = this.runtime.run(this.provider(), prompt, {
       workspaceRoot: this.workspace.root()?.path ?? null,
-      model: this.engine.model(),
+      model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       tokenCap: this.settings.aiTokenCap(),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
@@ -874,11 +944,11 @@ export class Agent {
     this.compactionText = '';
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(
-      this.engine.provider(),
+      this.provider(),
       this.compactionPrompt(history),
       {
         workspaceRoot: this.workspace.root()?.path ?? null,
-        model: this.engine.model(),
+        model: this.model(),
         permissionPosture: 'prompt',
         tokenCap: this.settings.aiTokenCap(),
         runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
@@ -1194,10 +1264,10 @@ export class Agent {
    * @returns Returns the readout.
    */
   private providerReadout(): string {
-    const id: string = this.engine.provider();
+    const id: string = this.provider();
     const label: string =
       this.engine.providers().find((info: AiProviderInfo): boolean => info.id === id)?.label ?? id;
-    const model: string = this.engine.model();
+    const model: string = this.model();
     return model.length > 0 ? `${label} · ${model}` : label;
   }
 

@@ -272,14 +272,6 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
-   * Gets a value indicating whether the docked agent panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected agentMounted(): boolean {
-    return this.terminalAgents.isMounted(this.tabId());
-  }
-
-  /**
    * Gets a value indicating whether the docked agent panel is currently visible.
    * @returns Returns true when the panel is shown.
    */

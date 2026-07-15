@@ -1,5 +1,5 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AgentContextRef, AgentMode } from '@shared/api/ai-types';
+import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 
 /**
  * The slice of an agent conversation the agent ribbon drives: whether a run is in flight, whether the
@@ -13,6 +13,21 @@ export interface AgentSessionHandle {
    * Gets a value indicating whether a run is in flight.
    */
   readonly isRunning: Signal<boolean>;
+
+  /**
+   * Gets the connection the conversation's runs go through.
+   */
+  readonly provider: Signal<AiProviderId>;
+
+  /**
+   * Gets the model the conversation's runs go through.
+   */
+  readonly model: Signal<string>;
+
+  /**
+   * Gets the models offered by the conversation's effective provider.
+   */
+  readonly models: Signal<readonly AiModelInfo[]>;
 
   /**
    * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
@@ -60,6 +75,18 @@ export interface AgentSessionHandle {
    * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
    */
   setMode(mode: AgentMode): void;
+
+  /**
+   * Selects the connection the conversation's runs go through.
+   * @param id The connection id.
+   */
+  setProvider(id: AiProviderId): void;
+
+  /**
+   * Selects the model the conversation's runs go through.
+   * @param id The model id.
+   */
+  setModel(id: string): void;
 
   /**
    * Prompts for a file and attaches it to the conversation's context.
@@ -114,6 +141,27 @@ export class AgentSessions {
    */
   public readonly isRunning: Signal<boolean> = computed(
     (): boolean => this.activeSession()?.isRunning() ?? false,
+  );
+
+  /**
+   * Gets the connection the active agent tab's runs go through.
+   */
+  public readonly provider: Signal<AiProviderId> = computed(
+    (): AiProviderId => this.activeSession()?.provider() ?? '',
+  );
+
+  /**
+   * Gets the model the active agent tab's runs go through.
+   */
+  public readonly model: Signal<string> = computed(
+    (): string => this.activeSession()?.model() ?? '',
+  );
+
+  /**
+   * Gets the models offered by the active agent tab's effective provider.
+   */
+  public readonly models: Signal<readonly AiModelInfo[]> = computed(
+    (): readonly AiModelInfo[] => this.activeSession()?.models() ?? [],
   );
 
   /**
@@ -198,6 +246,22 @@ export class AgentSessions {
    */
   public setMode(mode: AgentMode): void {
     this.activeSession()?.setMode(mode);
+  }
+
+  /**
+   * Selects the connection the active agent tab's runs go through.
+   * @param id The connection id.
+   */
+  public setProvider(id: AiProviderId): void {
+    this.activeSession()?.setProvider(id);
+  }
+
+  /**
+   * Selects the model the active agent tab's runs go through.
+   * @param id The model id.
+   */
+  public setModel(id: string): void {
+    this.activeSession()?.setModel(id);
   }
 
   /**

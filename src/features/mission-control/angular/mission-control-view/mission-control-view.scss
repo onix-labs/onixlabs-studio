@@ -1,0 +1,46 @@
+// The Mission Control view fills its tab. The panel layout supplies the left permissions column; the
+// main area holds the scrolling row of agent columns.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.mc-main {
+  block-size: 100%;
+  min-inline-size: 0;
+}
+
+// The agent columns tile left to right: they grow together to fill spare space when they fit, and
+// scroll horizontally once they overrun the available space. A leading seam sets the row apart from
+// the Global Permissions panel to its left.
+.mc-row {
+  display: flex;
+  block-size: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-inline-start: 0.0625rem solid var(--dock-border-color);
+}
+
+.mc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  block-size: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--view-placeholder-color, var(--gray-500));
+}
+
+.mc-empty__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.mc-empty__text {
+  margin: 0;
+  max-inline-size: 24rem;
+  font-size: 0.85rem;
+}

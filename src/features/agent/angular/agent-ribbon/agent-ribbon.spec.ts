@@ -114,11 +114,6 @@ describe('AgentRibbon', () => {
     contextRefs = signal<readonly AgentContextRef[]>([]);
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
-      provider: signal<AiProviderId>('claude'),
-      models: signal<readonly AiModelInfo[]>(MODELS),
-      model: signal<string>('claude-opus-4-8'),
-      setProvider: (id: AiProviderId): void => void providerChoices.push(id),
-      setModel: (id: string): void => void modelChoices.push(id),
     };
     const sessionsStub: Partial<AgentSessions> = {
       isRunning: running,
@@ -126,6 +121,11 @@ describe('AgentRibbon', () => {
       autoScroll,
       mode,
       contextPaths: contextRefs,
+      provider: signal<AiProviderId>('claude'),
+      model: signal<string>('claude-opus-4-8'),
+      models: signal<readonly AiModelInfo[]>(MODELS),
+      setProvider: (id: AiProviderId): void => void providerChoices.push(id),
+      setModel: (id: string): void => void modelChoices.push(id),
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
