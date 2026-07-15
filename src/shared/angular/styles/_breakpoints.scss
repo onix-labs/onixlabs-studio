@@ -1,0 +1,58 @@
+// Breakpoint gutter: the glyphs the debug breakpoint controller draws in Monaco's glyph-margin lane.
+// Monaco renders decorations into its own DOM, outside Angular's view encapsulation, so these classes
+// must live in a global stylesheet to take effect. The colours are theme tokens (see the theme
+// partials), falling back to sensible defaults here.
+
+// The dot radius. Monaco fixes the glyph-margin lane width to the line height, so a generous radius
+// keeps the dot from reading as a small mark lost in a wide lane.
+$breakpoint-radius: 6px;
+$breakpoint-hole: 3px;
+
+.breakpoint-glyph {
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: center;
+
+  // A filled dot centred in the glyph margin, drawn with a radial gradient so no image asset is needed.
+  background-image: radial-gradient(
+    circle at center,
+    var(--breakpoint-color, #e5484d) 0 $breakpoint-radius,
+    transparent $breakpoint-radius
+  );
+}
+
+// A conditional breakpoint is drawn hollow (a ring) to distinguish it from an unconditional one.
+.breakpoint-glyph--conditional {
+  background-image: radial-gradient(
+    circle at center,
+    transparent 0 $breakpoint-hole,
+    var(--breakpoint-color, #e5484d) $breakpoint-hole $breakpoint-radius,
+    transparent $breakpoint-radius
+  );
+}
+
+// A logpoint is drawn in a distinct (diamond-ish) colour to read as "logs, does not halt".
+.breakpoint-glyph--logpoint {
+  background-image: radial-gradient(
+    circle at center,
+    var(--breakpoint-logpoint-color, #3b82f6) 0 $breakpoint-radius,
+    transparent $breakpoint-radius
+  );
+}
+
+// A disabled breakpoint is dimmed and hollow so it reads as present-but-inactive.
+.breakpoint-glyph--disabled {
+  opacity: 0.45;
+  background-image: radial-gradient(
+    circle at center,
+    transparent 0 $breakpoint-hole,
+    var(--breakpoint-color, #e5484d) $breakpoint-hole $breakpoint-radius,
+    transparent $breakpoint-radius
+  );
+}
+
+// A verified (bound) breakpoint in a live session gets a subtle ring highlight around the dot.
+.breakpoint-glyph--verified {
+  box-shadow: inset 0 0 0 1px var(--breakpoint-verified-color, #2ea043);
+  border-radius: 50%;
+}

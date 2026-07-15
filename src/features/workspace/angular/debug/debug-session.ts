@@ -1,4 +1,4 @@
-import { inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { Bridge } from '@shared/api/bridge';
 import {
@@ -11,6 +11,7 @@ import { RunConfiguration } from '@shared/api/studio';
 import { Output } from '@shared/angular/services/output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { DebugHandler, DebugState } from '@shared/angular/services/debug/debugger';
+import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 
 /**
@@ -48,6 +49,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Holds this workspace's project model, read for the declared debug adapter.
    */
   private readonly solutionModel: SolutionModel = inject(SolutionModel);
+
+  /**
+   * Holds the workspace's breakpoints, synchronised to the adapter and updated with its verification.
+   */
+  private readonly breakpoints: Breakpoints = inject(Breakpoints);
 
   /**
    * Holds the generic transport, or undefined outside Electron.
@@ -95,7 +101,21 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private readonly exitDisposer: (() => void) | null;
 
   /**
-   * Subscribes to the main process's adapter events and exits.
+   * Holds the signature of the breakpoint definitions last sent to the adapter, so a re-sync is skipped
+   * when only the transient verification changed (which would otherwise loop, as applying the adapter's
+   * verification mutates the store the sync effect watches).
+   */
+  private lastSyncSignature: string = '';
+
+  /**
+   * Holds the set of file paths whose breakpoints have been sent to the adapter, so a file that loses
+   * all its breakpoints mid-session is cleared on the adapter rather than left set.
+   */
+  private readonly syncedPaths: Set<string> = new Set<string>();
+
+  /**
+   * Subscribes to the main process's adapter events and exits, and re-synchronises breakpoints to a
+   * running session whenever their definitions change.
    */
   public constructor() {
     this.eventDisposer =
@@ -106,6 +126,18 @@ export class DebugSession implements DebugHandler, OnDestroy {
       this.bridge?.on(DebugChannel.AdapterExit, (...args: unknown[]): void =>
         this.onAdapterExit(args[0] as DebugAdapterExit),
       ) ?? null;
+
+    // Re-send breakpoints when their definitions change during a running session. The signature guard
+    // ignores verification-only changes (the adapter's response feeds back into the store), which would
+    // otherwise re-trigger this effect endlessly.
+    effect((): void => {
+      const signature: string = definitionSignature(this.breakpoints.all());
+      if (this.currentSession === null || signature === this.lastSyncSignature) {
+        return;
+      }
+      this.lastSyncSignature = signature;
+      void this.syncBreakpoints();
+    });
   }
 
   /**
@@ -242,11 +274,8 @@ export class DebugSession implements DebugHandler, OnDestroy {
     }
     switch (message.event) {
       case 'initialized':
-        // The adapter is ready for configuration. Breakpoints are sent here in a later phase; for now
-        // only `configurationDone` is needed, when the adapter requires it.
-        if (this.capabilities.supportsConfigurationDoneRequest === true) {
-          void this.request('configurationDone');
-        }
+        // The adapter is ready for configuration: send the breakpoints, then signal completion.
+        void this.configure();
         break;
       case 'output':
         this.appendOutput(message.body as DebugProtocol.OutputEvent['body'] | undefined);
@@ -283,6 +312,71 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private onAdapterExit(exit: DebugAdapterExit): void {
     if (exit.sessionId === this.currentSession) {
       this.reset();
+    }
+  }
+
+  /**
+   * Completes configuration once the adapter reports `initialized`: sends the workspace's breakpoints,
+   * then signals that configuration is done so the adapter starts (or resumes to) the debuggee.
+   */
+  private async configure(): Promise<void> {
+    await this.syncBreakpoints();
+    if (this.capabilities.supportsConfigurationDoneRequest === true) {
+      void this.request('configurationDone');
+    }
+  }
+
+  /**
+   * Sends every file's breakpoints to the adapter, including files that have lost all their breakpoints
+   * (so they are cleared), and records the definition signature so the sync effect does not resend them.
+   */
+  private async syncBreakpoints(): Promise<void> {
+    this.lastSyncSignature = definitionSignature(this.breakpoints.all());
+    const paths: Set<string> = new Set<string>([
+      ...this.syncedPaths,
+      ...this.breakpoints.paths(),
+    ]);
+    for (const path of paths) {
+      await this.syncFile(path);
+    }
+  }
+
+  /**
+   * Sends one file's enabled breakpoints to the adapter and applies the verification it returns. A file
+   * with no enabled breakpoints sends an empty list, clearing it on the adapter.
+   * @param path The absolute file path.
+   */
+  private async syncFile(path: string): Promise<void> {
+    const enabled: readonly Breakpoint[] = this.breakpoints
+      .forPath(path)
+      .filter((breakpoint: Breakpoint): boolean => breakpoint.enabled);
+    if (enabled.length === 0) {
+      this.syncedPaths.delete(path);
+    } else {
+      this.syncedPaths.add(path);
+    }
+    const args: DebugProtocol.SetBreakpointsArguments = {
+      source: { path },
+      breakpoints: enabled.map(
+        (breakpoint: Breakpoint): DebugProtocol.SourceBreakpoint => ({
+          line: breakpoint.line,
+          condition: breakpoint.condition,
+          logMessage: breakpoint.logMessage,
+        }),
+      ),
+    };
+    try {
+      const body: DebugProtocol.SetBreakpointsResponse['body'] =
+        await this.request<DebugProtocol.SetBreakpointsResponse['body']>('setBreakpoints', args);
+      this.breakpoints.applyVerification(
+        path,
+        (body?.breakpoints ?? []).map((breakpoint: DebugProtocol.Breakpoint) => ({
+          line: breakpoint.line,
+          verified: breakpoint.verified,
+        })),
+      );
+    } catch {
+      // A failed setBreakpoints leaves the file's breakpoints unverified; nothing more to do.
     }
   }
 
@@ -348,12 +442,16 @@ export class DebugSession implements DebugHandler, OnDestroy {
   }
 
   /**
-   * Resets to the idle, no-session state.
+   * Resets to the idle, no-session state, clearing the breakpoints' (transient) verification and the
+   * synchronisation bookkeeping so the next session re-sends them.
    */
   private reset(): void {
     this.currentSession = null;
     this.threadId = undefined;
     this.capabilities = {};
+    this.lastSyncSignature = '';
+    this.syncedPaths.clear();
+    this.breakpoints.clearVerification();
     this.stateSignal.set('idle');
   }
 }
@@ -365,4 +463,24 @@ export class DebugSession implements DebugHandler, OnDestroy {
  */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown error';
+}
+
+/**
+ * Builds an order-independent signature of every breakpoint's definition (excluding the transient
+ * verification), so a re-sync can be skipped when only verification changed.
+ * @param all The breakpoints keyed by file path.
+ * @returns Returns the signature.
+ */
+function definitionSignature(all: ReadonlyMap<string, readonly Breakpoint[]>): string {
+  const parts: string[] = [];
+  for (const [path, list] of all) {
+    for (const breakpoint of list) {
+      parts.push(
+        `${path}:${breakpoint.line}:${breakpoint.condition ?? ''}:${breakpoint.logMessage ?? ''}:${
+          breakpoint.enabled ? 1 : 0
+        }`,
+      );
+    }
+  }
+  return parts.sort().join('|');
 }

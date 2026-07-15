@@ -14,17 +14,39 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
 import {
   TextEditor,
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
+import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
 
 /**
  * Display name given to a new, unsaved code document (matching the markdown editor).
  */
 const NEW_DOCUMENT_NAME: string = 'New Document';
+
+/**
+ * Editor options applied to the code editor: the glyph margin is enabled so the breakpoint gutter has a
+ * lane to draw in (the shared text-editor leaves it off by default; only the code editor uses it). The
+ * glyph-margin lane's width is fixed to the line height by Monaco and cannot be trimmed, so the left
+ * gutter is tightened by the two lanes that can be: the line-number lane, whose default reserves room
+ * for five digits (right-aligned, leaving a wide gap between the breakpoint dot and one- or two-digit
+ * numbers) is floored at three digits (Monaco still grows it for larger files), and the line-decorations
+ * lane (the change-margin bar's home, right of the line numbers) is narrowed to close the gap to the
+ * code.
+ */
+const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
+  glyphMargin: true,
+  lineNumbersMinChars: 3,
+  lineDecorationsWidth: 6,
+};
 
 /**
  * Represents the document-bound code editor: the shared {@link TextEditor} pane wired to its backing
@@ -38,7 +60,7 @@ const NEW_DOCUMENT_NAME: string = 'New Document';
  */
 @Component({
   selector: 'app-code-document',
-  imports: [TextEditor],
+  imports: [TextEditor, TextField, Toggle],
   templateUrl: './code-document.html',
   styleUrl: './code-document.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,15 +73,59 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the breakpoint store the gutter draws from and clicks are recorded to. Breakpoints are keyed
+   * by the document's absolute file path, so an unsaved document (no path) draws no gutter.
+   */
+  private readonly breakpoints: Breakpoints = inject(Breakpoints);
+
+  /**
+   * Holds the registry that attaches a breakpoint-gutter controller to this editor's Monaco instance.
+   */
+  private readonly breakpointGutter: BreakpointGutter = inject(BreakpointGutter);
+
+  /**
+   * Holds the breakpoint-gutter controller once the pane's editor is ready, or null before then (and
+   * when Monaco is unavailable). A signal so the render effect re-runs once the gutter is attached.
+   */
+  private readonly breakpointController: WritableSignal<BreakpointGutterController | null> =
+    signal<BreakpointGutterController | null>(null);
+
+  /**
    * Holds the shared text-editor pane this component drives, or undefined before the view initialises.
    */
   private readonly editor: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
+
+  /**
+   * Holds the editor options bound to the pane, enabling the glyph margin for the breakpoint gutter.
+   */
+  protected readonly editorOptions: MonacoApi.editor.IEditorOptions = CODE_EDITOR_OPTIONS;
 
   /**
    * Holds the backing document, or null before initialisation.
    */
   private readonly backingDocument: WritableSignal<CodeDocument | null> =
     signal<CodeDocument | null>(null);
+
+  /**
+   * Holds the 1-based line whose breakpoint is being edited in the condition/logpoint overlay, or null
+   * when the overlay is closed.
+   */
+  protected readonly editingLine: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Holds the draft condition expression shown in the breakpoint editor overlay.
+   */
+  protected readonly editCondition: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the draft log message shown in the breakpoint editor overlay.
+   */
+  protected readonly editLogMessage: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the draft enabled flag shown in the breakpoint editor overlay.
+   */
+  protected readonly editEnabled: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
    * Gets the identifier of the backing document, used to resolve the document and target edits at it.
@@ -119,6 +185,17 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         this.documents.setActiveDocument(this.documentId());
       }
     });
+    // Redraw the breakpoint gutter whenever the controller attaches, the document's path changes, or the
+    // store changes. An unsaved document (no path) draws nothing.
+    effect((): void => {
+      const controller: BreakpointGutterController | null = this.breakpointController();
+      const document: CodeDocument | null = this.backingDocument();
+      if (controller === null || document === null) {
+        return;
+      }
+      const path: string | null = document.filePath();
+      controller.render(path === null ? [] : this.breakpoints.forPath(path));
+    });
   }
 
   /**
@@ -145,6 +222,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     }
     if (this.removeOnDestroy()) {
       this.documents.remove(id);
+    }
+    const controller: BreakpointGutterController | null = this.breakpointController();
+    if (controller !== null) {
+      this.breakpointGutter.detach(controller);
+      this.breakpointController.set(null);
     }
   }
 
@@ -174,10 +256,98 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   }
 
   /**
-   * Re-emits the pane's ready event to the owning leaf.
+   * Attaches the breakpoint gutter to the now-ready Monaco editor and re-emits the pane's ready event to
+   * the owning leaf.
    */
   protected onReady(): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor()?.getEditor() ?? null;
+    if (editor !== null) {
+      this.breakpointController.set(
+        this.breakpointGutter.attach(
+          editor,
+          (line: number): void => this.toggleBreakpoint(line),
+          (line: number): void => this.openBreakpointEditor(line),
+        ),
+      );
+    }
     this.ready.emit();
+  }
+
+  /**
+   * Toggles the breakpoint at a line, when the document has a file path. Closes the editor overlay so a
+   * removal does not leave it open on a gone breakpoint.
+   * @param line The 1-based line.
+   */
+  protected toggleBreakpoint(line: number): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    if (path === null) {
+      return;
+    }
+    this.breakpoints.toggle(path, line);
+    if (this.editingLine() === line) {
+      this.closeBreakpointEdit();
+    }
+  }
+
+  /**
+   * Opens the condition/logpoint overlay for a line, seeding it with the breakpoint's current values and
+   * creating a plain breakpoint first when the line has none. No-ops for an unsaved document.
+   * @param line The 1-based line.
+   */
+  protected openBreakpointEditor(line: number): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    if (path === null) {
+      return;
+    }
+    let existing: Breakpoint | undefined = this.breakpoints
+      .forPath(path)
+      .find((breakpoint: Breakpoint): boolean => breakpoint.line === line);
+    if (existing === undefined) {
+      this.breakpoints.add(path, line);
+      existing = this.breakpoints
+        .forPath(path)
+        .find((breakpoint: Breakpoint): boolean => breakpoint.line === line);
+    }
+    this.editCondition.set(existing?.condition ?? '');
+    this.editLogMessage.set(existing?.logMessage ?? '');
+    this.editEnabled.set(existing?.enabled ?? true);
+    this.editingLine.set(line);
+  }
+
+  /**
+   * Applies the overlay's draft condition, log message and enabled flag to the edited breakpoint, then
+   * closes the overlay.
+   */
+  protected saveBreakpointEdit(): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    const line: number | null = this.editingLine();
+    if (path !== null && line !== null) {
+      this.breakpoints.update(path, line, {
+        condition: this.editCondition(),
+        logMessage: this.editLogMessage(),
+        enabled: this.editEnabled(),
+      });
+    }
+    this.closeBreakpointEdit();
+  }
+
+  /**
+   * Removes the edited breakpoint and closes the overlay.
+   */
+  protected removeBreakpointEdit(): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    const line: number | null = this.editingLine();
+    if (path !== null && line !== null) {
+      this.breakpoints.remove(path, line);
+    }
+    this.closeBreakpointEdit();
+  }
+
+  /**
+   * Closes the breakpoint editor overlay without changing anything.
+   */
+  protected closeBreakpointEdit(): void {
+    this.editingLine.set(null);
   }
 
   /**
