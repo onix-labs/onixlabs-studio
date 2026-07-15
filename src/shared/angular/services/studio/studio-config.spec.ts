@@ -1,6 +1,6 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { StudioChannel } from '@shared/api/studio-channels';
@@ -129,6 +129,11 @@ describe('StudioConfig', () => {
     watch = new FakeDirectoryWatch();
     rootPath = signal<string | null>(null);
     (window as unknown as { bridge: Bridge }).bridge = bridge;
+  });
+
+  afterEach(() => {
+    // Remove the fake bridge so a later spec asserting its absence (e.g. file-system) is not polluted.
+    delete (window as unknown as { bridge?: Bridge }).bridge;
   });
 
   it('loadsTheSnapshotWhenARootOpens', async () => {
