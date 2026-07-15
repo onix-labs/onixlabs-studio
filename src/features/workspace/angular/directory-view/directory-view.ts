@@ -294,10 +294,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.isActive()) {
         this.builds.register(this.buildRunner);
-        this.workspaceCapabilities.register(this.solutionModel.capabilities);
+        this.workspaceCapabilities.register(this.solutionModel.model);
       } else {
         this.builds.unregister(this.buildRunner);
-        this.workspaceCapabilities.unregister(this.solutionModel.capabilities);
+        this.workspaceCapabilities.unregister(this.solutionModel.model);
       }
     });
 

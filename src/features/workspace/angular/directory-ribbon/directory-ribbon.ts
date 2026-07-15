@@ -4,6 +4,7 @@ import { WorkspaceFind } from '@features/workspace/angular/workspace-find/worksp
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
+import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
@@ -76,6 +77,11 @@ export class DirectoryRibbon {
    * Holds the active workspace's declared capabilities, gating the Solution and Target groups.
    */
   private readonly workspaceCapabilities: WorkspaceCapabilities = inject(WorkspaceCapabilities);
+
+  /**
+   * Holds the Configure dialog's open-state service, opened by the Run group's Configure button.
+   */
+  private readonly configureDialog: ConfigureDialog = inject(ConfigureDialog);
 
   /**
    * Gets the active workspace's declared capabilities, or null when none are available.
@@ -358,6 +364,13 @@ export class DirectoryRibbon {
     if (this.studio.runConfigurations().some((c: RunConfiguration): boolean => c.id === id)) {
       void this.studio.setSelectedRunConfiguration(id);
     }
+  }
+
+  /**
+   * Opens the Configure dialog to edit the workspace's run configurations.
+   */
+  protected onConfigure(): void {
+    this.configureDialog.open();
   }
 
   /**
