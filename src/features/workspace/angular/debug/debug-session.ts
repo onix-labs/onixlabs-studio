@@ -10,7 +10,7 @@ import {
 import { RunConfiguration } from '@shared/api/studio';
 import { Output } from '@shared/angular/services/output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { DebugHandler, DebugState } from '@shared/angular/services/debug/debugger';
+import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/services/debug/debugger';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 
@@ -19,6 +19,108 @@ import { SolutionModel } from '@features/workspace/angular/project/solution-mode
  * thread. Adapters that model a single thread (netcoredbg, node) use thread id 1.
  */
 const DEFAULT_THREAD_ID: number = 1;
+
+/**
+ * The maximum number of stack frames requested for the call stack, a bound so a runaway recursion does
+ * not fetch an unbounded stack.
+ */
+const MAX_STACK_FRAMES: number = 50;
+
+/**
+ * A call-stack frame the debug UI renders, mapped from the adapter's richer frame.
+ */
+export interface DebugFrame {
+  /**
+   * Gets the adapter's frame id, used to request the frame's scopes.
+   */
+  readonly id: number;
+
+  /**
+   * Gets the frame's display name (usually the function or method).
+   */
+  readonly name: string;
+
+  /**
+   * Gets the absolute path of the frame's source file, or null when the frame has no source (a runtime
+   * or library frame).
+   */
+  readonly path: string | null;
+
+  /**
+   * Gets the 1-based line the frame is at.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the 1-based column the frame is at.
+   */
+  readonly column: number;
+}
+
+/**
+ * A variable scope (locals, arguments, globals) for a stack frame.
+ */
+export interface DebugScope {
+  /**
+   * Gets the scope's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the reference the scope's variables are fetched by.
+   */
+  readonly variablesReference: number;
+
+  /**
+   * Gets whether the scope is expensive to fetch, so the UI can collapse it by default.
+   */
+  readonly expensive: boolean;
+}
+
+/**
+ * A variable the debug UI renders, mapped from the adapter's richer variable.
+ */
+export interface DebugVariable {
+  /**
+   * Gets the variable's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the variable's rendered value.
+   */
+  readonly value: string;
+
+  /**
+   * Gets the variable's type, or null when the adapter does not report one.
+   */
+  readonly type: string | null;
+
+  /**
+   * Gets the reference the variable's children are fetched by, or 0 when it is a leaf.
+   */
+  readonly variablesReference: number;
+}
+
+/**
+ * The result of evaluating a watch expression.
+ */
+export interface DebugEvaluation {
+  /**
+   * Gets the rendered result, or an error message when the expression could not be evaluated.
+   */
+  readonly result: string;
+
+  /**
+   * Gets the reference the result's children are fetched by, or 0 when it is a leaf or an error.
+   */
+  readonly variablesReference: number;
+
+  /**
+   * Gets whether the evaluation failed.
+   */
+  readonly failed: boolean;
+}
 
 /**
  * Drives a single workspace's debug session over the main-process {@link
@@ -69,6 +171,53 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Gets the session's lifecycle state.
    */
   public readonly state: Signal<DebugState> = this.stateSignal.asReadonly();
+
+  /**
+   * Holds the call stack of the stopped thread, or an empty list when running or idle.
+   */
+  private readonly callStackSignal: WritableSignal<readonly DebugFrame[]> = signal<
+    readonly DebugFrame[]
+  >([]);
+
+  /**
+   * Gets the call stack of the stopped thread, top frame first.
+   */
+  public readonly callStack: Signal<readonly DebugFrame[]> = this.callStackSignal.asReadonly();
+
+  /**
+   * Holds the id of the selected stack frame (whose scopes are shown), or null when none is stopped.
+   */
+  private readonly currentFrameSignal: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets the id of the selected stack frame, or null when none is stopped.
+   */
+  public readonly currentFrame: Signal<number | null> = this.currentFrameSignal.asReadonly();
+
+  /**
+   * Holds the selected frame's variable scopes, or an empty list when none is stopped.
+   */
+  private readonly scopesSignal: WritableSignal<readonly DebugScope[]> = signal<
+    readonly DebugScope[]
+  >([]);
+
+  /**
+   * Gets the selected frame's variable scopes.
+   */
+  public readonly scopes: Signal<readonly DebugScope[]> = this.scopesSignal.asReadonly();
+
+  /**
+   * Holds the source location the debuggee is paused at (the selected frame's), or null when running.
+   */
+  private readonly locationSignal: WritableSignal<DebugLocation | null> =
+    signal<DebugLocation | null>(null);
+
+  /**
+   * Gets the source location the debuggee is paused at, or null when it is not paused. Read app-level
+   * through the {@link import('@shared/angular/services/debug/debugger').Debugger} seam for the
+   * current-execution-line marker.
+   */
+  public readonly location: Signal<DebugLocation | null> = this.locationSignal.asReadonly();
 
   /**
    * Holds the id of the running session, or null when none is running.
@@ -285,9 +434,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
           message.body as DebugProtocol.StoppedEvent['body'] | undefined;
         this.threadId = body?.threadId ?? this.threadId;
         this.stateSignal.set('stopped');
+        void this.refreshCallStack();
         break;
       }
       case 'continued':
+        this.clearInspection();
         this.stateSignal.set('running');
         break;
       case 'exited': {
@@ -404,6 +555,126 @@ export class DebugSession implements DebugHandler, OnDestroy {
   }
 
   /**
+   * Fetches the stopped thread's call stack, selects the top frame, and loads its scopes. Called when the
+   * adapter reports the debuggee stopped.
+   */
+  private async refreshCallStack(): Promise<void> {
+    const threadId: number = this.threadId ?? DEFAULT_THREAD_ID;
+    try {
+      const body: DebugProtocol.StackTraceResponse['body'] = await this.request<
+        DebugProtocol.StackTraceResponse['body']
+      >('stackTrace', { threadId, startFrame: 0, levels: MAX_STACK_FRAMES });
+      const frames: readonly DebugFrame[] = (body?.stackFrames ?? []).map(toFrame);
+      this.callStackSignal.set(frames);
+      const top: DebugFrame | undefined = frames[0];
+      this.currentFrameSignal.set(top?.id ?? null);
+      this.locationSignal.set(locationOf(top));
+      if (top !== undefined) {
+        await this.loadScopes(top.id);
+      } else {
+        this.scopesSignal.set([]);
+      }
+    } catch {
+      // A failed stackTrace leaves the call stack empty; the session is still usable.
+      this.clearInspection();
+    }
+  }
+
+  /**
+   * Selects a stack frame, loading its scopes and moving the paused-location marker to it, so the user
+   * can inspect an outer frame without resuming.
+   * @param frameId The frame id to select.
+   */
+  public async selectFrame(frameId: number): Promise<void> {
+    if (this.stateSignal() !== 'stopped') {
+      return;
+    }
+    this.currentFrameSignal.set(frameId);
+    this.locationSignal.set(
+      locationOf(this.callStackSignal().find((frame: DebugFrame): boolean => frame.id === frameId)),
+    );
+    await this.loadScopes(frameId);
+  }
+
+  /**
+   * Loads a frame's variable scopes into the scopes signal.
+   * @param frameId The frame id to load scopes for.
+   */
+  private async loadScopes(frameId: number): Promise<void> {
+    try {
+      const body: DebugProtocol.ScopesResponse['body'] = await this.request<
+        DebugProtocol.ScopesResponse['body']
+      >('scopes', { frameId });
+      this.scopesSignal.set(
+        (body?.scopes ?? []).map(
+          (scope: DebugProtocol.Scope): DebugScope => ({
+            name: scope.name,
+            variablesReference: scope.variablesReference,
+            expensive: scope.expensive,
+          }),
+        ),
+      );
+    } catch {
+      this.scopesSignal.set([]);
+    }
+  }
+
+  /**
+   * Fetches the child variables of a scope or structured variable, for lazy expansion of the variable
+   * tree.
+   * @param variablesReference The reference to fetch children for.
+   * @returns Returns the child variables, or an empty list when none or on failure.
+   */
+  public async variables(variablesReference: number): Promise<readonly DebugVariable[]> {
+    if (variablesReference <= 0) {
+      return [];
+    }
+    try {
+      const body: DebugProtocol.VariablesResponse['body'] = await this.request<
+        DebugProtocol.VariablesResponse['body']
+      >('variables', { variablesReference });
+      return (body?.variables ?? []).map(toVariable);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Evaluates a watch expression against the selected frame.
+   * @param expression The expression to evaluate.
+   * @returns Returns the evaluation, with a failure flag when the adapter rejected it.
+   */
+  public async evaluate(expression: string): Promise<DebugEvaluation> {
+    try {
+      const body: DebugProtocol.EvaluateResponse['body'] = await this.request<
+        DebugProtocol.EvaluateResponse['body']
+      >('evaluate', {
+        expression,
+        frameId: this.currentFrameSignal() ?? undefined,
+        context: 'watch',
+      });
+      return {
+        result: body?.result ?? '',
+        variablesReference: body?.variablesReference ?? 0,
+        failed: false,
+      };
+    } catch (error: unknown) {
+      return { result: messageOf(error), variablesReference: 0, failed: true };
+    }
+  }
+
+  /**
+   * Clears the inspection state (call stack, scopes, selected frame, paused location), used when the
+   * debuggee resumes or the session ends.
+   */
+  private clearInspection(): void {
+    this.callStackSignal.set([]);
+    this.scopesSignal.set([]);
+    this.currentFrameSignal.set(null);
+    this.locationSignal.set(null);
+  }
+
+  /**
    * Sends a DAP request to the running session's adapter.
    * @param command The DAP request command.
    * @param args The request arguments, or undefined when the command takes none.
@@ -452,8 +723,50 @@ export class DebugSession implements DebugHandler, OnDestroy {
     this.lastSyncSignature = '';
     this.syncedPaths.clear();
     this.breakpoints.clearVerification();
+    this.clearInspection();
     this.stateSignal.set('idle');
   }
+}
+
+/**
+ * Maps an adapter stack frame to the UI frame, resolving its source path (absent for a runtime frame).
+ * @param frame The adapter frame.
+ * @returns Returns the UI frame.
+ */
+function toFrame(frame: DebugProtocol.StackFrame): DebugFrame {
+  return {
+    id: frame.id,
+    name: frame.name,
+    path: frame.source?.path ?? null,
+    line: frame.line,
+    column: frame.column,
+  };
+}
+
+/**
+ * Maps an adapter variable to the UI variable.
+ * @param variable The adapter variable.
+ * @returns Returns the UI variable.
+ */
+function toVariable(variable: DebugProtocol.Variable): DebugVariable {
+  return {
+    name: variable.name,
+    value: variable.value,
+    type: variable.type ?? null,
+    variablesReference: variable.variablesReference,
+  };
+}
+
+/**
+ * Derives the paused source location from a stack frame, or null when the frame has no source path.
+ * @param frame The frame, or undefined when the stack is empty.
+ * @returns Returns the location, or null.
+ */
+function locationOf(frame: DebugFrame | undefined): DebugLocation | null {
+  if (frame?.path == null) {
+    return null;
+  }
+  return { path: frame.path, line: frame.line, column: frame.column };
 }
 
 /**

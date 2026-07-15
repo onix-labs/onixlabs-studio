@@ -3,6 +3,7 @@ import { EditorCommands } from '@shared/angular/services/editor-commands/editor-
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { Builds } from '@shared/angular/services/tasks/builds';
+import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -24,8 +25,9 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
  * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
  * the {@link Builds} seam to the active workspace's build runner. The Run group is the Tier-1 universal
  * widget: a Start button that toggles to Stop while a run is in flight, a run-configuration dropdown
- * (sourced from the workspace's `.studio` configurations, falling back to discovered tasks), an inert
- * Debug pending the DAP epic, and an inert Configure pending its editor. The Solution group's
+ * (sourced from the workspace's `.studio` configurations, falling back to discovered tasks), a Debug
+ * button that launches the selected configuration under the {@link Debugger} seam, and a Configure
+ * button that opens the run-configuration editor. The Solution group's
  * Build/Rebuild/Clean and the Target group's configuration and target selectors gate themselves on the
  * active provider's declared {@link ProjectCapabilities}: unsupported actions are disabled, and the
  * Target group is hidden entirely when the provider declares no build-configuration or target axis. The
@@ -67,6 +69,11 @@ export class DirectoryRibbon {
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
    */
   private readonly builds: Builds = inject(Builds);
+
+  /**
+   * Holds the debugger seam the Debug button launches the selected run configuration through.
+   */
+  private readonly debugger: Debugger = inject(Debugger);
 
   /**
    * Holds the active workspace's `.studio` configuration, the source of the run dropdown's items.
@@ -247,6 +254,34 @@ export class DirectoryRibbon {
   );
 
   /**
+   * Gets the selected `.studio` run configuration, or undefined when the selected run item is a
+   * discovered task (which the debugger cannot launch — it needs a configuration's program/args).
+   */
+  private readonly debugConfiguration: Signal<RunConfiguration | undefined> = computed(
+    (): RunConfiguration | undefined => {
+      const id: string | null = this.selectedRunId();
+      return id === null
+        ? undefined
+        : this.studio
+            .runConfigurations()
+            .find((candidate: RunConfiguration): boolean => candidate.id === id);
+    },
+  );
+
+  /**
+   * Gets whether the Debug button can launch: the active provider declares a debug adapter, a run
+   * configuration is selected, and no debug session is already running. Providers that declare no
+   * adapter (or none at all) leave the button disabled rather than launching a session that would
+   * immediately report it has nowhere to attach.
+   */
+  protected readonly canDebug: Signal<boolean> = computed(
+    (): boolean =>
+      this.capabilities()?.debug != null &&
+      this.debugConfiguration() !== undefined &&
+      !this.debugger.running(),
+  );
+
+  /**
    * Cuts the selection in the focused editor.
    */
   protected onCut(): void {
@@ -363,6 +398,16 @@ export class DirectoryRibbon {
     this.picked.set(id);
     if (this.studio.runConfigurations().some((c: RunConfiguration): boolean => c.id === id)) {
       void this.studio.setSelectedRunConfiguration(id);
+    }
+  }
+
+  /**
+   * Launches the selected run configuration under the debugger on the active workspace.
+   */
+  protected onDebug(): void {
+    const configuration: RunConfiguration | undefined = this.debugConfiguration();
+    if (configuration !== undefined) {
+      this.debugger.launch(configuration);
     }
   }
 

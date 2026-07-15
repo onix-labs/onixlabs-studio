@@ -1,4 +1,5 @@
 import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
+import { DebugPanel } from '@features/workspace/angular/panels/debug-panel/debug-panel';
 import { OutputPanel } from '@features/workspace/angular/panels/output-panel/output-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
@@ -16,8 +17,9 @@ import { defaultLayout } from '@shared/angular/services/dock-layout/dock-tree';
  * in the centre with Output, the Error List, and a terminal tabbed along the bottom. The Solution
  * Explorer is catalogued but not in the starting layout — the directory view adds it only when the
  * open root has a recognised project system, and removes it otherwise. Search is likewise catalogued
- * but not in the starting layout — the directory view reveals it on the find accelerator. Every panel
- * is dockable.
+ * but not in the starting layout — the directory view reveals it on the find accelerator. The Debug
+ * panel (call stack / variables / watch) is likewise catalogued but revealed only while a debug session
+ * is running, tabbed beside Output. Every panel is dockable.
  *
  * This is the blueprint the workspace tab provides to the shared dock framework, mirroring the
  * source-control tab's own dock blueprint. It replaces the dock's former built-in default, so the
@@ -61,6 +63,7 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       ownsToolStrip: true,
     },
     { id: 'output', title: 'Output', icon: Icon.OUTPUT, role: 'tool', component: OutputPanel },
+    { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
     {
       id: 'errors',
       title: 'Error List',

@@ -1,6 +1,7 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
+import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectAction, ProjectCapabilities } from '@shared/api/project-system';
@@ -28,6 +29,20 @@ interface RibbonInternals {
   onRebuild(): void;
   onSelectBuildConfiguration(name: string): void;
   onSelectTarget(name: string): void;
+  canDebug(): boolean;
+  onDebug(): void;
+}
+
+/**
+ * A controllable fake of the debugger seam.
+ */
+class FakeDebugger {
+  public readonly running: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly launchCalls: RunConfiguration[] = [];
+
+  public launch(configuration: RunConfiguration): void {
+    this.launchCalls.push(configuration);
+  }
 }
 
 /**
@@ -59,6 +74,14 @@ function dotnetCapabilities(): ProjectCapabilities {
  */
 function nodeCapabilities(): ProjectCapabilities {
   return { actions: [], buildConfigurations: [], target: null, debug: null };
+}
+
+/**
+ * The .NET descriptor once a debug adapter is declared (as P5 will), for the Debug-button tests.
+ * @returns Returns the capabilities with a debug adapter.
+ */
+function dotnetWithDebug(): ProjectCapabilities {
+  return { ...dotnetCapabilities(), debug: { adapter: 'netcoredbg' } };
 }
 
 /**
@@ -165,6 +188,7 @@ describe('DirectoryRibbon', () => {
   let builds: FakeBuilds;
   let studio: FakeStudio;
   let capabilities: FakeCapabilities;
+  let debuggerSeam: FakeDebugger;
 
   /**
    * Reveals the protected surface under test.
@@ -178,12 +202,14 @@ describe('DirectoryRibbon', () => {
     builds = new FakeBuilds();
     studio = new FakeStudio();
     capabilities = new FakeCapabilities();
+    debuggerSeam = new FakeDebugger();
     await TestBed.configureTestingModule({
       imports: [DirectoryRibbon],
       providers: [
         { provide: Builds, useValue: builds },
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: capabilities },
+        { provide: Debugger, useValue: debuggerSeam },
       ],
     }).compileComponents();
 
@@ -247,6 +273,42 @@ describe('DirectoryRibbon', () => {
     internals().onStop();
 
     expect(builds.cancelCalls).toBe(1);
+  });
+
+  it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {
+    const config: RunConfiguration = configuration('a', 'A');
+    studio.runConfigurations.set([config]);
+    capabilities.capabilities.set(dotnetWithDebug());
+
+    expect(internals().canDebug()).toBe(true);
+    internals().onDebug();
+
+    expect(debuggerSeam.launchCalls).toEqual([config]);
+  });
+
+  it('debugIsDisabledWithoutADeclaredAdapterOrAConfigurationOrWhileRunning', () => {
+    const config: RunConfiguration = configuration('a', 'A');
+    studio.runConfigurations.set([config]);
+
+    // A configuration is selected but the provider declares no debug adapter (the .NET default today).
+    capabilities.capabilities.set(dotnetCapabilities());
+    expect(internals().canDebug()).toBe(false);
+
+    // With a declared adapter the button enables.
+    capabilities.capabilities.set(dotnetWithDebug());
+    expect(internals().canDebug()).toBe(true);
+
+    // A discovered task (no run configuration) cannot be debugged, even with an adapter.
+    studio.runConfigurations.set([]);
+    builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
+    builds.startTask.set(task({ id: 't', label: 'dotnet run' }));
+    expect(internals().canDebug()).toBe(false);
+
+    // Not while a session is already running.
+    studio.runConfigurations.set([config]);
+    expect(internals().canDebug()).toBe(true);
+    debuggerSeam.running.set(true);
+    expect(internals().canDebug()).toBe(false);
   });
 
   it('enablesBuildCleanRebuildAndShowsTheTargetGroupForDotnet', () => {

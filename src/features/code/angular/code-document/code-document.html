@@ -12,26 +12,26 @@
 @if (editingLine() !== null) {
   <div class="breakpoint-editor">
     <div class="breakpoint-editor__title">Breakpoint · line {{ editingLine() }}</div>
-    <label class="breakpoint-editor__field">
+    <div class="breakpoint-editor__field">
       <span class="breakpoint-editor__label">Condition</span>
       <app-text-field
         [value]="editCondition()"
         placeholder="e.g. count > 3"
         (valueChange)="editCondition.set($event)"
       />
-    </label>
-    <label class="breakpoint-editor__field">
+    </div>
+    <div class="breakpoint-editor__field">
       <span class="breakpoint-editor__label">Log message</span>
       <app-text-field
         [value]="editLogMessage()"
         placeholder="logpoint, e.g. value = {value}"
         (valueChange)="editLogMessage.set($event)"
       />
-    </label>
-    <label class="breakpoint-editor__toggle">
+    </div>
+    <div class="breakpoint-editor__toggle">
       <app-toggle [checked]="editEnabled()" (checkedChange)="editEnabled.set($event)" />
       <span class="breakpoint-editor__label">Enabled</span>
-    </label>
+    </div>
     <div class="breakpoint-editor__actions">
       <button
         type="button"

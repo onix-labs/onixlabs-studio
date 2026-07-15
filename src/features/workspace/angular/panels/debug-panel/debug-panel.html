@@ -1,0 +1,146 @@
+<div class="debug-toolbar">
+  @if (paused()) {
+    <button
+      type="button"
+      class="debug-toolbar__button"
+      title="Continue"
+      aria-label="Continue"
+      (click)="onContinue()"
+    >
+      <app-icon [icon]="Icon.PLAY" />
+    </button>
+  } @else {
+    <button
+      type="button"
+      class="debug-toolbar__button"
+      title="Pause"
+      aria-label="Pause"
+      [disabled]="!active()"
+      (click)="onPause()"
+    >
+      <app-icon [icon]="Icon.PAUSE" />
+    </button>
+  }
+  <button
+    type="button"
+    class="debug-toolbar__button"
+    title="Step Over"
+    aria-label="Step Over"
+    [disabled]="!paused()"
+    (click)="onStepOver()"
+  >
+    <app-icon [icon]="Icon.STEP_OVER" />
+  </button>
+  <button
+    type="button"
+    class="debug-toolbar__button"
+    title="Step Into"
+    aria-label="Step Into"
+    [disabled]="!paused()"
+    (click)="onStepInto()"
+  >
+    <app-icon [icon]="Icon.STEP_INTO" />
+  </button>
+  <button
+    type="button"
+    class="debug-toolbar__button"
+    title="Step Out"
+    aria-label="Step Out"
+    [disabled]="!paused()"
+    (click)="onStepOut()"
+  >
+    <app-icon [icon]="Icon.STEP_OUT" />
+  </button>
+  <span class="debug-toolbar__spacer"></span>
+  <button
+    type="button"
+    class="debug-toolbar__button debug-toolbar__button--stop"
+    title="Stop"
+    aria-label="Stop"
+    [disabled]="!active()"
+    (click)="onStop()"
+  >
+    <app-icon [icon]="Icon.STOP" />
+  </button>
+</div>
+
+<div class="debug-body">
+  <section class="debug-column">
+    <header class="debug-column__title">Call Stack</header>
+    @if (callStackRows().length > 0) {
+      <app-tree-view
+        [rows]="callStackRows()"
+        [selectedId]="selectedFrameRow()"
+        (rowClick)="onFrameClick($event)"
+      >
+        <ng-template let-row>
+          @let frame = frameOf(row);
+          <span class="debug-frame__name">{{ frame.name }}</span>
+          @if (frame.path !== null) {
+            <span class="debug-frame__loc">{{ frame.line }}</span>
+          }
+        </ng-template>
+      </app-tree-view>
+    } @else {
+      <p class="debug-empty">Not paused.</p>
+    }
+  </section>
+
+  <section class="debug-column">
+    <header class="debug-column__title">Variables</header>
+    @if (variableRows().length > 0) {
+      <app-tree-view [rows]="variableRows()" (rowClick)="onVariableClick($event)">
+        <ng-template let-row>
+          @let data = variableOf(row);
+          @if (data.kind === 'scope') {
+            <span class="debug-var__scope">{{ data.scope.name }}</span>
+          } @else {
+            <span class="debug-var__name">{{ data.variable.name }}</span>
+            <span class="debug-var__value" [title]="data.variable.value">{{
+              data.variable.value
+            }}</span>
+          }
+        </ng-template>
+      </app-tree-view>
+    } @else {
+      <p class="debug-empty">No variables.</p>
+    }
+  </section>
+
+  <section class="debug-column">
+    <header class="debug-column__title">Watch</header>
+    <div class="debug-watch__add">
+      <app-text-field
+        [value]="newWatch()"
+        placeholder="Add expression"
+        (valueChange)="newWatch.set($event)"
+        (keydown.enter)="addWatch()"
+      />
+    </div>
+    <ul class="debug-watch__list">
+      @for (expression of watchExpressions(); track expression) {
+        <li class="debug-watch__item">
+          <span class="debug-watch__expr">{{ expression }}</span>
+          <span
+            class="debug-watch__value"
+            [class.debug-watch__value--error]="watchResult(expression)?.failed"
+            [title]="watchResult(expression)?.result ?? ''"
+          >
+            {{ watchResult(expression)?.result ?? '—' }}
+          </span>
+          <button
+            type="button"
+            class="debug-watch__remove"
+            title="Remove"
+            aria-label="Remove watch"
+            (click)="removeWatch(expression)"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        </li>
+      } @empty {
+        <li class="debug-empty">No watches.</li>
+      }
+    </ul>
+  </section>
+</div>

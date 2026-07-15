@@ -358,6 +358,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       untracked((): void => this.syncSolutionPanel(hasModel));
     });
 
+    // Reveal the Debug panel (call stack / variables / watch) while a debug session runs, tabbing it
+    // beside Output and activating it; remove it when the session ends. Layout reads/writes are untracked
+    // so the effect reacts to the session state alone.
+    effect((): void => {
+      const running: boolean = this.debugSession.state() !== 'idle';
+      untracked((): void => this.syncDebugPanel(running));
+    });
+
     // Start the structure-aware language server as soon as a recognised project model opens, rather
     // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
     // solution, the TypeScript server for a Node/npm workspace.
@@ -440,6 +448,26 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     } else if (!hasModel && present) {
       this.dockState.removeFromLayout('solution');
+    }
+  }
+
+  /**
+   * Adds or removes the Debug panel to match whether a debug session is running, tabbing it beside the
+   * Output panel (falling back to any tool stack) and activating it when shown.
+   * @param running Whether a debug session is currently running in this tab.
+   */
+  private syncDebugPanel(running: boolean): void {
+    const present: boolean = collectPanelIds(this.dockState.layout()).includes('debug');
+    if (running && !present) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'output') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, 'debug');
+        this.dockState.setActive(anchor.id, 'debug');
+      }
+    } else if (!running && present) {
+      this.dockState.removeFromLayout('debug');
     }
   }
 

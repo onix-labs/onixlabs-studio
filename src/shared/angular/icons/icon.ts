@@ -624,6 +624,21 @@ export class Icon {
    */
   public static readonly RESTART: Icon = new Icon('ph ph-arrow-clockwise');
 
+  /**
+   * Gets the step-over icon shown on the debug toolbar (execute the current line, not into calls).
+   */
+  public static readonly STEP_OVER: Icon = new Icon('ph ph-arrow-bend-down-right');
+
+  /**
+   * Gets the step-into icon shown on the debug toolbar (descend into the call at the current line).
+   */
+  public static readonly STEP_INTO: Icon = new Icon('ph ph-arrow-line-down');
+
+  /**
+   * Gets the step-out icon shown on the debug toolbar (finish the current function and return).
+   */
+  public static readonly STEP_OUT: Icon = new Icon('ph ph-arrow-line-up');
+
   // --- Problems: severities and markdown alerts ---
 
   /**

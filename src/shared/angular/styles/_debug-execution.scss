@@ -1,0 +1,17 @@
+// The current-execution-line marker the code editor draws while the active workspace's debuggee is
+// paused. Monaco renders decorations into its own DOM outside Angular's view encapsulation, so these
+// classes live in a global stylesheet. An amber whole-line tint plus a right-pointing arrow in the
+// glyph margin (drawn by clipping the lane-filling element to a triangle, so no image asset is needed).
+
+.debug-current-line {
+  background: rgb(245 197 24 / 13%);
+}
+
+:root[data-theme-mode='dark'] .debug-current-line {
+  background: rgb(245 197 24 / 16%);
+}
+
+.debug-current-line-glyph {
+  background-color: var(--debug-current-line-color, #f5c518);
+  clip-path: polygon(22% 24%, 22% 76%, 74% 50%);
+}
