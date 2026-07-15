@@ -8,17 +8,19 @@ import {
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { WorkspaceContext } from '../workspace-context';
-import { DapClient } from './dap-client';
-import { DebugAdapterRegistry, DebugAdapterResolution } from './debug-adapter-registry';
+import { DapClient, DebugAdapterConnection } from './dap-client';
+import { StdioTransport } from './dap-transport';
+import { DebugAdapterRegistry, DebugAdapterResolution, DebugAdapterSpec } from './debug-adapter-registry';
+import { JsDebugSession } from './js-debug-session';
 
 /**
- * Holds a running debug session: its adapter client and the workspace root it is rooted at.
+ * Holds a running debug session: its adapter connection and the workspace root it is rooted at.
  */
 interface DebugSession {
   /**
-   * Holds the DAP client driving the session's adapter.
+   * Holds the connection driving the session's adapter (a stdio client, or a compound js-debug session).
    */
-  readonly client: DapClient;
+  readonly client: DebugAdapterConnection;
 
   /**
    * Holds the absolute workspace root the session is rooted at.
@@ -133,7 +135,7 @@ export class DebugManager {
       };
     }
 
-    const client: DapClient = new DapClient(resolution.spec, parsed.rootPath);
+    const client: DebugAdapterConnection = this.connect(resolution.spec, parsed.rootPath);
     client.onEvent((event: DebugProtocol.Event): void =>
       this.forwardEvent(parsed.sessionId, event),
     );
@@ -154,6 +156,20 @@ export class DebugManager {
         error: error instanceof Error ? error.message : 'Initialize failed',
       };
     }
+  }
+
+  /**
+   * Builds the connection for a resolved adapter: a compound js-debug session for a `tcp-server` adapter,
+   * or a plain stdio client otherwise.
+   * @param spec The resolved adapter specification.
+   * @param rootPath The workspace root the session is rooted at (the adapter's working directory).
+   * @returns Returns the connection.
+   */
+  private connect(spec: DebugAdapterSpec, rootPath: string): DebugAdapterConnection {
+    if (spec.transport === 'tcp-server') {
+      return new JsDebugSession(spec, rootPath);
+    }
+    return new DapClient(new StdioTransport(spec.command, spec.args, spec.env, rootPath));
   }
 
   /**

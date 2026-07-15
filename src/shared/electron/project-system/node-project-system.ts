@@ -10,6 +10,8 @@ import {
   ProjectNode,
   RunConfigurationDescriptor,
 } from '@shared/api/project-system';
+import { DebugResolveResult } from '@shared/api/debug-channels';
+import { RunConfiguration } from '@shared/api/studio';
 import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
 
@@ -22,8 +24,14 @@ const NODE_CAPABILITIES: ProjectCapabilities = {
   actions: [],
   buildConfigurations: [],
   target: null,
-  debug: null,
+  debug: { adapter: 'js-debug' },
 };
+
+/**
+ * The entry file launched under the debugger when the manifest names none: the conventional Node entry
+ * point.
+ */
+const DEFAULT_ENTRY: string = 'index.js';
 
 /**
  * The manifest file that marks a Node/npm package.
@@ -142,6 +150,44 @@ export class NodeProjectSystem implements ProjectSystem {
       tree,
       capabilities: this.capabilities,
       runConfigurations,
+    };
+  }
+
+  /**
+   * Resolves a run configuration into a js-debug launch target: the JavaScript entry point to run under
+   * the debugger. The configuration's explicit `program` wins; otherwise the root manifest's `main`
+   * field is used, falling back to the conventional entry. The resolved program is confined to the open
+   * workspace root, since it originates from renderer-supplied configuration. No build step is needed —
+   * Node is interpreted — so this only locates the entry.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root, which the program must lie within.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public async resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    const manifest: Record<string, unknown> | null = await this.readManifest(
+      path.join(root, MANIFEST),
+    );
+    const main: string = typeof manifest?.['main'] === 'string' ? manifest['main'] : DEFAULT_ENTRY;
+    const program: string = path.resolve(
+      root,
+      configuration.program !== undefined && configuration.program.length > 0
+        ? configuration.program
+        : main,
+    );
+    // Confine the launch to the open workspace: the program originates from renderer-supplied
+    // configuration, so a hostile one must not point the debugger outside the root.
+    if (program !== root && !program.startsWith(path.resolve(root) + path.sep)) {
+      return { target: null, error: 'The program is outside the workspace.' };
+    }
+    return {
+      target: {
+        program,
+        cwd: configuration.cwd !== undefined ? path.resolve(root, configuration.cwd) : root,
+      },
+      error: null,
     };
   }
 

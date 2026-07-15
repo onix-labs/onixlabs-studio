@@ -229,6 +229,19 @@ envelope, and (unlike LSP) the adapter's `initialized` event fires *after* the c
 The client, session manager, adapter registry, and provisioner live in `shared/electron/debug`; the
 `Debugger` app-level seam and per-workspace `DebugSession` mirror `Builds`/`BuildRunner`.
 
+- **Adapters differ in transport, hidden behind one surface.** `DapClient` speaks DAP over a `DapTransport`
+  — `StdioTransport` for a spawned process (netcoredbg), or `TcpServerTransport`/`TcpClientTransport` for a
+  debug *server* reached over TCP (js-debug). Everything the manager drives goes through the
+  `DebugAdapterConnection` interface, so the renderer treats every adapter as one linear session.
+- **js-debug is a compound session.** js-debug is not a single adapter but a server hosting a *tree* of
+  DAP connections: a parent the debuggee is launched on, and one child *target* session per process, each
+  started via a `startDebugging` reverse request. The real debugging happens on the targets. `JsDebugSession`
+  hides the whole tree behind `DebugAdapterConnection`: it answers the parent's `initialized`/`startDebugging`
+  internally, surfaces the first target's `initialized` (so the renderer sends breakpoints once), routes
+  requests to the active (last-stopped) target, replays breakpoints to later targets, and reports terminated
+  once every target has. The Node project system declares `debug: { adapter: 'js-debug' }` and resolves the
+  launch target to the package's `main` entry (confined to root; no build — Node is interpreted).
+
 - **Adapters are provisioned, not vendored.** `DebugProvisioner` (mirror of `LspProvisioner`) first
   *locates* an adapter (override → project-local `node_modules/.bin` → PATH), then *ensures* a
   downloadable one: it fetches a **pinned, SHA-256-verified** archive per `${platform}-${arch}`,
