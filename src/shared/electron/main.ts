@@ -37,6 +37,7 @@ import { SecurityManager } from '@shared/electron/security-manager';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
+import { StudioStore } from '@shared/electron/studio/studio-store';
 import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
@@ -290,6 +291,12 @@ class Program {
    * workspace roots the {@link workspaceContext} tracks.
    */
   private readonly searchManager: SearchManager = new SearchManager(this.workspaceContext);
+
+  /**
+   * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
+   * {@link workspaceContext} tracks.
+   */
+  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
 
   /**
    * Writes application log lines — the renderer's forwarded console entries and main's own — to
@@ -581,6 +588,7 @@ class Program {
     this.gitManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
+    this.studioStore.register();
     this.binaryDisassembler.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();
