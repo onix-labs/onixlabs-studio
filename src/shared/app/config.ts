@@ -18,6 +18,7 @@ import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
+import { provideMissionControlFeature } from '@features/mission-control/angular/mission-control.feature';
 import { provideRepositoryFeature } from '@features/repository/angular/repository.feature';
 import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
@@ -71,6 +72,8 @@ export const config: ApplicationConfig = {
     provideRepositoryFeature(),
     // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.
     provideWorkspaceFeature(),
+    // Stand up the Mission Control feature: register its all-agents view + ribbon with the shell.
+    provideMissionControlFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
     // Contribute the text-document store to the unsaved-work seam the lifecycle walks at close

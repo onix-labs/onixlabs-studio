@@ -6,8 +6,9 @@ import { TitleStripButton } from '../title-strip-button/title-strip-button';
 import { TitleStripTabMenu } from '../title-strip-tab-menu/title-strip-tab-menu';
 
 /**
- * Represents the action buttons in the title strip: the settings button, followed by the welcome
- * button that summons the welcome screen for creating a new tab.
+ * Represents the action buttons in the title strip: the settings button, the Mission Control button
+ * that opens the all-agents management view, followed by the welcome button that summons the welcome
+ * screen for creating a new tab.
  */
 @Component({
   selector: 'app-title-strip-button-list',
@@ -42,6 +43,14 @@ export class TitleStripButtonList {
    */
   protected openSettings(): void {
     this.tabsService.open('settings');
+  }
+
+  /**
+   * Opens, or re-activates, the singleton Mission Control tab that manages every open tab's agent from
+   * one view.
+   */
+  protected openMissionControl(): void {
+    this.tabsService.open('mission-control');
   }
 
   /**

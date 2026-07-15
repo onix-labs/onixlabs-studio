@@ -2,6 +2,13 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 import { Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
 
 /**
+ * Specifies the tab types that are singletons: opening one when an instance is already open activates
+ * the existing tab rather than creating a duplicate. These tabs are not backed by a resource, so the
+ * resource-key dedup does not apply to them.
+ */
+const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['settings', 'mission-control']);
+
+/**
  * Represents the registry of open top-level tabs and the currently active selection.
  */
 @Service()
@@ -57,9 +64,9 @@ export class Tabs {
    * @returns Returns the opened, or re-activated, tab.
    */
   public open(type: TabType, resourceKey?: string): Tab {
-    if (type === 'settings') {
+    if (SINGLETON_TAB_TYPES.has(type)) {
       const existing: Tab | undefined = this.tabList().find(
-        (tab: Tab): boolean => tab.type === 'settings',
+        (tab: Tab): boolean => tab.type === type,
       );
       if (existing !== undefined) {
         this.activeId.set(existing.id);

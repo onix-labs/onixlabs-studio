@@ -1,0 +1,54 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Agents">
+    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Sync All" (action)="onSyncAll()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.STOP"
+      label="Stop All"
+      [disabled]="runningCount() === 0"
+      (action)="onStopAll()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Permissions">
+    <app-ribbon-strip-column [spread]="true">
+      <app-ribbon-strip-row>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.CHECK"
+          label="Allow all"
+          [disabled]="pendingPermissions() === 0"
+          (action)="onAllowAll()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.CLOSE"
+          label="Deny all"
+          [disabled]="pendingPermissions() === 0"
+          (action)="onDenyAll()"
+        />
+      </app-ribbon-strip-row>
+      <app-ribbon-strip-field
+        label="Policy"
+        [options]="policyOptions"
+        [value]="policyLabel()"
+        [fullWidth]="false"
+        (changed)="onPolicy($event)"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-column [spread]="true">
+      <app-ribbon-strip-row>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.LAYOUT_SPLIT"
+          label="Reset widths"
+          (action)="onResetLayout()"
+        />
+      </app-ribbon-strip-row>
+      <app-ribbon-strip-check
+        label="Show idle"
+        [checked]="showIdle()"
+        (toggled)="onShowIdle($event)"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

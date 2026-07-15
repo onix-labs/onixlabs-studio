@@ -1,0 +1,28 @@
+<app-panel-layout layoutKey="mission-control">
+  <div main class="mc-main">
+    @if (agentTabs().length === 0) {
+      <div class="mc-empty">
+        <p class="mc-empty__title">No agents to manage</p>
+        <p class="mc-empty__text">
+          Open a file, terminal, workspace or agent tab and it will appear here as a column.
+        </p>
+      </div>
+    } @else {
+      <div class="mc-row">
+        @for (tab of agentTabs(); track tab.id) {
+          <app-mission-control-agent-tile [tab]="tab" [isActive]="isActive()" />
+        }
+      </div>
+    }
+  </div>
+
+  <app-panel
+    panelId="permissions"
+    defaultEdge="left"
+    [defaultSize]="300"
+    [minSize]="240"
+    [maxSize]="480"
+  >
+    <app-global-permissions-panel />
+  </app-panel>
+</app-panel-layout>
