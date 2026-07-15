@@ -1,4 +1,6 @@
 import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { DebugResolveResult } from '@shared/api/debug-channels';
+import { RunConfiguration } from '@shared/api/studio';
 
 /**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm
@@ -50,6 +52,17 @@ export interface ProjectSystem {
    * @returns Returns true when this provider owns the project file.
    */
   ownsProject?(projectPath: string): boolean;
+
+  /**
+   * Resolves a run configuration into a concrete debug launch target, building the project first where
+   * debugging requires a produced artifact (for .NET, compiling and locating the output assembly).
+   * Optional: a provider whose debug adapter launches the configuration directly (no build step) need
+   * not implement it, in which case the configuration's own program is used.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root.
+   * @returns Returns the resolved target, or a reason it could not be resolved.
+   */
+  resolveDebugTarget?(configuration: RunConfiguration, root: string): Promise<DebugResolveResult>;
 }
 
 /**
