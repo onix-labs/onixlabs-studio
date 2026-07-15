@@ -16,6 +16,16 @@ const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['settings', 
 const PINNED_TAB_ORDER: readonly TabType[] = ['settings', 'mission-control'];
 
 /**
+ * Returns whether a tab type is pinned to the front of the strip, and so is immovable (it cannot be
+ * dragged or reordered). Shared with the tab chrome so a pinned tab disables its own drag.
+ * @param type The tab type to test.
+ * @returns Returns true when the type is pinned.
+ */
+export function isPinnedTabType(type: TabType): boolean {
+  return PINNED_TAB_ORDER.includes(type);
+}
+
+/**
  * Represents the registry of open top-level tabs and the currently active selection.
  */
 @Service()
