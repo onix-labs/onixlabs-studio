@@ -55,7 +55,11 @@
       />
       <app-ribbon-strip-row>
         <app-ribbon-strip-button-small [icon]="Icon.DEBUG" label="Debug" [disabled]="true" />
-        <app-ribbon-strip-button-small [icon]="Icon.SETTINGS" label="Configure" [disabled]="true" />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.SETTINGS"
+          label="Configure"
+          (action)="onConfigure()"
+        />
       </app-ribbon-strip-row>
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

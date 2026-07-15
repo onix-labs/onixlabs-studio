@@ -1,0 +1,131 @@
+<app-modal
+  [open]="isOpen()"
+  [width]="52"
+  ariaLabel="Run Configurations"
+  (dismiss)="onCancel()"
+>
+  <div class="configure">
+    <h2 class="configure__title">Run Configurations</h2>
+
+    <div class="configure__body">
+      <div class="configure__sidebar">
+        <div class="configure__toolbar">
+          <button type="button" class="configure__tool" title="New configuration" (click)="onNew()">
+            <app-icon [icon]="Icon.PLUS" />
+          </button>
+          <button
+            type="button"
+            class="configure__tool"
+            title="Duplicate configuration"
+            [disabled]="selected() === null"
+            (click)="onDuplicate()"
+          >
+            <app-icon [icon]="Icon.COPY" />
+          </button>
+          <button
+            type="button"
+            class="configure__tool"
+            title="Delete configuration"
+            [disabled]="selected() === null"
+            (click)="onDelete()"
+          >
+            <app-icon [icon]="Icon.TRASH" />
+          </button>
+        </div>
+
+        <div class="configure__list">
+          @for (group of groups(); track group.kind) {
+            <div class="configure__group">
+              <span class="configure__group-label">{{ group.kind }}</span>
+              @for (configuration of group.configurations; track configuration.id) {
+                <button
+                  type="button"
+                  class="configure__item"
+                  [class.configure__item--selected]="configuration.id === selected()?.id"
+                  (click)="select(configuration.id)"
+                >
+                  {{ configuration.name }}
+                </button>
+              }
+            </div>
+          } @empty {
+            <p class="configure__empty">No run configurations. Use + to add one.</p>
+          }
+        </div>
+      </div>
+
+      <div class="configure__detail">
+        @if (selected(); as configuration) {
+          <app-setting-row label="Name">
+            <app-text-field [value]="configuration.name" (valueChange)="onName($event)" />
+          </app-setting-row>
+
+          @if (hasBuildConfigs()) {
+            <app-setting-row label="Configuration">
+              <app-dropdown
+                [options]="buildConfigOptions()"
+                [value]="configuration.buildConfiguration ?? ''"
+                [fullWidth]="true"
+                (valueChange)="onBuildConfiguration($event)"
+              />
+            </app-setting-row>
+          }
+
+          @if (hasTarget()) {
+            <app-setting-row [label]="targetLabel()">
+              <app-dropdown
+                [options]="targetOptions()"
+                [value]="configuration.target ?? ''"
+                [fullWidth]="true"
+                (valueChange)="onTarget($event)"
+              />
+            </app-setting-row>
+          }
+
+          <app-setting-row label="Program">
+            <app-text-field
+              [value]="configuration.program ?? ''"
+              placeholder="Resolved by the provider when empty"
+              (valueChange)="onProgram($event)"
+            />
+          </app-setting-row>
+
+          <app-setting-row label="Arguments">
+            <app-text-field [value]="argsText()" (valueChange)="onArgs($event)" />
+          </app-setting-row>
+
+          <app-setting-row label="Working directory">
+            <app-text-field
+              [value]="configuration.cwd ?? ''"
+              placeholder="Workspace root when empty"
+              (valueChange)="onCwd($event)"
+            />
+          </app-setting-row>
+
+          <app-setting-row label="Environment" description="One KEY=value per line">
+            <textarea
+              #env
+              class="configure__env"
+              rows="3"
+              [value]="envText()"
+              (change)="onEnv(env.value)"
+            ></textarea>
+          </app-setting-row>
+
+          <app-setting-row label="Debug" description="Run under the debugger">
+            <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
+          </app-setting-row>
+        } @else {
+          <p class="configure__empty">Select or create a configuration to edit.</p>
+        }
+      </div>
+    </div>
+
+    <div class="configure__actions">
+      <button type="button" class="configure__button" (click)="onCancel()">Cancel</button>
+      <button type="button" class="configure__button configure__button--primary" (click)="onSave()">
+        Save
+      </button>
+    </div>
+  </div>
+</app-modal>

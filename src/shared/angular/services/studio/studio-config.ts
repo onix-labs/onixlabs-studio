@@ -124,6 +124,16 @@ export class StudioConfig {
   }
 
   /**
+   * Replaces just the run configurations, preserving the rest of the shared configuration (schema
+   * version, provider selection), and persists to `workspace.json`.
+   * @param configurations The new run configurations.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public saveRunConfigurations(configurations: readonly RunConfiguration[]): Promise<void> {
+    return this.saveWorkspace({ ...this.current().workspace, runConfigurations: configurations });
+  }
+
+  /**
    * Selects a run configuration, persisting the choice to the per-developer `workspace.user.json`.
    * @param id The id of the run configuration to select, or undefined to clear the selection.
    * @returns Returns a promise that resolves once the write is issued.

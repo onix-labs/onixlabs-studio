@@ -1,0 +1,163 @@
+.configure {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-inline-size: 0;
+
+  &__title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  &__body {
+    display: grid;
+    grid-template-columns: 13rem 1fr;
+    gap: 16px;
+    min-block-size: 360px;
+  }
+
+  &__sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-block-size: 0;
+  }
+
+  &__toolbar {
+    display: flex;
+    gap: 4px;
+  }
+
+  &__list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    overflow-y: auto;
+    border: 0.0625rem solid var(--settings-border-color);
+    border-radius: calc(0.75rem * var(--border-radius-multiplier, 1));
+    background: var(--settings-nav-background-color);
+  }
+
+  &__tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 26px;
+    block-size: 26px;
+    padding: 0;
+    border: 1px solid var(--form-control-border-color);
+    border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    background: var(--form-control-background-color);
+    color: var(--body-foreground-color);
+    cursor: pointer;
+    transition: var(--hover-transition);
+
+    &:hover:not(:disabled) {
+      border-color: var(--accent-color);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--form-muted-foreground-color);
+    padding-block: 4px;
+  }
+
+  &__item {
+    text-align: start;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier, 1));
+    background: transparent;
+    color: var(--body-foreground-color);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: var(--hover-transition);
+
+    &:hover {
+      background: var(--settings-control-background-color);
+    }
+
+    &--selected {
+      background: var(--accent-color);
+      color: var(--accent-foreground-color, #fff);
+    }
+  }
+
+  &__detail {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-inline-size: 0;
+  }
+
+  &__empty {
+    margin: 0;
+    padding: 16px 0;
+    color: var(--form-muted-foreground-color);
+    font-size: 13px;
+  }
+
+  &__env {
+    inline-size: 100%;
+    resize: vertical;
+    padding: 6px 8px;
+    border: 1px solid var(--form-control-border-color);
+    border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    background: var(--form-control-background-color);
+    color: var(--body-foreground-color);
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--accent-color);
+    }
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-block-start: 4px;
+  }
+
+  &__button {
+    padding: 6px 16px;
+    border: 1px solid var(--form-control-border-color);
+    border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    background: var(--form-control-background-color);
+    color: var(--body-foreground-color);
+    cursor: pointer;
+    transition: var(--hover-transition);
+
+    &:hover {
+      border-color: var(--accent-color);
+    }
+
+    &--primary {
+      border-color: var(--accent-color);
+      background: var(--accent-color);
+      color: #fff;
+    }
+  }
+}

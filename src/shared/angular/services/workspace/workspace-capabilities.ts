@@ -1,46 +1,52 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { ProjectCapabilities } from '@shared/api/project-system';
+import { ProjectCapabilities, ProjectModel } from '@shared/api/project-system';
 
 /**
- * Routes the active workspace's declared {@link ProjectCapabilities} to the root ribbon, so the Tier-2
- * ribbon controls (Build/Clean/Rebuild, the build-configuration and target selectors) can gate
- * themselves from data rather than hard-coded assumptions.
+ * Routes the active workspace's project model to the root ribbon and the Configure dialog, exposing the
+ * declared {@link ProjectCapabilities} (so the Tier-2 ribbon controls gate themselves from data) and the
+ * provider kind (so a newly-created run configuration is bound to the active ecosystem).
  *
- * Each workspace's capabilities live on its per-tab project model; the directory view registers that
- * model's capabilities signal while its tab is active, and the ribbon reads the exposed value (or null
- * when no workspace is active or the active one declares none). This mirrors the {@link
- * import('../tasks/builds').Builds} seam.
+ * Each workspace's model lives on its per-tab project model; the directory view registers that model
+ * signal while its tab is active, and consumers read the exposed values (or null when no workspace is
+ * active). This mirrors the {@link import('../tasks/builds').Builds} seam.
  */
 @Service()
 export class WorkspaceCapabilities {
   /**
-   * Holds the active workspace's capabilities source, or null when no workspace is active.
+   * Holds the active workspace's project-model source, or null when no workspace is active.
    */
-  private readonly source: WritableSignal<Signal<ProjectCapabilities | null> | null> = signal<Signal<
-    ProjectCapabilities | null
+  private readonly source: WritableSignal<Signal<ProjectModel | null> | null> = signal<Signal<
+    ProjectModel | null
   > | null>(null);
 
   /**
    * Gets the active workspace's declared capabilities, or null when none are available.
    */
   public readonly capabilities: Signal<ProjectCapabilities | null> = computed(
-    (): ProjectCapabilities | null => this.source()?.() ?? null,
+    (): ProjectCapabilities | null => this.source()?.()?.capabilities ?? null,
   );
 
   /**
-   * Registers the active workspace's capabilities source.
-   * @param capabilities The active workspace's capabilities signal.
+   * Gets the active workspace's project-system kind (for example `dotnet`), or null when unavailable.
    */
-  public register(capabilities: Signal<ProjectCapabilities | null>): void {
-    this.source.set(capabilities);
+  public readonly kind: Signal<string | null> = computed(
+    (): string | null => this.source()?.()?.kind ?? null,
+  );
+
+  /**
+   * Registers the active workspace's project-model source.
+   * @param model The active workspace's project-model signal.
+   */
+  public register(model: Signal<ProjectModel | null>): void {
+    this.source.set(model);
   }
 
   /**
-   * Unregisters the given capabilities source, if it is the currently registered one.
-   * @param capabilities The capabilities signal to unregister.
+   * Unregisters the given model source, if it is the currently registered one.
+   * @param model The model signal to unregister.
    */
-  public unregister(capabilities: Signal<ProjectCapabilities | null>): void {
-    if (this.source() === capabilities) {
+  public unregister(model: Signal<ProjectModel | null>): void {
+    if (this.source() === model) {
       this.source.set(null);
     }
   }

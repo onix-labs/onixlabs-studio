@@ -166,6 +166,26 @@ describe('StudioConfig', () => {
     expect(studio.runConfigurations().map((c) => c.id)).toEqual(['x']);
   });
 
+  it('saveRunConfigurations_replacesConfigsAndPreservesTheRestOfTheWorkspace', async () => {
+    bridge.snapshot = {
+      workspace: { version: 1, runConfigurations: [config('a', 'A')], providerKind: 'dotnet' },
+      user: { version: 1 },
+    };
+    const studio: StudioConfig = build();
+    root.set({ path: '/root', name: 'root', entries: [] });
+    await settle();
+
+    await studio.saveRunConfigurations([config('x', 'X')]);
+
+    expect(bridge.saves[0].channel).toBe(StudioChannel.SaveWorkspace);
+    expect(bridge.saves[0].payload).toEqual({
+      version: 1,
+      runConfigurations: [config('x', 'X')],
+      providerKind: 'dotnet',
+    });
+    expect(studio.runConfigurations().map((c) => c.id)).toEqual(['x']);
+  });
+
   it('persistsAndAppliesASelectionThroughTheUserChannel', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
