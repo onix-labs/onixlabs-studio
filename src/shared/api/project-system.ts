@@ -128,6 +128,143 @@ export interface ProjectItems {
 }
 
 /**
+ * An action a project system can perform on a project or solution. `build`/`clean`/`rebuild` are the
+ * common compile-time actions; `test`/`publish`/`restore` are declared by the ecosystems that support
+ * them. The ribbon renders a control for an action only when the active provider declares it.
+ */
+export type ProjectAction = 'build' | 'clean' | 'rebuild' | 'test' | 'publish' | 'restore';
+
+/**
+ * A named build configuration a provider supports (for example .NET's Debug/Release, Rust's dev/release).
+ * The list is provider-supplied; an empty list means the ecosystem has no build-configuration axis.
+ */
+export interface BuildConfiguration {
+  /**
+   * Gets the stable identifier of the build configuration.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name of the build configuration (for example `Debug`).
+   */
+  readonly name: string;
+}
+
+/**
+ * The kind of axis a {@link TargetAxis} represents: a .NET/CPU platform, a Rust/Clang target triple, or
+ * a Go GOOS/GOARCH architecture. The kind labels the axis; it does not change how the options render.
+ */
+export type TargetKind = 'platform' | 'target-triple' | 'arch';
+
+/**
+ * A single option on a {@link TargetAxis} (for example `Any CPU`, `x64`, `ARM64`).
+ */
+export interface TargetOption {
+  /**
+   * Gets the stable identifier of the target option.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name of the target option.
+   */
+  readonly name: string;
+}
+
+/**
+ * The provider's target axis — the language-agnostic replacement for the fixed CPU dropdown. A provider
+ * whose ecosystem has no target axis (an interpreted language, for example) declares no axis at all, so
+ * the ribbon renders no target control rather than an empty one.
+ */
+export interface TargetAxis {
+  /**
+   * Gets what the axis represents.
+   */
+  readonly kind: TargetKind;
+
+  /**
+   * Gets the ribbon label for the axis (for example `Platform`).
+   */
+  readonly label: string;
+
+  /**
+   * Gets the selectable target options.
+   */
+  readonly options: readonly TargetOption[];
+}
+
+/**
+ * The kind of a discovered run configuration: a runnable project (.NET) or a manifest script (Node).
+ */
+export type RunConfigurationKind = 'project' | 'script';
+
+/**
+ * A run configuration discovered from a workspace root — one runnable project, or one manifest script.
+ * These are the *discovered defaults* the Run dropdown falls back to until persisted `.studio` run
+ * configurations exist; they are not themselves the persisted configuration model.
+ */
+export interface RunConfigurationDescriptor {
+  /**
+   * Gets the stable identifier of the run configuration.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name of the run configuration.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the kind of run configuration.
+   */
+  readonly kind: RunConfigurationKind;
+
+  /**
+   * Gets a human-readable detail (for example the project path, or `npm run build`), when available.
+   */
+  readonly detail?: string;
+}
+
+/**
+ * Declares that a provider's projects can be debugged, and which DAP adapter debugs them. Absent (null)
+ * until an adapter is provisioned for the ecosystem, so the ribbon's Debug button stays inert.
+ */
+export interface DebugCapability {
+  /**
+   * Gets the identifier of the DAP adapter that debugs this provider's projects.
+   */
+  readonly adapter: string;
+}
+
+/**
+ * The root-independent capabilities a project system declares, so the ribbon can gate its optional
+ * controls from data rather than hard-coded assumptions: which {@link ProjectAction actions} it
+ * supports, its build configurations and target axis, and whether (and how) it debugs. Discovered,
+ * root-dependent run configurations travel separately on {@link ProjectModel.runConfigurations}.
+ */
+export interface ProjectCapabilities {
+  /**
+   * Gets the actions the provider supports (an absent action is not rendered, not greyed).
+   */
+  readonly actions: readonly ProjectAction[];
+
+  /**
+   * Gets the provider's build configurations, or an empty list when it has no build-configuration axis.
+   */
+  readonly buildConfigurations: readonly BuildConfiguration[];
+
+  /**
+   * Gets the provider's target axis, or null when the ecosystem has none.
+   */
+  readonly target: TargetAxis | null;
+
+  /**
+   * Gets the debug capability, or null when the provider declares no DAP adapter yet.
+   */
+  readonly debug: DebugCapability | null;
+}
+
+/**
  * A logical project model for a workspace root.
  */
 export interface ProjectModel {
@@ -156,4 +293,16 @@ export interface ProjectModel {
    * Gets the logical tree (grouping folders and projects) for display.
    */
   readonly tree: readonly ProjectNode[];
+
+  /**
+   * Gets the root-independent capabilities the producing project system declares, so the ribbon can
+   * gate its optional controls from data.
+   */
+  readonly capabilities: ProjectCapabilities;
+
+  /**
+   * Gets the run configurations discovered from the root (one per runnable project or manifest script),
+   * the Run dropdown's fallback until persisted `.studio` run configurations exist.
+   */
+  readonly runConfigurations: readonly RunConfigurationDescriptor[];
 }

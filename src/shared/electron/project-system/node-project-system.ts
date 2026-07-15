@@ -2,14 +2,28 @@ import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  ProjectCapabilities,
   ProjectEntry,
   ProjectItemNode,
   ProjectItems,
   ProjectModel,
   ProjectNode,
+  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
+
+/**
+ * The Node project system's root-independent capabilities: an interpreted ecosystem with no compile
+ * actions, no build-configuration axis, and no target axis — the definitive case where the ribbon's
+ * gated controls simply disappear. Debugging is declared once a DAP adapter is provisioned.
+ */
+const NODE_CAPABILITIES: ProjectCapabilities = {
+  actions: [],
+  buildConfigurations: [],
+  target: null,
+  debug: null,
+};
 
 /**
  * The manifest file that marks a Node/npm package.
@@ -51,6 +65,11 @@ export class NodeProjectSystem implements ProjectSystem {
   public readonly kind: string = 'node';
 
   /**
+   * Gets the root-independent capabilities this project system declares.
+   */
+  public readonly capabilities: ProjectCapabilities = NODE_CAPABILITIES;
+
+  /**
    * Determines whether the root holds a Node package (a package.json at the root).
    * @param root The absolute workspace root.
    * @returns Returns true when a root manifest is present.
@@ -81,12 +100,22 @@ export class NodeProjectSystem implements ProjectSystem {
       return null;
     }
     const rootName: string = this.packageName(manifest, root);
+    const runConfigurations: readonly RunConfigurationDescriptor[] =
+      this.runConfigurations(manifest);
     const workspaceDirs: readonly string[] = await this.expandWorkspaces(root, manifest);
     if (workspaceDirs.length === 0) {
       const tree: readonly ProjectNode[] = [
         { type: 'project', name: rootName, path: manifestPath },
       ];
-      return { kind: this.kind, root, solution: null, projects: this.flatten(tree), tree };
+      return {
+        kind: this.kind,
+        root,
+        solution: null,
+        projects: this.flatten(tree),
+        tree,
+        capabilities: this.capabilities,
+        runConfigurations,
+      };
     }
     const projects: ProjectNode[] = [];
     for (const directory of workspaceDirs) {
@@ -111,7 +140,33 @@ export class NodeProjectSystem implements ProjectSystem {
       solution: { name: rootName, path: manifestPath },
       projects: this.flatten(tree),
       tree,
+      capabilities: this.capabilities,
+      runConfigurations,
     };
+  }
+
+  /**
+   * Derives the discovered run configurations from the root manifest's `scripts`: one per script, run
+   * via `npm run <name>`. These are the Run dropdown's fallback until persisted `.studio` run
+   * configurations exist.
+   * @param manifest The parsed root manifest.
+   * @returns Returns a run configuration per declared script, in declaration order.
+   */
+  private runConfigurations(
+    manifest: Record<string, unknown>,
+  ): readonly RunConfigurationDescriptor[] {
+    const scripts: unknown = manifest['scripts'];
+    if (typeof scripts !== 'object' || scripts === null) {
+      return [];
+    }
+    return Object.keys(scripts as Record<string, unknown>).map(
+      (name: string): RunConfigurationDescriptor => ({
+        id: name,
+        name,
+        kind: 'script',
+        detail: `npm run ${name}`,
+      }),
+    );
   }
 
   /**
