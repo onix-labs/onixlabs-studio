@@ -2,6 +2,8 @@ import { signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
+import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
+import { ProjectAction, ProjectCapabilities } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { DirectoryRibbon } from './directory-ribbon';
@@ -15,6 +17,48 @@ interface RibbonInternals {
   onRun(): void;
   onSelectRunItem(id: string): void;
   onStop(): void;
+  canBuild(): boolean;
+  canClean(): boolean;
+  canRebuild(): boolean;
+  targetGroupVisible(): boolean;
+  buildConfigNames(): readonly string[];
+  buildConfigValue(): string;
+  targetNames(): readonly string[];
+  onClean(): void;
+  onRebuild(): void;
+  onSelectBuildConfiguration(name: string): void;
+  onSelectTarget(name: string): void;
+}
+
+/**
+ * The .NET-shaped capability descriptor.
+ * @returns Returns the capabilities.
+ */
+function dotnetCapabilities(): ProjectCapabilities {
+  return {
+    actions: ['build', 'clean', 'rebuild'],
+    buildConfigurations: [
+      { id: 'debug', name: 'Debug' },
+      { id: 'release', name: 'Release' },
+    ],
+    target: {
+      kind: 'platform',
+      label: 'Platform',
+      options: [
+        { id: 'any-cpu', name: 'Any CPU' },
+        { id: 'x64', name: 'x64' },
+      ],
+    },
+    debug: null,
+  };
+}
+
+/**
+ * The Node-shaped capability descriptor: an interpreted ecosystem with no gated controls.
+ * @returns Returns the capabilities.
+ */
+function nodeCapabilities(): ProjectCapabilities {
+  return { actions: [], buildConfigurations: [], target: null, debug: null };
 }
 
 /**
@@ -29,6 +73,7 @@ class FakeBuilds {
   );
   public readonly runTaskCalls: string[] = [];
   public readonly runConfigurationCalls: RunConfiguration[] = [];
+  public readonly actionCalls: ProjectAction[] = [];
   public cancelCalls: number = 0;
 
   public runTask(id: string): void {
@@ -39,9 +84,21 @@ class FakeBuilds {
     this.runConfigurationCalls.push(configuration);
   }
 
+  public runAction(action: ProjectAction): void {
+    this.actionCalls.push(action);
+  }
+
   public cancel(): void {
     this.cancelCalls += 1;
   }
+}
+
+/**
+ * A controllable fake of the capabilities seam.
+ */
+class FakeCapabilities {
+  public readonly capabilities: WritableSignal<ProjectCapabilities | null> =
+    signal<ProjectCapabilities | null>(null);
 }
 
 /**
@@ -53,7 +110,15 @@ class FakeStudio {
   >([]);
   public readonly selected: WritableSignal<RunConfiguration | null> =
     signal<RunConfiguration | null>(null);
+  public readonly lastBuildConfiguration: WritableSignal<string | undefined> = signal<
+    string | undefined
+  >(undefined);
+  public readonly lastTarget: WritableSignal<string | undefined> = signal<string | undefined>(
+    undefined,
+  );
   public readonly selectCalls: (string | undefined)[] = [];
+  public readonly buildConfigCalls: (string | undefined)[] = [];
+  public readonly targetCalls: (string | undefined)[] = [];
 
   public get selectedRunConfiguration(): Signal<RunConfiguration | null> {
     return this.selected;
@@ -61,6 +126,16 @@ class FakeStudio {
 
   public setSelectedRunConfiguration(id: string | undefined): Promise<void> {
     this.selectCalls.push(id);
+    return Promise.resolve();
+  }
+
+  public setLastBuildConfiguration(id: string | undefined): Promise<void> {
+    this.buildConfigCalls.push(id);
+    return Promise.resolve();
+  }
+
+  public setLastTarget(id: string | undefined): Promise<void> {
+    this.targetCalls.push(id);
     return Promise.resolve();
   }
 }
@@ -89,6 +164,7 @@ describe('DirectoryRibbon', () => {
   let fixture: ComponentFixture<DirectoryRibbon>;
   let builds: FakeBuilds;
   let studio: FakeStudio;
+  let capabilities: FakeCapabilities;
 
   /**
    * Reveals the protected surface under test.
@@ -101,11 +177,13 @@ describe('DirectoryRibbon', () => {
   beforeEach(async () => {
     builds = new FakeBuilds();
     studio = new FakeStudio();
+    capabilities = new FakeCapabilities();
     await TestBed.configureTestingModule({
       imports: [DirectoryRibbon],
       providers: [
         { provide: Builds, useValue: builds },
         { provide: StudioConfig, useValue: studio },
+        { provide: WorkspaceCapabilities, useValue: capabilities },
       ],
     }).compileComponents();
 
@@ -169,5 +247,61 @@ describe('DirectoryRibbon', () => {
     internals().onStop();
 
     expect(builds.cancelCalls).toBe(1);
+  });
+
+  it('enablesBuildCleanRebuildAndShowsTheTargetGroupForDotnet', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+
+    expect(internals().canBuild()).toBe(true);
+    expect(internals().canClean()).toBe(true);
+    expect(internals().canRebuild()).toBe(true);
+    expect(internals().targetGroupVisible()).toBe(true);
+    expect(internals().buildConfigNames()).toEqual(['Debug', 'Release']);
+    expect(internals().targetNames()).toEqual(['Any CPU', 'x64']);
+  });
+
+  it('disablesTheGatedActionsAndHidesTheTargetGroupForNode', () => {
+    capabilities.capabilities.set(nodeCapabilities());
+
+    expect(internals().canBuild()).toBe(false);
+    expect(internals().canClean()).toBe(false);
+    expect(internals().canRebuild()).toBe(false);
+    expect(internals().targetGroupVisible()).toBe(false);
+  });
+
+  it('fallsBackToTheDiscoveredBuildTaskForBuildWhenThereAreNoCapabilities', () => {
+    // No capability model (a Gradle/Make ecosystem): Build follows the discovered-task fallback.
+    builds.canBuild.set(true);
+
+    expect(internals().canBuild()).toBe(true);
+    expect(internals().canClean()).toBe(false);
+    expect(internals().targetGroupVisible()).toBe(false);
+  });
+
+  it('cleanAndRebuildDispatchThroughTheActionPath', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+
+    internals().onClean();
+    internals().onRebuild();
+
+    expect(builds.actionCalls).toEqual(['clean', 'rebuild']);
+  });
+
+  it('showsTheSelectedBuildConfigurationAndTargetByName', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+    studio.lastBuildConfiguration.set('release');
+    studio.lastTarget.set('x64');
+
+    expect(internals().buildConfigValue()).toBe('Release');
+  });
+
+  it('mapsSelectedConfigurationAndTargetNamesBackToIdsWhenPersisting', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+
+    internals().onSelectBuildConfiguration('Release');
+    internals().onSelectTarget('x64');
+
+    expect(studio.buildConfigCalls).toEqual(['release']);
+    expect(studio.targetCalls).toEqual(['x64']);
   });
 });

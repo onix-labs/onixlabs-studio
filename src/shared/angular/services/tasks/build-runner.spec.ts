@@ -254,4 +254,36 @@ describe('BuildRunner', () => {
 
     expect(api.runCalls[0].cwd).toBe('/w/sub');
   });
+
+  it('runAction_clean_runsDotnetCleanInTheRoot', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runAction('clean');
+
+    expect(api.runCalls[0].command).toBe('dotnet clean');
+    expect(api.runCalls[0].cwd).toBe('/w');
+  });
+
+  it('runAction_rebuild_runsANonIncrementalBuild', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runAction('rebuild');
+
+    expect(api.runCalls[0].command).toBe('dotnet build --no-incremental');
+  });
+
+  it('runAction_doesNothingForAnEcosystemWithNoCommand', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/n',
+      name: 'n',
+      entries: [{ name: 'package.json', path: '/n/package.json', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    runner.runAction('clean');
+
+    expect(api.runCalls).toHaveLength(0);
+  });
 });

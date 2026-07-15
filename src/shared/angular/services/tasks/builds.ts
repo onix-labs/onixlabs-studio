@@ -1,4 +1,5 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 
 /**
@@ -63,6 +64,14 @@ export interface BuildHandler {
    * @param configuration The run configuration to run.
    */
   runConfiguration(configuration: RunConfiguration): void;
+
+  /**
+   * Runs a capability action (Build/Clean/Rebuild…), compiling it to a command for the workspace's
+   * ecosystem and executing it. Distinct from the discovered tasks, so these never appear in the Run
+   * dropdown.
+   * @param action The action to run.
+   */
+  runAction(action: ProjectAction): void;
 
   /**
    * Cancels the running task, if any.
@@ -183,6 +192,14 @@ export class Builds {
    */
   public runConfiguration(configuration: RunConfiguration): void {
     this.handler()?.runConfiguration(configuration);
+  }
+
+  /**
+   * Runs a capability action (Build/Clean/Rebuild…) on the active workspace.
+   * @param action The action to run.
+   */
+  public runAction(action: ProjectAction): void {
+    this.handler()?.runAction(action);
   }
 
   /**

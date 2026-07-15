@@ -1,6 +1,7 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
+import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { TaskChannel } from '@shared/api/task-channels';
 import {
@@ -18,6 +19,11 @@ import { MatchedProblem, parseProblems } from './problem-matcher';
  * Identifies the diagnostics provider build problems are published under.
  */
 const PROVIDER_ID: string = 'tasks';
+
+/**
+ * Matches a .NET solution or project file by extension, used to detect a .NET workspace root.
+ */
+const DOTNET_PROJECT_PATTERN: RegExp = /\.(sln|slnx|csproj|fsproj|vbproj)$/i;
 
 /**
  * Determines whether a path is absolute (a POSIX root or a Windows drive).
@@ -248,6 +254,65 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
+   * Runs a capability action (Build/Clean/Rebuild…) by compiling it to a command for the workspace's
+   * ecosystem and launching it. The action is run directly rather than added to the discovered tasks,
+   * so it never appears in the Run dropdown. Does nothing when no folder is open or the action cannot
+   * be compiled for the ecosystem.
+   * @param action The action to run.
+   */
+  public runAction(action: ProjectAction): void {
+    const root: DirectoryListing | null = this.workspace.root();
+    if (root === null) {
+      return;
+    }
+    const command: string | null = this.commandForAction(action, root);
+    if (command === null) {
+      return;
+    }
+    this.launch({ id: `action:${action}`, label: command, group: 'other', command, cwd: root.path });
+  }
+
+  /**
+   * Compiles a capability action into a shell command for the workspace's ecosystem, or null when the
+   * ecosystem has no command for it. Only .NET is compiled here; other ecosystems gain their action
+   * commands with their project-system providers.
+   * @param action The action.
+   * @param root The workspace root listing.
+   * @returns Returns the command, or null.
+   */
+  private commandForAction(action: ProjectAction, root: DirectoryListing): string | null {
+    if (!this.hasDotnetProject(root)) {
+      return null;
+    }
+    switch (action) {
+      case 'build':
+        return 'dotnet build';
+      case 'clean':
+        return 'dotnet clean';
+      case 'rebuild':
+        return 'dotnet build --no-incremental';
+      case 'test':
+        return 'dotnet test';
+      case 'publish':
+        return 'dotnet publish';
+      case 'restore':
+        return 'dotnet restore';
+    }
+  }
+
+  /**
+   * Determines whether the workspace root holds a .NET solution or project file.
+   * @param root The workspace root listing.
+   * @returns Returns true when a .NET project is present.
+   */
+  private hasDotnetProject(root: DirectoryListing): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean =>
+        entry.type === 'file' && DOTNET_PROJECT_PATTERN.test(entry.name),
+    );
+  }
+
+  /**
    * Launches a task as a captured child process, streaming its output and clearing prior problems.
    * Does nothing when a run is already in flight or Electron is unavailable.
    * @param task The task to launch.
@@ -465,11 +530,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the .NET tasks, or an empty list.
    */
   private discoverDotnet(root: DirectoryListing): BuildTask[] {
-    const hasProject: boolean = root.entries.some(
-      (entry: DirectoryEntry): boolean =>
-        entry.type === 'file' && /\.(sln|slnx|csproj|fsproj|vbproj)$/i.test(entry.name),
-    );
-    if (!hasProject) {
+    if (!this.hasDotnetProject(root)) {
       return [];
     }
     return [

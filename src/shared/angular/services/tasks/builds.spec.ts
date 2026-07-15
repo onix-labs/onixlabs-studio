@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { Builds, BuildHandler, BuildTask } from './builds';
 
@@ -13,6 +14,7 @@ class FakeHandler implements BuildHandler {
   public readonly runningSignal: WritableSignal<boolean> = signal<boolean>(false);
   public readonly runCalls: string[] = [];
   public readonly configurationCalls: RunConfiguration[] = [];
+  public readonly actionCalls: ProjectAction[] = [];
   public cancelCalls: number = 0;
 
   public get tasks(): WritableSignal<readonly BuildTask[]> {
@@ -29,6 +31,10 @@ class FakeHandler implements BuildHandler {
 
   public runConfiguration(configuration: RunConfiguration): void {
     this.configurationCalls.push(configuration);
+  }
+
+  public runAction(action: ProjectAction): void {
+    this.actionCalls.push(action);
   }
 
   public cancel(): void {
@@ -140,5 +146,14 @@ describe('Builds', () => {
     builds.runConfiguration(configuration);
 
     expect(handler.configurationCalls).toEqual([configuration]);
+  });
+
+  it('runAction_forwardsToTheActiveHandler', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    const handler: FakeHandler = new FakeHandler();
+    builds.register(handler);
+    builds.runAction('clean');
+
+    expect(handler.actionCalls).toEqual(['clean']);
   });
 });
