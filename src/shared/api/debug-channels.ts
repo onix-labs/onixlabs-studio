@@ -23,6 +23,12 @@ export enum DebugChannel {
   Stop = 'debug:stop',
 
   /**
+   * Resolves a run configuration into a concrete launch target for the current provider, building the
+   * project first where debugging requires an artifact (invoke).
+   */
+  Resolve = 'debug:resolve',
+
+  /**
    * Sends a DAP request to a session's adapter and awaits its response (invoke).
    */
   Request = 'debug:request',
@@ -66,6 +72,49 @@ export interface DebugStartRequest {
    * main process rejects any other path.
    */
   readonly rootPath: string;
+}
+
+/**
+ * A concrete launch target for a debug session, resolved from a run configuration by the provider (for
+ * .NET, the built assembly). The renderer folds these into the DAP `launch` request body.
+ */
+export interface DebugLaunchTarget {
+  /**
+   * Gets the absolute path of the program to launch (for .NET, the built `.dll`).
+   */
+  readonly program: string;
+
+  /**
+   * Gets the working directory to launch in, or undefined to use the workspace root.
+   */
+  readonly cwd?: string;
+
+  /**
+   * Gets the command-line arguments passed to the program, or undefined for none.
+   */
+  readonly args?: readonly string[];
+
+  /**
+   * Gets environment variables overlaid on the debuggee's environment, or undefined for none.
+   */
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * The outcome of resolving a run configuration into a launch target: the target when resolution
+ * succeeded, otherwise a human-readable reason (a build failure, an unavailable toolchain), so the
+ * renderer can report why a session did not start.
+ */
+export interface DebugResolveResult {
+  /**
+   * Gets the resolved launch target, or null when resolution failed.
+   */
+  readonly target: DebugLaunchTarget | null;
+
+  /**
+   * Gets a human-readable reason resolution failed, or null on success.
+   */
+  readonly error: string | null;
 }
 
 /**

@@ -1,5 +1,53 @@
 import { DebugAdapterId } from '@shared/api/debug-channels';
-import { DebugProvisioner } from './debug-provisioner';
+import { DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
+
+/**
+ * The pinned netcoredbg releases. Upstream stopped publishing an osx-amd64 build after 3.1.3, and does
+ * not publish osx-arm64 before 3.2.0, so the two macOS architectures are pinned to different releases;
+ * every other platform tracks 3.2.0. Bump both together when updating.
+ */
+const NETCOREDBG_BASE: string = 'https://github.com/Samsung/netcoredbg/releases/download';
+
+/**
+ * The netcoredbg provisioning recipe: one pinned, checksum-verified archive per supported platform. The
+ * executable and its managed assemblies live under a `netcoredbg/` directory inside each archive.
+ */
+const NETCOREDBG_PROVISION: DebugAdapterProvision = {
+  id: 'netcoredbg',
+  version: '3.2.0-1092',
+  downloads: {
+    'darwin-arm64': {
+      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-osx-arm64.zip`,
+      sha256: 'f4fa33b3ff874910cc184b4bb3b9c56d0abdf5c6521cee0b144d7c6e4a6e59ea',
+      archive: 'zip',
+      executablePath: 'netcoredbg/netcoredbg',
+    },
+    'darwin-x64': {
+      url: `${NETCOREDBG_BASE}/3.1.3-1062/netcoredbg-osx-amd64.tar.gz`,
+      sha256: '49459b066836b6a452f418501d7ecab57bcd7e60d8464faac21ff70b496b8634',
+      archive: 'tar.gz',
+      executablePath: 'netcoredbg/netcoredbg',
+    },
+    'linux-x64': {
+      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-linux-amd64.tar.gz`,
+      sha256: '080eb3b2d2152465f599d3b33d1ee6e747794e11cc0a3773ec689f5e5f2c5afa',
+      archive: 'tar.gz',
+      executablePath: 'netcoredbg/netcoredbg',
+    },
+    'linux-arm64': {
+      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-linux-arm64.tar.gz`,
+      sha256: '065ff49badec8a695dbea2de6ab6a330c774a191e426a217ab8cc05250627ccb',
+      archive: 'tar.gz',
+      executablePath: 'netcoredbg/netcoredbg',
+    },
+    'win32-x64': {
+      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-win64.zip`,
+      sha256: '3c410a45fa502415203a94fcb88654af65bf8e3dac158a5527a722e7a6b9274a',
+      archive: 'zip',
+      executablePath: 'netcoredbg/netcoredbg.exe',
+    },
+  },
+};
 
 /**
  * Describes how to spawn a debug adapter. The command and arguments are decided entirely by the main
@@ -63,6 +111,12 @@ export interface DebugAdapterCatalogueEntry {
   readonly binary: string;
 
   /**
+   * Gets the provisioning recipe for an adapter that ships as a downloadable binary, or undefined for an
+   * adapter expected to be found on the PATH or via an override.
+   */
+  readonly provision?: DebugAdapterProvision;
+
+  /**
    * Builds the spawn specification from the located executable path.
    * @param binaryPath The absolute path of the located executable.
    * @returns Returns the spawn specification.
@@ -73,8 +127,8 @@ export interface DebugAdapterCatalogueEntry {
 /**
  * The closed catalogue of built-in debug adapters. Kept closed (a fixed list, not an open `register()`)
  * to match the LSP server registry; runtime-contributed adapters are the deferred plugin epic's
- * concern. The Node adapter (js-debug) and netcoredbg's provisioning recipe are wired in a later phase;
- * this phase establishes the mechanism and the one adapter whose invocation is stable and known.
+ * concern. netcoredbg ships a pinned, checksum-verified download recipe ({@link NETCOREDBG_PROVISION});
+ * the Node adapter (js-debug) is wired in a later phase.
  *
  * @returns Returns the catalogue entries.
  */
@@ -84,6 +138,7 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
       id: 'netcoredbg',
       displayName: '.NET (netcoredbg)',
       binary: 'netcoredbg',
+      provision: NETCOREDBG_PROVISION,
       // netcoredbg speaks DAP over stdio in its VS Code interpreter mode. Microsoft's `vsdbg` is
       // deliberately not offered: it is licensed only for use within the Visual Studio family, whereas
       // netcoredbg (Samsung) is MIT-licensed.
@@ -98,13 +153,13 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
 /**
  * Owns the catalogue of known debug adapters and turns a {@link DebugAdapterId} into a spawn
  * specification, locating each adapter's executable through the {@link DebugProvisioner}. It is the
- * single seam that the adapter catalogue, executable detection, and (in a later phase) provisioning all
- * sit behind, so the renderer only ever names an adapter — mirroring the role `LspServerRegistry` plays
- * for language servers.
+ * single seam that the adapter catalogue, executable detection, and provisioning all sit behind, so the
+ * renderer only ever names an adapter — mirroring the role `LspServerRegistry` plays for language
+ * servers.
  */
 export class DebugAdapterRegistry {
   /**
-   * Locates and (in a later phase) installs adapter executables.
+   * Locates and installs adapter executables.
    */
   private readonly provisioner: DebugProvisioner;
 
@@ -154,11 +209,15 @@ export class DebugAdapterRegistry {
     if (entry === undefined) {
       return { spec: null, error: null };
     }
-    const binaryPath: string | null = await this.provisioner.locate(entry.binary, rootPath);
+    // Prefer an already-present executable (override, project-local, or PATH); otherwise download the
+    // pinned binary if the adapter ships one.
+    const located: string | null = await this.provisioner.locate(entry.binary, rootPath);
+    const binaryPath: string | null =
+      located ?? (entry.provision !== undefined ? await this.provisioner.ensure(entry.provision) : null);
     if (binaryPath === null) {
       return {
         spec: null,
-        error: `The ${entry.displayName} debug adapter (${entry.binary}) could not be found.`,
+        error: `The ${entry.displayName} debug adapter (${entry.binary}) could not be found or installed.`,
       };
     }
     return { spec: entry.buildSpec(binaryPath), error: null };

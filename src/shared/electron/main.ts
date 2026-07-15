@@ -28,7 +28,9 @@ import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger } from '@shared/electron/logger';
 import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
+import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
+import { projectSystems } from './project-system/default-project-systems';
 import { DebugProvisioner } from './debug/debug-provisioner';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
@@ -355,7 +357,10 @@ class Program {
    * each adapter's executable.
    */
   private readonly debugAdapterRegistry: DebugAdapterRegistry = new DebugAdapterRegistry(
-    new DebugProvisioner(),
+    new DebugProvisioner(
+      new Map<string, string>(),
+      path.join(app.getPath('userData'), 'debug-adapters'),
+    ),
   );
 
   /**
@@ -366,6 +371,15 @@ class Program {
     (): BrowserWindow | null => this.window,
     this.workspaceContext,
     this.debugAdapterRegistry,
+  );
+
+  /**
+   * Resolves a run configuration into a concrete debug launch target (building the project and locating
+   * its artifact for compiled ecosystems), confined to the open workspace root.
+   */
+  private readonly debugLaunchResolver: DebugLaunchResolver = new DebugLaunchResolver(
+    projectSystems,
+    this.workspaceContext,
   );
 
   /**
@@ -621,6 +635,7 @@ class Program {
     this.lspSettingsManager.register();
     this.lspManager.register();
     this.debugManager.register();
+    this.debugLaunchResolver.register();
   }
 
   /**

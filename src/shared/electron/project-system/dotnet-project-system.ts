@@ -12,12 +12,14 @@ import {
   ProjectNode,
   RunConfigurationDescriptor,
 } from '@shared/api/project-system';
+import { DebugResolveResult } from '@shared/api/debug-channels';
+import { RunConfiguration } from '@shared/api/studio';
 import { ProjectSystem } from './project-system';
 
 /**
  * The .NET project system's root-independent capabilities: Build/Clean/Rebuild, the conventional
- * Debug/Release build configurations, and the CPU platform axis. Debugging is declared once a DAP
- * adapter (netcoredbg) is provisioned; until then it is absent so the ribbon's Debug button stays inert.
+ * Debug/Release build configurations, the CPU platform axis, and debugging through netcoredbg (which the
+ * debug adapter registry provisions on first use).
  */
 const DOTNET_CAPABILITIES: ProjectCapabilities = {
   actions: ['build', 'clean', 'rebuild'],
@@ -34,7 +36,7 @@ const DOTNET_CAPABILITIES: ProjectCapabilities = {
       { id: 'arm64', name: 'ARM64' },
     ],
   },
-  debug: null,
+  debug: { adapter: 'netcoredbg' },
 };
 
 /**
@@ -212,6 +214,85 @@ export class DotnetProjectSystem implements ProjectSystem {
       return null;
     }
     return { projectPath, tree: this.buildItemTree(projectPath, items) };
+  }
+
+  /**
+   * Resolves a run configuration into a netcoredbg launch target: compiles the project in the selected
+   * (defaulting to Debug) configuration so an up-to-date assembly with symbols exists, then locates the
+   * produced assembly. The run descriptor's id is the project file path.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root, which the project must lie within.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public async resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    const projectPath: string = path.resolve(configuration.id);
+    // Confine the build to the open workspace: the project path arrives from the renderer, so a hostile
+    // one must not be able to drive `dotnet build` against an arbitrary file.
+    if (projectPath !== root && !projectPath.startsWith(path.resolve(root) + path.sep)) {
+      return { target: null, error: 'The project is outside the workspace.' };
+    }
+    const dotnet: string | null = await this.resolveDotnet();
+    if (dotnet === null) {
+      return { target: null, error: 'The `dotnet` command could not be found on this machine.' };
+    }
+    const configurationName: string = this.buildConfigurationName(configuration.buildConfiguration);
+    try {
+      await execFileAsync(dotnet, ['build', projectPath, '-c', configurationName, '--nologo'], {
+        maxBuffer: ITEM_QUERY_BUFFER,
+      });
+    } catch (error: unknown) {
+      return { target: null, error: `Build failed.\n${buildErrorText(error)}` };
+    }
+    const targetPath: string | null = await this.queryTargetPath(
+      dotnet,
+      projectPath,
+      configurationName,
+    );
+    if (targetPath === null) {
+      return { target: null, error: 'The build succeeded but its output assembly could not be found.' };
+    }
+    return { target: { program: targetPath, cwd: path.dirname(projectPath) }, error: null };
+  }
+
+  /**
+   * Maps a build-configuration id to its MSBuild configuration name, defaulting to `Debug` (so a debug
+   * session always has symbols) when none is selected or the id is unknown.
+   * @param id The selected build-configuration id, or undefined.
+   * @returns Returns the MSBuild configuration name.
+   */
+  private buildConfigurationName(id: string | undefined): string {
+    const match: { id: string; name: string } | undefined = DOTNET_CAPABILITIES.buildConfigurations.find(
+      (candidate: { id: string; name: string }): boolean => candidate.id === id,
+    );
+    return match?.name ?? 'Debug';
+  }
+
+  /**
+   * Reads a built project's output assembly path from MSBuild.
+   * @param dotnet The `dotnet` executable.
+   * @param projectPath The absolute path of the project file.
+   * @param configurationName The MSBuild configuration to evaluate against.
+   * @returns Returns the assembly path, or null when it is empty or the query fails.
+   */
+  private async queryTargetPath(
+    dotnet: string,
+    projectPath: string,
+    configurationName: string,
+  ): Promise<string | null> {
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(
+        dotnet,
+        ['build', projectPath, '-c', configurationName, '--getProperty:TargetPath'],
+        { maxBuffer: ITEM_QUERY_BUFFER },
+      );
+      const targetPath: string = stdout.trim();
+      return targetPath.length > 0 ? targetPath : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -636,4 +717,34 @@ export class DotnetProjectSystem implements ProjectSystem {
   private isSkipped(name: string): boolean {
     return name.startsWith('.') || SKIPPED_DIRECTORIES.has(name);
   }
+}
+
+/**
+ * The most tail bytes of build output to surface in a build-failure message, so the reported reason
+ * carries the MSBuild error lines (printed last) without an unbounded dump.
+ */
+const BUILD_ERROR_TAIL: number = 2000;
+
+/**
+ * Extracts a concise, bounded failure message from an `execFile` rejection, preferring the process
+ * output (where MSBuild prints its errors) over the generic exit-code message.
+ * @param error The rejection value.
+ * @returns Returns the trimmed message tail.
+ */
+function buildErrorText(error: unknown): string {
+  const parts: string[] = [];
+  if (error !== null && typeof error === 'object') {
+    const record: { stdout?: unknown; stderr?: unknown; message?: unknown } = error;
+    if (typeof record.stdout === 'string' && record.stdout.trim().length > 0) {
+      parts.push(record.stdout.trim());
+    }
+    if (typeof record.stderr === 'string' && record.stderr.trim().length > 0) {
+      parts.push(record.stderr.trim());
+    }
+    if (parts.length === 0 && typeof record.message === 'string') {
+      parts.push(record.message);
+    }
+  }
+  const text: string = parts.join('\n').trim();
+  return text.length > BUILD_ERROR_TAIL ? text.slice(-BUILD_ERROR_TAIL) : text;
 }

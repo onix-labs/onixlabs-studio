@@ -29,6 +29,11 @@ class FakeBridge implements Bridge {
   public startResult: DebugStartResult = { success: true, capabilities: {} };
   public setBreakpointsBody: unknown = { breakpoints: [] };
   /**
+   * The result the resolve channel returns; defaults to a successful target so launch reaches the
+   * adapter.
+   */
+  public resolveResult: unknown = { target: { program: '/ws/App.dll', cwd: '/ws' }, error: null };
+  /**
    * Canned response bodies keyed by DAP command, for requests the test drives (stackTrace, scopes,
    * variables, evaluate). A command absent from the map resolves undefined.
    */
@@ -45,6 +50,9 @@ class FakeBridge implements Bridge {
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     this.invokes.push({ channel, args });
+    if (channel === (DebugChannel.Resolve as string)) {
+      return Promise.resolve(this.resolveResult as T);
+    }
     if (channel === (DebugChannel.Start as string)) {
       return Promise.resolve(this.startResult as T);
     }
@@ -212,6 +220,35 @@ describe('DebugSession', () => {
     expect(session.state()).toBe('idle');
     expect(output.lines.some((l) => l.includes('adapter missing'))).toBe(true);
     expect(bridge.requests().some((r) => r.command === 'launch')).toBe(false);
+  });
+
+  it('resolveFailure_reportsAndStaysIdleWithoutStartingTheAdapter', async () => {
+    bridge.resolveResult = { target: null, error: 'Build failed.\nProgram.cs(3): error CS1002' };
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    expect(session.state()).toBe('idle');
+    expect(output.lines.some((l) => l.includes('Build failed'))).toBe(true);
+    expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(0);
+  });
+
+  it('launch_sendsTheResolvedProgramAndWorkingDirectory', async () => {
+    bridge.resolveResult = {
+      target: { program: '/ws/bin/Debug/net10.0/App.dll', cwd: '/ws/proj' },
+      error: null,
+    };
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    const launch: { command: string; args: unknown } | undefined = bridge
+      .requests()
+      .find((r) => r.command === 'launch');
+    expect(launch?.args).toMatchObject({
+      program: '/ws/bin/Debug/net10.0/App.dll',
+      cwd: '/ws/proj',
+    });
   });
 
   it('onInitialized_sendsConfigurationDoneWhenSupported', async () => {

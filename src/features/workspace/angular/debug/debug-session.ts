@@ -5,6 +5,8 @@ import {
   DebugAdapterExit,
   DebugChannel,
   DebugEventMessage,
+  DebugLaunchTarget,
+  DebugResolveResult,
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
@@ -386,6 +388,21 @@ export class DebugSession implements DebugHandler, OnDestroy {
     this.stateSignal.set('running');
     this.output.appendLine(`> Debug ${configuration.name}`);
 
+    // Resolve the launch target first — for compiled ecosystems this builds the project and locates the
+    // produced artifact, so the build happens before the adapter is even spawned.
+    const resolution: DebugResolveResult = await this.bridge.invoke<DebugResolveResult>(
+      DebugChannel.Resolve,
+      { configuration, rootPath: root },
+    );
+    if (this.currentSession !== sessionId) {
+      return;
+    }
+    if (resolution.target === null) {
+      this.output.appendLine(`Debug failed: ${resolution.error ?? 'could not resolve launch target'}`);
+      this.reset();
+      return;
+    }
+
     const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(DebugChannel.Start, {
       sessionId,
       adapterId: adapter,
@@ -403,7 +420,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     // Fire the launch request without awaiting it: the adapter answers only after it has emitted
     // `initialized` and we have replied with `configurationDone` (handled in onEvent), so awaiting here
     // before that reply would stall.
-    void this.request('launch', this.launchArguments(configuration, root)).catch(
+    void this.request('launch', this.launchArguments(configuration, root, resolution.target)).catch(
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
           this.output.appendLine(`Debug launch failed: ${messageOf(error)}`);
@@ -689,22 +706,27 @@ export class DebugSession implements DebugHandler, OnDestroy {
   }
 
   /**
-   * Builds the DAP `launch` request body from a run configuration. This is the generic, provider-neutral
-   * body; provider-specific resolution (the built program path and adapter-specific keys) is layered on
-   * in a later phase.
+   * Builds the DAP `launch` request body from a run configuration and its resolved launch target (the
+   * built program the provider located). The target's program, working directory, arguments, and
+   * environment take precedence over the configuration's, which supplies only the fallbacks.
    * @param configuration The run configuration to debug.
    * @param root The workspace root, used as the default working directory.
+   * @param target The resolved launch target.
    * @returns Returns the launch arguments.
    */
-  private launchArguments(configuration: RunConfiguration, root: string): Record<string, unknown> {
+  private launchArguments(
+    configuration: RunConfiguration,
+    root: string,
+    target: DebugLaunchTarget,
+  ): Record<string, unknown> {
     return {
       request: 'launch',
       name: configuration.name,
       type: configuration.providerKind,
-      program: configuration.program,
-      args: configuration.args,
-      cwd: configuration.cwd ?? root,
-      env: configuration.env,
+      program: target.program,
+      args: target.args ?? configuration.args,
+      cwd: target.cwd ?? configuration.cwd ?? root,
+      env: target.env ?? configuration.env,
       // Ask the adapter to run the debuggee under its own console so its stdout/stderr arrive as
       // `output` events this session routes into the Output channel.
       console: 'internalConsole',
