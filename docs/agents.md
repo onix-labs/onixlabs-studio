@@ -221,6 +221,33 @@ through the directory-watch feed, guarding against its own writes. The Run group
 configurations (falling back to discovered tasks until they are seeded), and the Configure dialog edits
 them.
 
+### 4.7 Debugging (DAP)
+
+Debugging is built on the **Debug Adapter Protocol**, mirroring the LSP subsystem's shape. DAP is *not*
+JSON-RPC — it shares LSP's `Content-Length` framing but uses a `{seq, type, command, request_seq}`
+envelope, and (unlike LSP) the adapter's `initialized` event fires *after* the client sends `launch`.
+The client, session manager, adapter registry, and provisioner live in `shared/electron/debug`; the
+`Debugger` app-level seam and per-workspace `DebugSession` mirror `Builds`/`BuildRunner`.
+
+- **Adapters are provisioned, not vendored.** `DebugProvisioner` (mirror of `LspProvisioner`) first
+  *locates* an adapter (override → project-local `node_modules/.bin` → PATH), then *ensures* a
+  downloadable one: it fetches a **pinned, SHA-256-verified** archive per `${platform}-${arch}`,
+  extracts it under `userData/debug-adapters`, and caches it. Each platform entry carries its own URL
+  and checksum — upstream may publish different releases per platform (e.g. netcoredbg dropped
+  `osx-amd64` after 3.1.3, so Intel Macs pin an older release than Apple Silicon).
+- **.NET uses netcoredbg, never vsdbg.** vsdbg (the Microsoft C#/VS debugger) is licensed for use only
+  inside Microsoft's own products — shipping it here would violate its EULA. netcoredbg (Samsung, MIT)
+  is the license-clean adapter and is what the `dotnet` project system declares
+  (`debug: { adapter: 'netcoredbg' }`).
+- **Launch targets resolve in main.** The renderer never builds a project or locates an artifact.
+  `DebugLaunchResolver` (`DebugChannel.Resolve`) delegates to the owning project system's
+  `resolveDebugTarget`, which is **confined to the open workspace root**; for .NET it compiles the
+  project (defaulting to the Debug configuration so symbols exist) and reads its `TargetPath` from
+  MSBuild. `DebugSession` folds the returned program/cwd into its DAP `launch` request.
+- **Breakpoints** persist per developer through `SettingsStore` (`debug.breakpoints`); adapter-reported
+  verification is layered on transiently and never persisted. The gutter and current-execution-line
+  marker live in the **shared code-document core** so both the well and standalone code leaves show them.
+
 ---
 
 ## 5. AI agent — access & permission model
