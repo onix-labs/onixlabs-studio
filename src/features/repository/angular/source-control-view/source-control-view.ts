@@ -14,6 +14,10 @@ import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import {
   AGENT_CONVERSATION_CONTEXT,
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
@@ -179,6 +183,16 @@ export class SourceControlView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds this tab's agent-host registrar, so the repository agent appears in Mission Control for the
+   * tab's whole life — not only while its docked agent panel is the active dock tool. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'editor',
+  });
+
+  /**
    * Holds whether the new-branch modal is open.
    */
   protected readonly newBranchOpen: WritableSignal<boolean> = signal<boolean>(false);
@@ -248,6 +262,7 @@ export class SourceControlView implements OnInit, OnDestroy {
    * Binds the repository stashed for this tab when it was opened, if any.
    */
   public ngOnInit(): void {
+    this.agentHost.register(this.tabId());
     this.dockTabContext.setTabId(this.tabId());
     const initial: RepositoryInfo | undefined = this.repositories.takeInitial(this.tabId());
     if (initial !== undefined) {

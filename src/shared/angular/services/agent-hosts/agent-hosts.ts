@@ -87,10 +87,20 @@ export class AgentHosts {
 
   /**
    * Registers a live agent host. The returned function unregisters it when the host is destroyed.
+   *
+   * A live agent maps to exactly one host: if the same {@link Agent} instance is already registered
+   * (an IDE view registers its agent up front, and the same agent's docked chat would otherwise
+   * register it again when its panel mounts), the duplicate is dropped and its unregister is a no-op,
+   * so the up-front registration keeps ownership.
    * @param host The host to register, without its assigned identity.
    * @returns Returns a function that unregisters the host.
    */
   public register(host: Omit<AgentHost, 'id'>): () => void {
+    if (this.hostList().some((existing: AgentHost): boolean => existing.agent === host.agent)) {
+      return (): void => {
+        // Already registered by another surface onto the same agent; nothing to remove.
+      };
+    }
     this.sequence += 1;
     const full: AgentHost = { ...host, id: `agent-host-${this.sequence}` };
     this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => [...current, full]);

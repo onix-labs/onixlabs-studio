@@ -111,10 +111,22 @@ export class AgentRequests {
 
   /**
    * Registers a conversation with the registry.
+   *
+   * A live agent maps to exactly one source: if the same {@link Agent} instance is already registered
+   * (an IDE view registers its agent up front, and the same agent's docked chat would otherwise
+   * register it again when its panel mounts), the duplicate is dropped and its unregister is a no-op,
+   * so its requests are not counted twice.
    * @param source The conversation source.
    * @returns Returns a function that unregisters it.
    */
   public register(source: AgentRequestSource): () => void {
+    if (
+      this.sources().some((existing: AgentRequestSource): boolean => existing.agent === source.agent)
+    ) {
+      return (): void => {
+        // Already registered by another surface onto the same agent; nothing to remove.
+      };
+    }
     this.sources.update((current: readonly AgentRequestSource[]): readonly AgentRequestSource[] => [
       ...current,
       source,
