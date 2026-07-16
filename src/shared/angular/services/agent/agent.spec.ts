@@ -501,7 +501,7 @@ describe('Agent', () => {
     expect(nestedTool?.toolState).toBe('ok');
   });
 
-  it('subagentUsage_whenReported_accumulatesOnTheLaneNotTheContextMeter', () => {
+  it('subagentUsage_whenReported_snapshotsOnTheLaneNotTheContextMeter', () => {
     agent.send('hi');
     fireEvent({
       requestId: 'run-1',
@@ -529,10 +529,12 @@ describe('Agent', () => {
       costUsd: null,
     });
 
+    // The lane reflects the sub-agent's latest occupancy snapshot (5000 + 200), not the sum of every
+    // round-trip's re-sent context — accumulating would re-count the cached context each round-trip.
     const task: AgentItem | undefined = agent
       .items()
       .find((item: AgentItem): boolean => item.toolId === 'task-1');
-    expect(task?.agentTokens).toBe(9300);
+    expect(task?.agentTokens).toBe(5200);
     expect(agent.contextTokens()).toBe(0);
 
     fireEvent({

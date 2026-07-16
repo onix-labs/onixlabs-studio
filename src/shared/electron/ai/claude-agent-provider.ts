@@ -124,6 +124,28 @@ interface ContentBlock {
 }
 
 /**
+ * The token counts an SDK message or terminal result carries. A single message's counts are a true
+ * snapshot of one model round-trip; the terminal result's counts are the turn's cumulative billing
+ * total, summed across every round-trip.
+ */
+interface SdkTokenUsage {
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
+  readonly cache_read_input_tokens?: number;
+  readonly cache_creation_input_tokens?: number;
+}
+
+/**
+ * Per-run state threaded through the message loop: the last cumulative cost reported (so each result
+ * carries only its turn's delta) and the last top-level assistant message's usage (the true context
+ * occupancy snapshot, used to drive the context meter instead of the inflated result aggregate).
+ */
+interface RunUsageState {
+  lastCostUsd: number;
+  lastAssistantUsage: SdkTokenUsage | null;
+}
+
+/**
  * The Claude Agent SDK implementation of {@link AgentProvider}. Wraps the SDK's `query()` agent loop,
  * parses its message stream into the shared event protocol, and authenticates from the local Claude
  * login or an API key. The SDK is ESM-only and the main process compiles to CommonJS, so it is loaded
@@ -681,8 +703,10 @@ export class ClaudeAgentProvider implements AgentProvider {
     const response: Query = query({ prompt: promptStream(), options });
     let reportedSessionId: string | null = null;
     // A steered run sees several `result` messages whose reported cost is cumulative; this tracks the
-    // last total so each usage event carries only that turn's delta.
-    const costState: { lastCostUsd: number } = { lastCostUsd: 0 };
+    // last total (so each usage event carries only that turn's cost delta) and the last top-level
+    // assistant message's usage (so the context meter reads the true window occupancy, not the result's
+    // cumulative token total).
+    const usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
     try {
       for await (const message of response) {
         if (context.signal.aborted) {
@@ -696,7 +720,7 @@ export class ClaudeAgentProvider implements AgentProvider {
           reportedSessionId = sessionId;
           context.emit({ requestId: context.requestId, kind: 'session', sessionId });
         }
-        this.handleMessage(message, context, costState);
+        this.handleMessage(message, context, usageState);
         // A turn boundary with nothing further queued ends the run. Closing the input in the same
         // tick as the check keeps this race-free: once closed, a late steer is refused and the
         // renderer queues the message for the next run instead.
@@ -793,13 +817,14 @@ export class ClaudeAgentProvider implements AgentProvider {
    * `parentToolId` so the renderer nests them under the spawning tool use.
    * @param message The SDK message.
    * @param context The run context to emit through.
-   * @param costState Tracks the last cumulative cost reported by a `result` message, so a steered
-   * run's several results each report only their turn's delta.
+   * @param usageState Tracks the last cumulative cost and the last top-level assistant usage across the
+   * run's turns, so a steered run's several results each report only their turn's cost delta and the
+   * context meter reads the final round-trip's true occupancy.
    */
   private handleMessage(
     message: SDKMessage,
     context: AgentRunContext,
-    costState: { lastCostUsd: number },
+    usageState: RunUsageState,
   ): void {
     const parent: string | null = this.parentToolIdOf(message);
     if (message.type === 'assistant') {
@@ -811,10 +836,18 @@ export class ClaudeAgentProvider implements AgentProvider {
         typeof uuid === 'string' && uuid.length > 0 ? uuid : null,
       );
       this.handleSubagentUsage(message, context, parent);
+      // A top-level assistant message's usage is a true snapshot of the context at that round-trip;
+      // keep the latest so the terminal result can report it as the window occupancy.
+      if (parent === null) {
+        const usage: SdkTokenUsage | undefined = this.usageOf(message);
+        if (usage !== undefined) {
+          usageState.lastAssistantUsage = usage;
+        }
+      }
     } else if (message.type === 'user') {
       this.handleToolResults(message, context, parent);
     } else if (message.type === 'result') {
-      this.handleResult(message, context, costState);
+      this.handleResult(message, context, usageState);
     }
   }
 
@@ -831,9 +864,9 @@ export class ClaudeAgentProvider implements AgentProvider {
 
   /**
    * Emits a sub-agent usage event from an assistant message produced inside a Task, so the renderer
-   * can attribute tokens to that sub-agent's lane. Only sub-agent messages are reported this way —
-   * the run's own usage comes once from the terminal `result` message, which already folds in
-   * sub-agent work, so the context meter is never double-counted.
+   * can attribute tokens to that sub-agent's lane. Only sub-agent messages are reported this way — the
+   * run's own context occupancy is tracked separately from its top-level assistant messages (see
+   * {@link handleMessage}), so the context meter never folds in a sub-agent's separate window.
    * @param message The assistant SDK message.
    * @param context The run context to emit through.
    * @param parent The sub-agent (Task tool use) the message belongs to, or null for top-level.
@@ -846,14 +879,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     if (parent === null) {
       return;
     }
-    interface TurnUsage {
-      readonly input_tokens?: number;
-      readonly output_tokens?: number;
-      readonly cache_read_input_tokens?: number;
-      readonly cache_creation_input_tokens?: number;
-    }
-    const usage: TurnUsage | undefined = (message as { message?: { usage?: TurnUsage } }).message
-      ?.usage;
+    const usage: SdkTokenUsage | undefined = this.usageOf(message);
     if (usage === undefined) {
       return;
     }
@@ -861,68 +887,79 @@ export class ClaudeAgentProvider implements AgentProvider {
       requestId: context.requestId,
       kind: 'usage',
       parentToolId: parent,
-      inputTokens:
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0),
+      inputTokens: this.contextInputOf(usage),
       outputTokens: usage.output_tokens ?? 0,
       costUsd: null,
     });
   }
 
   /**
-   * Emits a usage event from the terminal `result` message, which carries the turn's token counts and
-   * cost. The input count folds in the cached and cache-creation tokens (the whole context the turn
-   * processed), so the renderer's context readout reflects the re-sent conversation, not just the new
-   * prompt.
+   * Reads the token usage an assistant SDK message carries, or undefined when it has none.
+   * @param message The SDK message.
+   * @returns Returns the message's usage, or undefined.
+   */
+  private usageOf(message: SDKMessage): SdkTokenUsage | undefined {
+    return (message as { message?: { usage?: SdkTokenUsage } }).message?.usage;
+  }
+
+  /**
+   * Sums the input side of a usage snapshot: fresh input plus the cached and cache-creation tokens —
+   * the whole context the model processed at that round-trip. This is the figure that reflects context
+   * occupancy.
+   * @param usage The usage snapshot.
+   * @returns Returns the total input (context) tokens.
+   */
+  private contextInputOf(usage: SdkTokenUsage): number {
+    return (
+      (usage.input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0)
+    );
+  }
+
+  /**
+   * Emits the terminal `result` message's usage: this turn's cost delta, and the context-window
+   * occupancy for the meter.
+   *
+   * The result's own `usage` is the turn's CUMULATIVE billing total, summed across every internal model
+   * round-trip in the agentic loop. Each round-trip re-reads the growing conversation as cached input,
+   * so a tool-heavy turn (many round-trips) sums those re-reads into a figure many times the true
+   * context size — the meter would show near-full for a small conversation. Cost accumulates the same
+   * way, and there accumulation is correct. So: cost comes from `result.total_cost_usd`, but the context
+   * meter is fed the LAST top-level assistant message's usage — a true snapshot of the window at the
+   * final round-trip. (Falls back to the result aggregate only when the turn produced no assistant
+   * message, a degenerate case where the aggregate is not inflated.)
    * @param message The result SDK message.
    * @param context The run context to emit through.
-   * @param costState Tracks the last cumulative cost reported, so each result carries its delta.
+   * @param usageState Tracks the last cumulative cost and the last top-level assistant usage.
    */
   private handleResult(
     message: SDKMessage,
     context: AgentRunContext,
-    costState: { lastCostUsd: number },
+    usageState: RunUsageState,
   ): void {
-    const result: {
-      usage?: {
-        input_tokens?: number;
-        output_tokens?: number;
-        cache_read_input_tokens?: number;
-        cache_creation_input_tokens?: number;
-      };
-      total_cost_usd?: number;
-    } = message as never;
-    const usage:
-      | {
-          input_tokens?: number;
-          output_tokens?: number;
-          cache_read_input_tokens?: number;
-          cache_creation_input_tokens?: number;
-        }
-      | undefined = result.usage;
-    if (usage === undefined) {
+    const result: { usage?: SdkTokenUsage; total_cost_usd?: number } = message as never;
+    // Context occupancy is a snapshot, not an accumulation: read the final round-trip's usage, not the
+    // turn's summed-across-round-trips result aggregate.
+    const occupancy: SdkTokenUsage | undefined = usageState.lastAssistantUsage ?? result.usage;
+    if (occupancy === undefined) {
       return;
     }
-    const inputTokens: number =
-      (usage.input_tokens ?? 0) +
-      (usage.cache_read_input_tokens ?? 0) +
-      (usage.cache_creation_input_tokens ?? 0);
     // The reported cost is cumulative across the run's turns; emit this turn's delta so the
     // renderer's accumulating readout never double-counts a steered run.
     let costUsd: number | null = null;
     if (typeof result.total_cost_usd === 'number') {
       costUsd =
-        result.total_cost_usd >= costState.lastCostUsd
-          ? result.total_cost_usd - costState.lastCostUsd
+        result.total_cost_usd >= usageState.lastCostUsd
+          ? result.total_cost_usd - usageState.lastCostUsd
           : result.total_cost_usd;
-      costState.lastCostUsd = result.total_cost_usd;
+      usageState.lastCostUsd = result.total_cost_usd;
     }
     context.emit({
       requestId: context.requestId,
       kind: 'usage',
-      inputTokens,
-      outputTokens: usage.output_tokens ?? 0,
+      inputTokens: this.contextInputOf(occupancy),
+      outputTokens: occupancy.output_tokens ?? 0,
       costUsd,
     });
   }

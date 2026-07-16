@@ -1174,14 +1174,17 @@ export class Agent {
         this.sessionIdState.set(event.sessionId);
         break;
       case 'usage': {
-        // Sub-agent usage accumulates onto its lane's Task tool item and never touches the context
-        // meter: the run's own terminal usage report already folds sub-agent work in, so counting it
-        // here would double it.
+        // A sub-agent's usage lands on its lane's Task tool item and never touches the top-level
+        // context meter (its window is separate). Like the meter, each event is a snapshot of the
+        // sub-agent's occupancy at that round-trip, not a running total — a sub-agent's context grows
+        // monotonically, so the latest snapshot is its peak. Summing them would re-count the re-sent
+        // (cached) context on every round-trip and balloon the figure into the millions.
         if (event.parentToolId !== undefined) {
-          this.accumulateAgentTokens(event.parentToolId, event.inputTokens + event.outputTokens);
+          this.setAgentTokens(event.parentToolId, event.inputTokens + event.outputTokens);
           break;
         }
-        // The turn's input already folds in the re-sent conversation, so it stands as the new context
+        // This usage is a snapshot of the context window's occupancy at the turn's final model
+        // round-trip (input folds in the whole re-sent conversation), so it stands as the new context
         // size rather than adding to a running total. Cost, in contrast, accumulates. Compaction-run
         // usage never reaches here (handled and returned above), so the meter is not spiked by it.
         this.contextTokensState.set(event.inputTokens + event.outputTokens);
@@ -1399,16 +1402,18 @@ export class Agent {
   }
 
   /**
-   * Adds a sub-agent turn's tokens onto its lane's Task tool item.
+   * Sets a sub-agent's context occupancy on its lane's Task tool item, replacing any prior value. Each
+   * round-trip reports the whole re-sent context, so the latest snapshot is the sub-agent's occupancy —
+   * accumulating would re-count the cached context every round-trip.
    * @param toolId The Task tool use the tokens belong to.
-   * @param tokens The turn's tokens (input plus output).
+   * @param tokens The latest snapshot's tokens (input plus output).
    */
-  private accumulateAgentTokens(toolId: string, tokens: number): void {
+  private setAgentTokens(toolId: string, tokens: number): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map(
         (item: AgentItem): AgentItem =>
           item.kind === 'tool' && item.toolId === toolId
-            ? { ...item, agentTokens: (item.agentTokens ?? 0) + tokens }
+            ? { ...item, agentTokens: tokens }
             : item,
       ),
     );
