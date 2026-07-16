@@ -1155,12 +1155,12 @@ $agent-node-size: 1.75rem;
     cursor: default;
   }
 
-  // Stop reads as its own control, not a twin of Send: outlined in the critical colour rather than
-  // filled in the accent.
+  // Stop reads as its own control, not a twin of Send: outlined in the accent rather than filled in
+  // it, so it still follows the theme accent instead of a fixed hue.
   &--stop {
-    color: var(--accent-coral);
+    color: var(--accent-color);
     background: transparent;
-    border: 0.0625rem solid var(--accent-coral);
+    border: 0.0625rem solid var(--accent-color);
   }
 }
 
