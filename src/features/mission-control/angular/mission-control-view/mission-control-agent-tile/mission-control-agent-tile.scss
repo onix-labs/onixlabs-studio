@@ -23,12 +23,12 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 0.75rem 0.25rem;
+  padding: 0.75rem 0.75rem 0.6rem;
 }
 
 .tile__identity {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.4rem;
   min-inline-size: 0;
   flex: 1 1 auto;
@@ -75,20 +75,6 @@ button.tile__name {
   }
 }
 
-.tile__kind {
-  flex: none;
-  font-size: 0.75rem;
-  color: var(--gray-500);
-
-  &::before {
-    content: '(';
-  }
-
-  &::after {
-    content: ')';
-  }
-}
-
 .tile__actions {
   display: flex;
   align-items: center;
@@ -126,11 +112,12 @@ button.tile__name {
   }
 }
 
+// The run-state pill sits inline beside the title in the header row.
 .tile__status {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0 0.85rem 0.6rem;
+  flex: none;
   font-size: 0.75rem;
   color: var(--gray-500);
 }
@@ -191,7 +178,7 @@ button.tile__name {
   block-size: min(80vh, 46rem);
 }
 
-// The name/kind/status strip above the focused panel. Cleared on the trailing edge so it never runs
+// The name/status strip above the focused panel. Cleared on the trailing edge so it never runs
 // under the modal's floating expand/close controls.
 .tile__focus-header {
   display: flex;
@@ -209,11 +196,6 @@ button.tile__name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-// The run-state pill inline in the focus header: no extra padding, it sits beside the name.
-.tile__focus-status {
-  padding: 0;
 }
 
 .tile__focus-body {

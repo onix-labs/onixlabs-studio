@@ -15,7 +15,10 @@
     } @else {
       <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
     }
-    <span class="tile__kind">Agent</span>
+  </div>
+  <div class="tile__status" [class.tile__status--busy]="isRunning()">
+    <span class="tile__status-dot"></span>
+    <span class="tile__status-label">{{ statusLabel() }}</span>
   </div>
   <div class="tile__actions">
     @if (isRunning()) {
@@ -28,11 +31,6 @@
     </button>
   </div>
 </header>
-
-<div class="tile__status" [class.tile__status--busy]="isRunning()">
-  <span class="tile__status-dot"></span>
-  <span class="tile__status-label">{{ statusLabel() }}</span>
-</div>
 
 <div class="tile__body">
   <ng-container [ngTemplateOutlet]="panelBody" />
@@ -63,8 +61,7 @@
           <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
         }
         <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
-        <span class="tile__kind">Agent</span>
-        <div class="tile__status tile__focus-status" [class.tile__status--busy]="isRunning()">
+        <div class="tile__status" [class.tile__status--busy]="isRunning()">
           <span class="tile__status-dot"></span>
           <span class="tile__status-label">{{ statusLabel() }}</span>
         </div>
