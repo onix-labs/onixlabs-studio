@@ -151,6 +151,15 @@ export class MissionControlAgentTile {
   protected readonly hasTab: Signal<boolean> = computed((): boolean => this.host.tabId !== null);
 
   /**
+   * Gets the origin tab's icon, or undefined when the host has no owning tab, so a column reads with the
+   * same glyph as its tab beside the shared title.
+   */
+  protected readonly tabIcon: Signal<Icon | undefined> = computed((): Icon | undefined => {
+    const tabId: string | null = this.host.tabId;
+    return tabId === null ? undefined : this.tabs.get(tabId)?.icon;
+  });
+
+  /**
    * Gets a value indicating whether the tile is hidden — an empty host while empty tiles are
    * suppressed, or an idle host while idle tiles are suppressed.
    */

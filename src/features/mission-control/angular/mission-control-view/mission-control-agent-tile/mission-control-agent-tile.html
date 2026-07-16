@@ -1,5 +1,8 @@
 <header class="tile__header">
   <div class="tile__identity">
+    @if (tabIcon(); as icon) {
+      <app-icon class="tile__icon" [icon]="icon" [size]="1.05" />
+    }
     @if (hasTab()) {
       <button
         type="button"
@@ -56,6 +59,9 @@
   @if (focusOpen()) {
     <div class="tile__focus">
       <header class="tile__focus-header">
+        @if (tabIcon(); as icon) {
+          <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
+        }
         <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
         <span class="tile__kind">Agent</span>
         <div class="tile__status tile__focus-status" [class.tile__status--busy]="isRunning()">

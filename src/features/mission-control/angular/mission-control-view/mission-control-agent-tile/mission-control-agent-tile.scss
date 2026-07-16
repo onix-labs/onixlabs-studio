@@ -34,6 +34,13 @@
   flex: 1 1 auto;
 }
 
+// The origin tab's icon beside the title. Centred against the baseline-aligned row so it sits level
+// with the title text; the glyph inherits the ambient foreground, matching the tab strip.
+.tile__icon {
+  flex: none;
+  align-self: center;
+}
+
 .tile__name {
   flex: 0 1 auto;
   min-inline-size: 0;
@@ -59,7 +66,6 @@ button.tile__name {
 
   &:hover {
     color: var(--accent-color);
-    text-decoration: underline;
   }
 
   &:focus-visible {
