@@ -60,6 +60,11 @@ export class Icon {
    */
   public static readonly ARROWS_IN: Icon = new Icon('ph ph-arrows-in-simple');
 
+  /**
+   * Gets the frame-corners icon shown on a panel's focus control, presenting the panel in a large modal.
+   */
+  public static readonly FRAME_CORNERS: Icon = new Icon('ph-duotone ph-frame-corners');
+
   // --- Title strip: window lock ---
 
   /**

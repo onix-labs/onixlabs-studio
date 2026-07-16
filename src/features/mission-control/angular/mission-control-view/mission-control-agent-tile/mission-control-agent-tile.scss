@@ -173,6 +173,54 @@ button.tile__name {
   min-block-size: 0;
 }
 
+// Focus mode: the same panel body presented large inside the shared modal. The focus fills the modal
+// panel (growing to fill when expanded to the window), with the tool strip pinned and the chat/history
+// taking the rest — mirroring the column layout at a comfortable reading size.
+.tile__focus {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-block-size: 0;
+  block-size: min(80vh, 46rem);
+}
+
+// The name/kind/status strip above the focused panel. Cleared on the trailing edge so it never runs
+// under the modal's floating expand/close controls.
+.tile__focus-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: none;
+  padding-inline-end: 5rem;
+}
+
+.tile__focus-name {
+  min-inline-size: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--dock-title-foreground-color--focused);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The run-state pill inline in the focus header: no extra padding, it sits beside the name.
+.tile__focus-status {
+  padding: 0;
+}
+
+.tile__focus-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+
+  app-agent-tool-strip {
+    flex: none;
+  }
+}
+
 // A slim grip over the tile's trailing edge: transparent at rest, accent while hovered/dragged, so a
 // tile can be widened or narrowed within the scrolling row.
 .tile__resize {

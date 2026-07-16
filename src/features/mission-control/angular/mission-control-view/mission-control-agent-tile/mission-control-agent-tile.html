@@ -19,11 +19,10 @@
       <button type="button" class="tile__action" title="Stop" aria-label="Stop" (click)="onStop()">
         <app-icon [icon]="Icon.PAUSE" />
       </button>
-    } @else {
-      <button type="button" class="tile__action" disabled title="Idle" aria-label="Idle">
-        <app-icon [icon]="Icon.PLAY" />
-      </button>
     }
+    <button type="button" class="tile__action" title="Focus" aria-label="Focus" (click)="openFocus()">
+      <app-icon [icon]="Icon.FRAME_CORNERS" />
+    </button>
   </div>
 </header>
 
@@ -33,6 +32,45 @@
 </div>
 
 <div class="tile__body">
+  <ng-container [ngTemplateOutlet]="panelBody" />
+</div>
+
+<div
+  class="tile__resize"
+  role="separator"
+  aria-orientation="vertical"
+  aria-label="Resize agent"
+  (pointerdown)="onResizeDown($event)"
+></div>
+
+<!-- Focus mode: the same live session presented large and centred. The panel body is mounted afresh
+     inside the modal only while open (a second live mirror of the same agent), so opening and closing
+     focus never disturbs the column or the conversation. -->
+<app-modal
+  [open]="focusOpen()"
+  [width]="72"
+  [expandable]="true"
+  [ariaLabel]="'Focus: ' + host.label()"
+  (dismiss)="closeFocus()"
+>
+  @if (focusOpen()) {
+    <div class="tile__focus">
+      <header class="tile__focus-header">
+        <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
+        <span class="tile__kind">Agent</span>
+        <div class="tile__status tile__focus-status" [class.tile__status--busy]="isRunning()">
+          <span class="tile__status-dot"></span>
+          <span class="tile__status-label">{{ statusLabel() }}</span>
+        </div>
+      </header>
+      <div class="tile__focus-body">
+        <ng-container [ngTemplateOutlet]="panelBody" />
+      </div>
+    </div>
+  }
+</app-modal>
+
+<ng-template #panelBody>
   <app-agent-tool-strip [history]="historyOpen()" (historyToggle)="toggleHistory()" />
   @if (historyOpen()) {
     <app-agent-conversation-list class="tile__panel-body" />
@@ -46,12 +84,4 @@
       [autoScroll]="conversation.autoScroll()"
     />
   }
-</div>
-
-<div
-  class="tile__resize"
-  role="separator"
-  aria-orientation="vertical"
-  aria-label="Resize agent"
-  (pointerdown)="onResizeDown($event)"
-></div>
+</ng-template>

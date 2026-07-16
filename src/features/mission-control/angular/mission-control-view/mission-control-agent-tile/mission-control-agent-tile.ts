@@ -19,6 +19,8 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
 import { AgentToolStrip } from '@shared/angular/components/agent-tool-strip/agent-tool-strip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
@@ -34,7 +36,7 @@ import { MissionControl } from '@features/mission-control/angular/mission-contro
  */
 @Component({
   selector: 'app-mission-control-agent-tile',
-  imports: [AgentToolStrip, AgentChat, AgentConversationList, AppIcon],
+  imports: [AgentToolStrip, AgentChat, AgentConversationList, AppIcon, Modal, NgTemplateOutlet],
   templateUrl: './mission-control-agent-tile.html',
   styleUrl: './mission-control-agent-tile.scss',
   host: {
@@ -94,6 +96,13 @@ export class MissionControlAgentTile {
    * history-list view is per-tile.
    */
   protected readonly historyOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether this tile's focus modal is open, presenting the agent panel large and centred over
+   * the application. The modal mirrors the same live session as the column, so entering and leaving
+   * focus mode never disturbs the conversation.
+   */
+  protected readonly focusOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets the tile's stable key — the origin tab id, or the host's own id for hosts with no tab.
@@ -188,6 +197,20 @@ export class MissionControlAgentTile {
    */
   protected onStop(): void {
     this.agent.stop();
+  }
+
+  /**
+   * Opens the focus modal, presenting this tile's agent panel large and centred.
+   */
+  protected openFocus(): void {
+    this.focusOpen.set(true);
+  }
+
+  /**
+   * Closes the focus modal, returning the agent panel to its column.
+   */
+  protected closeFocus(): void {
+    this.focusOpen.set(false);
   }
 
   /**
