@@ -41,12 +41,18 @@ longer takes a per-token dependency on any transcript.
 The agent rail now renders through the shared `ListView` (edge-to-edge rows, 1rem
 content padding) rather than a hand-rolled `<ul>`.
 
-### 1.4 Not addressed (deliberate)
-- `MissionControlTiles.refreshSpacer()` does a forced layout read (`offsetWidth`/
-  `clientWidth`), but only on resize / host-set change — frequency-bound, reads batched
-  before the single write. Minor.
-- The origin transcript's O(n)-per-token `log.update(...map)` is **pre-existing**, not
-  part of this regression. Converting it to append-oriented updates is a separate win.
+### 1.4 Follow-up refinements (done)
+- **`MissionControlTiles.refreshSpacer()` now dedupes its write.** It builds the target
+  `flex` value and only assigns `spacer.style.flex` when it differs from the live inline
+  value, so a no-op `ResizeObserver` tick or a repeated render no longer invalidates
+  layout. Correct even if the engine normalises the string (a mismatch just writes, as
+  before). Covered by `mission-control-tiles.spec.ts`.
+- **The streaming transcript append is now tail-targeted.** `appendText` folds a chunk
+  into the trailing item via a new `Agent.updateLast()` (a single tail copy) instead of
+  `update(id, …)`'s whole-array `.map` predicate pass on every token. The other callers
+  (tool end, sub-agent tokens, dismiss) keep `update(id, …)` since they target arbitrary
+  items. The O(n) array copy is unavoidable for signal identity, but the per-token
+  per-element scan is gone. Existing `agent.spec.ts` streaming tests cover it.
 
 ## 2. Tests added
 

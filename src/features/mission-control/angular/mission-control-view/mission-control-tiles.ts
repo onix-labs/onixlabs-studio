@@ -106,7 +106,13 @@ export class MissionControlTiles {
     if (spacer === null || row === null) {
       return;
     }
-    spacer.style.flex = `0 0 ${this.spacerWidth(row, spacer)}px`;
+    // Write only when the size actually changes, so a no-op ResizeObserver tick or a repeated render
+    // does not needlessly invalidate layout. Comparing against the live inline value keeps this correct
+    // even if the engine normalises the string (a mismatch just falls back to writing, as before).
+    const value: string = `0 0 ${this.spacerWidth(row, spacer)}px`;
+    if (spacer.style.flex !== value) {
+      spacer.style.flex = value;
+    }
   }
 
   /**

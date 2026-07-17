@@ -1391,14 +1391,13 @@ export class Agent {
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
     if (last?.kind === kind && last.parentToolId === parentToolId) {
-      this.update(
-        last.id,
-        (existing: AgentItem): AgentItem => ({
-          ...existing,
-          text: existing.text + delta,
-          ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
-        }),
-      );
+      // The matched item is the trailing one, so fold the chunk into the tail directly rather than
+      // scanning the whole transcript for it on every streamed token (the hot streaming path).
+      this.updateLast((existing: AgentItem): AgentItem => ({
+        ...existing,
+        text: existing.text + delta,
+        ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
+      }));
     } else {
       this.push({
         kind,
@@ -1486,5 +1485,23 @@ export class Agent {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map((item: AgentItem): AgentItem => (item.id === id ? map(item) : item)),
     );
+  }
+
+  /**
+   * Replaces the trailing item, without scanning the transcript for it. Used by the streaming append,
+   * which always folds a chunk into the last item; a single tail copy avoids the whole-array predicate
+   * pass on every token. A no-op when the transcript is empty.
+   * @param map The mapping applied to the last item.
+   */
+  private updateLast(map: (item: AgentItem) => AgentItem): void {
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => {
+      const lastIndex: number = items.length - 1;
+      if (lastIndex < 0) {
+        return items;
+      }
+      const next: AgentItem[] = items.slice();
+      next[lastIndex] = map(next[lastIndex]);
+      return next;
+    });
   }
 }

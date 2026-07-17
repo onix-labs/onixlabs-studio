@@ -67,6 +67,36 @@ function makeSpacer(): HTMLElement {
 }
 
 /**
+ * A fake spacer that counts how many times its `style.flex` is assigned, to prove no-op writes are
+ * skipped.
+ */
+interface CountingSpacer {
+  readonly element: HTMLElement;
+  readonly writes: () => number;
+}
+
+/**
+ * Creates a spacer whose `style.flex` setter records each assignment.
+ * @returns Returns the counting spacer.
+ */
+function makeCountingSpacer(): CountingSpacer {
+  let flex: string = '';
+  let writes: number = 0;
+  const element: unknown = {
+    style: {
+      get flex(): string {
+        return flex;
+      },
+      set flex(value: string) {
+        flex = value;
+        writes += 1;
+      },
+    },
+  };
+  return { element: element as HTMLElement, writes: (): number => writes };
+}
+
+/**
  * Creates a fake row containing the given children, with the given inner width and left offset.
  * @param children The row's children (columns and, typically, the trailing spacer).
  * @param clientWidth The row's inner width in pixels.
@@ -229,6 +259,20 @@ describe('MissionControlTiles', () => {
     spacerB.style.flex = '';
     tiles.refreshSpacer();
     expect(spacerB.style.flex).toBe('0 0 100px');
+  });
+
+  it('refreshSpacer_writesTheSpacerOnceAndSkipsNoOpUpdates', () => {
+    const spacer: CountingSpacer = makeCountingSpacer();
+    const row: FakeRow = makeRow([makeTile(300).element, spacer.element], 400);
+
+    // setRow performs the first refresh (into-view mode collapses to `0 0 0px`).
+    tiles.setRow(row.element, spacer.element);
+    expect(spacer.writes()).toBe(1);
+
+    // Nothing changed, so a repeated refresh must not re-touch the spacer (no layout invalidation).
+    tiles.refreshSpacer();
+    tiles.refreshSpacer();
+    expect(spacer.writes()).toBe(1);
   });
 
   it('setRow_clear_dropsTheRow_soRefreshSpacerBecomesANoOp', () => {
