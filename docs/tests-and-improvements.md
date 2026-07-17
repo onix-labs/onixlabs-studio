@@ -61,9 +61,11 @@ Vitest (`@angular/build:unit-test`). Naming follows the repo convention
 | `services/agent/agent.spec.ts` (added) | 2 | `5ad4ca9` | The new `hasMessages` signal |
 | `services/agent-hosts/agent-hosts.spec.ts` | 7 | `f76149b` | The app-wide live-host registry: id assignment + order, **dedup-by-agent** guard, re-registration after unregister, per-host unregister, `runningCount`, `stopAll` (running only) |
 | `components/agent-request-card/agent-request-card.spec.ts` | 6 | `f76149b` | Heading per request kind (permission / edit-decision / question + fallbacks) and each action routing to the right `respond*` on the entry's agent/item |
-| `mission-control-view/mission-control-view.spec.ts` | 5 | _pending_ | `injectorFor` caching (same injector per host → tiles not rebuilt) and provider resolution (Agent / AgentConversation / AGENT_HOST resolve to the host's own instances); `tileInputs` forwards `isActive` |
+| `mission-control-view/mission-control-view.spec.ts` | 5 | `29796e4` | `injectorFor` caching (same injector per host → tiles not rebuilt) and provider resolution (Agent / AgentConversation / AGENT_HOST resolve to the host's own instances); `tileInputs` forwards `isActive` |
+| `mission-control-ribbon/mission-control-ribbon.spec.ts` | 10 | _pending_ | `runningCount` / `pendingPermissions` / `policyLabel` computeds; bulk actions (Stop All, Allow/Deny All answer only permission requests), reset widths, Hide Empty/Idle toggles, and policy-label → posture mapping |
+| `services/agent-hosts/agent-host-registration.spec.ts` | 4 | _pending_ | `createAgentHostRegistrar` registers the host + request source with the right agent/surface/tab attribution, resolves the label reactively (rename + fallback to "Agent"), and unregisters from both registries on destroy |
 
-**Total: 47 tests across 7 files.** Full suite: 292 files / 2008 passing.
+**Total: 61 tests across 9 files.** Full suite: 294 files / 2022 passing.
 
 ### Testing techniques worth reusing
 - **Read component computeds without rendering.** `mission-control-agent-tile` mirrors a
@@ -82,9 +84,10 @@ Vitest (`@angular/build:unit-test`). Naming follows the repo convention
 
 In rough priority order:
 
-1. **`mission-control-ribbon.ts`**, **`agent-host-registration.ts`** — untested.
-2. **`claude-agent-provider.ts`** (main process) — the usage/occupancy snapshot path
+1. **`claude-agent-provider.ts`** (main process) — the usage/occupancy snapshot path
    from `df8d0d3` is untested.
+2. **`Display` / `modernUiFeatures`** — the `applyDisplayPolicy` resolution
+   (`off`→reduce, `on`→full, `auto`→GPU recommendation) is pure and untested (see §4).
 
 Partially covered:
 - **`mission-control-view.ts`** — the cached per-host injectors and `tileInputs` are now
