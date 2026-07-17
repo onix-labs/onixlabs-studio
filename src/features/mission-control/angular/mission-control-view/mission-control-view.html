@@ -9,7 +9,7 @@
         </p>
       </div>
     } @else {
-      <div class="mc-row">
+      <div class="mc-row" #row>
         @for (host of hosts(); track host.id) {
           <ng-container
             [ngComponentOutlet]="Tile"
@@ -17,6 +17,7 @@
             [ngComponentOutletInputs]="tileInputs()"
           />
         }
+        <div class="mc-row__spacer" #spacer aria-hidden="true"></div>
       </div>
     }
   </div>

@@ -26,6 +26,14 @@ import type { ColorSwatch, SectionDef, SettingDef, SettingsOwnedDef } from './se
 export type AiConnectionModels = Readonly<Record<string, string>>;
 
 /**
+ * How the Mission Control agent rail scrolls a clicked agent's column into view: the minimal scroll
+ * that brings it fully on screen (`into-view`), or aligning its left edge to the start of the row so it
+ * sits immediately after the panel (`absolute-left`), which leaves trailing space when the last agents
+ * are selected.
+ */
+export type TileScrollMode = 'into-view' | 'absolute-left';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -76,6 +84,7 @@ export interface SettingsValues {
   readonly 'ai.runTimeoutMinutes': number;
 
   readonly 'missionControl.showPermissionsAtTop': boolean;
+  readonly 'missionControl.tileScrollMode': TileScrollMode;
 }
 
 /**
@@ -627,6 +636,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Reorder the Mission Control agent list so agents with a pending request float to the top. The agent columns themselves keep their order.',
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'missionControl.tileScrollMode',
+        title: 'Agent scroll behaviour',
+        description:
+          'How clicking an agent in the list brings its column into view: the shortest scroll that reveals it, or aligning its left edge to the start of the row (which can leave trailing space at the end).',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'into-view', label: 'Scroll into view' },
+            { value: 'absolute-left', label: 'Align to left' },
+          ],
+        },
+        default: 'into-view',
       },
     ],
   },

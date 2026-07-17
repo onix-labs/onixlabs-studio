@@ -6,6 +6,7 @@ import {
   SETTINGS_DEFAULTS,
   SettingsKey,
   SettingsValues,
+  TileScrollMode,
 } from './settings-registry';
 import { SettingDef } from './settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
@@ -580,6 +581,13 @@ export class Settings {
    */
   public readonly missionControlShowPermissionsAtTop: Signal<boolean> = this.value(
     'missionControl.showPermissionsAtTop',
+  );
+
+  /**
+   * Gets how the Mission Control agent rail scrolls a clicked agent's column into view.
+   */
+  public readonly missionControlTileScrollMode: Signal<TileScrollMode> = this.value(
+    'missionControl.tileScrollMode',
   );
 
   /**

@@ -1,15 +1,20 @@
 import { NgComponentOutlet } from '@angular/common';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  ElementRef,
   inject,
   Injector,
   input,
   InputSignal,
   Signal,
   Type,
+  viewChild,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AGENT_HOST, AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -45,9 +50,48 @@ export class MissionControlView {
   private readonly agentHosts: AgentHosts = inject(AgentHosts);
 
   /**
+   * Holds the view-scoped tile registry the rail scrolls columns through, and whose trailing spacer this
+   * view keeps sized.
+   */
+  private readonly tiles: MissionControlTiles = inject(MissionControlTiles);
+
+  /**
+   * Holds the settings service, so the trailing spacer follows the scroll-mode setting.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the view's injector, the parent of each tile's per-host injector.
    */
   private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Gets the scrolling row element (present only while there are agents to show).
+   */
+  private readonly rowRef: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('row');
+
+  /**
+   * Gets the row's trailing spacer element.
+   */
+  private readonly spacerRef: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('spacer');
+
+  /**
+   * Holds the row currently registered with the tile registry, so the row is wired (and observed) once
+   * per rendered instance.
+   */
+  private observedRow: HTMLElement | null = null;
+
+  /**
+   * Holds the tile registry's row cleanup, called when the row is torn down.
+   */
+  private rowCleanup: (() => void) | null = null;
+
+  /**
+   * Holds the observer that re-sizes the trailing spacer when the row's size changes.
+   */
+  private resizeObserver: ResizeObserver | null = null;
 
   /**
    * Caches one injector per live host, so a tile is not torn down and rebuilt every change detection.
@@ -82,6 +126,46 @@ export class MissionControlView {
   protected readonly tileInputs: Signal<Record<string, unknown>> = computed(
     (): Record<string, unknown> => ({ active: this.isActive() }),
   );
+
+  /**
+   * Initializes a new instance of the {@link MissionControlView} class, wiring the scrolling row to the
+   * tile registry once it renders and keeping its trailing spacer sized as the agent set, the scroll
+   * mode, or the row's size changes (so left-alignment can reach the last columns).
+   */
+  public constructor() {
+    afterRenderEffect((): void => {
+      const row: HTMLElement | undefined = this.rowRef()?.nativeElement;
+      const spacer: HTMLElement | undefined = this.spacerRef()?.nativeElement;
+      // Re-run when the agent set or scroll mode changes, so the spacer is re-measured against the new
+      // layout after the DOM has settled.
+      this.hosts();
+      this.settings.missionControlTileScrollMode();
+      if (row === undefined || spacer === undefined) {
+        return;
+      }
+      if (row !== this.observedRow) {
+        this.teardownRow();
+        this.rowCleanup = this.tiles.setRow(row, spacer);
+        this.resizeObserver = new ResizeObserver((): void => this.tiles.refreshSpacer());
+        this.resizeObserver.observe(row);
+        this.observedRow = row;
+      }
+      this.tiles.refreshSpacer();
+    });
+
+    inject(DestroyRef).onDestroy((): void => this.teardownRow());
+  }
+
+  /**
+   * Disconnects the row observer and clears its registration.
+   */
+  private teardownRow(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.rowCleanup?.();
+    this.rowCleanup = null;
+    this.observedRow = null;
+  }
 
   /**
    * Gets the injector for a host's tile, providing the host's live agent session and conversation (so

@@ -21,6 +21,15 @@
   border-inline-start: 0.0625rem solid var(--dock-border-color);
 }
 
+// A trailing spacer sized by MissionControlTiles: zero-width except in "align to left" mode, where it
+// grows so the last agent columns can be scrolled to the leading edge. It never grows to fill spare
+// space, so it is invisible when the columns already fit.
+.mc-row__spacer {
+  flex: 0 0 0;
+  align-self: stretch;
+  pointer-events: none;
+}
+
 .mc-empty {
   display: flex;
   flex-direction: column;
