@@ -3,6 +3,8 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
+import { DockPanel } from './dock-panel';
+import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
 import {
   defaultLayout,
@@ -30,6 +32,12 @@ export class DockState {
    * workspace default).
    */
   private readonly blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
+
+  /**
+   * Holds the panel registry, so a close can consult the panel's own unsaved-changes guard before
+   * removing it from the layout.
+   */
+  private readonly panels: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
    * Holds the settings the history caretaker reads the bounded undo depth from.
@@ -138,6 +146,22 @@ export class DockState {
    */
   public removeFromLayout(panelId: string): void {
     this.commit(removeFromLayout(this.tree(), panelId));
+  }
+
+  /**
+   * Closes a panel, first letting it resolve any unsaved changes: a document panel prompts to save,
+   * discard, or cancel through its {@link DockPanel.confirmClose} guard, and a cancelled prompt keeps
+   * the panel open. Panels with no guard (tool windows) close immediately. This is the entry point the
+   * chrome's close controls use; a plain move still calls {@link removeFromLayout} directly.
+   * @param panelId The identifier of the panel to close.
+   * @returns Returns a promise that resolves once the close has been resolved either way.
+   */
+  public async requestClose(panelId: string): Promise<void> {
+    const panel: DockPanel | undefined = this.panels.get(panelId);
+    if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
+      return;
+    }
+    this.removeFromLayout(panelId);
   }
 
   /**

@@ -130,7 +130,7 @@ export class DockFloatingLayer {
    * @param panelId The identifier of the floating panel.
    */
   protected close(panelId: string): void {
-    this.floating.close(panelId);
+    void this.floating.requestClose(panelId);
   }
 
   /**

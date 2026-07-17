@@ -3,16 +3,17 @@ import {
   BINARY_FILE_OPENER,
   BinaryFileOpener,
 } from '@shared/angular/services/file-opener/binary-file-opener';
-import { FileInfo } from '@shared/api/file-channels';
+import { FileInfo, SaveDialogChoice } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '@shared/angular/services/output/output';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
@@ -42,6 +43,12 @@ export class FileOpener {
    * Holds the document model that backs code and markdown tabs.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the file-system service showing the native confirm-save dialog when a dirty well document is
+   * closed.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds the editor contributed for files no text editor can open, or null when the binary feature
@@ -238,12 +245,17 @@ export class FileOpener {
       return true;
     }
     const id: string = this.documents.createWellDocument(fileInfo);
+    const document: CodeDocument | undefined = this.documents.get(id);
     this.registry.register({
       id,
       title: fileInfo.name,
       icon: this.dockIconFor(fileInfo.extension),
       role: 'document',
       component: DocumentPanel,
+      // Surface the well document's unsaved state to the dock tab (a dirty marker) and guard its close
+      // so an edited-but-unsaved file prompts to save before the tab is removed.
+      ...(document === undefined ? {} : { dirty: document.dirty }),
+      confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
     });
     this.dockState.tabInto(well.id, id);
     this.dockFocus.focus(well.id);
@@ -277,6 +289,28 @@ export class FileOpener {
    * @param extension The file extension, including the leading dot.
    * @returns Returns the icon for the document.
    */
+  /**
+   * Resolves a well document's unsaved changes before its tab closes: a clean document closes
+   * silently; a dirty one prompts to save / discard / cancel. Returns whether the close may proceed
+   * (false — a cancelled prompt or a cancelled save-as — keeps the tab open).
+   * @param id The well document's identifier.
+   * @returns Returns a promise resolving true to close, or false to keep the tab open.
+   */
+  private async confirmCloseWellDocument(id: string): Promise<boolean> {
+    const document: CodeDocument | undefined = this.documents.get(id);
+    if (document?.dirty() !== true) {
+      return true;
+    }
+    const choice: SaveDialogChoice = await this.fileSystem.confirmSave(document.fileName());
+    if (choice === 'cancel') {
+      return false;
+    }
+    if (choice === 'save') {
+      return this.documents.save(id);
+    }
+    return true;
+  }
+
   private dockIconFor(extension: string): Icon {
     return this.isMarkdown(extension) ? Icon.MARKDOWN : Icon.CODE;
   }

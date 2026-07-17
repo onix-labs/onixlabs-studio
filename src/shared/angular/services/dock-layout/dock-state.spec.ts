@@ -286,6 +286,60 @@ describe('DockState', () => {
   });
 });
 
+describe('DockState close guard', () => {
+  let confirmResult: boolean;
+  let confirmCalls: number;
+
+  /**
+   * Builds a dock whose document well holds one document panel with a controllable close guard.
+   * @returns Returns the injected dock state.
+   */
+  function create(): DockState {
+    confirmCalls = 0;
+    const blueprint: DockBlueprint = {
+      key: 'guard',
+      createLayout: (): DockNode =>
+        mkSplit('row', [mkStack('tool', ['explorer']), mkStack('document', ['doc-1'])], [1, 2]),
+      panels: [
+        { id: 'explorer', title: 'Explorer', icon: Icon.CODE, role: 'tool', component: PersistStubPanel },
+        {
+          id: 'doc-1',
+          title: 'a.ts',
+          icon: Icon.CODE,
+          role: 'document',
+          component: PersistStubPanel,
+          confirmClose: (): Promise<boolean> => {
+            confirmCalls += 1;
+            return Promise.resolve(confirmResult);
+          },
+        },
+      ],
+    };
+    TestBed.configureTestingModule({ providers: [{ provide: DOCK_BLUEPRINT, useValue: blueprint }] });
+    return TestBed.inject(DockState);
+  }
+
+  it('requestClose_whenTheGuardAllows_removesThePanel', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).not.toBeNull();
+
+    await dock.requestClose('doc-1');
+
+    expect(confirmCalls).toBe(1);
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).toBeNull();
+  });
+
+  it('requestClose_whenTheGuardCancels_keepsThePanel', async () => {
+    confirmResult = false;
+    const dock: DockState = create();
+
+    await dock.requestClose('doc-1');
+
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).not.toBeNull();
+  });
+});
+
 describe('DockState persistence', () => {
   let store: FakeStore;
 

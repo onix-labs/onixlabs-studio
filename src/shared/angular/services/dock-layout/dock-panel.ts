@@ -1,4 +1,4 @@
-import { Type } from '@angular/core';
+import { Signal, Type } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { StackRole } from './dock-node';
 
@@ -39,4 +39,18 @@ export interface DockPanel {
    * chrome omits the default strip for it. Defaults to false (the panel uses the shared strip).
    */
   readonly ownsToolStrip?: boolean;
+
+  /**
+   * Gets whether the panel's document has unsaved changes, driving the tab's dirty marker. Present
+   * only for panels backed by an editable document; absent for tool panels.
+   */
+  readonly dirty?: Signal<boolean>;
+
+  /**
+   * Resolves unsaved changes before the panel closes: prompts to save / discard / cancel and returns
+   * whether the close may proceed. Present only for panels that can hold unsaved work; a panel without
+   * it closes unconditionally. A returned `false` keeps the panel open (the user cancelled).
+   * @returns Returns a promise resolving true to close, or false to keep the panel open.
+   */
+  confirmClose?(): Promise<boolean>;
 }
