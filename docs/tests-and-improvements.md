@@ -63,9 +63,10 @@ Vitest (`@angular/build:unit-test`). Naming follows the repo convention
 | `components/agent-request-card/agent-request-card.spec.ts` | 6 | `f76149b` | Heading per request kind (permission / edit-decision / question + fallbacks) and each action routing to the right `respond*` on the entry's agent/item |
 | `mission-control-view/mission-control-view.spec.ts` | 5 | `29796e4` | `injectorFor` caching (same injector per host → tiles not rebuilt) and provider resolution (Agent / AgentConversation / AGENT_HOST resolve to the host's own instances); `tileInputs` forwards `isActive` |
 | `mission-control-ribbon/mission-control-ribbon.spec.ts` | 10 | _pending_ | `runningCount` / `pendingPermissions` / `policyLabel` computeds; bulk actions (Stop All, Allow/Deny All answer only permission requests), reset widths, Hide Empty/Idle toggles, and policy-label → posture mapping |
-| `services/agent-hosts/agent-host-registration.spec.ts` | 4 | _pending_ | `createAgentHostRegistrar` registers the host + request source with the right agent/surface/tab attribution, resolves the label reactively (rename + fallback to "Agent"), and unregisters from both registries on destroy |
+| `services/agent-hosts/agent-host-registration.spec.ts` | 4 | `84a8d4f` | `createAgentHostRegistrar` registers the host + request source with the right agent/surface/tab attribution, resolves the label reactively (rename + fallback to "Agent"), and unregisters from both registries on destroy |
+| `electron/ai/claude-agent-provider.spec.ts` | 11 | _pending_ | `describeAvailability` (local login / API key / neither); message translation (text/thinking/tool-start with subagent_type, tool-end success+failure); and the **`df8d0d3` occupancy/cost path** — result reports the assistant snapshot (not the inflated aggregate), cost as a per-turn delta, sub-agent usage on its own lane without touching top-level occupancy, and the no-assistant fallback |
 
-**Total: 61 tests across 9 files.** Full suite: 294 files / 2022 passing.
+**Total: 72 tests across 10 files.** Full suite: 295 files / 2033 passing.
 
 ### Testing techniques worth reusing
 - **Read component computeds without rendering.** `mission-control-agent-tile` mirrors a
@@ -84,10 +85,12 @@ Vitest (`@angular/build:unit-test`). Naming follows the repo convention
 
 In rough priority order:
 
-1. **`claude-agent-provider.ts`** (main process) — the usage/occupancy snapshot path
-   from `df8d0d3` is untested.
-2. **`Display` / `modernUiFeatures`** — the `applyDisplayPolicy` resolution
+1. **`Display` / `modernUiFeatures`** — the `applyDisplayPolicy` resolution
    (`off`→reduce, `on`→full, `auto`→GPU recommendation) is pure and untested (see §4).
+
+The Mission Control / agent live-rail work that prompted this pass is now covered
+end-to-end (tiles registry, rail panel, tile state, view injectors, ribbon actions, host
+registration, and the provider's usage/occupancy path).
 
 Partially covered:
 - **`mission-control-view.ts`** — the cached per-host injectors and `tileInputs` are now
