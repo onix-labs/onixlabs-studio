@@ -15,24 +15,28 @@ import { AGENT_HOST, AgentHost, AgentHosts } from '@shared/angular/services/agen
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { GlobalPermissionsPanel } from './global-permissions-panel/global-permissions-panel';
+import { MissionControlPanel } from './mission-control-panel/mission-control-panel';
 import { MissionControlAgentTile } from './mission-control-agent-tile/mission-control-agent-tile';
+import { MissionControlTiles } from './mission-control-tiles';
 
 /**
  * The Mission Control feature view: a single place to manage every live agent. A left
- * {@link GlobalPermissionsPanel} aggregates and answers pending agent requests from every tab; the
- * main area is a horizontally-scrolling row of {@link MissionControlAgentTile}s, one per **live agent
- * host** ({@link AgentHosts}) — an agent tab, or a docked agent panel that has been opened. Each tile
- * mirrors its host's live {@link Agent}/{@link AgentConversation}: the view builds a per-host injector
- * that provides those instances (and the host handle), so the tile drives the very same session as the
- * origin rather than a copy.
+ * {@link MissionControlPanel} lists every live agent as a rail — clicking a row scrolls its column into
+ * view and each row answers that agent's pending requests inline — and mirrors the permission settings;
+ * the main area is a horizontally-scrolling row of {@link MissionControlAgentTile}s, one per **live
+ * agent host** ({@link AgentHosts}) — an agent tab, or a docked agent panel that has been opened. Each
+ * tile mirrors its host's live {@link Agent}/{@link AgentConversation}: the view builds a per-host
+ * injector that provides those instances (and the host handle), so the tile drives the very same session
+ * as the origin rather than a copy. A view-scoped {@link MissionControlTiles} registry lets the rail
+ * scroll a tile into view.
  */
 @Component({
   selector: 'app-mission-control-view',
-  imports: [NgComponentOutlet, PanelLayout, Panel, GlobalPermissionsPanel],
+  imports: [NgComponentOutlet, PanelLayout, Panel, MissionControlPanel],
   templateUrl: './mission-control-view.html',
   styleUrl: './mission-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [MissionControlTiles],
 })
 export class MissionControlView {
   /**

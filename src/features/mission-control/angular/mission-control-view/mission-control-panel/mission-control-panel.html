@@ -1,0 +1,137 @@
+<header class="panel__header">
+  <h2 class="panel__title">Mission Control</h2>
+  <button
+    type="button"
+    class="panel__gear"
+    title="Open Mission Control settings"
+    aria-label="Open Mission Control settings"
+    (click)="onOpenSettings()"
+  >
+    <app-icon [icon]="Icon.SETTINGS" />
+  </button>
+</header>
+
+<nav class="panel__tabs" role="tablist">
+  <button
+    type="button"
+    role="tab"
+    class="panel__tab"
+    [class.panel__tab--active]="activeTab() === 'agents'"
+    [attr.aria-selected]="activeTab() === 'agents'"
+    (click)="select('agents')"
+  >
+    Agents
+    @if (requestCount() > 0) {
+      <span class="panel__badge">{{ requestCount() }}</span>
+    }
+  </button>
+  <button
+    type="button"
+    role="tab"
+    class="panel__tab"
+    [class.panel__tab--active]="activeTab() === 'settings'"
+    [attr.aria-selected]="activeTab() === 'settings'"
+    (click)="select('settings')"
+  >
+    Settings
+  </button>
+</nav>
+
+<div class="panel__body">
+  @if (activeTab() === 'agents') {
+    @if (items().length === 0) {
+      <div class="panel__empty">
+        <app-icon class="panel__empty-icon" [icon]="Icon.AGENT" />
+        <p class="panel__empty-title">No active agents</p>
+        <p class="panel__empty-text">Open an agent and it will appear here as a live column.</p>
+      </div>
+    } @else {
+      <ul class="rail">
+        @for (item of items(); track item.id) {
+          <li class="rail__item" [class.rail__item--pending]="item.entries.length > 0">
+            <button
+              type="button"
+              class="rail__row"
+              [title]="'Scroll to ' + item.label"
+              (click)="onReveal(item.id)"
+            >
+              <app-icon class="rail__icon" [icon]="item.icon" [size]="1.05" />
+              <span class="rail__name">{{ item.label }}</span>
+              <span
+                class="rail__status"
+                [class.rail__status--busy]="item.isRunning"
+                [class.rail__status--pending]="item.entries.length > 0"
+              >
+                <span class="rail__status-dot"></span>
+                <span class="rail__status-label">{{ item.statusLabel }}</span>
+              </span>
+            </button>
+
+            @if (item.entries.length > 0) {
+              <div class="rail__requests">
+                @for (entry of item.entries; track entry.key) {
+                  <app-agent-request-card [entry]="entry" />
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+
+    @if (orphanEntries().length > 0) {
+      <section class="panel__group">
+        <span class="panel__group-label">Other requests</span>
+        <div class="rail__requests">
+          @for (entry of orphanEntries(); track entry.key) {
+            <app-agent-request-card [entry]="entry" />
+          }
+        </div>
+      </section>
+    }
+  } @else {
+    <section class="panel__group">
+      <div class="panel__rules-head">
+        <span class="panel__group-label">Permissions</span>
+        <button type="button" class="panel__add" disabled title="Coming soon">
+          <app-icon [icon]="Icon.PLUS" />
+          Add rule
+        </button>
+      </div>
+
+      @for (rule of rules; track rule.title) {
+        <div class="panel__rule">
+          <app-icon
+            class="panel__rule-icon"
+            [class.panel__rule-icon--deny]="rule.mode === 'deny'"
+            [icon]="rule.mode === 'allow' ? Icon.SUCCESS : Icon.ERROR"
+          />
+          <div class="panel__rule-text">
+            <span class="panel__rule-title">{{ rule.title }}</span>
+            <span class="panel__rule-detail">{{ rule.detail }}</span>
+          </div>
+        </div>
+      }
+    </section>
+
+    <section class="panel__group">
+      <span class="panel__group-label">Project scope</span>
+      <app-dropdown [options]="scopeOptions" value="all" ariaLabel="Project scope" />
+      <p class="panel__note">Draft — standing rules are not enforced yet.</p>
+    </section>
+
+    <section class="panel__group">
+      <div class="panel__policy">
+        <span class="panel__policy-label">Policy mode</span>
+        <app-dropdown
+          class="panel__policy-select"
+          [options]="policyOptions"
+          [value]="policyMode()"
+          ariaLabel="Policy mode"
+          (valueChange)="onPolicyChange($event)"
+        />
+      </div>
+      <p class="panel__policy-help">{{ policyHelp() }}</p>
+    </section>
+  }
+</div>

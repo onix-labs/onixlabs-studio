@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -24,6 +25,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
+import { MissionControlTiles } from '../mission-control-tiles';
 
 /**
  * A single agent column in Mission Control, mirroring one live {@link AgentHost}. The host's live
@@ -83,6 +85,11 @@ export class MissionControlAgentTile {
    * Holds the tile's host element, measured at the start of a resize drag.
    */
   private readonly elementRef: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Holds the view-scoped tile registry, so the agent rail can scroll this column into view.
+   */
+  private readonly tiles: MissionControlTiles = inject(MissionControlTiles);
 
   /**
    * Gets a value indicating whether the Mission Control tab is the active tab, forwarded to the chat so
@@ -182,6 +189,10 @@ export class MissionControlAgentTile {
    * chat, matching the shared panel's behaviour.
    */
   public constructor() {
+    // Register this tile's element so the rail can scroll it into view; unregister on destroy.
+    const unregister: () => void = this.tiles.register(this.host.id, this.elementRef.nativeElement);
+    inject(DestroyRef).onDestroy(unregister);
+
     let previousId: string | null | undefined = undefined;
     effect((): void => {
       const id: string | null = this.conversation.currentId();

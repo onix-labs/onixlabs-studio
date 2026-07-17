@@ -74,6 +74,8 @@ export interface SettingsValues {
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
+
+  readonly 'missionControl.showPermissionsAtTop': boolean;
 }
 
 /**
@@ -611,6 +613,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 10,
+      },
+    ],
+  },
+  {
+    id: 'mission-control',
+    label: 'Mission Control',
+    settings: [
+      {
+        key: 'missionControl.showPermissionsAtTop',
+        title: 'Show agents awaiting permission at the top',
+        description:
+          'Reorder the Mission Control agent list so agents with a pending request float to the top. The agent columns themselves keep their order.',
+        control: { kind: 'toggle' },
+        default: false,
       },
     ],
   },

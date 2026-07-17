@@ -2,13 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
+import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
@@ -29,6 +32,7 @@ type SettingsSectionId =
   | 'terminal'
   | 'keyboard'
   | 'ai'
+  | 'mission-control'
   | 'language-servers'
   | 'security'
   | 'workspaces';
@@ -77,6 +81,12 @@ export class SettingsView {
   private readonly restart: SettingsRestart = inject(SettingsRestart);
 
   /**
+   * Holds the deep-link seam, so a request to open a specific section (e.g. Mission Control's gear)
+   * switches the content pane on open.
+   */
+  private readonly navigation: SettingsNavigation = inject(SettingsNavigation);
+
+  /**
    * Holds the identifier of the section currently shown in the content pane.
    */
   private readonly section: WritableSignal<SettingsSectionId> =
@@ -110,9 +120,25 @@ export class SettingsView {
     { id: 'terminal', label: 'Terminal', icon: Icon.TERMINAL },
     { id: 'keyboard', label: 'Keyboard', icon: Icon.KEYBOARD },
     { id: 'ai', label: 'AI', icon: Icon.AGENT },
+    { id: 'mission-control', label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },
     { id: 'language-servers', label: 'Language Servers', icon: Icon.CODE_INLINE },
     { id: 'security', label: 'Security', icon: Icon.LOCK },
   ];
+
+  /**
+   * Consumes a pending deep-link request (see {@link SettingsNavigation}): when another surface asks to
+   * open a specific section, switch to it and clear the request so a later manual change stands.
+   */
+  private readonly navigationEffect: ReturnType<typeof effect> = effect((): void => {
+    const target: string | null = this.navigation.requestedSection();
+    if (target === null) {
+      return;
+    }
+    if (this.sections.some((section: SettingsNavSection): boolean => section.id === target)) {
+      untracked((): void => this.section.set(target as SettingsSectionId));
+    }
+    untracked((): void => this.navigation.consume());
+  });
 
   /**
    * Gets the identifier of the section currently shown in the content pane.

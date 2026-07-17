@@ -1,0 +1,43 @@
+<p class="request__heading">{{ heading() }}</p>
+@if (entry().item.kind === 'permission' && entry().item.permissionDetail) {
+  <code class="request__detail">{{ entry().item.permissionDetail }}</code>
+}
+<div class="request__actions">
+  @switch (entry().item.kind) {
+    @case ('permission') {
+      <button type="button" class="request__btn" (click)="onPermission(true)">Allow</button>
+      <button
+        type="button"
+        class="request__btn request__btn--ghost"
+        (click)="onPermission(false)"
+      >
+        Deny
+      </button>
+    }
+    @case ('edit-decision') {
+      <button type="button" class="request__btn" (click)="onEditDecision('yes')">Yes</button>
+      <button
+        type="button"
+        class="request__btn request__btn--ghost"
+        (click)="onEditDecision('no')"
+      >
+        No
+      </button>
+    }
+    @default {
+      @for (choice of entry().item.inputChoices ?? []; track choice.label) {
+        <button
+          type="button"
+          class="request__btn"
+          [title]="choice.description ?? ''"
+          (click)="onAnswer(choice.label)"
+        >
+          {{ choice.label }}
+        </button>
+      }
+      <button type="button" class="request__btn request__btn--ghost" (click)="onAnswer(null)">
+        Skip
+      </button>
+    }
+  }
+</div>

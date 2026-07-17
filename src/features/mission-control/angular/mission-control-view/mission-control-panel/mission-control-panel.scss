@@ -1,6 +1,6 @@
-// The Mission Control left column: a self-contained panel with a header, a Requests/Rules tab switch,
-// a scrolling body, and a pinned policy-mode footer. It paints no surface of its own — the hosting
-// panel supplies it — so it reads as one piece with the rest of the layout.
+// The Mission Control left column: a header, an Agents/Settings tab switch, and a scrolling body that
+// hosts either the live agent rail or the settings mirror. It paints no surface of its own — the
+// hosting panel supplies it — so it reads as one piece with the rest of the layout.
 :host {
   display: flex;
   flex-direction: column;
@@ -9,14 +9,14 @@
   color: var(--dock-title-foreground-color);
 }
 
-.permissions__header {
+.panel__header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.9rem 0.85rem 0.6rem;
 }
 
-.permissions__title {
+.panel__title {
   flex: 1 1 auto;
   margin: 0;
   font-size: 1rem;
@@ -24,7 +24,7 @@
   color: var(--dock-title-foreground-color--focused);
 }
 
-.permissions__gear {
+.panel__gear {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,14 +45,14 @@
   }
 }
 
-.permissions__tabs {
+.panel__tabs {
   display: flex;
   gap: 1rem;
   padding: 0 0.9rem;
   border-block-end: 0.0625rem solid var(--dock-border-color);
 }
 
-.permissions__tab {
+.panel__tab {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -75,7 +75,7 @@
   }
 }
 
-.permissions__badge {
+.panel__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -88,7 +88,7 @@
   border-radius: 0.6rem;
 }
 
-.permissions__body {
+.panel__body {
   flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;
@@ -98,102 +98,133 @@
   gap: 1.25rem;
 }
 
-.permissions__group {
+// The agent rail: one row per live column, each optionally hosting that agent's pending requests.
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  // An agent awaiting a request is tinted and outlined so it stands out down the rail.
+  &--pending {
+    padding: 0.5rem;
+    background: var(--accent-surface-background-color);
+    border: 0.0625rem solid var(--accent-surface-border-color);
+  }
+}
+
+.rail__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.4rem 0.5rem;
+  text-align: start;
+  color: var(--dock-title-foreground-color--focused);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: pointer;
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+    border-color: var(--dock-border-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.rail__icon {
+  flex: none;
+}
+
+.rail__name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail__status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--gray-500);
+
+  &--busy,
+  &--pending {
+    color: var(--accent-color);
+  }
+}
+
+.rail__status-dot {
+  inline-size: 0.45rem;
+  block-size: 0.45rem;
+  border-radius: 50%;
+  background: var(--gray-500);
+
+  .rail__status--busy &,
+  .rail__status--pending & {
+    background: var(--accent-color);
+  }
+
+  .rail__status--busy & {
+    animation: rail-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes rail-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.rail__requests {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.permissions__group-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: var(--gray-500);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-
-  &:not(:disabled):hover {
-    color: var(--accent-color);
-  }
-}
-
-.permissions__group-label {
-  color: var(--gray-500);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.permissions__group-open {
-  font-size: 0.8rem;
-}
-
-.permissions__request {
+.panel__group {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.6rem 0.65rem;
-  background: var(--dock-title-background-color--focused);
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
+  gap: 0.5rem;
 }
 
-.permissions__request-heading {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--dock-title-foreground-color--focused);
-}
-
-.permissions__request-detail {
-  font-size: 0.72rem;
-  font-family: var(--font-monospace, monospace);
+.panel__group-label {
   color: var(--gray-500);
-  word-break: break-word;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.permissions__request-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.permissions__btn {
-  padding: 0.25rem 0.7rem;
-  font-size: 0.78rem;
-  color: var(--accent-surface-foreground-color);
-  background: var(--accent-surface-background-color);
-  border: 0.0625rem solid var(--accent-surface-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  transition: var(--hover-transition);
-
-  &:hover {
-    background: var(--accent-color);
-    color: var(--accent-foreground-color, #fff);
-  }
-
-  &--ghost {
-    color: var(--gray-500);
-    background: transparent;
-    border-color: var(--dock-border-color);
-
-    &:hover {
-      color: var(--dock-title-foreground-color--focused);
-      background: var(--dock-title-background-color--focused);
-      border-color: var(--dock-border-color);
-    }
-  }
-}
-
-.permissions__empty {
+.panel__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -203,30 +234,30 @@
   color: var(--gray-500);
 }
 
-.permissions__empty-icon {
+.panel__empty-icon {
   font-size: 2rem;
   color: var(--accent-color);
 }
 
-.permissions__empty-title {
+.panel__empty-title {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--dock-title-foreground-color--focused);
 }
 
-.permissions__empty-text {
+.panel__empty-text {
   margin: 0;
   font-size: 0.78rem;
 }
 
-.permissions__rules-head {
+.panel__rules-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.permissions__add {
+.panel__add {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -243,7 +274,7 @@
   }
 }
 
-.permissions__rule {
+.panel__rule {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -254,7 +285,7 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-.permissions__rule-icon {
+.panel__rule-icon {
   font-size: 1.1rem;
   color: var(--accent-color);
 
@@ -263,19 +294,19 @@
   }
 }
 
-.permissions__rule-text {
+.panel__rule-text {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
 }
 
-.permissions__rule-title {
+.panel__rule-title {
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--dock-title-foreground-color--focused);
 }
 
-.permissions__rule-detail {
+.panel__rule-detail {
   font-size: 0.72rem;
   font-family: var(--font-monospace, monospace);
   color: var(--gray-500);
@@ -284,36 +315,31 @@
   text-overflow: ellipsis;
 }
 
-.permissions__note {
+.panel__note {
   margin: 0.15rem 0 0;
   font-size: 0.72rem;
   font-style: italic;
   color: var(--gray-500);
 }
 
-.permissions__footer {
-  padding: 0.75rem 0.85rem;
-  border-block-start: 0.0625rem solid var(--dock-border-color);
-}
-
-.permissions__policy {
+.panel__policy {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
-.permissions__policy-label {
+.panel__policy-label {
   font-size: 0.82rem;
   color: var(--dock-title-foreground-color--focused);
 }
 
-.permissions__policy-select {
+.panel__policy-select {
   flex: 0 0 auto;
   min-inline-size: 9rem;
 }
 
-.permissions__policy-help {
+.panel__policy-help {
   margin: 0.5rem 0 0;
   font-size: 0.74rem;
   color: var(--gray-500);

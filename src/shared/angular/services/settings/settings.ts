@@ -575,6 +575,14 @@ export class Settings {
   public readonly aiRunTimeoutMinutes: Signal<number> = this.value('ai.runTimeoutMinutes');
 
   /**
+   * Gets whether Mission Control floats agents awaiting a permission request to the top of its agent
+   * list (the columns keep their order regardless).
+   */
+  public readonly missionControlShowPermissionsAtTop: Signal<boolean> = this.value(
+    'missionControl.showPermissionsAtTop',
+  );
+
+  /**
    * Initialises the service, persisting the override map to the store whenever it changes.
    */
   public constructor() {
