@@ -33,7 +33,21 @@ describe('RunFileTaskProvider', () => {
     const provider: RunFileTaskProvider = TestBed.inject(RunFileTaskProvider);
 
     expect(provider.canRun('typescript')).toBe(true);
+    expect(provider.canRun('java')).toBe(true);
     expect(provider.canRun('plaintext')).toBe(false);
+  });
+
+  it('resolve_forJava_runsTheFileWithTheSourceLauncher', async () => {
+    const provider: RunFileTaskProvider = TestBed.inject(RunFileTaskProvider);
+    const task: Task | null = provider.buildTask({
+      tabId: 'tab-1',
+      language: 'java',
+      content: 'class Main { public static void main(String[] a) {} }',
+    });
+    const command: string | null = (await task?.resolve()) ?? null;
+
+    expect(writeCalls[0].extension).toBe('.java');
+    expect(command).toBe('java "/tmp/tab-1/run.java"');
   });
 
   it('buildTask_forRunnableLanguage_targetsTheDockedTerminal', () => {

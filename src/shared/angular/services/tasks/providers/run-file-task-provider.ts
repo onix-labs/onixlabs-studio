@@ -39,6 +39,9 @@ const RUNNERS: Readonly<Record<string, LanguageRunner>> = {
   python: { extension: '.py', buildCommand: (p: string): string => `python3 ${quote(p)}` },
   shell: { extension: '.sh', buildCommand: (p: string): string => `bash ${quote(p)}` },
   csharp: { extension: '.cs', buildCommand: (p: string): string => `dotnet run ${quote(p)}` },
+  // Single-file source launch (JDK 11+): compiles and runs in memory, tolerating any class name, so
+  // the fixed `run.java` temp file needs no public class named after it.
+  java: { extension: '.java', buildCommand: (p: string): string => `java ${quote(p)}` },
 };
 
 /**
