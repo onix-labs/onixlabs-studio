@@ -176,6 +176,20 @@ describe('Agent', () => {
     expect(runCalls).toHaveLength(0);
   });
 
+  it('hasMessages_isFalseUntilTheTranscriptHasAnItem', () => {
+    expect(agent.hasMessages()).toBe(false);
+
+    agent.send('hi');
+
+    expect(agent.hasMessages()).toBe(true);
+  });
+
+  it('hasMessages_whenTheSendIsBlankAndIgnored_staysFalse', () => {
+    agent.send('   ');
+
+    expect(agent.hasMessages()).toBe(false);
+  });
+
   it('onText_whenStreamed_appendsToAnAssistantItem', () => {
     agent.send('hi');
 

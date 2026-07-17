@@ -1,0 +1,157 @@
+import { Signal, signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AGENT_HOST, AgentHost } from '@shared/angular/services/agent-hosts/agent-hosts';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
+import { MissionControlTiles } from '../mission-control-tiles';
+import { MissionControlAgentTile } from './mission-control-agent-tile';
+
+/**
+ * The tile's derived state read by the tests. The gating condition for mounting the (expensive) mirror
+ * body is `active() && !hidden()`, so `hidden` — and the `isEmpty`/`isIdle` it is built from — is the
+ * logic under test here.
+ */
+interface TileState {
+  readonly isEmpty: Signal<boolean>;
+  readonly isIdle: Signal<boolean>;
+  readonly hidden: Signal<boolean>;
+  readonly statusLabel: Signal<string>;
+  readonly hasTab: Signal<boolean>;
+  readonly tabId: Signal<string | undefined>;
+  readonly key: Signal<string>;
+}
+
+/**
+ * The knobs the individual tests set on the fixture.
+ */
+interface Knobs {
+  readonly running: WritableSignal<boolean>;
+  readonly items: WritableSignal<readonly unknown[]>;
+  readonly hideEmpty: WritableSignal<boolean>;
+  readonly hideIdle: WritableSignal<boolean>;
+}
+
+/**
+ * Builds a tile whose injected host, agent and Mission Control state the returned knobs drive, and
+ * returns its derived-state signals. The component is created but not change-detected, so the mirror
+ * body (and its heavy child tree) is never mounted — only the tile's own computeds are exercised.
+ * @param options The host's tab id (null for a host with no owning tab).
+ * @returns Returns the tile's derived state and the knobs backing it.
+ */
+function setUp(options: { tabId?: string | null } = {}): { state: TileState; knobs: Knobs } {
+  const running: WritableSignal<boolean> = signal<boolean>(false);
+  const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
+  const hideEmpty: WritableSignal<boolean> = signal<boolean>(false);
+  const hideIdle: WritableSignal<boolean> = signal<boolean>(false);
+
+  const agentStub: unknown = { isRunning: running, items };
+  const hostStub: unknown = {
+    id: 'host-1',
+    tabId: options.tabId ?? null,
+    label: signal<string>('Alpha'),
+    surface: 'agent',
+    agent: agentStub,
+    conversation: {},
+  };
+  const conversationStub: Partial<AgentConversation> = { currentId: signal<string | null>(null) };
+  const missionControlStub: Partial<MissionControl> = {
+    hideEmpty: hideEmpty.asReadonly(),
+    hideIdle: hideIdle.asReadonly(),
+    widthFor: (): number => 320,
+    setWidth: (): void => undefined,
+  };
+  const tabsStub: Partial<Tabs> = { get: () => undefined, activate: () => undefined };
+  const tilesStub: Partial<MissionControlTiles> = { register: (): (() => void) => (): void => undefined };
+
+  TestBed.configureTestingModule({
+    imports: [MissionControlAgentTile],
+    providers: [
+      { provide: AGENT_HOST, useValue: hostStub as AgentHost },
+      { provide: Agent, useValue: agentStub },
+      { provide: AgentConversation, useValue: conversationStub },
+      { provide: MissionControl, useValue: missionControlStub },
+      { provide: Tabs, useValue: tabsStub },
+      { provide: MissionControlTiles, useValue: tilesStub },
+    ],
+  });
+
+  const fixture: ComponentFixture<MissionControlAgentTile> =
+    TestBed.createComponent(MissionControlAgentTile);
+  const state: TileState = fixture.componentInstance as unknown as TileState;
+  return { state, knobs: { running, items, hideEmpty, hideIdle } };
+}
+
+describe('MissionControlAgentTile', () => {
+  it('state_whenNoMessagesAndNotRunning_isEmptyAndReadsReady', () => {
+    const { state } = setUp();
+
+    expect(state.isEmpty()).toBe(true);
+    expect(state.isIdle()).toBe(false);
+    expect(state.statusLabel()).toBe('Ready');
+  });
+
+  it('state_whenMessagesButNotRunning_isIdle', () => {
+    const { state, knobs } = setUp();
+    knobs.items.set([{}]);
+
+    expect(state.isEmpty()).toBe(false);
+    expect(state.isIdle()).toBe(true);
+    expect(state.statusLabel()).toBe('Idle');
+  });
+
+  it('state_whenRunning_isNeitherEmptyNorIdleAndReadsWorking', () => {
+    const { state, knobs } = setUp();
+    knobs.running.set(true);
+
+    expect(state.isEmpty()).toBe(false);
+    expect(state.isIdle()).toBe(false);
+    expect(state.statusLabel()).toBe('Working');
+  });
+
+  it('hidden_whenEmpty_followsTheHideEmptyPreference', () => {
+    const { state, knobs } = setUp();
+    // Empty (no messages, not running).
+    expect(state.hidden()).toBe(false);
+
+    knobs.hideEmpty.set(true);
+    expect(state.hidden()).toBe(true);
+  });
+
+  it('hidden_whenIdle_followsTheHideIdlePreference', () => {
+    const { state, knobs } = setUp();
+    knobs.items.set([{}]); // idle: has messages, not running
+
+    expect(state.hidden()).toBe(false);
+    knobs.hideIdle.set(true);
+    expect(state.hidden()).toBe(true);
+  });
+
+  it('hidden_whenRunning_isNeverHiddenRegardlessOfPreferences', () => {
+    const { state, knobs } = setUp();
+    knobs.running.set(true);
+    knobs.items.set([{}]);
+    knobs.hideEmpty.set(true);
+    knobs.hideIdle.set(true);
+
+    expect(state.hidden()).toBe(false);
+  });
+
+  it('tab_whenHostHasNoOwningTab_hasNoTabAndKeysOnTheHostId', () => {
+    const { state } = setUp({ tabId: null });
+
+    expect(state.hasTab()).toBe(false);
+    expect(state.tabId()).toBeUndefined();
+    expect(state.key()).toBe('host-1');
+  });
+
+  it('tab_whenHostHasAnOwningTab_hasATabAndKeysOnTheTabId', () => {
+    const { state } = setUp({ tabId: 'tab-9' });
+
+    expect(state.hasTab()).toBe(true);
+    expect(state.tabId()).toBe('tab-9');
+    expect(state.key()).toBe('tab-9');
+  });
+});
