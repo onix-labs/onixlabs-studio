@@ -158,6 +158,30 @@ describe('Documents', () => {
     expect(dirty[0].name).toBe(modifiedDocument.fileName());
   });
 
+  it('dirtyDocumentsFor_asAWorkspaceInstance_returnsItsWellDocsForTheOwningTab_andNoneForOthers', () => {
+    // A per-workspace instance hosts every well document under its owning tab.
+    documents.setOwningTab('workspace-tab');
+    const wellId: string = documents.createWellDocument(SAMPLE_FILE);
+    documents.setContent(wellId, 'changed');
+
+    expect(documents.dirtyDocumentsFor('workspace-tab').map((d: { id: string }): string => d.id)).toEqual(
+      [wellId],
+    );
+    expect(documents.dirtyDocumentsFor('another-tab')).toEqual([]);
+  });
+
+  it('dirtyDocumentsFor_asARootInstance_returnsOnlyTheDocumentWhoseIdMatchesTheTab', () => {
+    // A root instance backs standalone editor tabs, where each document is its own tab.
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setContent(tab.id, 'changed');
+
+    expect(documents.dirtyDocumentsFor(tab.id).map((d: { id: string }): string => d.id)).toEqual([
+      tab.id,
+    ]);
+    expect(documents.dirtyDocumentsFor('another-tab')).toEqual([]);
+  });
+
   it('get_whenDocumentCreatedAfterFirstRead_reflectsTheNewDocument', () => {
     const tab: Tab = tabs.open('code');
     const resolved: Signal<CodeDocument | undefined> = computed((): CodeDocument | undefined =>
