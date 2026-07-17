@@ -118,6 +118,11 @@ export class Icon {
   public static readonly MARKDOWN: Icon = new Icon('ph-duotone ph-markdown-logo');
 
   /**
+   * Gets the filled markdown-logo icon shown on the agent composer's Edit (write-in-markdown) button.
+   */
+  public static readonly MARKDOWN_FILL: Icon = new Icon('ph-fill ph-markdown-logo');
+
+  /**
    * Gets the binary/hex content icon.
    */
   public static readonly BINARY: Icon = new Icon('ph-duotone ph-binary');
@@ -715,6 +720,11 @@ export class Icon {
   // --- Agent chat ---
 
   /**
+   * Gets the new-conversation icon (a chat bubble with dots), shown on the agent ribbon's New button.
+   */
+  public static readonly CHAT_NEW: Icon = new Icon('ph-duotone ph-chat-teardrop-dots');
+
+  /**
    * Gets the user avatar icon.
    */
   public static readonly USER: Icon = new Icon('ph ph-user');
@@ -722,7 +732,7 @@ export class Icon {
   /**
    * Gets the send-message icon.
    */
-  public static readonly SEND: Icon = new Icon('ph ph-paper-plane-tilt');
+  public static readonly SEND: Icon = new Icon('ph-fill ph-paper-plane-right');
 
   // --- Settings ---
 
@@ -836,6 +846,11 @@ export class Icon {
    * Gets the delete (trash) icon.
    */
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
+
+  /**
+   * Gets the select-all (double check) icon.
+   */
+  public static readonly SELECT_ALL: Icon = new Icon('ph ph-checks');
 
   /**
    * Gets the downward caret used on menus and split buttons.

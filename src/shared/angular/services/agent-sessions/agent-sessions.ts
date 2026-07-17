@@ -40,6 +40,12 @@ export interface AgentSessionHandle {
   readonly contextPaths: Signal<readonly AgentContextRef[]>;
 
   /**
+   * Gets a value indicating whether the conversation has any messages, so controls that act on the
+   * transcript (such as New and Compact) can disable on an empty conversation.
+   */
+  readonly hasMessages: Signal<boolean>;
+
+  /**
    * Gets a value indicating whether the conversation-history list is shown.
    */
   readonly historyOpen: Signal<boolean>;
@@ -191,6 +197,14 @@ export class AgentSessions {
    */
   public readonly contextPaths: Signal<readonly AgentContextRef[]> = computed(
     (): readonly AgentContextRef[] => this.activeSession()?.contextPaths() ?? [],
+  );
+
+  /**
+   * Gets a value indicating whether the active agent tab's conversation has any messages. False when
+   * no tab is active, so transcript controls (New, Compact) stay disabled.
+   */
+  public readonly hasMessages: Signal<boolean> = computed(
+    (): boolean => this.activeSession()?.hasMessages() ?? false,
   );
 
   /**

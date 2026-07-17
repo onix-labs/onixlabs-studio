@@ -1,6 +1,11 @@
 <app-ribbon-overflow>
   <app-ribbon-strip-group title="Session">
-    <app-ribbon-strip-button [icon]="Icon.PLUS" label="New Chat" (action)="newChat()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.CHAT_NEW"
+      label="New"
+      [disabled]="!hasMessages()"
+      (action)="newChat()"
+    />
     <app-ribbon-strip-button
       [icon]="Icon.STOP"
       label="Stop"
@@ -10,8 +15,14 @@
     <app-ribbon-strip-button
       [icon]="Icon.COMPACT"
       label="Compact"
-      [disabled]="isRunning()"
+      [disabled]="isRunning() || !hasMessages()"
       (action)="compact()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.CLEAR"
+      label="Clear"
+      [disabled]="!hasContext()"
+      (action)="clearContext()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.RECENT"
@@ -39,36 +50,18 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="Context">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ATTACH"
-        label="Attach File"
-        (action)="attachFile()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.FOLDER_PLUS"
-        label="Add Folder"
-        (action)="attachFolder()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.SELECTION"
-        label="Attach Selection"
-        (action)="attachSelection()"
-      />
-    </app-ribbon-strip-column>
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.CLEAR"
-        label="Clear Context"
-        [disabled]="!hasContext()"
-        (action)="clearContext()"
-      />
-    </app-ribbon-strip-column>
+  <app-ribbon-strip-group title="Attachments">
+    <app-ribbon-strip-button [icon]="Icon.ATTACH" label="File" (action)="attachFile()" />
+    <app-ribbon-strip-button [icon]="Icon.FOLDER_PLUS" label="Folder" (action)="attachFolder()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.SELECTION"
+      label="Selection"
+      (action)="attachSelection()"
+    />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Options">
-    <app-ribbon-strip-column>
+    <app-ribbon-strip-column [spread]="true">
       <app-ribbon-strip-field
         label="Mode"
         [options]="modeLabels"

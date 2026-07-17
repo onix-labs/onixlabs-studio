@@ -1187,11 +1187,11 @@ $agent-node-size: 1.75rem;
   }
 }
 
+// Sits beside the Send button, so the Edit label matches its typography rather than reading as a
+// monospace badge.
 .agent__md-label {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.6875rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
 }
 
 // The markdown composer modal: a heading over the editor frame and a trailing action row. It fills
@@ -1238,6 +1238,23 @@ $agent-node-size: 1.75rem;
 
   ::ng-deep .milkdown .ProseMirror {
     padding: 0.75rem 1rem;
+  }
+
+  // In dark mode the modal panel is `--gray-900`, the very fill the shared editor uses, so the editor
+  // blends into the modal with no visible edge. Drop the editor a step darker (to the `--gray-950`
+  // primitive) so it reads as a distinct sunken well against the panel — the contrast the standalone
+  // markdown tab gets for free from its lighter (`--gray-800`) surrounding chrome. Override both the
+  // Crepe document fill (`.milkdown`) and the scroll container behind it, each outside this
+  // component's encapsulation, via ::ng-deep. Light mode already contrasts (editor `--gray-100` vs
+  // panel `--gray-150`), so this is scoped to dark.
+  :host-context([data-theme-mode='dark']) & {
+    ::ng-deep .milkdown {
+      --crepe-color-background: var(--gray-950) !important;
+    }
+
+    ::ng-deep .editor-scroll {
+      background: var(--gray-950);
+    }
   }
 }
 

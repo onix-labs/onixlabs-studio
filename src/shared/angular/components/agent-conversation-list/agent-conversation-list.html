@@ -1,17 +1,36 @@
 <div class="conversations">
-  @if (hasChecked()) {
+  <div class="conversations__toolbar">
+    <input
+      class="conversations__search"
+      type="text"
+      [value]="query()"
+      (input)="onSearch($event)"
+      placeholder="Search chats"
+      aria-label="Search chats"
+    />
     <div class="conversations__actions">
       <button
         type="button"
-        class="conversations__delete"
+        class="conversations__action conversations__select-all"
+        [disabled]="!hasRows()"
+        (click)="onToggleSelectAll()"
+        [attr.aria-label]="selectAllLabel() + ' conversations'"
+      >
+        <app-icon [icon]="Icon.SELECT_ALL" />
+        <span>{{ selectAllLabel() }}</span>
+      </button>
+      <button
+        type="button"
+        class="conversations__action conversations__delete"
+        [disabled]="!hasChecked()"
         (click)="onRequestDelete()"
         [attr.aria-label]="'Delete ' + checkedCount() + ' conversation(s)'"
       >
         <app-icon [icon]="Icon.TRASH" />
-        <span>Delete ({{ checkedCount() }})</span>
+        <span>Delete@if (checkedCount() > 0) {&nbsp;({{ checkedCount() }})}</span>
       </button>
     </div>
-  }
+  </div>
 
   <app-list-view
     [rows]="rows()"
@@ -28,7 +47,9 @@
         (click)="$event.stopPropagation()"
       />
       <span class="conversations__text">
-        <span class="conversations__title">{{ summary.title }}</span>
+        <span class="conversations__title">
+          <app-highlighted-text [text]="summary.title" [query]="query()" />
+        </span>
         <span class="conversations__meta">
           {{ summary.messageCount }} message{{ summary.messageCount === 1 ? '' : 's' }} ·
           {{ formatWhen(summary.updatedAt) }}

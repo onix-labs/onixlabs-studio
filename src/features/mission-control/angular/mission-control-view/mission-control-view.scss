@@ -11,14 +11,12 @@
 }
 
 // The agent columns tile left to right: they grow together to fill spare space when they fit, and
-// scroll horizontally once they overrun the available space. A leading seam sets the row apart from
-// the Global Permissions panel to its left.
+// scroll horizontally once they overrun the available space.
 .mc-row {
   display: flex;
   block-size: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  border-inline-start: 0.0625rem solid var(--dock-border-color);
 }
 
 // A trailing spacer sized by MissionControlTiles: zero-width except in "align to left" mode, where it

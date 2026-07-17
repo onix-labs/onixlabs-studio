@@ -52,6 +52,7 @@ describe('AgentRibbon', () => {
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
   let running: WritableSignal<boolean>;
+  let hasMessages: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let autoScroll: WritableSignal<boolean>;
   let autoScrollChoices: boolean[];
@@ -101,6 +102,7 @@ describe('AgentRibbon', () => {
     providerChoices = [];
     modelChoices = [];
     running = signal<boolean>(false);
+    hasMessages = signal<boolean>(true);
     historyOpen = signal<boolean>(false);
     autoScroll = signal<boolean>(true);
     autoScrollChoices = [];
@@ -117,6 +119,7 @@ describe('AgentRibbon', () => {
     };
     const sessionsStub: Partial<AgentSessions> = {
       isRunning: running,
+      hasMessages,
       historyOpen,
       autoScroll,
       mode,
@@ -158,9 +161,16 @@ describe('AgentRibbon', () => {
   });
 
   it('newChat_whenClicked_clearsTheTranscript', () => {
-    button('New Chat').click();
+    button('New').click();
 
     expect(cleared).toBe(1);
+  });
+
+  it('newChat_whenChatEmpty_isDisabled', () => {
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('New').disabled).toBe(true);
   });
 
   it('stop_whenNotRunning_isDisabled', () => {
@@ -234,30 +244,37 @@ describe('AgentRibbon', () => {
     expect(button('Compact').disabled).toBe(true);
   });
 
+  it('compact_whenChatEmpty_isDisabled', () => {
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('Compact').disabled).toBe(true);
+  });
+
   it('attachFile_whenClicked_attachesAFile', () => {
-    button('Attach File').click();
+    button('File').click();
 
     expect(attachedFiles).toBe(1);
   });
 
   it('addFolder_whenClicked_attachesAFolder', () => {
-    button('Add Folder').click();
+    button('Folder').click();
 
     expect(attachedFolders).toBe(1);
   });
 
   it('attachSelection_whenClicked_attachesTheEditorSelection', () => {
-    button('Attach Selection').click();
+    button('Selection').click();
 
     expect(attachedSelections).toBe(1);
   });
 
   it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {
-    expect(button('Clear Context').disabled).toBe(true);
+    expect(button('Clear').disabled).toBe(true);
 
     contextRefs.set([{ path: '/repo/a.ts', kind: 'file' }]);
     fixture.detectChanges();
-    const clear: HTMLButtonElement = button('Clear Context');
+    const clear: HTMLButtonElement = button('Clear');
     expect(clear.disabled).toBe(false);
 
     clear.click();

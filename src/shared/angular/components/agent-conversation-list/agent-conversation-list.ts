@@ -12,6 +12,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Modal } from '@shared/angular/components/modal/modal';
 
@@ -25,7 +26,7 @@ import { Modal } from '@shared/angular/components/modal/modal';
  */
 @Component({
   selector: 'app-agent-conversation-list',
-  imports: [AppIcon, Checkbox, ListView, Modal],
+  imports: [AppIcon, Checkbox, HighlightedText, ListView, Modal],
   templateUrl: './agent-conversation-list.html',
   styleUrl: './agent-conversation-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,10 +54,32 @@ export class AgentConversationList {
   protected readonly activeId: Signal<string | null> = this.conversation.currentId;
 
   /**
-   * Gets the summaries mapped to list rows for the shared {@link ListView}.
+   * Holds the search query the user has typed to filter the list by title.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the summaries matching the current search query, newest first. A blank query matches all;
+   * otherwise the match is a case-insensitive substring of the title.
+   */
+  protected readonly filtered: Signal<readonly AgentConversationSummary[]> = computed(
+    (): readonly AgentConversationSummary[] => {
+      const needle: string = this.query().trim().toLowerCase();
+      const all: readonly AgentConversationSummary[] = this.summaries();
+      if (needle.length === 0) {
+        return all;
+      }
+      return all.filter((summary: AgentConversationSummary): boolean =>
+        summary.title.toLowerCase().includes(needle),
+      );
+    },
+  );
+
+  /**
+   * Gets the filtered summaries mapped to list rows for the shared {@link ListView}.
    */
   protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
-    this.summaries().map(
+    this.filtered().map(
       (summary: AgentConversationSummary): ListRow => ({ id: summary.id, data: summary }),
     ),
   );
@@ -79,9 +102,36 @@ export class AgentConversationList {
   protected readonly checkedCount: Signal<number> = computed((): number => this.checked().size);
 
   /**
-   * Gets a value indicating whether any conversation is checked (so the Delete action is shown).
+   * Gets a value indicating whether any conversation is checked (so the Delete action is enabled).
    */
   protected readonly hasChecked: Signal<boolean> = computed((): boolean => this.checkedCount() > 0);
+
+  /**
+   * Gets a value indicating whether there are any rows on show, so the select-all toggle acts on
+   * something.
+   */
+  protected readonly hasRows: Signal<boolean> = computed((): boolean => this.filtered().length > 0);
+
+  /**
+   * Gets a value indicating whether every row currently on show is checked, which flips the toggle
+   * from Select All to Deselect All.
+   */
+  protected readonly allSelected: Signal<boolean> = computed((): boolean => {
+    const rows: readonly AgentConversationSummary[] = this.filtered();
+    if (rows.length === 0) {
+      return false;
+    }
+    const checked: ReadonlySet<string> = this.checked();
+    return rows.every((summary: AgentConversationSummary): boolean => checked.has(summary.id));
+  });
+
+  /**
+   * Gets the select-all toggle's label, reflecting whether a click would select or deselect the rows
+   * on show.
+   */
+  protected readonly selectAllLabel: Signal<string> = computed((): string =>
+    this.allSelected() ? 'Deselect All' : 'Select All',
+  );
 
   /**
    * Gets whether a conversation is checked.
@@ -103,6 +153,33 @@ export class AgentConversationList {
       next.add(id);
     } else {
       next.delete(id);
+    }
+    this.checked.set(next);
+  }
+
+  /**
+   * Sets the search query from the search box.
+   * @param event The input event raised by the search box.
+   */
+  protected onSearch(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Toggles the rows currently on show (i.e. matching the search query): checks them all when any is
+   * unchecked, or clears them when every one is already checked. Rows outside the current filter keep
+   * their state.
+   */
+  protected onToggleSelectAll(): void {
+    const next: Set<string> = new Set<string>(this.checked());
+    if (this.allSelected()) {
+      for (const summary of this.filtered()) {
+        next.delete(summary.id);
+      }
+    } else {
+      for (const summary of this.filtered()) {
+        next.add(summary.id);
+      }
     }
     this.checked.set(next);
   }

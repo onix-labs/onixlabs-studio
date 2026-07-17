@@ -5,7 +5,6 @@ import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-ses
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
@@ -14,12 +13,12 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 
 /**
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
- * active tab's conversation through {@link AgentSessions} — New Chat clears its transcript and Stop
- * aborts its in-flight run — while the Engine group's Provider and Model fields drive the active tab's
- * own connection/model selection (also through {@link AgentSessions}), with the option list drawn from
- * {@link AgentEngine}. The Context group attaches files, folders, and the current
- * editor selection to the conversation (and clears everything attached); the Options group drives the
- * autonomy mode and the follow-the-tail preference.
+ * active tab's conversation through {@link AgentSessions} — New clears its transcript, Stop aborts its
+ * in-flight run, and Clear removes everything attached — while the Engine group's Provider and Model
+ * fields drive the active tab's own connection/model selection (also through {@link AgentSessions}),
+ * with the option list drawn from {@link AgentEngine}. The Attachments group attaches files, folders,
+ * and the current editor selection to the conversation; the Options group drives the autonomy mode and
+ * the follow-the-tail preference.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -28,7 +27,6 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
-    RibbonStripButtonSmall,
     RibbonStripCheck,
     RibbonStripField,
   ],
@@ -56,6 +54,12 @@ export class AgentRibbon {
    * Gets a value indicating whether the active tab's run is in flight.
    */
   protected readonly isRunning: Signal<boolean> = this.sessions.isRunning;
+
+  /**
+   * Gets a value indicating whether the active tab's conversation has any messages, enabling the
+   * transcript controls (New, Compact).
+   */
+  protected readonly hasMessages: Signal<boolean> = this.sessions.hasMessages;
 
   /**
    * Gets a value indicating whether the active tab's conversation-history list is shown.

@@ -44,6 +44,7 @@ function createSession(): FakeSession {
     isRunning: running.asReadonly(),
     mode: modeState.asReadonly(),
     contextPaths: contextPaths.asReadonly(),
+    hasMessages: signal<boolean>(true).asReadonly(),
     historyOpen: signal<boolean>(true).asReadonly(),
     autoScroll: signal<boolean>(false).asReadonly(),
     provider: signal<string>('claude').asReadonly(),

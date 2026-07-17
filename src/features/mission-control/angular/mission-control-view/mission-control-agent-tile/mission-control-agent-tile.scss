@@ -11,7 +11,10 @@
   block-size: 100%;
   box-sizing: border-box;
   border-inline-end: 0.0625rem solid var(--dock-border-color);
-  background: var(--panel-surface-color);
+  // A shade darker than the app's standard panel surface so the live agent mirrors read as their own
+  // region here. Scoped to the tile — a Mission-Control-only component — so an agent's own tab or dock
+  // panel keeps the standard surface.
+  background: color-mix(in srgb, var(--panel-surface-color) 90%, black);
 }
 
 // A tile suppressed by the ribbon's Hide Empty / Hide Idle toggles: collapsed out of the row entirely.
