@@ -83,14 +83,13 @@ Vitest (`@angular/build:unit-test`). Naming follows the repo convention
 
 ## 3. Remaining test gaps (recent work)
 
-In rough priority order:
+None outstanding for this pass. The Mission Control / agent live-rail work that prompted
+it is now covered end-to-end (tiles registry, rail panel, tile state, view injectors,
+ribbon actions, host registration, and the provider's usage/occupancy path).
 
-1. **`Display` / `modernUiFeatures`** — the `applyDisplayPolicy` resolution
-   (`off`→reduce, `on`→full, `auto`→GPU recommendation) is pure and untested (see §4).
-
-The Mission Control / agent live-rail work that prompted this pass is now covered
-end-to-end (tiles registry, rail panel, tile state, view injectors, ribbon actions, host
-registration, and the provider's usage/occupancy path).
+`Display` / `modernUiFeatures` is **already covered** by `display.spec.ts` (the
+`applyDisplayPolicy` resolution — `off`→reduce, `on`→full, `auto`→GPU recommendation —
+asserted via the `data-corners` / `data-reduced-gpu` root attributes), so it is not a gap.
 
 Partially covered:
 - **`mission-control-view.ts`** — the cached per-host injectors and `tileInputs` are now
@@ -108,7 +107,4 @@ recommendation and toggles `data-corners='round'` / `data-reduced-gpu` on the ro
 "full" path enables `corner-shape: squircle` on ~62 element types plus the heavier
 decorative effects (e.g. the welcome glow — two ~700px blobs each `filter: blur(6rem)`).
 These are paint/GPU-bound (they cost even at ~0% JS CPU) and scale with painted area × DPR.
-
-Still worth doing when convenient: `Display` / `modernUiFeatures` have **no unit tests**
-(the `applyDisplayPolicy` resolution — `off`→reduce, `on`→full, `auto`→GPU recommendation —
-is pure and easily testable).
+The resolution logic itself is covered by `display.spec.ts`.
