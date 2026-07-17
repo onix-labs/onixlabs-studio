@@ -70,6 +70,10 @@
       >
         <app-icon class="dock-tab__icon" [icon]="panel.icon" />
         <span class="dock-tab__label">{{ panel.title }}</span>
+        <!-- A document with unsaved changes shows a dirty dot; the close button reveals over it on hover. -->
+        @if (panel.dirty?.()) {
+          <span class="dock-tab__dirty" title="Unsaved changes" aria-label="Unsaved changes"></span>
+        }
         <!-- Tool tabs are closed from the panel title bar, so only document tabs carry a close button. -->
         @if (isDocuments()) {
           <button

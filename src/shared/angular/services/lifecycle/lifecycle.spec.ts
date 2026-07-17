@@ -9,6 +9,7 @@ import {
   UnsavedDocument,
   UnsavedWorkSource,
 } from '@shared/angular/services/unsaved-work/unsaved-work';
+import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { Lifecycle } from './lifecycle';
 
 describe('Lifecycle', () => {
@@ -66,6 +67,8 @@ describe('Lifecycle', () => {
       documents: () => readonly UnsavedDocument[],
     ): UnsavedWorkSource => ({
       dirtyDocuments: documents,
+      dirtyDocumentsFor: (tabId: string): readonly UnsavedDocument[] =>
+        documents().filter((document: UnsavedDocument): boolean => document.id === tabId),
       save: (id: string): Promise<boolean> => {
         savedIds.push(id);
         return Promise.resolve(saveResult);
@@ -163,6 +166,29 @@ describe('Lifecycle', () => {
     await flush();
 
     expect(savedIds).toEqual(['a', 'blob']);
+    expect(respondedWith).toEqual([true]);
+  });
+
+  it('requestClose_promptsSourcesRegisteredAtRuntime', async () => {
+    // A workspace tab's document well registers its per-view Documents at runtime; the window close
+    // must prompt for its unsaved work too (#231 — before, only the static sources were walked).
+    choices.set('well.ts', 'save');
+    const lifecycle: Lifecycle = create();
+    void lifecycle;
+    TestBed.inject(UnsavedWorkRegistry).register({
+      dirtyDocuments: (): readonly UnsavedDocument[] => [{ id: 'well-1', name: 'well.ts' }],
+      dirtyDocumentsFor: (): readonly UnsavedDocument[] => [],
+      save: (id: string): Promise<boolean> => {
+        savedIds.push(id);
+        return Promise.resolve(true);
+      },
+      release: (): void => undefined,
+    });
+
+    requestClose();
+    await flush();
+
+    expect(savedIds).toEqual(['well-1']);
     expect(respondedWith).toEqual([true]);
   });
 

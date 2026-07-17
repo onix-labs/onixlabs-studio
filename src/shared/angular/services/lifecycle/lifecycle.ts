@@ -3,10 +3,7 @@ import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
-import {
-  UNSAVED_WORK,
-  UnsavedWorkSource,
-} from '@shared/angular/services/unsaved-work/unsaved-work';
+import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 
 /**
  * Answers the main process's request to close the window. When the window is closing, it walks the
@@ -23,11 +20,10 @@ export class Lifecycle {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Holds every contributed store of unsaved work (the text documents, each feature's own document
-   * model), walked in contribution order at close time.
+   * Holds the registry of unsaved-work sources (the static text/binary documents plus any view-scoped
+   * workspace document wells), walked at close time.
    */
-  private readonly unsavedWork: readonly UnsavedWorkSource[] =
-    inject(UNSAVED_WORK, { optional: true }) ?? [];
+  private readonly unsavedWork: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
 
   /**
    * Holds the file-system service used to prompt for saving.
@@ -59,7 +55,7 @@ export class Lifecycle {
    */
   private async confirmUnsavedChanges(): Promise<boolean> {
     // Prompts are awaited one at a time: each is a modal dialog, and the save follows its own prompt.
-    for (const source of this.unsavedWork) {
+    for (const source of this.unsavedWork.sources()) {
       for (const unsaved of source.dirtyDocuments()) {
         const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
         if (choice === 'cancel') {

@@ -344,7 +344,7 @@ export class DockTabGroup {
    * @param panelId The identifier of the panel to close.
    */
   protected close(panelId: string): void {
-    this.dockState.removeFromLayout(panelId);
+    void this.dockState.requestClose(panelId);
   }
 
   /**

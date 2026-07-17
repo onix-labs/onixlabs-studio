@@ -180,6 +180,21 @@ export class DockFloating {
   }
 
   /**
+   * Closes a floating window, first letting the panel resolve any unsaved changes through its
+   * {@link DockPanel.confirmClose} guard (a floated document prompts to save / discard / cancel);
+   * a cancelled prompt keeps the window open.
+   * @param panelId The identifier of the floating panel.
+   * @returns Returns a promise that resolves once the close has been resolved either way.
+   */
+  public async requestClose(panelId: string): Promise<void> {
+    const panel: DockPanel | undefined = this.registry.get(panelId);
+    if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
+      return;
+    }
+    this.close(panelId);
+  }
+
+  /**
    * Docks a floating panel back into the layout: documents return to a document well, tools dock to
    * the right edge.
    * @param panelId The identifier of the floating panel.

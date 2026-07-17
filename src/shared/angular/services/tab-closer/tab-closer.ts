@@ -2,11 +2,7 @@ import { inject, Service } from '@angular/core';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import {
-  UNSAVED_WORK,
-  UnsavedDocument,
-  UnsavedWorkSource,
-} from '@shared/angular/services/unsaved-work/unsaved-work';
+import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 
 /**
  * Closes tabs with a consistent unsaved-changes guard, whichever document model backs the tab.
@@ -21,10 +17,10 @@ import {
 @Service()
 export class TabCloser {
   /**
-   * Holds every contributed store of unsaved work, walked in contribution order.
+   * Holds the registry of unsaved-work sources (the static text/binary documents plus any view-scoped
+   * workspace document wells), walked when a tab closes.
    */
-  private readonly sources: readonly UnsavedWorkSource[] =
-    inject(UNSAVED_WORK, { optional: true }) ?? [];
+  private readonly registry: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
 
   /**
    * Holds the file-system service showing the native confirm-save dialog.
@@ -42,23 +38,22 @@ export class TabCloser {
    * @returns Returns a promise that resolves once the close has been resolved either way.
    */
   public async close(id: string): Promise<void> {
-    for (const source of this.sources) {
-      const unsaved: UnsavedDocument | undefined = source
-        .dirtyDocuments()
-        .find((candidate: UnsavedDocument): boolean => candidate.id === id);
-      if (unsaved === undefined) {
-        continue;
-      }
-      const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
-      if (choice === 'cancel') {
-        return;
-      }
-      if (choice === 'save' && !(await source.save(id))) {
-        // The user cancelled the save-as dialog; keep the tab open so the work is not lost.
-        return;
+    // Prompt for every document the closing tab hosts — a standalone editor/binary tab owns one, a
+    // workspace tab owns every dirty document in its well — one modal at a time, saving each by its
+    // own id (a well document's id is not the tab's).
+    for (const source of this.registry.sources()) {
+      for (const unsaved of source.dirtyDocumentsFor(id)) {
+        const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
+        if (choice === 'cancel') {
+          return;
+        }
+        if (choice === 'save' && !(await source.save(unsaved.id))) {
+          // The user cancelled the save-as dialog; keep the tab open so the work is not lost.
+          return;
+        }
       }
     }
-    for (const source of this.sources) {
+    for (const source of this.registry.sources()) {
       source.release(id);
     }
     this.tabs.close(id);

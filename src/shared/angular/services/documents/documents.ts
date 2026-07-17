@@ -299,6 +299,21 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Lists the dirty documents hosted by the given tab. A workspace instance hosts every well document
+   * under its owning tab, so it returns all of them when that tab is the closing one; a root instance
+   * backs standalone editor tabs, where each document is its own tab, so it returns the document with
+   * that id.
+   * @param tabId The closing tab's identifier.
+   * @returns Returns the dirty documents the tab hosts.
+   */
+  public dirtyDocumentsFor(tabId: string): readonly UnsavedDocument[] {
+    if (this.owningTabId !== null) {
+      return this.owningTabId === tabId ? this.dirtyDocuments() : [];
+    }
+    return this.dirtyDocuments().filter((document: UnsavedDocument): boolean => document.id === tabId);
+  }
+
+  /**
    * Sets the language of a tab's document, so the editor re-highlights with the chosen syntax.
    * @param id The owning tab identifier.
    * @param language The Monaco language identifier to apply.

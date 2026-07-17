@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   inject,
   input,
@@ -48,6 +49,7 @@ import {
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
@@ -184,6 +186,18 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped document model.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the app-wide unsaved-work registry this view-scoped {@link Documents} registers into, so the
+   * tab close and the window close prompt for the well's unsaved documents (the root injector cannot
+   * see this per-view instance through the static provider).
+   */
+  private readonly unsavedWork: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
+
+  /**
+   * Holds the destroy notifier used to unregister from the unsaved-work registry when the tab closes.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
    * Holds this tab's lightweight git status, refreshed when the tab is shown so the explorers'
@@ -492,6 +506,8 @@ export class DirectoryView implements OnInit, OnDestroy {
   public ngOnInit(): void {
     this.agentHost.register(this.tabId());
     this.documents.setOwningTab(this.tabId());
+    // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
+    this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     this.dockTabContext.setTabId(this.tabId());
     const initial: DirectoryListing | undefined = this.workspaces.takeInitial(this.tabId());
     if (initial !== undefined) {

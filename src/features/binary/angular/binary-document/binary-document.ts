@@ -1145,6 +1145,16 @@ export class BinaryDocuments implements UnsavedWorkSource {
   }
 
   /**
+   * Lists the dirty documents hosted by the given tab. Each binary file is its own top-level tab, so
+   * this is the document with that id when it is dirty.
+   * @param tabId The closing tab's identifier.
+   * @returns Returns the dirty documents the tab hosts.
+   */
+  public dirtyDocumentsFor(tabId: string): readonly UnsavedDocument[] {
+    return this.dirtyDocuments().filter((document: UnsavedDocument): boolean => document.id === tabId);
+  }
+
+  /**
    * Saves a binary document's pending edits. Part of the unsaved-work contract the lifecycle walks
    * before the window closes.
    * @param id The owning tab identifier.

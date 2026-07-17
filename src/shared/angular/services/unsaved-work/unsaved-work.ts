@@ -30,6 +30,17 @@ export interface UnsavedWorkSource {
   dirtyDocuments(): readonly UnsavedDocument[];
 
   /**
+   * Lists the source's dirty documents hosted by the given tab. For a source whose documents are each
+   * their own top-level tab this is the one document with that id (when dirty); for a source hosting
+   * many documents under a single tab — a workspace's document well — it is every dirty document it
+   * holds when that tab owns it. Closing one tab uses this (its hosted documents); the window close
+   * uses {@link dirtyDocuments} (all of them).
+   * @param tabId The closing tab's identifier.
+   * @returns Returns the dirty documents the tab hosts.
+   */
+  dirtyDocumentsFor(tabId: string): readonly UnsavedDocument[];
+
+  /**
    * Saves one of the source's documents.
    * @param id The identifier of the document to save.
    * @returns Returns true when the document was saved, or false when the user cancelled (for
