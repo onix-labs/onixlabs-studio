@@ -550,6 +550,14 @@ export class Agent {
   public readonly items: Signal<readonly AgentItem[]> = this.log.asReadonly();
 
   /**
+   * Gets a value indicating whether the transcript holds any items. A memoized boolean, so readers
+   * that only care whether the conversation has started (the Mission Control rail's status label, for
+   * one) do not re-run on every streaming append the way a raw `items().length` read would — the
+   * value is stable across a run once the first item lands.
+   */
+  public readonly hasMessages: Signal<boolean> = computed((): boolean => this.log().length > 0);
+
+  /**
    * Gets the messages waiting to dispatch once the running turn completes.
    */
   public readonly queued: Signal<readonly AgentQueuedMessage[]> = this.queueState.asReadonly();

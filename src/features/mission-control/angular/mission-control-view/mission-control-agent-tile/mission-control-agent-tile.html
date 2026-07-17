@@ -32,8 +32,16 @@
   </div>
 </header>
 
+<!-- The column body mirrors a live AgentChat, which re-renders (transcript fold + markdown re-parse +
+     a scroll-position write) on every streaming token. Because the view stays mounted when it is not
+     the active tab, and a hidden tile (Hide Idle/Empty) is display:none, rendering it in those states
+     would burn a full per-token render for something no one can see — across every mirrored agent,
+     app-wide. Only mount it when this tile is actually visible. Focus mode mounts its own copy, gated
+     by `focusOpen()` below. -->
 <div class="tile__body">
-  <ng-container [ngTemplateOutlet]="panelBody" />
+  @if (active() && !hidden()) {
+    <ng-container [ngTemplateOutlet]="panelBody" />
+  }
 </div>
 
 <div

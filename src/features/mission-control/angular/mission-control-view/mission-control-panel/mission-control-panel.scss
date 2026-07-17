@@ -98,55 +98,47 @@
   gap: 1.25rem;
 }
 
-// The agent rail: one row per live column, each optionally hosting that agent's pending requests.
-.rail {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+// The agent list breaks out of the body's horizontal padding so its rows — and their full-width
+// hover fill — run edge to edge. Everything else in the body (empty state, orphan requests, settings
+// mirror) stays within the padding.
+app-list-view {
+  margin-inline: -0.85rem;
+
+  // The row's content inset lives on the projected `.rail__item` (1rem all around), so clear the
+  // shared row padding for this list to keep the total inset at exactly 1rem.
+  ::ng-deep .list-row {
+    padding: 0;
+  }
 }
 
+// The agent rail renders through the shared ListView: each live agent is one row (the row chrome —
+// hover fill, focus ring — comes from the global `.list-row` styles), and this is the content
+// projected into it. The item fills the row and stacks the header over any inline request cards.
 .rail__item {
   display: flex;
+  flex: 1 1 auto;
+  min-inline-size: 0;
   flex-direction: column;
   gap: 0.5rem;
+  padding: 1rem;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 
-  // An agent awaiting a request is tinted and outlined so it stands out down the rail.
+  // An agent awaiting a request is tinted and outlined so it stands out down the rail; it keeps the
+  // 1rem content padding above.
   &--pending {
-    padding: 0.5rem;
     background: var(--accent-surface-background-color);
     border: 0.0625rem solid var(--accent-surface-border-color);
   }
 }
 
-.rail__row {
+// The header line of a rail row: the agent's icon and label with its run-state on the trailing edge.
+.rail__head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   inline-size: 100%;
-  padding: 0.4rem 0.5rem;
-  text-align: start;
   color: var(--dock-title-foreground-color--focused);
-  background: transparent;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: pointer;
-  transition: var(--hover-transition);
-
-  &:hover {
-    background: var(--dock-title-background-color--focused);
-    border-color: var(--dock-border-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: -0.125rem;
-  }
 }
 
 .rail__icon {

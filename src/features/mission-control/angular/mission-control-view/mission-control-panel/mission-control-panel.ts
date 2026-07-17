@@ -18,6 +18,7 @@ import { AgentRequestCard } from '@shared/angular/components/agent-request-card/
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Icon } from '@shared/angular/icons/icon';
+import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -98,7 +99,7 @@ interface RulePreview {
  */
 @Component({
   selector: 'app-mission-control-panel',
-  imports: [AppIcon, AgentRequestCard, Dropdown],
+  imports: [AppIcon, AgentRequestCard, Dropdown, ListView],
   templateUrl: './mission-control-panel.html',
   styleUrl: './mission-control-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -183,19 +184,29 @@ export class MissionControlPanel {
     const byAgent: ReadonlyMap<Agent, readonly AgentRequestEntry[]> = this.requestsByAgent();
     return this.orderedHosts().map((host: AgentHost): RailItem => {
       const running: boolean = host.agent.isRunning();
-      const count: number = host.agent.items().length;
+      // Read the memoized `hasMessages` boolean, not `items().length`: the rail is always mounted (it
+      // survives Mission Control being backgrounded), so depending on every host's transcript length
+      // would rebuild the whole rail on every streaming token. The boolean is stable across a run.
+      const hasMessages: boolean = host.agent.hasMessages();
       const tabIcon: Icon | undefined =
         host.tabId === null ? undefined : this.tabs.get(host.tabId)?.icon;
       return {
         id: host.id,
         label: host.label(),
         icon: tabIcon ?? Icon.AGENT,
-        statusLabel: running ? 'Working' : count > 0 ? 'Idle' : 'Ready',
+        statusLabel: running ? 'Working' : hasMessages ? 'Idle' : 'Ready',
         isRunning: running,
         entries: byAgent.get(host.agent) ?? [],
       };
     });
   });
+
+  /**
+   * Gets the agent rail rows mapped to list rows for the shared {@link ListView}.
+   */
+  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.items().map((item: RailItem): ListRow => ({ id: item.id, data: item })),
+  );
 
   /**
    * Gets pending requests owned by an agent that has no live column, so they are never dropped from the
@@ -285,11 +296,21 @@ export class MissionControlPanel {
   }
 
   /**
-   * Scrolls the column for a rail row into view.
-   * @param id The host id of the row.
+   * Unwraps a list row's rail-item payload for the projected row template.
+   * @param row The list row.
+   * @returns Returns the rail item carried by the row.
    */
-  protected onReveal(id: string): void {
-    this.tiles.reveal(id);
+  protected itemOf(row: ListRow): RailItem {
+    return row.data as RailItem;
+  }
+
+  /**
+   * Scrolls the column for a clicked (or keyboard-activated) rail row into view. The row id is the
+   * host id, which the tile registry keys columns by.
+   * @param row The list row that was activated.
+   */
+  protected onRowClick(row: ListRow): void {
+    this.tiles.reveal(row.id);
   }
 
   /**

@@ -46,15 +46,15 @@
         <p class="panel__empty-text">Open an agent and it will appear here as a live column.</p>
       </div>
     } @else {
-      <ul class="rail">
-        @for (item of items(); track item.id) {
-          <li class="rail__item" [class.rail__item--pending]="item.entries.length > 0">
-            <button
-              type="button"
-              class="rail__row"
-              [title]="'Scroll to ' + item.label"
-              (click)="onReveal(item.id)"
-            >
+      <app-list-view [rows]="rows()" (rowClick)="onRowClick($event)">
+        <ng-template let-row>
+          @let item = itemOf(row);
+          <div
+            class="rail__item"
+            [class.rail__item--pending]="item.entries.length > 0"
+            [title]="'Scroll to ' + item.label"
+          >
+            <div class="rail__head">
               <app-icon class="rail__icon" [icon]="item.icon" [size]="1.05" />
               <span class="rail__name">{{ item.label }}</span>
               <span
@@ -65,18 +65,20 @@
                 <span class="rail__status-dot"></span>
                 <span class="rail__status-label">{{ item.statusLabel }}</span>
               </span>
-            </button>
+            </div>
 
             @if (item.entries.length > 0) {
+              <!-- The request cards live inside the activation row, so stop clicks on them from
+                   bubbling to the row and scrolling the column out from under the user. -->
               <div class="rail__requests">
                 @for (entry of item.entries; track entry.key) {
-                  <app-agent-request-card [entry]="entry" />
+                  <app-agent-request-card [entry]="entry" (click)="$event.stopPropagation()" />
                 }
               </div>
             }
-          </li>
-        }
-      </ul>
+          </div>
+        </ng-template>
+      </app-list-view>
     }
 
     @if (orphanEntries().length > 0) {
