@@ -276,6 +276,17 @@
     flex: none;
   }
 
+  // A document with unsaved changes carries a small dot between its label and close button; it takes
+  // the tab's own foreground colour, so it brightens with the active/hovered tab.
+  .dock-tab__dirty {
+    flex: none;
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+  }
+
   // The controls never shrink, so they always stay within the panel rather than being clipped.
   .dock-tab-group__strip-controls {
     flex: none;
