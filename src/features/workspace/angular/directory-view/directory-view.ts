@@ -74,6 +74,18 @@ import { DockContainer } from '@shared/angular/components/dock-layout/dock-conta
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 
 /**
+ * Maps a project model's kind to the language server prestarted when its workspace opens, so the
+ * structure-aware server begins loading the workspace up front rather than on the first file: Roslyn
+ * for .NET, the TypeScript server for Node, jdtls for a Gradle/Maven JVM build. A kind with no entry
+ * prestarts nothing.
+ */
+const PRESTART_SERVERS: Readonly<Record<string, string>> = {
+  dotnet: 'csharp',
+  node: 'typescript',
+  jvm: 'java',
+};
+
+/**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
  * explorer, document well, and panels. The workspace's state services are provided here so each
  * directory tab is independent of the others; the dock and everything inside it resolve this tab's
@@ -396,11 +408,10 @@ export class DirectoryView implements OnInit, OnDestroy {
 
     // Start the structure-aware language server as soon as a recognised project model opens, rather
     // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
-    // solution, the TypeScript server for a Node/npm workspace.
+    // solution, the TypeScript server for a Node/npm workspace, jdtls for a Gradle/Maven JVM build.
     effect((): void => {
       const model: ProjectModel | null = this.solutionModel.model();
-      const serverId: string | null =
-        model?.kind === 'dotnet' ? 'csharp' : model?.kind === 'node' ? 'typescript' : null;
+      const serverId: string | null = model === null ? null : PRESTART_SERVERS[model.kind] ?? null;
       if (model !== null && serverId !== null) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
