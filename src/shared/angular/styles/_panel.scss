@@ -10,28 +10,33 @@
   min-inline-size: 0;
 }
 
-// A compact icon button in a panel tool-strip.
+// A compact icon button in a panel tool-strip. Hover and toggled states use the shared accent-surface
+// treatment — a subtle accent fill with a matching border — so panel controls read exactly like the
+// title-strip and ribbon buttons. The border is transparent when idle so the box never jumps.
 .panel-toolbar__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   block-size: 1.5rem;
   min-inline-size: 1.5rem;
-  padding: 0 0.3rem;
+  padding: 0 0.35rem;
   gap: 0.3rem;
   font: inherit;
   font-size: 0.875rem;
   color: var(--dock-tab-foreground-color);
   background: transparent;
-  border: none;
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
-  transition: var(--hover-transition);
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover:not(:disabled) {
-    color: var(--dock-tab-foreground-color--active);
-    background: var(--dock-title-background-color--focused);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:disabled {
@@ -40,20 +45,18 @@
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: -0.125rem;
+    outline-offset: 0.0625rem;
   }
 }
 
-// The toggled (pressed) state of a tool-strip button — an accent-tinted fill matching the list/tree
-// selected convention, so a button acting as a toggle (severity filter, terminal tab) reads as "on".
-.panel-toolbar__button--active {
-  color: var(--dock-tab-foreground-color--active);
-  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
-
-  &:hover:not(:disabled) {
-    color: var(--dock-tab-foreground-color--active);
-    background: color-mix(in srgb, var(--accent-color) 30%, transparent);
-  }
+// The toggled (pressed) state of a tool-strip button — the same accent-surface fill and border the
+// ribbon uses for its pressed buttons, so a button acting as a toggle (severity filter, terminal tab)
+// reads as "on" and matches the ribbon/title-strip button family.
+.panel-toolbar__button--active,
+.panel-toolbar__button--active:hover:not(:disabled) {
+  background: var(--accent-surface-background-color);
+  border-color: var(--accent-surface-border-color);
+  color: var(--accent-surface-foreground-color);
 }
 
 // A status item in a panel status strip.

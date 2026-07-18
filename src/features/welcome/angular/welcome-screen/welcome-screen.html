@@ -112,6 +112,12 @@
           />
           <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
         </div>
+        @if (hasRecent()) {
+          <button type="button" class="welcome__clear" (click)="requestClearRecent()">
+            <app-icon [icon]="Icon.TRASH" />
+            <span>Clear</span>
+          </button>
+        }
       </div>
 
       <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
@@ -186,5 +192,31 @@
         </div>
       }
     </section>
+  </div>
+</app-modal>
+
+<!-- Confirmation shown over the welcome screen before clearing the recent-items history, since the
+     action cannot be undone. -->
+<app-modal
+  [open]="confirmingClear()"
+  [width]="24"
+  ariaLabel="Clear recent items"
+  (dismiss)="cancelClearRecent()"
+>
+  <h2 class="welcome__confirm-title">Clear recent items</h2>
+  <p class="welcome__confirm-message">
+    Are you sure you want to clear all recent items? This cannot be undone.
+  </p>
+  <div class="welcome__confirm-actions">
+    <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="welcome__confirm-button welcome__confirm-button--danger"
+      (click)="clearRecent()"
+    >
+      Clear
+    </button>
   </div>
 </app-modal>

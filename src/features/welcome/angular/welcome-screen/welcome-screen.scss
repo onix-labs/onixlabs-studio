@@ -371,6 +371,41 @@
   color: var(--wl-faint);
 }
 
+// A pill beside the search field that clears the whole recent-items history (after confirmation).
+// Mirrors the search box's pill shape and surface so the header row reads as one control cluster.
+.welcome__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+
+  i {
+    font-size: 0.9rem;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface-hover);
+    border-color: rgba(var(--accent-color-rgb), 0.6);
+  }
+}
+
 // The filter pills sit on their own row beneath the title and search field, spread to fill the width.
 .welcome__filters {
   display: flex;
@@ -599,5 +634,63 @@
 @media (prefers-reduced-motion: reduce) {
   .welcome__glow--active {
     transition: none;
+  }
+}
+
+// The clear-recent-items confirmation. It is a separate modal rendered outside the welcome panel, so it
+// inherits the app's default (theme-aware) modal card rather than the welcome's bespoke dark treatment.
+.welcome__confirm-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.welcome__confirm-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.welcome__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.welcome__confirm-button {
+  padding: 0.45rem 1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// The destructive primary action reads in the error/coral tone, since clearing cannot be undone.
+.welcome__confirm-button--danger {
+  color: var(--gray-100);
+  background: var(--accent-coral);
+  border-color: var(--accent-coral);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--gray-100);
+    background: var(--accent-coral);
+    border-color: var(--accent-coral);
   }
 }
