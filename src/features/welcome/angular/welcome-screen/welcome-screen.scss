@@ -109,13 +109,6 @@
   .welcome__filter:not(.welcome__filter--active):focus-visible {
     background: var(--gray-200);
   }
-
-  // Keep the action icon its normal ink colour on hover (the dark treatment tints it accent; on the
-  // light card we leave it neutral).
-  .welcome__action:hover .welcome__action-icon,
-  .welcome__action:focus-visible .welcome__action-icon {
-    color: var(--wl-text);
-  }
 }
 
 // A calm, static accent glow projected behind the panel. Shown (faded in) only in the ambient
@@ -249,12 +242,12 @@
     outline: none;
     transform: scale(1.02);
 
-    .welcome__action-icon {
-      color: color-mix(in srgb, var(--accent-color) 45%, white);
-    }
-
+    // The whole content reads in the accent colour on hover.
+    .welcome__action-icon,
+    .welcome__action-label,
+    .welcome__action-hint,
     .welcome__action-chevron {
-      color: rgba(var(--accent-color-rgb), 0.95);
+      color: var(--accent-color);
     }
   }
 }
@@ -400,8 +393,8 @@
   &:hover,
   &:focus-visible {
     outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface-hover);
+    color: var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.12);
     border-color: rgba(var(--accent-color-rgb), 0.6);
   }
 }
