@@ -16,6 +16,7 @@ import { createGunzip } from 'node:zlib';
 const execFileAsync: (
   file: string,
   args: readonly string[],
+  options?: { env?: NodeJS.ProcessEnv; maxBuffer?: number },
 ) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
 
 /**
@@ -95,6 +96,19 @@ const RUST_ANALYZER_BASE: string =
   'https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13';
 
 /**
+ * Holds the pinned version of the Go language server (gopls). gopls publishes no prebuilt binaries, so
+ * it is built from source with the detected Go toolchain (`go install`) — pinned so every machine
+ * provisions the same server.
+ */
+const GOPLS_VERSION: string = 'v0.23.0';
+
+/**
+ * Bounds the buffered output of the `go install` and version probes, generous so a verbose build is not
+ * truncated.
+ */
+const GO_BUILD_BUFFER: number = 64 * 1024 * 1024;
+
+/**
  * Holds the lowest .NET SDK major version the Roslyn server needs. Its apphost is framework-dependent
  * (it does not bundle a runtime), and project loading runs design-time builds through the SDK's
  * MSBuild, so an SDK of at least this major must be installed.
@@ -159,6 +173,16 @@ export class LspProvisioner {
    * Caches the in-flight or completed rust-analyzer download, so it is downloaded at most once.
    */
   private rustProvision: Promise<string | null> | null = null;
+
+  /**
+   * Caches the detected Go executable lookup, so detection runs once per session.
+   */
+  private goProbe: Promise<string | null> | null = null;
+
+  /**
+   * Caches the in-flight or completed gopls build, so it is built at most once.
+   */
+  private goplsProvision: Promise<string | null> | null = null;
 
   /**
    * Caches the detected clangd executable lookup, so detection runs once per session.
@@ -232,6 +256,30 @@ export class LspProvisioner {
   public ensureRustAnalyzer(): Promise<string | null> {
     this.rustProvision ??= this.provisionRustAnalyzer();
     return this.rustProvision;
+  }
+
+  /**
+   * Detects a usable Go executable (needed both to build and to run gopls): the user's override when
+   * given, then the one under `GOROOT`, then `go` on the PATH, then the platform's usual install
+   * locations. The result is cached for the session.
+   * @param override The user's configured Go executable, or null to auto-detect.
+   * @returns Returns the Go executable, or null when none is found.
+   */
+  public detectGo(override: string | null): Promise<string | null> {
+    this.goProbe ??= this.probeGo(override);
+    return this.goProbe;
+  }
+
+  /**
+   * Ensures the Go language server (gopls) is built under the user-data directory, running `go install`
+   * into a controlled GOBIN on first use and reusing the cached binary thereafter. The work is shared
+   * across concurrent callers.
+   * @param go The Go executable used to build gopls.
+   * @returns Returns the absolute path of the gopls binary, or null when it could not be built.
+   */
+  public ensureGopls(go: string): Promise<string | null> {
+    this.goplsProvision ??= this.provisionGopls(go);
+    return this.goplsProvision;
   }
 
   /**
@@ -619,6 +667,83 @@ export class LspProvisioner {
       return { triple: 'x86_64-pc-windows-msvc', zipped: true };
     }
     return null;
+  }
+
+  /**
+   * Probes for a usable Go executable without consulting the cache.
+   * @param override The user's configured Go executable, tried first when given.
+   * @returns Returns the Go executable, or null when none is found.
+   */
+  private async probeGo(override: string | null): Promise<string | null> {
+    const root: string | undefined = process.env['GOROOT'];
+    const exe: string = process.platform === 'win32' ? 'go.exe' : 'go';
+    const candidates: string[] = [];
+    if (override !== null && override.length > 0) {
+      candidates.push(override);
+    }
+    if (root !== undefined && root.length > 0) {
+      candidates.push(path.join(root, 'bin', exe));
+    }
+    candidates.push('go');
+    if (process.platform === 'win32') {
+      candidates.push(path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'Go', 'bin', exe));
+    } else {
+      candidates.push('/usr/local/go/bin/go', '/opt/homebrew/bin/go', '/usr/local/bin/go');
+    }
+    for (const candidate of candidates) {
+      if (await this.runsGo(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Determines whether a Go executable runs and identifies itself.
+   * @param executable The Go executable to probe.
+   * @returns Returns true when the executable runs and reports a Go version.
+   */
+  private async runsGo(executable: string): Promise<boolean> {
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(executable, ['version']);
+      return stdout.toLowerCase().includes('go version');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Builds gopls with `go install` into a controlled GOBIN under the user-data directory, or reuses a
+   * cached copy. A private GOPATH/GOCACHE (also under the user-data directory) keeps the build from
+   * depending on, or polluting, the user's Go environment.
+   * @param go The Go executable used to build gopls.
+   * @returns Returns the gopls binary path, or null on failure.
+   */
+  private async provisionGopls(go: string): Promise<string | null> {
+    const installDir: string = path.join(this.serversRoot(), 'gopls', GOPLS_VERSION);
+    const binary: string = path.join(
+      installDir,
+      process.platform === 'win32' ? 'gopls.exe' : 'gopls',
+    );
+    try {
+      if (existsSync(binary)) {
+        return binary;
+      }
+      await fs.mkdir(installDir, { recursive: true });
+      const goPath: string = path.join(this.serversRoot(), 'go');
+      await execFileAsync(go, ['install', `golang.org/x/tools/gopls@${GOPLS_VERSION}`], {
+        env: {
+          ...process.env,
+          GOBIN: installDir,
+          GOPATH: goPath,
+          GOCACHE: path.join(goPath, 'cache'),
+        },
+        maxBuffer: GO_BUILD_BUFFER,
+      });
+      return existsSync(binary) ? binary : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

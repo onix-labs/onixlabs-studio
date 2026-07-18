@@ -77,8 +77,8 @@ import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
  * Maps a project model's kind to the language server prestarted when its workspace opens, so the
  * structure-aware server begins loading the workspace up front rather than on the first file: Roslyn
  * for .NET, the TypeScript server for Node, jdtls for a Gradle/Maven JVM build, Pyright for Python,
- * clangd for a CMake/Make C/C++ project, rust-analyzer for a Cargo project. A kind with no entry
- * prestarts nothing.
+ * clangd for a CMake/Make C/C++ project, rust-analyzer for a Cargo project, gopls for a Go module. A
+ * kind with no entry prestarts nothing.
  */
 const PRESTART_SERVERS: Readonly<Record<string, string>> = {
   dotnet: 'csharp',
@@ -87,6 +87,7 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
   python: 'python',
   cpp: 'clangd',
   rust: 'rust',
+  go: 'go',
 };
 
 /**

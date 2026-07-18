@@ -55,6 +55,8 @@ const RUNNERS: Readonly<Record<string, LanguageRunner>> = {
     buildCommand: (p: string): string =>
       `rustc ${quote(p)} -o ${quote(`${p}.out`)} && ${quote(`${p}.out`)}`,
   },
+  // `go run` compiles and runs a single file in one step.
+  go: { extension: '.go', buildCommand: (p: string): string => `go run ${quote(p)}` },
 };
 
 /**

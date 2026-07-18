@@ -459,4 +459,45 @@ describe('BuildRunner', () => {
 
     expect(api.runCalls[0].command).toBe('cargo run -p my-crate');
   });
+
+  /**
+   * Opens a Go module root and discovers its tasks.
+   * @returns Returns the build runner after discovery.
+   */
+  async function discoverGo(): Promise<BuildRunner> {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/g',
+      name: 'g',
+      entries: [{ name: 'go.mod', path: '/g/go.mod', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+    return runner;
+  }
+
+  it('discover_findsGoBuildTestAndRunTasks', async () => {
+    const runner: BuildRunner = await discoverGo();
+
+    const ids: string[] = runner.tasks().map((t: BuildTask): string => t.id);
+    expect(ids).toContain('go:build');
+    expect(ids).toContain('go:test');
+    expect(ids).toContain('go:run');
+  });
+
+  it('runAction_clean_runsGoCleanForAGoRoot', async () => {
+    const runner: BuildRunner = await discoverGo();
+
+    runner.runAction('clean');
+
+    expect(api.runCalls[0].command).toBe('go clean');
+  });
+
+  it('runConfiguration_go_runsGoRunDot', async () => {
+    const runner: BuildRunner = await discoverGo();
+
+    runner.runConfiguration({ id: 'widget', name: 'widget', providerKind: 'go', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('go run .');
+  });
 });

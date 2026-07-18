@@ -36,6 +36,7 @@ describe('RunFileTaskProvider', () => {
     expect(provider.canRun('java')).toBe(true);
     expect(provider.canRun('kotlin')).toBe(true);
     expect(provider.canRun('rust')).toBe(true);
+    expect(provider.canRun('go')).toBe(true);
     expect(provider.canRun('plaintext')).toBe(false);
   });
 
@@ -79,6 +80,19 @@ describe('RunFileTaskProvider', () => {
 
     expect(writeCalls[0].extension).toBe('.rs');
     expect(command).toBe('rustc "/tmp/tab-1/run.rs" -o "/tmp/tab-1/run.rs.out" && "/tmp/tab-1/run.rs.out"');
+  });
+
+  it('resolve_forGo_runsTheFileWithGoRun', async () => {
+    const provider: RunFileTaskProvider = TestBed.inject(RunFileTaskProvider);
+    const task: Task | null = provider.buildTask({
+      tabId: 'tab-1',
+      language: 'go',
+      content: 'package main\nfunc main() {}',
+    });
+    const command: string | null = (await task?.resolve()) ?? null;
+
+    expect(writeCalls[0].extension).toBe('.go');
+    expect(command).toBe('go run "/tmp/tab-1/run.go"');
   });
 
   it('buildTask_forRunnableLanguage_targetsTheDockedTerminal', () => {

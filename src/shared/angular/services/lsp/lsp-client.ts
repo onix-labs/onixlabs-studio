@@ -192,6 +192,7 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   cpp: 'clangd',
   c: 'clangd',
   rust: 'rust',
+  go: 'go',
 };
 
 /**

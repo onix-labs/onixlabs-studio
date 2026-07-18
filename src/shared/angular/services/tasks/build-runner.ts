@@ -305,6 +305,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (this.hasCargoProject(root)) {
       return this.cargoAction(action);
     }
+    if (this.hasGoProject(root)) {
+      return this.goAction(action);
+    }
     return null;
   }
 
@@ -429,6 +432,26 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
+   * Compiles a capability action into a Go command, or null when Go has none for it. Go declares
+   * Build/Clean/Rebuild (see the Go project system's capabilities); rebuild forces a full recompile
+   * with `-a`.
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private goAction(action: ProjectAction): string | null {
+    switch (action) {
+      case 'build':
+        return 'go build ./...';
+      case 'clean':
+        return 'go clean';
+      case 'rebuild':
+        return 'go build -a ./...';
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Determines whether the workspace root holds a .NET solution or project file.
    * @param root The workspace root listing.
    * @returns Returns true when a .NET project is present.
@@ -491,6 +514,15 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   private hasCargoProject(root: DirectoryListing): boolean {
     return this.hasEntry(root, 'Cargo.toml');
+  }
+
+  /**
+   * Determines whether the workspace root holds a Go module (a `go.mod`).
+   * @param root The workspace root listing.
+   * @returns Returns true when a Go module manifest is present.
+   */
+  private hasGoProject(root: DirectoryListing): boolean {
+    return this.hasEntry(root, 'go.mod');
   }
 
   /**
@@ -588,6 +620,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (configuration.providerKind === 'rust') {
       // The id is the crate name; `-p` selects it in both a single crate and a workspace.
       return `cargo run -p ${configuration.id}`;
+    }
+    if (configuration.providerKind === 'go') {
+      return 'go run .';
     }
     return null;
   }
@@ -715,6 +750,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       ...this.discoverCmake(root),
       ...this.discoverMake(root),
       ...this.discoverCargo(root),
+      ...this.discoverGo(root),
       ...(await this.discoverNpm(root)),
     ];
     this.discovered.set(tasks);
@@ -827,6 +863,28 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       { id: 'cargo:build', label: 'cargo build', group: 'build', command: 'cargo build', cwd: root.path },
       { id: 'cargo:test', label: 'cargo test', group: 'test', command: 'cargo test', cwd: root.path },
       { id: 'cargo:run', label: 'cargo run', group: 'run', command: 'cargo run', cwd: root.path },
+    ];
+  }
+
+  /**
+   * Discovers Go tasks when a `go.mod` is present in the root.
+   * @param root The workspace root listing.
+   * @returns Returns the Go tasks, or an empty list.
+   */
+  private discoverGo(root: DirectoryListing): BuildTask[] {
+    if (!this.hasGoProject(root)) {
+      return [];
+    }
+    return [
+      {
+        id: 'go:build',
+        label: 'go build ./...',
+        group: 'build',
+        command: 'go build ./...',
+        cwd: root.path,
+      },
+      { id: 'go:test', label: 'go test ./...', group: 'test', command: 'go test ./...', cwd: root.path },
+      { id: 'go:run', label: 'go run .', group: 'run', command: 'go run .', cwd: root.path },
     ];
   }
 

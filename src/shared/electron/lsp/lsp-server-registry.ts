@@ -188,6 +188,9 @@ export class LspServerRegistry {
     if (serverId === 'rust') {
       return this.buildRust();
     }
+    if (serverId === 'go') {
+      return this.buildGo();
+    }
     if (serverId === 'csharp') {
       return this.buildCsharp(rootPath);
     }
@@ -300,6 +303,28 @@ export class LspServerRegistry {
         ? undefined
         : { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.join(home, '.cargo', 'bin')}` };
     return resolved(this.withExtraArgs('rust', { command: binary, args: [], env }));
+  }
+
+  /**
+   * Builds the resolution for the Go language server (gopls), detecting the Go toolchain and building
+   * gopls with it on first use. gopls shells out to `go` at runtime, so the toolchain's directory is
+   * appended to the spawned PATH — a GUI-launched app does not inherit the shell PATH. The server is
+   * rooted at the workspace via the `rootUri` the manager sends.
+   * @returns Returns the resolution, with a reason when Go is unavailable or gopls could not be built.
+   */
+  private async buildGo(): Promise<LspResolution> {
+    const go: string | null = await this.provisioner.detectGo(null);
+    if (go === null) {
+      return unavailable('Go toolchain not found — install Go from go.dev, or add it to your PATH.');
+    }
+    const gopls: string | null = await this.provisioner.ensureGopls(go);
+    if (gopls === null) {
+      return unavailable('The Go language server (gopls) could not be built.');
+    }
+    const env: Record<string, string> | undefined = path.isAbsolute(go)
+      ? { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.dirname(go)}` }
+      : undefined;
+    return resolved(this.withExtraArgs('go', { command: gopls, args: [], env }));
   }
 
   /**

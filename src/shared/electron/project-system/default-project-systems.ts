@@ -1,5 +1,6 @@
 import { CppProjectSystem } from './cpp-project-system';
 import { DotnetProjectSystem } from './dotnet-project-system';
+import { GoProjectSystem } from './go-project-system';
 import { JvmProjectSystem } from './jvm-project-system';
 import { NodeProjectSystem } from './node-project-system';
 import { ProjectSystemRegistry } from './project-system';
@@ -21,6 +22,7 @@ export function createProjectSystems(): ProjectSystemRegistry {
   registry.register(new PythonProjectSystem());
   registry.register(new CppProjectSystem());
   registry.register(new RustProjectSystem());
+  registry.register(new GoProjectSystem());
   registry.register(new NodeProjectSystem());
   return registry;
 }
