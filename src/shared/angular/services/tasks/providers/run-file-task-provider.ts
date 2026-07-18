@@ -49,6 +49,12 @@ const RUNNERS: Readonly<Record<string, LanguageRunner>> = {
     buildCommand: (p: string): string =>
       `kotlinc ${quote(p)} -include-runtime -d ${quote(`${p}.jar`)} && java -jar ${quote(`${p}.jar`)}`,
   },
+  // Rust compiles ahead of time, so compile the single file with rustc then run the produced binary.
+  rust: {
+    extension: '.rs',
+    buildCommand: (p: string): string =>
+      `rustc ${quote(p)} -o ${quote(`${p}.out`)} && ${quote(`${p}.out`)}`,
+  },
 };
 
 /**

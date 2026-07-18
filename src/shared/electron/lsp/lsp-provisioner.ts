@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
+import { createGunzip } from 'node:zlib';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -79,6 +80,21 @@ const KOTLIN_LS_SHA256: string =
   '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
 
 /**
+ * Holds the pinned version of the rust-analyzer language server (a rust-lang release, date-tagged). The
+ * distribution is pinned so every machine provisions the same server; bumping it downloads into a
+ * fresh, version-scoped directory. Like Roslyn, the download is platform-specific (a per-triple binary),
+ * so it is fetched over HTTPS from the official release without a per-platform hash to pin.
+ */
+const RUST_ANALYZER_VERSION: string = '2026-07-13';
+
+/**
+ * Holds the base URL of the pinned rust-analyzer release. A platform asset is fetched from
+ * `<base>/rust-analyzer-<triple>.<ext>`.
+ */
+const RUST_ANALYZER_BASE: string =
+  'https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13';
+
+/**
  * Holds the lowest .NET SDK major version the Roslyn server needs. Its apphost is framework-dependent
  * (it does not bundle a runtime), and project loading runs design-time builds through the SDK's
  * MSBuild, so an SDK of at least this major must be installed.
@@ -138,6 +154,11 @@ export class LspProvisioner {
    * Caches the in-flight or completed Kotlin server download, so it is downloaded at most once.
    */
   private kotlinProvision: Promise<string | null> | null = null;
+
+  /**
+   * Caches the in-flight or completed rust-analyzer download, so it is downloaded at most once.
+   */
+  private rustProvision: Promise<string | null> | null = null;
 
   /**
    * Caches the detected clangd executable lookup, so detection runs once per session.
@@ -200,6 +221,17 @@ export class LspProvisioner {
   public ensureKotlin(): Promise<string | null> {
     this.kotlinProvision ??= this.provisionKotlin();
     return this.kotlinProvision;
+  }
+
+  /**
+   * Ensures the rust-analyzer language server is installed under the user-data directory, downloading
+   * and extracting its platform-specific binary on first use and reusing the cached copy thereafter.
+   * The work is shared across concurrent callers.
+   * @returns Returns the absolute path of the server binary, or null when it could not be provisioned.
+   */
+  public ensureRustAnalyzer(): Promise<string | null> {
+    this.rustProvision ??= this.provisionRustAnalyzer();
+    return this.rustProvision;
   }
 
   /**
@@ -517,6 +549,76 @@ export class LspProvisioner {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Downloads and unpacks the rust-analyzer language server's platform-specific binary under the
+   * user-data directory, or reuses a cached copy. The Unix assets are a single gzipped binary; the
+   * Windows asset is a zip containing `rust-analyzer.exe`.
+   * @returns Returns the server binary path, or null on failure (including an unsupported platform).
+   */
+  private async provisionRustAnalyzer(): Promise<string | null> {
+    const target: { triple: string; zipped: boolean } | null = this.rustAnalyzerTarget();
+    if (target === null) {
+      return null;
+    }
+    const installDir: string = path.join(
+      this.serversRoot(),
+      'rust-analyzer',
+      RUST_ANALYZER_VERSION,
+      target.triple,
+    );
+    const binary: string = path.join(
+      installDir,
+      process.platform === 'win32' ? 'rust-analyzer.exe' : 'rust-analyzer',
+    );
+    try {
+      if (existsSync(binary)) {
+        return binary;
+      }
+      await fs.mkdir(installDir, { recursive: true });
+      const asset: string = `rust-analyzer-${target.triple}.${target.zipped ? 'zip' : 'gz'}`;
+      const download: string = path.join(installDir, asset);
+      await this.download(`${RUST_ANALYZER_BASE}/${asset}`, download);
+      if (target.zipped) {
+        await this.extractZip(download, installDir);
+      } else {
+        await pipeline(createReadStream(download), createGunzip(), createWriteStream(binary));
+      }
+      await fs.rm(download, { force: true });
+      if (!existsSync(binary)) {
+        return null;
+      }
+      if (process.platform !== 'win32') {
+        await fs.chmod(binary, 0o755);
+      }
+      return binary;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolves the rust-analyzer release target for the current platform and architecture: the Rust
+   * target triple naming the asset, and whether that asset is a zip (Windows) or a gzipped binary
+   * (Unix).
+   * @returns Returns the target, or null when the platform is unsupported.
+   */
+  private rustAnalyzerTarget(): { triple: string; zipped: boolean } | null {
+    const arm: boolean = process.arch === 'arm64';
+    if (process.platform === 'darwin') {
+      return { triple: arm ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin', zipped: false };
+    }
+    if (process.platform === 'linux') {
+      return {
+        triple: arm ? 'aarch64-unknown-linux-gnu' : 'x86_64-unknown-linux-gnu',
+        zipped: false,
+      };
+    }
+    if (process.platform === 'win32' && !arm) {
+      return { triple: 'x86_64-pc-windows-msvc', zipped: true };
+    }
+    return null;
   }
 
   /**

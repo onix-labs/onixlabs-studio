@@ -4,6 +4,7 @@ import { JvmProjectSystem } from './jvm-project-system';
 import { NodeProjectSystem } from './node-project-system';
 import { ProjectSystemRegistry } from './project-system';
 import { PythonProjectSystem } from './python-project-system';
+import { RustProjectSystem } from './rust-project-system';
 
 /**
  * Builds a project-system registry seeded with the built-in providers. Registration order is match
@@ -19,6 +20,7 @@ export function createProjectSystems(): ProjectSystemRegistry {
   registry.register(new JvmProjectSystem());
   registry.register(new PythonProjectSystem());
   registry.register(new CppProjectSystem());
+  registry.register(new RustProjectSystem());
   registry.register(new NodeProjectSystem());
   return registry;
 }

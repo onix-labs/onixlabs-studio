@@ -418,4 +418,45 @@ describe('BuildRunner', () => {
 
     expect(api.runCalls[0].command).toBe('cmake --build build --target app && ./build/app');
   });
+
+  /**
+   * Opens a Cargo workspace root and discovers its tasks.
+   * @returns Returns the build runner after discovery.
+   */
+  async function discoverCargo(): Promise<BuildRunner> {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/r',
+      name: 'r',
+      entries: [{ name: 'Cargo.toml', path: '/r/Cargo.toml', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+    return runner;
+  }
+
+  it('discover_findsCargoBuildTestAndRunTasks', async () => {
+    const runner: BuildRunner = await discoverCargo();
+
+    const ids: string[] = runner.tasks().map((t: BuildTask): string => t.id);
+    expect(ids).toContain('cargo:build');
+    expect(ids).toContain('cargo:test');
+    expect(ids).toContain('cargo:run');
+  });
+
+  it('runAction_rebuild_runsCargoCleanThenBuild', async () => {
+    const runner: BuildRunner = await discoverCargo();
+
+    runner.runAction('rebuild');
+
+    expect(api.runCalls[0].command).toBe('cargo clean && cargo build');
+  });
+
+  it('runConfiguration_rust_runsTheCrateWithCargoRunDashP', async () => {
+    const runner: BuildRunner = await discoverCargo();
+
+    runner.runConfiguration({ id: 'my-crate', name: 'my-crate', providerKind: 'rust', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('cargo run -p my-crate');
+  });
 });

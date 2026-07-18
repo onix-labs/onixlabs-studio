@@ -302,6 +302,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (this.hasMakeProject(root)) {
       return this.makeAction(action);
     }
+    if (this.hasCargoProject(root)) {
+      return this.cargoAction(action);
+    }
     return null;
   }
 
@@ -407,6 +410,25 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
+   * Compiles a capability action into a Cargo command, or null when Cargo has none for it. Cargo
+   * declares Build/Clean/Rebuild (see the Rust project system's capabilities).
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private cargoAction(action: ProjectAction): string | null {
+    switch (action) {
+      case 'build':
+        return 'cargo build';
+      case 'clean':
+        return 'cargo clean';
+      case 'rebuild':
+        return 'cargo clean && cargo build';
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Determines whether the workspace root holds a .NET solution or project file.
    * @param root The workspace root listing.
    * @returns Returns true when a .NET project is present.
@@ -460,6 +482,15 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       (entry: DirectoryEntry): boolean =>
         entry.type === 'file' && /^(GNUmakefile|[Mm]akefile)$/.test(entry.name),
     );
+  }
+
+  /**
+   * Determines whether the workspace root holds a Cargo project (a `Cargo.toml`).
+   * @param root The workspace root listing.
+   * @returns Returns true when a Cargo manifest is present.
+   */
+  private hasCargoProject(root: DirectoryListing): boolean {
+    return this.hasEntry(root, 'Cargo.toml');
   }
 
   /**
@@ -553,6 +584,10 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       // Build the selected CMake executable target, then run the produced binary. A single-config
       // generator places it at `build/<target>`; the id is the target name.
       return `cmake --build build --target ${configuration.id} && ./build/${configuration.id}`;
+    }
+    if (configuration.providerKind === 'rust') {
+      // The id is the crate name; `-p` selects it in both a single crate and a workspace.
+      return `cargo run -p ${configuration.id}`;
     }
     return null;
   }
@@ -679,6 +714,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       ...this.discoverMaven(root),
       ...this.discoverCmake(root),
       ...this.discoverMake(root),
+      ...this.discoverCargo(root),
       ...(await this.discoverNpm(root)),
     ];
     this.discovered.set(tasks);
@@ -776,6 +812,22 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return [];
     }
     return [{ id: 'make:build', label: 'make', group: 'build', command: 'make', cwd: root.path }];
+  }
+
+  /**
+   * Discovers Cargo tasks when a `Cargo.toml` is present in the root.
+   * @param root The workspace root listing.
+   * @returns Returns the Cargo tasks, or an empty list.
+   */
+  private discoverCargo(root: DirectoryListing): BuildTask[] {
+    if (!this.hasCargoProject(root)) {
+      return [];
+    }
+    return [
+      { id: 'cargo:build', label: 'cargo build', group: 'build', command: 'cargo build', cwd: root.path },
+      { id: 'cargo:test', label: 'cargo test', group: 'test', command: 'cargo test', cwd: root.path },
+      { id: 'cargo:run', label: 'cargo run', group: 'run', command: 'cargo run', cwd: root.path },
+    ];
   }
 
   /**

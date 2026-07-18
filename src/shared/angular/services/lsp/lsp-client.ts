@@ -191,6 +191,7 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   csharp: 'csharp',
   cpp: 'clangd',
   c: 'clangd',
+  rust: 'rust',
 };
 
 /**

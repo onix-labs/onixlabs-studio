@@ -35,6 +35,7 @@ describe('RunFileTaskProvider', () => {
     expect(provider.canRun('typescript')).toBe(true);
     expect(provider.canRun('java')).toBe(true);
     expect(provider.canRun('kotlin')).toBe(true);
+    expect(provider.canRun('rust')).toBe(true);
     expect(provider.canRun('plaintext')).toBe(false);
   });
 
@@ -65,6 +66,19 @@ describe('RunFileTaskProvider', () => {
       'kotlinc "/tmp/tab-1/run.kt" -include-runtime -d "/tmp/tab-1/run.kt.jar" && ' +
         'java -jar "/tmp/tab-1/run.kt.jar"',
     );
+  });
+
+  it('resolve_forRust_compilesWithRustcThenRunsTheBinary', async () => {
+    const provider: RunFileTaskProvider = TestBed.inject(RunFileTaskProvider);
+    const task: Task | null = provider.buildTask({
+      tabId: 'tab-1',
+      language: 'rust',
+      content: 'fn main() {}',
+    });
+    const command: string | null = (await task?.resolve()) ?? null;
+
+    expect(writeCalls[0].extension).toBe('.rs');
+    expect(command).toBe('rustc "/tmp/tab-1/run.rs" -o "/tmp/tab-1/run.rs.out" && "/tmp/tab-1/run.rs.out"');
   });
 
   it('buildTask_forRunnableLanguage_targetsTheDockedTerminal', () => {

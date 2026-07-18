@@ -185,6 +185,9 @@ export class LspServerRegistry {
     if (serverId === 'kotlin') {
       return this.buildKotlin();
     }
+    if (serverId === 'rust') {
+      return this.buildRust();
+    }
     if (serverId === 'csharp') {
       return this.buildCsharp(rootPath);
     }
@@ -277,6 +280,26 @@ export class LspServerRegistry {
       ? { JAVA_HOME: path.dirname(path.dirname(java)) }
       : undefined;
     return resolved(this.withExtraArgs('kotlin', { command: launcher, args: [], env }));
+  }
+
+  /**
+   * Builds the resolution for the rust-analyzer language server, downloading its platform binary on
+   * first use. rust-analyzer runs `cargo`/`rustc` to load a Cargo workspace, so the toolchain's
+   * `~/.cargo/bin` is appended to the spawned PATH — a GUI-launched app does not inherit the shell PATH
+   * that rustup adds. The server is rooted at the workspace via the `rootUri` the manager sends.
+   * @returns Returns the resolution, with a reason when the server could not be provisioned.
+   */
+  private async buildRust(): Promise<LspResolution> {
+    const binary: string | null = await this.provisioner.ensureRustAnalyzer();
+    if (binary === null) {
+      return unavailable('The Rust language server could not be downloaded.');
+    }
+    const home: string | undefined = process.env['HOME'] ?? process.env['USERPROFILE'];
+    const env: Record<string, string> | undefined =
+      home === undefined
+        ? undefined
+        : { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.join(home, '.cargo', 'bin')}` };
+    return resolved(this.withExtraArgs('rust', { command: binary, args: [], env }));
   }
 
   /**
