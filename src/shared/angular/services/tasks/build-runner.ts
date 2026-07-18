@@ -26,6 +26,12 @@ const PROVIDER_ID: string = 'tasks';
 const DOTNET_PROJECT_PATTERN: RegExp = /\.(sln|slnx|csproj|fsproj|vbproj)$/i;
 
 /**
+ * Matches a Gradle build or settings script (Groovy or Kotlin DSL), used to detect a Gradle workspace
+ * root.
+ */
+const GRADLE_SCRIPT_PATTERN: RegExp = /^(build|settings)\.gradle(\.kts)?$/;
+
+/**
  * Determines whether a path is absolute (a POSIX root or a Windows drive).
  * @param path The path to test.
  * @returns Returns true when the path is absolute.
@@ -274,16 +280,31 @@ export class BuildRunner implements BuildHandler, OnDestroy {
 
   /**
    * Compiles a capability action into a shell command for the workspace's ecosystem, or null when the
-   * ecosystem has no command for it. Only .NET is compiled here; other ecosystems gain their action
-   * commands with their project-system providers.
+   * ecosystem has no command for it. .NET, and the JVM (Gradle or Maven), are compiled here; other
+   * ecosystems gain their action commands with their project-system providers.
    * @param action The action.
    * @param root The workspace root listing.
    * @returns Returns the command, or null.
    */
   private commandForAction(action: ProjectAction, root: DirectoryListing): string | null {
-    if (!this.hasDotnetProject(root)) {
-      return null;
+    if (this.hasDotnetProject(root)) {
+      return this.dotnetAction(action);
     }
+    if (this.hasGradleProject(root)) {
+      return this.gradleAction(action, this.gradleCommand(root));
+    }
+    if (this.hasMavenProject(root)) {
+      return this.mavenAction(action, this.mavenCommand(root));
+    }
+    return null;
+  }
+
+  /**
+   * Compiles a capability action into a `dotnet` command, or null when .NET has none for it.
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private dotnetAction(action: ProjectAction): string | null {
     switch (action) {
       case 'build':
         return 'dotnet build';
@@ -301,6 +322,46 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
+   * Compiles a capability action into a Gradle command, or null when Gradle has none for it. Gradle
+   * declares only Build/Clean/Test (see the JVM project system's capabilities).
+   * @param action The action.
+   * @param gradle The Gradle invocation (the wrapper when present, else `gradle`).
+   * @returns Returns the command, or null.
+   */
+  private gradleAction(action: ProjectAction, gradle: string): string | null {
+    switch (action) {
+      case 'build':
+        return `${gradle} build`;
+      case 'clean':
+        return `${gradle} clean`;
+      case 'test':
+        return `${gradle} test`;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Compiles a capability action into a Maven command, or null when Maven has none for it. Maven
+   * declares only Build/Clean/Test (see the JVM project system's capabilities).
+   * @param action The action.
+   * @param mvn The Maven invocation (the wrapper when present, else `mvn`).
+   * @returns Returns the command, or null.
+   */
+  private mavenAction(action: ProjectAction, mvn: string): string | null {
+    switch (action) {
+      case 'build':
+        return `${mvn} package`;
+      case 'clean':
+        return `${mvn} clean`;
+      case 'test':
+        return `${mvn} test`;
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Determines whether the workspace root holds a .NET solution or project file.
    * @param root The workspace root listing.
    * @returns Returns true when a .NET project is present.
@@ -309,6 +370,59 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     return root.entries.some(
       (entry: DirectoryEntry): boolean =>
         entry.type === 'file' && DOTNET_PROJECT_PATTERN.test(entry.name),
+    );
+  }
+
+  /**
+   * Determines whether the workspace root holds a Gradle build (a build or settings script).
+   * @param root The workspace root listing.
+   * @returns Returns true when a Gradle script is present.
+   */
+  private hasGradleProject(root: DirectoryListing): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean =>
+        entry.type === 'file' && GRADLE_SCRIPT_PATTERN.test(entry.name),
+    );
+  }
+
+  /**
+   * Determines whether the workspace root holds a Maven project (a `pom.xml`).
+   * @param root The workspace root listing.
+   * @returns Returns true when a pom is present.
+   */
+  private hasMavenProject(root: DirectoryListing): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === 'pom.xml',
+    );
+  }
+
+  /**
+   * Resolves the Gradle invocation for a root, preferring the checked-in wrapper over a system Gradle.
+   * @param root The workspace root listing.
+   * @returns Returns `./gradlew` when the wrapper is present, else `gradle`.
+   */
+  private gradleCommand(root: DirectoryListing): string {
+    return this.hasEntry(root, 'gradlew') ? './gradlew' : 'gradle';
+  }
+
+  /**
+   * Resolves the Maven invocation for a root, preferring the checked-in wrapper over a system Maven.
+   * @param root The workspace root listing.
+   * @returns Returns `./mvnw` when the wrapper is present, else `mvn`.
+   */
+  private mavenCommand(root: DirectoryListing): string {
+    return this.hasEntry(root, 'mvnw') ? './mvnw' : 'mvn';
+  }
+
+  /**
+   * Determines whether the workspace root holds a file with the given name.
+   * @param root The workspace root listing.
+   * @param name The file name.
+   * @returns Returns true when the file is present.
+   */
+  private hasEntry(root: DirectoryListing, name: string): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === name,
     );
   }
 
@@ -365,6 +479,29 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     }
     if (configuration.providerKind === 'node') {
       return `npm run ${configuration.id}`;
+    }
+    if (configuration.providerKind === 'jvm') {
+      return this.jvmRunCommand();
+    }
+    return null;
+  }
+
+  /**
+   * Derives the default JVM run command from the workspace root's build tool: Gradle's `run` (the
+   * application plugin's task) or Maven's `exec:java`, preferring each tool's wrapper. Returns null when
+   * no folder is open or the root is neither a Gradle nor a Maven build.
+   * @returns Returns the run command, or null.
+   */
+  private jvmRunCommand(): string | null {
+    const root: DirectoryListing | null = this.workspace.root();
+    if (root === null) {
+      return null;
+    }
+    if (this.hasGradleProject(root)) {
+      return `${this.gradleCommand(root)} run`;
+    }
+    if (this.hasMavenProject(root)) {
+      return `${this.mavenCommand(root)} exec:java`;
     }
     return null;
   }
@@ -468,6 +605,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     const tasks: BuildTask[] = [
       ...this.discoverDotnet(root),
       ...this.discoverGradle(root),
+      ...this.discoverMaven(root),
       ...this.discoverMake(root),
       ...(await this.discoverNpm(root)),
     ];
@@ -480,16 +618,10 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Gradle tasks, or an empty list.
    */
   private discoverGradle(root: DirectoryListing): BuildTask[] {
-    const names: ReadonlySet<string> = new Set<string>(
-      root.entries.map((entry: DirectoryEntry): string => entry.name),
-    );
-    const hasGradle: boolean = [...names].some((name: string): boolean =>
-      /^(build|settings)\.gradle(\.kts)?$/.test(name),
-    );
-    if (!hasGradle) {
+    if (!this.hasGradleProject(root)) {
       return [];
     }
-    const gradle: string = names.has('gradlew') ? './gradlew' : 'gradle';
+    const gradle: string = this.gradleCommand(root);
     return [
       {
         id: 'gradle:build',
@@ -503,6 +635,34 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         label: `${gradle} test`,
         group: 'test',
         command: `${gradle} test`,
+        cwd: root.path,
+      },
+    ];
+  }
+
+  /**
+   * Discovers Maven tasks when a `pom.xml` is present, preferring the wrapper when it exists.
+   * @param root The workspace root listing.
+   * @returns Returns the Maven tasks, or an empty list.
+   */
+  private discoverMaven(root: DirectoryListing): BuildTask[] {
+    if (!this.hasMavenProject(root)) {
+      return [];
+    }
+    const mvn: string = this.mavenCommand(root);
+    return [
+      {
+        id: 'maven:build',
+        label: `${mvn} package`,
+        group: 'build',
+        command: `${mvn} package`,
+        cwd: root.path,
+      },
+      {
+        id: 'maven:test',
+        label: `${mvn} test`,
+        group: 'test',
+        command: `${mvn} test`,
         cwd: root.path,
       },
     ];

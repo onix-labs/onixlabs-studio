@@ -286,4 +286,74 @@ describe('BuildRunner', () => {
 
     expect(api.runCalls).toHaveLength(0);
   });
+
+  /**
+   * Opens a JVM workspace root and discovers its tasks.
+   * @param entries The root's file entries.
+   * @returns Returns the build runner after discovery.
+   */
+  async function discoverJvm(
+    entries: { name: string; path: string; type: 'file' }[],
+  ): Promise<BuildRunner> {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({ path: '/j', name: 'j', entries });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+    return runner;
+  }
+
+  it('discover_findsMavenWrapperTasks', async () => {
+    const runner: BuildRunner = await discoverJvm([
+      { name: 'pom.xml', path: '/j/pom.xml', type: 'file' },
+      { name: 'mvnw', path: '/j/mvnw', type: 'file' },
+    ]);
+
+    const build: BuildTask | undefined = runner
+      .tasks()
+      .find((t: BuildTask): boolean => t.id === 'maven:build');
+    expect(build?.command).toBe('./mvnw package');
+    expect(runner.tasks().some((t: BuildTask): boolean => t.id === 'maven:test')).toBe(true);
+  });
+
+  it('runAction_build_runsGradleBuildInTheRoot', async () => {
+    const runner: BuildRunner = await discoverJvm([
+      { name: 'build.gradle', path: '/j/build.gradle', type: 'file' },
+    ]);
+
+    runner.runAction('build');
+
+    expect(api.runCalls[0].command).toBe('gradle build');
+    expect(api.runCalls[0].cwd).toBe('/j');
+  });
+
+  it('runAction_clean_runsMavenCleanForAMavenRoot', async () => {
+    const runner: BuildRunner = await discoverJvm([
+      { name: 'pom.xml', path: '/j/pom.xml', type: 'file' },
+    ]);
+
+    runner.runAction('clean');
+
+    expect(api.runCalls[0].command).toBe('mvn clean');
+  });
+
+  it('runConfiguration_jvmGradle_runsGradleRun', async () => {
+    const runner: BuildRunner = await discoverJvm([
+      { name: 'build.gradle', path: '/j/build.gradle', type: 'file' },
+      { name: 'gradlew', path: '/j/gradlew', type: 'file' },
+    ]);
+
+    runner.runConfiguration({ id: '/j/build.gradle', name: 'j', providerKind: 'jvm', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('./gradlew run');
+  });
+
+  it('runConfiguration_jvmMaven_runsMavenExecJava', async () => {
+    const runner: BuildRunner = await discoverJvm([
+      { name: 'pom.xml', path: '/j/pom.xml', type: 'file' },
+    ]);
+
+    runner.runConfiguration({ id: '/j/pom.xml', name: 'j', providerKind: 'jvm', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('mvn exec:java');
+  });
 });
