@@ -76,13 +76,14 @@ import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 /**
  * Maps a project model's kind to the language server prestarted when its workspace opens, so the
  * structure-aware server begins loading the workspace up front rather than on the first file: Roslyn
- * for .NET, the TypeScript server for Node, jdtls for a Gradle/Maven JVM build. A kind with no entry
- * prestarts nothing.
+ * for .NET, the TypeScript server for Node, jdtls for a Gradle/Maven JVM build, Pyright for Python. A
+ * kind with no entry prestarts nothing.
  */
 const PRESTART_SERVERS: Readonly<Record<string, string>> = {
   dotnet: 'csharp',
   node: 'typescript',
   jvm: 'java',
+  python: 'python',
 };
 
 /**
