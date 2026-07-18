@@ -1,13 +1,59 @@
 @if (root(); as root) {
-  <app-terminal [terminalId]="terminalId()" [cwd]="root" />
-  <footer class="terminal-panel__status">
-    <span class="terminal-panel__status-item">
-      <app-icon [icon]="Icon.TERMINAL" />
-      bash
-    </span>
-    <span class="terminal-panel__status-item terminal-panel__status-item--push">UTF-8</span>
-    <span class="terminal-panel__status-item">LF</span>
-  </footer>
+  <div class="terminal-panel">
+    <div class="terminal-panel__tabs" role="tablist">
+      @for (session of sessions(); track session.id) {
+        @if (editingId() === session.id) {
+          <input
+            class="terminal-panel__rename"
+            [value]="session.name"
+            (blur)="commitRename(session.id, $event)"
+            (keydown.enter)="commitRename(session.id, $event)"
+            (keydown.escape)="cancelRename()"
+            aria-label="Rename terminal"
+            autofocus
+          />
+        } @else {
+          <button
+            class="terminal-panel__tab"
+            [class.terminal-panel__tab--active]="session.id === activeId()"
+            (click)="activate(session.id)"
+            (dblclick)="startRename(session)"
+            role="tab"
+            [attr.aria-selected]="session.id === activeId()"
+          >
+            <app-icon class="terminal-panel__tab-icon" [icon]="Icon.TERMINAL" />
+            <span class="terminal-panel__tab-name">{{ session.name }}</span>
+            <span
+              class="terminal-panel__tab-close"
+              role="button"
+              tabindex="0"
+              aria-label="Close terminal"
+              (click)="close(session.id, $event)"
+            >
+              <app-icon [icon]="Icon.CLOSE" />
+            </span>
+          </button>
+        }
+      }
+      <button class="terminal-panel__new" (click)="create()" aria-label="New Terminal" title="New Terminal">
+        <app-icon [icon]="Icon.PLUS" />
+      </button>
+    </div>
+    <div class="terminal-panel__bodies">
+      @for (session of sessions(); track session.id) {
+        <div
+          class="terminal-panel__body"
+          [class.terminal-panel__body--hidden]="session.id !== activeId()"
+        >
+          <app-terminal
+            [terminalId]="session.id"
+            [cwd]="root"
+            [isActive]="isActive() && session.id === activeId()"
+          />
+        </div>
+      }
+    </div>
+  </div>
 } @else {
   <div class="terminal-panel__empty">Open a folder to use the terminal.</div>
 }

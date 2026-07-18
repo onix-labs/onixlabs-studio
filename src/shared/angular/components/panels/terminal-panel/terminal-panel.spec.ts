@@ -66,18 +66,39 @@ describe('TerminalPanel', () => {
     expect(host.querySelector('app-terminal')).toBeNull();
   });
 
-  it('render_whenARootIsKnown_mountsTheTerminalKeyedByTheOwningTab', async () => {
+  it('render_whenARootIsKnown_opensOneTerminalRootedAtTheFolder', async () => {
     context.setTabId('tab-1');
     context.setRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const terminal: Terminal = fixture.debugElement.query(By.directive(Terminal))
-      .componentInstance as Terminal;
-    expect(terminal.terminalId()).toBe('term-tab-1');
-    expect(terminal.cwd()).toBe('/repo');
+    const terminals: Terminal[] = fixture.debugElement
+      .queryAll(By.directive(Terminal))
+      .map((element): Terminal => element.componentInstance as Terminal);
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0].terminalId()).toMatch(/^term-/);
+    expect(terminals[0].cwd()).toBe('/repo');
     expect(host.querySelector('.terminal-panel__empty')).toBeNull();
-    expect(host.querySelector('.terminal-panel__status')).not.toBeNull();
+    expect(host.querySelector('.terminal-panel__tabs')).not.toBeNull();
+  });
+
+  it('newTerminal_mountsAnAdditionalConcurrentTerminalWithADistinctSession', async () => {
+    context.setTabId('tab-1');
+    context.setRoot('/repo');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    host.querySelector<HTMLButtonElement>('.terminal-panel__new')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const terminals: Terminal[] = fixture.debugElement
+      .queryAll(By.directive(Terminal))
+      .map((element): Terminal => element.componentInstance as Terminal);
+    // Both terminals stay mounted (only one visible), so switching never tears a session down.
+    expect(terminals).toHaveLength(2);
+    expect(terminals[0].terminalId()).not.toBe(terminals[1].terminalId());
+    expect(host.querySelectorAll('.terminal-panel__tab')).toHaveLength(2);
   });
 
   it('render_whenOutsideElectron_theHostedTerminalShowsItsUnavailableNotice', async () => {
