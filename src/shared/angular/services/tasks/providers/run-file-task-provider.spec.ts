@@ -34,6 +34,7 @@ describe('RunFileTaskProvider', () => {
 
     expect(provider.canRun('typescript')).toBe(true);
     expect(provider.canRun('java')).toBe(true);
+    expect(provider.canRun('kotlin')).toBe(true);
     expect(provider.canRun('plaintext')).toBe(false);
   });
 
@@ -48,6 +49,22 @@ describe('RunFileTaskProvider', () => {
 
     expect(writeCalls[0].extension).toBe('.java');
     expect(command).toBe('java "/tmp/tab-1/run.java"');
+  });
+
+  it('resolve_forKotlin_compilesToARunnableJarThenRunsIt', async () => {
+    const provider: RunFileTaskProvider = TestBed.inject(RunFileTaskProvider);
+    const task: Task | null = provider.buildTask({
+      tabId: 'tab-1',
+      language: 'kotlin',
+      content: 'fun main() {}',
+    });
+    const command: string | null = (await task?.resolve()) ?? null;
+
+    expect(writeCalls[0].extension).toBe('.kt');
+    expect(command).toBe(
+      'kotlinc "/tmp/tab-1/run.kt" -include-runtime -d "/tmp/tab-1/run.kt.jar" && ' +
+        'java -jar "/tmp/tab-1/run.kt.jar"',
+    );
   });
 
   it('buildTask_forRunnableLanguage_targetsTheDockedTerminal', () => {

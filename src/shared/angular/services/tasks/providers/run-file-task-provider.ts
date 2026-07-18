@@ -42,6 +42,13 @@ const RUNNERS: Readonly<Record<string, LanguageRunner>> = {
   // Single-file source launch (JDK 11+): compiles and runs in memory, tolerating any class name, so
   // the fixed `run.java` temp file needs no public class named after it.
   java: { extension: '.java', buildCommand: (p: string): string => `java ${quote(p)}` },
+  // Kotlin has no in-memory single-file launcher, so compile to a runnable jar (kotlinc sets the jar's
+  // Main-Class from the file's top-level `main`) and run it. `&&` chains the two steps in the shell.
+  kotlin: {
+    extension: '.kt',
+    buildCommand: (p: string): string =>
+      `kotlinc ${quote(p)} -include-runtime -d ${quote(`${p}.jar`)} && java -jar ${quote(`${p}.jar`)}`,
+  },
 };
 
 /**
