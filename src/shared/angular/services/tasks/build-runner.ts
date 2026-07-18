@@ -296,6 +296,12 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (this.hasMavenProject(root)) {
       return this.mavenAction(action, this.mavenCommand(root));
     }
+    if (this.hasCmakeProject(root)) {
+      return this.cmakeAction(action);
+    }
+    if (this.hasMakeProject(root)) {
+      return this.makeAction(action);
+    }
     return null;
   }
 
@@ -362,6 +368,45 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
+   * Compiles a capability action into a CMake command, or null when CMake has none for it. The build
+   * configures into a `build/` directory first (idempotent), so Build works from a fresh checkout;
+   * Clean and Rebuild act on that configured tree. CMake declares Build/Clean/Rebuild (see the C/C++
+   * project system's capabilities).
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private cmakeAction(action: ProjectAction): string | null {
+    switch (action) {
+      case 'build':
+        return 'cmake -S . -B build && cmake --build build';
+      case 'clean':
+        return 'cmake --build build --target clean';
+      case 'rebuild':
+        return 'cmake -S . -B build && cmake --build build --clean-first';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Compiles a capability action into a Make command, or null when Make has none for it.
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private makeAction(action: ProjectAction): string | null {
+    switch (action) {
+      case 'build':
+        return 'make';
+      case 'clean':
+        return 'make clean';
+      case 'rebuild':
+        return 'make clean && make';
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Determines whether the workspace root holds a .NET solution or project file.
    * @param root The workspace root listing.
    * @returns Returns true when a .NET project is present.
@@ -393,6 +438,27 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private hasMavenProject(root: DirectoryListing): boolean {
     return root.entries.some(
       (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === 'pom.xml',
+    );
+  }
+
+  /**
+   * Determines whether the workspace root holds a CMake project (a `CMakeLists.txt`).
+   * @param root The workspace root listing.
+   * @returns Returns true when a `CMakeLists.txt` is present.
+   */
+  private hasCmakeProject(root: DirectoryListing): boolean {
+    return this.hasEntry(root, 'CMakeLists.txt');
+  }
+
+  /**
+   * Determines whether the workspace root holds a Make project (a GNU or POSIX makefile).
+   * @param root The workspace root listing.
+   * @returns Returns true when a makefile is present.
+   */
+  private hasMakeProject(root: DirectoryListing): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean =>
+        entry.type === 'file' && /^(GNUmakefile|[Mm]akefile)$/.test(entry.name),
     );
   }
 
@@ -482,6 +548,11 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     }
     if (configuration.providerKind === 'jvm') {
       return this.jvmRunCommand();
+    }
+    if (configuration.providerKind === 'cpp') {
+      // Build the selected CMake executable target, then run the produced binary. A single-config
+      // generator places it at `build/<target>`; the id is the target name.
+      return `cmake --build build --target ${configuration.id} && ./build/${configuration.id}`;
     }
     return null;
   }
@@ -606,6 +677,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       ...this.discoverDotnet(root),
       ...this.discoverGradle(root),
       ...this.discoverMaven(root),
+      ...this.discoverCmake(root),
       ...this.discoverMake(root),
       ...(await this.discoverNpm(root)),
     ];
@@ -663,6 +735,28 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         label: `${mvn} test`,
         group: 'test',
         command: `${mvn} test`,
+        cwd: root.path,
+      },
+    ];
+  }
+
+  /**
+   * Discovers a CMake build task when a `CMakeLists.txt` is present in the root. The task configures a
+   * `build/` directory (idempotent) then builds it, so the ribbon's Build button works from a fresh
+   * checkout.
+   * @param root The workspace root listing.
+   * @returns Returns the CMake task, or an empty list.
+   */
+  private discoverCmake(root: DirectoryListing): BuildTask[] {
+    if (!this.hasCmakeProject(root)) {
+      return [];
+    }
+    return [
+      {
+        id: 'cmake:build',
+        label: 'cmake --build build',
+        group: 'build',
+        command: 'cmake -S . -B build && cmake --build build',
         cwd: root.path,
       },
     ];

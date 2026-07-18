@@ -356,4 +356,66 @@ describe('BuildRunner', () => {
 
     expect(api.runCalls[0].command).toBe('mvn exec:java');
   });
+
+  it('discover_findsACmakeBuildTaskSoTheBuildButtonEnables', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/c',
+      name: 'c',
+      entries: [{ name: 'CMakeLists.txt', path: '/c/CMakeLists.txt', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    const build: BuildTask | undefined = runner
+      .tasks()
+      .find((t: BuildTask): boolean => t.id === 'cmake:build');
+    expect(build?.group).toBe('build');
+    expect(build?.command).toBe('cmake -S . -B build && cmake --build build');
+  });
+
+  it('runAction_clean_runsCmakeCleanForACmakeRoot', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/c',
+      name: 'c',
+      entries: [{ name: 'CMakeLists.txt', path: '/c/CMakeLists.txt', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    runner.runAction('clean');
+
+    expect(api.runCalls[0].command).toBe('cmake --build build --target clean');
+  });
+
+  it('runAction_rebuild_runsMakeCleanThenMakeForAMakefileRoot', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/m',
+      name: 'm',
+      entries: [{ name: 'Makefile', path: '/m/Makefile', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    runner.runAction('rebuild');
+
+    expect(api.runCalls[0].command).toBe('make clean && make');
+  });
+
+  it('runConfiguration_cpp_buildsThenRunsTheTargetBinary', async () => {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/c',
+      name: 'c',
+      entries: [{ name: 'CMakeLists.txt', path: '/c/CMakeLists.txt', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+
+    runner.runConfiguration({ id: 'app', name: 'app', providerKind: 'cpp', mode: 'run' });
+
+    expect(api.runCalls[0].command).toBe('cmake --build build --target app && ./build/app');
+  });
 });
