@@ -19,7 +19,6 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { ButtonGroup, ButtonGroupOption } from '@shared/angular/components/forms/button-group/button-group';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 
@@ -44,10 +43,30 @@ type SeverityFilter = 'all' | DiagnosticSeverity;
 const ALL_SOURCES: string = '';
 
 /**
- * The severity filter options shown in the tool-strip's segmented control.
+ * A severity filter option shown as a toggle button in the tool-strip.
  */
-const SEVERITY_OPTIONS: readonly ButtonGroupOption[] = [
-  { value: 'all', label: 'All' },
+interface SeverityOption {
+  /**
+   * The filter value this button selects.
+   */
+  readonly value: SeverityFilter;
+
+  /**
+   * The button label.
+   */
+  readonly label: string;
+
+  /**
+   * The button icon.
+   */
+  readonly icon: Icon;
+}
+
+/**
+ * The severity filter options shown as toggle buttons in the tool-strip.
+ */
+const SEVERITY_OPTIONS: readonly SeverityOption[] = [
+  { value: 'all', label: 'Everything', icon: Icon.LIST_ALL },
   { value: 'error', label: 'Errors', icon: Icon.ERROR },
   { value: 'warning', label: 'Warnings', icon: Icon.WARNING },
 ];
@@ -61,7 +80,7 @@ const SEVERITY_OPTIONS: readonly ButtonGroupOption[] = [
  */
 @Component({
   selector: 'app-problems-panel',
-  imports: [AppIcon, ButtonGroup, Dropdown, PanelToolbar],
+  imports: [AppIcon, Dropdown, PanelToolbar],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -73,9 +92,9 @@ export class ProblemsPanel {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the severity filter options for the segmented control.
+   * Gets the severity filter options rendered as toggle buttons.
    */
-  protected readonly severityOptions: readonly ButtonGroupOption[] = SEVERITY_OPTIONS;
+  protected readonly severityOptions: readonly SeverityOption[] = SEVERITY_OPTIONS;
 
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet, which sets it on
@@ -150,8 +169,8 @@ export class ProblemsPanel {
    * Selects a severity filter.
    * @param value The chosen filter value.
    */
-  protected selectSeverity(value: string): void {
-    this.severity.set(value as SeverityFilter);
+  protected selectSeverity(value: SeverityFilter): void {
+    this.severity.set(value);
   }
 
   /**

@@ -1,10 +1,17 @@
-<app-panel-toolbar>
-  <app-button-group
-    [options]="severityOptions"
-    [value]="severity()"
-    (valueChange)="selectSeverity($event)"
-    ariaLabel="Filter by severity"
-  />
+<app-panel-toolbar role="group" aria-label="Filter by severity">
+  @for (option of severityOptions; track option.value) {
+    <button
+      type="button"
+      class="panel-toolbar__button"
+      [class.panel-toolbar__button--active]="severity() === option.value"
+      [attr.aria-pressed]="severity() === option.value"
+      [title]="option.label"
+      (click)="selectSeverity(option.value)"
+    >
+      <app-icon [icon]="option.icon" />
+      {{ option.label }}
+    </button>
+  }
   @if (sourceOptions().length > 2) {
     <app-dropdown
       [options]="sourceOptions()"

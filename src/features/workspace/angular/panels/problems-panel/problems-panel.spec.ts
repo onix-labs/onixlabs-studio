@@ -110,10 +110,10 @@ describe('ProblemsPanel', () => {
     );
     fixture.detectChanges();
 
-    // Click the "Warnings" segment of the severity filter.
+    // Click the "Warnings" severity toggle button in the tool-strip.
     const warnings: HTMLButtonElement | undefined = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-        'app-button-group button',
+        'app-panel-toolbar button',
       ),
     ).find((button: HTMLButtonElement): boolean => (button.textContent ?? '').includes('Warnings'));
     warnings!.click();

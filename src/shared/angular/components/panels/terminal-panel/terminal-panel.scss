@@ -21,14 +21,10 @@
   overflow-x: auto;
 }
 
-// A terminal tab: the shared tool-strip button plus a name and inline close affordance.
+// A terminal tab: the shared tool-strip button (with its shared --active toggle state) plus a name and
+// inline close affordance.
 .terminal-panel__tab {
   white-space: nowrap;
-
-  &--active {
-    background: var(--dock-tab-background-color--active);
-    color: var(--dock-tab-foreground-color--active, var(--gray-900));
-  }
 }
 
 .terminal-panel__tab-icon {

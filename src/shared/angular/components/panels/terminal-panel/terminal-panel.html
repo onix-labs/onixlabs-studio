@@ -15,7 +15,7 @@
         } @else {
           <button
             class="panel-toolbar__button terminal-panel__tab"
-            [class.terminal-panel__tab--active]="session.id === activeId()"
+            [class.panel-toolbar__button--active]="session.id === activeId()"
             (click)="activate(session.id)"
             (dblclick)="startRename(session)"
             role="tab"

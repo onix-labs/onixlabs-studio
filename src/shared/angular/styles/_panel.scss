@@ -44,6 +44,18 @@
   }
 }
 
+// The toggled (pressed) state of a tool-strip button — an accent-tinted fill matching the list/tree
+// selected convention, so a button acting as a toggle (severity filter, terminal tab) reads as "on".
+.panel-toolbar__button--active {
+  color: var(--dock-tab-foreground-color--active);
+  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
+
+  &:hover:not(:disabled) {
+    color: var(--dock-tab-foreground-color--active);
+    background: color-mix(in srgb, var(--accent-color) 30%, transparent);
+  }
+}
+
 // A status item in a panel status strip.
 .panel-status__item {
   display: inline-flex;
