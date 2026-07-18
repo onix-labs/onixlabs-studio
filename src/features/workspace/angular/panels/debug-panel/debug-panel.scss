@@ -27,6 +27,8 @@
   flex: 1;
 }
 
+// The transport controls mirror the shared panel/ribbon button: a transparent-when-idle border that
+// fills with the accent surface on hover, matching every other toolstrip control.
 .debug-toolbar__button {
   display: inline-flex;
   align-items: center;
@@ -36,26 +38,23 @@
   font-size: 0.95rem;
   color: inherit;
   background: transparent;
-  border: none;
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover:not(:disabled) {
-    background: var(--gray-150, var(--gray-200));
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:disabled {
     opacity: 0.35;
   }
-
-  &--stop:not(:disabled):hover {
-    color: var(--accent-color);
-  }
-}
-
-:host-context([data-theme-mode='dark']) .debug-toolbar__button:hover:not(:disabled) {
-  background: var(--gray-800);
 }
 
 .debug-body {

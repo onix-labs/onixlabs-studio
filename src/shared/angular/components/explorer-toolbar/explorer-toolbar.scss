@@ -44,6 +44,9 @@
   flex: 0 0 auto;
 }
 
+// The action buttons mirror the shared panel/ribbon button: a transparent-when-idle border that fills
+// with the accent surface on hover, so File Explorer and Solution Explorer read like every other
+// toolstrip control instead of a grey hover.
 .explorer-toolbar__button {
   display: flex;
   align-items: center;
@@ -53,19 +56,22 @@
   font-size: 0.875rem;
   color: var(--dock-tab-foreground-color);
   background: transparent;
-  border: none;
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
-  transition: var(--hover-transition);
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover {
-    color: var(--dock-tab-foreground-color--active);
-    background: var(--dock-title-background-color--focused);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: -0.125rem;
+    outline-offset: 0.0625rem;
   }
 }
