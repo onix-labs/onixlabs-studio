@@ -27,6 +27,7 @@ class FakeLsp implements Bridge {
   public readonly notifications: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly stops: string[] = [];
   public startResult: LspStartResult = { success: true };
+  public diagnosticReport: unknown = null;
   private notificationListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
 
@@ -35,6 +36,10 @@ class FakeLsp implements Bridge {
       case LspChannel.Start as string:
         this.starts.push(args[0] as LspStartRequest);
         return Promise.resolve(this.startResult as T);
+      case LspChannel.Request as string:
+        return Promise.resolve(
+          (args[1] === 'textDocument/diagnostic' ? this.diagnosticReport : null) as T,
+        );
       case LspChannel.Stop as string:
         this.stops.push(args[0] as string);
         return Promise.resolve(undefined as T);
@@ -213,6 +218,36 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  it('pullDiagnostics_ingestsAFullReportIntoTheAggregate', async () => {
+    // A pull-based server (Roslyn) answers textDocument/diagnostic instead of pushing; the client must
+    // ingest that report so the error reaches the aggregate, the Error List, and the status bar.
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    lsp.diagnosticReport = {
+      kind: 'full',
+      items: [
+        {
+          range: { start: { line: 20, character: 12 }, end: { line: 20, character: 19 } },
+          severity: 1,
+          message: 'Cannot implicitly convert type string to int',
+        },
+      ],
+    };
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: 'int x = "Hello";',
+    });
+    await flush();
+
+    expect(
+      diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+        diagnostic.message.includes('Cannot implicitly convert'),
+      ),
+    ).toBe(true);
   });
 
   it('windowLogMessage_forOwnedSession_streamsIntoAPerServerOutputChannel', async () => {
