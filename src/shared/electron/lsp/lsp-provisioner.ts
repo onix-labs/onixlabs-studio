@@ -59,6 +59,26 @@ const ROSLYN_FEED: string =
   'https://pkgs.dev.azure.com/azure-public/vside/_packaging/vs-impl/nuget/v3/flat2';
 
 /**
+ * Holds the pinned version of the Kotlin language server (`fwcd/kotlin-language-server`). The
+ * distribution is pinned so every machine provisions the same, verified server; bumping it downloads
+ * into a fresh, version-scoped directory.
+ */
+const KOTLIN_LS_VERSION: string = '1.3.13';
+
+/**
+ * Holds the URL of the pinned Kotlin language server distribution (its GitHub release `server.zip`).
+ */
+const KOTLIN_LS_URL: string =
+  'https://github.com/fwcd/kotlin-language-server/releases/download/1.3.13/server.zip';
+
+/**
+ * Holds the expected SHA-256 of the pinned Kotlin server distribution. The download is verified against
+ * this before it is extracted, so a corrupted or tampered archive of executable code is never run.
+ */
+const KOTLIN_LS_SHA256: string =
+  '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
+
+/**
  * Holds the lowest .NET SDK major version the Roslyn server needs. Its apphost is framework-dependent
  * (it does not bundle a runtime), and project loading runs design-time builds through the SDK's
  * MSBuild, so an SDK of at least this major must be installed.
@@ -115,6 +135,11 @@ export class LspProvisioner {
   private roslynProvision: Promise<string | null> | null = null;
 
   /**
+   * Caches the in-flight or completed Kotlin server download, so it is downloaded at most once.
+   */
+  private kotlinProvision: Promise<string | null> | null = null;
+
+  /**
    * Caches the detected clangd executable lookup, so detection runs once per session.
    */
   private clangdProbe: Promise<string | null> | null = null;
@@ -164,6 +189,17 @@ export class LspProvisioner {
   public ensureRoslyn(): Promise<string | null> {
     this.roslynProvision ??= this.provisionRoslyn();
     return this.roslynProvision;
+  }
+
+  /**
+   * Ensures the Kotlin language server is installed under the user-data directory, downloading and
+   * extracting it on first use and reusing the cached copy thereafter. The work is shared across
+   * concurrent callers.
+   * @returns Returns the absolute path of the launcher script, or null when it could not be provisioned.
+   */
+  public ensureKotlin(): Promise<string | null> {
+    this.kotlinProvision ??= this.provisionKotlin();
+    return this.kotlinProvision;
   }
 
   /**
@@ -436,6 +472,48 @@ export class LspProvisioner {
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
       return await this.readInstall(installDir);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Downloads and extracts the Kotlin language server under the user-data directory, or reuses a cached
+   * copy. The distribution unpacks to a `server/` directory whose `bin/kotlin-language-server` launcher
+   * (a `.bat` on Windows) starts the server; the launcher speaks LSP over stdio and finds its Java
+   * runtime from `JAVA_HOME` (which the registry sets).
+   * @returns Returns the launcher path, or null on failure.
+   */
+  private async provisionKotlin(): Promise<string | null> {
+    const installDir: string = path.join(this.serversRoot(), 'kotlin', KOTLIN_LS_VERSION);
+    const launcher: string = path.join(
+      installDir,
+      'server',
+      'bin',
+      process.platform === 'win32' ? 'kotlin-language-server.bat' : 'kotlin-language-server',
+    );
+    try {
+      if (existsSync(launcher)) {
+        return launcher;
+      }
+      await fs.mkdir(installDir, { recursive: true });
+      const archive: string = path.join(installDir, 'server.zip');
+      await this.download(KOTLIN_LS_URL, archive);
+      const digest: string = await this.sha256(archive);
+      if (digest !== KOTLIN_LS_SHA256) {
+        await fs.rm(archive, { force: true });
+        return null;
+      }
+      await this.extractZip(archive, installDir);
+      await fs.rm(archive, { force: true });
+      if (!existsSync(launcher)) {
+        return null;
+      }
+      // The extracted launcher script does not carry its executable bit through the zip.
+      if (process.platform !== 'win32') {
+        await fs.chmod(launcher, 0o755);
+      }
+      return launcher;
     } catch {
       return null;
     }

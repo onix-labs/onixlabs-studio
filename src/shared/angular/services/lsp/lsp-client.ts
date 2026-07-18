@@ -186,6 +186,7 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
   typescript: 'typescript',
   javascript: 'typescript',
   java: 'java',
+  kotlin: 'kotlin',
   python: 'python',
   csharp: 'csharp',
   cpp: 'clangd',

@@ -182,6 +182,9 @@ export class LspServerRegistry {
     if (serverId === 'java') {
       return this.buildJava(rootPath);
     }
+    if (serverId === 'kotlin') {
+      return this.buildKotlin();
+    }
     if (serverId === 'csharp') {
       return this.buildCsharp(rootPath);
     }
@@ -251,6 +254,29 @@ export class LspServerRegistry {
         ],
       }),
     );
+  }
+
+  /**
+   * Builds the resolution for the Kotlin language server, detecting a Java runtime and downloading the
+   * server on first use. The launcher script finds its Java runtime from `JAVA_HOME`, so the resolved
+   * runtime is passed through the environment (when its path is absolute); the server is rooted at the
+   * workspace via the `rootUri` the manager sends, needing no per-workspace data directory.
+   * @returns Returns the resolution, with a reason when Java is unavailable or the server could not be
+   * provisioned.
+   */
+  private async buildKotlin(): Promise<LspResolution> {
+    const java: string | null = await this.provisioner.detectJava(this.settings.get().javaPath);
+    if (java === null) {
+      return unavailable('Java 21+ runtime not found — set its path in Settings or install a JDK.');
+    }
+    const launcher: string | null = await this.provisioner.ensureKotlin();
+    if (launcher === null) {
+      return unavailable('The Kotlin language server could not be downloaded.');
+    }
+    const env: Record<string, string> | undefined = path.isAbsolute(java)
+      ? { JAVA_HOME: path.dirname(path.dirname(java)) }
+      : undefined;
+    return resolved(this.withExtraArgs('kotlin', { command: launcher, args: [], env }));
   }
 
   /**
