@@ -1,0 +1,14 @@
+// Seamless: no fill and no border, so the strip shows the panel's own background and reads as part of
+// the frame (matching the Solution Explorer toolbar). A fixed block-size — not min — keeps every
+// panel's strip the exact same height regardless of the controls it hosts (buttons, dropdowns), so the
+// three workspace panels line up with each other and with the canonical Solution Explorer toolbar.
+:host {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  block-size: 2.3125rem;
+  padding: 0 0.5rem;
+  user-select: none;
+}

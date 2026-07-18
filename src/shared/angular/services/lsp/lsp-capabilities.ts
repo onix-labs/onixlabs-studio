@@ -25,3 +25,16 @@ export function semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend
     tokenModifiers: candidate.tokenModifiers as readonly string[],
   };
 }
+
+/**
+ * Determines whether a server advertises pull diagnostics (a `diagnosticProvider`), so the client
+ * requests diagnostics via `textDocument/diagnostic` rather than waiting for pushed
+ * `publishDiagnostics`. Pull-based servers (notably Roslyn) surface compile errors only this way.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns true when the server supports pull diagnostics.
+ */
+export function supportsPullDiagnostics(capabilities: unknown): boolean {
+  const provider: unknown = (capabilities as { diagnosticProvider?: unknown } | undefined)
+    ?.diagnosticProvider;
+  return provider !== undefined && provider !== null;
+}

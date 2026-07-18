@@ -148,6 +148,11 @@ export class WelcomeScreen {
   protected readonly query: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds a value indicating whether the "clear all recent items" confirmation is shown.
+   */
+  protected readonly confirmingClear: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the recent items to show, narrowed by the active filter and search query and ordered with
    * pinned items first, then most-recently opened.
    */
@@ -309,6 +314,28 @@ export class WelcomeScreen {
    */
   protected onSearchInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Opens the confirmation asking whether every recent item should be cleared.
+   */
+  protected requestClearRecent(): void {
+    this.confirmingClear.set(true);
+  }
+
+  /**
+   * Dismisses the clear-recent-items confirmation without clearing anything.
+   */
+  protected cancelClearRecent(): void {
+    this.confirmingClear.set(false);
+  }
+
+  /**
+   * Clears every recent item and dismisses the confirmation.
+   */
+  protected clearRecent(): void {
+    this.recentItems.clear();
+    this.confirmingClear.set(false);
   }
 
   /**

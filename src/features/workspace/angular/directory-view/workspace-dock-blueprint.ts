@@ -62,7 +62,14 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       component: AgentPanel,
       ownsToolStrip: true,
     },
-    { id: 'output', title: 'Output', icon: Icon.OUTPUT, role: 'tool', component: OutputPanel },
+    {
+      id: 'output',
+      title: 'Output',
+      icon: Icon.OUTPUT,
+      role: 'tool',
+      component: OutputPanel,
+      ownsToolStrip: true,
+    },
     { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
     {
       id: 'errors',
@@ -70,6 +77,7 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PROBLEMS,
       role: 'tool',
       component: ProblemsPanel,
+      ownsToolStrip: true,
     },
     {
       id: 'terminal',
@@ -77,6 +85,7 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
+      ownsToolStrip: true,
     },
   ],
 };

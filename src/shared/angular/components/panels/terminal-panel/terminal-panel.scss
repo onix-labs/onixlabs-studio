@@ -1,6 +1,7 @@
-// Fills the Terminal dock panel body with the interactive terminal above a thin status bar. The
-// background tracks the resolved theme (the xterm theme paints the same colour, so the gutter around
-// the canvas matches).
+// Fills the Terminal dock panel body with a tab tool-strip above the terminals and a status strip
+// below. All terminals are mounted at once; only the active one is visible, so switching never tears a
+// session down. The background tracks the resolved theme (the xterm theme paints the same colour, so
+// the gutter matches).
 :host {
   display: flex;
   flex-direction: column;
@@ -8,37 +9,79 @@
   background: var(--dock-tab-background-color--active);
 }
 
-app-terminal-view {
-  display: block;
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// The tab strip reuses the shared panel tool-strip, adding horizontal scrolling for many tabs.
+.terminal-panel__tabs {
+  overflow-x: auto;
+}
+
+// A terminal tab: the shared tool-strip button (with its shared --active toggle state) plus a name and
+// inline close affordance.
+.terminal-panel__tab {
+  white-space: nowrap;
+}
+
+.terminal-panel__tab-icon {
+  font-size: 0.85rem;
+}
+
+.terminal-panel__tab-close {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.2rem;
+  font-size: 0.7rem;
+  opacity: 0.55;
+
+  &:hover {
+    opacity: 1;
+    background: var(--accent-surface-background-color);
+  }
+}
+
+.terminal-panel__rename {
+  align-self: center;
+  inline-size: 8rem;
+  padding: 0.15rem 0.4rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.terminal-panel__bodies {
+  position: relative;
   flex: 1 1 auto;
   min-block-size: 0;
   inline-size: 100%;
 }
 
-// The terminal's status bar. Placeholder content for now; tracks the dock chrome tokens so it reads as
-// part of the panel frame.
-.terminal-panel__status {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  block-size: 1.5rem;
-  padding-inline: 0.7rem;
-  border-block-start: 0.0625rem solid var(--dock-border-color);
-  background: var(--dock-title-background-color);
-  color: var(--form-muted-foreground-color);
-  font-size: 0.7rem;
-  user-select: none;
+.terminal-panel__body {
+  position: absolute;
+  inset: 0;
+
+  &--hidden {
+    display: none;
+  }
 }
 
-.terminal-panel__status-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.terminal-panel__status-item--push {
-  margin-inline-start: auto;
+app-terminal {
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
 }
 
 .terminal-panel__empty {

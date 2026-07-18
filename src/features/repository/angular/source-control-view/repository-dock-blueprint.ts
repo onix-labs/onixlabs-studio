@@ -57,6 +57,7 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
+      ownsToolStrip: true,
     },
   ],
 };

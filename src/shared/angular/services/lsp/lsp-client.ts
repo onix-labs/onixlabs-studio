@@ -19,7 +19,7 @@ import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
-import { semanticLegendOf } from './lsp-capabilities';
+import { semanticLegendOf, supportsPullDiagnostics } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspStatus } from './lsp-status';
 
@@ -238,6 +238,12 @@ const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 const RECOLOR_QUIET_MS: number = 750;
 
 /**
+ * How long typing must stay quiet before a pull-diagnostics request is issued for the edited document,
+ * so a pull-based server (Roslyn) is not asked to recompute on every keystroke.
+ */
+const DIAGNOSTIC_QUIET_MS: number = 400;
+
+/**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
  * first time a document of a supported language opens, mirrors each open document's text to that
  * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
@@ -329,6 +335,20 @@ export class LspClient implements OnDestroy {
   private readonly legends: Map<string, LspSemanticTokensLegend | null> = new Map<
     string,
     LspSemanticTokensLegend | null
+  >();
+
+  /**
+   * Holds the sessions whose server advertises pull diagnostics, so the client requests diagnostics via
+   * `textDocument/diagnostic` (Roslyn and other pull-based servers) rather than relying on push.
+   */
+  private readonly pullCapable: Set<string> = new Set<string>();
+
+  /**
+   * Holds the pending debounced diagnostic-pull timers, keyed by document id.
+   */
+  private readonly diagnosticTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
   >();
 
   /**
@@ -476,7 +496,7 @@ export class LspClient implements OnDestroy {
       );
       await Promise.all(
         documents.map(
-          (tracked: TrackedDocument): Promise<void> => this.pullDiagnostics(sessionId, tracked.uri),
+          (tracked: TrackedDocument): Promise<void> => this.pullDiagnostics(sessionId, tracked),
         ),
       );
       // The pass ran after the session's refresh signals went quiet, so the server's compilation is
@@ -515,22 +535,73 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Pulls a document's diagnostics from its server and discards the result. The pull is not used for
-   * markers (published diagnostics remain the source); it exists to force servers that answer feature
-   * requests against frozen snapshots (Roslyn) to build the document's full semantic model, after
-   * which their semantic tokens carry real classifications. Servers without pull-diagnostic support
-   * reject the request; the poke is best-effort.
+   * Pulls a document's diagnostics from its server (`textDocument/diagnostic`) and ingests them. This
+   * is the source of diagnostics for pull-based servers (notably Roslyn, which does not push
+   * `publishDiagnostics`); it also forces such servers to build the document's full semantic model, so
+   * a following semantic-token request paints real classifications. Servers without pull support reject
+   * the request; the pull is best-effort.
    * @param sessionId The session that owns the document.
-   * @param uri The document's `file:` URI.
+   * @param tracked The document whose diagnostics are pulled.
    */
-  private async pullDiagnostics(sessionId: string, uri: string): Promise<void> {
+  private async pullDiagnostics(sessionId: string, tracked: TrackedDocument): Promise<void> {
+    let result: unknown;
     try {
-      await this.bridge?.invoke(LspChannel.Request, sessionId, 'textDocument/diagnostic', {
-        textDocument: { uri },
+      result = await this.bridge?.invoke(LspChannel.Request, sessionId, 'textDocument/diagnostic', {
+        textDocument: { uri: tracked.uri },
       });
     } catch {
       // Best-effort: the server either lacks pull-diagnostic support or is not ready yet.
+      return;
     }
+    // A full report carries the document's current diagnostics; an unchanged report (or a server that
+    // answers with neither) leaves the existing set in place.
+    const report: { kind?: string; items?: readonly LspDiagnostic[] } | null =
+      (result as { kind?: string; items?: readonly LspDiagnostic[] } | null) ?? null;
+    if (report === null || report.kind === 'unchanged' || !Array.isArray(report.items)) {
+      return;
+    }
+    this.ingestDiagnostics(tracked, report.items);
+    this.markReady(sessionId);
+  }
+
+  /**
+   * Records a document's diagnostics (from a push or a pull), sets them as editor markers, and
+   * republishes the aggregate.
+   * @param tracked The document the diagnostics belong to.
+   * @param diagnostics The server's current diagnostics for the document (empty clears them).
+   */
+  private ingestDiagnostics(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+    this.diagnosticsByDocument.set(
+      tracked.documentId,
+      diagnostics.map(
+        (diagnostic: LspDiagnostic): Diagnostic =>
+          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
+      ),
+    );
+    this.setMarkers(tracked, diagnostics);
+    this.publish();
+  }
+
+  /**
+   * Schedules a debounced diagnostic pull for a document edited on a pull-based server, so live typing
+   * refreshes its errors without a request per keystroke.
+   * @param sessionId The session that owns the document.
+   * @param tracked The document to pull after typing settles.
+   */
+  private scheduleDiagnostics(sessionId: string, tracked: TrackedDocument): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.diagnosticTimers.get(
+      tracked.documentId,
+    );
+    if (pending !== undefined) {
+      clearTimeout(pending);
+    }
+    this.diagnosticTimers.set(
+      tracked.documentId,
+      setTimeout((): void => {
+        this.diagnosticTimers.delete(tracked.documentId);
+        void this.pullDiagnostics(sessionId, tracked);
+      }, DIAGNOSTIC_QUIET_MS),
+    );
   }
 
   /**
@@ -727,8 +798,13 @@ export class LspClient implements OnDestroy {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
     }
+    for (const timer of this.diagnosticTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.diagnosticTimers.clear();
     this.sessions.clear();
     this.legends.clear();
+    this.pullCapable.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
   }
@@ -773,7 +849,7 @@ export class LspClient implements OnDestroy {
     this.features.refreshSemanticTokens([tracked.languageId]);
     // Force the server to build this document's full semantic model (heavy servers otherwise answer
     // token requests from a frozen, reference-less snapshot indefinitely), then repaint once it has.
-    void this.pullDiagnostics(sessionId, tracked.uri).then((): void => {
+    void this.pullDiagnostics(sessionId, tracked).then((): void => {
       this.features.refreshSemanticTokens([tracked.languageId]);
     });
   }
@@ -843,6 +919,11 @@ export class LspClient implements OnDestroy {
       contentChanges: [edit],
     });
     tracked.text = content;
+    // A pull-based server (Roslyn) does not push diagnostics on change, so pull them once typing
+    // settles; push-based servers report through publishDiagnostics and need no pull.
+    if (this.pullCapable.has(sessionId)) {
+      this.scheduleDiagnostics(sessionId, tracked);
+    }
   }
 
   /**
@@ -947,6 +1028,9 @@ export class LspClient implements OnDestroy {
         if (result.success) {
           this.startFailures.delete(sessionId);
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
+          if (supportsPullDiagnostics(result.capabilities)) {
+            this.pullCapable.add(sessionId);
+          }
         }
         return result.success;
       });
@@ -1040,15 +1124,7 @@ export class LspClient implements OnDestroy {
     if (tracked === undefined) {
       return;
     }
-    this.diagnosticsByDocument.set(
-      tracked.documentId,
-      params.diagnostics.map(
-        (diagnostic: LspDiagnostic): Diagnostic =>
-          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
-      ),
-    );
-    this.setMarkers(tracked, params.diagnostics);
-    this.publish();
+    this.ingestDiagnostics(tracked, params.diagnostics);
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
     // document: flip the indicator from starting to ready and re-request semantic tokens — but only
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many

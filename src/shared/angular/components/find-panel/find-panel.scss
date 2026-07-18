@@ -27,6 +27,8 @@
   color: var(--body-foreground-color);
 }
 
+// Icon buttons (nav, close) mirror the shared panel/ribbon icon button: a transparent-when-idle border
+// that fills with the accent surface on hover.
 .find-panel__icon-button {
   display: inline-flex;
   align-items: center;
@@ -35,17 +37,20 @@
   inline-size: 1.6rem;
   block-size: 1.6rem;
   padding: 0;
-  border: none;
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   background: transparent;
   color: var(--form-muted-foreground-color);
   cursor: default;
-  transition: var(--hover-transition);
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover:not(:disabled) {
     background: var(--accent-surface-background-color);
-    color: var(--body-foreground-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 }
 
@@ -130,23 +135,29 @@
   gap: 0.35rem;
 }
 
+// Labelled action buttons (Replace, Replace All) keep a resting border like the app's other labelled
+// buttons, and take the full accent-surface fill + border + foreground on hover.
 .find-panel__button {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
   flex: none;
   padding: 0.22rem 0.55rem;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   background: transparent;
   color: var(--body-foreground-color);
   font: inherit;
   cursor: default;
-  transition: var(--hover-transition);
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
 
   &:hover:not(:disabled) {
     background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 
   &:disabled {
