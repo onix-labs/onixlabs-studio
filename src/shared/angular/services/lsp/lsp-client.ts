@@ -10,6 +10,7 @@ import {
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
+import { Output } from '../output/output';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -259,6 +260,12 @@ export class LspClient implements OnDestroy {
    * Holds the workspace diagnostics aggregate this client contributes to.
    */
   private readonly diagnostics: Diagnostics = inject(Diagnostics);
+
+  /**
+   * Holds the workspace Output surface, where each server's `window/logMessage` logs stream into a
+   * per-server channel.
+   */
+  private readonly output: Output = inject(Output);
 
   /**
    * Holds the Monaco service used to set diagnostics as editor markers.
@@ -1018,6 +1025,12 @@ export class LspClient implements OnDestroy {
       this.scheduleRecolor(message.sessionId);
       return;
     }
+    // Route the server's own logs into a per-server Output channel (created lazily on first log, so a
+    // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
+    if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
+      this.appendServerLog(message.sessionId, message.params);
+      return;
+    }
     if (message.method !== 'textDocument/publishDiagnostics') {
       return;
     }
@@ -1124,6 +1137,25 @@ export class LspClient implements OnDestroy {
    */
   private ownsSession(sessionId: string): boolean {
     return this.sessions.has(sessionId);
+  }
+
+  /**
+   * Appends a server's log message (`window/logMessage`/`window/showMessage`) to its Output channel,
+   * labelled by the server identifier. The channel is created on first use, so a server that never logs
+   * adds no channel.
+   * @param sessionId The session the message belongs to.
+   * @param params The notification parameters, whose `message` field carries the log text.
+   */
+  private appendServerLog(sessionId: string, params: unknown): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (serverId === undefined) {
+      return;
+    }
+    const message: unknown = (params as { message?: unknown } | undefined)?.message;
+    if (typeof message !== 'string' || message.length === 0) {
+      return;
+    }
+    this.output.channel(`lsp:${serverId}`, `LSP: ${serverId}`).appendLine(message);
   }
 
   /**

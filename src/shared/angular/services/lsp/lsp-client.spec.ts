@@ -10,6 +10,7 @@ import {
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
+import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
@@ -85,6 +86,10 @@ class FakeLsp implements Bridge {
       method: 'textDocument/publishDiagnostics',
       params: { uri, diagnostics },
     });
+  }
+
+  public logMessage(sessionId: string, message: string): void {
+    this.notificationListener?.({ sessionId, method: 'window/logMessage', params: { type: 3, message } });
   }
 
   public exit(sessionId: string): void {
@@ -208,6 +213,25 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  it('windowLogMessage_forOwnedSession_streamsIntoAPerServerOutputChannel', async () => {
+    const client: LspClient = build();
+    const output: Output = TestBed.inject(Output);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/src/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    lsp.logMessage('/root::typescript', 'indexing project');
+
+    expect(output.snapshotOf('lsp:typescript')).toContain('indexing project');
+    expect(output.channels().some((c: OutputChannelInfo): boolean => c.id === 'lsp:typescript')).toBe(
+      true,
+    );
   });
 
   it('syncDocument_supportedFileInRoot_startsServerAndSendsDidOpen', async () => {
