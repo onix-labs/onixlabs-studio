@@ -1,4 +1,4 @@
-<div class="panel-toolbar">
+<app-panel-toolbar>
   <app-button-group
     [options]="severityOptions"
     [value]="severity()"
@@ -22,7 +22,7 @@
     <app-icon [icon]="Icon.WARNING" />
     {{ diagnostics.warningCount() }}
   </span>
-</div>
+</app-panel-toolbar>
 
 @if (filtered().length > 0) {
   <ul class="problems-list" role="list">

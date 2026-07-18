@@ -1,6 +1,6 @@
 @if (root(); as root) {
   <div class="terminal-panel">
-    <div class="panel-toolbar terminal-panel__tabs" role="tablist">
+    <app-panel-toolbar class="terminal-panel__tabs" role="tablist">
       @for (session of sessions(); track session.id) {
         @if (editingId() === session.id) {
           <input
@@ -43,7 +43,7 @@
       >
         <app-icon [icon]="Icon.PLUS" />
       </button>
-    </div>
+    </app-panel-toolbar>
     <div class="terminal-panel__bodies">
       @for (session of sessions(); track session.id) {
         <div
@@ -59,13 +59,13 @@
         </div>
       }
     </div>
-    <footer class="panel-status">
+    <app-panel-status>
       <span class="panel-status__item">
         <app-icon [icon]="Icon.TERMINAL" />
         {{ shellName(activeSession()?.shell) }}
       </span>
       <span class="panel-status__item panel-status__item--push">{{ root }}</span>
-    </footer>
+    </app-panel-status>
   </div>
 } @else {
   <div class="terminal-panel__empty">Open a folder to use the terminal.</div>

@@ -1,0 +1,13 @@
+// Seamless: no fill and no border, so the strip shows the panel's own background and reads as part of
+// the frame. Muted, small text for at-a-glance status.
+:host {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-block-size: 1.5rem;
+  padding: 0 0.7rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+  user-select: none;
+}

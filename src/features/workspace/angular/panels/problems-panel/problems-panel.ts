@@ -21,6 +21,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ButtonGroup, ButtonGroupOption } from '@shared/angular/components/forms/button-group/button-group';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 
 /**
  * Maps each severity to its icon.
@@ -60,7 +61,7 @@ const SEVERITY_OPTIONS: readonly ButtonGroupOption[] = [
  */
 @Component({
   selector: 'app-problems-panel',
-  imports: [AppIcon, ButtonGroup, Dropdown],
+  imports: [AppIcon, ButtonGroup, Dropdown, PanelToolbar],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -14,6 +14,8 @@ import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { TerminalSession, TerminalSessions } from './terminal-sessions';
 
@@ -28,7 +30,7 @@ import { TerminalSession, TerminalSessions } from './terminal-sessions';
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [Terminal, AppIcon],
+  imports: [Terminal, AppIcon, PanelToolbar, PanelStatus],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
