@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { Output } from './output';
+import { DEFAULT_CHANNEL, Output, OutputChannel, OutputChannelInfo } from './output';
 
 describe('Output', () => {
   let output: Output;
@@ -53,5 +53,59 @@ describe('Output', () => {
     });
     output.clear();
     expect(cleared).toBe(true);
+  });
+
+  it('startsWithOnlyTheDefaultChannelActive', () => {
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
+    expect(output.activeChannelId()).toBe(DEFAULT_CHANNEL);
+  });
+
+  it('channel_registersTheChannelForSelection', () => {
+    output.channel('build', 'Build');
+    output.channel('run', 'Run');
+    expect(output.channels().map((c: OutputChannelInfo): string => c.label)).toEqual(['General', 'Build', 'Run']);
+  });
+
+  it('channels_keepSeparateBuffers', () => {
+    const build: OutputChannel = output.channel('build', 'Build');
+    const run: OutputChannel = output.channel('run', 'Run');
+    build.appendLine('compiling');
+    run.appendLine('serving');
+
+    expect(build.snapshot()).toBe('compiling\r\n');
+    expect(run.snapshot()).toBe('serving\r\n');
+    // The default channel is untouched by writes to named channels.
+    expect(output.snapshot()).toBe('');
+  });
+
+  it('reveal_makesTheChannelActive', () => {
+    const build: OutputChannel = output.channel('build', 'Build');
+    build.reveal();
+    expect(output.activeChannelId()).toBe('build');
+  });
+
+  it('onWriteTo_receivesOnlyThatChannelsChunks', () => {
+    const chunks: string[] = [];
+    output.onWriteTo('build', (chunk: string): void => {
+      chunks.push(chunk);
+    });
+    output.appendTo('run', 'other');
+    output.appendTo('build', 'mine');
+    expect(chunks).toEqual(['mine']);
+  });
+
+  it('remove_dropsTheChannelAndFallsBackToDefaultWhenActive', () => {
+    const debug: OutputChannel = output.channel('debug', 'Debug');
+    debug.reveal();
+    expect(output.activeChannelId()).toBe('debug');
+
+    output.remove('debug');
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
+    expect(output.activeChannelId()).toBe(DEFAULT_CHANNEL);
+  });
+
+  it('remove_ignoresTheDefaultChannel', () => {
+    output.remove(DEFAULT_CHANNEL);
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
   });
 });

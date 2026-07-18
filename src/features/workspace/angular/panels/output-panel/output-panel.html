@@ -1,1 +1,15 @@
+@if (channels().length > 1) {
+  <div class="output-bar">
+    <select
+      class="output-select"
+      [value]="activeChannelId()"
+      (change)="onSelect($event)"
+      aria-label="Output channel"
+    >
+      @for (channel of channels(); track channel.id) {
+        <option [value]="channel.id">{{ channel.label }}</option>
+      }
+    </select>
+  </div>
+}
 <div #container class="output-host"></div>

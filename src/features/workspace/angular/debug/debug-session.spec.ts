@@ -99,18 +99,30 @@ class FakeBridge implements Bridge {
 }
 
 /**
- * A fake Output channel recording what was written.
+ * A fake Output surface recording what was written to (and which channels were revealed). Its
+ * `channel()` returns a handle that records into the same arrays, so assertions are channel-agnostic.
  */
 class FakeOutput {
   public readonly appended: string[] = [];
   public readonly lines: string[] = [];
+  public readonly revealed: string[] = [];
 
-  public append(text: string): void {
-    this.appended.push(text);
-  }
-
-  public appendLine(text: string): void {
-    this.lines.push(text);
+  public channel(id: string): {
+    append(text: string): void;
+    appendLine(text: string): void;
+    reveal(): void;
+  } {
+    return {
+      append: (text: string): void => {
+        this.appended.push(text);
+      },
+      appendLine: (text: string): void => {
+        this.lines.push(text);
+      },
+      reveal: (): void => {
+        this.revealed.push(id);
+      },
+    };
   }
 }
 

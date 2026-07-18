@@ -8,13 +8,15 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  signal,
   Signal,
   viewChild,
+  WritableSignal,
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { Output } from '@shared/angular/services/output/output';
+import { Output, OutputChannelInfo } from '@shared/angular/services/output/output';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
 
 /**
@@ -23,10 +25,13 @@ import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
 const SELECTION_ALPHA: number = 0.3;
 
 /**
- * Renders the shared {@link Output} channel as the body of the Output dock panel: a read-only,
- * write-only terminal (xterm, no PTY and no input) that replays the channel's buffer on mount and
- * writes subsequent chunks live. The dock chrome supplies the title bar. Like the interactive
- * terminal, the xterm canvas is only created inside Electron; elsewhere a fallback message is shown.
+ * Renders the workspace {@link Output} surface as the body of the Output dock panel: a channel selector
+ * over a read-only, write-only terminal (xterm, no PTY and no input) that replays the selected channel's
+ * buffer and writes its subsequent chunks live. Switching channels re-renders from the target channel's
+ * buffer, so each stream (build, run, debug, …) is preserved independently. The selector is hidden while
+ * only the default channel exists, so a quiet workspace looks unchanged. The dock chrome supplies the
+ * title bar. Like the interactive terminal, the xterm canvas is only created inside Electron; elsewhere
+ * a fallback message is shown.
  */
 @Component({
   selector: 'app-output-panel',
@@ -37,9 +42,19 @@ const SELECTION_ALPHA: number = 0.3;
 })
 export class OutputPanel implements AfterViewInit, OnDestroy {
   /**
-   * Holds the shared output channel rendered by this panel.
+   * Holds the workspace output surface rendered by this panel.
    */
   private readonly output: Output = inject(Output);
+
+  /**
+   * Gets the channels available for selection.
+   */
+  public readonly channels: Signal<readonly OutputChannelInfo[]> = this.output.channels;
+
+  /**
+   * Gets the active channel rendered by the terminal.
+   */
+  public readonly activeChannelId: Signal<string> = this.output.activeChannelId;
 
   /**
    * Holds the theme service used to keep the terminal colours in sync with the application theme.
@@ -94,8 +109,13 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
   private cleanupOnClear: (() => void) | null = null;
 
   /**
-   * Initializes a new instance of the {@link OutputPanel} class, wiring the theme and relayout
-   * effects.
+   * Holds whether the xterm has been created, so the channel-streaming effect waits for it.
+   */
+  private readonly ready: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Initializes a new instance of the {@link OutputPanel} class, wiring the theme, relayout, and
+   * channel-streaming effects.
    */
   public constructor() {
     effect((): void => {
@@ -108,6 +128,15 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     effect((): void => {
       if (this.isActive() && this.xterm !== null && this.fitAddon !== null) {
         this.handleResize();
+      }
+    });
+
+    // Stream the active channel into the terminal: re-runs whenever the selection changes (and once the
+    // xterm is ready), replaying the target channel's buffer and subscribing to its live chunks.
+    effect((): void => {
+      const channelId: string = this.output.activeChannelId();
+      if (this.ready() && this.xterm !== null) {
+        this.showChannel(channelId);
       }
     });
   }
@@ -140,16 +169,37 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     this.fitAddon = fitAddon;
     this.handleResize();
 
-    xterm.write(this.output.snapshot());
-    this.cleanupOnWrite = this.output.onWrite((chunk: string): void => {
-      this.xterm?.write(chunk);
-    });
-    this.cleanupOnClear = this.output.onClear((): void => {
-      this.xterm?.clear();
-    });
+    // Signal the streaming effect to render the active channel now that the terminal exists.
+    this.ready.set(true);
 
     this.resizeObserver = new ResizeObserver((): void => this.handleResize());
     this.resizeObserver.observe(host);
+  }
+
+  /**
+   * Selects a channel from the selector, revealing it in the terminal.
+   * @param event The change event from the channel selector.
+   */
+  public onSelect(event: Event): void {
+    this.output.setActive((event.target as HTMLSelectElement).value);
+  }
+
+  /**
+   * Renders a channel into the terminal: unsubscribes from the previous channel, replays the target
+   * channel's buffer, and subscribes to its live writes and clears.
+   * @param channelId The channel to render.
+   */
+  private showChannel(channelId: string): void {
+    this.cleanupOnWrite?.();
+    this.cleanupOnClear?.();
+    this.xterm?.clear();
+    this.xterm?.write(this.output.snapshotOf(channelId));
+    this.cleanupOnWrite = this.output.onWriteTo(channelId, (chunk: string): void => {
+      this.xterm?.write(chunk);
+    });
+    this.cleanupOnClear = this.output.onClearOf(channelId, (): void => {
+      this.xterm?.clear();
+    });
   }
 
   /**

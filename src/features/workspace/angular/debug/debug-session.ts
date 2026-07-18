@@ -10,7 +10,7 @@ import {
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
-import { Output } from '@shared/angular/services/output/output';
+import { Output, OutputChannel } from '@shared/angular/services/output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/services/debug/debugger';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
@@ -145,9 +145,14 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
-   * Holds this workspace's Output channel, the debuggee's output is streamed into.
+   * Holds this workspace's Output surface, whose Debug channel the debuggee's output is streamed into.
    */
   private readonly output: Output = inject(Output);
+
+  /**
+   * Holds the Debug output channel, kept distinct from the Build and Run channels.
+   */
+  private readonly debugChannel: OutputChannel = this.output.channel('debug', 'Debug');
 
   /**
    * Holds this workspace's project model, read for the declared debug adapter.
@@ -375,7 +380,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     const adapter: string | undefined = this.solutionModel.capabilities()?.debug?.adapter;
     const root: string | undefined = this.workspace.root()?.path;
     if (adapter === undefined) {
-      this.output.appendLine('No debug adapter is available for this workspace.');
+      this.debugChannel.appendLine('No debug adapter is available for this workspace.');
       return;
     }
     if (root === undefined) {
@@ -386,7 +391,8 @@ export class DebugSession implements DebugHandler, OnDestroy {
     this.threadId = undefined;
     this.capabilities = {};
     this.stateSignal.set('running');
-    this.output.appendLine(`> Debug ${configuration.name}`);
+    this.debugChannel.reveal();
+    this.debugChannel.appendLine(`> Debug ${configuration.name}`);
 
     // Resolve the launch target first — for compiled ecosystems this builds the project and locates the
     // produced artifact, so the build happens before the adapter is even spawned.
@@ -398,7 +404,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return;
     }
     if (resolution.target === null) {
-      this.output.appendLine(`Debug failed: ${resolution.error ?? 'could not resolve launch target'}`);
+      this.debugChannel.appendLine(`Debug failed: ${resolution.error ?? 'could not resolve launch target'}`);
       this.reset();
       return;
     }
@@ -412,7 +418,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return;
     }
     if (!result.success) {
-      this.output.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
+      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
       this.reset();
       return;
     }
@@ -423,7 +429,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     void this.request('launch', this.launchArguments(configuration, root, resolution.target)).catch(
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
-          this.output.appendLine(`Debug launch failed: ${messageOf(error)}`);
+          this.debugChannel.appendLine(`Debug launch failed: ${messageOf(error)}`);
           this.stop();
         }
       },
@@ -461,11 +467,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
       case 'exited': {
         const body: DebugProtocol.ExitedEvent['body'] | undefined =
           message.body as DebugProtocol.ExitedEvent['body'] | undefined;
-        this.output.appendLine(`Debuggee exited with code ${body?.exitCode ?? 0}.`);
+        this.debugChannel.appendLine(`Debuggee exited with code ${body?.exitCode ?? 0}.`);
         break;
       }
       case 'terminated':
-        this.output.appendLine('Debug session ended.');
+        this.debugChannel.appendLine('Debug session ended.');
         this.stop();
         break;
       default:
@@ -555,7 +561,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private appendOutput(body: DebugProtocol.OutputEvent['body'] | undefined): void {
     if (body !== undefined && typeof body.output === 'string' && body.output.length > 0) {
       // The adapter's output already carries its own newlines, so append it verbatim.
-      this.output.append(body.output);
+      this.debugChannel.append(body.output);
     }
   }
 

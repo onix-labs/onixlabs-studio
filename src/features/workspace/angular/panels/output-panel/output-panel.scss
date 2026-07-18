@@ -1,14 +1,39 @@
-// Fills the Output dock panel body with the read-only terminal. The background tracks the resolved
-// theme (the xterm theme paints the same colour, so the gutter around the canvas matches).
+// Fills the Output dock panel body with the channel selector above the read-only terminal. The
+// background tracks the resolved theme (the xterm theme paints the same colour, so the gutter around
+// the canvas matches).
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
   background: var(--dock-tab-background-color--active);
 }
 
+.output-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+}
+
+.output-select {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--gray-800);
+  background: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
 .output-host {
   box-sizing: border-box;
-  block-size: 100%;
+  flex: 1 1 auto;
+  min-block-size: 0;
   inline-size: 100%;
   padding: 0.5rem;
 }

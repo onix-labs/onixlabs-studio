@@ -176,8 +176,9 @@ describe('BuildRunner', () => {
     api.emitExit(runId, 1);
 
     expect(runner.running()).toBe(false);
-    expect(output.snapshot()).toContain('> dotnet build');
-    expect(output.snapshot()).toContain('error CS1002');
+    // Build output streams into the Build channel, not the default channel.
+    expect(output.snapshotOf('build')).toContain('> dotnet build');
+    expect(output.snapshotOf('build')).toContain('error CS1002');
 
     expect(diagnostics.published).toHaveLength(1);
     expect(diagnostics.published[0]).toMatchObject({
@@ -201,6 +202,24 @@ describe('BuildRunner', () => {
 
     runner.run('dotnet:build');
     expect(diagnostics.published).toHaveLength(0);
+  });
+
+  it('launch_routesBuildAndRunToDistinctChannelsAndRevealsThem', async () => {
+    const runner: BuildRunner = await discover();
+    const output: Output = TestBed.inject(Output);
+
+    runner.run('dotnet:build');
+    expect(output.activeChannelId()).toBe('build');
+    api.emitOutput(api.runCalls[0].runId, 'compiling\n');
+    api.emitExit(api.runCalls[0].runId, 0);
+    expect(output.snapshotOf('build')).toContain('compiling');
+
+    runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
+    expect(output.activeChannelId()).toBe('run');
+    api.emitOutput(api.runCalls[1].runId, 'serving\n');
+    expect(output.snapshotOf('run')).toContain('serving');
+    // The build output stayed on its own channel.
+    expect(output.snapshotOf('run')).not.toContain('compiling');
   });
 
   it('runConfiguration_dotnetProject_runsDotnetRunAgainstTheProject', async () => {

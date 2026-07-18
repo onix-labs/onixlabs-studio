@@ -10,7 +10,7 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
-import { Output } from '../output/output';
+import { Output, OutputChannel } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildGroup, BuildHandler, BuildTask } from './builds';
 import { MatchedProblem, parseProblems } from './problem-matcher';
@@ -151,6 +151,22 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Holds the task backing the in-flight run, or null when nothing is running.
    */
   private activeTask: BuildTask | null = null;
+
+  /**
+   * Holds the output channel the in-flight run streams into (Build or Run), or null when nothing is
+   * running.
+   */
+  private activeChannel: OutputChannel | null = null;
+
+  /**
+   * Holds the Build output channel: build, test, and capability-action task output.
+   */
+  private readonly buildChannel: OutputChannel = this.output.channel('build', 'Build');
+
+  /**
+   * Holds the Run output channel: run-configuration and run-task output.
+   */
+  private readonly runChannel: OutputChannel = this.output.channel('run', 'Run');
 
   /**
    * Accumulates the in-flight run's output for problem matching.
@@ -567,10 +583,15 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     const runId: string = crypto.randomUUID();
     this.activeRunId = runId;
     this.activeTask = task;
+    // Run tasks stream into the Run channel; build, test, and capability actions into Build. Revealing
+    // the channel brings it to the front of the Output panel as the run starts.
+    const channel: OutputChannel = task.group === 'run' ? this.runChannel : this.buildChannel;
+    this.activeChannel = channel;
     this.buffer = '';
     this.isRunning.set(true);
     this.setProblems([]);
-    this.output.appendLine(`> ${task.label}`);
+    channel.reveal();
+    channel.appendLine(`> ${task.label}`);
     void this.bridge.invoke(TaskChannel.Run, { runId, command: task.command, cwd: task.cwd });
   }
 
@@ -666,7 +687,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return;
     }
     this.buffer += chunk;
-    this.output.append(chunk);
+    this.activeChannel?.append(chunk);
   }
 
   /**
@@ -680,12 +701,14 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return;
     }
     const task: BuildTask | null = this.activeTask;
+    const channel: OutputChannel = this.activeChannel ?? this.buildChannel;
     this.activeRunId = null;
     this.activeTask = null;
+    this.activeChannel = null;
     this.isRunning.set(false);
     const status: string =
       signal !== null ? `terminated (${signal})` : `exited with code ${code ?? 0}`;
-    this.output.appendLine(`> ${task?.label ?? 'Task'} ${status}`);
+    channel.appendLine(`> ${task?.label ?? 'Task'} ${status}`);
     if (task !== null) {
       this.publishProblems(this.buffer, task.cwd);
     }
