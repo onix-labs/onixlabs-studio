@@ -1,6 +1,7 @@
-// Fills the Terminal dock panel body with a tab strip above the terminals. All terminals are mounted
-// at once; only the active one is visible, so switching never tears a session down. The background
-// tracks the resolved theme (the xterm theme paints the same colour, so the gutter matches).
+// Fills the Terminal dock panel body with a tab tool-strip above the terminals and a status strip
+// below. All terminals are mounted at once; only the active one is visible, so switching never tears a
+// session down. The background tracks the resolved theme (the xterm theme paints the same colour, so
+// the gutter matches).
 :host {
   display: flex;
   flex-direction: column;
@@ -15,39 +16,18 @@
   min-block-size: 0;
 }
 
+// The tab strip reuses the shared panel tool-strip, adding horizontal scrolling for many tabs.
 .terminal-panel__tabs {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: stretch;
-  gap: 0.15rem;
-  padding: 0.2rem 0.3rem;
   overflow-x: auto;
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-  background: var(--dock-title-background-color);
-  user-select: none;
 }
 
+// A terminal tab: the shared tool-strip button plus a name and inline close affordance.
 .terminal-panel__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.15rem 0.5rem;
-  border: none;
-  border-radius: 0.25rem;
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  font: inherit;
-  font-size: 0.75rem;
   white-space: nowrap;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--dock-tab-background-color--hover, var(--gray-200));
-  }
 
   &--active {
     background: var(--dock-tab-background-color--active);
-    color: var(--gray-900);
+    color: var(--dock-tab-foreground-color--active, var(--gray-900));
   }
 }
 
@@ -60,7 +40,7 @@
   align-items: center;
   border-radius: 0.2rem;
   font-size: 0.7rem;
-  opacity: 0.6;
+  opacity: 0.55;
 
   &:hover {
     opacity: 1;
@@ -68,33 +48,22 @@
   }
 }
 
-.terminal-panel__new {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.15rem 0.4rem;
-  border: none;
-  border-radius: 0.25rem;
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--dock-tab-background-color--hover, var(--gray-200));
-    color: var(--gray-900);
-  }
-}
-
 .terminal-panel__rename {
   align-self: center;
   inline-size: 8rem;
   padding: 0.15rem 0.4rem;
-  border: 0.0625rem solid var(--accent);
-  border-radius: 0.25rem;
-  background: var(--gray-100);
-  color: var(--gray-900);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
+  color: inherit;
   font: inherit;
   font-size: 0.75rem;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
 }
 
 .terminal-panel__bodies {

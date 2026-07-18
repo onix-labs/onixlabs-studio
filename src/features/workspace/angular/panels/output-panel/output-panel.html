@@ -1,15 +1,19 @@
-@if (channels().length > 1) {
-  <div class="output-bar">
-    <select
-      class="output-select"
-      [value]="activeChannelId()"
-      (change)="onSelect($event)"
-      aria-label="Output channel"
-    >
-      @for (channel of channels(); track channel.id) {
-        <option [value]="channel.id">{{ channel.label }}</option>
-      }
-    </select>
-  </div>
-}
+<div class="panel-toolbar">
+  <app-dropdown
+    [options]="channelOptions()"
+    [value]="activeChannelId()"
+    (valueChange)="selectChannel($event)"
+    ariaLabel="Output channel"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Clear"
+    aria-label="Clear output"
+    (click)="clear()"
+  >
+    <app-icon [icon]="Icon.CLEAR" />
+  </button>
+</div>
 <div #container class="output-host"></div>

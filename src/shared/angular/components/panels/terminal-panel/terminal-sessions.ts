@@ -1,4 +1,4 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
  * One docked terminal session: its globally-unique PTY identifier and its display name.
@@ -13,6 +13,11 @@ export interface TerminalSession {
    * Gets the terminal's display name, shown on its tab.
    */
   readonly name: string;
+
+  /**
+   * Gets the shell executable the session actually spawned, or undefined until it reports one.
+   */
+  readonly shell?: string;
 }
 
 /**
@@ -126,4 +131,26 @@ export class TerminalSessions {
   public activate(id: string): void {
     this.active.set(id);
   }
+
+  /**
+   * Records the shell a session's terminal actually spawned, so the status strip can show it.
+   * @param id The session identifier.
+   * @param shell The spawned shell executable.
+   */
+  public setShell(id: string, shell: string): void {
+    this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+      sessions.map(
+        (session: TerminalSession): TerminalSession =>
+          session.id === id ? { ...session, shell } : session,
+      ),
+    );
+  }
+
+  /**
+   * Gets the active session, or null when there are none.
+   */
+  public readonly activeSession: Signal<TerminalSession | null> = computed(
+    (): TerminalSession | null =>
+      this.items().find((session: TerminalSession): boolean => session.id === this.active()) ?? null,
+  );
 }

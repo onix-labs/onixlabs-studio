@@ -1,6 +1,6 @@
 @if (root(); as root) {
   <div class="terminal-panel">
-    <div class="terminal-panel__tabs" role="tablist">
+    <div class="panel-toolbar terminal-panel__tabs" role="tablist">
       @for (session of sessions(); track session.id) {
         @if (editingId() === session.id) {
           <input
@@ -14,7 +14,7 @@
           />
         } @else {
           <button
-            class="terminal-panel__tab"
+            class="panel-toolbar__button terminal-panel__tab"
             [class.terminal-panel__tab--active]="session.id === activeId()"
             (click)="activate(session.id)"
             (dblclick)="startRename(session)"
@@ -35,7 +35,12 @@
           </button>
         }
       }
-      <button class="terminal-panel__new" (click)="create()" aria-label="New Terminal" title="New Terminal">
+      <button
+        class="panel-toolbar__button"
+        (click)="create()"
+        aria-label="New Terminal"
+        title="New Terminal"
+      >
         <app-icon [icon]="Icon.PLUS" />
       </button>
     </div>
@@ -49,10 +54,18 @@
             [terminalId]="session.id"
             [cwd]="root"
             [isActive]="isActive() && session.id === activeId()"
+            (shellChange)="onShell(session.id, $event)"
           />
         </div>
       }
     </div>
+    <footer class="panel-status">
+      <span class="panel-status__item">
+        <app-icon [icon]="Icon.TERMINAL" />
+        {{ shellName(activeSession()?.shell) }}
+      </span>
+      <span class="panel-status__item panel-status__item--push">{{ root }}</span>
+    </footer>
   </div>
 } @else {
   <div class="terminal-panel__empty">Open a folder to use the terminal.</div>

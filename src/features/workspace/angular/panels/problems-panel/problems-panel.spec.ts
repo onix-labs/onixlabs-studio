@@ -79,4 +79,48 @@ describe('ProblemsPanel', () => {
     expect(text).toContain('Cannot find name');
     expect(text).toContain('main.ts:3:5');
   });
+
+  it('filter_bySeverity_showsOnlyTheChosenSeverity', () => {
+    const documents: Documents = TestBed.inject(Documents);
+    documents.ensure('doc-1');
+    const diagnostics: Diagnostics = TestBed.inject(Diagnostics);
+    diagnostics.register(
+      new StaticProvider([
+        {
+          file: 'main.ts',
+          message: 'a genuine error',
+          severity: 'error',
+          line: 3,
+          column: 5,
+          source: 'typescript',
+          documentId: 'doc-1',
+          path: '/ws/main.ts',
+        },
+        {
+          file: 'main.ts',
+          message: 'a mere warning',
+          severity: 'warning',
+          line: 4,
+          column: 1,
+          source: 'eslint',
+          documentId: 'doc-1',
+          path: '/ws/main.ts',
+        },
+      ]),
+    );
+    fixture.detectChanges();
+
+    // Click the "Warnings" segment of the severity filter.
+    const warnings: HTMLButtonElement | undefined = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        'app-button-group button',
+      ),
+    ).find((button: HTMLButtonElement): boolean => (button.textContent ?? '').includes('Warnings'));
+    warnings!.click();
+    fixture.detectChanges();
+
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('a mere warning');
+    expect(text).not.toContain('a genuine error');
+  });
 });

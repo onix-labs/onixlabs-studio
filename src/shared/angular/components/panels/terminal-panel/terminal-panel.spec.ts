@@ -88,7 +88,7 @@ describe('TerminalPanel', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    host.querySelector<HTMLButtonElement>('.terminal-panel__new')!.click();
+    host.querySelector<HTMLButtonElement>('button[aria-label="New Terminal"]')!.click();
     fixture.detectChanges();
     await fixture.whenStable();
 

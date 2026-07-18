@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import {
   Diagnostic,
@@ -9,6 +19,8 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ButtonGroup, ButtonGroupOption } from '@shared/angular/components/forms/button-group/button-group';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 /**
  * Maps each severity to its icon.
@@ -21,14 +33,34 @@ const SEVERITY_ICONS: Readonly<Record<DiagnosticSeverity, Icon>> = {
 };
 
 /**
+ * The severity filter selection: everything, or only one severity.
+ */
+type SeverityFilter = 'all' | DiagnosticSeverity;
+
+/**
+ * The source value used for "all sources" in the source filter.
+ */
+const ALL_SOURCES: string = '';
+
+/**
+ * The severity filter options shown in the tool-strip's segmented control.
+ */
+const SEVERITY_OPTIONS: readonly ButtonGroupOption[] = [
+  { value: 'all', label: 'All' },
+  { value: 'error', label: 'Errors', icon: Icon.ERROR },
+  { value: 'warning', label: 'Warnings', icon: Icon.WARNING },
+];
+
+/**
  * Renders the aggregated {@link Diagnostics} as the body of the Problems (Error List) dock panel: a
- * severity-sorted list of file/line/message rows with an error/warning summary. The dock chrome
- * supplies the title bar. Fed by the Monaco-markers provider today; future language back-ends add
- * more providers behind the same service.
+ * tool-strip that filters by severity and source over a severity-sorted list of file/line/message rows,
+ * with an error/warning summary. The dock chrome supplies the title bar. Fed uniformly by every
+ * provider behind the {@link Diagnostics} seam (Monaco markers, each language server, build problems)
+ * with no per-language special-casing.
  */
 @Component({
   selector: 'app-problems-panel',
-  imports: [AppIcon],
+  imports: [AppIcon, ButtonGroup, Dropdown],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,6 +70,11 @@ export class ProblemsPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the severity filter options for the segmented control.
+   */
+  protected readonly severityOptions: readonly ButtonGroupOption[] = SEVERITY_OPTIONS;
 
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet, which sets it on
@@ -59,6 +96,70 @@ export class ProblemsPanel {
    * Holds the editor registry used to reveal the diagnostic's line in its editor.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the selected severity filter.
+   */
+  protected readonly severity: WritableSignal<SeverityFilter> = signal<SeverityFilter>('all');
+
+  /**
+   * Holds the selected source filter, or {@link ALL_SOURCES} for every source.
+   */
+  protected readonly source: WritableSignal<string> = signal<string>(ALL_SOURCES);
+
+  /**
+   * Gets the distinct diagnostic sources as dropdown options, prefixed with an "all sources" entry.
+   * Hidden by the template when only one source is present.
+   */
+  protected readonly sourceOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const sources: string[] = [
+        ...new Set<string>(
+          this.diagnostics
+            .all()
+            .map((diagnostic: Diagnostic): string => diagnostic.source)
+            .filter((value: string): boolean => value.length > 0),
+        ),
+      ].sort((a: string, b: string): number => a.localeCompare(b));
+      return [
+        { value: ALL_SOURCES, label: 'All sources' },
+        ...sources.map((value: string): DropdownOption => ({ value, label: value })),
+      ];
+    },
+  );
+
+  /**
+   * Gets the diagnostics after applying the severity and source filters.
+   */
+  protected readonly filtered: Signal<readonly Diagnostic[]> = computed(
+    (): readonly Diagnostic[] => {
+      const severity: SeverityFilter = this.severity();
+      const source: string = this.source();
+      return this.diagnostics
+        .all()
+        .filter(
+          (diagnostic: Diagnostic): boolean =>
+            (severity === 'all' || diagnostic.severity === severity) &&
+            (source === ALL_SOURCES || diagnostic.source === source),
+        );
+    },
+  );
+
+  /**
+   * Selects a severity filter.
+   * @param value The chosen filter value.
+   */
+  protected selectSeverity(value: string): void {
+    this.severity.set(value as SeverityFilter);
+  }
+
+  /**
+   * Selects a source filter.
+   * @param value The chosen source, or {@link ALL_SOURCES}.
+   */
+  protected selectSource(value: string): void {
+    this.source.set(value);
+  }
 
   /**
    * Resolves the icon for a diagnostic's severity.

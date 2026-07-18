@@ -78,6 +78,11 @@ export class TerminalPanel {
   protected readonly activeId: Signal<string | null> = this.terminals.activeId;
 
   /**
+   * Gets the active session, for the status strip.
+   */
+  protected readonly activeSession: Signal<TerminalSession | null> = this.terminals.activeSession;
+
+  /**
    * Holds the session currently being renamed inline, or null when none.
    */
   protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
@@ -147,5 +152,26 @@ export class TerminalPanel {
    */
   protected cancelRename(): void {
     this.editingId.set(null);
+  }
+
+  /**
+   * Records the shell a terminal spawned, so the status strip can show it.
+   * @param id The session identifier.
+   * @param shell The spawned shell executable path.
+   */
+  protected onShell(id: string, shell: string): void {
+    this.terminals.setShell(id, shell);
+  }
+
+  /**
+   * Reduces a shell executable path to its base name for display (for example `/bin/zsh` → `zsh`).
+   * @param shell The shell executable path, or undefined.
+   * @returns Returns the base name, or a neutral label when unknown.
+   */
+  protected shellName(shell: string | undefined): string {
+    if (shell === undefined || shell.length === 0) {
+      return 'shell';
+    }
+    return shell.split(/[\\/]/).pop() ?? shell;
   }
 }

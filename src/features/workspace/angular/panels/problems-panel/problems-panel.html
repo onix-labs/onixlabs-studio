@@ -1,21 +1,35 @@
-@if (diagnostics.all().length > 0) {
-  <div class="problems-summary">
-    <span class="problems-count problems-count--error">
-      <app-icon [icon]="Icon.ERROR" />
-      {{ diagnostics.errorCount() }}
-    </span>
-    <span class="problems-count problems-count--warning">
-      <app-icon [icon]="Icon.WARNING" />
-      {{ diagnostics.warningCount() }}
-    </span>
-  </div>
+<div class="panel-toolbar">
+  <app-button-group
+    [options]="severityOptions"
+    [value]="severity()"
+    (valueChange)="selectSeverity($event)"
+    ariaLabel="Filter by severity"
+  />
+  @if (sourceOptions().length > 2) {
+    <app-dropdown
+      [options]="sourceOptions()"
+      [value]="source()"
+      (valueChange)="selectSource($event)"
+      ariaLabel="Filter by source"
+    />
+  }
+  <span class="panel-toolbar__spacer"></span>
+  <span class="problems-count problems-count--error">
+    <app-icon [icon]="Icon.ERROR" />
+    {{ diagnostics.errorCount() }}
+  </span>
+  <span class="problems-count problems-count--warning">
+    <app-icon [icon]="Icon.WARNING" />
+    {{ diagnostics.warningCount() }}
+  </span>
+</div>
 
+@if (filtered().length > 0) {
   <ul class="problems-list" role="list">
-    @for (diagnostic of diagnostics.all(); track trackBy($index, diagnostic)) {
+    @for (diagnostic of filtered(); track trackBy($index, diagnostic)) {
       <li>
         <button
           type="button"
-          class="problems-row"
           [class]="'problems-row problems-row--' + diagnostic.severity"
           [disabled]="diagnostic.documentId === null"
           (click)="reveal(diagnostic)"
@@ -32,6 +46,11 @@
       </li>
     }
   </ul>
+} @else if (diagnostics.all().length > 0) {
+  <div class="problems-empty">
+    <app-icon [icon]="Icon.SEARCH" />
+    <p>No problems match the filter.</p>
+  </div>
 } @else {
   <div class="problems-empty">
     <app-icon [icon]="Icon.SUCCESS" />

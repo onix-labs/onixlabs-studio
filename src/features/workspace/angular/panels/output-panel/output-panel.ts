@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -15,6 +16,9 @@ import {
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
 import { ITheme, Terminal } from '@xterm/xterm';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Output, OutputChannelInfo } from '@shared/angular/services/output/output';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
@@ -35,26 +39,39 @@ const SELECTION_ALPHA: number = 0.3;
  */
 @Component({
   selector: 'app-output-panel',
-  imports: [],
+  imports: [AppIcon, Dropdown],
   templateUrl: './output-panel.html',
   styleUrl: './output-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OutputPanel implements AfterViewInit, OnDestroy {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Holds the workspace output surface rendered by this panel.
    */
   private readonly output: Output = inject(Output);
 
   /**
-   * Gets the channels available for selection.
-   */
-  public readonly channels: Signal<readonly OutputChannelInfo[]> = this.output.channels;
-
-  /**
    * Gets the active channel rendered by the terminal.
    */
   public readonly activeChannelId: Signal<string> = this.output.activeChannelId;
+
+  /**
+   * Gets the channels as dropdown options for the tool-strip selector.
+   */
+  protected readonly channelOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.output
+        .channels()
+        .map((channel: OutputChannelInfo): DropdownOption => ({
+          value: channel.id,
+          label: channel.label,
+        })),
+  );
 
   /**
    * Holds the theme service used to keep the terminal colours in sync with the application theme.
@@ -177,11 +194,18 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Selects a channel from the selector, revealing it in the terminal.
-   * @param event The change event from the channel selector.
+   * Selects a channel from the tool-strip selector, revealing it in the terminal.
+   * @param channelId The chosen channel identifier.
    */
-  public onSelect(event: Event): void {
-    this.output.setActive((event.target as HTMLSelectElement).value);
+  protected selectChannel(channelId: string): void {
+    this.output.setActive(channelId);
+  }
+
+  /**
+   * Clears the active channel's buffer.
+   */
+  protected clear(): void {
+    this.output.clearChannel(this.activeChannelId());
   }
 
   /**
@@ -239,7 +263,9 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     const light: string = read('--gray-100');
     const ink: string = read('--gray-900');
     return {
-      background: dark ? ink : light,
+      // Match the panel's own background so the terminal reads as part of the panel rather than a
+      // darker inset element; the padding gutter around the canvas then blends in.
+      background: read('--dock-tab-background-color--active'),
       foreground: dark ? light : ink,
       cursor: read(`--accent-${accent}`),
       cursorAccent: dark ? ink : light,
