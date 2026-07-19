@@ -244,6 +244,15 @@ const RECOLOR_QUIET_MS: number = 750;
 const DIAGNOSTIC_QUIET_MS: number = 400;
 
 /**
+ * The delays (in milliseconds) at which a pull-based server's open documents are re-pulled after it
+ * signals initialization is complete. Roslyn only answers pull diagnostics for a document whose
+ * `didOpen` arrived after the solution finished loading, and then only once it has analysed it; a few
+ * spaced pulls catch that result whatever the analysis latency. Each full report replaces the
+ * document's set, so redundant pulls (for example on a clean file) are harmless.
+ */
+const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
+
+/**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
  * first time a document of a supported language opens, mirrors each open document's text to that
  * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
@@ -562,6 +571,43 @@ export class LspClient implements OnDestroy {
     }
     this.ingestDiagnostics(tracked, report.items);
     this.markReady(sessionId);
+  }
+
+  /**
+   * Re-associates a pull-based server's open documents once it signals initialization is complete.
+   *
+   * Roslyn only answers `textDocument/diagnostic` for a document whose `didOpen` arrived *after* the
+   * solution finished loading; the client's original open — sent while the user navigated in, before
+   * `workspace/projectInitializationComplete` — is never picked up, so the pull returns an empty report
+   * forever and no errors surface. Re-sending `didOpen` here (with the document's last-synced text, not
+   * a live-model read, so a backgrounded document still re-associates) makes Roslyn analyse it against
+   * the loaded solution; a few spaced pulls then collect the result. Gated to pull-capable sessions so
+   * push-based servers, which report through `publishDiagnostics`, are left untouched.
+   * @param sessionId The session whose open documents to re-associate.
+   */
+  private reassociateOnInit(sessionId: string): void {
+    if (this.bridge === undefined || !this.pullCapable.has(sessionId)) {
+      return;
+    }
+    for (const tracked of this.tracked.values()) {
+      if (`${tracked.rootPath}::${tracked.serverId}` !== sessionId || !tracked.opened) {
+        continue;
+      }
+      // Re-send didOpen with the document's last-synced text so the server associates it with the
+      // now-loaded solution, then pull a few times as it analyses.
+      tracked.version += 1;
+      this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
+        textDocument: {
+          uri: tracked.uri,
+          languageId: tracked.languageId,
+          version: tracked.version,
+          text: tracked.text,
+        },
+      });
+      for (const delay of REASSOCIATE_PULL_DELAYS_MS) {
+        setTimeout((): void => void this.pullDiagnostics(sessionId, tracked), delay);
+      }
+    }
   }
 
   /**
@@ -1100,6 +1146,7 @@ export class LspClient implements OnDestroy {
     // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
     if (message.method === 'workspace/projectInitializationComplete') {
       this.markReady(message.sessionId);
+      this.reassociateOnInit(message.sessionId);
       this.scheduleRecolor(message.sessionId);
       return;
     }

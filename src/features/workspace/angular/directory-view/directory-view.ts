@@ -347,6 +347,9 @@ export class DirectoryView implements OnInit, OnDestroy {
       );
       for (const id of this.documents.removeMissing(present)) {
         this.editorTerminals.remove(id);
+        // Tell the language server the document is gone (a re-parent keeps it; only a real removal
+        // reaches here), so its diagnostics are dropped and it is no longer analysed.
+        this.lspClient.closeDocument(id);
       }
     });
 

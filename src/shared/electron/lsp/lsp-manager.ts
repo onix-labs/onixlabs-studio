@@ -448,6 +448,11 @@ export class LspManager {
       textDocument: {
         synchronization: { dynamicRegistration: true, didSave: true },
         publishDiagnostics: { relatedInformation: true },
+        // Advertise pull diagnostics so a pull-based server (notably the Roslyn C# server, which does
+        // not push `publishDiagnostics`) advertises its `diagnosticProvider` back and answers
+        // `textDocument/diagnostic`; without this the server treats the client as push-only and the
+        // Error List never receives its errors.
+        diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
         completion: { completionItem: { snippetSupport: true } },
         hover: { contentFormat: ['markdown', 'plaintext'] },
         definition: { linkSupport: false },
