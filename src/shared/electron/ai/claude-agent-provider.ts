@@ -574,7 +574,13 @@ export class ClaudeAgentProvider implements AgentProvider {
         if (target !== null && !isWriteWithinRoots(target, confinementRoots)) {
           return {
             behavior: 'deny',
-            message: `Blocked: this write targets a path outside the workspace (${target}).`,
+            // A deliberate hard boundary: the workspace root is the agent's allowed write area, and
+            // this is NOT overridable by approving the action (that is the point — a single approval
+            // must not be able to widen the filesystem boundary). Widening the allowed set is a
+            // configuration decision, coming in #310.
+            message:
+              `Blocked: "${target}" is outside the workspace root — the agent's allowed write ` +
+              `area. This is a fixed safety boundary and cannot be overridden by approving the action.`,
           };
         }
       }
