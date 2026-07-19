@@ -79,6 +79,44 @@ describe('AgentConversations', () => {
     expect(calls[0].args[0]).toEqual(record);
   });
 
+  it('listAll_invokesTheListAllChannelAndReturnsSummaries', async () => {
+    const summary: AgentConversationSummary = {
+      id: 'a',
+      contextId: 'file:/x',
+      title: 't',
+      messageCount: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    stubBridge([summary]);
+    const service: AgentConversations = TestBed.inject(AgentConversations);
+
+    const result: readonly AgentConversationSummary[] = await service.listAll();
+
+    expect(calls[0].channel).toBe(AgentConversationChannel.ListAll);
+    expect(result).toEqual([summary]);
+  });
+
+  it('updateMeta_forwardsThePatch', async () => {
+    stubBridge(null);
+    const service: AgentConversations = TestBed.inject(AgentConversations);
+
+    await service.updateMeta({ id: 'a', title: 'Renamed', categoryId: 'cat1' });
+
+    expect(calls[0].channel).toBe(AgentConversationChannel.UpdateMeta);
+    expect(calls[0].args[0]).toEqual({ id: 'a', title: 'Renamed', categoryId: 'cat1' });
+  });
+
+  it('clearCategory_forwardsTheCategoryId', async () => {
+    stubBridge(undefined);
+    const service: AgentConversations = TestBed.inject(AgentConversations);
+
+    await service.clearCategory('cat1');
+
+    expect(calls[0].channel).toBe(AgentConversationChannel.ClearCategory);
+    expect(calls[0].args).toEqual(['cat1']);
+  });
+
   it('delete_forwardsTheIds', async () => {
     stubBridge(undefined);
     const service: AgentConversations = TestBed.inject(AgentConversations);
@@ -87,6 +125,13 @@ describe('AgentConversations', () => {
 
     expect(calls[0].channel).toBe(AgentConversationChannel.Delete);
     expect(calls[0].args).toEqual([['a', 'b']]);
+  });
+
+  it('listAll_whenBridgeAbsent_returnsEmpty', async () => {
+    delete (window as unknown as { bridge?: unknown }).bridge;
+    const service: AgentConversations = TestBed.inject(AgentConversations);
+
+    expect(await service.listAll()).toEqual([]);
   });
 
   it('list_whenBridgeAbsent_returnsEmpty', async () => {

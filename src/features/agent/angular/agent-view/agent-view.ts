@@ -15,6 +15,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Icon } from '@shared/angular/icons/icon';
@@ -29,7 +30,7 @@ import { Icon } from '@shared/angular/icons/icon';
 @Component({
   selector: 'app-agent-view',
   imports: [PanelLayout, Panel, AgentChat, AgentConversationList, ToolPanel],
-  providers: [Agent, AgentConversation],
+  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' }],
   templateUrl: './agent-view.html',
   styleUrl: './agent-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

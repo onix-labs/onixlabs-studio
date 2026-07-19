@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 import {
+  AgentConversationAgentType,
   AgentConversationSummary,
   ConversationContext,
   contextIdOf,
@@ -29,6 +30,8 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import {
   AGENT_CONVERSATION_CONTEXT,
+  AGENT_CONVERSATION_KIND,
+  agentTypeFromContextKind,
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
@@ -100,6 +103,15 @@ export class AgentConversation implements AgentSessionHandle {
     {
       optional: true,
     },
+  );
+
+  /**
+   * Holds the agent type this host declares for the conversations it creates (its primary metadata
+   * chip), or null when the host declares none — in which case a type is derived from the context kind.
+   */
+  private readonly declaredAgentType: AgentConversationAgentType | null = inject(
+    AGENT_CONVERSATION_KIND,
+    { optional: true },
   );
 
   /**
@@ -210,6 +222,18 @@ export class AgentConversation implements AgentSessionHandle {
   private createdAt: number = 0;
 
   /**
+   * Holds the open conversation's user-chosen custom title, or null when its title is auto-derived from
+   * the transcript. Kept so autosaves preserve a rename instead of re-deriving the title.
+   */
+  private customTitle: string | null = null;
+
+  /**
+   * Holds the open conversation's category id, or null when it is uncategorized. Kept so autosaves
+   * preserve the conversation's filing.
+   */
+  private categoryId: string | null = null;
+
+  /**
    * Holds the transcript reference last persisted or restored, so the autosave effect can skip an
    * unchanged transcript (including one it just rehydrated).
    */
@@ -239,6 +263,8 @@ export class AgentConversation implements AgentSessionHandle {
         if (items.length === 0) {
           this.currentIdState.set(null);
           this.createdAt = 0;
+          this.customTitle = null;
+          this.categoryId = null;
           this.savedRef = items;
           this.savedQueueRef = queue;
           return;
@@ -437,6 +463,8 @@ export class AgentConversation implements AgentSessionHandle {
     );
     this.currentIdState.set(record.id);
     this.createdAt = record.createdAt;
+    this.customTitle = record.titleIsCustom ? record.title : null;
+    this.categoryId = record.categoryId ?? null;
     // Capture the restored references so the autosave effect does not immediately re-save them.
     this.savedRef = this.agent.items();
     this.savedQueueRef = this.agent.queued();
@@ -461,13 +489,77 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
-   * Reloads the stored summaries for the current context.
+   * Reloads the stored summaries. Every conversation is listed, across all contexts, so the history
+   * tree shows all conversations regardless of the agent that created them.
    */
   private async reloadSummaries(): Promise<void> {
-    const summaries: readonly AgentConversationSummary[] = await this.store.list(
-      contextIdOf(this.context()),
-    );
+    const summaries: readonly AgentConversationSummary[] = await this.store.listAll();
     this.summariesState.set(summaries);
+  }
+
+  /**
+   * Reloads the stored summaries on demand, so callers (the history list after a rename, move, or
+   * category change) can refresh what is shown.
+   */
+  public async refresh(): Promise<void> {
+    await this.reloadSummaries();
+  }
+
+  /**
+   * Renames a conversation, giving it a user-chosen custom title that survives new messages. When the
+   * renamed conversation is the one currently open, the change is mirrored into this session so a later
+   * autosave preserves it.
+   * @param id The conversation id to rename.
+   * @param title The new title; a blank title is ignored.
+   */
+  public async rename(id: string, title: string): Promise<void> {
+    const trimmed: string = title.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    if (id === this.currentIdState()) {
+      this.customTitle = trimmed;
+    }
+    await this.store.updateMeta({ id, title: trimmed });
+    await this.reloadSummaries();
+  }
+
+  /**
+   * Files a conversation under a category, or clears its category when given null. A conversation always
+   * remains visible under All Conversations regardless.
+   * @param id The conversation id.
+   * @param categoryId The category id to file it under, or null to remove it from its category.
+   */
+  public async setCategory(id: string, categoryId: string | null): Promise<void> {
+    if (id === this.currentIdState()) {
+      this.categoryId = categoryId;
+    }
+    await this.store.updateMeta({ id, categoryId });
+    await this.reloadSummaries();
+  }
+
+  /**
+   * Duplicates a conversation into a new, independent record (its own id, no provider session so the
+   * copy starts its own memory), filed under the same category and marked as a copy in its title.
+   * @param id The conversation id to duplicate.
+   */
+  public async duplicate(id: string): Promise<void> {
+    const record: StoredAgentConversation | null = await this.store.load(id);
+    if (record === null) {
+      return;
+    }
+    const now: number = Date.now();
+    const copy: StoredAgentConversation = {
+      ...record,
+      id: crypto.randomUUID(),
+      title: `${record.title} (copy)`,
+      titleIsCustom: true,
+      createdAt: now,
+      updatedAt: now,
+      sessionId: null,
+    };
+    await this.store.save(copy);
+    await this.reloadSummaries();
   }
 
   /**
@@ -482,10 +574,16 @@ export class AgentConversation implements AgentSessionHandle {
     const createdAt: number = this.createdAt > 0 ? this.createdAt : Date.now();
     this.currentIdState.set(null);
     this.createdAt = 0;
+    const context: ConversationContext = this.context();
+    const contextLabel: string | undefined = this.contextLabelOf(context);
     const record: StoredAgentConversation = {
       id,
-      contextId: contextIdOf(this.context()),
-      title: this.deriveTitle(branch.origin),
+      contextId: contextIdOf(context),
+      title: this.customTitle ?? this.deriveTitle(branch.origin),
+      titleIsCustom: this.customTitle !== null,
+      agentType: this.agentTypeOf(context),
+      ...(contextLabel !== undefined ? { contextLabel } : {}),
+      categoryId: this.categoryId,
       provider: this.agent.provider(),
       model: this.agent.model(),
       createdAt,
@@ -543,10 +641,15 @@ export class AgentConversation implements AgentSessionHandle {
     const messageCount: number = items.filter(
       (item: AgentItem): boolean => item.kind === 'user' || item.kind === 'assistant',
     ).length;
+    const contextLabel: string | undefined = this.contextLabelOf(context);
     const record: StoredAgentConversation = {
       id,
       contextId: contextIdOf(context),
-      title: this.deriveTitle(items),
+      title: this.customTitle ?? this.deriveTitle(items),
+      titleIsCustom: this.customTitle !== null,
+      agentType: this.agentTypeOf(context),
+      ...(contextLabel !== undefined ? { contextLabel } : {}),
+      categoryId: this.categoryId,
       provider: this.agent.provider(),
       model: this.agent.model(),
       createdAt: this.createdAt,
@@ -560,6 +663,33 @@ export class AgentConversation implements AgentSessionHandle {
     };
     await this.store.save(record);
     await this.reloadSummaries();
+  }
+
+  /**
+   * Resolves the agent type recorded on the conversations this host creates: the host's explicitly
+   * declared type when it provides one, else a type derived from the conversation's context kind.
+   * @param context The conversation context.
+   * @returns Returns the agent type.
+   */
+  private agentTypeOf(context: ConversationContext): AgentConversationAgentType {
+    return this.declaredAgentType ?? agentTypeFromContextKind(context.kind);
+  }
+
+  /**
+   * Derives the short secondary-context label shown as a grey chip: the file/folder base name for a
+   * file, workspace, or repository context, or undefined for the global bucket (which has no meaningful
+   * location).
+   * @param context The conversation context.
+   * @returns Returns the label, or undefined when there is none.
+   */
+  private contextLabelOf(context: ConversationContext): string | undefined {
+    if (context.kind === 'global' || context.key.length === 0) {
+      return undefined;
+    }
+    const parts: readonly string[] = context.key
+      .split(/[\\/]/)
+      .filter((part: string): boolean => part.length > 0);
+    return parts.length > 0 ? parts[parts.length - 1] : undefined;
   }
 
   /**

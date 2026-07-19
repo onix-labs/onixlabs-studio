@@ -2,13 +2,16 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AgentConversationSummary } from '@shared/api/agent-conversation-channels';
+import { AgentCategory } from '@shared/api/agent-category-channels';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AgentCategories } from '@shared/angular/services/agent-categories/agent-categories';
 import { AgentConversationList } from './agent-conversation-list';
 
 describe('AgentConversationList', () => {
   let fixture: ComponentFixture<AgentConversationList>;
   let host: HTMLElement;
   let summaries: WritableSignal<readonly AgentConversationSummary[]>;
+  let categories: WritableSignal<readonly AgentCategory[]>;
   let opened: string[];
 
   const SUMMARY: AgentConversationSummary = {
@@ -20,9 +23,46 @@ describe('AgentConversationList', () => {
     messageCount: 4,
   };
 
+  const OTHER: AgentConversationSummary = {
+    id: 'c2',
+    contextId: 'file:/repo/foo.cs',
+    title: 'Northern lights',
+    agentType: 'code',
+    contextLabel: 'foo.cs',
+    createdAt: 3,
+    updatedAt: 4,
+    messageCount: 2,
+  };
+
+  /**
+   * Gets the toolbar tool button whose accessible label contains the given text (the icon-only buttons
+   * carry their label on aria-label rather than as text).
+   * @param label The aria-label text to match.
+   * @returns Returns the button.
+   */
+  function tool(label: string): HTMLButtonElement {
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.history__tool')).find(
+      (button: HTMLButtonElement): boolean =>
+        (button.getAttribute('aria-label') ?? '').includes(label),
+    )!;
+  }
+
+  /**
+   * Gets the checkbox inputs of the conversation leaves (not the node rows).
+   * @returns Returns the inputs.
+   */
+  function itemChecks(): HTMLInputElement[] {
+    return Array.from(
+      host.querySelectorAll<HTMLInputElement>(
+        '.history__leaf .history__check input[type="checkbox"]',
+      ),
+    );
+  }
+
   beforeEach(async () => {
     opened = [];
     summaries = signal<readonly AgentConversationSummary[]>([]);
+    categories = signal<readonly AgentCategory[]>([]);
     const conversationStub: Partial<AgentConversation> = {
       summaries,
       currentId: signal<string | null>(null),
@@ -30,12 +70,26 @@ describe('AgentConversationList', () => {
         opened.push(id);
         return Promise.resolve();
       },
+      refresh: (): Promise<void> => Promise.resolve(),
+      rename: (): Promise<void> => Promise.resolve(),
+      setCategory: (): Promise<void> => Promise.resolve(),
+      duplicate: (): Promise<void> => Promise.resolve(),
       delete: (): Promise<void> => Promise.resolve(),
+    };
+    const categoriesStub: Partial<AgentCategories> = {
+      categories,
+      create: (): Promise<AgentCategory | null> => Promise.resolve(null),
+      update: (): Promise<void> => Promise.resolve(),
+      delete: (): Promise<void> => Promise.resolve(),
+      reload: (): Promise<void> => Promise.resolve(),
     };
 
     await TestBed.configureTestingModule({
       imports: [AgentConversationList],
-      providers: [{ provide: AgentConversation, useValue: conversationStub }],
+      providers: [
+        { provide: AgentConversation, useValue: conversationStub },
+        { provide: AgentCategories, useValue: categoriesStub },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AgentConversationList);
@@ -47,106 +101,114 @@ describe('AgentConversationList', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('render_whenEmpty_showsTheEmptyMessage', () => {
-    expect(host.querySelector('.list-empty')?.textContent).toContain('No saved');
+  it('render_whenEmpty_showsTheEmptyMessageUnderAllConversations', () => {
+    expect(host.querySelector('.history__empty')?.textContent).toContain('No conversations yet');
+    expect(host.querySelector('.history__node-name')?.textContent).toContain('All Conversations');
   });
 
-  it('render_listsEachSummaryAsASharedListViewRow', () => {
+  it('render_listsEachConversationWithItsAgentTypeChip', () => {
+    summaries.set([OTHER]);
+    fixture.detectChanges();
+
+    const leaf: HTMLElement | null = host.querySelector<HTMLElement>('.history__leaf');
+    expect(leaf).not.toBeNull();
+    expect(leaf?.textContent).toContain('Northern lights');
+    // The recorded agent type and the context label both render as chips.
+    const chips: string[] = Array.from(leaf!.querySelectorAll<HTMLElement>('.history__chip')).map(
+      (chip: HTMLElement): string => chip.textContent?.trim() ?? '',
+    );
+    expect(chips).toContain('Code');
+    expect(chips).toContain('foo.cs');
+  });
+
+  it('render_whenAgentTypeIsAbsent_derivesTheChipFromTheContext', () => {
     summaries.set([SUMMARY]);
     fixture.detectChanges();
 
-    const row: HTMLElement | null = host.querySelector<HTMLElement>('.list-row');
-    expect(row).not.toBeNull();
-    expect(row?.textContent).toContain('From east to west');
-    expect(row?.textContent).toContain('4 messages');
+    // A global conversation with no recorded type falls back to the Agent chip.
+    const chips: string[] = Array.from(host.querySelectorAll<HTMLElement>('.history__chip')).map(
+      (chip: HTMLElement): string => chip.textContent?.trim() ?? '',
+    );
+    expect(chips).toContain('Agent');
   });
 
-  it('open_whenRowClicked_rehydratesThatConversation', () => {
+  it('open_whenAConversationLeafIsClicked_rehydratesIt', () => {
     summaries.set([SUMMARY]);
     fixture.detectChanges();
 
-    host.querySelector<HTMLElement>('.list-row')!.click();
+    host.querySelector<HTMLElement>('.history__leaf-main')!.click();
 
     expect(opened).toEqual(['c1']);
   });
-
-  const OTHER: AgentConversationSummary = {
-    id: 'c2',
-    contextId: 'global:',
-    title: 'Northern lights',
-    createdAt: 3,
-    updatedAt: 4,
-    messageCount: 2,
-  };
 
   it('checkbox_click_togglesWithoutOpeningTheConversation', () => {
     summaries.set([SUMMARY]);
     fixture.detectChanges();
 
-    const check: HTMLInputElement = host.querySelector<HTMLInputElement>(
-      '.conversations__check input[type="checkbox"]',
-    )!;
-    check.click();
+    itemChecks()[0].click();
     fixture.detectChanges();
 
     expect(opened).toEqual([]);
+    expect(tool('Delete').disabled).toBe(false);
   });
 
-  it('delete_isAlwaysShownButDisabledUntilARowIsChecked', () => {
+  it('delete_isDisabledUntilAConversationIsChecked', () => {
     summaries.set([SUMMARY]);
     fixture.detectChanges();
 
-    const del: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.conversations__delete')!;
-    expect(del).not.toBeNull();
-    expect(del.disabled).toBe(true);
+    expect(tool('Delete').disabled).toBe(true);
 
-    host
-      .querySelector<HTMLInputElement>('.conversations__check input[type="checkbox"]')!
-      .click();
+    itemChecks()[0].click();
     fixture.detectChanges();
 
-    expect(del.disabled).toBe(false);
+    expect(tool('Delete').disabled).toBe(false);
   });
 
-  it('selectAll_togglesBetweenCheckingAndClearingEveryVisibleRow', () => {
+  it('selectAll_togglesEveryVisibleConversation', () => {
     summaries.set([SUMMARY, OTHER]);
     fixture.detectChanges();
 
-    const selectAll: HTMLButtonElement =
-      host.querySelector<HTMLButtonElement>('.conversations__select-all')!;
-    expect(selectAll.textContent?.trim()).toBe('Select All');
-
-    selectAll.click();
+    tool('Select all').click();
     fixture.detectChanges();
 
-    const checks: () => HTMLInputElement[] = (): HTMLInputElement[] =>
-      Array.from(
-        host.querySelectorAll<HTMLInputElement>('.conversations__check input[type="checkbox"]'),
-      );
-    expect(checks().every((check: HTMLInputElement): boolean => check.checked)).toBe(true);
-    // With everything checked the toggle offers to clear the selection instead.
-    expect(selectAll.textContent?.trim()).toBe('Deselect All');
-    expect(host.querySelector<HTMLButtonElement>('.conversations__delete')!.disabled).toBe(false);
+    expect(itemChecks().every((check: HTMLInputElement): boolean => check.checked)).toBe(true);
+    expect(tool('Deselect all')).not.toBeUndefined();
 
-    selectAll.click();
+    tool('Deselect all').click();
     fixture.detectChanges();
 
-    expect(checks().some((check: HTMLInputElement): boolean => check.checked)).toBe(false);
-    expect(selectAll.textContent?.trim()).toBe('Select All');
-    expect(host.querySelector<HTMLButtonElement>('.conversations__delete')!.disabled).toBe(true);
+    expect(itemChecks().some((check: HTMLInputElement): boolean => check.checked)).toBe(false);
   });
 
-  it('search_filtersRowsByTitle', () => {
+  it('search_filtersConversationsByTitle', () => {
     summaries.set([SUMMARY, OTHER]);
     fixture.detectChanges();
 
-    const search: HTMLInputElement = host.querySelector<HTMLInputElement>('.conversations__search')!;
+    const search: HTMLInputElement = host.querySelector<HTMLInputElement>('.history__search')!;
     search.value = 'northern';
     search.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.list-row'));
-    expect(rows.length).toBe(1);
-    expect(rows[0].textContent?.replace(/\s+/g, ' ')).toContain('Northern lights');
+    const leaves: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.history__leaf'));
+    expect(leaves.length).toBe(1);
+    expect(leaves[0].textContent?.replace(/\s+/g, ' ')).toContain('Northern lights');
+  });
+
+  it('categories_renderAsNodesCountingTheirFiledConversations', () => {
+    categories.set([{ id: 'cat1', name: 'Work', sortOrder: 0, createdAt: 0 }]);
+    summaries.set([SUMMARY, { ...OTHER, categoryId: 'cat1' }]);
+    fixture.detectChanges();
+
+    const names: string[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.history__node-name'),
+    ).map((element: HTMLElement): string => element.textContent?.trim() ?? '');
+    expect(names).toContain('Work');
+
+    // The Work node reports one filed conversation; All Conversations reports both.
+    const counts: string[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.history__count'),
+    ).map((element: HTMLElement): string => element.textContent?.trim() ?? '');
+    expect(counts).toContain('2');
+    expect(counts).toContain('1');
   });
 });

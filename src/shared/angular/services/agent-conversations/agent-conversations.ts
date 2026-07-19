@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import {
   AgentConversationChannel,
   AgentConversationClient,
+  AgentConversationMetaPatch,
   AgentConversationSummary,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
@@ -39,6 +40,18 @@ export class AgentConversations implements AgentConversationClient {
   }
 
   /**
+   * Lists the summaries of every stored conversation, across all contexts, newest first.
+   * @returns Returns the summaries (empty outside Electron).
+   */
+  public async listAll(): Promise<readonly AgentConversationSummary[]> {
+    return (
+      (await this.bridge?.invoke<readonly AgentConversationSummary[]>(
+        AgentConversationChannel.ListAll,
+      )) ?? []
+    );
+  }
+
+  /**
    * Loads a full conversation by id.
    * @param id The conversation id.
    * @returns Returns the conversation, or null when it does not exist.
@@ -66,6 +79,30 @@ export class AgentConversations implements AgentConversationClient {
         conversation,
       )) ?? null
     );
+  }
+
+  /**
+   * Patches a single conversation's metadata (title, category) in place.
+   * @param patch The metadata patch.
+   * @returns Returns the updated summary, or null when it could not be applied.
+   */
+  public async updateMeta(
+    patch: AgentConversationMetaPatch,
+  ): Promise<AgentConversationSummary | null> {
+    return (
+      (await this.bridge?.invoke<AgentConversationSummary | null>(
+        AgentConversationChannel.UpdateMeta,
+        patch,
+      )) ?? null
+    );
+  }
+
+  /**
+   * Clears the given category from every conversation filed under it.
+   * @param categoryId The category id to clear.
+   */
+  public async clearCategory(categoryId: string): Promise<void> {
+    await this.bridge?.invoke<void>(AgentConversationChannel.ClearCategory, categoryId);
   }
 
   /**

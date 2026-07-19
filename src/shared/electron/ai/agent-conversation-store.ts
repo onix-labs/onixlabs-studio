@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import {
   AgentConversationChannel,
+  AgentConversationMetaPatch,
   AgentConversationSummary,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
@@ -42,6 +43,10 @@ export class AgentConversationStore {
         this.list(contextId),
     );
     ipcMain.handle(
+      AgentConversationChannel.ListAll,
+      (): readonly AgentConversationSummary[] => this.listAll(),
+    );
+    ipcMain.handle(
       AgentConversationChannel.Load,
       (_event: IpcMainInvokeEvent, id: unknown): StoredAgentConversation | null => this.load(id),
     );
@@ -49,6 +54,15 @@ export class AgentConversationStore {
       AgentConversationChannel.Save,
       (_event: IpcMainInvokeEvent, value: unknown): AgentConversationSummary | null =>
         this.save(value),
+    );
+    ipcMain.handle(
+      AgentConversationChannel.UpdateMeta,
+      (_event: IpcMainInvokeEvent, patch: unknown): AgentConversationSummary | null =>
+        this.updateMeta(patch),
+    );
+    ipcMain.handle(
+      AgentConversationChannel.ClearCategory,
+      (_event: IpcMainInvokeEvent, categoryId: unknown): void => this.clearCategory(categoryId),
     );
     ipcMain.handle(
       AgentConversationChannel.Delete,
@@ -67,6 +81,20 @@ export class AgentConversationStore {
     }
     return this.readIndex()
       .filter((summary: AgentConversationSummary): boolean => summary.contextId === contextId)
+      .sort(
+        (a: AgentConversationSummary, b: AgentConversationSummary): number =>
+          b.updatedAt - a.updatedAt,
+      );
+  }
+
+  /**
+   * Lists every stored summary, across all contexts, newest first. Backs the history tree, which shows
+   * all conversations regardless of the agent that created them.
+   * @returns Returns all summaries.
+   */
+  private listAll(): readonly AgentConversationSummary[] {
+    return this.readIndex()
+      .slice()
       .sort(
         (a: AgentConversationSummary, b: AgentConversationSummary): number =>
           b.updatedAt - a.updatedAt,
@@ -114,14 +142,7 @@ export class AgentConversationStore {
         encoding: 'utf8',
         mode: 0o600,
       });
-      const summary: AgentConversationSummary = {
-        id: value.id,
-        contextId: value.contextId,
-        title: value.title,
-        messageCount: value.messageCount,
-        createdAt: value.createdAt,
-        updatedAt: value.updatedAt,
-      };
+      const summary: AgentConversationSummary = this.summaryOf(value);
       const others: readonly AgentConversationSummary[] = this.readIndex().filter(
         (existing: AgentConversationSummary): boolean => existing.id !== value.id,
       );
@@ -130,6 +151,69 @@ export class AgentConversationStore {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Patches a single conversation's mutable metadata (title, custom-title flag, category) in place,
+   * rewriting its file and index entry without touching its transcript.
+   * @param patch The metadata patch.
+   * @returns Returns the updated summary, or null when the conversation is absent or the patch failed.
+   */
+  private updateMeta(patch: unknown): AgentConversationSummary | null {
+    if (typeof patch !== 'object' || patch === null) {
+      return null;
+    }
+    const { id, title, categoryId } = patch as Partial<AgentConversationMetaPatch>;
+    const record: StoredAgentConversation | null = this.load(id);
+    if (record === null) {
+      return null;
+    }
+    const next: StoredAgentConversation = {
+      ...record,
+      ...(typeof title === 'string' ? { title, titleIsCustom: true } : {}),
+      ...(categoryId !== undefined ? { categoryId } : {}),
+      updatedAt: record.updatedAt,
+    };
+    return this.save(next);
+  }
+
+  /**
+   * Clears the given category from every conversation filed under it, rewriting each affected file and
+   * the index. Never deletes a conversation.
+   * @param categoryId The category id to clear.
+   */
+  private clearCategory(categoryId: unknown): void {
+    if (typeof categoryId !== 'string' || categoryId.length === 0) {
+      return;
+    }
+    for (const summary of this.readIndex()) {
+      if (summary.categoryId === categoryId) {
+        this.updateMeta({ id: summary.id, categoryId: null });
+      }
+    }
+  }
+
+  /**
+   * Builds the lightweight index summary from a full conversation, carrying only the metadata fields
+   * that are present so the index stays compact.
+   * @param value The full conversation.
+   * @returns Returns the summary.
+   */
+  private summaryOf(value: StoredAgentConversation): AgentConversationSummary {
+    return {
+      id: value.id,
+      contextId: value.contextId,
+      title: value.title,
+      messageCount: value.messageCount,
+      createdAt: value.createdAt,
+      updatedAt: value.updatedAt,
+      ...(value.titleIsCustom ? { titleIsCustom: true } : {}),
+      ...(value.agentType !== undefined ? { agentType: value.agentType } : {}),
+      ...(value.contextLabel !== undefined ? { contextLabel: value.contextLabel } : {}),
+      ...(value.categoryId !== undefined && value.categoryId !== null
+        ? { categoryId: value.categoryId }
+        : {}),
+    };
   }
 
   /**
