@@ -14,6 +14,16 @@ import { AiProviderId } from './ai-provider-types';
 export type AiPermissionPosture = 'prompt' | 'auto-edits' | 'auto-all';
 
 /**
+ * A user's default decision for a single gateable tool, consulted by the permission gate ahead of the
+ * interactive prompt (#309).
+ *
+ * - `allow`: run the tool without prompting (still subject to the non-overridable write confinement).
+ * - `ask`: the default — preserve today's behaviour (posture decides, otherwise prompt).
+ * - `deny`: refuse the tool outright, even when the posture would auto-allow it.
+ */
+export type AiToolPolicy = 'allow' | 'ask' | 'deny';
+
+/**
  * Identifies how much autonomy the agent runs with.
  *
  * - `agent`: the full tool-using agent — read, edit, and execute (subject to the permission posture).
@@ -100,6 +110,14 @@ export interface AiRunRequest {
    * Gets how much the agent may do without asking the user first.
    */
   readonly permissionPosture: AiPermissionPosture;
+
+  /**
+   * Gets the user's default allow/ask/deny decision per gateable tool, keyed by the tool's display
+   * name (#309). Consulted by the permission gate ahead of the prompt: `deny` refuses even when the
+   * posture would auto-allow; `allow` skips the prompt; a missing entry (or `ask`) preserves today's
+   * posture-driven behaviour. Absent or empty when the user has set no policies.
+   */
+  readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
    * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).

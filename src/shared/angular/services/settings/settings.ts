@@ -1,5 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiConnection, AiPermissionPosture } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
 import {
   AiConnectionModels,
   SETTINGS_BY_KEY,
@@ -566,6 +566,13 @@ export class Settings {
     this.value('ai.permissionPosture');
 
   /**
+   * Gets the user's default allow/ask/deny decision per gateable tool, keyed by tool display name.
+   * A missing entry means "ask" (the posture decides).
+   */
+  public readonly aiToolPolicies: Signal<Readonly<Record<string, AiToolPolicy>>> =
+    this.value('ai.toolPolicies');
+
+  /**
    * Gets the per-request token cap (0 for no cap).
    */
   public readonly aiTokenCap: Signal<number> = this.value('ai.tokenCap');
@@ -876,6 +883,22 @@ export class Settings {
    */
   public setAiPermissionPosture(posture: AiPermissionPosture): void {
     this.set('ai.permissionPosture', posture);
+  }
+
+  /**
+   * Sets the user's default policy for a single tool, keyed by its display name. Setting a tool back
+   * to `ask` drops it from the map (ask is the default, so the map stays sparse).
+   * @param tool The tool's display name.
+   * @param policy The default policy for the tool.
+   */
+  public setAiToolPolicy(tool: string, policy: AiToolPolicy): void {
+    const next: Record<string, AiToolPolicy> = { ...this.aiToolPolicies() };
+    if (policy === 'ask') {
+      delete next[tool];
+    } else {
+      next[tool] = policy;
+    }
+    this.set('ai.toolPolicies', next);
   }
 
   /**

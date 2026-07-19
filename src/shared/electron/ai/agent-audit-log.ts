@@ -2,11 +2,12 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import { join } from 'node:path';
 
 /**
- * How a gated mutating/exec action came to be allowed (#308): the user answered the prompt
- * (`interactive`), a remembered global/workspace rule allowed it (`remembered`), a session grant
- * allowed it (`session`), or the run's permission posture auto-allowed it (`posture`).
+ * How a gated mutating/exec action came to be allowed: the user answered the prompt (`interactive`),
+ * a remembered global/workspace rule allowed it (`remembered`), a session grant allowed it
+ * (`session`), the run's permission posture auto-allowed it (`posture`), or the user's per-tool
+ * default policy allowed it (`policy`, #309).
  */
-export type AuditGrantSource = 'interactive' | 'remembered' | 'session' | 'posture';
+export type AuditGrantSource = 'interactive' | 'remembered' | 'session' | 'posture' | 'policy';
 
 /**
  * A single audit record: one granted mutating/exec agent action.

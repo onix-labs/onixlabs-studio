@@ -16,6 +16,7 @@ import type {
   AiPermissionReply,
   AiProviderInfo,
   AiRunRequest,
+  AiToolPolicy,
   AiRunState,
   AiSteerRequest,
 } from '@shared/api/ai-types';
@@ -38,6 +39,7 @@ import { AiSdkAdapter } from './ai-sdk-adapter';
 import { isConnection, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { sanitizeToolPolicies } from './tool-policy';
 import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
@@ -460,6 +462,9 @@ export class AiManager {
     )
       ? request.permissionPosture
       : 'prompt';
+    const toolPolicies: Readonly<Record<string, AiToolPolicy>> = sanitizeToolPolicies(
+      request.toolPolicies,
+    );
     const tokenCap: number =
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
@@ -490,6 +495,7 @@ export class AiManager {
       workspaceRoot: request.workspaceRoot,
       model,
       permissionPosture,
+      toolPolicies,
       tokenCap,
       owningTabId: request.owningTabId ?? null,
       surface: request.surface ?? 'editor',
@@ -519,8 +525,8 @@ export class AiManager {
           name,
           detail,
         ),
-      recordAutoGrant: (name: string, detail: string): void =>
-        this.recordGrant(name, detail, request.workspaceRoot, 'posture'),
+      recordAutoGrant: (name: string, detail: string, source: 'posture' | 'policy'): void =>
+        this.recordGrant(name, detail, request.workspaceRoot, source),
       requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
       requestEditDecision: (

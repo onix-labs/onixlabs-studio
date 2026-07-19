@@ -1,6 +1,6 @@
 import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
 import type { AccentColor } from '@shared/angular/services/theme/theme';
-import type { AiConnection, AiPermissionPosture } from '@shared/api/ai-types';
+import type { AiConnection, AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
   BraceStyle,
@@ -80,6 +80,7 @@ export interface SettingsValues {
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
+  readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
 
@@ -583,6 +584,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'prompt',
+      },
+      {
+        key: 'ai.toolPolicies',
+        title: 'Tool permissions',
+        description:
+          'Default allow/ask/deny per tool. Deny blocks a tool even when the posture would ' +
+          'auto-allow it; Allow skips the prompt; Ask uses the posture above.',
+        control: { kind: 'custom', component: 'ai-tool-policies' },
+        default: {},
       },
       {
         key: 'ai.tokenCap',

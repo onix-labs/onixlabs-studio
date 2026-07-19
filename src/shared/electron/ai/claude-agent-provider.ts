@@ -31,6 +31,7 @@ import {
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
+  type AiToolPolicy,
 } from '@shared/api/ai-types';
 import type {
   AgentAuth,
@@ -584,6 +585,23 @@ export class ClaudeAgentProvider implements AgentProvider {
           };
         }
       }
+      // Per-tool default policy (#309): the user's allow/ask/deny default, consulted ahead of the
+      // posture and the prompt. `deny` refuses even when the posture would auto-allow; `allow` grants
+      // without prompting (but the write confinement above still applies — it is not overridable). An
+      // unset tool (or `ask`) falls through to the posture/prompt logic below, preserving today's
+      // behaviour. Read-only tools never reach here, so no exclusion is needed.
+      const displayName: string = prettyToolName(toolName);
+      const policy: AiToolPolicy = context.toolPolicies[displayName] ?? 'ask';
+      if (policy === 'deny') {
+        return {
+          behavior: 'deny',
+          message: `Blocked: the ${displayName} tool is set to Deny in your agent settings.`,
+        };
+      }
+      if (policy === 'allow') {
+        context.recordAutoGrant(displayName, summarizeToolInput(input), 'policy');
+        return { behavior: 'allow', updatedInput: input };
+      }
       const autoAllowed: boolean =
         READ_ONLY_TOOLS.includes(toolName) ||
         posture === 'auto-all' ||
@@ -593,7 +611,7 @@ export class ClaudeAgentProvider implements AgentProvider {
         // but are deliberately not logged. Interactive/remembered/session grants are logged by the
         // permission broker, so only the posture path is reported here.
         if (!READ_ONLY_TOOLS.includes(toolName)) {
-          context.recordAutoGrant(prettyToolName(toolName), summarizeToolInput(input));
+          context.recordAutoGrant(displayName, summarizeToolInput(input), 'posture');
         }
         return { behavior: 'allow', updatedInput: input };
       }

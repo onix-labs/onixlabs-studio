@@ -874,6 +874,7 @@ export class Agent {
       workspaceRoot: this.workspace.root()?.path ?? null,
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
+      toolPolicies: this.settings.aiToolPolicies(),
       tokenCap: this.settings.aiTokenCap(),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       owningTabId,
