@@ -40,6 +40,7 @@ import { isConnection, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { sanitizeToolPolicies } from './tool-policy';
+import { sanitizeWritePaths } from './write-confinement';
 import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
@@ -460,6 +461,8 @@ export class AiManager {
     const toolPolicies: Readonly<Record<string, AiToolPolicy>> = sanitizeToolPolicies(
       request.toolPolicies,
     );
+    const allowedWritePaths: readonly string[] = sanitizeWritePaths(request.allowedWritePaths, true);
+    const deniedWritePaths: readonly string[] = sanitizeWritePaths(request.deniedWritePaths, false);
     const tokenCap: number =
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
@@ -491,6 +494,8 @@ export class AiManager {
       model,
       permissionPosture,
       toolPolicies,
+      allowedWritePaths,
+      deniedWritePaths,
       tokenCap,
       owningTabId: request.owningTabId ?? null,
       surface: request.surface ?? 'editor',

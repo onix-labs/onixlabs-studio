@@ -81,6 +81,8 @@ export interface SettingsValues {
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
+  readonly 'ai.allowedWritePaths': readonly string[];
+  readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
 
@@ -593,6 +595,23 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'auto-allow it; Allow skips the prompt; Ask uses the posture above.',
         control: { kind: 'custom', component: 'ai-tool-policies' },
         default: {},
+      },
+      {
+        key: 'ai.allowedWritePaths',
+        title: 'Allowed write paths',
+        description:
+          'Extra directories the agent may write to beyond the workspace root (absolute paths).',
+        control: { kind: 'custom', component: 'ai-write-paths' },
+        default: [],
+      },
+      {
+        key: 'ai.deniedWritePaths',
+        title: 'Denied write paths',
+        description:
+          'Paths the agent may never write to, even inside the workspace: an absolute path, or a ' +
+          'name matched anywhere in the path (e.g. .git, .env).',
+        control: { kind: 'custom', component: 'ai-write-paths' },
+        default: [],
       },
       {
         key: 'ai.tokenCap',

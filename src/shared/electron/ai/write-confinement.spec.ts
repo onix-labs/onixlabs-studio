@@ -1,4 +1,9 @@
-import { CONFINED_WRITE_TOOLS, isWriteWithinRoots, writeTargetPath } from './write-confinement';
+import {
+  CONFINED_WRITE_TOOLS,
+  isWriteDenied,
+  isWriteWithinRoots,
+  writeTargetPath,
+} from './write-confinement';
 
 /**
  * A POSIX-style workspace root used as the baseline for the confinement tests.
@@ -69,6 +74,35 @@ describe('write-confinement', () => {
     it('isWriteWithinRoots_whenNoRoots_isUnconfined', () => {
       // An empty root set means confinement is inactive (e.g. a no-workspace run).
       expect(isWriteWithinRoots('/etc/passwd', [])).toBe(true);
+    });
+  });
+
+  describe('isWriteDenied', () => {
+    it('isWriteDenied_whenEmptyList_isFalse', () => {
+      expect(isWriteDenied('/home/dev/project/.env', [], ROOT)).toBe(false);
+    });
+
+    it('isWriteDenied_whenPathSegmentMatches_isTrue', () => {
+      expect(isWriteDenied('/home/dev/project/.git/config', ['.git'], ROOT)).toBe(true);
+      expect(isWriteDenied('/home/dev/project/.env', ['.env'], ROOT)).toBe(true);
+      expect(isWriteDenied('/home/dev/project/a/secrets/key.pem', ['secrets'], ROOT)).toBe(true);
+    });
+
+    it('isWriteDenied_whenRelativeTarget_resolvesAgainstBase', () => {
+      expect(isWriteDenied('.env', ['.env'], ROOT)).toBe(true);
+      expect(isWriteDenied('src/app.ts', ['.env'], ROOT)).toBe(false);
+    });
+
+    it('isWriteDenied_whenSegmentIsOnlyAPartialMatch_isFalse', () => {
+      // `.environment` must not match the `.env` deny segment.
+      expect(isWriteDenied('/home/dev/project/.environment', ['.env'], ROOT)).toBe(false);
+    });
+
+    it('isWriteDenied_whenAbsoluteEntryContainsTarget_isTrue', () => {
+      expect(isWriteDenied('/home/dev/project/.git/x', ['/home/dev/project/.git'], ROOT)).toBe(true);
+      expect(isWriteDenied('/home/dev/project/src/a.ts', ['/home/dev/project/.git'], ROOT)).toBe(
+        false,
+      );
     });
   });
 });

@@ -120,6 +120,20 @@ export interface AiRunRequest {
   readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
+   * Gets extra directories the agent may write to beyond the workspace root (#310), as absolute
+   * paths. They widen the write-confinement boundary and are granted to the agent's tools (and the
+   * Bash sandbox). Absent or empty when the user has configured none.
+   */
+  readonly allowedWritePaths?: readonly string[];
+
+  /**
+   * Gets paths the agent may never write to, even inside the workspace root or an allowed directory
+   * (#310): an absolute path (blocks it and anything beneath) or a bare path segment (blocks any path
+   * containing that segment, e.g. `.git`, `.env`). Absent or empty when the user has configured none.
+   */
+  readonly deniedWritePaths?: readonly string[];
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).
    */
   readonly tokenCap: number;

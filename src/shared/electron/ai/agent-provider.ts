@@ -104,6 +104,18 @@ export interface AgentRunContext {
   readonly toolPolicies: Readonly<Record<string, AiToolPolicy>>;
 
   /**
+   * Gets extra absolute directories the agent may write to beyond the workspace root (#310). Empty
+   * when the user configured none.
+   */
+  readonly allowedWritePaths: readonly string[];
+
+  /**
+   * Gets paths the agent may never write to, even inside an allowed root (#310): absolute paths or
+   * bare path segments. Empty when the user configured none.
+   */
+  readonly deniedWritePaths: readonly string[];
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for no cap.
    */
   readonly tokenCap: number;

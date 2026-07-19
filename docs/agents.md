@@ -294,11 +294,14 @@ agent process and denies any pending permission prompt.
 **Write confinement.** When a workspace is open, a granted file write (`Write`/`Edit`/`MultiEdit`/
 `NotebookEdit`) is refused if its target resolves outside the workspace root — a **hard boundary that
 approving the action cannot widen** (a prompt authorises _what_ an action does, not _where_; a single
-click must not be able to escape the root). Widening the allowed area is a configuration decision, not
-a per-prompt override. `Bash` writes cannot be range-checked from the command text, so they are backed
-by the SDK OS sandbox instead (enabled, degrading gracefully where unavailable). A no-workspace (home)
-run is unconfined. Confinement is evaluated before the posture, so it holds even under an auto-allowing
-posture.
+click must not be able to escape the root). Widening the allowed area is a **configuration** decision,
+not a per-prompt override: settings carry **allowed write paths** (extra directories the agent may
+write to) and **denied write paths** (paths it may never write to — an absolute path or a bare segment
+like `.git`/`.env` — a sharper guard applied even inside an allowed root). `Bash` writes cannot be
+range-checked from the command text, so they are backed by the SDK OS sandbox instead (enabled,
+degrading gracefully where unavailable) — the deny list therefore guards the file-write tools, not
+`Bash`. A no-workspace (home) run is root-unconfined but still honours the deny list. Confinement is
+evaluated before the posture, so it holds even under an auto-allowing posture.
 
 **Tool permissions (machine).** Built-in tools are gated in main through the Agent SDK's `canUseTool`
 hook. Three layers decide, in order: **write confinement** (above) refuses out-of-root writes

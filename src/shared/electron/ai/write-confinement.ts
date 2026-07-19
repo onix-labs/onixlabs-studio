@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /**
  * The built-in file-writing tools whose target path must stay within the run's allowed roots (#307).
@@ -53,12 +53,71 @@ export function isWriteWithinRoots(target: string, roots: readonly string[]): bo
   }
   const base: string = roots[0];
   const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
-  return roots.some((root: string): boolean => {
-    const resolvedRoot: string = resolve(root);
-    if (resolvedTarget === resolvedRoot) {
-      return true;
+  return roots.some((root: string): boolean => isWithin(resolvedTarget, resolve(root)));
+}
+
+/**
+ * Determines whether a write to a target path is blocked by the user's deny list (#310), consulted
+ * even inside an allowed root as a sharper guard than the coarse root check. A deny entry is either an
+ * **absolute path** (blocks the target when it equals or sits beneath it) or a bare **path segment**
+ * (blocks the target when any segment of its resolved path equals it — e.g. `.git`, `.env`, `secrets`,
+ * `node_modules`). Full glob patterns are a deliberate later addition, not a first cut.
+ * @param target The write target path from the tool input.
+ * @param denyList The user's deny entries (absolute paths or path segments).
+ * @param base The directory a relative target resolves against (the run's working directory).
+ * @returns Returns true when the write is denied.
+ */
+export function isWriteDenied(
+  target: string,
+  denyList: readonly string[],
+  base: string,
+): boolean {
+  if (denyList.length === 0) {
+    return false;
+  }
+  const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
+  const segments: readonly string[] = resolvedTarget.split(sep).filter((s: string): boolean => s.length > 0);
+  return denyList.some((entry: string): boolean => {
+    if (entry.length === 0) {
+      return false;
     }
-    const rel: string = relative(resolvedRoot, resolvedTarget);
-    return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
+    if (isAbsolute(entry)) {
+      const resolvedEntry: string = resolve(entry);
+      return resolvedTarget === resolvedEntry || isWithin(resolvedTarget, resolvedEntry);
+    }
+    return segments.includes(entry);
   });
+}
+
+/**
+ * Sanitises a configured write-path list from an untrusted run request (#310): keeps only non-empty
+ * strings, and — for the allow list — only absolute paths (a relative allowed directory has no
+ * well-defined meaning across runs).
+ * @param value The raw value from the request.
+ * @param requireAbsolute Whether to drop non-absolute entries (true for the allow list).
+ * @returns Returns the cleaned list (empty when there is nothing usable).
+ */
+export function sanitizeWritePaths(value: unknown, requireAbsolute: boolean): readonly string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry: unknown): entry is string => typeof entry === 'string')
+    .map((entry: string): string => entry.trim())
+    .filter((entry: string): boolean => entry.length > 0 && (!requireAbsolute || isAbsolute(entry)));
+}
+
+/**
+ * Determines whether a resolved target path equals or sits beneath a resolved root, by textual
+ * `..`-normalised containment (not symlink-resolving — this is defence-in-depth, not a sandbox).
+ * @param resolvedTarget The already-resolved absolute target.
+ * @param resolvedRoot The already-resolved absolute root.
+ * @returns Returns true when the target is within the root.
+ */
+function isWithin(resolvedTarget: string, resolvedRoot: string): boolean {
+  if (resolvedTarget === resolvedRoot) {
+    return true;
+  }
+  const rel: string = relative(resolvedRoot, resolvedTarget);
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }

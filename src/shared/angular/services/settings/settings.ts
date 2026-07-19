@@ -573,6 +573,16 @@ export class Settings {
     this.value('ai.toolPolicies');
 
   /**
+   * Gets the extra directories the agent may write to beyond the workspace root (absolute paths).
+   */
+  public readonly aiAllowedWritePaths: Signal<readonly string[]> = this.value('ai.allowedWritePaths');
+
+  /**
+   * Gets the paths the agent may never write to (absolute paths or bare path segments).
+   */
+  public readonly aiDeniedWritePaths: Signal<readonly string[]> = this.value('ai.deniedWritePaths');
+
+  /**
    * Gets the per-request token cap (0 for no cap).
    */
   public readonly aiTokenCap: Signal<number> = this.value('ai.tokenCap');
@@ -899,6 +909,22 @@ export class Settings {
       next[tool] = policy;
     }
     this.set('ai.toolPolicies', next);
+  }
+
+  /**
+   * Replaces the agent's allowed write paths (extra writable directories beyond the workspace).
+   * @param paths The absolute directory paths.
+   */
+  public setAiAllowedWritePaths(paths: readonly string[]): void {
+    this.set('ai.allowedWritePaths', [...paths]);
+  }
+
+  /**
+   * Replaces the agent's denied write paths (never-writable paths or path segments).
+   * @param paths The deny entries.
+   */
+  public setAiDeniedWritePaths(paths: readonly string[]): void {
+    this.set('ai.deniedWritePaths', [...paths]);
   }
 
   /**
