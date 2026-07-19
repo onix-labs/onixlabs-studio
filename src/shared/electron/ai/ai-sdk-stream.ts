@@ -46,6 +46,7 @@ import {
   READ_ONLY_APPENDIX,
 } from './studio-tools';
 import { formatToolInput, formatToolOutput, summarizeToolInput } from './tool-format';
+import { coarseGrantSource } from './tool-policy';
 
 /**
  * The maximum number of steps (model turns plus tool round-trips) a single run may take before the
@@ -194,24 +195,22 @@ function gated<TArgs>(
   return async (args: TArgs): Promise<string> => {
     // Per-tool default policy (#309), consulted ahead of the posture: `deny` refuses, `allow` runs
     // without prompting, and an unset tool (or `ask`) falls through to the posture/prompt below.
+    const detail: string = summarizeToolInput(args);
     const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
     if (policy === 'deny') {
       return `The ${name} tool is set to Deny in your agent settings.`;
     }
-    if (policy === 'allow') {
-      context.recordAutoGrant(name, summarizeToolInput(args), 'policy');
-      return execute(args);
-    }
-    if (context.permissionPosture !== 'auto-all') {
-      const granted: boolean = await context.requestPermission(name, summarizeToolInput(args));
+    if (policy !== 'allow' && context.permissionPosture !== 'auto-all') {
+      const granted: boolean = await context.requestPermission(name, detail);
       if (!granted) {
         return 'The user declined to run this tool.';
       }
-    } else {
-      // Auto-all skips the permission round-trip; audit the posture-granted action here (#308) so it
-      // is still recorded. Every `gated` tool is mutating, so there is no read-only case to exclude.
-      context.recordAutoGrant(name, summarizeToolInput(args), 'posture');
     }
+    // This is the execution point — audit the action here (#311), matching the Claude path's
+    // `PostToolUse` audit. The AI-SDK providers have no safety classifier, so every `gated` tool
+    // reaches this line, and denials returned above. Source is the coarse policy/posture value (these
+    // tools are all mutating and none is a file-edit tool, so `auto-edits` never applies).
+    context.recordAudit(name, detail, coarseGrantSource(policy, context.permissionPosture, false));
     return execute(args);
   };
 }
