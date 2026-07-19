@@ -171,6 +171,16 @@ export interface AgentRunContext {
   requestPermission(name: string, detail: string): Promise<boolean>;
 
   /**
+   * Records a mutating/exec action the run's permission posture auto-allowed (so it never went
+   * through {@link requestPermission}), for the audit log (#308). Interactive, remembered, and
+   * session grants are logged by the permission broker itself; this covers only the posture path.
+   * Read-only tools must not be reported.
+   * @param name The display name of the auto-allowed action.
+   * @param detail A one-line summary of what the action targets.
+   */
+  recordAutoGrant(name: string, detail: string): void;
+
+  /**
    * Asks the user a question on the agent's behalf, resolving once they answer (or null when they
    * decline or the run aborts). The provider blocks on the answer exactly as it blocks on a
    * permission decision.

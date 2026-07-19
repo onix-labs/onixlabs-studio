@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import type {
   AgentContextRef,
   AgentMode,
@@ -36,6 +36,7 @@ import type {
 import { AiAuthManager } from './ai-auth-manager';
 import { AiSdkAdapter } from './ai-sdk-adapter';
 import { isConnection, sanitizeConnections } from './connection-guard';
+import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
@@ -55,6 +56,11 @@ interface PendingPermission {
    * Gets the display name of the tool that asked.
    */
   readonly name: string;
+
+  /**
+   * Gets the one-line summary of what the action targets, for the audit log when granted.
+   */
+  readonly detail: string;
 
   /**
    * Gets the workspace root of the asking run, or null for none.
@@ -175,6 +181,12 @@ export class AiManager {
    * Holds the persisted permission rules (the broker's workspace/always grants).
    */
   private readonly rules: PermissionRuleStore = new PermissionRuleStore();
+
+  /**
+   * Holds the append-only audit log of granted agent actions (#308), created lazily on first grant so
+   * `app.getPath` is only read once Electron is ready.
+   */
+  private auditLog: AgentAuditLog | null = null;
 
   /**
    * Holds the tools granted for the rest of this app session, dying with the process.
@@ -507,6 +519,8 @@ export class AiManager {
           name,
           detail,
         ),
+      recordAutoGrant: (name: string, detail: string): void =>
+        this.recordGrant(name, detail, request.workspaceRoot, 'posture'),
       requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
       requestEditDecision: (
@@ -687,7 +701,12 @@ export class AiManager {
     name: string,
     detail: string,
   ): Promise<boolean> {
-    if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
+    if (this.sessionAllowed.has(name)) {
+      this.recordGrant(name, detail, workspaceRoot, 'session');
+      return Promise.resolve(true);
+    }
+    if (this.rules.isAllowed(name, workspaceRoot)) {
+      this.recordGrant(name, detail, workspaceRoot, 'remembered');
       return Promise.resolve(true);
     }
     const permissionId: string = randomUUID();
@@ -700,7 +719,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, workspaceRoot });
+      this.permissions.set(permissionId, { settle, name, detail, workspaceRoot });
       if (signal.aborted) {
         settle(false);
         return;
@@ -718,6 +737,30 @@ export class AiManager {
   }
 
   /**
+   * Records a granted mutating/exec action to the audit log (#308), stamping the moment here so the
+   * log stays a pure sink. Best-effort by construction (the log swallows its own IO errors).
+   * @param name The tool's display name.
+   * @param detail The one-line target summary.
+   * @param workspaceRoot The run's workspace root, or null for none.
+   * @param source How the action came to be allowed.
+   */
+  private recordGrant(
+    name: string,
+    detail: string,
+    workspaceRoot: string | null,
+    source: AuditGrantSource,
+  ): void {
+    this.auditLog ??= new AgentAuditLog(app.getPath('userData'));
+    this.auditLog.record({
+      at: new Date().toISOString(),
+      tool: name,
+      target: detail,
+      workspaceRoot,
+      source,
+    });
+  }
+
+  /**
    * Resolves the pending permission prompt matching a reply, recording a remembered grant with the
    * broker first. Only grants are remembered — a denial's remember scope is ignored.
    * @param reply The renderer's reply.
@@ -727,11 +770,14 @@ export class AiManager {
     if (pending === undefined) {
       return;
     }
-    if (reply.granted && reply.remember !== undefined) {
-      if (reply.remember === 'session') {
-        this.sessionAllowed.add(pending.name);
-      } else {
-        this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
+    if (reply.granted) {
+      this.recordGrant(pending.name, pending.detail, pending.workspaceRoot, 'interactive');
+      if (reply.remember !== undefined) {
+        if (reply.remember === 'session') {
+          this.sessionAllowed.add(pending.name);
+        } else {
+          this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
+        }
       }
     }
     pending.settle(reply.granted);
