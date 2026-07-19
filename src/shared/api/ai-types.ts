@@ -43,11 +43,14 @@ export {
 } from './ai/ai-seed-connections';
 export type {
   AiPermissionPosture,
+  AiToolPolicy,
   AiRunRequest,
   AiImageRef,
   AgentMode,
   AgentContextRef,
 } from './ai/ai-run-types';
+export type { GateableTool } from './ai/ai-tool-policy';
+export { GATEABLE_TOOLS, DEFAULT_TOOL_POLICY } from './ai/ai-tool-policy';
 export type {
   AiRunState,
   AiEventBase,

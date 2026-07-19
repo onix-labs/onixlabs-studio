@@ -17,6 +17,7 @@ import {
   WRITE_TERMINAL_INPUT,
   type AgentSurface,
   type AiInputChoice,
+  type AiToolPolicy,
   type InsertPlacement,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
@@ -191,6 +192,16 @@ function gated<TArgs>(
   execute: (args: TArgs) => Promise<string>,
 ): (args: TArgs) => Promise<string> {
   return async (args: TArgs): Promise<string> => {
+    // Per-tool default policy (#309), consulted ahead of the posture: `deny` refuses, `allow` runs
+    // without prompting, and an unset tool (or `ask`) falls through to the posture/prompt below.
+    const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
+    if (policy === 'deny') {
+      return `The ${name} tool is set to Deny in your agent settings.`;
+    }
+    if (policy === 'allow') {
+      context.recordAutoGrant(name, summarizeToolInput(args), 'policy');
+      return execute(args);
+    }
     if (context.permissionPosture !== 'auto-all') {
       const granted: boolean = await context.requestPermission(name, summarizeToolInput(args));
       if (!granted) {
@@ -199,7 +210,7 @@ function gated<TArgs>(
     } else {
       // Auto-all skips the permission round-trip; audit the posture-granted action here (#308) so it
       // is still recorded. Every `gated` tool is mutating, so there is no read-only case to exclude.
-      context.recordAutoGrant(name, summarizeToolInput(args));
+      context.recordAutoGrant(name, summarizeToolInput(args), 'posture');
     }
     return execute(args);
   };

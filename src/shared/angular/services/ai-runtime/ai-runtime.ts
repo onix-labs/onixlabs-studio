@@ -13,6 +13,7 @@ import type {
   AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
+  AiToolPolicy,
 } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 
@@ -42,6 +43,12 @@ export interface AiRunOptions {
    * Gets how much the agent may do without asking the user first.
    */
   readonly permissionPosture?: AiPermissionPosture;
+
+  /**
+   * Gets the user's default allow/ask/deny decision per gateable tool, keyed by tool display name.
+   * Omitted when the user has set no policies.
+   */
+  readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
    * Gets the per-request token budget, or 0 for the provider default (no cap).
@@ -172,6 +179,7 @@ export class AiRuntime {
       prompt,
       workspaceRoot: options.workspaceRoot ?? null,
       permissionPosture: options.permissionPosture ?? 'prompt',
+      toolPolicies: options.toolPolicies ?? {},
       tokenCap: options.tokenCap ?? 0,
       runTimeoutMs: options.runTimeoutMs ?? 0,
       owningTabId: options.owningTabId ?? null,

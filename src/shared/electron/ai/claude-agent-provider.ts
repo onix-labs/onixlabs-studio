@@ -31,6 +31,7 @@ import {
   type AiModelInfo,
   type AiPermissionPosture,
   type AiProviderId,
+  type AiToolPolicy,
 } from '@shared/api/ai-types';
 import type {
   AgentAuth,
@@ -234,6 +235,16 @@ export class ClaudeAgentProvider implements AgentProvider {
     const confinementRoots: readonly string[] = hasWorkspace
       ? [context.workspaceRoot!, ...additionalDirectories]
       : [];
+
+    // Tools the user's policy denies (#309) are removed from the model's context via the SDK's
+    // `disallowedTools`, NOT left to the `canUseTool` gate: the Claude Code CLI auto-runs commands its
+    // own safety classifier deems safe (e.g. `echo`) WITHOUT calling `canUseTool`, so a gate-only deny
+    // would leak them. `disallowedTools` blocks the tool outright, whatever the classifier decides.
+    // Keyed on display name, which equals the SDK name for these built-in tools. The `canUseTool` deny
+    // below stays as a backstop for anything that does reach the gate.
+    const disallowedTools: readonly string[] = Object.entries(context.toolPolicies)
+      .filter(([, value]: [string, string]): boolean => value === 'deny')
+      .map(([tool]: [string, string]): string => tool);
 
     // Build a text-content tool result from a handler's rendered string.
     const text: (value: string) => { content: { type: 'text'; text: string }[] } = (
@@ -584,6 +595,23 @@ export class ClaudeAgentProvider implements AgentProvider {
           };
         }
       }
+      // Per-tool default policy (#309): the user's allow/ask/deny default, consulted ahead of the
+      // posture and the prompt. `deny` refuses even when the posture would auto-allow; `allow` grants
+      // without prompting (but the write confinement above still applies — it is not overridable). An
+      // unset tool (or `ask`) falls through to the posture/prompt logic below, preserving today's
+      // behaviour. Read-only tools never reach here, so no exclusion is needed.
+      const displayName: string = prettyToolName(toolName);
+      const policy: AiToolPolicy = context.toolPolicies[displayName] ?? 'ask';
+      if (policy === 'deny') {
+        return {
+          behavior: 'deny',
+          message: `Blocked: the ${displayName} tool is set to Deny in your agent settings.`,
+        };
+      }
+      if (policy === 'allow') {
+        context.recordAutoGrant(displayName, summarizeToolInput(input), 'policy');
+        return { behavior: 'allow', updatedInput: input };
+      }
       const autoAllowed: boolean =
         READ_ONLY_TOOLS.includes(toolName) ||
         posture === 'auto-all' ||
@@ -593,7 +621,7 @@ export class ClaudeAgentProvider implements AgentProvider {
         // but are deliberately not logged. Interactive/remembered/session grants are logged by the
         // permission broker, so only the posture path is reported here.
         if (!READ_ONLY_TOOLS.includes(toolName)) {
-          context.recordAutoGrant(prettyToolName(toolName), summarizeToolInput(input));
+          context.recordAutoGrant(displayName, summarizeToolInput(input), 'posture');
         }
         return { behavior: 'allow', updatedInput: input };
       }
@@ -615,6 +643,9 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(additionalDirectories.length > 0
         ? { additionalDirectories: [...additionalDirectories] }
         : {}),
+      // Hard-remove policy-denied tools (#309) so the model cannot use them at all — necessary for
+      // Bash, whose "safe" commands the CLI classifier would otherwise auto-run before the gate.
+      ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
       // Defence-in-depth for shell writes (#307): sandbox Bash so a granted command is filesystem-
       // confined by the OS sandbox on top of the interactive prompt (Bash targets cannot be range-
       // checked from their input the way a file write can). We do NOT auto-allow sandboxed Bash — it

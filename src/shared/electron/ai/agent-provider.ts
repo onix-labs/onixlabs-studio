@@ -7,6 +7,7 @@ import type {
   AiInputChoice,
   AiModelInfo,
   AiPermissionPosture,
+  AiToolPolicy,
 } from '@shared/api/ai-types';
 
 /**
@@ -94,6 +95,14 @@ export interface AgentRunContext {
   readonly permissionPosture: AiPermissionPosture;
 
   /**
+   * Gets the user's default allow/ask/deny decision per gateable tool, keyed by display name (#309).
+   * The gate consults it ahead of the prompt: `deny` refuses even under an auto-allowing posture,
+   * `allow` skips the prompt, and a missing entry preserves the posture-driven default. Never empty
+   * of meaning — an absent key means "ask".
+   */
+  readonly toolPolicies: Readonly<Record<string, AiToolPolicy>>;
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for no cap.
    */
   readonly tokenCap: number;
@@ -171,14 +180,16 @@ export interface AgentRunContext {
   requestPermission(name: string, detail: string): Promise<boolean>;
 
   /**
-   * Records a mutating/exec action the run's permission posture auto-allowed (so it never went
-   * through {@link requestPermission}), for the audit log (#308). Interactive, remembered, and
-   * session grants are logged by the permission broker itself; this covers only the posture path.
+   * Records a mutating/exec action that was allowed without an interactive prompt (so it never went
+   * through {@link requestPermission}), for the audit log (#308): either the run's permission posture
+   * auto-allowed it (`posture`) or the user's per-tool default policy did (`policy`, #309).
+   * Interactive, remembered, and session grants are logged by the permission broker itself.
    * Read-only tools must not be reported.
    * @param name The display name of the auto-allowed action.
    * @param detail A one-line summary of what the action targets.
+   * @param source Whether the posture or a per-tool policy allowed it.
    */
-  recordAutoGrant(name: string, detail: string): void;
+  recordAutoGrant(name: string, detail: string, source: 'posture' | 'policy'): void;
 
   /**
    * Asks the user a question on the agent's behalf, resolving once they answer (or null when they
