@@ -81,6 +81,7 @@ import {
   prettyToolName,
   summarizeToolInput,
 } from './tool-format';
+import { CONFINED_WRITE_TOOLS, isWriteWithinRoots, writeTargetPath } from './write-confinement';
 
 /**
  * Holds the built-in tools auto-allowed when a workspace is open: read-only project exploration.
@@ -224,6 +225,15 @@ export class ClaudeAgentProvider implements AgentProvider {
     // Attached files/folders are readable via the built-in Read/Glob tools even without an open
     // workspace, so those tools are auto-allowed when either a workspace or attached context is present.
     const hasReadableContext: boolean = hasWorkspace || context.contextPaths.length > 0;
+
+    // Write-confinement roots (#307): the filesystem area a granted file write may touch. The first
+    // root is the run's working directory (the SDK's `cwd`), so a relative target anchors to the
+    // workspace; `additionalDirectories` is the seam for widening it later (empty for now). Left empty
+    // for a no-workspace run, which keeps today's unconfined home-directory behaviour.
+    const additionalDirectories: readonly string[] = [];
+    const confinementRoots: readonly string[] = hasWorkspace
+      ? [context.workspaceRoot!, ...additionalDirectories]
+      : [];
 
     // Build a text-content tool result from a handler's rendered string.
     const text: (value: string) => { content: { type: 'text'; text: string }[] } = (
@@ -555,6 +565,19 @@ export class ClaudeAgentProvider implements AgentProvider {
                 'Chat mode is read-only — it can inspect but not modify files or run commands.',
             };
       }
+      // Write confinement (#307): a file write must not escape the workspace root, even when a
+      // posture would auto-allow it or the user grants it. Checked before the auto-allow short-circuit
+      // below so an `auto-edits`/`auto-all` posture is confined too. Bash cannot be range-checked from
+      // its input (an arbitrary command); the SDK sandbox backs it instead (see `sandbox` in options).
+      if (confinementRoots.length > 0 && CONFINED_WRITE_TOOLS.includes(toolName)) {
+        const target: string | null = writeTargetPath(input);
+        if (target !== null && !isWriteWithinRoots(target, confinementRoots)) {
+          return {
+            behavior: 'deny',
+            message: `Blocked: this write targets a path outside the workspace (${target}).`,
+          };
+        }
+      }
       const autoAllowed: boolean =
         READ_ONLY_TOOLS.includes(toolName) ||
         posture === 'auto-all' ||
@@ -575,6 +598,17 @@ export class ClaudeAgentProvider implements AgentProvider {
     const options: Options = {
       model: context.model,
       cwd: context.workspaceRoot ?? homedir(),
+      // Widen the confinement beyond `cwd` when additional directories are configured (#307). Empty
+      // for now — the seam is what matters; omitted entirely when there is nothing to add.
+      ...(additionalDirectories.length > 0
+        ? { additionalDirectories: [...additionalDirectories] }
+        : {}),
+      // Defence-in-depth for shell writes (#307): sandbox Bash so a granted command is filesystem-
+      // confined by the OS sandbox on top of the interactive prompt (Bash targets cannot be range-
+      // checked from their input the way a file write can). We do NOT auto-allow sandboxed Bash — it
+      // still flows through the permission gate. `failIfUnavailable: false` degrades gracefully where
+      // the platform sandbox is missing, running unsandboxed rather than failing the run.
+      sandbox: { enabled: true, autoAllowBashIfSandboxed: false, failIfUnavailable: false },
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
