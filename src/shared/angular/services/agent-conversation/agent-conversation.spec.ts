@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import type { AgentContextRef, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import {
+  AgentConversationMetaPatch,
   AgentConversationSummary,
   ConversationContext,
   StoredAgentConversation,
@@ -73,6 +74,7 @@ describe('AgentConversation', () => {
   let log: string[];
   let branch: WritableSignal<AgentBranchPoint>;
   let saves: StoredAgentConversation[];
+  let metaPatches: AgentConversationMetaPatch[];
   let attachedRefs: AgentContextRef[];
 
   /**
@@ -83,11 +85,17 @@ describe('AgentConversation', () => {
   function build(resolver?: ConversationContextResolver): AgentConversation {
     const storeStub: Partial<AgentConversations> = {
       list: (): Promise<readonly AgentConversationSummary[]> => Promise.resolve([]),
+      listAll: (): Promise<readonly AgentConversationSummary[]> => Promise.resolve([]),
       load: (): Promise<StoredAgentConversation | null> => Promise.resolve(RECORD),
       save: (record: StoredAgentConversation): Promise<AgentConversationSummary | null> => {
         saves.push(record);
         return Promise.resolve(null);
       },
+      updateMeta: (patch: AgentConversationMetaPatch): Promise<AgentConversationSummary | null> => {
+        metaPatches.push(patch);
+        return Promise.resolve(null);
+      },
+      clearCategory: (): Promise<void> => Promise.resolve(),
       delete: (): Promise<void> => Promise.resolve(),
     };
     const engineStub: Partial<AgentEngine> = {
@@ -113,6 +121,7 @@ describe('AgentConversation', () => {
     log = [];
     branch = signal<AgentBranchPoint>({ epoch: 0, origin: [], originSessionId: null });
     saves = [];
+    metaPatches = [];
     attachedRefs = [];
   });
 
@@ -225,5 +234,41 @@ describe('AgentConversation', () => {
 
     expect(log).toContain('restore');
     expect(conversation.currentId()).toBe('c1');
+  });
+
+  it('rename_patchesTheTitleThroughTheStore', async () => {
+    const conversation: AgentConversation = build();
+
+    await conversation.rename('c1', '  New title  ');
+
+    expect(metaPatches).toEqual([{ id: 'c1', title: 'New title' }]);
+  });
+
+  it('rename_whenTitleIsBlank_patchesNothing', async () => {
+    const conversation: AgentConversation = build();
+
+    await conversation.rename('c1', '   ');
+
+    expect(metaPatches).toHaveLength(0);
+  });
+
+  it('setCategory_filesTheConversationUnderTheGivenCategory', async () => {
+    const conversation: AgentConversation = build();
+
+    await conversation.setCategory('c1', 'cat1');
+
+    expect(metaPatches).toEqual([{ id: 'c1', categoryId: 'cat1' }]);
+  });
+
+  it('duplicate_savesAnIndependentCopyWithoutASession', async () => {
+    const conversation: AgentConversation = build();
+
+    await conversation.duplicate('c1');
+
+    expect(saves).toHaveLength(1);
+    expect(saves[0].id).not.toBe('c1');
+    expect(saves[0].title).toBe('Saved (copy)');
+    expect(saves[0].titleIsCustom).toBe(true);
+    expect(saves[0].sessionId).toBeNull();
   });
 });

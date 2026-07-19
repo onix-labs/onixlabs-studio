@@ -19,6 +19,7 @@ import {
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import {
   AGENT_CONVERSATION_CONTEXT,
+  AGENT_CONVERSATION_KIND,
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
@@ -98,6 +99,7 @@ const STATUS_PRIORITY: number = 30;
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
     Agent,
     AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'review' },
     {
       // Scope agent conversations docked in this repository surface to the git repository root (or the
       // global bucket before a repository is bound). Resolved lazily so it tracks the repository bind.

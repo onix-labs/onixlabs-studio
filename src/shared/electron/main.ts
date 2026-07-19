@@ -19,6 +19,7 @@ import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
+import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
@@ -335,6 +336,11 @@ class Program {
   private readonly agentConversationStore: AgentConversationStore = new AgentConversationStore();
 
   /**
+   * Owns the user's conversation categories — the organisation layer over conversation history.
+   */
+  private readonly agentCategoryStore: AgentCategoryStore = new AgentCategoryStore();
+
+  /**
    * Resolves language-server identifiers into spawn specifications for the {@link LspManager}.
    */
   private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(
@@ -632,6 +638,7 @@ class Program {
     this.directoryWatcher.register();
     this.aiManager.register();
     this.agentConversationStore.register();
+    this.agentCategoryStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();
     this.debugManager.register();

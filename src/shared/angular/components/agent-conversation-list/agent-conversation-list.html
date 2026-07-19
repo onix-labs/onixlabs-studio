@@ -1,64 +1,363 @@
-<div class="conversations">
-  <div class="conversations__toolbar">
-    <input
-      class="conversations__search"
-      type="text"
-      [value]="query()"
-      (input)="onSearch($event)"
-      placeholder="Search chats"
-      aria-label="Search chats"
-    />
-    <div class="conversations__actions">
-      <button
-        type="button"
-        class="conversations__action conversations__select-all"
-        [disabled]="!hasRows()"
-        (click)="onToggleSelectAll()"
-        [attr.aria-label]="selectAllLabel() + ' conversations'"
-      >
-        <app-icon [icon]="Icon.SELECT_ALL" />
-        <span>{{ selectAllLabel() }}</span>
-      </button>
-      <button
-        type="button"
-        class="conversations__action conversations__delete"
-        [disabled]="!hasChecked()"
-        (click)="onRequestDelete()"
-        [attr.aria-label]="'Delete ' + checkedCount() + ' conversation(s)'"
-      >
-        <app-icon [icon]="Icon.TRASH" />
-        <span>Delete@if (checkedCount() > 0) {&nbsp;({{ checkedCount() }})}</span>
-      </button>
+<div class="history">
+  <div class="history__toolbar">
+    <div class="history__search-wrap">
+      <app-icon class="history__search-icon" [icon]="Icon.SEARCH" />
+      <input
+        class="history__search"
+        type="text"
+        [value]="query()"
+        (input)="onSearch($event)"
+        placeholder="Search conversations…"
+        aria-label="Search conversations"
+      />
     </div>
+
+    <button
+      type="button"
+      class="history__tool"
+      [class.history__tool--active]="filterActive()"
+      [cdkMenuTriggerFor]="filterMenu"
+      aria-label="Filter conversations"
+    >
+      <span>Filters</span>
+      <app-icon [icon]="Icon.CARET_DOWN" />
+    </button>
+
+    <button
+      type="button"
+      class="history__tool history__tool--icon"
+      [disabled]="matching().length === 0"
+      (click)="onToggleSelectAll()"
+      [attr.aria-label]="allSelected() ? 'Deselect all' : 'Select all'"
+      [title]="allSelected() ? 'Deselect all' : 'Select all'"
+    >
+      <app-icon [icon]="Icon.SELECT_ALL" />
+    </button>
+
+    <button
+      type="button"
+      class="history__tool history__tool--icon"
+      [disabled]="!hasChecked()"
+      (click)="onRequestDelete()"
+      [attr.aria-label]="'Delete ' + checkedCount() + ' conversation(s)'"
+      [title]="'Delete' + (checkedCount() > 0 ? ' (' + checkedCount() + ')' : '')"
+    >
+      <app-icon [icon]="Icon.TRASH" />
+    </button>
+
+    <button
+      type="button"
+      class="history__tool history__tool--icon"
+      (click)="onNewCategory()"
+      aria-label="New category"
+      title="New category"
+    >
+      <app-icon [icon]="Icon.PLUS" />
+    </button>
+
+    <button
+      type="button"
+      class="history__tool history__tool--icon"
+      (click)="onManage()"
+      aria-label="Manage categories"
+      title="Manage categories"
+    >
+      <app-icon [icon]="Icon.SETTINGS" />
+    </button>
   </div>
 
-  <app-list-view
-    [rows]="rows()"
-    [selectedId]="activeId()"
-    emptyText="No saved conversations yet."
-    (rowClick)="onRowClick($event)"
-  >
+  @if (isEmpty() && rows().length <= 1) {
+    <p class="history__empty">No conversations yet.</p>
+  }
+
+  <app-tree-view [rows]="rows()" [selectedId]="activeId()" (rowClick)="onRowClick($event)">
     <ng-template let-row>
-      @let summary = summaryOf(row);
-      <app-checkbox
-        class="conversations__check"
-        [checked]="isChecked(summary.id)"
-        (checkedChange)="onToggle(summary.id, $event)"
-        (click)="$event.stopPropagation()"
-      />
-      <span class="conversations__text">
-        <span class="conversations__title">
-          <app-highlighted-text [text]="summary.title" [query]="query()" />
+      @let data = dataOf(row);
+      @if (data.kind === 'node') {
+        <span
+          class="history__node-row"
+          [class.history__node-row--drop]="dropTargetId() === data.node.id"
+          (dragover)="onDragOver(data.node, $event)"
+          (dragleave)="onDragLeave(data.node)"
+          (drop)="onDrop(data.node, $event)"
+        >
+          <app-checkbox
+            class="history__check"
+            [checked]="isNodeChecked(data.node)"
+            [disabled]="data.node.items.length === 0"
+            (checkedChange)="onToggleNode(data.node, $event)"
+            (click)="$event.stopPropagation()"
+          />
+          <span class="history__node-name">{{ data.node.name }}</span>
+          <span class="history__count">{{ data.node.items.length }}</span>
         </span>
-        <span class="conversations__meta">
-          {{ summary.messageCount }} message{{ summary.messageCount === 1 ? '' : 's' }} ·
-          {{ formatWhen(summary.updatedAt) }}
+      } @else {
+        <span
+          class="history__leaf"
+          draggable="true"
+          (dragstart)="onDragStart(data.item.summary.id, $event)"
+          (dragend)="onDragEnd()"
+        >
+          <app-checkbox
+            class="history__check"
+            [checked]="isChecked(data.item.summary.id)"
+            (checkedChange)="onToggle(data.item.summary.id, $event)"
+            (click)="$event.stopPropagation()"
+          />
+          <span class="history__leaf-main">
+            <span class="history__leaf-top">
+              <span class="history__leaf-title">
+                <app-highlighted-text [text]="data.item.summary.title" [query]="query()" />
+              </span>
+              <span class="history__leaf-when">{{ formatWhen(data.item.summary.updatedAt) }}</span>
+            </span>
+            <span class="history__chips">
+              <span class="history__chip">{{ agentTypeLabels[data.item.agentType] }}</span>
+              @if (data.item.summary.contextLabel; as label) {
+                <span class="history__chip history__chip--context">{{ label }}</span>
+              }
+            </span>
+          </span>
+          <button
+            type="button"
+            class="history__overflow tree-row-action"
+            aria-label="Conversation actions"
+            (click)="$event.stopPropagation(); onOpenMenu(data.item.summary)"
+            [cdkMenuTriggerFor]="itemMenu"
+          >
+            <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
+          </button>
         </span>
-      </span>
+      }
     </ng-template>
-  </app-list-view>
+  </app-tree-view>
 </div>
 
+<!-- Conversation overflow menu, targeting the last-opened row. -->
+<ng-template #itemMenu>
+  <div class="app-menu-panel" cdkMenu>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (cdkMenuItemTriggered)="onRename()"
+    >
+      <app-icon [icon]="Icon.PENCIL" />
+      <span class="app-menu-panel__item-label">Rename</span>
+    </button>
+    <button type="button" class="app-menu-panel__item" cdkMenuItem [cdkMenuTriggerFor]="moveMenu">
+      <app-icon [icon]="Icon.FOLDER" />
+      <span class="app-menu-panel__item-label">Move to category</span>
+      <app-icon class="history-menu__chevron" [icon]="Icon.CARET_RIGHT" />
+    </button>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      [cdkMenuItemDisabled]="!targetHasCategory()"
+      (cdkMenuItemTriggered)="onMoveTo(null)"
+    >
+      <app-icon [icon]="Icon.CLOSE" />
+      <span class="app-menu-panel__item-label">Remove from category</span>
+    </button>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (cdkMenuItemTriggered)="onDuplicate()"
+    >
+      <app-icon [icon]="Icon.COPY" />
+      <span class="app-menu-panel__item-label">Duplicate</span>
+    </button>
+    <div class="history-menu__sep"></div>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (cdkMenuItemTriggered)="onDeleteOne()"
+    >
+      <app-icon [icon]="Icon.TRASH" />
+      <span class="app-menu-panel__item-label">Delete</span>
+    </button>
+  </div>
+</ng-template>
+
+<!-- Move-to-category submenu. -->
+<ng-template #moveMenu>
+  <div class="app-menu-panel" cdkMenu>
+    @for (category of categories(); track category.id) {
+      <button
+        type="button"
+        class="app-menu-panel__item"
+        [class.app-menu-panel__item--active]="isTargetIn(category.id)"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="onMoveTo(category.id)"
+      >
+        <app-icon
+          class="history-menu__check"
+          [style.visibility]="isTargetIn(category.id) ? 'visible' : 'hidden'"
+          [icon]="Icon.CHECK"
+        />
+        <span class="app-menu-panel__item-label">{{ category.name }}</span>
+      </button>
+    } @empty {
+      <p class="history-menu__empty">No categories yet.</p>
+    }
+    <div class="history-menu__sep"></div>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (cdkMenuItemTriggered)="onNewCategoryForTarget()"
+    >
+      <app-icon [icon]="Icon.PLUS" />
+      <span class="app-menu-panel__item-label">New category…</span>
+    </button>
+  </div>
+</ng-template>
+
+<!-- Filter menu. Its toggles are plain buttons (not cdkMenuItem) so ticking several stays open; the
+     menu closes on click-away or Escape. -->
+<ng-template #filterMenu>
+  <div class="app-menu-panel" cdkMenu>
+    <p class="history-menu__heading">Agent Type</p>
+    @for (type of agentTypeOrder; track type) {
+      <button type="button" class="app-menu-panel__item" (click)="onToggleType(type)">
+        <app-icon
+          class="history-menu__check"
+          [style.visibility]="isTypeEnabled(type) ? 'visible' : 'hidden'"
+          [icon]="Icon.CHECK"
+        />
+        <span class="app-menu-panel__item-label">{{ agentTypeLabels[type] }}</span>
+      </button>
+    }
+    <div class="history-menu__sep"></div>
+    <button type="button" class="app-menu-panel__item" (click)="onToggleUncategorized()">
+      <app-icon
+        class="history-menu__check"
+        [style.visibility]="uncategorizedOnly() ? 'visible' : 'hidden'"
+        [icon]="Icon.CHECK"
+      />
+      <span class="app-menu-panel__item-label">Uncategorized only</span>
+    </button>
+    <div class="history-menu__sep"></div>
+    <button type="button" class="app-menu-panel__item" (click)="onClearFilters()">
+      <span class="app-menu-panel__item-label">Reset filters</span>
+    </button>
+  </div>
+</ng-template>
+
+<!-- Rename conversation modal. -->
+<app-modal
+  [open]="renameTarget() !== null"
+  [dismissable]="true"
+  [width]="26"
+  ariaLabel="Rename conversation"
+  (dismiss)="onCancelRename()"
+>
+  <h2 class="history__modal-title">Rename conversation</h2>
+  <input
+    class="history__modal-input"
+    type="text"
+    [value]="renameValue()"
+    (input)="renameValue.set($any($event.target).value)"
+    (keydown.enter)="onConfirmRename()"
+    placeholder="Conversation title"
+    aria-label="Conversation title"
+  />
+  <div class="history__modal-actions">
+    <button type="button" class="history__button" (click)="onCancelRename()">Cancel</button>
+    <button
+      type="button"
+      class="history__button history__button--primary"
+      [disabled]="renameValue().trim().length === 0"
+      (click)="onConfirmRename()"
+    >
+      Rename
+    </button>
+  </div>
+</app-modal>
+
+<!-- Category editor modal. -->
+<app-modal
+  [open]="categoryEditor() !== null"
+  [dismissable]="true"
+  [width]="26"
+  ariaLabel="Category"
+  (dismiss)="onCancelCategory()"
+>
+  @if (categoryEditor(); as editor) {
+    <h2 class="history__modal-title">{{ editor.id === null ? 'New category' : 'Rename category' }}</h2>
+    <input
+      class="history__modal-input"
+      type="text"
+      [value]="editor.name"
+      (input)="onCategoryName($event)"
+      (keydown.enter)="onSaveCategory()"
+      placeholder="Category name"
+      aria-label="Category name"
+    />
+    <div class="history__modal-actions">
+      <button type="button" class="history__button" (click)="onCancelCategory()">Cancel</button>
+      <button
+        type="button"
+        class="history__button history__button--primary"
+        [disabled]="editor.name.trim().length === 0"
+        (click)="onSaveCategory()"
+      >
+        Save
+      </button>
+    </div>
+  }
+</app-modal>
+
+<!-- Manage categories modal. -->
+<app-modal
+  [open]="manageOpen()"
+  [dismissable]="true"
+  [width]="30"
+  ariaLabel="Manage categories"
+  (dismiss)="onCloseManage()"
+>
+  <h2 class="history__modal-title">Manage categories</h2>
+  <div class="history__manage-list">
+    @for (category of categories(); track category.id) {
+      <div class="history__manage-row">
+        <span class="history__manage-name">{{ category.name }}</span>
+        <button
+          type="button"
+          class="history__manage-action"
+          aria-label="Rename category"
+          (click)="onEditCategory(category)"
+        >
+          <app-icon [icon]="Icon.PENCIL" />
+        </button>
+        <button
+          type="button"
+          class="history__manage-action history__manage-action--danger"
+          aria-label="Delete category"
+          (click)="onDeleteCategory(category.id)"
+        >
+          <app-icon [icon]="Icon.TRASH" />
+        </button>
+      </div>
+    } @empty {
+      <p class="history__manage-empty">No categories yet.</p>
+    }
+  </div>
+  <div class="history__modal-actions">
+    <button type="button" class="history__button" (click)="onNewCategory()">New category</button>
+    <button
+      type="button"
+      class="history__button history__button--primary"
+      (click)="onCloseManage()"
+    >
+      Done
+    </button>
+  </div>
+</app-modal>
+
+<!-- Delete conversations confirmation modal. -->
 <app-modal
   [open]="confirmOpen()"
   [dismissable]="true"
@@ -66,16 +365,16 @@
   ariaLabel="Delete conversations"
   (dismiss)="onCancelDelete()"
 >
-  <h2 class="conversations__confirm-title">Delete conversations?</h2>
-  <p class="conversations__confirm-body">
+  <h2 class="history__modal-title">Delete conversations?</h2>
+  <p class="history__modal-body">
     {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
     deleted. This cannot be undone.
   </p>
-  <div class="conversations__confirm-actions">
-    <button type="button" class="conversations__button" (click)="onCancelDelete()">Cancel</button>
+  <div class="history__modal-actions">
+    <button type="button" class="history__button" (click)="onCancelDelete()">Cancel</button>
     <button
       type="button"
-      class="conversations__button conversations__button--danger"
+      class="history__button history__button--danger"
       (click)="onConfirmDelete()"
     >
       Delete

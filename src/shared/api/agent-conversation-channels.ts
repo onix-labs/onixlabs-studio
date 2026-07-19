@@ -16,6 +16,13 @@ export enum AgentConversationChannel {
   List = 'agent-conversation:list',
 
   /**
+   * Lists the summaries of every stored conversation, across all contexts, newest first (invoke). The
+   * redesigned history tree shows all conversations regardless of the agent that created them, so it
+   * lists through this channel rather than the context-scoped {@link AgentConversationChannel.List}.
+   */
+  ListAll = 'agent-conversation:list-all',
+
+  /**
    * Loads a single conversation by id, or null when it does not exist (invoke).
    */
   Load = 'agent-conversation:load',
@@ -27,10 +34,37 @@ export enum AgentConversationChannel {
   Save = 'agent-conversation:save',
 
   /**
+   * Patches a single conversation's mutable metadata (title, custom-title flag, category) in place,
+   * without rewriting its transcript, and returns the updated summary (invoke). Backs rename, filing
+   * under a category, and removing from a category.
+   */
+  UpdateMeta = 'agent-conversation:update-meta',
+
+  /**
+   * Clears the given category from every conversation filed under it, returning nothing (invoke). Used
+   * when a category is deleted so its conversations fall back to uncategorized rather than dangling.
+   */
+  ClearCategory = 'agent-conversation:clear-category',
+
+  /**
    * Deletes conversations by id (invoke).
    */
   Delete = 'agent-conversation:delete',
 }
+
+/**
+ * Identifies the kind of agent that created a conversation, shown as its primary metadata chip and
+ * used by the history filter. This is informational and filterable — it never determines where a
+ * conversation appears (every conversation is visible under All Conversations regardless of type). The
+ * set is open-ended by design so new specialized agents can be added without fragmenting history.
+ */
+export type AgentConversationAgentType =
+  | 'agent'
+  | 'code'
+  | 'workspace'
+  | 'terminal'
+  | 'review'
+  | 'search';
 
 /**
  * Identifies the kind of context a conversation is associated with. `global` is the standalone "new
@@ -80,9 +114,38 @@ export interface AgentConversationSummary {
   readonly contextId: string;
 
   /**
-   * Gets the conversation's title (derived from its first user message).
+   * Gets the conversation's title: the user's custom title when {@link titleIsCustom} is set, else one
+   * derived from its first user message.
    */
   readonly title: string;
+
+  /**
+   * Gets a value indicating whether {@link title} is a user-chosen custom title (which survives new
+   * messages) rather than one derived from the transcript. Absent on conversations saved before rename
+   * existed, treated as false.
+   */
+  readonly titleIsCustom?: boolean;
+
+  /**
+   * Gets the kind of agent that created the conversation, its primary metadata chip. Absent on
+   * conversations saved before agent-type was recorded, in which case a fallback is derived from the
+   * context kind.
+   */
+  readonly agentType?: AgentConversationAgentType;
+
+  /**
+   * Gets the short secondary-context label shown as a grey chip beside the agent-type chip (a file
+   * name, workspace or repository folder name), or absent when there is no meaningful context (the
+   * global bucket). Derived from the context at save time.
+   */
+  readonly contextLabel?: string;
+
+  /**
+   * Gets the id of the user-created category the conversation is filed under, or null/absent when it is
+   * uncategorized. A conversation is filed under at most one category; it always remains visible under
+   * All Conversations regardless.
+   */
+  readonly categoryId?: string | null;
 
   /**
    * Gets the number of user/assistant messages in the conversation.
@@ -117,9 +180,30 @@ export interface StoredAgentConversation {
   readonly contextId: string;
 
   /**
-   * Gets the conversation's title.
+   * Gets the conversation's title (custom when {@link titleIsCustom}, else derived).
    */
   readonly title: string;
+
+  /**
+   * Gets a value indicating whether {@link title} is a user-chosen custom title. See the summary's
+   * field of the same name.
+   */
+  readonly titleIsCustom?: boolean;
+
+  /**
+   * Gets the kind of agent that created the conversation. See the summary's field of the same name.
+   */
+  readonly agentType?: AgentConversationAgentType;
+
+  /**
+   * Gets the short secondary-context label. See the summary's field of the same name.
+   */
+  readonly contextLabel?: string;
+
+  /**
+   * Gets the id of the category the conversation is filed under, or null/absent when uncategorized.
+   */
+  readonly categoryId?: string | null;
 
   /**
    * Gets the provider the conversation last ran under.
@@ -166,6 +250,29 @@ export interface StoredAgentConversation {
 }
 
 /**
+ * A patch to a single conversation's mutable metadata, applied in place by
+ * {@link AgentConversationChannel.UpdateMeta} without rewriting the transcript. Only the present fields
+ * are changed. Setting `title` also sets `titleIsCustom` true; setting `categoryId` to null clears the
+ * category.
+ */
+export interface AgentConversationMetaPatch {
+  /**
+   * Gets the id of the conversation to patch.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the new custom title, or omitted to leave the title unchanged.
+   */
+  readonly title?: string;
+
+  /**
+   * Gets the new category id (or null to clear it), or omitted to leave the category unchanged.
+   */
+  readonly categoryId?: string | null;
+}
+
+/**
  * Defines the renderer-facing conversation operations, wrapping the channel transport. Implemented by
  * the renderer's `AgentConversations` service.
  */
@@ -176,6 +283,12 @@ export interface AgentConversationClient {
    * @returns Returns the summaries.
    */
   list(contextId: string): Promise<readonly AgentConversationSummary[]>;
+
+  /**
+   * Lists the summaries of every stored conversation, across all contexts, newest first.
+   * @returns Returns the summaries.
+   */
+  listAll(): Promise<readonly AgentConversationSummary[]>;
 
   /**
    * Loads a full conversation by id.
@@ -190,6 +303,19 @@ export interface AgentConversationClient {
    * @returns Returns the stored summary, or null when it could not be stored.
    */
   save(conversation: StoredAgentConversation): Promise<AgentConversationSummary | null>;
+
+  /**
+   * Patches a single conversation's metadata (title, category) in place.
+   * @param patch The metadata patch.
+   * @returns Returns the updated summary, or null when the conversation does not exist.
+   */
+  updateMeta(patch: AgentConversationMetaPatch): Promise<AgentConversationSummary | null>;
+
+  /**
+   * Clears the given category from every conversation filed under it.
+   * @param categoryId The category id to clear.
+   */
+  clearCategory(categoryId: string): Promise<void>;
 
   /**
    * Deletes conversations by id.

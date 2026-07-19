@@ -19,6 +19,7 @@ import {
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import {
   AGENT_CONVERSATION_CONTEXT,
+  AGENT_CONVERSATION_KIND,
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
@@ -131,6 +132,7 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
     Agent,
     AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'workspace' },
     {
       // Scope agent conversations docked in this IDE to the open workspace root (or the global bucket
       // when the tab has no folder open yet). Resolved lazily so it tracks the workspace loading.
