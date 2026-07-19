@@ -51,6 +51,16 @@ export interface AiRunOptions {
   readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
+   * Gets extra directories the agent may write to beyond the workspace root (absolute paths).
+   */
+  readonly allowedWritePaths?: readonly string[];
+
+  /**
+   * Gets paths the agent may never write to (absolute paths or bare path segments).
+   */
+  readonly deniedWritePaths?: readonly string[];
+
+  /**
    * Gets the per-request token budget, or 0 for the provider default (no cap).
    */
   readonly tokenCap?: number;
@@ -180,6 +190,8 @@ export class AiRuntime {
       workspaceRoot: options.workspaceRoot ?? null,
       permissionPosture: options.permissionPosture ?? 'prompt',
       toolPolicies: options.toolPolicies ?? {},
+      allowedWritePaths: options.allowedWritePaths ?? [],
+      deniedWritePaths: options.deniedWritePaths ?? [],
       tokenCap: options.tokenCap ?? 0,
       runTimeoutMs: options.runTimeoutMs ?? 0,
       owningTabId: options.owningTabId ?? null,

@@ -85,7 +85,12 @@ import {
   summarizeToolInput,
 } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
-import { CONFINED_WRITE_TOOLS, isWriteWithinRoots, writeTargetPath } from './write-confinement';
+import {
+  CONFINED_WRITE_TOOLS,
+  isWriteDenied,
+  isWriteWithinRoots,
+  writeTargetPath,
+} from './write-confinement';
 
 /**
  * Holds the built-in tools auto-allowed when a workspace is open: read-only project exploration.
@@ -239,9 +244,9 @@ export class ClaudeAgentProvider implements AgentProvider {
 
     // Write-confinement roots (#307): the filesystem area a granted file write may touch. The first
     // root is the run's working directory (the SDK's `cwd`), so a relative target anchors to the
-    // workspace; `additionalDirectories` is the seam for widening it later (empty for now). Left empty
-    // for a no-workspace run, which keeps today's unconfined home-directory behaviour.
-    const additionalDirectories: readonly string[] = [];
+    // workspace; the user's allowed write paths (#310) widen it. Left empty for a no-workspace run,
+    // which keeps today's unconfined home-directory behaviour.
+    const additionalDirectories: readonly string[] = context.allowedWritePaths;
     const confinementRoots: readonly string[] = hasWorkspace
       ? [context.workspaceRoot!, ...additionalDirectories]
       : [];
@@ -586,22 +591,29 @@ export class ClaudeAgentProvider implements AgentProvider {
                 'Chat mode is read-only — it can inspect but not modify files or run commands.',
             };
       }
-      // Write confinement (#307): a file write must not escape the workspace root, even when a
-      // posture would auto-allow it or the user grants it. Checked before the auto-allow short-circuit
-      // below so an `auto-edits`/`auto-all` posture is confined too. Bash cannot be range-checked from
-      // its input (an arbitrary command); the SDK sandbox backs it instead (see `sandbox` in options).
-      if (confinementRoots.length > 0 && CONFINED_WRITE_TOOLS.includes(toolName)) {
+      // Write confinement (#307/#310): a file write must not escape the allowed area (the workspace
+      // root plus the user's allowed write paths), nor touch a denied path — even when a posture would
+      // auto-allow it or the user grants it. Checked before the auto-allow short-circuit below so an
+      // `auto-edits`/`auto-all` posture is confined too. Bash cannot be range-checked from its input
+      // (an arbitrary command); the SDK sandbox backs it instead (see `sandbox` in options).
+      if (CONFINED_WRITE_TOOLS.includes(toolName)) {
         const target: string | null = writeTargetPath(input);
-        if (target !== null && !isWriteWithinRoots(target, confinementRoots)) {
+        if (target !== null && confinementRoots.length > 0 && !isWriteWithinRoots(target, confinementRoots)) {
           return {
             behavior: 'deny',
-            // A deliberate hard boundary: the workspace root is the agent's allowed write area, and
-            // this is NOT overridable by approving the action (that is the point — a single approval
-            // must not be able to widen the filesystem boundary). Widening the allowed set is a
-            // configuration decision, coming in #310.
+            // A deliberate hard boundary that approving the action cannot widen (a single approval must
+            // not be able to escape the allowed filesystem area). Widening it is a configuration
+            // decision — the allowed write paths in settings.
             message:
-              `Blocked: "${target}" is outside the workspace root — the agent's allowed write ` +
-              `area. This is a fixed safety boundary and cannot be overridden by approving the action.`,
+              `Blocked: "${target}" is outside the agent's allowed write area (the workspace root ` +
+              `and your allowed write paths). This is a fixed safety boundary — add the location to ` +
+              `your allowed write paths to permit it.`,
+          };
+        }
+        if (target !== null && isWriteDenied(target, context.deniedWritePaths, context.workspaceRoot ?? homedir())) {
+          return {
+            behavior: 'deny',
+            message: `Blocked: "${target}" is on your denied write paths and cannot be written to.`,
           };
         }
       }

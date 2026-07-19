@@ -13,6 +13,7 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { SettingControl } from '../../setting-control/setting-control';
 import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
+import { AiWritePaths } from './ai-write-paths/ai-write-paths';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -38,7 +39,15 @@ const ADD_KIND_OPTIONS: readonly DropdownOption[] = [
  */
 @Component({
   selector: 'app-ai-settings',
-  imports: [Dropdown, SettingRow, SettingControl, AiConnectionEditor, AiToolPolicies, AppIcon],
+  imports: [
+    Dropdown,
+    SettingRow,
+    SettingControl,
+    AiConnectionEditor,
+    AiToolPolicies,
+    AiWritePaths,
+    AppIcon,
+  ],
   templateUrl: './ai-settings.html',
   styleUrls: ['../section.scss', './ai-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

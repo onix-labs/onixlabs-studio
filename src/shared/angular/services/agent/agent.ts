@@ -875,6 +875,8 @@ export class Agent {
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       toolPolicies: this.settings.aiToolPolicies(),
+      allowedWritePaths: this.settings.aiAllowedWritePaths(),
+      deniedWritePaths: this.settings.aiDeniedWritePaths(),
       tokenCap: this.settings.aiTokenCap(),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       owningTabId,
