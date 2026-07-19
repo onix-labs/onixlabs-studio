@@ -323,10 +323,13 @@ model via the SDK's `disallowedTools`, **not only at the gate**: the Claude Code
 commands its own safety classifier deems safe (e.g. `echo`) without consulting `canUseTool`, so a
 gate-only deny would leak them.
 
-**Audit log.** Every _granted_ mutating/exec action is appended to a best-effort, size-bounded JSONL
-log under userData (`AgentAuditLog`): tool, one-line target, workspace root, timestamp, and how it was
-granted (interactive / remembered / session / posture / policy). Read-only auto-allows and denials are
-not logged. It records actions that reach the gate, so classifier-auto-run commands are not captured.
+**Audit log.** Every _executed_ mutating/exec action is appended to a best-effort, size-bounded JSONL
+log under userData (`AgentAuditLog`): tool, one-line target, workspace root, timestamp, and a coarse
+grant source (`policy` / `posture` / `gated-or-auto`). Auditing happens at the **execution point** — a
+`PostToolUse` hook on the Claude path, the `gated` wrapper on the AI-SDK path — so commands the CLI
+safety classifier auto-runs (without the `canUseTool` gate) are captured too; denials never execute so
+they are not logged, and read-only / in-app tools are skipped. The exact grant path is not
+distinguishable at execution, hence the coarse source.
 
 **In-app capabilities.** The agent can also act inside the app (e.g. read/replace the live editor
 document) via the renderer capability registry: providers call `context.bridge.request(capability,
