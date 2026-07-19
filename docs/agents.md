@@ -190,14 +190,14 @@ modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift
 
 The directory workspace is **language-agnostic**: it never hard-codes an ecosystem. A `ProjectSystem`
 provider (`shared/electron/project-system`, e.g. `dotnet`, `node`) turns a workspace root into a
-`ProjectModel` *and* declares a **capability descriptor** — `actions` (Build/Clean/Rebuild…),
+`ProjectModel` _and_ declares a **capability descriptor** — `actions` (Build/Clean/Rebuild…),
 `buildConfigurations`, a `target` axis, and a `debug` adapter — plus discovered `runConfigurations`.
 The model (with its capabilities and kind) travels to the renderer over `ProjectChannel.ModelLoad`;
 adding an ecosystem means adding a provider, **never touching the shell or ribbon**.
 
 Three renderer seams carry the active workspace's state to the root ribbon. Each is an **app-level
 singleton** — the ribbon lives above the tabs, so it can never inject a tab's scoped services. They
-resolve the active tab's workspace instead: `WorkspaceCapabilities`/`Builds` are *registered into* by
+resolve the active tab's workspace instead: `WorkspaceCapabilities`/`Builds` are _registered into_ by
 the active tab's per-workspace services (mirroring how a tab registers its build handler), while
 `StudioConfig` reads the active root from the `ActiveWorkspace` seam. Injecting the scoped `Workspace`
 here is a bug — its root is never set at the root injector, so `.studio` would never load.
@@ -223,18 +223,18 @@ them.
 
 ### 4.7 Debugging (DAP)
 
-Debugging is built on the **Debug Adapter Protocol**, mirroring the LSP subsystem's shape. DAP is *not*
+Debugging is built on the **Debug Adapter Protocol**, mirroring the LSP subsystem's shape. DAP is _not_
 JSON-RPC — it shares LSP's `Content-Length` framing but uses a `{seq, type, command, request_seq}`
-envelope, and (unlike LSP) the adapter's `initialized` event fires *after* the client sends `launch`.
+envelope, and (unlike LSP) the adapter's `initialized` event fires _after_ the client sends `launch`.
 The client, session manager, adapter registry, and provisioner live in `shared/electron/debug`; the
 `Debugger` app-level seam and per-workspace `DebugSession` mirror `Builds`/`BuildRunner`.
 
 - **Adapters differ in transport, hidden behind one surface.** `DapClient` speaks DAP over a `DapTransport`
   — `StdioTransport` for a spawned process (netcoredbg), or `TcpServerTransport`/`TcpClientTransport` for a
-  debug *server* reached over TCP (js-debug). Everything the manager drives goes through the
+  debug _server_ reached over TCP (js-debug). Everything the manager drives goes through the
   `DebugAdapterConnection` interface, so the renderer treats every adapter as one linear session.
-- **js-debug is a compound session.** js-debug is not a single adapter but a server hosting a *tree* of
-  DAP connections: a parent the debuggee is launched on, and one child *target* session per process, each
+- **js-debug is a compound session.** js-debug is not a single adapter but a server hosting a _tree_ of
+  DAP connections: a parent the debuggee is launched on, and one child _target_ session per process, each
   started via a `startDebugging` reverse request. The real debugging happens on the targets. `JsDebugSession`
   hides the whole tree behind `DebugAdapterConnection`: it answers the parent's `initialized`/`startDebugging`
   internally, surfaces the first target's `initialized` (so the renderer sends breakpoints once), routes
@@ -243,7 +243,7 @@ The client, session manager, adapter registry, and provisioner live in `shared/e
   launch target to the package's `main` entry (confined to root; no build — Node is interpreted).
 
 - **Adapters are provisioned, not vendored.** `DebugProvisioner` (mirror of `LspProvisioner`) first
-  *locates* an adapter (override → project-local `node_modules/.bin` → PATH), then *ensures* a
+  _locates_ an adapter (override → project-local `node_modules/.bin` → PATH), then _ensures_ a
   downloadable one: it fetches a **pinned, SHA-256-verified** archive per `${platform}-${arch}`,
   extracts it under `userData/debug-adapters`, and caches it. Each platform entry carries its own URL
   and checksum — upstream may publish different releases per platform (e.g. netcoredbg dropped
@@ -291,17 +291,42 @@ key stored by a pre-connections build migrates onto the built-in Anthropic API-k
 open) — never Studio's install directory. Every run is cancellable; aborting stops the underlying
 agent process and denies any pending permission prompt.
 
-**Tool permissions (machine).** Built-in tools are gated in main through the Agent SDK's `canUseTool`
-hook:
+**Write confinement.** When a workspace is open, a granted file write (`Write`/`Edit`/`MultiEdit`/
+`NotebookEdit`) is refused if its target resolves outside the workspace root — a **hard boundary that
+approving the action cannot widen** (a prompt authorises _what_ an action does, not _where_; a single
+click must not be able to escape the root). Widening the allowed area is a configuration decision, not
+a per-prompt override. `Bash` writes cannot be range-checked from the command text, so they are backed
+by the SDK OS sandbox instead (enabled, degrading gracefully where unavailable). A no-workspace (home)
+run is unconfined. Confinement is evaluated before the posture, so it holds even under an auto-allowing
+posture.
 
-| Tool class      | Examples                | Policy                            |
-| --------------- | ----------------------- | --------------------------------- |
-| Read-only       | `Read`, `Glob`, `Grep`  | **Auto-allowed** within the run.  |
-| Mutating / exec | `Edit`, `Write`, `Bash` | **Ask the user** before each use. |
+**Tool permissions (machine).** Built-in tools are gated in main through the Agent SDK's `canUseTool`
+hook. Three layers decide, in order: **write confinement** (above) refuses out-of-root writes
+outright; the user's **per-tool policy** is consulted next; the **permission posture** decides the
+rest.
+
+- **Per-tool policy** — a user default of `allow` / `ask` / `deny` per gateable tool (set in AI
+  settings, keyed by tool display name). `deny` refuses even when the posture would auto-allow; `allow`
+  runs without prompting (still subject to confinement); `ask` (the default) defers to the posture.
+- **Permission posture** — `prompt` (ask before every mutating/exec tool), `auto-edits` (also
+  auto-allow file edits), or `auto-all` (auto-allow everything).
+
+| Tool class      | Examples                | Default (posture `prompt`, policy `ask`) |
+| --------------- | ----------------------- | ---------------------------------------- |
+| Read-only       | `Read`, `Glob`, `Grep`  | **Auto-allowed** within the run.         |
+| Mutating / exec | `Edit`, `Write`, `Bash` | **Ask the user** before each use.        |
 
 A gated tool calls `requestPermission(name, detail)`; `AiManager` emits a `permission` event (tool +
 one-line summary including the target path/command); the renderer surfaces an inline Allow/Deny
-prompt; the tool runs only on explicit Allow.
+prompt; the tool runs only on explicit Allow. A `deny` policy is enforced by removing the tool from the
+model via the SDK's `disallowedTools`, **not only at the gate**: the Claude Code CLI auto-runs shell
+commands its own safety classifier deems safe (e.g. `echo`) without consulting `canUseTool`, so a
+gate-only deny would leak them.
+
+**Audit log.** Every _granted_ mutating/exec action is appended to a best-effort, size-bounded JSONL
+log under userData (`AgentAuditLog`): tool, one-line target, workspace root, timestamp, and how it was
+granted (interactive / remembered / session / posture / policy). Read-only auto-allows and denials are
+not logged. It records actions that reach the gate, so classifier-auto-run commands are not captured.
 
 **In-app capabilities.** The agent can also act inside the app (e.g. read/replace the live editor
 document) via the renderer capability registry: providers call `context.bridge.request(capability,
@@ -310,8 +335,9 @@ capabilities are reachable; unknown names are rejected. (`AgentEditorCapabilitie
 registers read/replace-active-document, preferring the markdown editor then the code editor.)
 
 **Enforcement points:** `AiAuthManager` (credentials stay in main) · `ClaudeAgentProvider.canUseTool`
-(allow-list vs ask) · `AiManager` (permission broker) · `RendererBridge` + `AiRuntime` (in-app
-capability surface).
+(confinement → per-tool policy → posture, plus `disallowedTools` for denials) · `AiManager`
+(permission broker, per-tool-policy sanitising, and `AgentAuditLog`) · `RendererBridge` + `AiRuntime`
+(in-app capability surface).
 
 ---
 
