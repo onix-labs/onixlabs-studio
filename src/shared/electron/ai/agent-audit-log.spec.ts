@@ -14,7 +14,7 @@ function entry(over: Partial<AuditEntry> = {}): AuditEntry {
     tool: 'Write',
     target: '/home/dev/project/a.ts',
     workspaceRoot: '/home/dev/project',
-    source: 'interactive',
+    source: 'gated-or-auto',
     ...over,
   };
 }
@@ -56,7 +56,7 @@ describe('agent-audit-log', () => {
 
     it('record_preservesAllFields', () => {
       const log: AgentAuditLog = new AgentAuditLog(dir);
-      const only: AuditEntry = entry({ source: 'remembered', workspaceRoot: null });
+      const only: AuditEntry = entry({ source: 'policy', workspaceRoot: null });
       log.record(only);
       expect(readEntries(dir)[0]).toEqual(only);
     });

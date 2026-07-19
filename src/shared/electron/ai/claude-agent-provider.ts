@@ -1,9 +1,11 @@
 import { homedir } from 'node:os';
 import type {
   CanUseTool,
+  HookJSONOutput,
   McpSdkServerConfigWithInstance,
   Options,
   PermissionResult,
+  PostToolUseHookInput,
   Query,
   SDKMessage,
   SDKUserMessage,
@@ -82,6 +84,7 @@ import {
   prettyToolName,
   summarizeToolInput,
 } from './tool-format';
+import { coarseGrantSource } from './tool-policy';
 import { CONFINED_WRITE_TOOLS, isWriteWithinRoots, writeTargetPath } from './write-confinement';
 
 /**
@@ -94,6 +97,13 @@ const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
  */
 const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+/**
+ * Holds built-in tools the audit log ignores beyond the read-only set (#311): planning/delegation
+ * tools that are not themselves mutating/exec actions. A delegated sub-agent's own tool uses are
+ * still audited through their own `PostToolUse` events.
+ */
+const AUDIT_SKIP_TOOLS: readonly string[] = ['Task', 'TodoWrite'];
 
 /**
  * Holds the read-only binary tools auto-allowed on a binary-surface run, so the agent can inspect the
@@ -609,7 +619,6 @@ export class ClaudeAgentProvider implements AgentProvider {
         };
       }
       if (policy === 'allow') {
-        context.recordAutoGrant(displayName, summarizeToolInput(input), 'policy');
         return { behavior: 'allow', updatedInput: input };
       }
       const autoAllowed: boolean =
@@ -617,12 +626,6 @@ export class ClaudeAgentProvider implements AgentProvider {
         posture === 'auto-all' ||
         (posture === 'auto-edits' && EDIT_TOOLS.includes(toolName));
       if (autoAllowed) {
-        // Audit a posture-granted mutating/exec action (#308); read-only tools are auto-allowed too
-        // but are deliberately not logged. Interactive/remembered/session grants are logged by the
-        // permission broker, so only the posture path is reported here.
-        if (!READ_ONLY_TOOLS.includes(toolName)) {
-          context.recordAutoGrant(displayName, summarizeToolInput(input), 'posture');
-        }
         return { behavior: 'allow', updatedInput: input };
       }
       const granted: boolean = await context.requestPermission(
@@ -646,6 +649,42 @@ export class ClaudeAgentProvider implements AgentProvider {
       // Hard-remove policy-denied tools (#309) so the model cannot use them at all — necessary for
       // Bash, whose "safe" commands the CLI classifier would otherwise auto-run before the gate.
       ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
+      // Audit every executed mutating/exec tool at the execution point (#311). `PostToolUse` fires for
+      // ALL tools that actually ran — including commands the CLI classifier auto-runs without the
+      // `canUseTool` gate, which the gate-based audit missed — and never fires for a denied tool. The
+      // grant path is no longer distinguishable here, so the source is the coarse value computed from
+      // the run's policy + posture. Read-only, in-app (`mcp__…`), and planning/delegation tools are
+      // skipped. Best-effort: a hook must never break the run, so it always continues.
+      hooks: {
+        PostToolUse: [
+          {
+            hooks: [
+              (input): Promise<HookJSONOutput> => {
+                try {
+                  const post: PostToolUseHookInput = input as PostToolUseHookInput;
+                  const raw: string = post.tool_name;
+                  const auditable: boolean =
+                    !READ_ONLY_TOOLS.includes(raw) &&
+                    !AUDIT_SKIP_TOOLS.includes(raw) &&
+                    !raw.startsWith('mcp__');
+                  if (auditable) {
+                    const displayName: string = prettyToolName(raw);
+                    const policy: AiToolPolicy = context.toolPolicies[displayName] ?? 'ask';
+                    context.recordAudit(
+                      displayName,
+                      summarizeToolInput(post.tool_input),
+                      coarseGrantSource(policy, posture, EDIT_TOOLS.includes(raw)),
+                    );
+                  }
+                } catch {
+                  // Auditing is best-effort; never let it disturb the run.
+                }
+                return Promise.resolve({ continue: true });
+              },
+            ],
+          },
+        ],
+      },
       // Defence-in-depth for shell writes (#307): sandbox Bash so a granted command is filesystem-
       // confined by the OS sandbox on top of the interactive prompt (Bash targets cannot be range-
       // checked from their input the way a file write can). We do NOT auto-allow sandboxed Bash — it

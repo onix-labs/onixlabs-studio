@@ -2,12 +2,14 @@ import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from
 import { join } from 'node:path';
 
 /**
- * How a gated mutating/exec action came to be allowed: the user answered the prompt (`interactive`),
- * a remembered global/workspace rule allowed it (`remembered`), a session grant allowed it
- * (`session`), the run's permission posture auto-allowed it (`posture`), or the user's per-tool
- * default policy allowed it (`policy`, #309).
+ * A coarse indication of why an executed mutating/exec action was allowed, computed at the execution
+ * point from the run's settings (#311): the user's per-tool policy allowed it (`policy`), the run's
+ * permission posture auto-allowed it (`posture`), or it ran through the ordinary path — an interactive
+ * grant, a remembered/session rule, or a command the CLI classifier deemed safe (`gated-or-auto`).
+ * The last bucket is deliberately coarse: auditing at execution (so classifier-auto-run commands are
+ * captured, not just gated ones) means the exact grant path is no longer distinguishable.
  */
-export type AuditGrantSource = 'interactive' | 'remembered' | 'session' | 'posture' | 'policy';
+export type AuditGrantSource = 'policy' | 'posture' | 'gated-or-auto';
 
 /**
  * A single audit record: one granted mutating/exec agent action.

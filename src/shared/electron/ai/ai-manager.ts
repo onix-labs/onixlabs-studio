@@ -60,11 +60,6 @@ interface PendingPermission {
   readonly name: string;
 
   /**
-   * Gets the one-line summary of what the action targets, for the audit log when granted.
-   */
-  readonly detail: string;
-
-  /**
    * Gets the workspace root of the asking run, or null for none.
    */
   readonly workspaceRoot: string | null;
@@ -525,8 +520,8 @@ export class AiManager {
           name,
           detail,
         ),
-      recordAutoGrant: (name: string, detail: string, source: 'posture' | 'policy'): void =>
-        this.recordGrant(name, detail, request.workspaceRoot, source),
+      recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
+        this.recordAudit(name, detail, request.workspaceRoot, source),
       requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
         this.requestInput(request.requestId, controller.signal, question, choices),
       requestEditDecision: (
@@ -707,12 +702,7 @@ export class AiManager {
     name: string,
     detail: string,
   ): Promise<boolean> {
-    if (this.sessionAllowed.has(name)) {
-      this.recordGrant(name, detail, workspaceRoot, 'session');
-      return Promise.resolve(true);
-    }
-    if (this.rules.isAllowed(name, workspaceRoot)) {
-      this.recordGrant(name, detail, workspaceRoot, 'remembered');
+    if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
       return Promise.resolve(true);
     }
     const permissionId: string = randomUUID();
@@ -725,7 +715,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, detail, workspaceRoot });
+      this.permissions.set(permissionId, { settle, name, workspaceRoot });
       if (signal.aborted) {
         settle(false);
         return;
@@ -743,14 +733,14 @@ export class AiManager {
   }
 
   /**
-   * Records a granted mutating/exec action to the audit log (#308), stamping the moment here so the
-   * log stays a pure sink. Best-effort by construction (the log swallows its own IO errors).
+   * Records an executed mutating/exec action to the audit log (#308/#311), stamping the moment here so
+   * the log stays a pure sink. Best-effort by construction (the log swallows its own IO errors).
    * @param name The tool's display name.
    * @param detail The one-line target summary.
    * @param workspaceRoot The run's workspace root, or null for none.
-   * @param source How the action came to be allowed.
+   * @param source The coarse reason the action was allowed.
    */
-  private recordGrant(
+  private recordAudit(
     name: string,
     detail: string,
     workspaceRoot: string | null,
@@ -776,14 +766,11 @@ export class AiManager {
     if (pending === undefined) {
       return;
     }
-    if (reply.granted) {
-      this.recordGrant(pending.name, pending.detail, pending.workspaceRoot, 'interactive');
-      if (reply.remember !== undefined) {
-        if (reply.remember === 'session') {
-          this.sessionAllowed.add(pending.name);
-        } else {
-          this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
-        }
+    if (reply.granted && reply.remember !== undefined) {
+      if (reply.remember === 'session') {
+        this.sessionAllowed.add(pending.name);
+      } else {
+        this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
       }
     }
     pending.settle(reply.granted);
