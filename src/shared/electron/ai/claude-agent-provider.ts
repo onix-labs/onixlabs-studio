@@ -236,6 +236,16 @@ export class ClaudeAgentProvider implements AgentProvider {
       ? [context.workspaceRoot!, ...additionalDirectories]
       : [];
 
+    // Tools the user's policy denies (#309) are removed from the model's context via the SDK's
+    // `disallowedTools`, NOT left to the `canUseTool` gate: the Claude Code CLI auto-runs commands its
+    // own safety classifier deems safe (e.g. `echo`) WITHOUT calling `canUseTool`, so a gate-only deny
+    // would leak them. `disallowedTools` blocks the tool outright, whatever the classifier decides.
+    // Keyed on display name, which equals the SDK name for these built-in tools. The `canUseTool` deny
+    // below stays as a backstop for anything that does reach the gate.
+    const disallowedTools: readonly string[] = Object.entries(context.toolPolicies)
+      .filter(([, value]: [string, string]): boolean => value === 'deny')
+      .map(([tool]: [string, string]): string => tool);
+
     // Build a text-content tool result from a handler's rendered string.
     const text: (value: string) => { content: { type: 'text'; text: string }[] } = (
       value: string,
@@ -633,6 +643,9 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(additionalDirectories.length > 0
         ? { additionalDirectories: [...additionalDirectories] }
         : {}),
+      // Hard-remove policy-denied tools (#309) so the model cannot use them at all — necessary for
+      // Bash, whose "safe" commands the CLI classifier would otherwise auto-run before the gate.
+      ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
       // Defence-in-depth for shell writes (#307): sandbox Bash so a granted command is filesystem-
       // confined by the OS sandbox on top of the interactive prompt (Bash targets cannot be range-
       // checked from their input the way a file write can). We do NOT auto-allow sandboxed Bash — it
