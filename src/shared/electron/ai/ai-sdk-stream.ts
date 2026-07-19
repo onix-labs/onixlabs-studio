@@ -196,6 +196,10 @@ function gated<TArgs>(
       if (!granted) {
         return 'The user declined to run this tool.';
       }
+    } else {
+      // Auto-all skips the permission round-trip; audit the posture-granted action here (#308) so it
+      // is still recorded. Every `gated` tool is mutating, so there is no read-only case to exclude.
+      context.recordAutoGrant(name, summarizeToolInput(args));
     }
     return execute(args);
   };

@@ -589,6 +589,12 @@ export class ClaudeAgentProvider implements AgentProvider {
         posture === 'auto-all' ||
         (posture === 'auto-edits' && EDIT_TOOLS.includes(toolName));
       if (autoAllowed) {
+        // Audit a posture-granted mutating/exec action (#308); read-only tools are auto-allowed too
+        // but are deliberately not logged. Interactive/remembered/session grants are logged by the
+        // permission broker, so only the posture path is reported here.
+        if (!READ_ONLY_TOOLS.includes(toolName)) {
+          context.recordAutoGrant(prettyToolName(toolName), summarizeToolInput(input));
+        }
         return { behavior: 'allow', updatedInput: input };
       }
       const granted: boolean = await context.requestPermission(
