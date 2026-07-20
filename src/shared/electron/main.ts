@@ -40,6 +40,7 @@ import { MediaProtocol } from '@shared/electron/media-protocol';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
+import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
@@ -956,6 +957,11 @@ class Program {
    * Runs the program.
    */
   public static run(): void {
+    // A GUI launch inherits only launchd's minimal environment and never sources the user's shell
+    // profile, so exports such as `GITHUB_TOKEN` and an enriched `PATH` would be missing from the
+    // agent's Bash and the terminal. Hydrate `process.env` before any manager reads it (the managers
+    // resolve their env lazily at spawn time, and this runs ahead of every field initializer).
+    hydrateLoginShellEnvironment();
     new Program();
   }
 }
