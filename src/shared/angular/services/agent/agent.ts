@@ -25,6 +25,7 @@ import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 
 /**
  * Identifies the kind of transcript item.
@@ -418,6 +419,15 @@ export class Agent {
    * Holds the workspace, used to scope runs to the open folder.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds a host-provided override for the run's workspace root, or null when the host relies on the
+   * global {@link Workspace}. The repository tab provides one returning its bound repository's root.
+   */
+  private readonly workspaceRootResolver: (() => string | null) | null = inject(
+    AGENT_WORKSPACE_ROOT,
+    { optional: true },
+  );
 
   /**
    * Holds the settings service, the source of the run's permission posture and token cap.
@@ -849,6 +859,17 @@ export class Agent {
   }
 
   /**
+   * Resolves the working directory a run should act within: a host-provided root (e.g. the repository
+   * tab's bound repository) when present, otherwise the open folder workspace, or null for neither.
+   * @returns Returns the workspace root path, or null.
+   */
+  private runWorkspaceRoot(): string | null {
+    return this.workspaceRootResolver !== null
+      ? this.workspaceRootResolver()
+      : (this.workspace.root()?.path ?? null);
+  }
+
+  /**
    * Starts a run with the current engine selection and settings, recording the turn for retry and
    * queued-dispatch fallbacks. A pending branch anchor (set by {@link rewind}) forks the resumed
    * session at that message, once.
@@ -871,7 +892,7 @@ export class Agent {
     this.forkAt = null;
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), prompt, {
-      workspaceRoot: this.workspace.root()?.path ?? null,
+      workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       toolPolicies: this.settings.aiToolPolicies(),
@@ -958,7 +979,7 @@ export class Agent {
       this.provider(),
       this.compactionPrompt(history),
       {
-        workspaceRoot: this.workspace.root()?.path ?? null,
+        workspaceRoot: this.runWorkspaceRoot(),
         model: this.model(),
         permissionPosture: 'prompt',
         tokenCap: this.settings.aiTokenCap(),

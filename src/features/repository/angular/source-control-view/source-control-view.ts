@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AGENT_WORKSPACE_ROOT } from '@shared/angular/services/agent/agent-workspace-root';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
   AgentHostRegistrar,
@@ -99,6 +100,16 @@ const STATUS_PRIORITY: number = 30;
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
     Agent,
     AgentConversation,
+    {
+      // Scope the agent's working directory to this tab's bound git repository, not the global folder
+      // workspace (which is null in a repository tab, so the agent would otherwise run against home).
+      // Resolved lazily so it tracks the repository bind.
+      provide: AGENT_WORKSPACE_ROOT,
+      useFactory: (): (() => string | null) => {
+        const repository: Repository = inject(Repository);
+        return (): string | null => repository.info()?.root ?? null;
+      },
+    },
     { provide: AGENT_CONVERSATION_KIND, useValue: 'review' },
     {
       // Scope agent conversations docked in this repository surface to the git repository root (or the
