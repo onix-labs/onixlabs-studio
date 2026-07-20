@@ -262,9 +262,20 @@ export class ClaudeAgentProvider implements AgentProvider {
     // would leak them. `disallowedTools` blocks the tool outright, whatever the classifier decides.
     // Keyed on display name, which equals the SDK name for these built-in tools. The `canUseTool` deny
     // below stays as a backstop for anything that does reach the gate.
-    const disallowedTools: readonly string[] = Object.entries(context.toolPolicies)
-      .filter(([, value]: [string, string]): boolean => value === 'deny')
-      .map(([tool]: [string, string]): string => tool);
+    //
+    // `AskUserQuestion` is always removed: it is the CLI's built-in multiple-choice ask tool, but it is
+    // interactive-terminal-only and Studio has no seam to render it or return its answer. It is not a
+    // `request_user_dialog` (only `refusal_fallback_prompt` uses `onUserDialog`); it resolves through an
+    // Ink picker whose `tool_result` a headless host cannot supply. Left enabled, the model prefers it
+    // over our own `ask_user`, hits the generic permission gate ("Allow AskUserQuestion?"), and — once
+    // allowed — dead-ends into "No answer", silently proceeding on a guess. Removing it forces every
+    // "ask the user" through `mcp__studio__ask_user`, which renders choices and blocks for a real answer.
+    const disallowedTools: readonly string[] = [
+      'AskUserQuestion',
+      ...Object.entries(context.toolPolicies)
+        .filter(([, value]: [string, string]): boolean => value === 'deny')
+        .map(([tool]: [string, string]): string => tool),
+    ];
 
     // Build a text-content tool result from a handler's rendered string.
     const text: (value: string) => { content: { type: 'text'; text: string }[] } = (
