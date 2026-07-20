@@ -1,0 +1,80 @@
+// Monaco folding chrome overrides, styled to match Visual Studio's editor. Monaco renders its fold
+// controls and collapsed-region placeholder into its own DOM, outside Angular's view encapsulation, so
+// these overrides must live in a global stylesheet to take effect. `!important` throughout because
+// Monaco injects its own gutter CSS (including the codicon glyph sizing) into the document head at
+// runtime — after this bundled stylesheet — so an equal-specificity rule would lose the cascade.
+
+// Position the fold control past the change-margin bar: a gap, the bar, then an equal gap, so the bar
+// keeps clear whitespace on both sides and the control sits to its right (between the bar and the code).
+.monaco-editor .margin-view-overlays .codicon-folding-expanded,
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-expanded,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed {
+  justify-content: flex-start !important;
+  padding-left: calc(var(--change-margin-gap) * 2 + var(--change-margin-width)) !important;
+  margin-left: 0 !important;
+}
+
+// Draw the control as a Visual-Studio-style bordered box in place of Monaco's chevron glyph. The box is
+// the `::before` pseudo (Monaco's glyph carrier): its `content` is cleared, its codicon font metrics are
+// neutralised (they would otherwise force a ~1em size), and it is given a fixed size and border. The
+// plus/minus stroke is painted with background gradients centred in the box.
+.monaco-editor .margin-view-overlays .codicon-folding-expanded::before,
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-expanded::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed::before {
+  content: '' !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 11px !important;
+  height: 11px !important;
+  border: 1px solid currentColor !important;
+  border-radius: 2px !important;
+  background-color: transparent !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+
+// Expanded: a minus (one horizontal stroke) — clicking it collapses the block.
+.monaco-editor .margin-view-overlays .codicon-folding-expanded::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-expanded::before {
+  background-image: linear-gradient(currentColor, currentColor) !important;
+  background-size: 5px 1.5px !important;
+}
+
+// Collapsed: a plus (horizontal + vertical strokes) — clicking it expands the block.
+.monaco-editor .margin-view-overlays .codicon-folding-collapsed::before,
+.monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor) !important;
+  background-size:
+    5px 1.5px,
+    1.5px 5px !important;
+}
+
+// Collapsed-region placeholder. Monaco draws one global glyph (⋯) for every folded range; blank it so
+// the per-fold placeholder drawn by `FoldingPlaceholderController` is the only text shown. That
+// controller tags each collapsed line with a per-kind class whose `::after` supplies the text: a brace
+// block reads `signature {...}` (the `{` folded away for Allman, or appended after a visible K&R `{`),
+// and a region or comment reads with a trailing ellipsis. Muted like Visual Studio's collapsed marker.
+.monaco-editor .inline-folded::after {
+  content: '' !important;
+}
+
+.monaco-editor .fold-placeholder::after {
+  opacity: 0.6;
+}
+
+.monaco-editor .fold-placeholder--allman::after {
+  content: ' {...}';
+}
+
+.monaco-editor .fold-placeholder--knr::after {
+  content: '...}';
+}
+
+.monaco-editor .fold-placeholder--region::after {
+  content: ' …';
+}

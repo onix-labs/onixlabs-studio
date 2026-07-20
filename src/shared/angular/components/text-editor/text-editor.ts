@@ -16,6 +16,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { FoldingPlaceholderController } from './folding-placeholder-controller';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -157,6 +158,12 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private bracketColorizationGuard: MonacoApi.IDisposable | null = null;
 
   /**
+   * Holds the controller drawing Visual-Studio-style collapsed-region placeholders (`signature {...}`),
+   * or null before creation and after disposal.
+   */
+  private foldingPlaceholders: FoldingPlaceholderController | null = null;
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -267,6 +274,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   public ngOnDestroy(): void {
     this.bracketColorizationGuard?.dispose();
     this.bracketColorizationGuard = null;
+    this.foldingPlaceholders?.dispose();
+    this.foldingPlaceholders = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -487,6 +496,10 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // change so the toggle sticks regardless of what triggered the re-seed.
     this.bracketColorizationGuard =
       model?.onDidChangeOptions((): void => this.applyBracketColorization()) ?? null;
+
+    // Draw Visual-Studio-style collapsed-region placeholders (`signature {...}`). Harmless on editors
+    // whose language has no brace folding — the controller simply finds no collapsed ranges.
+    this.foldingPlaceholders = new FoldingPlaceholderController(monaco, this.editor);
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

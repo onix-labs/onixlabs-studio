@@ -4,11 +4,14 @@
 // partials); the width is a shared token (see _variables.scss).
 
 // Monaco sizes each decoration element to the full lane width, so the bar is painted as a vertical
-// stripe constrained to the bar width and centred horizontally in the lane, rather than a left border.
+// stripe constrained to the bar width and pinned to the LEFT edge of the lane (hard against the line
+// numbers). The lane is shared with the fold chevron, which is pinned to the right edge (see
+// _folding.scss), so the two sit side by side instead of overlapping.
 .change-margin--unsaved,
 .change-margin--saved {
   background-repeat: no-repeat;
-  background-position: center;
+  // A small gap from the line numbers, then the bar; the fold chevron sits at the lane's right edge.
+  background-position: var(--change-margin-gap) center;
   background-size: var(--change-margin-width) 100%;
 }
 
@@ -21,12 +24,12 @@
 }
 
 // A small downward caret marking where lines were deleted, sitting on the surviving line above,
-// centred in the lane.
+// centred under the change bar (which is offset from the left edge by the change-margin gap).
 .change-margin--deleted::before {
   content: '';
   position: absolute;
   bottom: -4px;
-  left: 50%;
+  left: calc(var(--change-margin-gap) + var(--change-margin-width) / 2);
   transform: translateX(-50%);
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
