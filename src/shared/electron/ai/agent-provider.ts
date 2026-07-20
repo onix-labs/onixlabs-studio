@@ -123,6 +123,14 @@ export interface AgentRunContext {
   readonly tokenCap: number;
 
   /**
+   * Gets the absolute path of the shell whose login profile the agent's environment is sourced from
+   * (#318), or null to inherit the process environment (already hydrated from the default login shell
+   * at startup, #317). Lets the agent's Bash use a different shell's `PATH`/exports than the
+   * interactive default.
+   */
+  readonly agentShell: string | null;
+
+  /**
    * Gets the identifier of the editor tab that owns this run, so the in-app editor tools act on that
    * tab's editor; null when the run has no owning editor (the standalone agent tab).
    */

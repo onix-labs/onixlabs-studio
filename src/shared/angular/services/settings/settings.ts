@@ -601,6 +601,12 @@ export class Settings {
   public readonly aiRunTimeoutMinutes: Signal<number> = this.value('ai.runTimeoutMinutes');
 
   /**
+   * Gets the shell whose login profile the agent sources its environment from (an absolute path), or
+   * the empty string to inherit the default login shell's environment.
+   */
+  public readonly aiAgentShell: Signal<string> = this.value('ai.agentShell');
+
+  /**
    * Gets whether Mission Control floats agents awaiting a permission request to the top of its agent
    * list (the columns keep their order regardless).
    */

@@ -899,6 +899,7 @@ export class Agent {
       allowedWritePaths: this.settings.aiAllowedWritePaths(),
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
       tokenCap: this.settings.aiTokenCap(),
+      agentShell: this.settings.aiAgentShell(),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       owningTabId,
       surface,

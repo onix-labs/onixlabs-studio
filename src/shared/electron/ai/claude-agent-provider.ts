@@ -44,6 +44,7 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { resolveBundledClaudeExecutable } from './claude-executable';
+import { applyCapturedEnvironment, captureShellEnvironmentCached } from '@shared/electron/shell-env';
 import {
   ASK_USER_DESCRIPTION,
   ASK_USER_FQN,
@@ -809,7 +810,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       // budget so the model paces its tool use and wraps up before the limit.
       ...(context.tokenCap > 0 ? { taskBudget: { total: context.tokenCap } } : {}),
       ...this.executableOption(),
-      ...(this.runEnv(context.auth) ?? {}),
+      ...(this.runEnv(context) ?? {}),
     };
 
     // Mid-run steering rides the SDK's streaming-input mode: the prompt is an async generator that
@@ -961,22 +962,44 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Builds the `env` option that injects an API key, or null when the local login should be used
-   * (the SDK then authenticates from `~/.claude`).
-   * @param auth The resolved credential material.
+   * Builds the `env` option for the run, or null to leave the SDK to inherit `process.env` (already
+   * hydrated from the default login shell at startup, #317). An explicit env is built when either an
+   * API key must be injected, or the user chose a specific agent shell (#318) whose profile
+   * environment overlays the process env — its exports and `PATH` take effect, and `SHELL` is set to
+   * the chosen shell. A failed capture leaves the inherited env in place (fail-open).
+   * @param context The run context (its credential material and configured agent shell).
    * @returns Returns `{ env }`, or null to leave the environment untouched.
    */
-  private runEnv(auth: AgentAuth): { env: Record<string, string> } | null {
-    if (auth.hasLocalLogin || auth.apiKey === null) {
+  private runEnv(context: AgentRunContext): { env: Record<string, string> } | null {
+    const auth: AgentAuth = context.auth;
+    const usingApiKey: boolean = !auth.hasLocalLogin && auth.apiKey !== null;
+    const shell: string | null = context.agentShell;
+    const useShell: boolean = typeof shell === 'string' && shell.length > 0;
+    if (!usingApiKey && !useShell) {
       return null;
     }
+
     const env: Record<string, string> = {};
     for (const [name, value] of Object.entries(process.env)) {
       if (typeof value === 'string') {
         env[name] = value;
       }
     }
-    env['ANTHROPIC_API_KEY'] = auth.apiKey;
+
+    // Overlay the chosen shell's profile: unlike the startup hydrate (which only fills gaps), this is
+    // an explicit per-agent choice, so the shell's exports override the inherited env and its PATH is
+    // merged to the front.
+    if (useShell && shell !== null) {
+      const captured: Record<string, string> | null = captureShellEnvironmentCached(shell);
+      if (captured !== null) {
+        Object.assign(env, applyCapturedEnvironment(env, captured, true));
+      }
+      env['SHELL'] = shell;
+    }
+
+    if (usingApiKey && auth.apiKey !== null) {
+      env['ANTHROPIC_API_KEY'] = auth.apiKey;
+    }
     return { env };
   }
 

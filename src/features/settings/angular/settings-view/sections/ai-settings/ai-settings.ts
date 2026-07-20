@@ -1,15 +1,19 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   signal,
   Signal,
   WritableSignal,
 } from '@angular/core';
 import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
+import { ShellInfo } from '@shared/api/terminal-channels';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { SettingControl } from '../../setting-control/setting-control';
 import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
@@ -67,6 +71,34 @@ export class AiSettingsSection {
    * Holds the connection-management service.
    */
   private readonly connectionsService: AiConnections = inject(AiConnections);
+
+  /**
+   * Holds the settings service the agent shell persists through.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the installed-shells provider populating the agent-shell dropdown.
+   */
+  private readonly terminalShells: TerminalShells = inject(TerminalShells);
+
+  /**
+   * Gets the agent-shell dropdown options: a leading "Default login shell" entry (the empty value,
+   * inheriting the startup-hydrated environment) followed by each installed shell.
+   */
+  protected readonly shellOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => [
+      { value: '', label: 'Default login shell' },
+      ...this.terminalShells
+        .shells()
+        .map((shell: ShellInfo): DropdownOption => ({ value: shell.path, label: shell.name })),
+    ],
+  );
+
+  /**
+   * Gets the persisted agent shell (the empty string for the default login shell).
+   */
+  protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;
 
   /**
    * Holds the ids of the currently-expanded connections.
@@ -175,5 +207,13 @@ export class AiSettingsSection {
    */
   protected moveDown(id: string): void {
     this.connectionsService.move(id, 1);
+  }
+
+  /**
+   * Persists the chosen agent shell.
+   * @param value The chosen shell path, or the empty string for the default login shell.
+   */
+  protected onAgentShellChange(value: string): void {
+    this.settings.set('ai.agentShell', value);
   }
 }

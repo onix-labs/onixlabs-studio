@@ -86,6 +86,7 @@ export interface SettingsValues {
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
+  readonly 'ai.agentShell': string;
 
   readonly 'missionControl.showPermissionsAtTop': boolean;
   readonly 'missionControl.tileScrollMode': TileScrollMode;
@@ -659,6 +660,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 10,
+      },
+      {
+        key: 'ai.agentShell',
+        title: 'Agent shell',
+        description:
+          "The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an " +
+          'installed shell, or use the default login shell.',
+        control: { kind: 'custom', component: 'ai-agent-shell' },
+        default: '',
       },
     ],
   },

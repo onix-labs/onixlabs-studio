@@ -66,6 +66,13 @@ export interface AiRunOptions {
   readonly tokenCap?: number;
 
   /**
+   * Gets the absolute path of the shell whose login profile the agent's environment is sourced from,
+   * or omitted/empty to inherit the process environment (hydrated from the default login shell at
+   * startup).
+   */
+  readonly agentShell?: string;
+
+  /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0/omitted for none.
    */
   readonly runTimeoutMs?: number;
@@ -193,6 +200,7 @@ export class AiRuntime {
       allowedWritePaths: options.allowedWritePaths ?? [],
       deniedWritePaths: options.deniedWritePaths ?? [],
       tokenCap: options.tokenCap ?? 0,
+      agentShell: options.agentShell ?? '',
       runTimeoutMs: options.runTimeoutMs ?? 0,
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
