@@ -58,9 +58,11 @@ export interface AgentBridge {
    * Invokes an in-app capability and resolves with its result.
    * @param capability The capability name.
    * @param input The capability input.
+   * @param timeoutMs An optional reply timeout (ms) overriding the bridge default, for a capability
+   * that legitimately runs longer than a normal request (e.g. running a file and awaiting its exit).
    * @returns Returns the capability's result.
    */
-  request(capability: string, input: unknown): Promise<unknown>;
+  request(capability: string, input: unknown, timeoutMs?: number): Promise<unknown>;
 }
 
 /**

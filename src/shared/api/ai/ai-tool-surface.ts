@@ -31,6 +31,13 @@ export const INSERT_ACTIVE_DOCUMENT: string = 'insert_into_active_document';
 export const SET_ACTIVE_DOCUMENT_LANGUAGE: string = 'set_active_document_language';
 
 /**
+ * The in-app capability that runs the active editor document in the code view's docked run terminal
+ * (using the file's language runner), captures the output, and reports the exit result so the agent
+ * can tell whether the program ran successfully.
+ */
+export const RUN_ACTIVE_DOCUMENT: string = 'run_active_document';
+
+/**
  * The placements the insert capability accepts: relative to an anchor string, or at a document edge.
  */
 export type InsertPlacement = 'before' | 'after' | 'start' | 'end';

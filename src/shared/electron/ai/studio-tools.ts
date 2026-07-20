@@ -10,6 +10,7 @@ import {
   InsertPlacement,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
+  RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
@@ -49,6 +50,17 @@ export const INSERT_TOOL_FQN: string = `mcp__studio__${INSERT_ACTIVE_DOCUMENT}`;
  * The fully-qualified name the set-language tool is exposed under to the Claude Agent SDK.
  */
 export const SET_LANGUAGE_TOOL_FQN: string = `mcp__studio__${SET_ACTIVE_DOCUMENT_LANGUAGE}`;
+
+// The run-file tool is intentionally NOT auto-allowed (no FQN in `allowedTools`): running code is an
+// execution, so it flows through the permission gate and prompts unless the posture auto-allows
+// everything, matching write_terminal_input.
+
+/**
+ * The default and maximum time (seconds) a run tool waits for the program to finish before returning
+ * with whatever output it has. Bounded so a hung program cannot block the run indefinitely.
+ */
+export const RUN_DEFAULT_TIMEOUT_SECONDS: number = 60;
+export const RUN_MAX_TIMEOUT_SECONDS: number = 300;
 
 /**
  * The fully-qualified name the read-terminal tool is exposed under to the Claude Agent SDK.
@@ -174,6 +186,13 @@ export const STUDIO_PROMPT_APPENDIX: string = [
   `- "${INSERT_ACTIVE_DOCUMENT}" inserts text before/after an anchor string, or at the document's`,
   '  start or end.',
   `- "${REPLACE_ACTIVE_DOCUMENT}" replaces this tab's editor document with new text in full.`,
+  `- "${SET_ACTIVE_DOCUMENT_LANGUAGE}" sets this tab's language (syntax) — use it when you write code`,
+  '  in a language the editor is not yet set to.',
+  `- "${RUN_ACTIVE_DOCUMENT}" runs this tab's file in the code view's terminal and returns the output`,
+  '  and exit status, so you can check whether it ran successfully. Use it after writing or fixing',
+  '  code to verify it works; it runs the live editor content, so put your changes in the editor',
+  '  first. Runnable languages include JavaScript, TypeScript, Python, C#, Java, Kotlin, Rust, Go,',
+  '  and shell.',
   `For targeted changes, prefer "${EDIT_ACTIVE_DOCUMENT}" and "${INSERT_ACTIVE_DOCUMENT}" over`,
   `"${REPLACE_ACTIVE_DOCUMENT}" — they only touch the region you name. Reserve the full replace for`,
   'rewriting most of a document. When the user asks you to write, generate, or edit code or content',
@@ -407,7 +426,96 @@ export async function setActiveDocumentLanguage(
     language,
   });
   const set: { ok?: boolean; detail?: string } = result ?? {};
-  return set.detail ?? (set.ok === true ? 'The editor language was set.' : 'The language was not set.');
+  return (
+    set.detail ?? (set.ok === true ? 'The editor language was set.' : 'The language was not set.')
+  );
+}
+
+/**
+ * The shape the run capability returns from the renderer.
+ */
+interface RunToolResult {
+  /**
+   * Gets a value indicating whether the file was runnable and a run was started.
+   */
+  readonly ran?: boolean;
+
+  /**
+   * Gets the model-facing reason nothing ran (when `ran` is false).
+   */
+  readonly detail?: string;
+
+  /**
+   * Gets the shell command that was run.
+   */
+  readonly command?: string;
+
+  /**
+   * Gets the program's exit code, or null when it could not be determined (a non-POSIX shell, or a
+   * run that did not finish in time).
+   */
+  readonly exitCode?: number | null;
+
+  /**
+   * Gets a value indicating whether the program exited successfully (exit code 0).
+   */
+  readonly success?: boolean;
+
+  /**
+   * Gets a value indicating whether the run timed out before finishing.
+   */
+  readonly timedOut?: boolean;
+
+  /**
+   * Gets the captured terminal output of the run.
+   */
+  readonly output?: string;
+}
+
+/**
+ * Runs the owning tab's editor document in the code view's docked run terminal through the renderer
+ * bridge, waits for it to finish, and renders the outcome for the model: the command, its exit
+ * status, and the captured output. The run executes the live editor content (unsaved edits included),
+ * exactly as the editor's Run action does, so the user sees it run in their terminal.
+ * @param context The agent run context (carries the bridge and the owning tab id).
+ * @param timeoutSeconds How long to wait for the program to finish; clamped to
+ * `[1, {@link RUN_MAX_TIMEOUT_SECONDS}]` and defaulting to {@link RUN_DEFAULT_TIMEOUT_SECONDS}.
+ * @returns Returns the rendered run outcome, or the reason nothing ran.
+ */
+export async function runActiveDocument(
+  context: AgentRunContext,
+  timeoutSeconds: number = RUN_DEFAULT_TIMEOUT_SECONDS,
+): Promise<string> {
+  const seconds: number = Math.min(
+    RUN_MAX_TIMEOUT_SECONDS,
+    Math.max(1, Math.floor(timeoutSeconds) || RUN_DEFAULT_TIMEOUT_SECONDS),
+  );
+  // Give the bridge a little longer than the renderer's own poll so the reply is never cut off first.
+  const result: unknown = await context.bridge.request(
+    RUN_ACTIVE_DOCUMENT,
+    { tabId: context.owningTabId, timeoutSeconds: seconds },
+    (seconds + 5) * 1000,
+  );
+  const run: RunToolResult = result ?? {};
+  if (run.ran !== true) {
+    return run.detail ?? 'There is no code document open to run in this view.';
+  }
+  const output: string = (run.output ?? '').trim();
+  const status: string =
+    run.success === true
+      ? 'exited successfully (exit code 0)'
+      : run.timedOut === true
+        ? `did not finish within ${seconds}s and is still running`
+        : typeof run.exitCode === 'number'
+          ? `failed (exit code ${run.exitCode})`
+          : 'finished with an unknown exit status';
+  return [
+    `Ran: ${run.command ?? '(unknown command)'}`,
+    `Result: the program ${status}.`,
+    '',
+    'Output:',
+    output.length > 0 ? output : '(no output)',
+  ].join('\n');
 }
 
 /**

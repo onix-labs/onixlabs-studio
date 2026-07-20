@@ -82,9 +82,16 @@ export class RendererBridge {
    * Invokes an in-app capability in the renderer and resolves with its result.
    * @param capability The capability name.
    * @param input The capability input.
+   * @param timeoutMs How long to wait for the reply before failing; defaults to
+   * {@link REQUEST_TIMEOUT_MS}. A long-running capability (e.g. running a file and awaiting its exit)
+   * passes a larger value so it is not cut short by the default.
    * @returns Returns the capability's result, or rejects on error, timeout, or absent window.
    */
-  public request(capability: string, input: unknown): Promise<unknown> {
+  public request(
+    capability: string,
+    input: unknown,
+    timeoutMs: number = REQUEST_TIMEOUT_MS,
+  ): Promise<unknown> {
     const window: BrowserWindow | null = this.windowGetter();
     if (window === null) {
       return Promise.reject(new Error('No window is available to handle the capability request.'));
@@ -95,7 +102,7 @@ export class RendererBridge {
         const timer: NodeJS.Timeout = setTimeout((): void => {
           this.pending.delete(requestId);
           reject(new Error(`The capability "${capability}" timed out.`));
-        }, REQUEST_TIMEOUT_MS);
+        }, timeoutMs);
         this.pending.set(requestId, { resolve, reject, timer });
         window.webContents.send(AiChannel.BridgeRequest, { requestId, capability, input });
       },

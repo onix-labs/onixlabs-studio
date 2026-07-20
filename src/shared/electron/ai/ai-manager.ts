@@ -461,7 +461,10 @@ export class AiManager {
     const toolPolicies: Readonly<Record<string, AiToolPolicy>> = sanitizeToolPolicies(
       request.toolPolicies,
     );
-    const allowedWritePaths: readonly string[] = sanitizeWritePaths(request.allowedWritePaths, true);
+    const allowedWritePaths: readonly string[] = sanitizeWritePaths(
+      request.allowedWritePaths,
+      true,
+    );
     const deniedWritePaths: readonly string[] = sanitizeWritePaths(request.deniedWritePaths, false);
     const tokenCap: number =
       typeof request.tokenCap === 'number' && request.tokenCap > 0
@@ -514,8 +517,8 @@ export class AiManager {
       auth: this.authForConnection(connection.id),
       signal: controller.signal,
       bridge: {
-        request: (capability: string, input: unknown): Promise<unknown> =>
-          this.bridge.request(capability, input),
+        request: (capability: string, input: unknown, timeoutMs?: number): Promise<unknown> =>
+          this.bridge.request(capability, input, timeoutMs),
       },
       requestPermission: (name: string, detail: string): Promise<boolean> =>
         this.requestPermission(
