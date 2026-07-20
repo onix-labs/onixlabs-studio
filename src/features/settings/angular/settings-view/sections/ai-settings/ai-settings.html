@@ -113,3 +113,14 @@
 >
   <app-setting-control key="ai.runTimeoutMinutes" />
 </app-setting-row>
+
+<app-setting-row
+  label="Agent shell"
+  description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
+>
+  <app-dropdown
+    [options]="shellOptions()"
+    [value]="agentShell()"
+    (valueChange)="onAgentShellChange($event)"
+  />
+</app-setting-row>

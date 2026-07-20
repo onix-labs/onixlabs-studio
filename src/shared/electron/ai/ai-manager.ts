@@ -41,6 +41,7 @@ import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
+import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { type HttpFetch, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
@@ -471,6 +472,7 @@ export class AiManager {
         ? Math.floor(request.tokenCap)
         : 0;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
+    const agentShell: string | null = sanitizeAgentShell(request.agentShell);
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );
@@ -500,6 +502,7 @@ export class AiManager {
       allowedWritePaths,
       deniedWritePaths,
       tokenCap,
+      agentShell,
       owningTabId: request.owningTabId ?? null,
       surface: request.surface ?? 'editor',
       mode,

@@ -139,6 +139,14 @@ export interface AiRunRequest {
   readonly tokenCap: number;
 
   /**
+   * Gets the absolute path of the shell whose login profile the agent's Bash environment is sourced
+   * from (#318), or absent/empty to inherit the process environment (hydrated from the default login
+   * shell at startup, #317). Only an absolute path is honoured; anything else falls back to the
+   * inherited environment.
+   */
+  readonly agentShell?: string;
+
+  /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0 for no limit. The
    * clock pauses while the run is blocked on the user (a permission, question, or edit decision).
    */

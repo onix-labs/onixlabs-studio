@@ -118,6 +118,36 @@ export function captureShellEnvironment(
 }
 
 /**
+ * Per-shell cache of captured environments, so a per-run consumer (the configurable agent shell,
+ * #318) sources each shell's profile at most once per session rather than spawning it every run. The
+ * installed shells' profiles do not change within a session; a restart re-captures.
+ */
+const captureCache: Map<string, Record<string, string> | null> = new Map<
+  string,
+  Record<string, string> | null
+>();
+
+/**
+ * Captures a shell's environment like {@link captureShellEnvironment}, memoising the result (including
+ * a failed capture) by shell path so repeated callers do not re-spawn the shell.
+ * @param shell The shell executable to source.
+ * @param options Capture options, applied only on the first (uncached) call for a given shell.
+ * @returns Returns the captured variables, or null when the capture could not be completed.
+ */
+export function captureShellEnvironmentCached(
+  shell: string,
+  options: CaptureOptions = {},
+): Record<string, string> | null {
+  const cached: Record<string, string> | null | undefined = captureCache.get(shell);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const captured: Record<string, string> | null = captureShellEnvironment(shell, options);
+  captureCache.set(shell, captured);
+  return captured;
+}
+
+/**
  * Merges a captured `PATH` with the existing one, preferring the shell's ordering (the user's intended
  * search order) and appending any entries the launch environment had that the shell did not. Keeping
  * the existing extras avoids dropping paths Electron or the OS injected.
@@ -135,6 +165,18 @@ export function mergePath(captured: string, existing: string | undefined): strin
     }
   }
   return merged.join(':');
+}
+
+/**
+ * Sanitises an untrusted agent-shell value from the renderer into a shell path or null. Only an
+ * absolute path is honoured (the installed-shells picker always supplies one); an empty string, a
+ * bare name, or a non-string falls back to null, meaning the inherited environment is used. A bogus
+ * absolute path that passes here fails open later, at capture time.
+ * @param value The candidate value from the run request.
+ * @returns Returns the trimmed absolute shell path, or null to inherit the environment.
+ */
+export function sanitizeAgentShell(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().startsWith('/') ? value.trim() : null;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { ENV_DELIMITER, mergePath, parseEnvironment } from './shell-env';
+import { ENV_DELIMITER, mergePath, parseEnvironment, sanitizeAgentShell } from './shell-env';
 
 /**
  * Frames a raw `env`-style body between the two delimiters, mimicking the capture script's stdout
@@ -61,5 +61,27 @@ describe('mergePath', () => {
 
   it('ignoresEmptySegments', () => {
     expect(mergePath('/usr/bin::/bin', '')).toBe('/usr/bin:/bin');
+  });
+});
+
+describe('sanitizeAgentShell', () => {
+  it('keepsAnAbsolutePath', () => {
+    expect(sanitizeAgentShell('/bin/zsh')).toBe('/bin/zsh');
+  });
+
+  it('trimsSurroundingWhitespace', () => {
+    expect(sanitizeAgentShell('  /usr/local/bin/fish  ')).toBe('/usr/local/bin/fish');
+  });
+
+  it('fallsBackToNullForEmptyBareNameOrRelativePath', () => {
+    expect(sanitizeAgentShell('')).toBeNull();
+    expect(sanitizeAgentShell('zsh')).toBeNull();
+    expect(sanitizeAgentShell('bin/zsh')).toBeNull();
+  });
+
+  it('fallsBackToNullForNonStrings', () => {
+    expect(sanitizeAgentShell(undefined)).toBeNull();
+    expect(sanitizeAgentShell(null)).toBeNull();
+    expect(sanitizeAgentShell(42)).toBeNull();
   });
 });
