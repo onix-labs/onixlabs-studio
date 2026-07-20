@@ -4,6 +4,16 @@
   box-sizing: border-box;
 }
 
+// Selected text uses the accent colour app-wide (a translucent tint keeps the text legible in both
+// themes). Monaco paints its own editor selection through its theme, so this does not reach editor
+// content — that is governed separately by the `textEditor.global.accentSelection` toggle.
+::selection {
+  background: rgba(var(--accent-color-rgb), 0.35);
+}
+::-moz-selection {
+  background: rgba(var(--accent-color-rgb), 0.35);
+}
+
 html,
 body {
   margin: 0;

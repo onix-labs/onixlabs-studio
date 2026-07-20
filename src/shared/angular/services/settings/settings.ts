@@ -462,6 +462,14 @@ export class Settings {
   );
 
   /**
+   * Gets whether the editor selection uses the accent colour (#314). A global editor look rather than
+   * a per-language profile setting, so it is exposed directly rather than via {@link globalTextEditor}.
+   */
+  public readonly textEditorAccentSelection: Signal<boolean> = this.value(
+    'textEditor.global.accentSelection',
+  );
+
+  /**
    * Gets the global text editor settings.
    */
   public readonly globalTextEditor: Signal<TextEditorSettings> = computed(

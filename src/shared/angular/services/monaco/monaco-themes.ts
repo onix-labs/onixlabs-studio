@@ -26,12 +26,53 @@ export function readGray(name: string): string {
 }
 
 /**
+ * Reads the accent colour as a Monaco selection colour: a translucent hex derived from the projected
+ * `--accent-color-rgb` custom property (so the editor selection matches the app accent while staying
+ * legible). Returns null when the property cannot be parsed (e.g. under unit tests), so callers fall
+ * back to the grey default.
+ * @returns Returns an `#rrggbbaa` colour, or null.
+ */
+export function readAccentSelectionColor(): string | null {
+  const rgb: string = getComputedStyle(document.documentElement)
+    .getPropertyValue('--accent-color-rgb')
+    .trim();
+  return accentSelectionHex(rgb);
+}
+
+/**
+ * Converts an `"r, g, b"` triplet (the projected `--accent-color-rgb` value) to a translucent
+ * `#rrggbbaa` Monaco selection colour, or null when the triplet is malformed.
+ * @param rgb The comma-separated red/green/blue channels.
+ * @returns Returns an `#rrggbbaa` colour, or null.
+ */
+export function accentSelectionHex(rgb: string): string | null {
+  const parts: string[] = rgb.split(',').map((part: string): string => part.trim());
+  if (parts.length !== 3) {
+    return null;
+  }
+  const channels: (string | null)[] = parts.map((part: string): string | null => {
+    const value: number = Number(part);
+    return part.length > 0 && Number.isFinite(value)
+      ? Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')
+      : null;
+  });
+  return channels.some((channel: string | null): boolean => channel === null)
+    ? null
+    : `#${channels.join('')}59`;
+}
+
+/**
  * Registers the four `onix-{light,dark}-{outline,filled}` themes, painting the editor surface from the
  * application's `--gray-*` palette so it tracks light/dark with the rest of the app. A no-op when
  * Monaco has not loaded.
  * @param monaco The loaded Monaco namespace, or undefined when it has not loaded yet.
+ * @param accentSelection Whether the editor selection uses the accent colour (#314) rather than the
+ * neutral grey default.
  */
-export function defineThemes(monaco: typeof MonacoApi | undefined): void {
+export function defineThemes(
+  monaco: typeof MonacoApi | undefined,
+  accentSelection: boolean,
+): void {
   if (monaco === undefined) {
     return;
   }
@@ -41,6 +82,13 @@ export function defineThemes(monaco: typeof MonacoApi | undefined): void {
   const gray200: string = gray('gray200');
   const gray800: string = gray('gray800');
   const gray900: string = gray('gray900');
+
+  // When accent selection is on, both light and dark themes use the accent-derived selection colour;
+  // otherwise each keeps its neutral grey. A null accent colour (unreadable custom property) falls
+  // back to grey too.
+  const accent: string | null = accentSelection ? readAccentSelectionColor() : null;
+  const darkSelection: string = accent ?? gray800;
+  const lightSelection: string = accent ?? gray200;
 
   // Colour the standard semantic token types (and matching grammar tokens) so types, members, and
   // parameters are distinguished, not just keywords. Mirrors the VS Code Dark+/Light+ palettes.
@@ -85,7 +133,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined): void {
     rules: darkRules,
     colors: {
       'editor.background': gray900,
-      'editor.selectionBackground': gray800,
+      'editor.selectionBackground': darkSelection,
       'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#ffffff20',
       'editorCursor.foreground': gray100,
@@ -97,7 +145,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined): void {
     rules: darkRules,
     colors: {
       'editor.background': gray900,
-      'editor.selectionBackground': gray800,
+      'editor.selectionBackground': darkSelection,
       'editor.lineHighlightBackground': '#ffffff10',
       'editor.lineHighlightBorder': '#00000000',
       'editorCursor.foreground': gray100,
@@ -109,7 +157,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined): void {
     rules: lightRules,
     colors: {
       'editor.background': gray100,
-      'editor.selectionBackground': gray200,
+      'editor.selectionBackground': lightSelection,
       'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#00000020',
       'editorCursor.foreground': gray900,
@@ -121,7 +169,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined): void {
     rules: lightRules,
     colors: {
       'editor.background': gray100,
-      'editor.selectionBackground': gray200,
+      'editor.selectionBackground': lightSelection,
       'editor.lineHighlightBackground': '#00000008',
       'editor.lineHighlightBorder': '#00000000',
       'editorCursor.foreground': gray900,

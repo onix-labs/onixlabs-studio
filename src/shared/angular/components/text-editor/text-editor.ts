@@ -172,14 +172,19 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * changes, and activation.
    */
   public constructor() {
-    // Live settings/theme: re-resolve the editor options and theme for the current language.
+    // Live settings/theme: re-resolve the editor options and theme for the current language. Reads the
+    // accent-selection setting and the accent colour so a change to either re-registers the themes with
+    // the new editor selection colour (#314) before the theme is re-applied below.
     effect((): void => {
       this.settings.textEditor();
+      this.settings.textEditorAccentSelection();
       this.theme.resolvedMode();
+      this.theme.accent();
       const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
       if (!this.editorReady() || editor === null) {
         return;
       }
+      this.monaco.refreshThemes();
       const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(
         this.language(),
       );
