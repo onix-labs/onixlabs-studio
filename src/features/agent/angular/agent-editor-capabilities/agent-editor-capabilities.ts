@@ -8,10 +8,13 @@ import {
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  SET_ACTIVE_DOCUMENT_LANGUAGE,
 } from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { supportedLanguages } from '@shared/angular/services/monaco/monaco-languages';
 import { AgentEditPreview } from '../agent-edit-preview/agent-edit-preview';
 import { EditOutcome, resolveEdit, resolveInsert } from './document-edit';
 
@@ -158,6 +161,11 @@ export class AgentEditorCapabilities {
   private readonly markdownCommands: MarkdownCommands = inject(MarkdownCommands);
 
   /**
+   * Holds the document store, used to set a code document's language (syntax).
+   */
+  private readonly documents: Documents = inject(Documents);
+
+  /**
    * Holds the edit-preview diff surface (the staged change shown in the document well).
    */
   private readonly preview: AgentEditPreview = inject(AgentEditPreview);
@@ -204,6 +212,55 @@ export class AgentEditorCapabilities {
     this.runtime.registerCapability(CANCEL_EDIT_PREVIEW, (input: unknown): void => {
       this.cancelPreview(input);
     });
+    this.runtime.registerCapability(
+      SET_ACTIVE_DOCUMENT_LANGUAGE,
+      (input: unknown): EditResult => this.setActiveLanguage(input),
+    );
+  }
+
+  /**
+   * Sets the language (syntax) of the targeted code document from a `{ language, tabId }` input: the
+   * owning tab's document when scoped, otherwise the active code document. The language is matched
+   * case-insensitively against the supported Monaco ids and display names, so both `csharp` and `C#`
+   * resolve. Changing it re-highlights the editor and updates the language picker (both read the
+   * document's language signal).
+   * @param input The capability input.
+   * @returns Returns the {@link EditResult}.
+   */
+  private setActiveLanguage(input: unknown): EditResult {
+    const requested: string | null = this.extractString(input, 'language');
+    if (requested === null) {
+      return { ok: false, detail: 'No language was provided.' };
+    }
+    const resolved: string | null = this.resolveLanguageId(requested);
+    if (resolved === null) {
+      return {
+        ok: false,
+        detail: `Unknown language "${requested}". Use a Monaco language id such as typescript, python, or csharp.`,
+      };
+    }
+    const tabId: string | null = this.extractTabId(input) ?? this.documents.activeDocumentId();
+    if (tabId === null || this.documents.get(tabId) === undefined) {
+      return { ok: false, detail: 'No code document is open in the editor.' };
+    }
+    this.documents.setLanguage(tabId, resolved);
+    return { ok: true, detail: `The editor language is now ${resolved}.` };
+  }
+
+  /**
+   * Resolves a requested language to a supported Monaco language id, matching its id or display name
+   * case-insensitively (so `csharp` and `C#` both resolve).
+   * @param requested The requested language.
+   * @returns Returns the Monaco language id, or null when unsupported.
+   */
+  private resolveLanguageId(requested: string): string | null {
+    const normalized: string = requested.trim().toLowerCase();
+    for (const language of supportedLanguages()) {
+      if (language.id.toLowerCase() === normalized || language.name.toLowerCase() === normalized) {
+        return language.id;
+      }
+    }
+    return null;
   }
 
   /**

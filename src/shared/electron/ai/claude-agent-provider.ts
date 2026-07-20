@@ -24,6 +24,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  SET_ACTIVE_DOCUMENT_LANGUAGE,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type InsertPlacement,
@@ -58,6 +59,7 @@ import {
   READ_TERMINAL_FQN,
   READ_TOOL_FQN,
   REPLACE_TOOL_FQN,
+  SET_LANGUAGE_TOOL_FQN,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
@@ -75,6 +77,7 @@ import {
   readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
+  setActiveDocumentLanguage,
   writeBinaryAssembly,
   writeTerminalInput,
 } from './studio-tools';
@@ -552,6 +555,20 @@ export class ClaudeAgentProvider implements AgentProvider {
                           async (args: { text: string }) =>
                             text(await replaceActiveDocument(context, args.text)),
                         ),
+                        tool(
+                          SET_ACTIVE_DOCUMENT_LANGUAGE,
+                          "Set the active editor document's language (syntax highlighting), e.g. when you write code in a language the editor is not yet set to. The editor re-highlights and the language picker updates. Use a Monaco language id such as csharp, typescript, python, rust, or go.",
+                          {
+                            language: z
+                              .string()
+                              .min(1)
+                              .describe(
+                                'The target language: a Monaco language id (e.g. csharp) or its display name (e.g. C#).',
+                              ),
+                          },
+                          async (args: { language: string }) =>
+                            text(await setActiveDocumentLanguage(context, args.language)),
+                        ),
                       ]),
                 ]),
       ],
@@ -730,7 +747,9 @@ export class ClaudeAgentProvider implements AgentProvider {
               ? [...(hasReadableContext ? READ_ONLY_TOOLS : [])]
               : [
                   READ_TOOL_FQN,
-                  ...(readOnly ? [] : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN]),
+                  ...(readOnly
+                    ? []
+                    : [EDIT_TOOL_FQN, INSERT_TOOL_FQN, REPLACE_TOOL_FQN, SET_LANGUAGE_TOOL_FQN]),
                   ...(hasReadableContext ? READ_ONLY_TOOLS : []),
                 ]),
       ],
