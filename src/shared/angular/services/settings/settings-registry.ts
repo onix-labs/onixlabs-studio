@@ -53,6 +53,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.showMinimap': boolean;
   readonly 'textEditor.global.currentLineHighlight': CurrentLineHighlightStyle;
   readonly 'textEditor.global.colorBrackets': boolean;
+  readonly 'textEditor.global.accentSelection': boolean;
   readonly 'textEditor.global.wordWrap': boolean;
   readonly 'textEditor.global.stickyScroll': boolean;
   readonly 'textEditor.global.cursorBlinking': CursorBlinkingStyle;
@@ -392,6 +393,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Colour matching bracket pairs by their nesting depth.',
         control: { kind: 'toggle' },
         profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.accentSelection',
+        title: 'Accent selection',
+        description: 'Use the accent colour for selected text in the editor (off uses the default).',
+        control: { kind: 'toggle' },
         default: true,
       },
       {

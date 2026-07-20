@@ -217,6 +217,15 @@ export class Monaco {
   }
 
   /**
+   * Re-registers the editor themes from the current accent-selection setting and accent colour (#314),
+   * so a change to either is reflected the next time a surface applies its theme. A no-op before Monaco
+   * has loaded.
+   */
+  public refreshThemes(): void {
+    defineThemes(window.monaco, this.settings.textEditorAccentSelection());
+  }
+
+  /**
    * Builds the Monaco construction options from the current settings, resolving per-language profile
    * overrides when a language is provided.
    * @param language The Monaco language identifier, used to resolve profile overrides.
@@ -291,7 +300,7 @@ export class Monaco {
   private async load(): Promise<void> {
     window.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
     await this.loadScript();
-    defineThemes(window.monaco);
+    defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
