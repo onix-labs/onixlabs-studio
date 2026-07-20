@@ -143,4 +143,7 @@
 
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;
+  // Whitespace on each side of the change-margin bar: the line numbers sit this far to its left, and
+  // the fold control this far to its right (see _change-margin.scss and _folding.scss).
+  --change-margin-gap: 16px;
 }
