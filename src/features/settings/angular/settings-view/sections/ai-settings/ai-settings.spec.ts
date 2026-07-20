@@ -52,7 +52,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenShown_rendersARowPerGlobalControl', () => {
-    expect(host.querySelectorAll('app-setting-row').length).toBe(3);
+    expect(host.querySelectorAll('app-setting-row').length).toBe(4);
   });
 
   it('render_whenShown_rendersAnItemPerSeedConnection', () => {

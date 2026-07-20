@@ -168,6 +168,42 @@ export function mergePath(captured: string, existing: string | undefined): strin
 }
 
 /**
+ * Layers a captured shell environment over a base environment, returning a new string-only map. Every
+ * captured variable is applied — overriding the base when `override` is true (an explicit per-agent
+ * shell choice, #318) or only filling gaps when false (the startup hydrate, which must not clobber the
+ * real launch environment, #317) — except `PATH`, which is always merged so the shell's search order
+ * takes effect without dropping the base's extra entries.
+ * @param base The environment to layer onto (e.g. `process.env`); non-string values are dropped.
+ * @param captured The captured shell environment.
+ * @param override Whether captured values replace existing base values (true) or only fill gaps (false).
+ * @returns Returns the merged environment as a new map.
+ */
+export function applyCapturedEnvironment(
+  base: Record<string, string | undefined>,
+  captured: Record<string, string>,
+  override: boolean,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (typeof value === 'string') {
+      result[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(captured)) {
+    if (key === 'PATH') {
+      continue;
+    }
+    if (override || result[key] === undefined) {
+      result[key] = value;
+    }
+  }
+  if (typeof captured['PATH'] === 'string' && captured['PATH'].length > 0) {
+    result['PATH'] = mergePath(captured['PATH'], result['PATH']);
+  }
+  return result;
+}
+
+/**
  * Sanitises an untrusted agent-shell value from the renderer into a shell path or null. Only an
  * absolute path is honoured (the installed-shells picker always supplies one); an empty string, a
  * bare name, or a non-string falls back to null, meaning the inherited environment is used. A bogus
@@ -212,18 +248,9 @@ export function hydrateLoginShellEnvironment(): void {
     return;
   }
 
-  let added: number = 0;
-  for (const [key, value] of Object.entries(captured)) {
-    if (key === 'PATH' || key === CAPTURED_MARKER) {
-      continue;
-    }
-    if (process.env[key] === undefined) {
-      process.env[key] = value;
-      added++;
-    }
-  }
-  if (typeof captured['PATH'] === 'string' && captured['PATH'].length > 0) {
-    process.env['PATH'] = mergePath(captured['PATH'], process.env['PATH']);
-  }
+  // Fill gaps only, never clobbering the real launch environment; PATH is merged.
+  const before: number = Object.keys(process.env).length;
+  Object.assign(process.env, applyCapturedEnvironment(process.env, captured, false));
+  const added: number = Object.keys(process.env).length - before;
   console.info(`[startup] hydrated shell environment from ${shell} (+${added} vars, PATH merged)`);
 }

@@ -44,7 +44,7 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { resolveBundledClaudeExecutable } from './claude-executable';
-import { captureShellEnvironmentCached, mergePath } from '@shared/electron/shell-env';
+import { applyCapturedEnvironment, captureShellEnvironmentCached } from '@shared/electron/shell-env';
 import {
   ASK_USER_DESCRIPTION,
   ASK_USER_FQN,
@@ -992,14 +992,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     if (useShell && shell !== null) {
       const captured: Record<string, string> | null = captureShellEnvironmentCached(shell);
       if (captured !== null) {
-        for (const [name, value] of Object.entries(captured)) {
-          if (name !== 'PATH') {
-            env[name] = value;
-          }
-        }
-        if (typeof captured['PATH'] === 'string' && captured['PATH'].length > 0) {
-          env['PATH'] = mergePath(captured['PATH'], env['PATH']);
-        }
+        Object.assign(env, applyCapturedEnvironment(env, captured, true));
       }
       env['SHELL'] = shell;
     }
