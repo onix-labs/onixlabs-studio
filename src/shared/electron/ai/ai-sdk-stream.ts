@@ -13,6 +13,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  SET_ACTIVE_DOCUMENT_LANGUAGE,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type AgentSurface,
@@ -41,6 +42,7 @@ import {
   readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
+  setActiveDocumentLanguage,
   writeBinaryAssembly,
   writeTerminalInput,
   READ_ONLY_APPENDIX,
@@ -291,6 +293,18 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
       inputSchema: z.object({ text: z.string().describe('The new full text of the document.') }),
       execute: (args: { text: string }): Promise<string> =>
         replaceActiveDocument(context, args.text),
+    }),
+    [SET_ACTIVE_DOCUMENT_LANGUAGE]: tool({
+      description:
+        "Set the active editor document's language (syntax highlighting), e.g. when you write code in a language the editor is not yet set to. Use a Monaco language id such as csharp, typescript, python, rust, or go.",
+      inputSchema: z.object({
+        language: z
+          .string()
+          .min(1)
+          .describe('The target language: a Monaco language id (e.g. csharp) or its display name.'),
+      }),
+      execute: (args: { language: string }): Promise<string> =>
+        setActiveDocumentLanguage(context, args.language),
     }),
   };
 }

@@ -10,6 +10,7 @@ import {
   InsertPlacement,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
+  SET_ACTIVE_DOCUMENT_LANGUAGE,
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
   READ_BINARY_OVERVIEW,
@@ -43,6 +44,11 @@ export const EDIT_TOOL_FQN: string = `mcp__studio__${EDIT_ACTIVE_DOCUMENT}`;
  * The fully-qualified name the insert tool is exposed under to the Claude Agent SDK.
  */
 export const INSERT_TOOL_FQN: string = `mcp__studio__${INSERT_ACTIVE_DOCUMENT}`;
+
+/**
+ * The fully-qualified name the set-language tool is exposed under to the Claude Agent SDK.
+ */
+export const SET_LANGUAGE_TOOL_FQN: string = `mcp__studio__${SET_ACTIVE_DOCUMENT_LANGUAGE}`;
 
 /**
  * The fully-qualified name the read-terminal tool is exposed under to the Claude Agent SDK.
@@ -384,6 +390,24 @@ export async function replaceActiveDocument(
       ? 'The active document was updated.'
       : 'There is no active document to update.';
   });
+}
+
+/**
+ * Sets the owning tab's editor language (syntax) through the renderer bridge and renders the result.
+ * @param context The agent run context (carries the bridge and the owning tab id).
+ * @param language The target language (a Monaco language id, e.g. `csharp`, or a display name).
+ * @returns Returns a short confirmation, or the reason the language was not set.
+ */
+export async function setActiveDocumentLanguage(
+  context: AgentRunContext,
+  language: string,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(SET_ACTIVE_DOCUMENT_LANGUAGE, {
+    tabId: context.owningTabId,
+    language,
+  });
+  const set: { ok?: boolean; detail?: string } = result ?? {};
+  return set.detail ?? (set.ok === true ? 'The editor language was set.' : 'The language was not set.');
 }
 
 /**

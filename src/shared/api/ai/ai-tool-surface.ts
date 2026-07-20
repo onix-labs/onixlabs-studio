@@ -25,6 +25,12 @@ export const EDIT_ACTIVE_DOCUMENT: string = 'edit_active_document';
 export const INSERT_ACTIVE_DOCUMENT: string = 'insert_into_active_document';
 
 /**
+ * The in-app capability that sets the active editor document's language (syntax), so the editor
+ * re-highlights and the language picker reflects it.
+ */
+export const SET_ACTIVE_DOCUMENT_LANGUAGE: string = 'set_active_document_language';
+
+/**
  * The placements the insert capability accepts: relative to an anchor string, or at a document edge.
  */
 export type InsertPlacement = 'before' | 'after' | 'start' | 'end';
