@@ -1305,6 +1305,14 @@ $agent-node-size: 1.75rem;
   text-decoration: underline;
 }
 
+// The user's own bubble is accent-coloured, so the global accent selection would be invisible on it.
+// Invert it here (#314): a white selection with accent-coloured text. Must reach the [innerHTML]
+// markdown children through ::ng-deep, like the rules above — an encapsulated rule never matches them.
+:host ::ng-deep .agent__message--user .agent__markdown ::selection {
+  color: var(--accent-color);
+  background-color: #fff;
+}
+
 // Shared chrome, grouped so the compiled component style stays inside its budget: every rounded
 // surface follows the app's corner shape, and the card/chip family shares one radius.
 .agent__avatar,
