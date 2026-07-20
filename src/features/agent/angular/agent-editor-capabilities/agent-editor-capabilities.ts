@@ -8,15 +8,81 @@ import {
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
 } from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { Documents, CodeDocument } from '@shared/angular/services/documents/documents';
+import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { Terminals } from '@shared/angular/services/terminals/terminals';
+import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
+import { Task } from '@shared/angular/services/tasks/task';
 import { supportedLanguages } from '@shared/angular/services/monaco/monaco-languages';
 import { AgentEditPreview } from '../agent-edit-preview/agent-edit-preview';
 import { EditOutcome, resolveEdit, resolveInsert } from './document-edit';
+import { parseRunOutput, RunOutputParse } from './run-output';
+
+/**
+ * The prefix the code view derives a tab's run-terminal session id from (mirrors
+ * `CodeTerminalPanel`). The run terminal registers with {@link Terminals} under `run-<tabId>`.
+ */
+const RUN_TERMINAL_PREFIX: string = 'run-';
+
+/**
+ * The maximum number of output lines the run capability returns, so a chatty program does not flood
+ * the model's context. Only the most recent lines are kept.
+ */
+const RUN_MAX_OUTPUT_LINES: number = 400;
+
+/**
+ * How often (ms) the run capability polls the terminal buffer for the completion sentinel.
+ */
+const RUN_POLL_INTERVAL_MS: number = 150;
+
+/**
+ * The result of running the active document: whether a run started, the command, its exit result, and
+ * the captured output. The renderer detects completion and the exit code from a sentinel appended to
+ * the command (the run terminal is a persistent shell, so node-pty reports no per-command exit).
+ */
+interface RunResult {
+  /**
+   * Gets a value indicating whether the document was runnable and a run was started.
+   */
+  readonly ran: boolean;
+
+  /**
+   * Gets the model-facing reason nothing ran (unrunnable language, no document, etc.).
+   */
+  readonly detail?: string;
+
+  /**
+   * Gets the shell command that was run.
+   */
+  readonly command?: string;
+
+  /**
+   * Gets the program's exit code, or null when it could not be parsed (a non-POSIX shell, or a run
+   * that did not finish within the timeout).
+   */
+  readonly exitCode?: number | null;
+
+  /**
+   * Gets a value indicating whether the program exited successfully (exit code 0).
+   */
+  readonly success?: boolean;
+
+  /**
+   * Gets a value indicating whether the run timed out before the sentinel appeared.
+   */
+  readonly timedOut?: boolean;
+
+  /**
+   * Gets the captured terminal output between the command and the completion sentinel.
+   */
+  readonly output?: string;
+}
 
 /**
  * The result of the read-active-document capability.
@@ -161,9 +227,33 @@ export class AgentEditorCapabilities {
   private readonly markdownCommands: MarkdownCommands = inject(MarkdownCommands);
 
   /**
-   * Holds the document store, used to set a code document's language (syntax).
+   * Holds the document store, used to set a code document's language (syntax) and to resolve the
+   * document to run.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the run-file task provider, used to write the document to a temp file and build the command
+   * that runs it — the same seam the editor's Run action uses.
+   */
+  private readonly runFiles: RunFileTaskProvider = inject(RunFileTaskProvider);
+
+  /**
+   * Holds the docked run-terminal state, used to queue a run command into the code view's terminal.
+   */
+  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
+
+  /**
+   * Holds the registry that reads a terminal's on-screen output by id, used to capture the run's
+   * output and detect completion.
+   */
+  private readonly terminals: Terminals = inject(Terminals);
+
+  /**
+   * Tracks a per-session counter that makes each run's completion sentinel unique, so it never
+   * collides with prior output already in the terminal buffer.
+   */
+  private runCounter: number = 0;
 
   /**
    * Holds the edit-preview diff surface (the staged change shown in the document well).
@@ -216,6 +306,10 @@ export class AgentEditorCapabilities {
       SET_ACTIVE_DOCUMENT_LANGUAGE,
       (input: unknown): EditResult => this.setActiveLanguage(input),
     );
+    this.runtime.registerCapability(
+      RUN_ACTIVE_DOCUMENT,
+      (input: unknown): Promise<RunResult> => this.runActiveDocument(input),
+    );
   }
 
   /**
@@ -261,6 +355,126 @@ export class AgentEditorCapabilities {
       }
     }
     return null;
+  }
+
+  /**
+   * Runs the targeted code document in the code view's docked run terminal and reports the outcome.
+   * The live editor content is written to a temp file and run through the same {@link RunFileTaskProvider}
+   * the editor's Run action uses, so the user sees it run in their terminal. A completion sentinel is
+   * appended to the command — `printf` of the exit status — so completion and the exit code can be read
+   * back from the terminal buffer (the run terminal is a persistent shell, so node-pty never reports a
+   * per-command exit). The sentinel is POSIX-shell syntax (bash/zsh/sh); on a non-POSIX shell it will
+   * not match, and the run returns its output with an unknown exit status once the timeout elapses.
+   * @param input The capability input: the owning `tabId` and an optional `timeoutSeconds`.
+   * @returns Returns the {@link RunResult}.
+   */
+  private async runActiveDocument(input: unknown): Promise<RunResult> {
+    const tabId: string | null = this.extractTabId(input) ?? this.documents.activeDocumentId();
+    const codeDocument: CodeDocument | undefined =
+      tabId === null ? undefined : this.documents.get(tabId);
+    if (tabId === null || codeDocument === undefined) {
+      return { ran: false, detail: 'No code document is open in the editor to run.' };
+    }
+    const language: string = codeDocument.language();
+    if (!this.runFiles.canRun(language)) {
+      return {
+        ran: false,
+        detail:
+          `The editor language "${language}" cannot be run — there is no runner for it. Runnable ` +
+          'languages include javascript, typescript, python, csharp, java, kotlin, rust, go, and shell.',
+      };
+    }
+    const task: Task | null = this.runFiles.buildTask({
+      tabId,
+      language,
+      content: codeDocument.content(),
+    });
+    const command: string | null = task === null ? null : await task.resolve();
+    if (command === null) {
+      return {
+        ran: false,
+        detail: 'The document could not be prepared to run (writing its temporary file failed).',
+      };
+    }
+    this.runCounter += 1;
+    const markerPrefix: string = `__STUDIO_RUN_${this.runCounter}_`;
+    // Append a sentinel that prints the exit status once the command finishes. `$?` after the `;`
+    // reflects the run command's exit code (including a short-circuited `&&` chain), and its digits
+    // distinguish the printed sentinel from the echoed command line (which shows the literal `%s`).
+    const sentinelCommand: string = `${command}; printf '\\n${markerPrefix}%s__\\n' "$?"`;
+    // Queue the command into the tab's docked run terminal (mounting and showing it if needed); the
+    // panel writes it once the terminal is ready.
+    this.editorTerminals.queueCommand(tabId, sentinelCommand);
+    const terminalId: string = `${RUN_TERMINAL_PREFIX}${tabId}`;
+    const completion: { exitCode: number | null; output: string; timedOut: boolean } =
+      await this.awaitRunCompletion(terminalId, markerPrefix, this.resolveRunTimeoutMs(input));
+    return {
+      ran: true,
+      command,
+      exitCode: completion.exitCode,
+      success: completion.timedOut === false && completion.exitCode === 0,
+      timedOut: completion.timedOut,
+      output: completion.output,
+    };
+  }
+
+  /**
+   * Polls the run terminal's buffer until the completion sentinel appears or the timeout elapses,
+   * returning the parsed exit code and the captured output.
+   * @param terminalId The run terminal's session id.
+   * @param markerPrefix The unique sentinel prefix for this run.
+   * @param timeoutMs How long to wait before giving up.
+   * @returns Returns the exit code (null when it could not be determined), the captured output, and
+   * whether the run timed out.
+   */
+  private async awaitRunCompletion(
+    terminalId: string,
+    markerPrefix: string,
+    timeoutMs: number,
+  ): Promise<{ exitCode: number | null; output: string; timedOut: boolean }> {
+    const deadline: number = Date.now() + timeoutMs;
+    for (;;) {
+      const text: string | null = this.terminals.readText(terminalId);
+      if (text !== null) {
+        const parsed: RunOutputParse = parseRunOutput(text, markerPrefix, RUN_MAX_OUTPUT_LINES);
+        if (parsed.found) {
+          return { exitCode: parsed.exitCode, output: parsed.output, timedOut: false };
+        }
+      }
+      if (Date.now() >= deadline) {
+        const last: string | null = this.terminals.readText(terminalId);
+        const output: string =
+          last === null ? '' : parseRunOutput(last, markerPrefix, RUN_MAX_OUTPUT_LINES).output;
+        return { exitCode: null, output, timedOut: true };
+      }
+      await this.delay(RUN_POLL_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * Resolves the run timeout (ms) from the capability input's optional `timeoutSeconds`, defaulting to
+   * 60 seconds and clamping to `[1, 300]` seconds so a hung program cannot block the run indefinitely.
+   * @param input The capability input.
+   * @returns Returns the timeout in milliseconds.
+   */
+  private resolveRunTimeoutMs(input: unknown): number {
+    const raw: unknown =
+      input !== null && typeof input === 'object'
+        ? (input as Record<string, unknown>)['timeoutSeconds']
+        : undefined;
+    const seconds: number = typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : 60;
+    return Math.min(300, Math.max(1, seconds)) * 1000;
+  }
+
+  /**
+   * Resolves after a delay.
+   * @param ms The delay in milliseconds.
+   * @returns Returns a promise that resolves once the delay elapses.
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, ms);
+    });
   }
 
   /**

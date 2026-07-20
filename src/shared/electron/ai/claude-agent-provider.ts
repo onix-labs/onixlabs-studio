@@ -24,6 +24,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
@@ -77,6 +78,7 @@ import {
   readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
+  runActiveDocument,
   setActiveDocumentLanguage,
   writeBinaryAssembly,
   writeTerminalInput,
@@ -569,6 +571,23 @@ export class ClaudeAgentProvider implements AgentProvider {
                           async (args: { language: string }) =>
                             text(await setActiveDocumentLanguage(context, args.language)),
                         ),
+                        tool(
+                          RUN_ACTIVE_DOCUMENT,
+                          "Run this tab's file in the code view's terminal and return its output and exit status, so you can check whether it ran successfully. Runs the live editor content (put your changes in the editor first with the edit tools). Supports javascript, typescript, python, csharp, java, kotlin, rust, go, and shell; other languages report that they cannot be run. The user sees it run in their terminal.",
+                          {
+                            timeout_seconds: z
+                              .number()
+                              .int()
+                              .min(1)
+                              .max(300)
+                              .optional()
+                              .describe(
+                                'How long to wait for the program to finish before returning with whatever output it has (default 60, max 300). Raise it for a run you expect to take a while.',
+                              ),
+                          },
+                          async (args: { timeout_seconds?: number }) =>
+                            text(await runActiveDocument(context, args.timeout_seconds ?? 60)),
+                        ),
                       ]),
                 ]),
       ],
@@ -615,7 +634,11 @@ export class ClaudeAgentProvider implements AgentProvider {
       // (an arbitrary command); the SDK sandbox backs it instead (see `sandbox` in options).
       if (CONFINED_WRITE_TOOLS.includes(toolName)) {
         const target: string | null = writeTargetPath(input);
-        if (target !== null && confinementRoots.length > 0 && !isWriteWithinRoots(target, confinementRoots)) {
+        if (
+          target !== null &&
+          confinementRoots.length > 0 &&
+          !isWriteWithinRoots(target, confinementRoots)
+        ) {
           return {
             behavior: 'deny',
             // A deliberate hard boundary that approving the action cannot widen (a single approval must
@@ -627,7 +650,10 @@ export class ClaudeAgentProvider implements AgentProvider {
               `your allowed write paths to permit it.`,
           };
         }
-        if (target !== null && isWriteDenied(target, context.deniedWritePaths, context.workspaceRoot ?? homedir())) {
+        if (
+          target !== null &&
+          isWriteDenied(target, context.deniedWritePaths, context.workspaceRoot ?? homedir())
+        ) {
           return {
             behavior: 'deny',
             message: `Blocked: "${target}" is on your denied write paths and cannot be written to.`,

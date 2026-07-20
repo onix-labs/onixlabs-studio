@@ -13,6 +13,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
@@ -42,6 +43,7 @@ import {
   readBinarySelection,
   readTerminalOutput,
   replaceActiveDocument,
+  runActiveDocument,
   setActiveDocumentLanguage,
   writeBinaryAssembly,
   writeTerminalInput,
@@ -305,6 +307,29 @@ export async function createStudioTools(context: AgentRunContext): Promise<ToolS
       }),
       execute: (args: { language: string }): Promise<string> =>
         setActiveDocumentLanguage(context, args.language),
+    }),
+    [RUN_ACTIVE_DOCUMENT]: tool({
+      description:
+        "Run this tab's file in the code view's terminal and return its output and exit status, so you can check whether it ran successfully. Runs the live editor content (put your changes in the editor first with the edit tools). Supports javascript, typescript, python, csharp, java, kotlin, rust, go, and shell; other languages report that they cannot be run. The user sees it run in their terminal.",
+      inputSchema: z.object({
+        timeout_seconds: z
+          .number()
+          .int()
+          .min(1)
+          .max(300)
+          .optional()
+          .describe(
+            'How long to wait for the program to finish before returning with whatever output it has (default 60, max 300).',
+          ),
+      }),
+      // Running code is an execution, so it flows through the permission gate (prompting unless the
+      // posture auto-allows everything), matching the Claude path where it is not auto-allowed.
+      execute: gated(
+        context,
+        RUN_ACTIVE_DOCUMENT,
+        (args: { timeout_seconds?: number }): Promise<string> =>
+          runActiveDocument(context, args.timeout_seconds ?? 60),
+      ),
     }),
   };
 }
