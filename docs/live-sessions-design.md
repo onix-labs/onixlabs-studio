@@ -75,7 +75,10 @@ The renderer's `Agent` service owns exactly **one** `AgentSession` per conversat
 
 States: **Idle** (no live session yet) → **Live** (open, may be mid-turn) → **Closed**.
 
-- **Open**: lazily, on the first `send` (avoids holding a process for a tab the user never talks to).
+- **Open**: lazily, on the first `send` (avoids holding a process for a tab the user never talks to). The
+  resolved **system/user prompt config (#300)** must be fed **at session open**, because the harness binds the
+  system prompt once at construction and it persists across turns (Spike A gotcha #6) — a per-tab/per-surface
+  prompt cannot be swapped mid-session, so it is resolved and injected transparently when the session opens.
 - **Turn**: each `send` pushes a user message; the session streams the turn and settles at a turn boundary
   (`result`) **without closing** — the session stays Live for the next turn.
 - **New chat**: `close()` the current session and drop to Idle (next `send` opens a fresh session with no
@@ -84,13 +87,17 @@ States: **Idle** (no live session yet) → **Live** (open, may be mid-turn) → 
   per-host agent lifecycle (`agent-hosts` / `agent-sessions`).
 - **Interrupt / Stop**: `interrupt()` ends the current turn but keeps the session Live (unlike today's abort,
   which ends the whole run).
-- **Idle-reap** (P4): a Live session left idle beyond a threshold is `close()`d to free its subprocess, and
-  transparently reopened (via cold-start resume) on the next `send`. This bounds resource use for many open
-  tabs.
+- **Idle-reap** (P4): a Live session left idle beyond a **user-configured lifetime** is `close()`d to free its
+  subprocess, and transparently reopened (via cold-start resume) on the next `send` — context preserved, small
+  reconnect delay. Two controls:
+  - A new **`ai.agentSessionLifetime`** setting (Settings › AI): `30 min` / `60 min` / `1 day` /
+    `indefinite (always alive)`. Mirrors `ai.runTimeoutMinutes`/`ai.agentShell`.
+  - A **memory-pressure LRU safety valve** that reaps least-recently-used sessions when total resource use
+    crosses a budget — applies **even in `indefinite` mode**, so "always alive" can never exhaust the machine.
 
 Resource note: the realistic workload is a handful of agents (the user runs ~3 full IDEs today, each far
-heavier than a `claude`/`codex` subprocess). Idle-reap covers abandonment; an "only the active tab stays
-Live" optimisation is a later refinement, not a prerequisite.
+heavier than a `claude`/`codex` subprocess). The lifetime setting + memory valve put the user in control; an
+"only the active tab stays Live" optimisation remains a possible later refinement, not a prerequisite.
 
 ## 6. Persistence & cold start
 
@@ -262,7 +269,29 @@ Sources: OpenAI Codex docs (codex-sdk, non-interactive-mode, app-server), `opena
 - **P5 — pin the Codex version** (fast-moving 0.144.x) and prefer the stdio transport.
 - **Resource budget** — measure held-open subprocess memory during P3; idle-reap (P4) is the safety valve.
 
-## 12. Phase mapping
+## 12. Decisions (P1 review, 2026-07-21)
+
+Seven design decisions, agreed one-by-one with the maintainer:
+
+1. **Provider model → `AgentSession` seam.** One `AgentSession` behind `AgentProvider`; live-harness
+   (Claude, Codex) hold a live session, stateless-model (Qwen/OpenAI/Ollama) satisfy it trivially; the UI
+   treats every tab uniformly. (Not "everything is a live session"; not separate per-kind paths.)
+2. **Session opens lazily on the first message.** No process for a tab you never talk to. **Dependency:** the
+   configurable system/user prompt (#300) is fed **at session open** (bound once per session — see §5).
+3. **Session lifetime is user-configurable, with a hard safety net.** New `ai.agentSessionLifetime` setting
+   (`30 min` / `60 min` / `1 day` / `indefinite`) drives idle-reap, **plus** a memory-pressure LRU valve that
+   reaps even under `indefinite`. (Not a fixed policy — the user decides.)
+4. **Stop interrupts the turn; the session stays live.** Stop = `interrupt()`/turn-interrupt; only **New chat**
+   and **tab close** end the session. (Not today's tear-down-the-run abort.)
+5. **Confinement = harness sandbox, Studio sets the roots.** Claude via `disallowedTools` + SDK sandbox; Codex
+   via `sandboxPolicy: workspace-write` locked to the confinement roots. Never widened by a per-action
+   session-accept — upholds the hard-boundary ruling. (Not Studio-enforces-itself; not belt-and-braces.)
+6. **History: harness owns live context; Studio's store is the durable record + resume key.** No per-turn
+   history replay while live. (Not Studio-single-source.)
+7. **Codex lands at P5**, after the live-session lifecycle is proven on Claude (P3) and cold-start/reap (P4).
+   The P2 seam is designed Codex-aware regardless. (Not earlier / not co-designed into P2.)
+
+## 13. Phase mapping
 
 - **P1 (#325)** — this doc + spikes + go/no-go.
 - **P2 (#326)** — `AgentSession` seam + session-model declaration, no behaviour change.
