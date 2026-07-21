@@ -3,6 +3,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
 import type { ImagePart, LanguageModel, ModelMessage, ToolSet } from 'ai';
@@ -208,6 +209,12 @@ export class AiSdkAdapter implements AgentProvider {
   public get supportsImages(): boolean {
     return kindSupportsImages(this.connection.kind);
   }
+
+  /**
+   * Gets the session model: the generic AI-SDK path is stateless — Studio owns the loop and each turn is
+   * a fresh call, so there is no live session to hold open (#324).
+   */
+  public readonly sessionModel: AgentSessionModel = 'stateless';
 
   /**
    * Reports whether the connection can run: a `none`-auth connection always can; a keyed connection

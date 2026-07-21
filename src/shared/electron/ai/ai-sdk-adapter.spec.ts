@@ -121,6 +121,10 @@ describe('AiSdkAdapter', () => {
     expect(new AiSdkAdapter(connection('ollama')).supportsImages).toBe(false);
   });
 
+  it('reportsAStatelessSessionModel', () => {
+    expect(new AiSdkAdapter(connection('openai')).sessionModel).toBe('stateless');
+  });
+
   it('describesAvailabilityFromTheAuthKindAndKey', () => {
     const noneAuth: AgentAuth = { hasLocalLogin: false, apiKey: null };
     expect(

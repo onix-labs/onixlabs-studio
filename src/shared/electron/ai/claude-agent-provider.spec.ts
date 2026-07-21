@@ -51,6 +51,10 @@ describe('ClaudeAgentProvider', () => {
 
   // --- availability ---------------------------------------------------------
 
+  it('reportsALiveHarnessSessionModel', () => {
+    expect(provider.sessionModel).toBe('live-harness');
+  });
+
   it('describeAvailability_withALocalLogin_isAvailable', () => {
     const auth: AgentAuth = { hasLocalLogin: true, apiKey: null };
     expect(provider.describeAvailability(auth)).toEqual({
