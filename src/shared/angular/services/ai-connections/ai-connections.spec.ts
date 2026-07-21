@@ -84,7 +84,7 @@ describe('AiConnections', () => {
     service.restoreDefaults();
 
     const ids: string[] = service.connections().map((c: AiConnection): string => c.id);
-    expect(ids).toEqual(['claude', 'vercel', 'ollama', custom.id]);
+    expect(ids).toEqual(['claude', 'codex', 'vercel', 'ollama', custom.id]);
   });
 
   it('restoreDefaults_whenSeedEdited_resetsItToTheShippedDefinition', () => {

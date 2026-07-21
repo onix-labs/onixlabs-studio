@@ -185,6 +185,7 @@ describe('Settings', () => {
 
     expect(service.aiConnections().map((c: AiConnection): string => c.id)).toEqual([
       'claude',
+      'codex',
       'vercel',
       'ollama',
     ]);
@@ -196,10 +197,10 @@ describe('Settings', () => {
     const service: Settings = TestBed.inject(Settings);
 
     service.upsertConnection(connection('my-openai'));
-    expect(service.aiConnections()).toHaveLength(4);
+    expect(service.aiConnections()).toHaveLength(5);
 
     service.upsertConnection({ ...connection('my-openai'), label: 'Renamed' });
-    expect(service.aiConnections()).toHaveLength(4);
+    expect(service.aiConnections()).toHaveLength(5);
     expect(
       service.aiConnections().find((c: AiConnection): boolean => c.id === 'my-openai')?.label,
     ).toBe('Renamed');
