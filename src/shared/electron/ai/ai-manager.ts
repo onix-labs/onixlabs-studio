@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'e
 import type {
   AgentContextRef,
   AgentMode,
+  AgentSurface,
   AiConnection,
   AiDiscoverModelsRequest,
   AiDiscoverModelsResult,
@@ -31,6 +32,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  AgentSession,
   EditDecisionOutcome,
   ProviderAvailability,
 } from './agent-provider';
@@ -87,6 +89,50 @@ interface BuiltProviders {
  * Caps a run's wall-clock budget at two hours, bounding an untrusted request.
  */
 const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
+
+/**
+ * Kill switch for persistent live sessions (#327). While false, every turn takes the transient
+ * per-turn path (today's behaviour); the live-session registry and router are dead code. Flipped on in
+ * a later P3 commit once the multi-turn machinery is complete and tested.
+ */
+const LIVE_SESSIONS_ENABLED: boolean = false;
+
+/**
+ * A held-open live session for one agent conversation, plus the frozen fields it was opened with. A
+ * later turn that differs on any of these is incompatible (the session's options are bound at open), so
+ * the old session is closed and a fresh one opened.
+ */
+interface LiveSessionEntry {
+  /**
+   * The provider's live session handle.
+   */
+  readonly session: AgentSession;
+
+  /**
+   * The connection id the session runs through.
+   */
+  readonly providerId: string;
+
+  /**
+   * The surface the session was opened for.
+   */
+  readonly surface: AgentSurface;
+
+  /**
+   * The workspace root the session was opened for.
+   */
+  readonly workspaceRoot: string | null;
+
+  /**
+   * The autonomy mode the session was opened for.
+   */
+  readonly mode: AgentMode;
+
+  /**
+   * The agent shell the session was opened for.
+   */
+  readonly agentShell: string | null;
+}
 
 /**
  * The wall-clock budget of a run: the time remaining, the armed timer, and the pause depth (several
@@ -162,6 +208,13 @@ export class AiManager {
    * Holds the abort controllers of in-flight runs, keyed by request id.
    */
   private readonly runs: Map<string, AbortController> = new Map<string, AbortController>();
+
+  /**
+   * Holds the held-open live sessions of live-harness agents (#327), keyed by the renderer's stable
+   * `agentSessionId`. Each outlives its turns; closed on New chat / tab close (via `closeSession`) or
+   * shutdown. Empty while {@link LIVE_SESSIONS_ENABLED} is false.
+   */
+  private readonly liveSessions: Map<string, LiveSessionEntry> = new Map<string, LiveSessionEntry>();
 
   /**
    * Holds the bridge to the renderer's in-app capabilities.
@@ -349,6 +402,11 @@ export class AiManager {
       }
       return this.steers.get(request.requestId)?.(request.text) ?? false;
     });
+    ipcMain.handle(AiChannel.CloseSession, (_event: IpcMainInvokeEvent, id: unknown): void => {
+      if (typeof id === 'string') {
+        this.closeSession(id);
+      }
+    });
   }
 
   /**
@@ -359,6 +417,10 @@ export class AiManager {
       controller.abort();
     }
     this.runs.clear();
+    for (const entry of this.liveSessions.values()) {
+      void entry.session.close();
+    }
+    this.liveSessions.clear();
     for (const requestId of [...this.clocks.keys()]) {
       this.dropClock(requestId);
     }
@@ -556,8 +618,10 @@ export class AiManager {
       state: 'started',
       detail: provider.label,
     });
-    void provider
-      .run(context)
+    // Route the turn into a held-open live session when one applies (#327); otherwise run it transiently
+    // through the provider as today. `finish` is per-turn cleanup either way and never closes the session.
+    const turn: Promise<void> = this.dispatchLive(request, context, provider) ?? provider.run(context);
+    void turn
       .then((): void =>
         this.finish(request.requestId, controller.signal.aborted ? 'aborted' : 'completed', ''),
       )
@@ -568,6 +632,94 @@ export class AiManager {
           error instanceof Error ? error.message : String(error),
         ),
       );
+  }
+
+  /**
+   * Routes a turn into a held-open live session when the live path applies (#327), returning the turn's
+   * promise; returns null to fall back to the transient per-turn run. The live path applies only for a
+   * live-harness provider that can open a session, with the kill switch on and a routing key present.
+   * Routing: a compatible live entry continues (its `resumeSessionId` is ignored — context is in-process);
+   * an incompatible entry is closed and reopened; a fresh conversation opens a new session; a
+   * conversation with a `resumeSessionId` but no live entry (a restored/rewound/post-restart turn) falls
+   * back to transient+resume until cold-start reattach lands (P4).
+   * @param request The run request.
+   * @param context The assembled run context.
+   * @param provider The resolved provider.
+   * @returns Returns the turn promise, or null to run transiently.
+   */
+  private dispatchLive(
+    request: AiRunRequest,
+    context: AgentRunContext,
+    provider: AgentProvider,
+  ): Promise<void> | null {
+    const key: string | undefined = request.agentSessionId;
+    if (
+      !LIVE_SESSIONS_ENABLED ||
+      provider.sessionModel !== 'live-harness' ||
+      provider.openSession === undefined ||
+      key === undefined ||
+      key.length === 0
+    ) {
+      return null;
+    }
+    const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
+    if (existing !== undefined) {
+      if (this.isCompatibleTurn(existing, request, context)) {
+        return existing.session.turn(context);
+      }
+      void existing.session.close();
+      this.liveSessions.delete(key);
+    }
+    // No compatible live session. A resume request (restored/rewound/post-restart) takes the transient
+    // path with `resume`; a fresh conversation opens a new live session.
+    if (typeof request.resumeSessionId === 'string' && request.resumeSessionId.length > 0) {
+      return null;
+    }
+    const session: AgentSession = provider.openSession(context);
+    this.liveSessions.set(key, {
+      session,
+      providerId: request.providerId,
+      surface: context.surface,
+      workspaceRoot: context.workspaceRoot,
+      mode: context.mode,
+      agentShell: context.agentShell,
+    });
+    return session.turn(context);
+  }
+
+  /**
+   * Reports whether a turn can continue an existing live session: the session's options are bound at
+   * open, so the frozen fields must match. A mismatch means the session must be reopened.
+   * @param entry The live session entry.
+   * @param request The run request.
+   * @param context The assembled run context.
+   * @returns Returns true when the turn is compatible with the open session.
+   */
+  private isCompatibleTurn(
+    entry: LiveSessionEntry,
+    request: AiRunRequest,
+    context: AgentRunContext,
+  ): boolean {
+    return (
+      entry.providerId === request.providerId &&
+      entry.surface === context.surface &&
+      entry.workspaceRoot === context.workspaceRoot &&
+      entry.mode === context.mode &&
+      entry.agentShell === context.agentShell
+    );
+  }
+
+  /**
+   * Closes an agent's held-open live session and drops it from the registry; a no-op when none is open.
+   * Called on New chat / tab close from the renderer.
+   * @param agentSessionId The agent conversation whose session to close.
+   */
+  private closeSession(agentSessionId: string): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    if (entry !== undefined) {
+      this.liveSessions.delete(agentSessionId);
+      void entry.session.close();
+    }
   }
 
   /**
@@ -968,6 +1120,7 @@ export class AiManager {
     const record: Record<string, unknown> = value as Record<string, unknown>;
     return (
       typeof record['requestId'] === 'string' &&
+      (record['agentSessionId'] === undefined || typeof record['agentSessionId'] === 'string') &&
       typeof record['providerId'] === 'string' &&
       typeof record['prompt'] === 'string' &&
       (typeof record['workspaceRoot'] === 'string' || record['workspaceRoot'] === null) &&

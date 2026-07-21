@@ -71,6 +71,11 @@ export enum AiChannel {
   Steer = 'ai:steer',
 
   /**
+   * Closes an agent's held-open live session (New chat / tab close); no-op when none is open (invoke).
+   */
+  CloseSession = 'ai:close-session',
+
+  /**
    * Streams events from running agent turns (main→renderer, on).
    */
   Event = 'ai:event',
@@ -168,6 +173,12 @@ export interface AiClient {
    * provider does not support steering (queue it for after the run instead).
    */
   steer(request: AiSteerRequest): Promise<boolean>;
+
+  /**
+   * Closes an agent's held-open live session (New chat / tab close). No-op when none is open.
+   * @param agentSessionId The agent conversation whose session to close.
+   */
+  closeSession(agentSessionId: string): Promise<void>;
 
   /**
    * Subscribes to streamed events from running agent turns.
