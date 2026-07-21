@@ -91,6 +91,20 @@ interface BuiltProviders {
 const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
 
 /**
+ * Caps a live session's idle-reap lifetime at seven days, bounding an untrusted request (the longest
+ * offered setting is one day). A session left idle this long is reaped regardless.
+ */
+const MAX_SESSION_LIFETIME_MS: number = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The most live-harness sessions kept open at once (#328). Beyond this the least-recently-used session
+ * is reaped — a memory-pressure safety valve that applies even under an "indefinite" lifetime, so a
+ * held-open session can never exhaust the machine. A reaped session reopens transparently on its next
+ * turn.
+ */
+const MAX_LIVE_SESSIONS: number = 8;
+
+/**
  * Kill switch for persistent live sessions (#327). When true, a live-harness turn for a known agent
  * conversation routes into a held-open session (kept alive across turns; a Stop interrupts the turn but
  * not the session); closed on New chat / tab close / shutdown. When false, every turn takes the
@@ -102,7 +116,7 @@ const LIVE_SESSIONS_ENABLED: boolean = true;
 /**
  * A held-open live session for one agent conversation, plus the frozen fields it was opened with. A
  * later turn that differs on any of these is incompatible (the session's options are bound at open), so
- * the old session is closed and a fresh one opened.
+ * the old session is closed and a fresh one opened. The mutable fields track idle-reap state (#328).
  */
 interface LiveSessionEntry {
   /**
@@ -134,6 +148,23 @@ interface LiveSessionEntry {
    * The agent shell the session was opened for.
    */
   readonly agentShell: string | null;
+
+  /**
+   * How long the session may sit idle before idle-reap closes it, in milliseconds, or 0 for never
+   * (indefinite). Refreshed from each turn's request so it tracks the current setting.
+   */
+  lifetimeMs: number;
+
+  /**
+   * The armed idle-reap timer, or null while a turn is running or the lifetime is indefinite.
+   */
+  reapTimer: NodeJS.Timeout | null;
+
+  /**
+   * When the session was last active (epoch ms), so the memory-pressure valve can reap the
+   * least-recently-used session.
+   */
+  lastActivity: number;
 }
 
 /**
@@ -420,6 +451,7 @@ export class AiManager {
     }
     this.runs.clear();
     for (const entry of this.liveSessions.values()) {
+      this.clearReap(entry);
       void entry.session.close();
     }
     this.liveSessions.clear();
@@ -668,10 +700,10 @@ export class AiManager {
     const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
     if (existing !== undefined) {
       if (this.isCompatibleTurn(existing, request, context)) {
-        return this.trackLiveTurn(key, existing.session, existing.session.turn(context));
+        existing.lifetimeMs = this.reapLifetimeMs(request);
+        return this.runLiveTurn(key, existing, context);
       }
-      void existing.session.close();
-      this.liveSessions.delete(key);
+      this.dropSession(key, existing);
     }
     // No compatible live session, so open one. The opening context carries any `resumeSessionId` (a
     // restored / rewound / post-restart turn), which the provider turns into the SDK `resume` at open —
@@ -679,15 +711,130 @@ export class AiManager {
     // (#328). A fresh conversation has no resume id and starts clean. Either way the session is
     // registered and held open for subsequent turns.
     const session: AgentSession = provider.openSession(context);
-    this.liveSessions.set(key, {
+    const entry: LiveSessionEntry = {
       session,
       providerId: request.providerId,
       surface: context.surface,
       workspaceRoot: context.workspaceRoot,
       mode: context.mode,
       agentShell: context.agentShell,
+      lifetimeMs: this.reapLifetimeMs(request),
+      reapTimer: null,
+      lastActivity: Date.now(),
+    };
+    this.liveSessions.set(key, entry);
+    // Memory-pressure valve: keep at most MAX_LIVE_SESSIONS open, reaping the least-recently-used.
+    this.reapOverflow(key);
+    return this.runLiveTurn(key, entry, context);
+  }
+
+  /**
+   * Runs a turn in a live session, managing its idle-reap timer: the timer is cleared while the turn
+   * runs (an active session is never reaped) and re-armed when the turn settles (the session is idle
+   * again). A turn that fails is evicted by {@link trackLiveTurn}, so the re-arm is skipped for it.
+   * @param key The conversation's live-session key.
+   * @param entry The live session entry.
+   * @param context The turn's context.
+   * @returns Returns the turn promise.
+   */
+  private runLiveTurn(
+    key: string,
+    entry: LiveSessionEntry,
+    context: AgentRunContext,
+  ): Promise<void> {
+    this.clearReap(entry);
+    entry.lastActivity = Date.now();
+    return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
+      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+      const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (current !== undefined) {
+        current.lastActivity = Date.now();
+        this.armReap(key, current);
+      }
     });
-    return this.trackLiveTurn(key, session, session.turn(context));
+  }
+
+  /**
+   * Clamps a run request's session-lifetime to a bounded, non-negative millisecond budget (0 means
+   * never reap on idle).
+   * @param request The run request.
+   * @returns Returns the idle-reap lifetime in milliseconds, or 0 for indefinite.
+   */
+  private reapLifetimeMs(request: AiRunRequest): number {
+    const value: number | undefined = request.agentSessionLifetimeMs;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? Math.min(Math.floor(value), MAX_SESSION_LIFETIME_MS)
+      : 0;
+  }
+
+  /**
+   * Arms (or re-arms) a session's idle-reap timer for its remaining lifetime; a no-op when the lifetime
+   * is indefinite. On expiry the session is closed and dropped — its next turn reopens it transparently
+   * via cold-start resume.
+   * @param key The conversation's live-session key.
+   * @param entry The live session entry.
+   */
+  private armReap(key: string, entry: LiveSessionEntry): void {
+    this.clearReap(entry);
+    if (entry.lifetimeMs <= 0) {
+      return;
+    }
+    entry.reapTimer = setTimeout((): void => {
+      entry.reapTimer = null;
+      // Reap only if still the registered session (a turn or close may have replaced it meanwhile).
+      if (this.liveSessions.get(key) === entry) {
+        this.liveSessions.delete(key);
+        void entry.session.close();
+      }
+    }, entry.lifetimeMs);
+  }
+
+  /**
+   * Clears a session's armed idle-reap timer, if any.
+   * @param entry The live session entry.
+   */
+  private clearReap(entry: LiveSessionEntry): void {
+    if (entry.reapTimer !== null) {
+      clearTimeout(entry.reapTimer);
+      entry.reapTimer = null;
+    }
+  }
+
+  /**
+   * Reaps the least-recently-used live sessions until at most {@link MAX_LIVE_SESSIONS} remain — the
+   * memory-pressure safety valve (#328), applied even under an indefinite lifetime. The just-opened
+   * session (identified by key) is never the victim.
+   * @param keepKey The key of the session that must stay open (the one just opened).
+   */
+  private reapOverflow(keepKey: string): void {
+    while (this.liveSessions.size > MAX_LIVE_SESSIONS) {
+      let oldestKey: string | null = null;
+      let oldest: LiveSessionEntry | null = null;
+      for (const [entryKey, entry] of this.liveSessions) {
+        if (entryKey === keepKey) {
+          continue;
+        }
+        if (oldest === null || entry.lastActivity < oldest.lastActivity) {
+          oldestKey = entryKey;
+          oldest = entry;
+        }
+      }
+      if (oldestKey === null || oldest === null) {
+        return;
+      }
+      this.dropSession(oldestKey, oldest);
+    }
+  }
+
+  /**
+   * Closes a live session, clears its reap timer, and removes it from the registry.
+   * @param key The conversation's live-session key.
+   * @param entry The live session entry.
+   */
+  private dropSession(key: string, entry: LiveSessionEntry): void {
+    this.clearReap(entry);
+    this.liveSessions.delete(key);
+    void entry.session.close();
   }
 
   /**
@@ -741,8 +888,7 @@ export class AiManager {
   private closeSession(agentSessionId: string): void {
     const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
     if (entry !== undefined) {
-      this.liveSessions.delete(agentSessionId);
-      void entry.session.close();
+      this.dropSession(agentSessionId, entry);
     }
   }
 
@@ -1159,7 +1305,9 @@ export class AiManager {
       (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
       (record['contextPaths'] === undefined || Array.isArray(record['contextPaths'])) &&
       (record['images'] === undefined || Array.isArray(record['images'])) &&
-      (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number')
+      (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number') &&
+      (record['agentSessionLifetimeMs'] === undefined ||
+        typeof record['agentSessionLifetimeMs'] === 'number')
     );
   }
 

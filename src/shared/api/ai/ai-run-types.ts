@@ -161,6 +161,14 @@ export interface AiRunRequest {
   readonly runTimeoutMs?: number;
 
   /**
+   * Gets how long (in milliseconds) the agent's held-open live session may sit idle before it is reaped
+   * to free its background process (#328), or 0 to never reap on idle. A reaped session reopens
+   * transparently (via resume) on the next turn. Carried on every turn so a live session tracks the
+   * current setting; ignored by the transient (stateless) path.
+   */
+  readonly agentSessionLifetimeMs?: number;
+
+  /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
    * on that tab's editor; null when the run has no owning editor (the standalone agent tab).
    */

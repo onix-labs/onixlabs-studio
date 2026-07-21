@@ -84,6 +84,13 @@ export interface AiRunOptions {
   readonly runTimeoutMs?: number;
 
   /**
+   * Gets how long the agent's held-open live session may sit idle before idle-reap closes its process
+   * (#328), in milliseconds, or 0/omitted to never reap on idle. A reaped session reopens transparently
+   * on the next turn.
+   */
+  readonly agentSessionLifetimeMs?: number;
+
+  /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
    * on that tab's editor. Omitted for runs with no owning editor (the standalone agent tab).
    */
@@ -209,6 +216,7 @@ export class AiRuntime {
       tokenCap: options.tokenCap ?? 0,
       agentShell: options.agentShell ?? '',
       runTimeoutMs: options.runTimeoutMs ?? 0,
+      agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',

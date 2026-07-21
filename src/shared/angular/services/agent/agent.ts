@@ -917,6 +917,7 @@ export class Agent {
       tokenCap: this.settings.aiTokenCap(),
       agentShell: this.settings.aiAgentShell(),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
+      agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
       owningTabId,
       surface,
       mode: this.modeState(),

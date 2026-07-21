@@ -601,6 +601,14 @@ export class Settings {
   public readonly aiRunTimeoutMinutes: Signal<number> = this.value('ai.runTimeoutMinutes');
 
   /**
+   * Gets how long (in minutes) an idle agent keeps its live session before idle-reap closes it, or 0 to
+   * never reap on idle. A reaped session reopens transparently (via resume) on the next message.
+   */
+  public readonly aiAgentSessionLifetimeMinutes: Signal<number> = this.value(
+    'ai.agentSessionLifetime',
+  );
+
+  /**
    * Gets the shell whose login profile the agent sources its environment from (an absolute path), or
    * the empty string to inherit the default login shell's environment.
    */
