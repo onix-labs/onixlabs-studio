@@ -641,9 +641,10 @@ export class AiManager {
    * promise; returns null to fall back to the transient per-turn run. The live path applies only for a
    * live-harness provider that can open a session, with the kill switch on and a routing key present.
    * Routing: a compatible live entry continues (its `resumeSessionId` is ignored — context is in-process);
-   * an incompatible entry is closed and reopened; a fresh conversation opens a new session; a
-   * conversation with a `resumeSessionId` but no live entry (a restored/rewound/post-restart turn) falls
-   * back to transient+resume until cold-start reattach lands (P4).
+   * an incompatible entry is closed and reopened; otherwise a new session is opened and registered. A
+   * fresh conversation starts a clean session; a restored / rewound / post-restart turn carries a
+   * `resumeSessionId`, which the provider turns into the SDK `resume` at open, so the reopened session
+   * cold-starts back onto its persisted context (#328).
    * @param request The run request.
    * @param context The assembled run context.
    * @param provider The resolved provider.
@@ -672,11 +673,11 @@ export class AiManager {
       void existing.session.close();
       this.liveSessions.delete(key);
     }
-    // No compatible live session. A resume request (restored/rewound/post-restart) takes the transient
-    // path with `resume`; a fresh conversation opens a new live session.
-    if (typeof request.resumeSessionId === 'string' && request.resumeSessionId.length > 0) {
-      return null;
-    }
+    // No compatible live session, so open one. The opening context carries any `resumeSessionId` (a
+    // restored / rewound / post-restart turn), which the provider turns into the SDK `resume` at open —
+    // so a reopened conversation cold-starts back onto its persisted session and keeps its model context
+    // (#328). A fresh conversation has no resume id and starts clean. Either way the session is
+    // registered and held open for subsequent turns.
     const session: AgentSession = provider.openSession(context);
     this.liveSessions.set(key, {
       session,
