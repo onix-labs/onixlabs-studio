@@ -35,7 +35,7 @@ export type AiProviderKind =
  * An OAuth strategy is a deliberate future addition (the credential layer is built as a pluggable seam
  * so it slots in without reworking connections).
  */
-export type AiAuthKind = 'api-key' | 'none' | 'claude-login';
+export type AiAuthKind = 'api-key' | 'none' | 'claude-login' | 'codex-login';
 
 /**
  * Describes a single user-configurable provider connection: which back-end to run, how to reach and

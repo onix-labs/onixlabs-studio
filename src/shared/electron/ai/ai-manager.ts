@@ -468,7 +468,11 @@ export class AiManager {
   private authForConnection(connectionId: string): AgentAuth {
     const connection: AiConnection | undefined = this.connections.get(connectionId);
     return connection === undefined
-      ? { hasLocalLogin: this.auth.hasLocalLogin(), apiKey: null }
+      ? {
+          hasLocalLogin: this.auth.hasLocalLogin(),
+          hasCodexLogin: this.auth.hasCodexLogin(),
+          apiKey: null,
+        }
       : this.auth.authFor(connectionId, connection.auth);
   }
 

@@ -217,7 +217,7 @@ function gateCtx(overrides: Partial<AgentRunContext>): AgentRunContext {
     resumeSessionId: null,
     resumeSessionAt: null,
     forkSession: false,
-    auth: { hasLocalLogin: true, apiKey: null },
+    auth: { hasLocalLogin: true, hasCodexLogin: false, apiKey: null },
     requestPermission: (): Promise<boolean> => Promise.resolve(false),
     recordAudit: (): void => {
       // No-op default; tests that assert auditing override this.
@@ -280,7 +280,7 @@ describe('ClaudeAgentProvider', () => {
   });
 
   it('describeAvailability_withALocalLogin_isAvailable', () => {
-    const auth: AgentAuth = { hasLocalLogin: true, apiKey: null };
+    const auth: AgentAuth = { hasLocalLogin: true, hasCodexLogin: false, apiKey: null };
     expect(provider.describeAvailability(auth)).toEqual({
       available: true,
       detail: 'Using your local Claude login.',
@@ -288,12 +288,12 @@ describe('ClaudeAgentProvider', () => {
   });
 
   it('describeAvailability_withAnApiKeyOnly_isAvailable', () => {
-    const auth: AgentAuth = { hasLocalLogin: false, apiKey: 'sk-x' };
+    const auth: AgentAuth = { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-x' };
     expect(provider.describeAvailability(auth).available).toBe(true);
   });
 
   it('describeAvailability_withNeither_isUnavailable', () => {
-    const auth: AgentAuth = { hasLocalLogin: false, apiKey: null };
+    const auth: AgentAuth = { hasLocalLogin: false, hasCodexLogin: false, apiKey: null };
     expect(provider.describeAvailability(auth).available).toBe(false);
   });
 

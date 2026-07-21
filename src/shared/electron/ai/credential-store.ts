@@ -115,6 +115,12 @@ export interface CredentialStorePorts {
   hasLocalLogin(): boolean;
 
   /**
+   * Reports whether a local Codex login (`~/.codex`) is present.
+   * @returns Returns true when a local Codex login is present.
+   */
+  hasCodexLogin(): boolean;
+
+  /**
    * Reads the development-only `ANTHROPIC_API_KEY` environment key, or null when unset.
    * @returns Returns the environment key, or null.
    */
@@ -200,6 +206,7 @@ export class CredentialStore {
     return {
       storedKey: this.storedKeyFor(id),
       hasLocalLogin: this.ports.hasLocalLogin(),
+      hasCodexLogin: this.ports.hasCodexLogin(),
       envKey: this.ports.envKey(),
     };
   }
@@ -233,6 +240,7 @@ export class CredentialStore {
   public authFor(id: string, kind: AiAuthKind): AgentAuth {
     return {
       hasLocalLogin: this.ports.hasLocalLogin(),
+      hasCodexLogin: this.ports.hasCodexLogin(),
       apiKey: this.resolveCredentialFor(id, kind).apiKey,
     };
   }
