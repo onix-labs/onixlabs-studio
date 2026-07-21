@@ -368,11 +368,30 @@ shutdown closes it (the renderer drives `closeSession`; the session's master abo
 the subprocess). A turn whose stream fails evicts the session so the next turn opens fresh. A kill
 switch (`LIVE_SESSIONS_ENABLED`) falls the whole path back to a transient open→one-turn→close per run.
 
+**Reap & cold-start (#328).** A live session does not live forever. An idle session past
+**`ai.agentSessionLifetime`** (Settings › AI: 30 min / 60 min / 1 day / indefinite) is reaped — its
+subprocess closed — and a memory-pressure LRU valve caps how many sessions stay open at once
+(`MAX_LIVE_SESSIONS`), applied **even under an indefinite lifetime** so held-open sessions can never
+exhaust the machine (the actively-running session is never the victim — `lastActivity` is stamped at
+turn start). On **app restart** the subprocess is gone entirely. Either way, reopening is
+**transparent**: the next turn carries the conversation's persisted `resumeSessionId`, which
+`dispatchLive` turns into a cold-start `openSession` that resumes the SDK session — so context is
+preserved with only a small reconnect delay, no user action.
+
+**Source of truth (store vs SDK session).** Two things persist, at different layers, joined by the
+session id — not double storage. The **SDK** owns the model's live context and persists its own session
+transcript on disk (resumed by id); **Studio's `AgentConversationStore`** persists the _displayed_
+transcript (`items`), the `resumeSessionId`, and the pending `queue`. On restore, Studio rehydrates the
+UI from `items` and hands the `resumeSessionId` to the next turn — the model re-reads its own session,
+never Studio's items. So the store is authoritative for what the user _sees_; the resumed SDK session is
+authoritative for what the model _remembers_.
+
 **Enforcement points:** `AiAuthManager` (credentials stay in main) · `ClaudeAgentProvider.canUseTool`
 (confinement → per-tool policy → posture, plus `disallowedTools` for denials) · `ClaudeAgentSession`
 (held-open query; frozen-at-open vs per-turn context indirection; interrupt-not-close) · `AiManager`
-(permission broker, per-tool-policy sanitising, `AgentAuditLog`, and the live-session registry +
-compatibility router in `dispatchLive`) · `RendererBridge` + `AiRuntime` (in-app capability surface).
+(permission broker, per-tool-policy sanitising, `AgentAuditLog`, the live-session registry + compatibility
+router in `dispatchLive`, and idle-reap + the LRU valve) · `RendererBridge` + `AiRuntime` (in-app
+capability surface).
 
 ---
 

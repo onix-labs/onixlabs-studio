@@ -86,6 +86,7 @@ export interface SettingsValues {
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
+  readonly 'ai.agentSessionLifetime': number;
   readonly 'ai.agentShell': string;
 
   readonly 'missionControl.showPermissionsAtTop': boolean;
@@ -660,6 +661,26 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 10,
+      },
+      {
+        key: 'ai.agentSessionLifetime',
+        title: 'Keep agent sessions alive for',
+        description:
+          'How long an idle agent keeps its live session — and its background process — before it is ' +
+          'reaped to free resources. The conversation reopens transparently on your next message, ' +
+          'keeping its context. "Indefinitely" never reaps on idle, though a memory-pressure safety ' +
+          'valve still caps how many sessions stay live at once.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '60 minutes' },
+            { value: '1440', label: '1 day' },
+            { value: '0', label: 'Indefinitely' },
+          ],
+        },
+        default: 60,
       },
       {
         key: 'ai.agentShell',

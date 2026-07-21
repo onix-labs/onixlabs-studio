@@ -112,9 +112,9 @@ closes and reopens the session. **Stop** maps to `interrupt()` (the SDK emits a 
 turn, keeping the session Live); the pump no longer ends on a per-turn abort — `close()` (New chat / tab
 disposal / shutdown, via the master abort controller) is the only teardown, and a turn whose stream fails
 evicts the session so the next turn reopens fresh. The whole path sits behind a `LIVE_SESSIONS_ENABLED` kill
-switch (transient open→one-turn→close per run when off). **Still deferred to P4:** `tokenCap`/`taskBudget` and
-the token clock are frozen/armed per turn (fine while live); the `ai.agentSessionLifetime` setting and
-idle-reap/memory-valve are not yet built.
+switch (transient open→one-turn→close per run when off). The `ai.agentSessionLifetime` setting, idle-reap,
+memory-valve, and cold-start reopen landed in P4 (§6). `tokenCap`/`taskBudget` and the token clock remain
+frozen/armed per turn (fine while live).
 
 ## 6. Persistence & cold start
 
@@ -126,6 +126,21 @@ idle-reap/memory-valve are not yet built.
   replays its persisted session). So `resume` narrows from "every turn" to **cold-start / post-reap only**.
 - **Source of truth**: define clearly — the harness owns the live conversation state; Studio's store is the
   durable record for display + the resume key. Avoid double-writing divergent histories.
+
+**Implementation (P4, #328):** cold-start reopen replaced P3's transient fallback — `AiManager.dispatchLive`
+now opens a *live* session for a turn that carries a `resumeSessionId` but has no live entry (a restored,
+rewound, or post-restart conversation), and the provider emits the SDK `resume` from the opening context, so
+the reopened session keeps its model context. Idle-reap landed as a per-session timer armed when a turn
+settles and cleared while one runs, driven by the new **`ai.agentSessionLifetime`** setting (30 m / 60 m /
+1 day / indefinite, default 60 m); a reaped session's subprocess is closed and reopens transparently on the
+next turn via the same cold-start path. The **memory-pressure valve** is a concurrent-live-session cap
+(`MAX_LIVE_SESSIONS` = 8) reaping the least-recently-used even under an indefinite lifetime (`lastActivity` is
+stamped at turn start so an active session is never the victim). **Source of truth, resolved:** the SDK owns
+the model's context (its own on-disk session, resumed by id); Studio's `AgentConversationStore` owns the
+displayed transcript (`items`) plus the `resumeSessionId` join key and pending `queue` — different layers, no
+divergence, since the model re-reads its own session and never Studio's items. **Still deferred:**
+`tokenCap`/`taskBudget` and the token clock remain per-turn (fine while live); the LRU valve is a count cap,
+not a true RSS measurement.
 
 ## 7. Lifecycle plumbing migration
 

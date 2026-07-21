@@ -115,6 +115,13 @@
 </app-setting-row>
 
 <app-setting-row
+  label="Keep agent sessions alive for"
+  description="How long an idle agent keeps its live session — and its background process — before it is reaped to free resources. The conversation reopens transparently on your next message, keeping its context. 'Indefinitely' never reaps on idle."
+>
+  <app-setting-control key="ai.agentSessionLifetime" />
+</app-setting-row>
+
+<app-setting-row
   label="Agent shell"
   description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
 >
