@@ -251,6 +251,47 @@ export interface AgentRunContext {
 }
 
 /**
+ * How a provider maintains a conversation, which decides whether it can hold a live session (#324):
+ *
+ * - `live-harness`: an external agentic runtime (Claude Code, OpenAI Codex) driven as a subprocess that
+ *   owns its own loop and tools and can keep a session open across turns.
+ * - `stateless`: a raw model endpoint (via the Vercel AI SDK) where Studio owns the loop and the
+ *   "session" is the replayed transcript — nothing is held open between turns.
+ */
+export type AgentSessionModel = 'live-harness' | 'stateless';
+
+/**
+ * A provider's live conversation session for one agent, held open across turns (#324; live-harness
+ * providers only). This is the **target contract implemented in P3 (#327)** — it is declared here so the
+ * seam is fixed, but is **not yet wired at runtime**: today's per-turn {@link AgentProvider.run} still
+ * drives every provider. A stateless provider satisfies it trivially (each {@link turn} is one call).
+ */
+export interface AgentSession {
+  /**
+   * Gets the provider session id once known (from the first turn's `session` event), or null before.
+   */
+  readonly id: string | null;
+
+  /**
+   * Runs a turn in this session, streaming events through the context until the turn settles and leaving
+   * the session open for the next turn.
+   * @param context The turn's context.
+   */
+  turn(context: AgentRunContext): Promise<void>;
+
+  /**
+   * Interrupts the in-flight turn, leaving the session open for the next turn (maps to the harness's
+   * interrupt — distinct from {@link close}).
+   */
+  interrupt(): void;
+
+  /**
+   * Ends the session and releases its resources (the harness subprocess).
+   */
+  close(): Promise<void>;
+}
+
+/**
  * A provider-agnostic agent implementation. Concrete providers (Claude Agent SDK, Vercel AI SDK) wrap
  * their own SDK behind this seam and parse their output into the shared {@link AiEvent} protocol.
  */
@@ -279,6 +320,13 @@ export interface AgentProvider {
    * Gets a value indicating whether the provider accepts image input on a turn.
    */
   readonly supportsImages: boolean;
+
+  /**
+   * Gets how the provider maintains a conversation — whether it can hold a live session (#324).
+   * `live-harness` providers will open an {@link AgentSession}; `stateless` providers run per-turn. This
+   * is a classification only in P2 (#326); the live-session runtime lands in P3 (#327).
+   */
+  readonly sessionModel: AgentSessionModel;
 
   /**
    * Reports whether the provider can run with the given credential.

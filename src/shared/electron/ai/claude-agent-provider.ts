@@ -41,6 +41,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
 import { resolveBundledClaudeExecutable } from './claude-executable';
@@ -200,6 +201,12 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets a value indicating whether the provider accepts image input (Claude models are multimodal).
    */
   public readonly supportsImages: boolean = true;
+
+  /**
+   * Gets the session model: the Claude Agent SDK is a live-harness — it is driven as a subprocess and can
+   * hold a session open across turns (#324). The live-session runtime lands in P3 (#327).
+   */
+  public readonly sessionModel: AgentSessionModel = 'live-harness';
 
   /**
    * Initialises a new instance of the {@link ClaudeAgentProvider} class.
