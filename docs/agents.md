@@ -272,17 +272,21 @@ How Studio bounds what an AI agent can see and do. Enforcement lives in the main
 **connections** (`AiConnection`: id, kind, label, base URL, auth kind, model list) is persisted in
 settings and managed in the AI settings section; the built-in seeds (Claude, an Anthropic API-key
 connection, and a local Ollama) can be extended with any OpenAI-compatible, xAI, Google, DeepSeek, or
-custom endpoint without new code. Only two provider implementations back them: `ClaudeAgentProvider`
-(the Claude Agent SDK, local-login path) for a `claude-login` connection, and the generic
-`AiSdkAdapter` (Vercel AI SDK, dispatched by kind + base URL) for every other. The renderer passes its
+custom endpoint without new code. Three provider implementations back them, dispatched on the
+connection's **auth kind**: `ClaudeAgentProvider` (the Claude Agent SDK, local-login path) for a
+`claude-login` connection, `CodexAgentProvider` (OpenAI Codex via `@openai/codex-sdk`) for a
+`codex-login` connection, and the generic `AiSdkAdapter` (Vercel AI SDK, dispatched by kind + base URL)
+for every other. The renderer passes its
 connections to `AiManager.listProviders`, which **rebuilds** its provider set from them, so a user's
 own connection is immediately runnable; `AgentEngine` owns the active connection + per-connection
 model selection.
 
 **Authentication.** Each connection resolves its own credential, keyed by connection id, through an
-`AuthStrategy` (`api-key` / `none` / `claude-login`; OAuth is a future drop-in). A `claude-login`
-connection uses the user's **local Claude login** (`~/.claude`, the same credential Claude Code uses);
-an `api-key` connection uses a per-connection **API key** stored encrypted at rest via OS
+`AuthStrategy` (`api-key` / `none` / `claude-login` / `codex-login`; OAuth is a future drop-in). A
+`claude-login` connection uses the user's **local Claude login** (`~/.claude`, the same credential
+Claude Code uses) and a `codex-login` connection the user's **local Codex login** (`~/.codex`) —
+independent probes; an `api-key` connection uses a per-connection **API key** stored encrypted at rest
+via OS
 secure-storage (`safeStorage`, in `AiAuthManager` over a pure `CredentialStore`). Keys **never cross
 the contextBridge**; only narrow per-connection status, config, and run-control calls are exposed. A
 key stored by a pre-connections build migrates onto the built-in Anthropic API-key connection.
@@ -342,12 +346,24 @@ capabilities are reachable; unknown names are rejected. (`AgentEditorCapabilitie
 registers read/replace-active-document, preferring the markdown editor then the code editor.)
 
 **Session lifecycle (live-harness vs stateless).** A provider is one of two _shapes_
-(`AgentProvider.sessionModel`). A **live-harness** provider — the Claude Agent SDK (Codex later) — is an
-external agentic runtime driven as a subprocess that owns its own loop, tools, and session, so Studio
+(`AgentProvider.sessionModel`). A **live-harness** provider — the Claude Agent SDK or OpenAI Codex — is
+an external agentic runtime driven as a subprocess that owns its own loop, tools, and session, so Studio
 holds **one session open per conversation** and pushes each turn into it. A **stateless-model** provider
 — the `AiSdkAdapter` over OpenAI / Ollama / … — has no live process; its "session" is the transcript
 replayed each call, so every turn is independent. Both sit behind the same `AgentSession` seam
 (`turn` / `interrupt` / `close`) and look identical to the renderer (an agent with history).
+
+The two live-harnesses differ under the seam. **Claude** holds one streaming `query()` subprocess open
+across turns and enforces confinement through a per-tool `canUseTool` gate (plus its OS sandbox), so
+Studio's permission posture, deny list, and audit log all apply. **Codex** (`CodexAgentSession` over
+`@openai/codex-sdk`) is a `Thread` whose each `runStreamed` turn resumes the persisted thread
+(`~/.codex/sessions`) — no subprocess is held between turns, so `close`/reap are cheap — and it exposes
+**no per-tool callback**: confinement is enforced purely by the harness **sandbox**
+(`sandboxMode: 'workspace-write'` scoped to the workspace root plus the allowed write paths;
+`'read-only'` in chat mode), consistent with the hard-boundary ruling (Decision 5) but meaning the deny
+list, audit log, and interactive per-tool prompts do **not** apply to Codex — the sandbox is the
+boundary. Both keep context across turns and reopen via resume after reap/restart; a Codex model change
+takes effect on the next fresh session (the SDK has no per-thread model swap).
 
 On the Claude live path (`ClaudeAgentSession`), `AiManager` keys held-open sessions by a renderer-minted
 **`agentSessionId`** — stable per conversation, _not_ the SDK session id (which avoids a
