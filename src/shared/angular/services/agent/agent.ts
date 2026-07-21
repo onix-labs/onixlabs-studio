@@ -514,6 +514,13 @@ export class Agent {
   private forkAt: string | null = null;
 
   /**
+   * Holds the stable id of this conversation's live agent session (#327): a live-harness provider routes
+   * turns that share it into one held-open session. Reset — closing the old session — when the
+   * conversation identity changes (New chat, restore, fork), and closed when the host is destroyed.
+   */
+  private agentSessionId: string = crypto.randomUUID();
+
+  /**
    * Tracks the counter that makes queued-message identifiers unique.
    */
   private queueSequence: number = 0;
@@ -671,7 +678,12 @@ export class Agent {
     const unsubscribe: () => void = this.runtime.onEvent((event: AiEvent): void =>
       this.onEvent(event),
     );
-    this.destroyRef.onDestroy(unsubscribe);
+    this.destroyRef.onDestroy((): void => {
+      unsubscribe();
+      // Tie the live session's teardown to the host's lifetime (#327): closing the tab ends its agent's
+      // held-open session.
+      this.runtime.closeSession(this.agentSessionId);
+    });
   }
 
   /**
@@ -844,6 +856,9 @@ export class Agent {
           candidate.providerMessageId !== undefined,
       )?.providerMessageId;
     this.log.set(kept);
+    // A fork is a new conversation line: end the pre-fork live session and mint a fresh id so the
+    // forked turn opens its own (it takes the transient resume/fork path via dispatchLive).
+    this.resetAgentSession();
     if (anchor === undefined) {
       // Nothing to fork at: the branch starts a fresh session rather than resuming one that still
       // contains the discarded turns.
@@ -892,6 +907,7 @@ export class Agent {
     this.forkAt = null;
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), prompt, {
+      agentSessionId: this.agentSessionId,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
@@ -991,9 +1007,19 @@ export class Agent {
   }
 
   /**
+   * Ends this conversation's current live session (if any) and mints a fresh session id, so the next
+   * turn opens a new session. Called when the conversation identity changes: New chat, restore, fork.
+   */
+  private resetAgentSession(): void {
+    this.runtime.closeSession(this.agentSessionId);
+    this.agentSessionId = crypto.randomUUID();
+  }
+
+  /**
    * Clears the transcript.
    */
   public clear(): void {
+    this.resetAgentSession();
     this.log.set([]);
     this.activeRequestId = null;
     this.busy.set(false);
@@ -1019,6 +1045,7 @@ export class Agent {
     sessionId: string | null = null,
     queue: readonly string[] = [],
   ): void {
+    this.resetAgentSession();
     this.activeRequestId = null;
     this.busy.set(false);
     this.contextPathsState.set([]);
