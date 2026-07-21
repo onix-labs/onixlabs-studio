@@ -91,11 +91,13 @@ interface BuiltProviders {
 const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
 
 /**
- * Kill switch for persistent live sessions (#327). While false, every turn takes the transient
- * per-turn path (today's behaviour); the live-session registry and router are dead code. Flipped on in
- * a later P3 commit once the multi-turn machinery is complete and tested.
+ * Kill switch for persistent live sessions (#327). When true, a live-harness turn for a known agent
+ * conversation routes into a held-open session (kept alive across turns; a Stop interrupts the turn but
+ * not the session); closed on New chat / tab close / shutdown. When false, every turn takes the
+ * transient per-turn path (the pre-#327 behaviour) and the registry stays empty — the escape hatch if a
+ * held-open session ever misbehaves.
  */
-const LIVE_SESSIONS_ENABLED: boolean = false;
+const LIVE_SESSIONS_ENABLED: boolean = true;
 
 /**
  * A held-open live session for one agent conversation, plus the frozen fields it was opened with. A
@@ -665,7 +667,7 @@ export class AiManager {
     const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
     if (existing !== undefined) {
       if (this.isCompatibleTurn(existing, request, context)) {
-        return existing.session.turn(context);
+        return this.trackLiveTurn(key, existing.session, existing.session.turn(context));
       }
       void existing.session.close();
       this.liveSessions.delete(key);
@@ -684,7 +686,28 @@ export class AiManager {
       mode: context.mode,
       agentShell: context.agentShell,
     });
-    return session.turn(context);
+    return this.trackLiveTurn(key, session, session.turn(context));
+  }
+
+  /**
+   * Wraps a live-session turn so a rejection evicts the session: a turn only rejects when its held-open
+   * stream failed (the session is then dead), so drop it from the registry and close it, and the next
+   * turn for that conversation opens a fresh session. A normal Stop resolves the turn (the session
+   * survives), so this passes through untouched. The rejection is re-thrown so the run still lands as an
+   * error.
+   * @param key The conversation's live-session key.
+   * @param session The session the turn ran in.
+   * @param turn The turn promise.
+   * @returns Returns the turn promise, evicting the session on failure.
+   */
+  private trackLiveTurn(key: string, session: AgentSession, turn: Promise<void>): Promise<void> {
+    return turn.catch((error: unknown): never => {
+      if (this.liveSessions.get(key)?.session === session) {
+        this.liveSessions.delete(key);
+      }
+      void session.close();
+      throw error;
+    });
   }
 
   /**
