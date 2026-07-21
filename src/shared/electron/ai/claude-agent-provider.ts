@@ -41,6 +41,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  AgentSession,
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
@@ -234,11 +235,21 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity.
-   * @param context The run context.
+   * Builds the SDK `query()` options for a turn: the surface/mode-scoped in-app MCP tools, the
+   * permission gate, the audit hook, sandbox/confinement, the system prompt, and resume/budget.
+   * Extracted from the old single-shot `run()` so a {@link ClaudeAgentSession} can build the options
+   * once and hold the query open across turns (#324/#327). The tool and gate closures capture this
+   * `context`; a persistent session's per-turn context indirection lands with the multi-turn flip (P3
+   * later commit), which is safe because today's callers open→run one turn→close.
+   * @param context The turn's context (its surface/workspace/mode scope the tools and confinement).
+   * @param controller The session's abort controller, wired to the SDK query.
+   * @returns Returns the assembled run options.
    */
-  public async run(context: AgentRunContext): Promise<void> {
-    const { query, tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+  private async buildRunOptions(
+    context: AgentRunContext,
+    controller: AbortController,
+  ): Promise<Options> {
+    const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
     const { z } = await import('zod');
     const hasWorkspace: boolean = context.workspaceRoot !== null;
     const surface: AgentSurface = context.surface;
@@ -711,7 +722,6 @@ export class ClaudeAgentProvider implements AgentProvider {
         : { behavior: 'deny', message: 'The user declined to run this tool.' };
     };
 
-    const controller: AbortController = this.linkAbort(context.signal);
     const options: Options = {
       model: context.model,
       cwd: context.workspaceRoot ?? homedir(),
@@ -820,110 +830,46 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(this.runEnv(context) ?? {}),
     };
 
-    // Mid-run steering rides the SDK's streaming-input mode: the prompt is an async generator that
-    // yields the initial message and then any user messages the user injects while the run executes
-    // (each becomes a further turn in the same run). After a completed response cycle (a `result`
-    // message) with nothing further queued, the input closes and the run ends — identical to the
-    // single-turn behaviour when the user never steers.
-    const pendingSteers: string[] = [];
-    let wake: (() => void) | null = null;
-    let inputClosed: boolean = false;
-    const closeInput: () => void = (): void => {
-      inputClosed = true;
-      context.setSteerHandler(null);
-      wake?.();
-    };
-    context.setSteerHandler((steered: string): boolean => {
-      if (inputClosed) {
-        return false;
-      }
-      pendingSteers.push(steered);
-      wake?.();
-      return true;
-    });
-    context.signal.addEventListener('abort', closeInput, { once: true });
-    const initialPrompt: string = buildRunPrompt(context);
-    const userMessage: (value: string) => SDKUserMessage = (value: string): SDKUserMessage => ({
-      type: 'user',
-      message: { role: 'user', content: value },
-      parent_tool_use_id: null,
-    });
-    // Attached images ride the initial message as image blocks ahead of the prompt text; steered
-    // follow-ups are text-only.
-    const initialMessage: SDKUserMessage =
-      context.images.length === 0
-        ? userMessage(initialPrompt)
-        : {
-            type: 'user',
-            message: {
-              role: 'user',
-              content: [
-                ...context.images.map(
-                  (
-                    image: AiImageRef,
-                  ): {
-                    type: 'image';
-                    source: { type: 'base64'; media_type: string; data: string };
-                  } => ({
-                    type: 'image',
-                    source: { type: 'base64', media_type: image.mediaType, data: image.data },
-                  }),
-                ),
-                { type: 'text', text: initialPrompt },
-              ],
-            } as SDKUserMessage['message'],
-            parent_tool_use_id: null,
-          };
-    async function* promptStream(): AsyncGenerator<SDKUserMessage> {
-      yield initialMessage;
-      while (true) {
-        const next: string | undefined = pendingSteers.shift();
-        if (next !== undefined) {
-          yield userMessage(next);
-          continue;
-        }
-        if (inputClosed) {
-          return;
-        }
-        await new Promise<void>((resolve: () => void): void => {
-          wake = resolve;
-        });
-        wake = null;
-      }
-    }
+    return options;
+  }
 
-    const response: Query = query({ prompt: promptStream(), options });
-    let reportedSessionId: string | null = null;
-    // A steered run sees several `result` messages whose reported cost is cumulative; this tracks the
-    // last total (so each usage event carries only that turn's cost delta) and the last top-level
-    // assistant message's usage (so the context meter reads the true window occupancy, not the result's
-    // cumulative token total).
-    const usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
+  /**
+   * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity. A transient
+   * run: opens a live session, runs this one turn into it, then closes it — behaviour identical to the
+   * old single-shot run. The persistent path (holding the session open across turns, #327) drives the
+   * same {@link ClaudeAgentSession} through {@link openSession}/{@link AgentSession.turn} instead.
+   * @param context The run context.
+   */
+  public async run(context: AgentRunContext): Promise<void> {
+    const session: ClaudeAgentSession = this.openSession(context);
     try {
-      for await (const message of response) {
-        if (context.signal.aborted) {
-          break;
-        }
-        // Surface the SDK session id so the renderer can resume this conversation on its next turn.
-        // Every message carries it; report it once (and again if it ever changes, e.g. a forked
-        // resume).
-        const sessionId: string | null = this.sessionIdOf(message);
-        if (sessionId !== null && sessionId !== reportedSessionId) {
-          reportedSessionId = sessionId;
-          context.emit({ requestId: context.requestId, kind: 'session', sessionId });
-        }
-        this.handleMessage(message, context, usageState);
-        // A turn boundary with nothing further queued ends the run. Closing the input in the same
-        // tick as the check keeps this race-free: once closed, a late steer is refused and the
-        // renderer queues the message for the next run instead.
-        if (message.type === 'result' && pendingSteers.length === 0) {
-          closeInput();
-          break;
-        }
-      }
+      await session.turn(context);
     } finally {
-      closeInput();
+      await session.close();
     }
+  }
+
+  /**
+   * Opens a live Claude session for one agent (#324/#327): it holds the SDK query open and runs each
+   * {@link AgentSession.turn} into it. The session builds its options from the opening context and
+   * translates the SDK stream through this provider's message handlers.
+   * @param context The context of the turn the session opens for.
+   * @returns Returns the live session.
+   */
+  public openSession(context: AgentRunContext): ClaudeAgentSession {
+    return new ClaudeAgentSession(
+      {
+        buildRunOptions: (ctx: AgentRunContext, controller: AbortController): Promise<Options> =>
+          this.buildRunOptions(ctx, controller),
+        handleMessage: (
+          message: SDKMessage,
+          ctx: AgentRunContext,
+          usageState: RunUsageState,
+        ): void => this.handleMessage(message, ctx, usageState),
+        sessionIdOf: (message: SDKMessage): string | null => this.sessionIdOf(message),
+      },
+      context,
+    );
   }
 
   /**
@@ -1008,21 +954,6 @@ export class ClaudeAgentProvider implements AgentProvider {
       env['ANTHROPIC_API_KEY'] = auth.apiKey;
     }
     return { env };
-  }
-
-  /**
-   * Creates an abort controller that fires when the run's signal aborts.
-   * @param signal The run's abort signal.
-   * @returns Returns the linked controller.
-   */
-  private linkAbort(signal: AbortSignal): AbortController {
-    const controller: AbortController = new AbortController();
-    if (signal.aborted) {
-      controller.abort();
-    } else {
-      signal.addEventListener('abort', (): void => controller.abort(), { once: true });
-    }
-    return controller;
   }
 
   /**
@@ -1255,5 +1186,332 @@ export class ClaudeAgentProvider implements AgentProvider {
         });
       }
     }
+  }
+}
+
+/**
+ * Builds a plain-text user message for the streaming input.
+ * @param value The message text.
+ * @returns Returns the SDK user message.
+ */
+function userMessageOf(value: string): SDKUserMessage {
+  return { type: 'user', message: { role: 'user', content: value }, parent_tool_use_id: null };
+}
+
+/**
+ * The provider capabilities a {@link ClaudeAgentSession} borrows: building the run options, translating
+ * SDK messages into events, and reading the session id a message carries. Passed as bound callbacks so
+ * the session reuses the provider's logic without depending on its private members.
+ */
+interface SessionDeps {
+  /**
+   * Builds the SDK options for the session's query, wired to the given abort controller.
+   */
+  buildRunOptions(context: AgentRunContext, controller: AbortController): Promise<Options>;
+
+  /**
+   * Translates one SDK message into streamed events through the given context.
+   */
+  handleMessage(message: SDKMessage, context: AgentRunContext, usageState: RunUsageState): void;
+
+  /**
+   * Reads the session id an SDK message carries, or null when it has none.
+   */
+  sessionIdOf(message: SDKMessage): string | null;
+}
+
+/**
+ * A live Claude Agent SDK session for one agent (#324/#327): it holds a single `query()` open across
+ * turns via the SDK's streaming-input mode, so a conversation keeps its context in-process instead of
+ * re-resuming a persisted session every turn. Each {@link turn} pushes a user message into the open
+ * input and settles when that turn's `result` arrives, leaving the query open for the next turn;
+ * {@link interrupt} stops the current turn but keeps the session; {@link close} ends it and terminates
+ * the subprocess.
+ *
+ * The query is opened lazily on the first turn. Options (tools, permission gate, sandbox, system
+ * prompt) are built once at open from that turn's context; the persistent per-turn context indirection
+ * for the tool/gate closures lands with the multi-turn flip (a later P3 commit) — until then the only
+ * caller is the transient {@link ClaudeAgentProvider.run} wrapper, which runs exactly one turn and
+ * closes, so behaviour is identical to the pre-#327 single-shot run.
+ */
+class ClaudeAgentSession implements AgentSession {
+  /**
+   * The context of the turn currently in flight; swapped on each {@link turn} so the message pump emits
+   * through the active turn.
+   */
+  private currentContext: AgentRunContext;
+
+  /**
+   * The open SDK query, or null before the first turn opens it.
+   */
+  private sdkQuery: Query | null = null;
+
+  /**
+   * The session's master abort controller: aborting it terminates the query and its subprocess. Created
+   * at open; fired by {@link close}.
+   */
+  private controller: AbortController | null = null;
+
+  /**
+   * Messages queued for the streaming input: the turn's initial message and any steered follow-ups.
+   */
+  private readonly pendingMessages: SDKUserMessage[] = [];
+
+  /**
+   * Resolves the promptStream's park when a message is queued or the input closes, or null when the
+   * stream is not parked.
+   */
+  private wake: (() => void) | null = null;
+
+  /**
+   * Whether the streaming input has been closed (the session is ending).
+   */
+  private inputClosed: boolean = false;
+
+  /**
+   * The last SDK session id reported to the renderer, so it is emitted once (and again if it changes).
+   */
+  private reportedSessionId: string | null = null;
+
+  /**
+   * Usage state spanning the session's turns: the last cumulative cost (so each turn reports its delta)
+   * and the last top-level assistant usage (the true context occupancy).
+   */
+  private readonly usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
+
+  /**
+   * The running message pump, awaited by {@link close} so teardown waits for it to finish.
+   */
+  private pumpDone: Promise<void> | null = null;
+
+  /**
+   * Settles the in-flight turn's promise (a `result` arrived or the session closed), or null when no
+   * turn is awaiting.
+   */
+  private turnSettle: (() => void) | null = null;
+
+  /**
+   * Rejects the in-flight turn's promise on an unexpected stream error, or null when no turn is
+   * awaiting.
+   */
+  private turnReject: ((reason: unknown) => void) | null = null;
+
+  /**
+   * Whether {@link close} has run (idempotent teardown).
+   */
+  private closed: boolean = false;
+
+  /**
+   * Initialises a new instance of the {@link ClaudeAgentSession} class.
+   * @param deps The provider capabilities the session borrows.
+   * @param initialContext The context of the turn the session opens for.
+   */
+  public constructor(
+    private readonly deps: SessionDeps,
+    initialContext: AgentRunContext,
+  ) {
+    this.currentContext = initialContext;
+  }
+
+  /**
+   * Gets the SDK session id once a turn has reported it, or null before.
+   */
+  public get id(): string | null {
+    return this.reportedSessionId;
+  }
+
+  /**
+   * Runs a turn in this session, streaming its events through the context and settling when the turn's
+   * `result` arrives — leaving the session open for the next turn. Opens the query lazily on the first
+   * turn.
+   * @param context The turn's context.
+   */
+  public async turn(context: AgentRunContext): Promise<void> {
+    this.currentContext = context;
+    if (this.sdkQuery === null) {
+      await this.openInternal(context);
+    }
+    // Register this turn's steer handler so a mid-turn injected message becomes a follow-up input.
+    context.setSteerHandler((steered: string): boolean => {
+      if (this.inputClosed) {
+        return false;
+      }
+      this.pendingMessages.push(userMessageOf(steered));
+      this.wake?.();
+      return true;
+    });
+    // Aborting the turn's signal (the Stop button) tears the session down in this commit, matching the
+    // old run: the persistent interrupt-turn-vs-close split lands with the multi-turn flip.
+    const onAbort: () => void = (): void => void this.close();
+    context.signal.addEventListener('abort', onAbort, { once: true });
+    this.pendingMessages.push(this.buildTurnMessage(context));
+    this.wake?.();
+    return new Promise<void>((resolve: () => void, reject: (reason: unknown) => void): void => {
+      this.turnSettle = (): void => {
+        context.signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      this.turnReject = (reason: unknown): void => {
+        context.signal.removeEventListener('abort', onAbort);
+        reject(reason instanceof Error ? reason : new Error(String(reason)));
+      };
+    });
+  }
+
+  /**
+   * Interrupts the in-flight turn, leaving the session open for the next turn.
+   */
+  public interrupt(): void {
+    void this.sdkQuery?.interrupt();
+  }
+
+  /**
+   * Ends the session: closes the input, terminates the query and its subprocess, and waits for the pump
+   * to finish. Idempotent.
+   */
+  public async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.inputClosed = true;
+    this.currentContext.setSteerHandler(null);
+    this.controller?.abort();
+    this.wake?.();
+    // The pump's failure (if any) is surfaced through the in-flight turn; teardown ignores it.
+    await this.pumpDone?.catch((): undefined => undefined);
+  }
+
+  /**
+   * Opens the SDK query lazily on the first turn, building the options from that turn's context and
+   * starting the message pump.
+   * @param context The opening turn's context.
+   */
+  private async openInternal(context: AgentRunContext): Promise<void> {
+    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    this.controller = new AbortController();
+    const options: Options = await this.deps.buildRunOptions(context, this.controller);
+    this.sdkQuery = query({ prompt: this.promptStream(), options });
+    this.pumpDone = this.pump();
+  }
+
+  /**
+   * The streaming-input generator: yields queued messages, then parks until the next message is queued
+   * or the input closes.
+   * @returns Yields the session's user messages.
+   */
+  private async *promptStream(): AsyncGenerator<SDKUserMessage> {
+    while (true) {
+      const next: SDKUserMessage | undefined = this.pendingMessages.shift();
+      if (next !== undefined) {
+        yield next;
+        continue;
+      }
+      if (this.inputClosed) {
+        return;
+      }
+      await new Promise<void>((resolve: () => void): void => {
+        this.wake = resolve;
+      });
+      this.wake = null;
+    }
+  }
+
+  /**
+   * Consumes the SDK message stream for the session's life, emitting the session id once and
+   * translating each message through the provider's handlers. Unlike the old run loop it does NOT break
+   * on `result`: a `result` (with nothing further queued) settles the in-flight turn but leaves the
+   * stream open for the next turn. The stream ends only when the input closes (via {@link close}).
+   */
+  private async pump(): Promise<void> {
+    if (this.sdkQuery === null) {
+      return;
+    }
+    try {
+      for await (const message of this.sdkQuery) {
+        if (this.currentContext.signal.aborted) {
+          break;
+        }
+        const sessionId: string | null = this.deps.sessionIdOf(message);
+        if (sessionId !== null && sessionId !== this.reportedSessionId) {
+          this.reportedSessionId = sessionId;
+          this.currentContext.emit({
+            requestId: this.currentContext.requestId,
+            kind: 'session',
+            sessionId,
+          });
+        }
+        this.deps.handleMessage(message, this.currentContext, this.usageState);
+        if (message.type === 'result' && this.pendingMessages.length === 0) {
+          this.settleTurn();
+        }
+      }
+    } catch (error: unknown) {
+      // An aborted turn ends as a settled (stopped) turn, matching the old run's abort-then-return; any
+      // other stream error rejects the in-flight turn so the manager lands it as an error.
+      if (this.currentContext.signal.aborted) {
+        this.settleTurn();
+      } else {
+        this.rejectTurn(error);
+      }
+    } finally {
+      this.inputClosed = true;
+      this.settleTurn();
+    }
+  }
+
+  /**
+   * Settles the in-flight turn's promise, if any.
+   */
+  private settleTurn(): void {
+    const settle: (() => void) | null = this.turnSettle;
+    this.turnSettle = null;
+    this.turnReject = null;
+    settle?.();
+  }
+
+  /**
+   * Rejects the in-flight turn's promise, if any.
+   * @param reason The failure reason.
+   */
+  private rejectTurn(reason: unknown): void {
+    const reject: ((reason: unknown) => void) | null = this.turnReject;
+    this.turnSettle = null;
+    this.turnReject = null;
+    reject?.(reason);
+  }
+
+  /**
+   * Builds a turn's initial user message: the prompt text, with any attached images as image blocks
+   * ahead of the text (steered follow-ups are text-only).
+   * @param context The turn's context.
+   * @returns Returns the SDK user message.
+   */
+  private buildTurnMessage(context: AgentRunContext): SDKUserMessage {
+    const prompt: string = buildRunPrompt(context);
+    if (context.images.length === 0) {
+      return userMessageOf(prompt);
+    }
+    return {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          ...context.images.map(
+            (
+              image: AiImageRef,
+            ): {
+              type: 'image';
+              source: { type: 'base64'; media_type: string; data: string };
+            } => ({
+              type: 'image',
+              source: { type: 'base64', media_type: image.mediaType, data: image.data },
+            }),
+          ),
+          { type: 'text', text: prompt },
+        ],
+      } as SDKUserMessage['message'],
+      parent_tool_use_id: null,
+    };
   }
 }

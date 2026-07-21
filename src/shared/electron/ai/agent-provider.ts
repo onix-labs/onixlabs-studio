@@ -340,4 +340,13 @@ export interface AgentProvider {
    * @param context The run context.
    */
   run(context: AgentRunContext): Promise<void>;
+
+  /**
+   * Opens a live session for one agent, held open across turns (#324/#327). Only `live-harness`
+   * providers implement this; `stateless` providers omit it and run per-turn through {@link run}. The
+   * runtime wiring lands in P3 — the transient {@link run} path stays the default until then.
+   * @param context The context of the turn the session opens for.
+   * @returns Returns the live session.
+   */
+  openSession?(context: AgentRunContext): AgentSession;
 }
