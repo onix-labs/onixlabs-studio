@@ -42,6 +42,8 @@ function createClient(bridge: Bridge): AiClient {
     run: (request: AiRunRequest): Promise<void> => bridge.invoke(AiChannel.Run, request),
     abort: (requestId: string): Promise<void> => bridge.invoke(AiChannel.Abort, requestId),
     steer: (request: AiSteerRequest): Promise<boolean> => bridge.invoke(AiChannel.Steer, request),
+    closeSession: (agentSessionId: string): Promise<void> =>
+      bridge.invoke(AiChannel.CloseSession, agentSessionId),
     onEvent: (listener: (event: AiEvent) => void): (() => void) =>
       bridge.on(AiChannel.Event, (...args: unknown[]): void => listener(args[0] as AiEvent)),
     onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) =>

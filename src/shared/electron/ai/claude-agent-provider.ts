@@ -41,6 +41,7 @@ import type {
   AgentAuth,
   AgentProvider,
   AgentRunContext,
+  AgentSession,
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
@@ -234,14 +235,34 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity.
-   * @param context The run context.
+   * Builds the SDK `query()` options for a turn: the surface/mode-scoped in-app MCP tools, the
+   * permission gate, the audit hook, sandbox/confinement, the system prompt, and resume/budget.
+   * Extracted from the old single-shot `run()` so a {@link ClaudeAgentSession} holds the query open
+   * across turns (#324/#327).
+   *
+   * The options are built once, when the session opens, from the opening context (`openContext`): the
+   * structural fields bound into the subprocess — cwd, the MCP tool set, allowed/disallowed tools,
+   * sandbox, system prompt, resume, env, the opening model — are frozen there, which is why the
+   * live-session router (`AiManager.isCompatibleTurn`) reopens the session when any of those change.
+   * The per-turn closures (each MCP tool handler, `canUseTool`, the audit hook) instead read
+   * `getContext()`, so across a held-open session they follow the CURRENT turn: its permission gate,
+   * audit sink, request id, bridge, and per-turn policies/posture. The one exception is the model,
+   * which is structural but changed live via `Query.setModel` (see {@link ClaudeAgentSession.turn}).
+   * @param getContext Returns the session's current turn context; called once for the frozen fields and
+   * per invocation inside the tool/gate/audit closures for the per-turn fields.
+   * @param controller The session's abort controller, wired to the SDK query.
+   * @returns Returns the assembled run options.
    */
-  public async run(context: AgentRunContext): Promise<void> {
-    const { query, tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+  private async buildRunOptions(
+    getContext: () => AgentRunContext,
+    controller: AbortController,
+  ): Promise<Options> {
+    const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
     const { z } = await import('zod');
-    const hasWorkspace: boolean = context.workspaceRoot !== null;
-    const surface: AgentSurface = context.surface;
+    // The context the session opens with; the frozen structural options below read it once.
+    const openContext: AgentRunContext = getContext();
+    const hasWorkspace: boolean = openContext.workspaceRoot !== null;
+    const surface: AgentSurface = openContext.surface;
     const terminal: boolean = surface === 'terminal';
     const binary: boolean = surface === 'binary';
     // The standalone agent tab has no owning document: beyond the ask-user tool, no in-app studio
@@ -250,18 +271,20 @@ export class ClaudeAgentProvider implements AgentProvider {
     const project: boolean = surface === 'project';
     // Chat mode runs read-only: the mutating in-app tool is withheld and every editing/executing tool
     // is denied, so the agent may inspect the project and the surface but never changes anything.
-    const readOnly: boolean = context.mode === 'chat';
+    const readOnly: boolean = openContext.mode === 'chat';
     // Attached files/folders are readable via the built-in Read/Glob tools even without an open
     // workspace, so those tools are auto-allowed when either a workspace or attached context is present.
-    const hasReadableContext: boolean = hasWorkspace || context.contextPaths.length > 0;
+    // Frozen at open (it gates the bound `allowedTools`); a later turn's fresh attachments still read
+    // through the built-in Read/Glob tools, which `canUseTool` auto-allows regardless.
+    const hasReadableContext: boolean = hasWorkspace || openContext.contextPaths.length > 0;
 
     // Write-confinement roots (#307): the filesystem area a granted file write may touch. The first
     // root is the run's working directory (the SDK's `cwd`), so a relative target anchors to the
     // workspace; the user's allowed write paths (#310) widen it. Left empty for a no-workspace run,
     // which keeps today's unconfined home-directory behaviour.
-    const additionalDirectories: readonly string[] = context.allowedWritePaths;
+    const additionalDirectories: readonly string[] = openContext.allowedWritePaths;
     const confinementRoots: readonly string[] = hasWorkspace
-      ? [context.workspaceRoot!, ...additionalDirectories]
+      ? [openContext.workspaceRoot!, ...additionalDirectories]
       : [];
 
     // Tools the user's policy denies (#309) are removed from the model's context via the SDK's
@@ -280,7 +303,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     // "ask the user" through `mcp__studio__ask_user`, which renders choices and blocks for a real answer.
     const disallowedTools: readonly string[] = [
       'AskUserQuestion',
-      ...Object.entries(context.toolPolicies)
+      ...Object.entries(openContext.toolPolicies)
         .filter(([, value]: [string, string]): boolean => value === 'deny')
         .map(([tool]: [string, string]): string => tool),
     ];
@@ -331,7 +354,7 @@ export class ClaudeAgentProvider implements AgentProvider {
               ),
           },
           async (args: { question: string; choices?: AiInputChoice[] }) =>
-            text(await askUser(context, args.question, args.choices ?? [])),
+            text(await askUser(getContext(), args.question, args.choices ?? [])),
         ),
         ...(project
           ? []
@@ -341,7 +364,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                   READ_TERMINAL_OUTPUT,
                   'Read the recent output currently shown in the terminal.',
                   {},
-                  async () => text(await readTerminalOutput(context)),
+                  async () => text(await readTerminalOutput(getContext())),
                 ),
                 ...(readOnly
                   ? []
@@ -359,7 +382,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                             ),
                         },
                         async (args: { text: string; submit?: boolean }) =>
-                          text(await writeTerminalInput(context, args.text, args.submit ?? true)),
+                          text(await writeTerminalInput(getContext(), args.text, args.submit ?? true)),
                       ),
                     ]),
               ]
@@ -369,7 +392,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                     READ_BINARY_OVERVIEW,
                     'Describe the open binary file: path, size, container format, architecture, whether disassembly is available, and the current cursor/selection.',
                     {},
-                    async () => text(await readBinaryOverview(context)),
+                    async () => text(await readBinaryOverview(getContext())),
                   ),
                   tool(
                     READ_BINARY_BYTES,
@@ -384,13 +407,13 @@ export class ClaudeAgentProvider implements AgentProvider {
                         .describe('The number of bytes to read (bounded; defaults to 256).'),
                     },
                     async (args: { offset: number; length?: number }) =>
-                      text(await readBinaryBytes(context, args.offset, args.length ?? 256)),
+                      text(await readBinaryBytes(getContext(), args.offset, args.length ?? 256)),
                   ),
                   tool(
                     READ_BINARY_SELECTION,
                     'Return a hex + ASCII dump of the bytes the user has selected in the open binary file.',
                     {},
-                    async () => text(await readBinarySelection(context)),
+                    async () => text(await readBinarySelection(getContext())),
                   ),
                   tool(
                     READ_BINARY_DISASSEMBLY,
@@ -409,7 +432,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                         .describe('The number of bytes to disassemble (bounded; defaults to 256).'),
                     },
                     async (args: { offset: number; length?: number }) =>
-                      text(await readBinaryDisassembly(context, args.offset, args.length ?? 256)),
+                      text(await readBinaryDisassembly(getContext(), args.offset, args.length ?? 256)),
                   ),
                   ...(readOnly
                     ? []
@@ -430,7 +453,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                               ),
                           },
                           async (args: { offset: number; bytes: string }) =>
-                            text(await patchBinaryBytes(context, args.offset, args.bytes)),
+                            text(await patchBinaryBytes(getContext(), args.offset, args.bytes)),
                         ),
                         tool(
                           INSERT_BINARY_BYTES,
@@ -448,7 +471,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                               ),
                           },
                           async (args: { offset: number; bytes: string }) =>
-                            text(await insertBinaryBytes(context, args.offset, args.bytes)),
+                            text(await insertBinaryBytes(getContext(), args.offset, args.bytes)),
                         ),
                         tool(
                           DELETE_BINARY_BYTES,
@@ -462,7 +485,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                               .describe('The number of bytes to delete.'),
                           },
                           async (args: { offset: number; length: number }) =>
-                            text(await deleteBinaryBytes(context, args.offset, args.length)),
+                            text(await deleteBinaryBytes(getContext(), args.offset, args.length)),
                         ),
                         tool(
                           WRITE_BINARY_ASSEMBLY,
@@ -489,7 +512,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                           async (args: { offset: number; assembly: string; length?: number }) =>
                             text(
                               await writeBinaryAssembly(
-                                context,
+                                getContext(),
                                 args.offset,
                                 args.assembly,
                                 args.length,
@@ -503,7 +526,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                     READ_ACTIVE_DOCUMENT,
                     "Read the active editor document's full text.",
                     {},
-                    async () => text(await readActiveDocument(context)),
+                    async () => text(await readActiveDocument(getContext())),
                   ),
                   ...(readOnly
                     ? []
@@ -535,7 +558,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                           }) =>
                             text(
                               await editActiveDocument(
-                                context,
+                                getContext(),
                                 args.old_string,
                                 args.new_string,
                                 args.replace_all ?? false,
@@ -562,7 +585,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                           async (args: { text: string; placement: string; anchor?: string }) =>
                             text(
                               await insertIntoActiveDocument(
-                                context,
+                                getContext(),
                                 args.text,
                                 args.placement as InsertPlacement,
                                 args.anchor,
@@ -574,7 +597,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                           "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
                           { text: z.string().describe('The new full text of the document.') },
                           async (args: { text: string }) =>
-                            text(await replaceActiveDocument(context, args.text)),
+                            text(await replaceActiveDocument(getContext(), args.text)),
                         ),
                         tool(
                           SET_ACTIVE_DOCUMENT_LANGUAGE,
@@ -588,7 +611,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                               ),
                           },
                           async (args: { language: string }) =>
-                            text(await setActiveDocumentLanguage(context, args.language)),
+                            text(await setActiveDocumentLanguage(getContext(), args.language)),
                         ),
                         tool(
                           RUN_ACTIVE_DOCUMENT,
@@ -605,7 +628,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                               ),
                           },
                           async (args: { timeout_seconds?: number }) =>
-                            text(await runActiveDocument(context, args.timeout_seconds ?? 60)),
+                            text(await runActiveDocument(getContext(), args.timeout_seconds ?? 60)),
                         ),
                       ]),
                 ]),
@@ -617,11 +640,15 @@ export class ClaudeAgentProvider implements AgentProvider {
     // anything mutating or executing. On allow, `updatedInput` MUST echo the original input — it is the
     // input the SDK runs the tool with; omitting it runs the tool with no arguments and fails as a
     // malformed response.
-    const posture: AiPermissionPosture = context.permissionPosture;
     const canUseTool: CanUseTool = async (
       toolName: string,
       input: Record<string, unknown>,
     ): Promise<PermissionResult> => {
+      // Per-turn context: the gate follows the CURRENT turn's posture, policies, confinement, request
+      // id, and permission prompt across a held-open session (the structural scope — terminal/readOnly/
+      // confinementRoots — is frozen at open above and read from the closure).
+      const context: AgentRunContext = getContext();
+      const posture: AiPermissionPosture = context.permissionPosture;
       // The ask-user tool is allowed on every surface and in every mode (asking is read-only, and the
       // user's answer is itself the gate). It is normally short-circuited by allowedTools; this keeps
       // the confinement and read-only branches below from denying it if it ever lands here.
@@ -711,10 +738,11 @@ export class ClaudeAgentProvider implements AgentProvider {
         : { behavior: 'deny', message: 'The user declined to run this tool.' };
     };
 
-    const controller: AbortController = this.linkAbort(context.signal);
     const options: Options = {
-      model: context.model,
-      cwd: context.workspaceRoot ?? homedir(),
+      // The opening model is bound here; a later turn that changes it is applied live via
+      // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
+      model: openContext.model,
+      cwd: openContext.workspaceRoot ?? homedir(),
       // Widen the confinement beyond `cwd` when additional directories are configured (#307). Empty
       // for now — the seam is what matters; omitted entirely when there is nothing to add.
       ...(additionalDirectories.length > 0
@@ -735,6 +763,9 @@ export class ClaudeAgentProvider implements AgentProvider {
             hooks: [
               (input): Promise<HookJSONOutput> => {
                 try {
+                  // Per-turn context: audit the executed action against the CURRENT turn's policy,
+                  // posture, and audit sink across a held-open session.
+                  const context: AgentRunContext = getContext();
                   const post: PostToolUseHookInput = input as PostToolUseHookInput;
                   const raw: string = post.tool_name;
                   const auditable: boolean =
@@ -747,7 +778,11 @@ export class ClaudeAgentProvider implements AgentProvider {
                     context.recordAudit(
                       displayName,
                       summarizeToolInput(post.tool_input),
-                      coarseGrantSource(policy, posture, EDIT_TOOLS.includes(raw)),
+                      coarseGrantSource(
+                        policy,
+                        context.permissionPosture,
+                        EDIT_TOOLS.includes(raw),
+                      ),
                     );
                   }
                 } catch {
@@ -808,122 +843,70 @@ export class ClaudeAgentProvider implements AgentProvider {
       // Absent on a conversation's first turn, which starts a fresh session. A branch (rewind)
       // resumes only up to its anchor message and forks to a new session id, so the discarded turns
       // never reach the model and the original session stays resumable.
-      ...(context.resumeSessionId !== null ? { resume: context.resumeSessionId } : {}),
-      ...(context.resumeSessionId !== null && context.resumeSessionAt !== null
-        ? { resumeSessionAt: context.resumeSessionAt }
+      ...(openContext.resumeSessionId !== null ? { resume: openContext.resumeSessionId } : {}),
+      ...(openContext.resumeSessionId !== null && openContext.resumeSessionAt !== null
+        ? { resumeSessionAt: openContext.resumeSessionAt }
         : {}),
-      ...(context.resumeSessionId !== null && context.forkSession ? { forkSession: true } : {}),
+      ...(openContext.resumeSessionId !== null && openContext.forkSession
+        ? { forkSession: true }
+        : {}),
       // Cap the turn's token budget when the user set one; the SDK sends it as the API-side task
-      // budget so the model paces its tool use and wraps up before the limit.
-      ...(context.tokenCap > 0 ? { taskBudget: { total: context.tokenCap } } : {}),
+      // budget so the model paces its tool use and wraps up before the limit. Frozen at open — a
+      // per-turn cap change lands with the session-lifetime work (P4).
+      ...(openContext.tokenCap > 0 ? { taskBudget: { total: openContext.tokenCap } } : {}),
       ...this.executableOption(),
-      ...(this.runEnv(context) ?? {}),
+      ...(this.runEnv(openContext) ?? {}),
     };
 
-    // Mid-run steering rides the SDK's streaming-input mode: the prompt is an async generator that
-    // yields the initial message and then any user messages the user injects while the run executes
-    // (each becomes a further turn in the same run). After a completed response cycle (a `result`
-    // message) with nothing further queued, the input closes and the run ends — identical to the
-    // single-turn behaviour when the user never steers.
-    const pendingSteers: string[] = [];
-    let wake: (() => void) | null = null;
-    let inputClosed: boolean = false;
-    const closeInput: () => void = (): void => {
-      inputClosed = true;
-      context.setSteerHandler(null);
-      wake?.();
-    };
-    context.setSteerHandler((steered: string): boolean => {
-      if (inputClosed) {
-        return false;
-      }
-      pendingSteers.push(steered);
-      wake?.();
-      return true;
-    });
-    context.signal.addEventListener('abort', closeInput, { once: true });
-    const initialPrompt: string = buildRunPrompt(context);
-    const userMessage: (value: string) => SDKUserMessage = (value: string): SDKUserMessage => ({
-      type: 'user',
-      message: { role: 'user', content: value },
-      parent_tool_use_id: null,
-    });
-    // Attached images ride the initial message as image blocks ahead of the prompt text; steered
-    // follow-ups are text-only.
-    const initialMessage: SDKUserMessage =
-      context.images.length === 0
-        ? userMessage(initialPrompt)
-        : {
-            type: 'user',
-            message: {
-              role: 'user',
-              content: [
-                ...context.images.map(
-                  (
-                    image: AiImageRef,
-                  ): {
-                    type: 'image';
-                    source: { type: 'base64'; media_type: string; data: string };
-                  } => ({
-                    type: 'image',
-                    source: { type: 'base64', media_type: image.mediaType, data: image.data },
-                  }),
-                ),
-                { type: 'text', text: initialPrompt },
-              ],
-            } as SDKUserMessage['message'],
-            parent_tool_use_id: null,
-          };
-    async function* promptStream(): AsyncGenerator<SDKUserMessage> {
-      yield initialMessage;
-      while (true) {
-        const next: string | undefined = pendingSteers.shift();
-        if (next !== undefined) {
-          yield userMessage(next);
-          continue;
-        }
-        if (inputClosed) {
-          return;
-        }
-        await new Promise<void>((resolve: () => void): void => {
-          wake = resolve;
-        });
-        wake = null;
-      }
-    }
+    return options;
+  }
 
-    const response: Query = query({ prompt: promptStream(), options });
-    let reportedSessionId: string | null = null;
-    // A steered run sees several `result` messages whose reported cost is cumulative; this tracks the
-    // last total (so each usage event carries only that turn's cost delta) and the last top-level
-    // assistant message's usage (so the context meter reads the true window occupancy, not the result's
-    // cumulative token total).
-    const usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
+  /**
+   * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity. A transient
+   * run: opens a live session, runs this one turn into it, then closes it — behaviour identical to the
+   * old single-shot run. The persistent path (holding the session open across turns, #327) drives the
+   * same {@link ClaudeAgentSession} through {@link openSession}/{@link AgentSession.turn} instead.
+   * @param context The run context.
+   */
+  public async run(context: AgentRunContext): Promise<void> {
+    const session: ClaudeAgentSession = this.openSession(context);
     try {
-      for await (const message of response) {
-        if (context.signal.aborted) {
-          break;
-        }
-        // Surface the SDK session id so the renderer can resume this conversation on its next turn.
-        // Every message carries it; report it once (and again if it ever changes, e.g. a forked
-        // resume).
-        const sessionId: string | null = this.sessionIdOf(message);
-        if (sessionId !== null && sessionId !== reportedSessionId) {
-          reportedSessionId = sessionId;
-          context.emit({ requestId: context.requestId, kind: 'session', sessionId });
-        }
-        this.handleMessage(message, context, usageState);
-        // A turn boundary with nothing further queued ends the run. Closing the input in the same
-        // tick as the check keeps this race-free: once closed, a late steer is refused and the
-        // renderer queues the message for the next run instead.
-        if (message.type === 'result' && pendingSteers.length === 0) {
-          closeInput();
-          break;
-        }
-      }
+      await session.turn(context);
     } finally {
-      closeInput();
+      await session.close();
     }
+  }
+
+  /**
+   * Opens a live Claude session for one agent (#324/#327): it holds the SDK query open and runs each
+   * {@link AgentSession.turn} into it. The session builds its options from the opening context and
+   * translates the SDK stream through this provider's message handlers.
+   * @param context The context of the turn the session opens for.
+   * @returns Returns the live session.
+   */
+  public openSession(context: AgentRunContext): ClaudeAgentSession {
+    return new ClaudeAgentSession(
+      {
+        buildRunOptions: (
+          getContext: () => AgentRunContext,
+          controller: AbortController,
+        ): Promise<Options> => this.buildRunOptions(getContext, controller),
+        createQuery: async (
+          prompt: AsyncGenerator<SDKUserMessage>,
+          options: Options,
+        ): Promise<Query> => {
+          const { query } = await import('@anthropic-ai/claude-agent-sdk');
+          return query({ prompt, options });
+        },
+        handleMessage: (
+          message: SDKMessage,
+          ctx: AgentRunContext,
+          usageState: RunUsageState,
+        ): void => this.handleMessage(message, ctx, usageState),
+        sessionIdOf: (message: SDKMessage): string | null => this.sessionIdOf(message),
+      },
+      context,
+    );
   }
 
   /**
@@ -1008,21 +991,6 @@ export class ClaudeAgentProvider implements AgentProvider {
       env['ANTHROPIC_API_KEY'] = auth.apiKey;
     }
     return { env };
-  }
-
-  /**
-   * Creates an abort controller that fires when the run's signal aborts.
-   * @param signal The run's abort signal.
-   * @returns Returns the linked controller.
-   */
-  private linkAbort(signal: AbortSignal): AbortController {
-    const controller: AbortController = new AbortController();
-    if (signal.aborted) {
-      controller.abort();
-    } else {
-      signal.addEventListener('abort', (): void => controller.abort(), { once: true });
-    }
-    return controller;
   }
 
   /**
@@ -1255,5 +1223,375 @@ export class ClaudeAgentProvider implements AgentProvider {
         });
       }
     }
+  }
+}
+
+/**
+ * Builds a plain-text user message for the streaming input.
+ * @param value The message text.
+ * @returns Returns the SDK user message.
+ */
+function userMessageOf(value: string): SDKUserMessage {
+  return { type: 'user', message: { role: 'user', content: value }, parent_tool_use_id: null };
+}
+
+/**
+ * The provider capabilities a {@link ClaudeAgentSession} borrows: building the run options, translating
+ * SDK messages into events, and reading the session id a message carries. Passed as bound callbacks so
+ * the session reuses the provider's logic without depending on its private members.
+ */
+export interface SessionDeps {
+  /**
+   * Builds the SDK options for the session's query, wired to the given abort controller. Takes a
+   * context accessor rather than a snapshot so the built-in per-turn closures (tool handlers, the
+   * permission gate, the audit hook) follow the session's current turn across a held-open query.
+   */
+  buildRunOptions(getContext: () => AgentRunContext, controller: AbortController): Promise<Options>;
+
+  /**
+   * Opens the SDK query for the session's streaming input and built options. Isolated as a dep so the
+   * session holds no direct SDK import — the provider supplies the real `query()`, tests a fake.
+   */
+  createQuery(prompt: AsyncGenerator<SDKUserMessage>, options: Options): Promise<Query>;
+
+  /**
+   * Translates one SDK message into streamed events through the given context.
+   */
+  handleMessage(message: SDKMessage, context: AgentRunContext, usageState: RunUsageState): void;
+
+  /**
+   * Reads the session id an SDK message carries, or null when it has none.
+   */
+  sessionIdOf(message: SDKMessage): string | null;
+}
+
+/**
+ * A live Claude Agent SDK session for one agent (#324/#327): it holds a single `query()` open across
+ * turns via the SDK's streaming-input mode, so a conversation keeps its context in-process instead of
+ * re-resuming a persisted session every turn. Each {@link turn} pushes a user message into the open
+ * input and settles when that turn's `result` arrives, leaving the query open for the next turn;
+ * {@link interrupt} stops the current turn but keeps the session; {@link close} ends it and terminates
+ * the subprocess.
+ *
+ * The query is opened lazily on the first turn. The structural options (cwd, the MCP tool set, allowed/
+ * disallowed tools, sandbox, system prompt, resume, env) are built once at open from the opening turn's
+ * context; the per-turn tool/gate/audit closures read the session's current turn context each
+ * invocation (see {@link ClaudeAgentProvider.buildRunOptions}), so a held-open session follows each
+ * turn's permission gate, audit sink, request id, and bridge. A later turn that changes the model
+ * applies it live via `Query.setModel`; a later turn that changes a frozen structural field is not
+ * continued here — the live-session router reopens the session (`AiManager.isCompatibleTurn`).
+ */
+export class ClaudeAgentSession implements AgentSession {
+  /**
+   * The context of the turn currently in flight; swapped on each {@link turn} so the message pump emits
+   * through the active turn.
+   */
+  private currentContext: AgentRunContext;
+
+  /**
+   * The model currently bound to the query: set to the opening turn's model, then updated whenever a
+   * later turn changes it (applied live via `Query.setModel`, since the options' model is bound at
+   * open). Null before the first turn opens the query.
+   */
+  private appliedModel: string | null = null;
+
+  /**
+   * The open SDK query, or null before the first turn opens it.
+   */
+  private sdkQuery: Query | null = null;
+
+  /**
+   * The session's master abort controller: aborting it terminates the query and its subprocess. Created
+   * at open; fired by {@link close}.
+   */
+  private controller: AbortController | null = null;
+
+  /**
+   * Messages queued for the streaming input: the turn's initial message and any steered follow-ups.
+   */
+  private readonly pendingMessages: SDKUserMessage[] = [];
+
+  /**
+   * Resolves the promptStream's park when a message is queued or the input closes, or null when the
+   * stream is not parked.
+   */
+  private wake: (() => void) | null = null;
+
+  /**
+   * Whether the streaming input has been closed (the session is ending).
+   */
+  private inputClosed: boolean = false;
+
+  /**
+   * The last SDK session id reported to the renderer, so it is emitted once (and again if it changes).
+   */
+  private reportedSessionId: string | null = null;
+
+  /**
+   * Usage state spanning the session's turns: the last cumulative cost (so each turn reports its delta)
+   * and the last top-level assistant usage (the true context occupancy).
+   */
+  private readonly usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
+
+  /**
+   * The running message pump, awaited by {@link close} so teardown waits for it to finish.
+   */
+  private pumpDone: Promise<void> | null = null;
+
+  /**
+   * Settles the in-flight turn's promise (a `result` arrived or the session closed), or null when no
+   * turn is awaiting.
+   */
+  private turnSettle: (() => void) | null = null;
+
+  /**
+   * Rejects the in-flight turn's promise on an unexpected stream error, or null when no turn is
+   * awaiting.
+   */
+  private turnReject: ((reason: unknown) => void) | null = null;
+
+  /**
+   * Whether {@link close} has run (idempotent teardown).
+   */
+  private closed: boolean = false;
+
+  /**
+   * Initialises a new instance of the {@link ClaudeAgentSession} class.
+   * @param deps The provider capabilities the session borrows.
+   * @param initialContext The context of the turn the session opens for.
+   */
+  public constructor(
+    private readonly deps: SessionDeps,
+    initialContext: AgentRunContext,
+  ) {
+    this.currentContext = initialContext;
+  }
+
+  /**
+   * Gets the SDK session id once a turn has reported it, or null before.
+   */
+  public get id(): string | null {
+    return this.reportedSessionId;
+  }
+
+  /**
+   * Runs a turn in this session, streaming its events through the context and settling when the turn's
+   * `result` arrives — leaving the session open for the next turn. Opens the query lazily on the first
+   * turn.
+   * @param context The turn's context.
+   */
+  public async turn(context: AgentRunContext): Promise<void> {
+    this.currentContext = context;
+    if (this.sdkQuery === null) {
+      await this.openInternal();
+      this.appliedModel = context.model;
+    } else if (context.model !== this.appliedModel) {
+      // A later turn changed the model: apply it live, since the query's model was bound at open.
+      this.appliedModel = context.model;
+      void this.sdkQuery.setModel(context.model);
+    }
+    // Register this turn's steer handler so a mid-turn injected message becomes a follow-up input.
+    context.setSteerHandler((steered: string): boolean => {
+      if (this.inputClosed) {
+        return false;
+      }
+      this.pendingMessages.push(userMessageOf(steered));
+      this.wake?.();
+      return true;
+    });
+    // Aborting the turn's signal (the Stop button, a timeout) interrupts the current turn but keeps the
+    // session live for the next turn (Decision 4). The session is torn down only by {@link close} (New
+    // chat / tab close / shutdown), never by a per-turn abort.
+    const onAbort: () => void = (): void => this.interrupt();
+    context.signal.addEventListener('abort', onAbort, { once: true });
+    this.pendingMessages.push(this.buildTurnMessage(context));
+    this.wake?.();
+    return new Promise<void>((resolve: () => void, reject: (reason: unknown) => void): void => {
+      this.turnSettle = (): void => {
+        context.signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      this.turnReject = (reason: unknown): void => {
+        context.signal.removeEventListener('abort', onAbort);
+        reject(reason instanceof Error ? reason : new Error(String(reason)));
+      };
+    });
+  }
+
+  /**
+   * Interrupts the in-flight turn, leaving the session open for the next turn. The SDK ends the turn and
+   * emits a `result` for it, which the pump uses to settle the turn; the `.then`/`.catch` is a safety
+   * net that settles the turn once the interrupt has completed even if the SDK produced no result — at
+   * which point the query is idle awaiting the next input, so settling cannot interleave with a live
+   * turn. A no-op before the query has opened.
+   */
+  public interrupt(): void {
+    const query: Query | null = this.sdkQuery;
+    if (query === null) {
+      return;
+    }
+    void query
+      .interrupt()
+      .then((): void => this.settleTurn())
+      .catch((): void => this.settleTurn());
+  }
+
+  /**
+   * Ends the session: closes the input, terminates the query and its subprocess, and waits for the pump
+   * to finish. Idempotent.
+   */
+  public async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.inputClosed = true;
+    this.currentContext.setSteerHandler(null);
+    this.controller?.abort();
+    this.wake?.();
+    // The pump's failure (if any) is surfaced through the in-flight turn; teardown ignores it.
+    await this.pumpDone?.catch((): undefined => undefined);
+  }
+
+  /**
+   * Opens the SDK query lazily on the first turn, building the options from that turn's context and
+   * starting the message pump.
+   * @param context The opening turn's context.
+   */
+  private async openInternal(): Promise<void> {
+    this.controller = new AbortController();
+    // Pass a live accessor, not a snapshot: the per-turn tool/gate/audit closures resolve the session's
+    // current turn context each invocation (`turn()` swaps it), while the frozen structural options read
+    // it once, at open.
+    const options: Options = await this.deps.buildRunOptions(
+      (): AgentRunContext => this.currentContext,
+      this.controller,
+    );
+    this.sdkQuery = await this.deps.createQuery(this.promptStream(), options);
+    this.pumpDone = this.pump();
+  }
+
+  /**
+   * The streaming-input generator: yields queued messages, then parks until the next message is queued
+   * or the input closes.
+   * @returns Yields the session's user messages.
+   */
+  private async *promptStream(): AsyncGenerator<SDKUserMessage> {
+    while (true) {
+      const next: SDKUserMessage | undefined = this.pendingMessages.shift();
+      if (next !== undefined) {
+        yield next;
+        continue;
+      }
+      if (this.inputClosed) {
+        return;
+      }
+      await new Promise<void>((resolve: () => void): void => {
+        this.wake = resolve;
+      });
+      this.wake = null;
+    }
+  }
+
+  /**
+   * Consumes the SDK message stream for the session's life, emitting the session id once and
+   * translating each message through the provider's handlers. Unlike the old run loop it does NOT break
+   * on `result`: a `result` (with nothing further queued) settles the in-flight turn but leaves the
+   * stream open for the next turn. The stream ends only when the input closes (via {@link close}).
+   */
+  private async pump(): Promise<void> {
+    if (this.sdkQuery === null) {
+      return;
+    }
+    try {
+      for await (const message of this.sdkQuery) {
+        const sessionId: string | null = this.deps.sessionIdOf(message);
+        if (sessionId !== null && sessionId !== this.reportedSessionId) {
+          this.reportedSessionId = sessionId;
+          this.currentContext.emit({
+            requestId: this.currentContext.requestId,
+            kind: 'session',
+            sessionId,
+          });
+        }
+        this.deps.handleMessage(message, this.currentContext, this.usageState);
+        // A turn's `result` settles that turn but leaves the stream open for the next turn; an
+        // interrupted turn arrives here too (the SDK emits a `result` for it). The stream itself ends
+        // only when the input closes (via {@link close}), never on a per-turn abort — so a Stop
+        // interrupts the turn without ending the session.
+        if (message.type === 'result' && this.pendingMessages.length === 0) {
+          this.settleTurn();
+        }
+      }
+    } catch (error: unknown) {
+      // A deliberate teardown ({@link close} aborted the master controller) ends any in-flight turn as
+      // settled; any other stream error rejects the in-flight turn so the manager lands it as an error
+      // (and evicts the now-dead session so the next turn opens fresh).
+      if (this.closed) {
+        this.settleTurn();
+      } else {
+        this.rejectTurn(error);
+      }
+    } finally {
+      // The stream has ended: the session cannot take another turn. Mark the input closed so a stray
+      // later turn() does not park forever waiting on a pump that has exited.
+      this.inputClosed = true;
+      this.settleTurn();
+    }
+  }
+
+  /**
+   * Settles the in-flight turn's promise, if any.
+   */
+  private settleTurn(): void {
+    const settle: (() => void) | null = this.turnSettle;
+    this.turnSettle = null;
+    this.turnReject = null;
+    settle?.();
+  }
+
+  /**
+   * Rejects the in-flight turn's promise, if any.
+   * @param reason The failure reason.
+   */
+  private rejectTurn(reason: unknown): void {
+    const reject: ((reason: unknown) => void) | null = this.turnReject;
+    this.turnSettle = null;
+    this.turnReject = null;
+    reject?.(reason);
+  }
+
+  /**
+   * Builds a turn's initial user message: the prompt text, with any attached images as image blocks
+   * ahead of the text (steered follow-ups are text-only).
+   * @param context The turn's context.
+   * @returns Returns the SDK user message.
+   */
+  private buildTurnMessage(context: AgentRunContext): SDKUserMessage {
+    const prompt: string = buildRunPrompt(context);
+    if (context.images.length === 0) {
+      return userMessageOf(prompt);
+    }
+    return {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          ...context.images.map(
+            (
+              image: AiImageRef,
+            ): {
+              type: 'image';
+              source: { type: 'base64'; media_type: string; data: string };
+            } => ({
+              type: 'image',
+              source: { type: 'base64', media_type: image.mediaType, data: image.data },
+            }),
+          ),
+          { type: 'text', text: prompt },
+        ],
+      } as SDKUserMessage['message'],
+      parent_tool_use_id: null,
+    };
   }
 }

@@ -85,6 +85,14 @@ export interface AiRunRequest {
   readonly requestId: string;
 
   /**
+   * Gets the caller-assigned, stable identifier of the agent conversation this turn belongs to (#327).
+   * A live-harness provider routes turns that share an `agentSessionId` into the same held-open session;
+   * absent/empty falls back to the transient per-turn path. Distinct from {@link resumeSessionId} (the
+   * provider's own session id, used for cold-start resume).
+   */
+  readonly agentSessionId?: string;
+
+  /**
    * Gets the provider to run the turn through.
    */
   readonly providerId: AiProviderId;

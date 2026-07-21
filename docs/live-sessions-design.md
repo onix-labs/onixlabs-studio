@@ -99,6 +99,23 @@ Resource note: the realistic workload is a handful of agents (the user runs ~3 f
 heavier than a `claude`/`codex` subprocess). The lifetime setting + memory valve put the user in control; an
 "only the active tab stays Live" optimisation remains a possible later refinement, not a prerequisite.
 
+**Implementation (P3, #327 — Claude path):** the lifecycle above landed as designed, with these concrete
+choices. A live session is `ClaudeAgentSession` (implements `AgentSession`), holding one SDK `query()` open;
+`AiManager` keys held-open sessions by a **renderer-minted `agentSessionId`** — stable per conversation, *not*
+the SDK session id, which avoids a before-id-known race and decouples routing from resume. The session's
+options split **frozen-at-open** (cwd, the surface/mode-scoped MCP tool set, allowed/`disallowedTools`,
+sandbox, system prompt, resume, env, opening model) from **per-turn** (the tool handlers, `canUseTool`, and the
+audit hook read the current turn's context via a `getContext()` accessor, so each turn's gate/audit/request-id/
+bridge/posture/policies apply); a model change is applied live via `Query.setModel`. A later turn that changes
+a frozen-deriving field (provider, surface, workspace, mode, agent shell) is **incompatible** — `AiManager`
+closes and reopens the session. **Stop** maps to `interrupt()` (the SDK emits a `result` for the interrupted
+turn, keeping the session Live); the pump no longer ends on a per-turn abort — `close()` (New chat / tab
+disposal / shutdown, via the master abort controller) is the only teardown, and a turn whose stream fails
+evicts the session so the next turn reopens fresh. The whole path sits behind a `LIVE_SESSIONS_ENABLED` kill
+switch (transient open→one-turn→close per run when off). **Still deferred to P4:** `tokenCap`/`taskBudget` and
+the token clock are frozen/armed per turn (fine while live); the `ai.agentSessionLifetime` setting and
+idle-reap/memory-valve are not yet built.
+
 ## 6. Persistence & cold start
 
 - **While the app runs**: the Live session holds context **in-process** (the harness's own memory), so turns

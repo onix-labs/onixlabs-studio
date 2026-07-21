@@ -29,6 +29,12 @@ export type AiCapability = (input: unknown) => unknown;
  */
 export interface AiRunOptions {
   /**
+   * Gets the stable identifier of the agent conversation this run belongs to (#327), so a live-harness
+   * provider routes its turns into one held-open session. Omitted falls back to the transient path.
+   */
+  readonly agentSessionId?: string;
+
+  /**
    * Gets the workspace the agent should act within, or null for none.
    */
   readonly workspaceRoot?: string | null;
@@ -191,6 +197,7 @@ export class AiRuntime {
     const requestId: string = `run-${this.requestCounter}`;
     void this.api?.run({
       requestId,
+      agentSessionId: options.agentSessionId,
       providerId,
       model: options.model ?? '',
       prompt,
@@ -220,6 +227,14 @@ export class AiRuntime {
    */
   public abort(requestId: string): void {
     void this.api?.abort(requestId);
+  }
+
+  /**
+   * Closes an agent's held-open live session (New chat / tab close); no-op when none is open.
+   * @param agentSessionId The agent conversation whose session to close.
+   */
+  public closeSession(agentSessionId: string): void {
+    void this.api?.closeSession(agentSessionId);
   }
 
   /**

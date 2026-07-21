@@ -33,6 +33,7 @@ describe('Agent', () => {
   let agent: Agent;
   let runCalls: {
     providerId: AiProviderId;
+    agentSessionId: string | undefined;
     prompt: string;
     workspaceRoot: string | null;
     model: string;
@@ -45,6 +46,7 @@ describe('Agent', () => {
     runTimeoutMs: number;
   }[];
   let abortCalls: string[];
+  let closeSessionCalls: string[];
   let steerCalls: { requestId: string; text: string }[];
   let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
@@ -65,6 +67,7 @@ describe('Agent', () => {
     localStorage.clear();
     runCalls = [];
     abortCalls = [];
+    closeSessionCalls = [];
     steerCalls = [];
     steerResult = false;
     permissionReplies = [];
@@ -76,11 +79,13 @@ describe('Agent', () => {
       | 'run'
       | 'abort'
       | 'steer'
+      | 'closeSession'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
       | 'respondEditDecision'
     > = {
+      closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
         return (): void => undefined;
@@ -88,6 +93,7 @@ describe('Agent', () => {
       run: (providerId: AiProviderId, prompt: string, options: AiRunOptions = {}): string => {
         runCalls.push({
           providerId,
+          agentSessionId: options.agentSessionId,
           prompt,
           workspaceRoot: options.workspaceRoot ?? null,
           model: options.model ?? '',
@@ -125,6 +131,23 @@ describe('Agent', () => {
       providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
     });
     agent = TestBed.inject(Agent);
+  });
+
+  it('send_carriesTheAgentSessionId', () => {
+    agent.send('hello');
+
+    expect(runCalls[0].agentSessionId).toBeTruthy();
+  });
+
+  it('clear_closesTheLiveSessionAndMintsAFreshOne', () => {
+    agent.send('hello');
+    const first: string | undefined = runCalls[0].agentSessionId;
+
+    agent.clear();
+    agent.send('fresh');
+
+    expect(closeSessionCalls).toContain(first);
+    expect(runCalls[1].agentSessionId).not.toBe(first);
   });
 
   it('send_whenCalled_pushesAUserItemAndStartsARun', () => {

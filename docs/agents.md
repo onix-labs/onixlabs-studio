@@ -288,8 +288,9 @@ the contextBridge**; only narrow per-connection status, config, and run-control 
 key stored by a pre-connections build migrates onto the built-in Anthropic API-key connection.
 
 **Scope of a run.** The working directory is the open workspace root (or the user's home when none is
-open) — never Studio's install directory. Every run is cancellable; aborting stops the underlying
-agent process and denies any pending permission prompt.
+open) — never Studio's install directory. Every run is cancellable; aborting **interrupts** the current
+turn — a held-open live session survives for the next turn (see _Session lifecycle_ below) — and denies
+any pending permission prompt.
 
 **Write confinement.** When a workspace is open, a granted file write (`Write`/`Edit`/`MultiEdit`/
 `NotebookEdit`) is refused if its target resolves outside the workspace root — a **hard boundary that
@@ -340,10 +341,38 @@ input)`, correlated over `RendererBridge` to a handler registered on `AiRuntime`
 capabilities are reachable; unknown names are rejected. (`AgentEditorCapabilities` in `features/agent`
 registers read/replace-active-document, preferring the markdown editor then the code editor.)
 
+**Session lifecycle (live-harness vs stateless).** A provider is one of two _shapes_
+(`AgentProvider.sessionModel`). A **live-harness** provider — the Claude Agent SDK (Codex later) — is an
+external agentic runtime driven as a subprocess that owns its own loop, tools, and session, so Studio
+holds **one session open per conversation** and pushes each turn into it. A **stateless-model** provider
+— the `AiSdkAdapter` over OpenAI / Ollama / … — has no live process; its "session" is the transcript
+replayed each call, so every turn is independent. Both sit behind the same `AgentSession` seam
+(`turn` / `interrupt` / `close`) and look identical to the renderer (an agent with history).
+
+On the Claude live path (`ClaudeAgentSession`), `AiManager` keys held-open sessions by a renderer-minted
+**`agentSessionId`** — stable per conversation, _not_ the SDK session id (which avoids a
+before-id-known race and decouples routing from resume). A turn for a known conversation continues its
+session; the SDK `result` message ends a **turn**, not the session. The session's options split in two:
+
+- **Frozen at open** — bound once into the subprocess: the working directory, the surface/mode-scoped
+  MCP tool set, allowed / `disallowedTools`, the OS sandbox, the system prompt, resume, env, and the
+  opening model. A later turn that changes a field these derive from (provider, surface, workspace,
+  mode, agent shell) is **incompatible** — the router closes the session and reopens a fresh one.
+- **Per turn** — the in-app tool handlers, `canUseTool`, and the audit hook read the **current** turn's
+  context, so each turn's permission gate, audit sink, request id, bridge, posture, and policies apply.
+  A model change is applied live via `Query.setModel`.
+
+**Teardown.** Stop **interrupts** the current turn (the SDK ends it and the session stays live for the
+next turn) — it does _not_ end the session. Only **New chat**, **closing the owning tab**, or app
+shutdown closes it (the renderer drives `closeSession`; the session's master abort controller terminates
+the subprocess). A turn whose stream fails evicts the session so the next turn opens fresh. A kill
+switch (`LIVE_SESSIONS_ENABLED`) falls the whole path back to a transient open→one-turn→close per run.
+
 **Enforcement points:** `AiAuthManager` (credentials stay in main) · `ClaudeAgentProvider.canUseTool`
-(confinement → per-tool policy → posture, plus `disallowedTools` for denials) · `AiManager`
-(permission broker, per-tool-policy sanitising, and `AgentAuditLog`) · `RendererBridge` + `AiRuntime`
-(in-app capability surface).
+(confinement → per-tool policy → posture, plus `disallowedTools` for denials) · `ClaudeAgentSession`
+(held-open query; frozen-at-open vs per-turn context indirection; interrupt-not-close) · `AiManager`
+(permission broker, per-tool-policy sanitising, `AgentAuditLog`, and the live-session registry +
+compatibility router in `dispatchLive`) · `RendererBridge` + `AiRuntime` (in-app capability surface).
 
 ---
 
