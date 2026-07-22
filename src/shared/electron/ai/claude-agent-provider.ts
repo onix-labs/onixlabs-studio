@@ -30,6 +30,7 @@ import {
   WRITE_TERMINAL_INPUT,
   type InsertPlacement,
   type AgentSurface,
+  type AiEffort,
   type AiImageRef,
   type AiInputChoice,
   type AiModelInfo,
@@ -202,6 +203,11 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets a value indicating whether the provider accepts image input (Claude models are multimodal).
    */
   public readonly supportsImages: boolean = true;
+
+  /**
+   * Gets the reasoning-effort levels the Claude Agent SDK offers (the SDK `EffortLevel`: no `minimal`).
+   */
+  public readonly supportedEfforts: readonly AiEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
   /**
    * Gets the session model: the Claude Agent SDK is a live-harness — it is driven as a subprocess and can
@@ -742,6 +748,13 @@ export class ClaudeAgentProvider implements AgentProvider {
       // The opening model is bound here; a later turn that changes it is applied live via
       // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
       model: openContext.model,
+      // Reasoning effort (#330), when the user selected one. Bound at open like the other structural
+      // options (no live setter in the SDK Options seam), so a mid-session change takes effect on
+      // reopen. `minimal` is excluded — it is not one of the SDK's effort levels (guarded so a stray
+      // value never reaches the SDK, though the manager already clamps to `supportedEfforts`).
+      ...(openContext.effort !== null && openContext.effort !== 'minimal'
+        ? { effort: openContext.effort }
+        : {}),
       cwd: openContext.workspaceRoot ?? homedir(),
       // Widen the confinement beyond `cwd` when additional directories are configured (#307). Empty
       // for now — the seam is what matters; omitted entirely when there is nothing to add.

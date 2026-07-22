@@ -12,6 +12,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiEditDecision,
+  AiEffort,
   AiEvent,
   AiImageRef,
   AiInputChoice,
@@ -456,6 +457,13 @@ export class Agent {
   private readonly modeState: WritableSignal<AgentMode> = signal<AgentMode>('agent');
 
   /**
+   * Holds the reasoning-effort level the conversation's runs use (#330), or null for the provider
+   * default. Set via `/effort`; persists across new chats within this session; ignored by providers
+   * that do not offer it.
+   */
+  private readonly effortState: WritableSignal<AiEffort | null> = signal<AiEffort | null>(null);
+
+  /**
    * Holds the files and folders attached to the conversation's context, passed to each run so the agent
    * can read them with its own file tools. Cleared when the conversation is cleared or restored.
    */
@@ -594,6 +602,11 @@ export class Agent {
    * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
    */
   public readonly mode: Signal<AgentMode> = this.modeState.asReadonly();
+
+  /**
+   * Gets the reasoning-effort level the conversation's runs use (#330), or null for the provider default.
+   */
+  public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
 
   /**
    * Gets the files and folders attached to the conversation's context.
@@ -921,6 +934,7 @@ export class Agent {
       owningTabId,
       surface,
       mode: this.modeState(),
+      ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
       contextPaths: this.contextPathsState(),
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
@@ -934,6 +948,15 @@ export class Agent {
    */
   public setMode(mode: AgentMode): void {
     this.modeState.set(mode);
+  }
+
+  /**
+   * Sets the reasoning-effort level the conversation's runs use (#330), or null for the provider
+   * default. Takes effect on the next turn (and, for a held-open live session, on its next reopen).
+   * @param effort The effort level, or null for the provider default.
+   */
+  public setEffort(effort: AiEffort | null): void {
+    this.effortState.set(effort);
   }
 
   /**

@@ -205,6 +205,7 @@ function gateCtx(overrides: Partial<AgentRunContext>): AgentRunContext {
     requestId: 'run-1',
     workspaceRoot: '/ws',
     model: 'claude-opus-4-8',
+    effort: null,
     surface: 'editor',
     mode: 'agent',
     permissionPosture: 'prompt',
@@ -277,6 +278,10 @@ describe('ClaudeAgentProvider', () => {
 
   it('reportsALiveHarnessSessionModel', () => {
     expect(provider.sessionModel).toBe('live-harness');
+  });
+
+  it('declaresItsEffortLevels_withoutMinimal', () => {
+    expect(provider.supportedEfforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
   });
 
   it('describeAvailability_withALocalLogin_isAvailable', () => {
@@ -684,5 +689,17 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     expect(auditsB).toEqual(['Bash']);
     // The opening turn's audit sink was not used for the later turn's action.
     expect(auditsA).toEqual(['Bash']);
+  });
+
+  it('bindsTheOpeningEffort_andOmitsItWhenNullOrMinimal', async () => {
+    const withHigh: { options: Options } = await build(gateCtx({ effort: 'high' }));
+    expect((withHigh.options as { effort?: string }).effort).toBe('high');
+
+    // `minimal` is not an SDK effort level, and a null effort means the provider default — neither is
+    // passed to the SDK.
+    const withMinimal: { options: Options } = await build(gateCtx({ effort: 'minimal' }));
+    expect('effort' in withMinimal.options).toBe(false);
+    const withNull: { options: Options } = await build(gateCtx({ effort: null }));
+    expect('effort' in withNull.options).toBe(false);
   });
 });

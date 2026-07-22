@@ -2,6 +2,7 @@ import type {
   AgentContextRef,
   AgentMode,
   AgentSurface,
+  AiEffort,
   AiEvent,
   AiImageRef,
   AiInputChoice,
@@ -96,6 +97,12 @@ export interface AgentRunContext {
    * offers).
    */
   readonly model: string;
+
+  /**
+   * Gets the reasoning-effort level to run the turn at (already clamped to one the provider supports),
+   * or null to use the provider default.
+   */
+  readonly effort: AiEffort | null;
 
   /**
    * Gets how much the agent may do without asking the user first.
@@ -325,6 +332,12 @@ export interface AgentProvider {
    * Gets a value indicating whether the provider accepts image input on a turn.
    */
   readonly supportsImages: boolean;
+
+  /**
+   * Gets the reasoning-effort levels the provider offers (least to most), or empty when it has none
+   * selectable. Surfaced to the renderer so the `/effort` command gates and offers the right levels.
+   */
+  readonly supportedEfforts: readonly AiEffort[];
 
   /**
    * Gets how the provider maintains a conversation — whether it can hold a live session (#324).

@@ -154,6 +154,34 @@ describe('CodexAgentProvider', () => {
     expect(provider.supportsImages).toBe(false);
   });
 
+  it('declaresItsEffortLevels_withoutMax', () => {
+    expect(provider.supportedEfforts).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh']);
+  });
+
+  it('buildThreadOptions_appliesTheEffort_butOmitsMax_andReadOnlyForChat', () => {
+    const build: (context: AgentRunContext) => ThreadOptions = (
+      provider as unknown as { buildThreadOptions(context: AgentRunContext): ThreadOptions }
+    ).buildThreadOptions.bind(provider);
+    const base: Partial<AgentRunContext> = {
+      model: 'gpt-5-codex',
+      workspaceRoot: '/ws',
+      allowedWritePaths: [],
+    };
+
+    const high: ThreadOptions = build({ ...base, mode: 'agent', effort: 'high' } as AgentRunContext);
+    expect(high.modelReasoningEffort).toBe('high');
+    expect(high.sandboxMode).toBe('workspace-write');
+
+    // `max` is beyond Codex's range, and a chat run is read-only.
+    const maxChat: ThreadOptions = build({
+      ...base,
+      mode: 'chat',
+      effort: 'max',
+    } as AgentRunContext);
+    expect(maxChat.modelReasoningEffort).toBeUndefined();
+    expect(maxChat.sandboxMode).toBe('read-only');
+  });
+
   it('describeAvailability_prefersLocalCodexLoginThenApiKeyThenNeither', () => {
     const login: AgentAuth = { hasLocalLogin: false, hasCodexLogin: true, apiKey: null };
     const keyed: AgentAuth = { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-o' };
