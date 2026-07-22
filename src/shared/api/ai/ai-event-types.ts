@@ -341,6 +341,13 @@ export interface AiCommandsEvent extends AiEventBase {
   readonly kind: 'commands';
 
   /**
+   * Gets the conversation (agent session) the commands belong to, so the renderer correlates them to
+   * the right agent regardless of which turn is in flight — command discovery is session-level, not
+   * per-turn. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
    * Gets the provider's current command set (replaces any previously reported set).
    */
   readonly commands: readonly AiSlashCommand[];

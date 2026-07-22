@@ -142,13 +142,26 @@ describe('Agent', () => {
     expect(runCalls[0].agentSessionId).toBeTruthy();
   });
 
-  it('commandsEvent_populatesTheDiscoveredCommands', () => {
+  it('commandsEvent_forThisConversation_populatesTheDiscoveredCommands', () => {
     agent.send('hello');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
     expect(agent.discoveredCommands()).toEqual([]);
 
+    // A commands event for another conversation is ignored (session-level correlation).
     fireEvent({
       requestId: 'run-1',
       kind: 'commands',
+      agentSessionId: 'someone-else',
+      commands: [{ name: 'other', description: 'x', argumentHint: '' }],
+    });
+    expect(agent.discoveredCommands()).toEqual([]);
+
+    // This conversation's commands populate — even though the run is no longer active (session-level).
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    fireEvent({
+      requestId: 'stale-request',
+      kind: 'commands',
+      agentSessionId: sessionId ?? null,
       commands: [{ name: 'review', description: 'Review the diff', argumentHint: '' }],
     });
 

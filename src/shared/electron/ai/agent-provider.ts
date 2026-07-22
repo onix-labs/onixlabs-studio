@@ -99,6 +99,13 @@ export interface AgentRunContext {
   readonly model: string;
 
   /**
+   * Gets the stable identifier of the agent conversation this run belongs to (#327), or null when the
+   * run has none. Used to correlate session-level events (e.g. discovered commands) to the conversation
+   * independently of the per-turn request id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
    * Gets the reasoning-effort level to run the turn at (already clamped to one the provider supports),
    * or null to use the provider default.
    */

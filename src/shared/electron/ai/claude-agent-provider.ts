@@ -1509,9 +1509,17 @@ export class ClaudeAgentSession implements AgentSession {
    * @param commands The SDK slash commands.
    */
   private publishCommands(commands: readonly SlashCommand[]): void {
+    // Diagnostic (#330): surface what the SDK actually reports, so a missing command can be told apart
+    // from a discovery/routing problem. Visible in the terminal running the app.
+    console.log(
+      `[claude] discovered ${commands.length} slash command(s): ${commands
+        .map((command: SlashCommand): string => command.name)
+        .join(', ')}`,
+    );
     this.currentContext.emit({
       requestId: this.currentContext.requestId,
       kind: 'commands',
+      agentSessionId: this.currentContext.agentSessionId,
       commands: commands.map(
         (command: SlashCommand): { name: string; description: string; argumentHint: string } => ({
           name: command.name,
