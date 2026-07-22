@@ -29,12 +29,23 @@
   padding: 0.75rem 0.75rem 0.6rem;
 }
 
+// The column's identity block: the icon and title on one line, with the branch (when the column is
+// backed by a project) on the line beneath.
 .tile__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.tile__title {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  max-inline-size: 100%;
   min-inline-size: 0;
-  flex: 1 1 auto;
 }
 
 // The origin tab's icon beside the title. Centred against the baseline-aligned row so it sits level
@@ -53,6 +64,25 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+// The branch a workspace or repository column is working on, on the line beneath the title and
+// indented past the icon so it aligns with the name above it.
+.tile__branch {
+  max-inline-size: 100%;
+  padding-inline-start: 1.45rem;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  // The placeholder for a column with no repository behind it: fainter still, so it reads as the
+  // absence of a branch rather than as one.
+  &--none {
+    opacity: 0.7;
+    font-style: italic;
+  }
 }
 
 // The title is a button when the column has an origin tab: clicking it activates that tab. Reset the
@@ -189,6 +219,11 @@ button.tile__name {
   gap: 0.5rem;
   flex: none;
   padding-inline-end: 5rem;
+}
+
+// The focus header's icon is a shade larger than the column's, so its branch line is indented to match.
+.tile__focus-header .tile__branch {
+  padding-inline-start: 1.55rem;
 }
 
 .tile__focus-name {

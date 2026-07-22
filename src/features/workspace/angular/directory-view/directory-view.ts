@@ -168,6 +168,9 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
     surface: 'editor',
+    // Mission Control shows the open folder's branch beside this column's title. Read through a
+    // closure because this tab's git state is constructed after this field initializer runs.
+    branch: (): string | null => this.workspaceGit.branch(),
   });
 
   /**

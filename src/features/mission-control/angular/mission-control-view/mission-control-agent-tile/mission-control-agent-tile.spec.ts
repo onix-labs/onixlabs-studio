@@ -22,6 +22,8 @@ interface TileState {
   readonly hasTab: Signal<boolean>;
   readonly tabId: Signal<string | undefined>;
   readonly key: Signal<string>;
+  readonly branch: Signal<string | null>;
+  readonly branchLabel: Signal<string>;
 }
 
 /**
@@ -38,10 +40,13 @@ interface Knobs {
  * Builds a tile whose injected host, agent and Mission Control state the returned knobs drive, and
  * returns its derived-state signals. The component is created but not change-detected, so the mirror
  * body (and its heavy child tree) is never mounted — only the tile's own computeds are exercised.
- * @param options The host's tab id (null for a host with no owning tab).
+ * @param options The host's tab id (null for a host with no owning tab), and its branch signal (absent
+ * for a host with no project behind it).
  * @returns Returns the tile's derived state and the knobs backing it.
  */
-function setUp(options: { tabId?: string | null } = {}): { state: TileState; knobs: Knobs } {
+function setUp(
+  options: { tabId?: string | null; branch?: Signal<string | null> } = {},
+): { state: TileState; knobs: Knobs } {
   const running: WritableSignal<boolean> = signal<boolean>(false);
   const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
   const hideEmpty: WritableSignal<boolean> = signal<boolean>(false);
@@ -52,6 +57,7 @@ function setUp(options: { tabId?: string | null } = {}): { state: TileState; kno
     id: 'host-1',
     tabId: options.tabId ?? null,
     label: signal<string>('Alpha'),
+    branch: options.branch,
     surface: 'agent',
     agent: agentStub,
     conversation: {},
@@ -153,5 +159,28 @@ describe('MissionControlAgentTile', () => {
     expect(state.hasTab()).toBe(true);
     expect(state.tabId()).toBe('tab-9');
     expect(state.key()).toBe('tab-9');
+  });
+
+  it('branch_whenHostHasNoProject_readsNullAndLabelsThePlaceholder', () => {
+    const { state } = setUp();
+
+    expect(state.branch()).toBeNull();
+    expect(state.branchLabel()).toBe('No repository');
+  });
+
+  it('branch_whenHostIsProjectBacked_followsTheHostsBranchLive', () => {
+    const branch: WritableSignal<string | null> = signal<string | null>('main');
+    const { state } = setUp({ tabId: 'tab-9', branch: branch.asReadonly() });
+
+    expect(state.branch()).toBe('main');
+
+    // A checkout in the origin tab renames the branch beside the column's title...
+    branch.set('feature/x');
+    expect(state.branch()).toBe('feature/x');
+
+    // ...and a detached head (or a folder that is not a repository) falls back to the placeholder.
+    branch.set(null);
+    expect(state.branch()).toBeNull();
+    expect(state.branchLabel()).toBe('No repository');
   });
 });

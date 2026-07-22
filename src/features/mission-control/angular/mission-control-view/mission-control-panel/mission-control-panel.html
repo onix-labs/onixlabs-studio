@@ -67,6 +67,17 @@
               </span>
             </div>
 
+            <!-- A workspace or repository agent names the branch it is working on, on its own line so
+                 the row's narrow head never has to trade the agent's name against it. An agent with no
+                 repository behind it says so, so every row reads the same way. -->
+            <div
+              class="rail__branch"
+              [class.rail__branch--none]="item.branch === null"
+              [title]="item.branch === null ? 'No repository' : 'On branch ' + item.branch"
+            >
+              {{ item.branch ?? 'No repository' }}
+            </div>
+
             @if (item.entries.length > 0) {
               <!-- The request cards live inside the activation row, so stop clicks on them from
                    bubbling to the row and scrolling the column out from under the user. -->

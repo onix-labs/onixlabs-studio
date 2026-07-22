@@ -28,6 +28,11 @@ interface HostOptions {
    * Gets whether the host's agent has any transcript items.
    */
   readonly hasMessages?: boolean;
+
+  /**
+   * Gets the branch the host's project is on; omitted for a host with no project behind it.
+   */
+  readonly branch?: string;
 }
 
 /**
@@ -46,6 +51,7 @@ function makeHost(id: string, options: HostOptions = {}): AgentHost {
     id,
     tabId: null,
     label: signal<string>(options.label ?? id),
+    branch: options.branch === undefined ? undefined : signal<string | null>(options.branch),
     surface: 'agent',
     agent,
     conversation: {},
@@ -152,6 +158,21 @@ describe('MissionControlPanel', () => {
     fixture.detectChanges();
 
     expect(statusLabels()).toEqual(['Idle']);
+  });
+
+  it('render_namesTheBranchOfAProjectBackedHost_andPlaceholdsForTheRest', () => {
+    hosts.set([
+      makeHost('h1', { label: 'Alpha', branch: 'feature/x' }),
+      makeHost('h2', { label: 'Beta' }),
+    ]);
+    fixture.detectChanges();
+
+    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.list-row'));
+    expect(rows[0].querySelector('.rail__branch')?.textContent?.trim()).toBe('feature/x');
+    // An agent with no repository behind it keeps the line, so every row reads the same way.
+    const placeholder: HTMLElement | null = rows[1].querySelector<HTMLElement>('.rail__branch');
+    expect(placeholder?.textContent?.trim()).toBe('No repository');
+    expect(placeholder?.classList.contains('rail__branch--none')).toBe(true);
   });
 
   it('onRowClick_whenARowIsClicked_revealsThatHostsColumn', () => {

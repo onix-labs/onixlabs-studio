@@ -28,6 +28,15 @@ export interface AgentHost {
   readonly label: Signal<string>;
 
   /**
+   * Gets the source-control branch the host's project is on, read reactively so a checkout updates,
+   * or undefined for a host that is not backed by a project (a file, terminal, or binary agent). A
+   * project-backed host whose folder is not a repository — or whose head is detached — reads null.
+   * Surfaced beside the host's title in Mission Control, so several columns over the same repository
+   * are told apart by the branch each is working on.
+   */
+  readonly branch?: Signal<string | null>;
+
+  /**
    * Gets the tool surface the host's runs act on.
    */
   readonly surface: AgentSurface;

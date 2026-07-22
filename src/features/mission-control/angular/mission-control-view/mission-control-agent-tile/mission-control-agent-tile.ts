@@ -167,6 +167,24 @@ export class MissionControlAgentTile {
   });
 
   /**
+   * Gets the branch the host's project is on, or null for a host with no project behind it (or whose
+   * folder is not a repository), so a workspace or repository column names the branch it works on
+   * beside its title.
+   */
+  protected readonly branch: Signal<string | null> = computed(
+    (): string | null => this.host.branch?.() ?? null,
+  );
+
+  /**
+   * Gets the text shown on the column's branch line: the branch, or a placeholder for a column with no
+   * repository behind it — so every column carries the same two-line header rather than shifting its
+   * chrome depending on what the agent is attached to.
+   */
+  protected readonly branchLabel: Signal<string> = computed(
+    (): string => this.branch() ?? 'No repository',
+  );
+
+  /**
    * Gets a value indicating whether the tile is hidden — an empty host while empty tiles are
    * suppressed, or an idle host while idle tiles are suppressed.
    */

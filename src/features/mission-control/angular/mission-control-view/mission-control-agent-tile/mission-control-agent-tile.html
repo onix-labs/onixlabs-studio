@@ -1,20 +1,32 @@
 <header class="tile__header">
   <div class="tile__identity">
-    @if (tabIcon(); as icon) {
-      <app-icon class="tile__icon" [icon]="icon" [size]="1.05" />
-    }
-    @if (hasTab()) {
-      <button
-        type="button"
-        class="tile__name tile__name--link"
-        [title]="'Go to ' + host.label()"
-        (click)="onOpenTab()"
-      >
-        {{ host.label() }}
-      </button>
-    } @else {
-      <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
-    }
+    <div class="tile__title">
+      @if (tabIcon(); as icon) {
+        <app-icon class="tile__icon" [icon]="icon" [size]="1.05" />
+      }
+      @if (hasTab()) {
+        <button
+          type="button"
+          class="tile__name tile__name--link"
+          [title]="'Go to ' + host.label()"
+          (click)="onOpenTab()"
+        >
+          {{ host.label() }}
+        </button>
+      } @else {
+        <span class="tile__name" [title]="host.label()">{{ host.label() }}</span>
+      }
+    </div>
+    <!-- A workspace or repository column names the branch it is working on, on its own line beneath
+         the title so a long branch never competes with the name the column is identified by. Columns
+         with no repository behind them say so, rather than losing the line. -->
+    <span
+      class="tile__branch"
+      [class.tile__branch--none]="branch() === null"
+      [title]="branch() === null ? 'No repository' : 'On branch ' + branchLabel()"
+    >
+      {{ branchLabel() }}
+    </span>
   </div>
   <div class="tile__status" [class.tile__status--busy]="isRunning()">
     <span class="tile__status-dot"></span>
@@ -65,10 +77,21 @@
   @if (focusOpen()) {
     <div class="tile__focus">
       <header class="tile__focus-header">
-        @if (tabIcon(); as icon) {
-          <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
-        }
-        <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
+        <div class="tile__identity">
+          <div class="tile__title">
+            @if (tabIcon(); as icon) {
+              <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
+            }
+            <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
+          </div>
+          <span
+            class="tile__branch"
+            [class.tile__branch--none]="branch() === null"
+            [title]="branch() === null ? 'No repository' : 'On branch ' + branchLabel()"
+          >
+            {{ branchLabel() }}
+          </span>
+        </div>
         <div class="tile__status" [class.tile__status--busy]="isRunning()">
           <span class="tile__status-dot"></span>
           <span class="tile__status-label">{{ statusLabel() }}</span>
