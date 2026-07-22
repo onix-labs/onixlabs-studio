@@ -7,7 +7,7 @@ import type {
   ThreadOptions,
   Usage,
 } from '@openai/codex-sdk';
-import type { AiModelInfo, AiProviderId } from '@shared/api/ai-types';
+import type { AiEffort, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
 import type {
   AgentAuth,
   AgentProvider,
@@ -107,6 +107,17 @@ export class CodexAgentProvider implements AgentProvider {
    * file paths, not the base64 data Studio holds, so image input is not offered in this phase.
    */
   public readonly supportsImages: boolean = false;
+
+  /**
+   * Gets the reasoning-effort levels Codex offers (the SDK `ModelReasoningEffort`: no `max`).
+   */
+  public readonly supportedEfforts: readonly AiEffort[] = [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ];
 
   /**
    * Gets the session model: Codex is a live-harness (an external agentic runtime driven as a subprocess),
@@ -212,6 +223,11 @@ export class CodexAgentProvider implements AgentProvider {
       approvalPolicy: 'never',
       skipGitRepoCheck: true,
     };
+    // Reasoning effort (#330), when selected. `max` is excluded — Codex's range tops out at `xhigh`
+    // (the manager already clamps to `supportedEfforts`; this guards the type).
+    if (context.effort !== null && context.effort !== 'max') {
+      options.modelReasoningEffort = context.effort;
+    }
     if (context.allowedWritePaths.length > 0) {
       options.additionalDirectories = [...context.allowedWritePaths];
     }

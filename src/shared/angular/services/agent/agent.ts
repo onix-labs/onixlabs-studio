@@ -12,7 +12,9 @@ import type {
   AgentMode,
   AgentSurface,
   AiEditDecision,
+  AiEffort,
   AiEvent,
+  AiSlashCommand,
   AiImageRef,
   AiInputChoice,
   AiModelInfo,
@@ -456,6 +458,22 @@ export class Agent {
   private readonly modeState: WritableSignal<AgentMode> = signal<AgentMode>('agent');
 
   /**
+   * Holds the reasoning-effort level the conversation's runs use (#330), or null for the provider
+   * default. Set via `/effort`; persists across new chats within this session; ignored by providers
+   * that do not offer it.
+   */
+  private readonly effortState: WritableSignal<AiEffort | null> = signal<AiEffort | null>(null);
+
+  /**
+   * Holds the slash commands the live provider has discovered for this conversation (#330), or empty
+   * before any are reported / for a provider that reports none. Refreshed when the provider pushes a
+   * change; the composer merges them into its `/` menu.
+   */
+  private readonly discoveredCommandsState: WritableSignal<readonly AiSlashCommand[]> = signal<
+    readonly AiSlashCommand[]
+  >([]);
+
+  /**
    * Holds the files and folders attached to the conversation's context, passed to each run so the agent
    * can read them with its own file tools. Cleared when the conversation is cleared or restored.
    */
@@ -594,6 +612,18 @@ export class Agent {
    * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
    */
   public readonly mode: Signal<AgentMode> = this.modeState.asReadonly();
+
+  /**
+   * Gets the reasoning-effort level the conversation's runs use (#330), or null for the provider default.
+   */
+  public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
+
+  /**
+   * Gets the slash commands the live provider has discovered for this conversation (#330), for the
+   * composer's `/` menu. Empty for providers that report none.
+   */
+  public readonly discoveredCommands: Signal<readonly AiSlashCommand[]> =
+    this.discoveredCommandsState.asReadonly();
 
   /**
    * Gets the files and folders attached to the conversation's context.
@@ -921,6 +951,7 @@ export class Agent {
       owningTabId,
       surface,
       mode: this.modeState(),
+      ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
       contextPaths: this.contextPathsState(),
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
@@ -934,6 +965,15 @@ export class Agent {
    */
   public setMode(mode: AgentMode): void {
     this.modeState.set(mode);
+  }
+
+  /**
+   * Sets the reasoning-effort level the conversation's runs use (#330), or null for the provider
+   * default. Takes effect on the next turn (and, for a held-open live session, on its next reopen).
+   * @param effort The effort level, or null for the provider default.
+   */
+  public setEffort(effort: AiEffort | null): void {
+    this.effortState.set(effort);
   }
 
   /**
@@ -1257,6 +1297,11 @@ export class Agent {
       }
       case 'status':
         this.onStatus(event.state, event.detail);
+        break;
+      case 'commands':
+        // The provider's live command set (#330); replaces any previous set. Persists across turns so
+        // the composer's `/` menu can offer them between runs.
+        this.discoveredCommandsState.set(event.commands);
         break;
       default:
         break;

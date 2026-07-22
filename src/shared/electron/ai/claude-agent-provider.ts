@@ -9,6 +9,7 @@ import type {
   Query,
   SDKMessage,
   SDKUserMessage,
+  SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   ASK_USER,
@@ -30,6 +31,7 @@ import {
   WRITE_TERMINAL_INPUT,
   type InsertPlacement,
   type AgentSurface,
+  type AiEffort,
   type AiImageRef,
   type AiInputChoice,
   type AiModelInfo,
@@ -202,6 +204,11 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets a value indicating whether the provider accepts image input (Claude models are multimodal).
    */
   public readonly supportsImages: boolean = true;
+
+  /**
+   * Gets the reasoning-effort levels the Claude Agent SDK offers (the SDK `EffortLevel`: no `minimal`).
+   */
+  public readonly supportedEfforts: readonly AiEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
   /**
    * Gets the session model: the Claude Agent SDK is a live-harness — it is driven as a subprocess and can
@@ -742,6 +749,13 @@ export class ClaudeAgentProvider implements AgentProvider {
       // The opening model is bound here; a later turn that changes it is applied live via
       // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
       model: openContext.model,
+      // Reasoning effort (#330), when the user selected one. Bound at open like the other structural
+      // options (no live setter in the SDK Options seam), so a mid-session change takes effect on
+      // reopen. `minimal` is excluded — it is not one of the SDK's effort levels (guarded so a stray
+      // value never reaches the SDK, though the manager already clamps to `supportedEfforts`).
+      ...(openContext.effort !== null && openContext.effort !== 'minimal'
+        ? { effort: openContext.effort }
+        : {}),
       cwd: openContext.workspaceRoot ?? homedir(),
       // Widen the confinement beyond `cwd` when additional directories are configured (#307). Empty
       // for now — the seam is what matters; omitted entirely when there is nothing to add.
@@ -1469,6 +1483,43 @@ export class ClaudeAgentSession implements AgentSession {
     );
     this.sdkQuery = await this.deps.createQuery(this.promptStream(), options);
     this.pumpDone = this.pump();
+    // Discover the session's slash commands once it is open (#330); refreshed later by the
+    // `commands_changed` push handled in the pump. Best-effort — a failure never disturbs the run.
+    void this.emitCommands();
+  }
+
+  /**
+   * Fetches the session's current slash commands from the live query and publishes them to the renderer.
+   * Best-effort: any failure (e.g. the query not supporting the control request) is swallowed.
+   */
+  private async emitCommands(): Promise<void> {
+    const query: Query | null = this.sdkQuery;
+    if (query === null) {
+      return;
+    }
+    try {
+      this.publishCommands(await query.supportedCommands());
+    } catch {
+      // Command discovery is best-effort; never let it disturb the session.
+    }
+  }
+
+  /**
+   * Publishes a discovered command set to the renderer through the current turn's context.
+   * @param commands The SDK slash commands.
+   */
+  private publishCommands(commands: readonly SlashCommand[]): void {
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'commands',
+      commands: commands.map(
+        (command: SlashCommand): { name: string; description: string; argumentHint: string } => ({
+          name: command.name,
+          description: command.description,
+          argumentHint: command.argumentHint,
+        }),
+      ),
+    });
   }
 
   /**
@@ -1513,6 +1564,17 @@ export class ClaudeAgentSession implements AgentSession {
             kind: 'session',
             sessionId,
           });
+        }
+        // A mid-session command-list change (e.g. skills discovered as the agent works): replace the
+        // cached set (#330). `supportedCommands()` is captured once at init and never reflects these,
+        // so the push is the only live signal.
+        const changed: { type?: string; subtype?: string; commands?: SlashCommand[] } = message;
+        if (
+          changed.type === 'system' &&
+          changed.subtype === 'commands_changed' &&
+          Array.isArray(changed.commands)
+        ) {
+          this.publishCommands(changed.commands);
         }
         this.deps.handleMessage(message, this.currentContext, this.usageState);
         // A turn's `result` settles that turn but leaves the stream open for the next turn; an

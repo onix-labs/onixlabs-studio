@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import type {
+  AiEffort,
   AiEvent,
   AiImageRef,
   AiPermissionPosture,
@@ -44,6 +45,7 @@ describe('Agent', () => {
     forkSession: boolean;
     images: readonly AiImageRef[];
     runTimeoutMs: number;
+    effort: AiEffort | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -104,6 +106,7 @@ describe('Agent', () => {
           forkSession: options.forkSession ?? false,
           images: options.images ?? [],
           runTimeoutMs: options.runTimeoutMs ?? 0,
+          effort: options.effort,
         });
         return 'run-1';
       },
@@ -137,6 +140,34 @@ describe('Agent', () => {
     agent.send('hello');
 
     expect(runCalls[0].agentSessionId).toBeTruthy();
+  });
+
+  it('commandsEvent_populatesTheDiscoveredCommands', () => {
+    agent.send('hello');
+    expect(agent.discoveredCommands()).toEqual([]);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'commands',
+      commands: [{ name: 'review', description: 'Review the diff', argumentHint: '' }],
+    });
+
+    expect(agent.discoveredCommands().map((command): string => command.name)).toEqual(['review']);
+  });
+
+  it('send_carriesTheSelectedEffort_andOmitsItByDefault', () => {
+    agent.send('hello');
+    expect(runCalls[0].effort).toBeUndefined();
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.setEffort('high');
+    agent.send('again');
+    expect(runCalls[1].effort).toBe('high');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.setEffort(null);
+    agent.send('once more');
+    expect(runCalls[2].effort).toBeUndefined();
   });
 
   it('clear_closesTheLiveSessionAndMintsAFreshOne', () => {

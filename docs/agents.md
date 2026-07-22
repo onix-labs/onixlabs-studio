@@ -402,6 +402,18 @@ UI from `items` and hands the `resumeSessionId` to the next turn — the model r
 never Studio's items. So the store is authoritative for what the user _sees_; the resumed SDK session is
 authoritative for what the model _remembers_.
 
+**Capabilities & commands (#330).** Provider capabilities are **declared, then gated uniformly**. Each
+provider states what it offers — `supportsImages` and `supportedEfforts` (the reasoning-effort levels:
+Claude `low…max`, Codex `minimal…xhigh`, the stateless AI-SDK path none) — on `AgentProvider`, surfaced
+to the renderer on `AiProviderInfo`. The composer reads the active provider's set to gate features: it
+rejects image attach when unsupported, and shows `/effort <level>` (a per-conversation choice on the
+`Agent`, clamped to the provider's range and applied at session open) only for providers that offer it.
+**Live command discovery**: a live-harness session can be asked for its slash commands at any time —
+`ClaudeAgentSession` calls `Query.supportedCommands()` on open and handles the `commands_changed` push,
+emitting a `commands` event the composer merges into its `/` menu (minus app-native and a conservative
+non-dispatchable deny-list). A picked command drops `/name ` into the draft and dispatches into the live
+session as input. This is what the persistent-session work unlocked (it supersedes the deferred #322).
+
 **Enforcement points:** `AiAuthManager` (credentials stay in main) · `ClaudeAgentProvider.canUseTool`
 (confinement → per-tool policy → posture, plus `disallowedTools` for denials) · `ClaudeAgentSession`
 (held-open query; frozen-at-open vs per-turn context indirection; interrupt-not-close) · `AiManager`

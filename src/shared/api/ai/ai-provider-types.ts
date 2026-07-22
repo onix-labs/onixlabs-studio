@@ -9,6 +9,25 @@
 export type AiProviderId = string;
 
 /**
+ * A reasoning-effort level an agent can run a turn at, ordered least to most. This is the superset
+ * across providers; each provider declares the subset it supports ({@link AiProviderInfo.supportedEfforts})
+ * and clamps a requested level into its own range (e.g. Claude has no `minimal`, Codex no `max`).
+ */
+export type AiEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/**
+ * The reasoning-effort levels in ascending order, for clamping and UI ordering.
+ */
+export const AI_EFFORT_LEVELS: readonly AiEffort[] = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
+/**
  * Describes a model a provider can run a turn with.
  */
 export interface AiModelInfo {
@@ -80,4 +99,11 @@ export interface AiProviderInfo {
    * compose time otherwise). Absent means no.
    */
   readonly supportsImages?: boolean;
+
+  /**
+   * Gets the reasoning-effort levels this provider offers, least to most, or absent/empty when it has no
+   * selectable effort (the `/effort` command is hidden then). Drives both the command's visibility and
+   * the levels it offers.
+   */
+  readonly supportedEfforts?: readonly AiEffort[];
 }

@@ -8,6 +8,7 @@ import type {
   AiDiscoverModelsRequest,
   AiDiscoverModelsResult,
   AiEditDecisionReply,
+  AiEffort,
   AiEvent,
   AiImageRef,
   AiInputChoice,
@@ -507,6 +508,7 @@ export class AiManager {
         models: provider.models,
         defaultModelId: provider.defaultModelId,
         supportsImages: provider.supportsImages,
+        supportedEfforts: provider.supportedEfforts,
       });
     }
     return infos;
@@ -578,6 +580,12 @@ export class AiManager {
         ? Math.floor(request.tokenCap)
         : 0;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
+    // Honour the requested reasoning effort only when the provider actually offers it (#330); an
+    // unknown or unsupported level from the renderer falls back to the provider default.
+    const effort: AiEffort | null =
+      request.effort !== undefined && provider.supportedEfforts.includes(request.effort)
+        ? request.effort
+        : null;
     const agentShell: string | null = sanitizeAgentShell(request.agentShell);
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
@@ -603,6 +611,7 @@ export class AiManager {
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
       model,
+      effort,
       permissionPosture,
       toolPolicies,
       allowedWritePaths,
@@ -1317,7 +1326,8 @@ export class AiManager {
       (record['images'] === undefined || Array.isArray(record['images'])) &&
       (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number') &&
       (record['agentSessionLifetimeMs'] === undefined ||
-        typeof record['agentSessionLifetimeMs'] === 'number')
+        typeof record['agentSessionLifetimeMs'] === 'number') &&
+      (record['effort'] === undefined || typeof record['effort'] === 'string')
     );
   }
 

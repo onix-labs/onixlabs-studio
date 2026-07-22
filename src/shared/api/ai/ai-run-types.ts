@@ -2,7 +2,7 @@
 // and the Angular front-end can import it.
 
 import { AgentSurface } from './ai-tool-surface';
-import { AiProviderId } from './ai-provider-types';
+import { AiEffort, AiProviderId } from './ai-provider-types';
 
 /**
  * Identifies how much the agent may do without asking the user first.
@@ -167,6 +167,12 @@ export interface AiRunRequest {
    * current setting; ignored by the transient (stateless) path.
    */
   readonly agentSessionLifetimeMs?: number;
+
+  /**
+   * Gets the reasoning-effort level to run at (#330), or absent for the provider default. Honoured only
+   * when the resolved provider declares it in `supportedEfforts`; ignored otherwise.
+   */
+  readonly effort?: AiEffort;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act

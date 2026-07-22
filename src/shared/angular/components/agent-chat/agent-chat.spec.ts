@@ -5,10 +5,12 @@ import { vi } from 'vitest';
 import type {
   AgentContextRef,
   AgentSurface,
+  AiEffort,
   AiImageRef,
   AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
+  AiSlashCommand,
 } from '@shared/api/ai-types';
 import type { AgentMode } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
@@ -38,10 +40,12 @@ describe('AgentChat', () => {
   let rewinds: { id: string; text: string }[];
   let sentImages: (readonly AiImageRef[])[];
   let providers: WritableSignal<readonly AiProviderInfo[]>;
+  let discoveredCommands: WritableSignal<readonly AiSlashCommand[]>;
   let pendingContextTokens: WritableSignal<number>;
   let compacted: number;
   let clearedChats: number;
   let modeChanges: AgentMode[];
+  let effortChanges: (AiEffort | null)[];
   let attachedContext: AgentContextRef[];
 
   beforeEach(async () => {
@@ -49,6 +53,7 @@ describe('AgentChat', () => {
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
+    effortChanges = [];
     attachedContext = [];
     retried = [];
     rewinds = [];
@@ -66,6 +71,7 @@ describe('AgentChat', () => {
         supportsImages: true,
       },
     ]);
+    discoveredCommands = signal<readonly AiSlashCommand[]>([]);
     permissionResponses = [];
     sent = [];
     stopped = 0;
@@ -111,9 +117,12 @@ describe('AgentChat', () => {
       retry: (item: AgentItem): void => void retried.push(item.id),
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       mode: signal<AgentMode>('agent'),
+      effort: signal<AiEffort | null>(null),
+      discoveredCommands,
       compact: (): void => void (compacted += 1),
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
+      setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       queued,
       removeQueued: (id: string): void => void removedQueued.push(id),
@@ -162,6 +171,58 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('discoveredCommands_offerAllButAppNativeAndInteractive', () => {
+    discoveredCommands.set([
+      { name: 'review', description: 'Review the diff', argumentHint: '' },
+      { name: 'clear', description: 'app-native', argumentHint: '' },
+      { name: 'login', description: 'interactive', argumentHint: '' },
+    ]);
+    const comp: { discoveredSuggestions(query: string): readonly { label: string }[] } =
+      component as unknown as {
+        discoveredSuggestions(query: string): readonly { label: string }[];
+      };
+
+    const labels: readonly string[] = comp
+      .discoveredSuggestions('')
+      .map((entry): string => entry.label);
+    expect(labels).toEqual(['/review']);
+  });
+
+  it('effortCommand_isGatedByTheProvidersCapability_andDispatchesSetEffort', () => {
+    const comp: {
+      effortSuggestions(): readonly { label: string; value: string }[];
+      runCommand(command: string): void;
+    } = component as unknown as {
+      effortSuggestions(): readonly { label: string; value: string }[];
+      runCommand(command: string): void;
+    };
+
+    // A provider with no effort control offers no /effort entries.
+    expect(comp.effortSuggestions()).toEqual([]);
+
+    // A provider that declares effort levels offers one entry per level plus a default.
+    providers.set([
+      {
+        id: 'claude',
+        label: 'Claude (Agent SDK)',
+        available: true,
+        detail: 'ok',
+        models: [],
+        defaultModelId: 'claude-opus-4-8',
+        supportsImages: true,
+        supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      },
+    ]);
+    const labels: readonly string[] = comp.effortSuggestions().map((entry): string => entry.label);
+    expect(labels).toContain('/effort high');
+    expect(labels).toContain('/effort default');
+
+    // Picking a level (and the default) dispatches to the agent.
+    comp.runCommand('effort:high');
+    comp.runCommand('effort:default');
+    expect(effortChanges).toEqual(['high', null]);
   });
 
   it('send_whenDraftEntered_sendsToTheAgentAndClearsTheDraft', () => {

@@ -7,6 +7,7 @@ import type {
   AiBridgeRequest,
   AiConnection,
   AiEditDecision,
+  AiEffort,
   AiEvent,
   AiImageRef,
   AiPermissionPosture,
@@ -89,6 +90,12 @@ export interface AiRunOptions {
    * on the next turn.
    */
   readonly agentSessionLifetimeMs?: number;
+
+  /**
+   * Gets the reasoning-effort level to run at (#330), or omitted for the provider default. Applied only
+   * by providers that offer it.
+   */
+  readonly effort?: AiEffort;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
@@ -217,6 +224,7 @@ export class AiRuntime {
       agentShell: options.agentShell ?? '',
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
+      ...(options.effort === undefined ? {} : { effort: options.effort }),
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',

@@ -1,4 +1,10 @@
-import type { AiConnection, AiImageRef, AiModelInfo, AiProviderKind } from '@shared/api/ai-types';
+import type {
+  AiConnection,
+  AiEffort,
+  AiImageRef,
+  AiModelInfo,
+  AiProviderKind,
+} from '@shared/api/ai-types';
 import type {
   AgentAuth,
   AgentProvider,
@@ -209,6 +215,12 @@ export class AiSdkAdapter implements AgentProvider {
   public get supportsImages(): boolean {
     return kindSupportsImages(this.connection.kind);
   }
+
+  /**
+   * Gets the reasoning-effort levels offered: none. The generic AI-SDK path does not expose a reasoning
+   * effort control, so the `/effort` command is hidden for these providers.
+   */
+  public readonly supportedEfforts: readonly AiEffort[] = [];
 
   /**
    * Gets the session model: the generic AI-SDK path is stateless — Studio owns the loop and each turn is
