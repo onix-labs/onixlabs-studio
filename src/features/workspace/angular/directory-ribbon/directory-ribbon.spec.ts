@@ -93,19 +93,24 @@ class FakeBuilds {
   public readonly running: WritableSignal<boolean> = signal<boolean>(false);
   public readonly canBuild: WritableSignal<boolean> = signal<boolean>(false);
   public readonly runConfigurationCalls: RunConfiguration[] = [];
+  public readonly siblingCalls: (readonly RunConfiguration[])[] = [];
   public readonly actionCalls: ProjectAction[] = [];
-  public cancelCalls: number = 0;
+  public cancelAllCalls: number = 0;
 
-  public runConfiguration(configuration: RunConfiguration): void {
+  public runConfiguration(
+    configuration: RunConfiguration,
+    siblings: readonly RunConfiguration[],
+  ): void {
     this.runConfigurationCalls.push(configuration);
+    this.siblingCalls.push(siblings);
   }
 
   public runAction(action: ProjectAction): void {
     this.actionCalls.push(action);
   }
 
-  public cancel(): void {
-    this.cancelCalls += 1;
+  public cancelAll(): void {
+    this.cancelAllCalls += 1;
   }
 }
 
@@ -244,6 +249,36 @@ describe('DirectoryRibbon', () => {
     expect(builds.runConfigurationCalls).toEqual([config]);
   });
 
+  it('runPassesTheWorkspacesOtherConfigurations_soACompoundCanResolveItsMembers', () => {
+    const compound: RunConfiguration = {
+      ...configuration('stack', 'Whole stack'),
+      members: ['a', 'b'],
+    };
+    const configurations: readonly RunConfiguration[] = [
+      compound,
+      configuration('a', 'A'),
+      configuration('b', 'B'),
+    ];
+    studio.runConfigurations.set(configurations);
+
+    internals().onRun();
+
+    expect(builds.runConfigurationCalls).toEqual([compound]);
+    expect(builds.siblingCalls[0]).toEqual(configurations);
+  });
+
+  it('debugIsDisabledForACompound_whichHasNoSingleProgramToAttachTo', () => {
+    capabilities.capabilities.set(dotnetWithDebug());
+    studio.runConfigurations.set([configuration('a', 'A')]);
+    expect(internals().canDebug()).toBe(true);
+
+    studio.runConfigurations.set([
+      { ...configuration('stack', 'Whole stack'), members: ['a'] },
+      configuration('a', 'A'),
+    ]);
+    expect(internals().canDebug()).toBe(false);
+  });
+
   it('runsNothingWhenTheWorkspaceHasNoConfigurations', () => {
     builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
 
@@ -261,10 +296,10 @@ describe('DirectoryRibbon', () => {
     expect(internals().selectedRunId()).toBe('b');
   });
 
-  it('stopCancelsTheActiveRun', () => {
+  it('stopCancelsEverythingTheWorkspaceIsRunning', () => {
     internals().onStop();
 
-    expect(builds.cancelCalls).toBe(1);
+    expect(builds.cancelAllCalls).toBe(1);
   });
 
   it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {

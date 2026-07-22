@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMPOUND_PROVIDER_KIND,
   defaultUser,
   defaultWorkspace,
+  expandRunConfiguration,
+  isCompoundConfiguration,
   parseUser,
   parseWorkspace,
   resolveSelectedRunConfiguration,
@@ -132,5 +135,105 @@ describe('resolveSelectedRunConfiguration', () => {
     const configs: RunConfiguration[] = [config('a', 'A'), config('b', 'B')];
     expect(resolveSelectedRunConfiguration(snapshot(configs, 'gone'))?.id).toBe('a');
     expect(resolveSelectedRunConfiguration(snapshot(configs))?.id).toBe('a');
+  });
+});
+
+describe('compound run configurations', () => {
+  /**
+   * Builds a compound naming the given member ids.
+   * @param id The compound's id.
+   * @param members The member ids.
+   * @returns Returns the compound.
+   */
+  function compound(id: string, members: readonly string[]): RunConfiguration {
+    return {
+      id,
+      name: id,
+      providerKind: COMPOUND_PROVIDER_KIND,
+      mode: 'run',
+      members,
+    };
+  }
+
+  it('parse_readsMembers_andDefaultsTheProviderKindOfAnAuthoredCompound', () => {
+    // A hand-written compound need not name a provider kind: Studio, not an ecosystem, launches it.
+    const parsed: StudioWorkspace = parseWorkspace({
+      version: 1,
+      runConfigurations: [{ id: 'stack', name: 'Stack', mode: 'run', members: ['api', 'web'] }],
+    });
+
+    expect(parsed.runConfigurations).toHaveLength(1);
+    expect(parsed.runConfigurations[0].members).toEqual(['api', 'web']);
+    expect(parsed.runConfigurations[0].providerKind).toBe(COMPOUND_PROVIDER_KIND);
+    expect(isCompoundConfiguration(parsed.runConfigurations[0])).toBe(true);
+  });
+
+  it('parse_dropsMalformedMembers_andTreatsAnEmptyListAsNotACompound', () => {
+    const parsed: StudioWorkspace = parseWorkspace({
+      version: 1,
+      runConfigurations: [
+        { id: 'a', name: 'A', providerKind: 'node', mode: 'run', members: ['keep', 7, '', null] },
+        { id: 'b', name: 'B', providerKind: 'node', mode: 'run', members: [] },
+        { id: 'c', name: 'C', providerKind: 'node', mode: 'run', members: 'nope' },
+      ],
+    });
+
+    expect(parsed.runConfigurations[0].members).toEqual(['keep']);
+    // Nothing usable left, so these are ordinary configurations rather than compounds that run nothing.
+    expect(parsed.runConfigurations[1].members).toBeUndefined();
+    expect(parsed.runConfigurations[2].members).toBeUndefined();
+  });
+
+  it('expand_returnsTheConfigurationItselfWhenItIsNotACompound', () => {
+    const single: RunConfiguration = config('a', 'A');
+
+    expect(expandRunConfiguration(single, [single])).toEqual([single]);
+  });
+
+  it('expand_resolvesMembersInDeclarationOrder_andNests', () => {
+    const db: RunConfiguration = config('db', 'Database');
+    const api: RunConfiguration = config('api', 'API');
+    const web: RunConfiguration = config('web', 'Web');
+    const backEnd: RunConfiguration = compound('back-end', ['db', 'api']);
+    const stack: RunConfiguration = compound('stack', ['back-end', 'web']);
+
+    const leaves: readonly RunConfiguration[] = expandRunConfiguration(stack, [
+      db,
+      api,
+      web,
+      backEnd,
+      stack,
+    ]);
+
+    expect(leaves.map((leaf: RunConfiguration): string => leaf.id)).toEqual(['db', 'api', 'web']);
+  });
+
+  it('expand_dropsUnknownMembers_andBreaksCyclesIncludingSelfReference', () => {
+    const api: RunConfiguration = config('api', 'API');
+    const selfish: RunConfiguration = compound('selfish', ['api', 'ghost', 'selfish']);
+
+    expect(
+      expandRunConfiguration(selfish, [api, selfish]).map((leaf: RunConfiguration): string => leaf.id),
+    ).toEqual(['api']);
+
+    // A two-step cycle terminates just as surely, and neither compound is launched as a leaf.
+    const left: RunConfiguration = compound('left', ['right']);
+    const right: RunConfiguration = compound('right', ['left', 'api']);
+    expect(
+      expandRunConfiguration(left, [left, right, api]).map((leaf: RunConfiguration): string => leaf.id),
+    ).toEqual(['api']);
+  });
+
+  it('expand_visitsEachConfigurationOnce_soADiamondStartsItOnce', () => {
+    const api: RunConfiguration = config('api', 'API');
+    const one: RunConfiguration = compound('one', ['api']);
+    const two: RunConfiguration = compound('two', ['api']);
+    const both: RunConfiguration = compound('both', ['one', 'two']);
+
+    expect(
+      expandRunConfiguration(both, [api, one, two, both]).map(
+        (leaf: RunConfiguration): string => leaf.id,
+      ),
+    ).toEqual(['api']);
   });
 });

@@ -38,10 +38,20 @@ export const STUDIO_SCHEMA_VERSION: number = 1;
 export type RunMode = 'run' | 'debug';
 
 /**
+ * The provider kind stamped on a compound configuration, which is launched by Studio itself (by starting
+ * its members) rather than by any one ecosystem's provider.
+ */
+export const COMPOUND_PROVIDER_KIND: string = 'compound';
+
+/**
  * A single run/build configuration — the shared, committed unit a user selects and runs. Its optional
  * fields carry the per-language variation (build configuration, target, program, arguments,
  * environment, working directory) the Configure UI edits; the required fields identify it and bind it
  * to the provider that runs it.
+ *
+ * A configuration that names {@link RunConfiguration.members} is a **compound**: it launches those
+ * configurations in parallel instead of a command of its own, so "start the database, the back end, and
+ * the front end" is one press and each member stays an individually stoppable run.
  */
 export interface RunConfiguration {
   /**
@@ -95,6 +105,12 @@ export interface RunConfiguration {
    * Gets whether the configuration launches normally or under the debugger.
    */
   readonly mode: RunMode;
+
+  /**
+   * Gets the ids of the configurations a compound launches in parallel, or undefined for an ordinary
+   * configuration. A compound's own command fields are ignored — its members carry them.
+   */
+  readonly members?: readonly string[];
 }
 
 /**
@@ -221,7 +237,12 @@ function parseRunConfiguration(value: unknown): RunConfiguration | null {
   }
   const id: string | undefined = optionalString(record, 'id');
   const name: string | undefined = optionalString(record, 'name');
-  const providerKind: string | undefined = optionalString(record, 'providerKind');
+  const members: readonly string[] | undefined = parseMembers(record['members']);
+  // A compound is launched by Studio, not by an ecosystem provider, so it needs no authored kind: a
+  // hand-written (or agent-written) compound that omits one still parses.
+  const providerKind: string | undefined =
+    optionalString(record, 'providerKind') ??
+    (members === undefined ? undefined : COMPOUND_PROVIDER_KIND);
   if (id === undefined || name === undefined || providerKind === undefined) {
     return null;
   }
@@ -247,7 +268,78 @@ function parseRunConfiguration(value: unknown): RunConfiguration | null {
             ),
           ),
     mode: record['mode'] === 'debug' ? 'debug' : 'run',
+    members,
   };
+}
+
+/**
+ * Parses a compound's member ids, keeping only non-empty strings and dropping the field entirely when
+ * nothing usable remains — so an ordinary configuration and a compound whose members were all malformed
+ * both read as "not a compound" rather than as an empty compound that launches nothing.
+ * @param value The raw `members` value.
+ * @returns Returns the member ids, or undefined when there are none.
+ */
+function parseMembers(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const members: string[] = value.filter(
+    (member: unknown): member is string => typeof member === 'string' && member.length > 0,
+  );
+  return members.length > 0 ? members : undefined;
+}
+
+/**
+ * Determines whether a configuration is a compound (it launches other configurations rather than a
+ * command of its own).
+ * @param configuration The configuration to test.
+ * @returns Returns true when the configuration is a compound.
+ */
+export function isCompoundConfiguration(configuration: RunConfiguration): boolean {
+  return configuration.members !== undefined && configuration.members.length > 0;
+}
+
+/**
+ * Expands a configuration into the leaf configurations a Start actually launches: itself for an ordinary
+ * configuration, or its members (recursively, since a compound may name another compound) for a
+ * compound.
+ *
+ * Deliberately total rather than throwing: the file is hand-editable, so a member naming nothing is
+ * dropped and a cycle — including a compound naming itself — is broken by visiting each configuration at
+ * most once. A compound that expands to nothing returns an empty list, and the caller starts nothing.
+ * @param configuration The configuration to expand.
+ * @param all Every configuration in the workspace, used to resolve member ids.
+ * @returns Returns the leaf configurations to launch, in declaration order and without duplicates.
+ */
+export function expandRunConfiguration(
+  configuration: RunConfiguration,
+  all: readonly RunConfiguration[],
+): readonly RunConfiguration[] {
+  const byId: Map<string, RunConfiguration> = new Map<string, RunConfiguration>(
+    all.map((candidate: RunConfiguration): [string, RunConfiguration] => [candidate.id, candidate]),
+  );
+  const leaves: RunConfiguration[] = [];
+  const visited: Set<string> = new Set<string>();
+
+  const walk: (current: RunConfiguration) => void = (current: RunConfiguration): void => {
+    if (visited.has(current.id)) {
+      return;
+    }
+    visited.add(current.id);
+    if (!isCompoundConfiguration(current)) {
+      leaves.push(current);
+      return;
+    }
+    for (const memberId of current.members ?? []) {
+      const member: RunConfiguration | undefined = byId.get(memberId);
+      if (member !== undefined) {
+        walk(member);
+      }
+    }
+  };
+
+  walk(configuration);
+  return leaves;
 }
 
 /**

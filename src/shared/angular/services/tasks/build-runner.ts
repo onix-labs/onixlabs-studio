@@ -1,8 +1,17 @@
-import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  OnDestroy,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { ProjectAction } from '@shared/api/project-system';
-import { RunConfiguration } from '@shared/api/studio';
+import { expandRunConfiguration, RunConfiguration } from '@shared/api/studio';
 import { TaskChannel } from '@shared/api/task-channels';
 import {
   Diagnostic,
@@ -12,13 +21,34 @@ import {
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Output, OutputChannel } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { BuildGroup, BuildHandler, BuildTask } from './builds';
+import { ActiveRun, BuildGroup, BuildHandler, BuildTask } from './builds';
 import { MatchedProblem, parseProblems } from './problem-matcher';
 
 /**
  * Identifies the diagnostics provider build problems are published under.
  */
 const PROVIDER_ID: string = 'tasks';
+
+/**
+ * The live state of one in-flight run: what it is running, the Output channel it streams into, and the
+ * output accumulated so far for problem matching once it exits.
+ */
+interface LiveRun {
+  /**
+   * Gets the task being run.
+   */
+  readonly task: BuildTask;
+
+  /**
+   * Gets the Output channel the run streams into.
+   */
+  readonly channel: OutputChannel;
+
+  /**
+   * Gets or sets the output accumulated so far.
+   */
+  buffer: string;
+}
 
 /**
  * Matches a .NET solution or project file by extension, used to detect a .NET workspace root.
@@ -128,9 +158,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   );
 
   /**
-   * Holds whether a task is currently running.
+   * Holds the in-flight runs, in launch order.
    */
-  private readonly isRunning: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly runs: WritableSignal<readonly ActiveRun[]> = signal<readonly ActiveRun[]>([]);
 
   /**
    * Gets the discovered tasks.
@@ -138,25 +168,21 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   public readonly tasks: Signal<readonly BuildTask[]> = this.discovered.asReadonly();
 
   /**
-   * Gets whether a task is currently running.
+   * Gets the in-flight runs, in launch order.
    */
-  public readonly running: Signal<boolean> = this.isRunning.asReadonly();
+  public readonly activeRuns: Signal<readonly ActiveRun[]> = this.runs.asReadonly();
 
   /**
-   * Holds the identifier of the in-flight run, or null when nothing is running.
+   * Gets whether anything is running.
    */
-  private activeRunId: string | null = null;
+  public readonly running: Signal<boolean> = computed((): boolean => this.runs().length > 0);
 
   /**
-   * Holds the task backing the in-flight run, or null when nothing is running.
+   * Holds the live state of each in-flight run, keyed by run id: what it is running, where its output
+   * goes, and the output accumulated for problem matching. Several runs are live at once, so every
+   * output and exit event is routed by its run id rather than compared against one active run.
    */
-  private activeTask: BuildTask | null = null;
-
-  /**
-   * Holds the output channel the in-flight run streams into (Build or Run), or null when nothing is
-   * running.
-   */
-  private activeChannel: OutputChannel | null = null;
+  private readonly live: Map<string, LiveRun> = new Map<string, LiveRun>();
 
   /**
    * Holds the Build output channel: build, test, and capability-action task output.
@@ -164,17 +190,17 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly buildChannel: OutputChannel = this.output.channel('build', 'Build');
 
   /**
-   * Holds the Run output channel: run-configuration and run-task output.
+   * Holds the problems matched from each finished run's output, keyed by the task that produced them, so
+   * concurrent runs do not overwrite one another's diagnostics. Re-running a task replaces its own
+   * entry; the aggregate publishes the union.
    */
-  private readonly runChannel: OutputChannel = this.output.channel('run', 'Run');
+  private readonly problemsByTask: Map<string, readonly Diagnostic[]> = new Map<
+    string,
+    readonly Diagnostic[]
+  >();
 
   /**
-   * Accumulates the in-flight run's output for problem matching.
-   */
-  private buffer: string = '';
-
-  /**
-   * Holds the current build problems published to the diagnostics aggregate.
+   * Holds the current build problems published to the diagnostics aggregate (the union of every task's).
    */
   private problems: readonly Diagnostic[] = [];
 
@@ -242,7 +268,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Tears down the diagnostics provider and task listeners, cancelling any in-flight run.
    */
   public ngOnDestroy(): void {
-    this.cancel();
+    this.cancelAll();
     this.cleanupOutput?.();
     this.cleanupExit?.();
     this.unregisterProvider();
@@ -264,14 +290,24 @@ export class BuildRunner implements BuildHandler, OnDestroy {
 
   /**
    * Runs a `.studio` run configuration: compiles it to a command and launches it through the same
-   * pipeline as a task, so its output streams and its problems are matched. Does nothing when the
-   * configuration cannot be compiled to a command.
+   * pipeline as a task, so its output streams and its problems are matched.
+   *
+   * A **compound** launches each of its members as its own run, in parallel, so every member stays
+   * individually visible and stoppable — which is why the workspace's other configurations come in as
+   * `siblings`: they are what a compound's member ids resolve against. A member that names nothing, and
+   * a configuration that cannot be compiled to a command, are skipped rather than failing the rest.
    * @param configuration The run configuration to run.
+   * @param siblings Every configuration in the workspace, used to resolve a compound's members.
    */
-  public runConfiguration(configuration: RunConfiguration): void {
-    const task: BuildTask | null = this.toTask(configuration);
-    if (task !== null) {
-      this.launch(task);
+  public runConfiguration(
+    configuration: RunConfiguration,
+    siblings: readonly RunConfiguration[] = [],
+  ): void {
+    for (const leaf of expandRunConfiguration(configuration, siblings)) {
+      const task: BuildTask | null = this.toTask(leaf);
+      if (task !== null) {
+        this.launch(task);
+      }
     }
   }
 
@@ -572,27 +608,44 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Launches a task as a captured child process, streaming its output and clearing prior problems.
-   * Does nothing when a run is already in flight or Electron is unavailable.
+   * Launches a task as a captured child process, streaming its output and clearing the task's prior
+   * problems. Several runs may be in flight at once — starting one never cancels or blocks another, and
+   * the same task may be started twice — so each gets its own run id, output buffer, and channel.
+   * Does nothing when Electron is unavailable.
    * @param task The task to launch.
    */
   private launch(task: BuildTask): void {
-    if (this.bridge === undefined || this.activeRunId !== null) {
+    if (this.bridge === undefined) {
       return;
     }
     const runId: string = crypto.randomUUID();
-    this.activeRunId = runId;
-    this.activeTask = task;
-    // Run tasks stream into the Run channel; build, test, and capability actions into Build. Revealing
-    // the channel brings it to the front of the Output panel as the run starts.
-    const channel: OutputChannel = task.group === 'run' ? this.runChannel : this.buildChannel;
-    this.activeChannel = channel;
-    this.buffer = '';
-    this.isRunning.set(true);
-    this.setProblems([]);
+    const channel: OutputChannel = this.channelFor(task);
+    this.live.set(runId, { task, channel, buffer: '' });
+    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] => [
+      ...current,
+      { id: runId, label: task.label, taskId: task.id, startedAt: Date.now() },
+    ]);
+    // Only this task's problems are stale; another run's diagnostics stay published.
+    this.problemsByTask.delete(task.id);
+    this.republishProblems();
+    // Revealing the channel brings it to the front of the Output panel as the run starts.
     channel.reveal();
     channel.appendLine(`> ${task.label}`);
     void this.bridge.invoke(TaskChannel.Run, { runId, command: task.command, cwd: task.cwd });
+  }
+
+  /**
+   * Resolves the Output channel a task streams into: a run configuration gets its own channel, named
+   * after it, so parallel runs stay readable instead of interleaving into one stream; build, test, and
+   * capability-action output shares the Build channel, as before. A second run of the same
+   * configuration reuses its channel, appending after the first — its own history in one place.
+   * @param task The task being launched.
+   * @returns Returns the channel to stream into.
+   */
+  private channelFor(task: BuildTask): OutputChannel {
+    return task.group === 'run'
+      ? this.output.channel(`run:${task.id}`, task.label)
+      : this.buildChannel;
   }
 
   /**
@@ -669,61 +722,82 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Cancels the in-flight run, if any.
+   * Cancels one in-flight run, leaving every other run alone. A run id that is not (or is no longer) in
+   * flight is ignored.
+   * @param runId The run to cancel.
    */
-  public cancel(): void {
-    if (this.activeRunId !== null) {
-      void this.bridge?.invoke(TaskChannel.Cancel, this.activeRunId);
+  public cancel(runId: string): void {
+    if (this.live.has(runId)) {
+      void this.bridge?.invoke(TaskChannel.Cancel, runId);
     }
   }
 
   /**
-   * Appends a chunk of the in-flight run's output to the Output channel and buffer.
+   * Cancels every in-flight run. The exit events tear each run down, as they do for a single cancel.
+   */
+  public cancelAll(): void {
+    for (const runId of [...this.live.keys()]) {
+      void this.bridge?.invoke(TaskChannel.Cancel, runId);
+    }
+  }
+
+  /**
+   * Appends a chunk of a run's output to that run's Output channel and matching buffer. A chunk for a
+   * run this workspace does not own (another workspace's tab shares the same main-process feed) is
+   * ignored.
    * @param runId The run the chunk belongs to.
    * @param chunk The output chunk.
    */
   private onOutput(runId: string, chunk: string): void {
-    if (runId !== this.activeRunId) {
+    const run: LiveRun | undefined = this.live.get(runId);
+    if (run === undefined) {
       return;
     }
-    this.buffer += chunk;
-    this.activeChannel?.append(chunk);
+    run.buffer += chunk;
+    run.channel.append(chunk);
   }
 
   /**
-   * Finishes the in-flight run: writes an exit footer and publishes the matched problems.
+   * Finishes one run: writes its exit footer, drops it from the in-flight set, and publishes the problems
+   * matched from its output alongside those of every other task.
    * @param runId The run that exited.
    * @param code The exit code, or null when terminated by a signal.
    * @param signal The terminating signal, or null when exited normally.
    */
   private onExit(runId: string, code: number | null, signal: string | null): void {
-    if (runId !== this.activeRunId) {
+    const run: LiveRun | undefined = this.live.get(runId);
+    if (run === undefined) {
       return;
     }
-    const task: BuildTask | null = this.activeTask;
-    const channel: OutputChannel = this.activeChannel ?? this.buildChannel;
-    this.activeRunId = null;
-    this.activeTask = null;
-    this.activeChannel = null;
-    this.isRunning.set(false);
+    this.live.delete(runId);
+    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] =>
+      current.filter((active: ActiveRun): boolean => active.id !== runId),
+    );
     const status: string =
       signal !== null ? `terminated (${signal})` : `exited with code ${code ?? 0}`;
-    channel.appendLine(`> ${task?.label ?? 'Task'} ${status}`);
-    if (task !== null) {
-      this.publishProblems(this.buffer, task.cwd);
-    }
+    run.channel.appendLine(`> ${run.task.label} ${status}`);
+    this.publishProblems(run.task, run.buffer);
   }
 
   /**
-   * Parses the run's output into diagnostics and publishes them.
+   * Parses a finished run's output into diagnostics, records them under its task, and republishes the
+   * union so a concurrent run's problems are neither lost nor duplicated.
+   * @param task The task that produced the output.
    * @param text The accumulated output.
-   * @param root The workspace root, used to resolve relative file paths.
    */
-  private publishProblems(text: string, root: string): void {
-    const diagnostics: Diagnostic[] = parseProblems(text).map(
-      (problem: MatchedProblem): Diagnostic => this.toDiagnostic(problem, root),
+  private publishProblems(task: BuildTask, text: string): void {
+    const diagnostics: readonly Diagnostic[] = parseProblems(text).map(
+      (problem: MatchedProblem): Diagnostic => this.toDiagnostic(problem, task.cwd),
     );
-    this.setProblems(diagnostics);
+    this.problemsByTask.set(task.id, diagnostics);
+    this.republishProblems();
+  }
+
+  /**
+   * Publishes the union of every task's matched problems to the diagnostics aggregate.
+   */
+  private republishProblems(): void {
+    this.setProblems([...this.problemsByTask.values()].flat());
   }
 
   /**

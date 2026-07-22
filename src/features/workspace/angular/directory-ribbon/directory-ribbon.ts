@@ -8,7 +8,7 @@ import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
-import { RunConfiguration } from '@shared/api/studio';
+import { isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -263,12 +263,16 @@ export class DirectoryRibbon {
    * adapter (or none at all) leave the button disabled rather than launching a session that would
    * immediately report it has nowhere to attach.
    */
-  protected readonly canDebug: Signal<boolean> = computed(
-    (): boolean =>
+  protected readonly canDebug: Signal<boolean> = computed((): boolean => {
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
+    return (
       this.capabilities()?.debug != null &&
-      this.selectedConfiguration() !== undefined &&
-      !this.debugger.running(),
-  );
+      configuration !== undefined &&
+      // A compound starts several processes; there is no single program to attach to.
+      !isCompoundConfiguration(configuration) &&
+      !this.debugger.running()
+    );
+  });
 
   /**
    * Cuts the selection in the focused editor.
@@ -360,12 +364,13 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Runs the selected `.studio` run configuration on the active workspace.
+   * Runs the selected `.studio` run configuration on the active workspace. The workspace's other
+   * configurations travel with it so a compound can resolve its members, which start in parallel.
    */
   protected onRun(): void {
     const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
-      this.builds.runConfiguration(configuration);
+      this.builds.runConfiguration(configuration, this.studio.runConfigurations());
     }
   }
 
@@ -398,10 +403,11 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Cancels the active workspace's running task.
+   * Stops everything the active workspace is running. Stopping one run of several arrives with the Stop
+   * split-button (P2).
    */
   protected onStop(): void {
-    this.builds.cancel();
+    this.builds.cancelAll();
   }
 
   /**

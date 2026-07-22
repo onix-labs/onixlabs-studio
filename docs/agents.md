@@ -210,7 +210,9 @@ here is a bug — its root is never set at the root injector, so `.studio` would
 - **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()` (the first discovered
   build task), `runConfiguration()` (a `.studio` run configuration compiled to a command), and
   `runAction()` (Clean/Rebuild, compiled per ecosystem). Discovered tasks back the Solution group only
-  — they never reach the Run dropdown.
+  — they never reach the Run dropdown. **Runs are concurrent**: `activeRuns` lists every in-flight run,
+  `cancel(runId)` stops one and `cancelAll()` stops the lot. A run configuration streams into its own
+  Output channel (`run:<id>`) so parallel runs stay readable; build/test/action output shares `build`.
 - **`StudioConfig`** — the active workspace's `.studio` persistence.
 
 **`.studio`** (`shared/electron/studio`, platform-neutral model in `shared/api/studio.ts`) persists
@@ -220,7 +222,9 @@ build configuration). The main-process `StudioStore` owns atomic reads/writes an
 entry on first write; it never authors run configurations itself. The renderer reloads on external
 edits through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists
 exactly the configurations `workspace.json` declares — a workspace with none has nothing to run — and
-the Configure dialog edits them.
+the Configure dialog edits them. A configuration that names `members` is a **compound**: starting it
+starts each member as its own run, in parallel (`expandRunConfiguration` resolves them, tolerating
+unknown members and cycles), so each member stays individually stoppable.
 
 ### 4.7 Debugging (DAP)
 
