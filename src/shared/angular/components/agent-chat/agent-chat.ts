@@ -22,6 +22,7 @@ import type {
   AgentContextRef,
   AgentSurface,
   AiEditDecision,
+  AiEffort,
   AiImageRef,
   AiProviderInfo,
 } from '@shared/api/ai-types';
@@ -689,6 +690,7 @@ export class AgentChat implements OnInit {
         },
         { kind: 'command', label: '/clear', hint: 'Start a new conversation', value: 'clear' },
         { kind: 'command', label: '/mode', hint: 'Toggle Agent / Chat mode', value: 'mode' },
+        ...this.effortSuggestions(),
       ];
       const commands: ComposerSuggestion[] = builtins.filter(
         (entry: ComposerSuggestion): boolean => entry.value.startsWith(query) || query.length === 0,
@@ -732,6 +734,19 @@ export class AgentChat implements OnInit {
         .providers()
         .find((info: AiProviderInfo): boolean => info.id === this.agentEngine.provider())
         ?.supportsImages === true,
+  );
+
+  /**
+   * Gets the reasoning-effort levels the selected provider offers (#330), least to most, so the
+   * `/effort` command gates and offers the right levels. Empty when the provider has no selectable
+   * effort.
+   */
+  protected readonly supportedEfforts: Signal<readonly AiEffort[]> = computed(
+    (): readonly AiEffort[] =>
+      this.agentEngine
+        .providers()
+        .find((info: AiProviderInfo): boolean => info.id === this.agentEngine.provider())
+        ?.supportedEfforts ?? [],
   );
 
   /**
@@ -1443,6 +1458,35 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Builds the `/effort` command entries for the selected provider (#330): one per supported level plus
+   * a "default" entry, with the active choice marked. Empty when the provider offers no effort control,
+   * so the command is hidden for those providers.
+   * @returns Returns the effort command suggestions.
+   */
+  private effortSuggestions(): readonly ComposerSuggestion[] {
+    const levels: readonly AiEffort[] = this.supportedEfforts();
+    if (levels.length === 0) {
+      return [];
+    }
+    const current: AiEffort | null = this.agent.effort();
+    const entries: ComposerSuggestion[] = levels.map(
+      (level: AiEffort): ComposerSuggestion => ({
+        kind: 'command',
+        label: `/effort ${level}`,
+        hint: level === current ? 'Reasoning effort (current)' : 'Set reasoning effort',
+        value: `effort:${level}`,
+      }),
+    );
+    entries.push({
+      kind: 'command',
+      label: '/effort default',
+      hint: current === null ? 'Provider default (current)' : 'Use the provider default',
+      value: 'effort:default',
+    });
+    return entries;
+  }
+
+  /**
    * Runs a built-in slash command against the conversation.
    * @param command The command name.
    */
@@ -1453,6 +1497,9 @@ export class AgentChat implements OnInit {
       this.agent.clear();
     } else if (command === 'mode') {
       this.agent.setMode(this.agent.mode() === 'chat' ? 'agent' : 'chat');
+    } else if (command.startsWith('effort:')) {
+      const level: string = command.slice('effort:'.length);
+      this.agent.setEffort(level === 'default' ? null : (level as AiEffort));
     }
   }
 

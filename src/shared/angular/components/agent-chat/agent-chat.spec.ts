@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 import type {
   AgentContextRef,
   AgentSurface,
+  AiEffort,
   AiImageRef,
   AiPermissionRemember,
   AiProviderId,
@@ -42,6 +43,7 @@ describe('AgentChat', () => {
   let compacted: number;
   let clearedChats: number;
   let modeChanges: AgentMode[];
+  let effortChanges: (AiEffort | null)[];
   let attachedContext: AgentContextRef[];
 
   beforeEach(async () => {
@@ -49,6 +51,7 @@ describe('AgentChat', () => {
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
+    effortChanges = [];
     attachedContext = [];
     retried = [];
     rewinds = [];
@@ -111,9 +114,11 @@ describe('AgentChat', () => {
       retry: (item: AgentItem): void => void retried.push(item.id),
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       mode: signal<AgentMode>('agent'),
+      effort: signal<AiEffort | null>(null),
       compact: (): void => void (compacted += 1),
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
+      setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       queued,
       removeQueued: (id: string): void => void removedQueued.push(id),
@@ -162,6 +167,41 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('effortCommand_isGatedByTheProvidersCapability_andDispatchesSetEffort', () => {
+    const comp: {
+      effortSuggestions(): readonly { label: string; value: string }[];
+      runCommand(command: string): void;
+    } = component as unknown as {
+      effortSuggestions(): readonly { label: string; value: string }[];
+      runCommand(command: string): void;
+    };
+
+    // A provider with no effort control offers no /effort entries.
+    expect(comp.effortSuggestions()).toEqual([]);
+
+    // A provider that declares effort levels offers one entry per level plus a default.
+    providers.set([
+      {
+        id: 'claude',
+        label: 'Claude (Agent SDK)',
+        available: true,
+        detail: 'ok',
+        models: [],
+        defaultModelId: 'claude-opus-4-8',
+        supportsImages: true,
+        supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      },
+    ]);
+    const labels: readonly string[] = comp.effortSuggestions().map((entry): string => entry.label);
+    expect(labels).toContain('/effort high');
+    expect(labels).toContain('/effort default');
+
+    // Picking a level (and the default) dispatches to the agent.
+    comp.runCommand('effort:high');
+    comp.runCommand('effort:default');
+    expect(effortChanges).toEqual(['high', null]);
   });
 
   it('send_whenDraftEntered_sendsToTheAgentAndClearsTheDraft', () => {
