@@ -95,7 +95,8 @@ export class Builds {
   private readonly handler: WritableSignal<BuildHandler | null> = signal<BuildHandler | null>(null);
 
   /**
-   * Gets the tasks discovered for the active workspace.
+   * Gets the build/test tasks discovered for the active workspace. These drive the Solution group's
+   * Build action only — the Run dropdown is fed exclusively by authored `.studio` run configurations.
    */
   public readonly tasks: Signal<readonly BuildTask[]> = computed(
     (): readonly BuildTask[] => this.handler()?.tasks() ?? [],
@@ -116,14 +117,6 @@ export class Builds {
   );
 
   /**
-   * Gets the default run task the ribbon selects when the user has not picked one: the first run task,
-   * then the first build task, then the first discovered task.
-   */
-  public readonly startTask: Signal<BuildTask | undefined> = computed(
-    (): BuildTask | undefined => this.firstOf('run') ?? this.firstOf('build') ?? this.tasks()[0],
-  );
-
-  /**
    * Registers the active workspace's build handler.
    * @param handler The handler to register.
    */
@@ -139,14 +132,6 @@ export class Builds {
     if (this.handler() === handler) {
       this.handler.set(null);
     }
-  }
-
-  /**
-   * Runs a task by identifier on the active workspace.
-   * @param taskId The task to run.
-   */
-  public runTask(taskId: string): void {
-    this.handler()?.run(taskId);
   }
 
   /**

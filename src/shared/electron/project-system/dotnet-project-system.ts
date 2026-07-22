@@ -10,7 +10,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
@@ -151,7 +150,6 @@ export class DotnetProjectSystem implements ProjectSystem {
         projects,
         tree,
         capabilities: this.capabilities,
-        runConfigurations: this.runConfigurations(projects),
       };
     }
     const files: string[] = await this.findProjects(root, PROJECT_SCAN_DEPTH);
@@ -169,27 +167,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       projects,
       tree,
       capabilities: this.capabilities,
-      runConfigurations: this.runConfigurations(projects),
     };
-  }
-
-  /**
-   * Derives the discovered run configurations for a model: one per project, run by its project file.
-   * These are the Run dropdown's fallback until persisted `.studio` run configurations exist.
-   * @param projects The model's flattened projects.
-   * @returns Returns a run configuration per project.
-   */
-  private runConfigurations(
-    projects: readonly ProjectEntry[],
-  ): readonly RunConfigurationDescriptor[] {
-    return projects.map(
-      (project: ProjectEntry): RunConfigurationDescriptor => ({
-        id: project.path,
-        name: project.name,
-        kind: 'project',
-        detail: project.path,
-      }),
-    );
   }
 
   /**

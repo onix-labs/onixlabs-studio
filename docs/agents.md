@@ -191,7 +191,8 @@ modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift
 The directory workspace is **language-agnostic**: it never hard-codes an ecosystem. A `ProjectSystem`
 provider (`shared/electron/project-system`, e.g. `dotnet`, `node`) turns a workspace root into a
 `ProjectModel` _and_ declares a **capability descriptor** — `actions` (Build/Clean/Rebuild…),
-`buildConfigurations`, a `target` axis, and a `debug` adapter — plus discovered `runConfigurations`.
+`buildConfigurations`, a `target` axis, and a `debug` adapter. A provider **never infers run
+configurations** from a root: what to run is authored, not guessed.
 The model (with its capabilities and kind) travels to the renderer over `ProjectChannel.ModelLoad`;
 adding an ecosystem means adding a provider, **never touching the shell or ribbon**.
 
@@ -206,20 +207,20 @@ here is a bug — its root is never set at the root injector, so `.studio` would
   gates Build/Clean/Rebuild on `actions`; the Target group's configuration/target selectors are driven
   by `buildConfigurations`/`target` and hidden when absent. Capabilities are authoritative; a root with
   no provider falls back to discovered tasks so Gradle/Make still build.
-- **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()`/`runTask()` (discovered
-  tasks), `runConfiguration()` (a `.studio` run configuration compiled to a command), and `runAction()`
-  (Clean/Rebuild, compiled per ecosystem and kept out of the Run dropdown).
+- **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()` (the first discovered
+  build task), `runConfiguration()` (a `.studio` run configuration compiled to a command), and
+  `runAction()` (Clean/Rebuild, compiled per ecosystem). Discovered tasks back the Solution group only
+  — they never reach the Run dropdown.
 - **`StudioConfig`** — the active workspace's `.studio` persistence.
 
 **`.studio`** (`shared/electron/studio`, platform-neutral model in `shared/api/studio.ts`) persists
 run configurations per project: `workspace.json` is shared and committed (the run configurations);
 `workspace.user.json` is git-ignored and holds only transient selections (last configuration, target,
-build configuration). The main-process `StudioStore` owns atomic reads/writes, seeds a `.gitignore`
-entry on first write, and seeds default run configurations from the model when a project first opens
-(idempotent — never overwriting an existing `workspace.json`). The renderer reloads on external edits
-through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists these
-configurations (falling back to discovered tasks until they are seeded), and the Configure dialog edits
-them.
+build configuration). The main-process `StudioStore` owns atomic reads/writes and seeds a `.gitignore`
+entry on first write; it never authors run configurations itself. The renderer reloads on external
+edits through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists
+exactly the configurations `workspace.json` declares — a workspace with none has nothing to run — and
+the Configure dialog edits them.
 
 ### 4.7 Debugging (DAP)
 

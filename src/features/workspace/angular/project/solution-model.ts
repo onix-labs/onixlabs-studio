@@ -9,7 +9,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -171,14 +170,6 @@ export class SolutionModel {
    */
   public readonly capabilities: Signal<ProjectCapabilities | null> = computed(
     (): ProjectCapabilities | null => this.current()?.capabilities ?? null,
-  );
-
-  /**
-   * Gets the run configurations discovered from the active root — the Run dropdown's fallback until
-   * persisted `.studio` run configurations exist.
-   */
-  public readonly runConfigurations: Signal<readonly RunConfigurationDescriptor[]> = computed(
-    (): readonly RunConfigurationDescriptor[] => this.current()?.runConfigurations ?? [],
   );
 
   /**

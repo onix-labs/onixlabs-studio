@@ -75,27 +75,6 @@ describe('Builds', () => {
     expect(handler.runCalls).toEqual(['build']);
   });
 
-  it('startTask_prefersRunThenBuildThenFirst', () => {
-    const builds: Builds = TestBed.inject(Builds);
-    const handler: FakeHandler = new FakeHandler();
-    handler.tasksSignal.set([
-      task({ id: 'b', label: 'b', group: 'build' }),
-      task({ id: 'serve', label: 'serve', group: 'run' }),
-    ]);
-    builds.register(handler);
-
-    expect(builds.startTask()?.id).toBe('serve');
-  });
-
-  it('startTask_fallsBackToBuildWhenNoRunTask', () => {
-    const builds: Builds = TestBed.inject(Builds);
-    const handler: FakeHandler = new FakeHandler();
-    handler.tasksSignal.set([task({ id: 'b', group: 'build' })]);
-    builds.register(handler);
-
-    expect(builds.startTask()?.id).toBe('b');
-  });
-
   it('unregister_clearsTheHandlerWhenItIsCurrent', () => {
     const builds: Builds = TestBed.inject(Builds);
     const handler: FakeHandler = new FakeHandler();

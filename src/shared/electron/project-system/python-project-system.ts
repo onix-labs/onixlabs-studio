@@ -193,9 +193,6 @@ export class PythonProjectSystem implements ProjectSystem {
       projects: this.flatten(tree),
       tree,
       capabilities: this.capabilities,
-      // Python has no universal runnable-target concept (no scripts axis like npm, no project artifact
-      // like .NET); the interpreted workflow runs the active file through the run-file task instead.
-      runConfigurations: [],
     };
   }
 

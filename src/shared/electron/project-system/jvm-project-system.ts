@@ -8,7 +8,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 
@@ -269,7 +268,6 @@ export class JvmProjectSystem implements ProjectSystem {
         projects: this.flatten(tree),
         tree,
         capabilities: this.capabilities,
-        runConfigurations: this.runConfigurations(this.flatten(tree)),
       };
     }
     const tree: readonly ProjectNode[] = [rootProject, ...modules];
@@ -280,28 +278,7 @@ export class JvmProjectSystem implements ProjectSystem {
       projects: this.flatten(tree),
       tree,
       capabilities: this.capabilities,
-      runConfigurations: this.runConfigurations(this.flatten(tree)),
     };
-  }
-
-  /**
-   * Derives the discovered run configurations for a model: one per project, identified by its manifest
-   * path. These are the Run dropdown's fallback until persisted `.studio` run configurations exist; the
-   * day-to-day build/test tasks are discovered separately from the build tool.
-   * @param projects The model's flattened projects.
-   * @returns Returns a run configuration per project.
-   */
-  private runConfigurations(
-    projects: readonly ProjectEntry[],
-  ): readonly RunConfigurationDescriptor[] {
-    return projects.map(
-      (project: ProjectEntry): RunConfigurationDescriptor => ({
-        id: project.path,
-        name: project.name,
-        kind: 'project',
-        detail: project.path,
-      }),
-    );
   }
 
   /**

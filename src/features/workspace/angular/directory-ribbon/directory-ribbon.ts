@@ -25,7 +25,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
  * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
  * the {@link Builds} seam to the active workspace's build runner. The Run group is the Tier-1 universal
  * widget: a Start button that toggles to Stop while a run is in flight, a run-configuration dropdown
- * (sourced from the workspace's `.studio` configurations, falling back to discovered tasks), a Debug
+ * (sourced solely from the workspace's authored `.studio` configurations — nothing is inferred), a Debug
  * button that launches the selected configuration under the {@link Debugger} seam, and a Configure
  * button that opens the run-configuration editor. The Solution group's
  * Build/Rebuild/Clean and the Target group's configuration and target selectors gate themselves on the
@@ -203,30 +203,23 @@ export class DirectoryRibbon {
   });
 
   /**
-   * Gets the run configurations offered by the dropdown, sourced from the workspace's `.studio`
-   * configurations when it has any, otherwise from the discovered build tasks as a fallback.
+   * Gets the run configurations offered by the dropdown: the workspace's authored `.studio`
+   * configurations, and nothing else. Studio never infers what a workspace should run, so a workspace
+   * with no configurations offers none.
    */
   protected readonly runOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => {
-      const configurations: readonly RunConfiguration[] = this.studio.runConfigurations();
-      if (configurations.length > 0) {
-        return configurations.map(
-          (configuration: RunConfiguration): DropdownOption => ({
-            value: configuration.id,
-            label: configuration.name,
-          }),
-        );
-      }
-      return this.builds
-        .tasks()
-        .map((task): DropdownOption => ({ value: task.id, label: task.label }));
-    },
+    (): readonly DropdownOption[] =>
+      this.studio.runConfigurations().map(
+        (configuration: RunConfiguration): DropdownOption => ({
+          value: configuration.id,
+          label: configuration.name,
+        }),
+      ),
   );
 
   /**
-   * Gets the id of the effective selected run item: the user's pick when it is still offered, otherwise
-   * the default (the `.studio` selection, or the default build task), or null when there is nothing to
-   * run.
+   * Gets the id of the effective selected run configuration: the user's pick when it is still offered,
+   * otherwise the persisted `.studio` selection, or null when the workspace has no configurations.
    */
   protected readonly selectedRunId: Signal<string | null> = computed((): string | null => {
     const options: readonly DropdownOption[] = this.runOptions();
@@ -239,25 +232,21 @@ export class DirectoryRibbon {
     if (picked !== undefined) {
       return picked.value;
     }
-    const fallback: string | undefined =
-      this.studio.runConfigurations().length > 0
-        ? this.studio.selectedRunConfiguration()?.id
-        : this.builds.startTask()?.id;
-    return fallback ?? options[0].value;
+    return this.studio.selectedRunConfiguration()?.id ?? options[0].value;
   });
 
   /**
-   * Gets whether there is a run item the Start action can launch.
+   * Gets whether there is a run configuration the Start action can launch.
    */
   protected readonly canRun: Signal<boolean> = computed(
     (): boolean => this.selectedRunId() !== null,
   );
 
   /**
-   * Gets the selected `.studio` run configuration, or undefined when the selected run item is a
-   * discovered task (which the debugger cannot launch — it needs a configuration's program/args).
+   * Gets the selected `.studio` run configuration, or undefined when the workspace has none. Both Start
+   * and Debug launch this one.
    */
-  private readonly debugConfiguration: Signal<RunConfiguration | undefined> = computed(
+  private readonly selectedConfiguration: Signal<RunConfiguration | undefined> = computed(
     (): RunConfiguration | undefined => {
       const id: string | null = this.selectedRunId();
       return id === null
@@ -277,7 +266,7 @@ export class DirectoryRibbon {
   protected readonly canDebug: Signal<boolean> = computed(
     (): boolean =>
       this.capabilities()?.debug != null &&
-      this.debugConfiguration() !== undefined &&
+      this.selectedConfiguration() !== undefined &&
       !this.debugger.running(),
   );
 
@@ -371,28 +360,18 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Runs the selected run item on the active workspace: a `.studio` run configuration through the
-   * configuration path, or a discovered task through the task path.
+   * Runs the selected `.studio` run configuration on the active workspace.
    */
   protected onRun(): void {
-    const id: string | null = this.selectedRunId();
-    if (id === null) {
-      return;
-    }
-    const configuration: RunConfiguration | undefined = this.studio
-      .runConfigurations()
-      .find((candidate: RunConfiguration): boolean => candidate.id === id);
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
       this.builds.runConfiguration(configuration);
-    } else {
-      this.builds.runTask(id);
     }
   }
 
   /**
-   * Picks the chosen run item from the dropdown, persisting the choice when it is a `.studio`
-   * configuration.
-   * @param id The id of the chosen run item.
+   * Picks the chosen run configuration from the dropdown, persisting the choice.
+   * @param id The id of the chosen run configuration.
    */
   protected onSelectRunItem(id: string): void {
     this.picked.set(id);
@@ -405,7 +384,7 @@ export class DirectoryRibbon {
    * Launches the selected run configuration under the debugger on the active workspace.
    */
   protected onDebug(): void {
-    const configuration: RunConfiguration | undefined = this.debugConfiguration();
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
       this.debugger.launch(configuration);
     }

@@ -8,7 +8,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 
@@ -218,26 +217,7 @@ export class RustProjectSystem implements ProjectSystem {
       projects,
       tree,
       capabilities: this.capabilities,
-      runConfigurations: this.runConfigurations(projects),
     };
-  }
-
-  /**
-   * Derives the discovered run configurations for a model: one per crate, run by `cargo run -p <name>`.
-   * @param projects The model's flattened crates.
-   * @returns Returns a run configuration per crate.
-   */
-  private runConfigurations(
-    projects: readonly ProjectEntry[],
-  ): readonly RunConfigurationDescriptor[] {
-    return projects.map(
-      (project: ProjectEntry): RunConfigurationDescriptor => ({
-        id: project.name,
-        name: project.name,
-        kind: 'project',
-        detail: `cargo run -p ${project.name}`,
-      }),
-    );
   }
 
   /**

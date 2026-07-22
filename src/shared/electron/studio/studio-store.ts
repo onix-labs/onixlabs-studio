@@ -5,11 +5,9 @@ import { StudioChannel } from '@shared/api/studio-channels';
 import {
   parseUser,
   parseWorkspace,
-  RunConfiguration,
   serializeUser,
   serializeWorkspace,
   STUDIO_DIR,
-  STUDIO_SCHEMA_VERSION,
   STUDIO_USER_FILE,
   STUDIO_USER_IGNORE,
   STUDIO_WORKSPACE_FILE,
@@ -113,48 +111,6 @@ export class StudioStore {
     const user: StudioUser = parseUser(payload);
     await this.write(root, STUDIO_USER_FILE, serializeUser(user));
     return true;
-  }
-
-  /**
-   * Seeds a workspace's shared configuration with default run configurations the first time a project
-   * opens, when it has no `workspace.json` yet. Idempotent: once a shared file exists (seeded here or
-   * authored by the user) it is never overwritten, so this can be called on every project load. Not
-   * confined by {@link WorkspaceContext} because it is only called by the main process for a root it has
-   * already validated.
-   * @param root The workspace root.
-   * @param configurations The default run configurations to seed.
-   * @returns Returns a promise that resolves once seeding completes (or is skipped).
-   */
-  public async seedRunConfigurations(
-    root: string,
-    configurations: readonly RunConfiguration[],
-  ): Promise<void> {
-    if (configurations.length === 0) {
-      return;
-    }
-    const target: string = path.join(root, STUDIO_DIR, STUDIO_WORKSPACE_FILE);
-    if (await this.exists(target)) {
-      return;
-    }
-    await this.write(
-      root,
-      STUDIO_WORKSPACE_FILE,
-      serializeWorkspace({ version: STUDIO_SCHEMA_VERSION, runConfigurations: configurations }),
-    );
-  }
-
-  /**
-   * Determines whether a file exists.
-   * @param file The absolute file path.
-   * @returns Returns true when the file exists.
-   */
-  private async exists(file: string): Promise<boolean> {
-    try {
-      await fs.access(file);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /**

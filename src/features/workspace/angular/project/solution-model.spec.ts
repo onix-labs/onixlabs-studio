@@ -97,10 +97,6 @@ function sampleModel(): ProjectModel {
       { type: 'project', name: 'B', path: '/root/B/B.csproj' },
     ],
     capabilities: sampleCapabilities(),
-    runConfigurations: [
-      { id: '/root/A/A.csproj', name: 'A', kind: 'project', detail: '/root/A/A.csproj' },
-      { id: '/root/B/B.csproj', name: 'B', kind: 'project', detail: '/root/B/B.csproj' },
-    ],
   };
 }
 
@@ -215,13 +211,12 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    // The capability descriptor and discovered run configurations ride the model over the ModelLoad
-    // channel, so the renderer exposes exactly what the provider stamped on in the main process.
+    // The capability descriptor rides the model over the ModelLoad channel, so the renderer exposes
+    // exactly what the provider stamped on in the main process.
     expect(model.capabilities()?.actions).toEqual(['build', 'clean', 'rebuild']);
     expect(model.capabilities()?.buildConfigurations.map((c) => c.name)).toEqual(['Debug', 'Release']);
     expect(model.capabilities()?.target?.label).toBe('Platform');
     expect(model.capabilities()?.debug).toBeNull();
-    expect(model.runConfigurations().map((r) => r.name)).toEqual(['A', 'B']);
   });
 
   it('rootOpens_withoutModel_hasNoCapabilities', async () => {
@@ -230,7 +225,6 @@ describe('SolutionModel', () => {
     await open(model);
 
     expect(model.capabilities()).toBeNull();
-    expect(model.runConfigurations()).toEqual([]);
   });
 
   it('rootOpens_withoutSolution_namesTheRootAfterTheFolder', async () => {
@@ -241,7 +235,6 @@ describe('SolutionModel', () => {
       projects: [],
       tree: [],
       capabilities: sampleCapabilities(),
-      runConfigurations: [],
     };
     const model: SolutionModel = build();
     root.set({ path: '/path/to/MyApp', name: 'MyApp', entries: [] });

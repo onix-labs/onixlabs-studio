@@ -95,7 +95,6 @@ describe('SolutionPanel', () => {
     projects: [],
     tree: [],
     capabilities: { actions: [], buildConfigurations: [], target: null, debug: null },
-    runConfigurations: [],
   };
 
   beforeEach(async () => {

@@ -15,6 +15,7 @@ import { DirectoryRibbon } from './directory-ribbon';
 interface RibbonInternals {
   runOptions(): readonly DropdownOption[];
   selectedRunId(): string | null;
+  canRun(): boolean;
   onRun(): void;
   onSelectRunItem(id: string): void;
   onStop(): void;
@@ -91,17 +92,9 @@ class FakeBuilds {
   public readonly tasks: WritableSignal<readonly BuildTask[]> = signal<readonly BuildTask[]>([]);
   public readonly running: WritableSignal<boolean> = signal<boolean>(false);
   public readonly canBuild: WritableSignal<boolean> = signal<boolean>(false);
-  public readonly startTask: WritableSignal<BuildTask | undefined> = signal<BuildTask | undefined>(
-    undefined,
-  );
-  public readonly runTaskCalls: string[] = [];
   public readonly runConfigurationCalls: RunConfiguration[] = [];
   public readonly actionCalls: ProjectAction[] = [];
   public cancelCalls: number = 0;
-
-  public runTask(id: string): void {
-    this.runTaskCalls.push(id);
-  }
 
   public runConfiguration(configuration: RunConfiguration): void {
     this.runConfigurationCalls.push(configuration);
@@ -222,7 +215,7 @@ describe('DirectoryRibbon', () => {
     expect(component).toBeTruthy();
   });
 
-  it('listsTheStudioConfigurationsWhenPresent', () => {
+  it('listsTheStudioConfigurations', () => {
     studio.runConfigurations.set([configuration('a', 'A'), configuration('b', 'B')]);
 
     const options: readonly DropdownOption[] = internals().runOptions();
@@ -232,11 +225,14 @@ describe('DirectoryRibbon', () => {
     ]);
   });
 
-  it('fallsBackToDiscoveredTasksWhenThereAreNoConfigurations', () => {
+  it('offersNothingToRunWithoutConfigurations_evenWhenTasksWereDiscovered', () => {
+    // Discovered build tasks drive the Solution group's Build action; Studio never guesses them into
+    // the Run dropdown, so a workspace with no authored configurations has nothing to start.
     builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
 
-    const options: readonly DropdownOption[] = internals().runOptions();
-    expect(options).toEqual([{ value: 't', label: 'dotnet run' }]);
+    expect(internals().runOptions()).toEqual([]);
+    expect(internals().selectedRunId()).toBeNull();
+    expect(internals().canRun()).toBe(false);
   });
 
   it('runsAConfigurationThroughTheConfigurationPath', () => {
@@ -246,17 +242,13 @@ describe('DirectoryRibbon', () => {
     internals().onRun();
 
     expect(builds.runConfigurationCalls).toEqual([config]);
-    expect(builds.runTaskCalls).toEqual([]);
   });
 
-  it('runsADiscoveredTaskThroughTheTaskPath', () => {
-    const runnable: BuildTask = task({ id: 't', label: 'dotnet run' });
-    builds.tasks.set([runnable]);
-    builds.startTask.set(runnable);
+  it('runsNothingWhenTheWorkspaceHasNoConfigurations', () => {
+    builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
 
     internals().onRun();
 
-    expect(builds.runTaskCalls).toEqual(['t']);
     expect(builds.runConfigurationCalls).toEqual([]);
   });
 
@@ -298,10 +290,8 @@ describe('DirectoryRibbon', () => {
     capabilities.capabilities.set(dotnetWithDebug());
     expect(internals().canDebug()).toBe(true);
 
-    // A discovered task (no run configuration) cannot be debugged, even with an adapter.
+    // With no run configuration there is nothing to debug, even with an adapter.
     studio.runConfigurations.set([]);
-    builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
-    builds.startTask.set(task({ id: 't', label: 'dotnet run' }));
     expect(internals().canDebug()).toBe(false);
 
     // Not while a session is already running.
