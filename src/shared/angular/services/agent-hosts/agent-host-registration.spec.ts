@@ -27,9 +27,13 @@ describe('createAgentHostRegistrar', () => {
    * @param surface The tool surface.
    * @returns Returns the registrar (already finalised for the tab).
    */
-  function register(tabId: string, surface: AgentSurface = 'project'): AgentHostRegistrar {
+  function register(
+    tabId: string,
+    surface: AgentSurface = 'project',
+    branch?: () => string | null,
+  ): AgentHostRegistrar {
     const registrar: AgentHostRegistrar = TestBed.runInInjectionContext(() =>
-      createAgentHostRegistrar({ isActive: isActive.asReadonly(), surface }),
+      createAgentHostRegistrar({ isActive: isActive.asReadonly(), surface, branch }),
     );
     registrar.register(tabId);
     return registrar;
@@ -105,6 +109,27 @@ describe('createAgentHostRegistrar', () => {
     // ...and a missing tab falls back to the generic name.
     tabs.set([]);
     expect(hostPayload?.label()).toBe('Agent');
+  });
+
+  it('branch_isOmitted_forAHostWithNoProjectBehindIt', () => {
+    register('tab-1');
+
+    expect(hostPayload?.branch).toBeUndefined();
+  });
+
+  it('branch_reactivelyResolvesTheProjectsBranch_throughTheSuppliedClosure', () => {
+    const branch: WritableSignal<string | null> = signal<string | null>('main');
+    register('tab-1', 'editor', (): string | null => branch());
+
+    expect(hostPayload?.branch?.()).toBe('main');
+
+    // A checkout in the owning view updates the host, so Mission Control follows it live...
+    branch.set('feature/x');
+    expect(hostPayload?.branch?.()).toBe('feature/x');
+
+    // ...and a detached head (or a folder that is not a repository) reads null.
+    branch.set(null);
+    expect(hostPayload?.branch?.()).toBeNull();
   });
 
   it('destroy_unregistersFromBothRegistries', () => {

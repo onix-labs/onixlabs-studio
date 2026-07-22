@@ -32,12 +32,19 @@ export interface AgentHostRegistrar {
  * Injects its dependencies in the calling injection context (a component field initializer); the
  * caller finalises registration from `ngOnInit` via {@link AgentHostRegistrar.register}, once the
  * required tab-id input is readable.
- * @param options The host's active-state signal and tool surface.
+ * @param options The host's active-state signal, tool surface, and optional branch resolver.
  * @returns Returns a registrar to finalise once the tab id is known.
  */
 export function createAgentHostRegistrar(options: {
   readonly isActive: Signal<boolean>;
   readonly surface: AgentSurface;
+  /**
+   * Resolves the branch the view's project is on (null when it is not a repository, or its head is
+   * detached), or undefined for a host with no project behind it. Read lazily on every evaluation —
+   * a view passes a closure over its own git state, which is not yet constructed when the registrar
+   * is created in a field initializer.
+   */
+  readonly branch?: () => string | null;
 }): AgentHostRegistrar {
   const agent: Agent = inject(Agent);
   const conversation: AgentConversation = inject(AgentConversation);
@@ -45,12 +52,15 @@ export function createAgentHostRegistrar(options: {
   const requests: AgentRequests = inject(AgentRequests);
   const tabs: Tabs = inject(Tabs);
   const destroyRef: DestroyRef = inject(DestroyRef);
+  const resolveBranch: (() => string | null) | undefined = options.branch;
 
   return {
     register(tabId: string): void {
       const label: Signal<string> = computed(
         (): string => tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent',
       );
+      const branch: Signal<string | null> | undefined =
+        resolveBranch === undefined ? undefined : computed((): string | null => resolveBranch());
       destroyRef.onDestroy(
         requests.register({
           agent,
@@ -62,6 +72,7 @@ export function createAgentHostRegistrar(options: {
         hosts.register({
           tabId,
           label,
+          branch,
           surface: options.surface,
           agent,
           conversation,

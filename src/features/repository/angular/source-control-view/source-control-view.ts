@@ -203,6 +203,9 @@ export class SourceControlView implements OnInit, OnDestroy {
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
     surface: 'editor',
+    // Mission Control shows the bound repository's branch beside this column's title (null while no
+    // repository is bound, or while the head is detached).
+    branch: (): string | null => this.repository.currentBranch()?.name ?? null,
   });
 
   /**

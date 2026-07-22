@@ -51,6 +51,12 @@ interface RailItem {
   readonly icon: Icon;
 
   /**
+   * Gets the branch the host's project is on, or null for a host with no project behind it (a file,
+   * terminal, or binary agent, or a folder that is not a repository).
+   */
+  readonly branch: string | null;
+
+  /**
    * Gets the run-state label (Working / Idle / Ready).
    */
   readonly statusLabel: string;
@@ -193,6 +199,7 @@ export class MissionControlPanel {
       return {
         id: host.id,
         label: host.label(),
+        branch: host.branch?.() ?? null,
         icon: tabIcon ?? Icon.AGENT,
         statusLabel: running ? 'Working' : hasMessages ? 'Idle' : 'Ready',
         isRunning: running,
