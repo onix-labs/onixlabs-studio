@@ -226,11 +226,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 /**
  * Parses a single run configuration defensively, dropping it (returning null) when its required
- * identity fields are missing or malformed and coercing its optional fields.
+ * identity fields are missing or malformed and coercing its optional fields. Exported so an authoring
+ * path (the agent's run-configuration tools) validates and normalises exactly as the file reader does.
  * @param value The raw configuration.
  * @returns Returns the configuration, or null when it is unusable.
  */
-function parseRunConfiguration(value: unknown): RunConfiguration | null {
+export function parseRunConfiguration(value: unknown): RunConfiguration | null {
   const record: Record<string, unknown> | null = asRecord(value);
   if (record === null) {
     return null;
@@ -425,4 +426,67 @@ export function resolveSelectedRunConfiguration(snapshot: StudioSnapshot): RunCo
       configuration.id === snapshot.user.selectedRunConfigurationId,
   );
   return selected ?? configurations[0];
+}
+
+/**
+ * Reports what is wrong with a set of run configurations, as human-readable issues an author (a person
+ * or an agent) can act on: duplicate ids, compound members that name nothing, and compound cycles.
+ *
+ * This is the *authoring* check, deliberately stricter than the *reading* path: the file reader is
+ * total ({@link expandRunConfiguration} simply drops what it cannot resolve, so a half-edited file
+ * still runs what it can), whereas writing a configuration that names a missing member is a mistake
+ * worth refusing before it reaches disk.
+ * @param configurations The full set to validate.
+ * @returns Returns the issues found, empty when the set is sound.
+ */
+export function findRunConfigurationIssues(
+  configurations: readonly RunConfiguration[],
+): readonly string[] {
+  const issues: string[] = [];
+  const byId: Map<string, RunConfiguration> = new Map<string, RunConfiguration>();
+  for (const configuration of configurations) {
+    if (byId.has(configuration.id)) {
+      issues.push(`Duplicate run configuration id "${configuration.id}".`);
+    }
+    byId.set(configuration.id, configuration);
+  }
+
+  for (const configuration of configurations) {
+    for (const memberId of configuration.members ?? []) {
+      if (memberId === configuration.id) {
+        issues.push(`Compound "${configuration.id}" names itself as a member.`);
+      } else if (!byId.has(memberId)) {
+        issues.push(`Compound "${configuration.id}" names a member "${memberId}" that does not exist.`);
+      }
+    }
+  }
+
+  // Depth-first search over the compound graph, reporting each cycle once (from its lowest-sorting id).
+  const state: Map<string, 'visiting' | 'done'> = new Map<string, 'visiting' | 'done'>();
+  const walk: (configuration: RunConfiguration, trail: readonly string[]) => void = (
+    configuration: RunConfiguration,
+    trail: readonly string[],
+  ): void => {
+    if (state.get(configuration.id) === 'done') {
+      return;
+    }
+    if (state.get(configuration.id) === 'visiting') {
+      const cycle: readonly string[] = [...trail.slice(trail.indexOf(configuration.id)), configuration.id];
+      issues.push(`Compound cycle: ${cycle.join(' → ')}.`);
+      return;
+    }
+    state.set(configuration.id, 'visiting');
+    for (const memberId of configuration.members ?? []) {
+      const member: RunConfiguration | undefined = byId.get(memberId);
+      if (member !== undefined && member.id !== configuration.id) {
+        walk(member, [...trail, configuration.id]);
+      }
+    }
+    state.set(configuration.id, 'done');
+  };
+  for (const configuration of configurations) {
+    walk(configuration, []);
+  }
+
+  return [...new Set(issues)];
 }

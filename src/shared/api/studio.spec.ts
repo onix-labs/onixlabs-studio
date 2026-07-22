@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMPOUND_PROVIDER_KIND,
+  findRunConfigurationIssues,
   defaultUser,
   defaultWorkspace,
   expandRunConfiguration,
@@ -235,5 +236,59 @@ describe('compound run configurations', () => {
         (leaf: RunConfiguration): string => leaf.id,
       ),
     ).toEqual(['api']);
+  });
+});
+
+describe('findRunConfigurationIssues', () => {
+  /**
+   * Builds a compound naming the given member ids.
+   * @param id The compound's id.
+   * @param members The member ids.
+   * @returns Returns the compound.
+   */
+  function compound(id: string, members: readonly string[]): RunConfiguration {
+    return { id, name: id, providerKind: COMPOUND_PROVIDER_KIND, mode: 'run', members };
+  }
+
+  it('acceptsASoundSet', () => {
+    const api: RunConfiguration = config('api', 'API');
+    const web: RunConfiguration = config('web', 'Web');
+
+    expect(findRunConfigurationIssues([api, web, compound('all', ['api', 'web'])])).toEqual([]);
+  });
+
+  it('reportsADuplicateId', () => {
+    const issues: readonly string[] = findRunConfigurationIssues([config('a', 'A'), config('a', 'B')]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('Duplicate run configuration id "a"');
+  });
+
+  it('reportsAMemberThatDoesNotExist', () => {
+    const issues: readonly string[] = findRunConfigurationIssues([
+      config('api', 'API'),
+      compound('all', ['api', 'ghost']),
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('"ghost"');
+  });
+
+  it('reportsSelfReferenceAndCycles', () => {
+    expect(findRunConfigurationIssues([compound('self', ['self'])])[0]).toContain('names itself');
+
+    const cycle: readonly string[] = findRunConfigurationIssues([
+      compound('left', ['right']),
+      compound('right', ['left']),
+    ]);
+    expect(cycle.some((issue: string): boolean => issue.startsWith('Compound cycle:'))).toBe(true);
+  });
+
+  it('acceptsADiamond_whichIsNotACycle', () => {
+    const api: RunConfiguration = config('api', 'API');
+
+    expect(
+      findRunConfigurationIssues([api, compound('one', ['api']), compound('two', ['api']), compound('both', ['one', 'two'])]),
+    ).toEqual([]);
   });
 });

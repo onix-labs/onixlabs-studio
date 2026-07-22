@@ -126,6 +126,25 @@ export const COMMIT_EDIT_PREVIEW: string = 'commit_edit_preview';
 export const CANCEL_EDIT_PREVIEW: string = 'cancel_edit_preview';
 
 /**
+ * The in-app capability that lists the open workspace's `.studio` run configurations, so the agent can
+ * see what already exists before authoring more.
+ */
+export const LIST_RUN_CONFIGURATIONS: string = 'list_run_configurations';
+
+/**
+ * The in-app capability that creates or updates run configurations in the open workspace's
+ * `.studio/workspace.json`. Configurations are matched by id: a known id is replaced, an unknown one is
+ * added.
+ */
+export const SAVE_RUN_CONFIGURATIONS: string = 'save_run_configurations';
+
+/**
+ * The in-app capability that deletes run configurations from the open workspace's
+ * `.studio/workspace.json` by id.
+ */
+export const DELETE_RUN_CONFIGURATIONS: string = 'delete_run_configurations';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
  * standalone agent tab, which has no owning document and works through the provider's built-in tools

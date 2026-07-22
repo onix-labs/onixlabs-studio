@@ -13,6 +13,9 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   ASK_USER,
+  DELETE_RUN_CONFIGURATIONS,
+  LIST_RUN_CONFIGURATIONS,
+  SAVE_RUN_CONFIGURATIONS,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -57,6 +60,11 @@ import {
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
   PROJECT_PROMPT_APPENDIX,
+  RUN_CONFIGURATION_PROMPT_APPENDIX,
+  LIST_RUN_CONFIGURATIONS_FQN,
+  listRunConfigurations,
+  saveRunConfigurations,
+  deleteRunConfigurations,
   READ_ONLY_APPENDIX,
   READ_BINARY_BYTES_FQN,
   READ_BINARY_DISASSEMBLY_FQN,
@@ -363,6 +371,89 @@ export class ClaudeAgentProvider implements AgentProvider {
           async (args: { question: string; choices?: AiInputChoice[] }) =>
             text(await askUser(getContext(), args.question, args.choices ?? [])),
         ),
+        // The run-configuration tools ride on the surfaces whose agents are workspace-scoped: the IDE
+        // views (editor) and the standalone agent tab (project). A terminal- or binary-docked agent is
+        // deliberately confined to its own surface and gets none of this. Withheld in read-only chat
+        // mode, which never writes.
+        ...(readOnly || terminal || binary
+          ? []
+          : [
+              tool(
+                LIST_RUN_CONFIGURATIONS,
+                "List the open workspace's run configurations (the entries in its Run dropdown, stored in .studio/workspace.json).",
+                {},
+                async () => text(await listRunConfigurations(getContext())),
+              ),
+              tool(
+                SAVE_RUN_CONFIGURATIONS,
+                "Create or update the open workspace's run configurations. Entries are matched by id: a known id is replaced, a new id is added. A configuration with `members` is a compound that starts those configurations in parallel.",
+                {
+                  configurations: z
+                    .array(
+                      z.object({
+                        id: z
+                          .string()
+                          .min(1)
+                          .describe('Stable, unique, kebab-case identifier for the configuration.'),
+                        name: z
+                          .string()
+                          .min(1)
+                          .describe("Display name shown in the Run dropdown, written for a human."),
+                        providerKind: z
+                          .string()
+                          .optional()
+                          .describe(
+                            'The ecosystem that runs it: dotnet, node, jvm, cpp, rust, go — or "compound" for a configuration with members.',
+                          ),
+                        mode: z
+                          .enum(['run', 'debug'])
+                          .optional()
+                          .describe('Whether it launches normally ("run", the default) or under the debugger.'),
+                        program: z
+                          .string()
+                          .optional()
+                          .describe(
+                            'The command or executable to launch. When set it wins; otherwise the command is derived from providerKind and id.',
+                          ),
+                        args: z
+                          .array(z.string())
+                          .optional()
+                          .describe('Arguments passed to the program.'),
+                        cwd: z
+                          .string()
+                          .optional()
+                          .describe('Working directory to launch in; defaults to the workspace root.'),
+                        env: z
+                          .record(z.string(), z.string())
+                          .optional()
+                          .describe('Environment variables to launch with.'),
+                        members: z
+                          .array(z.string())
+                          .optional()
+                          .describe(
+                            'For a compound: the ids of the configurations to start in parallel. Every id must exist.',
+                          ),
+                      }),
+                    )
+                    .min(1)
+                    .describe('The configurations to create or update.'),
+                },
+                async (args: { configurations: unknown[] }) =>
+                  text(await saveRunConfigurations(getContext(), args.configurations)),
+              ),
+              tool(
+                DELETE_RUN_CONFIGURATIONS,
+                "Delete run configurations from the open workspace by id.",
+                {
+                  ids: z
+                    .array(z.string().min(1))
+                    .min(1)
+                    .describe('The ids of the configurations to delete.'),
+                },
+                async (args: { ids: string[] }) =>
+                  text(await deleteRunConfigurations(getContext(), args.ids)),
+              ),
+            ]),
         ...(project
           ? []
           : terminal
@@ -833,6 +924,10 @@ export class ClaudeAgentProvider implements AgentProvider {
       // read-only exploration only.
       allowedTools: [
         ASK_USER_FQN,
+        // Listing run configurations is a read: auto-allowed wherever the tools are registered, so the
+        // agent can see what exists without a prompt. Saving and deleting are writes and go through
+        // canUseTool like any other mutation.
+        ...(readOnly || terminal || binary ? [] : [LIST_RUN_CONFIGURATIONS_FQN]),
         ...(terminal
           ? [READ_TERMINAL_FQN]
           : binary
@@ -951,7 +1046,14 @@ export class ClaudeAgentProvider implements AgentProvider {
             : STUDIO_PROMPT_APPENDIX;
     // Every surface learns it can ask the user questions instead of guessing.
     const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
-    return readOnly ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
+    if (readOnly) {
+      return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
+    }
+    // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
+    // are told how to author them (see the tool registration in `buildRunOptions`).
+    return surface === 'terminal' || surface === 'binary'
+      ? withAsk
+      : `${withAsk}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`;
   }
 
   /**

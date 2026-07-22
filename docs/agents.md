@@ -229,6 +229,19 @@ the Configure dialog edits them. A configuration that names `members` is a **com
 starts each member as its own run, in parallel (`expandRunConfiguration` resolves them, tolerating
 unknown members and cycles), so each member stays individually stoppable.
 
+**Authoring is either by hand or by agent — never inferred.** The Configure dialog's **Auto-configure**
+and **Ask agent** buttons dispatch to the _active workspace's own agent_ (`RunConfigurationAgent`
+resolves the active tab's live `AgentHost`), so the work runs in the agent the user already has: its
+transcript appears in the Agent panel and Mission Control, and it inherits write confinement, per-tool
+policy, and the audit log. The agent writes through three project/editor-surface MCP capabilities —
+`list_run_configurations` (read-only, auto-allowed), `save_run_configurations`, and
+`delete_run_configurations` (gated writes) — handled in the renderer against `StudioConfig`, so the Run
+dropdown and the dialog update as the agent works. Every write is validated as a whole
+(`findRunConfigurationIssues`: duplicate ids, members naming nothing, compound cycles) and refused with
+a reason the agent can act on. The dialog is modal, so it renders the agent's own pending
+permission prompts inline (`AgentRequestCard`) — otherwise a run blocked on "Allow Bash?" would stall
+behind it, unanswerable.
+
 ### 4.7 Debugging (DAP)
 
 Debugging is built on the **Debug Adapter Protocol**, mirroring the LSP subsystem's shape. DAP is _not_

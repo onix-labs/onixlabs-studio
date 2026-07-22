@@ -4,10 +4,12 @@ import {
   COMMIT_EDIT_PREVIEW,
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
   DELETE_BINARY_BYTES,
+  DELETE_RUN_CONFIGURATIONS,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
   INSERT_BINARY_BYTES,
   InsertPlacement,
+  LIST_RUN_CONFIGURATIONS,
   PATCH_BINARY_BYTES,
   READ_ACTIVE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
@@ -18,6 +20,7 @@ import {
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  SAVE_RUN_CONFIGURATIONS,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
   type AgentContextRef,
@@ -105,6 +108,19 @@ export const WRITE_BINARY_ASSEMBLY_FQN: string = `mcp__studio__${WRITE_BINARY_AS
  * every surface: asking is not a mutation, and the user's answer is itself the gate.
  */
 export const ASK_USER_FQN: string = `mcp__studio__${ASK_USER}`;
+
+/**
+ * The fully-qualified tool name of the read-only run-configuration listing, auto-allowed like the
+ * other read-only in-app tools.
+ */
+export const LIST_RUN_CONFIGURATIONS_FQN: string = `mcp__studio__${LIST_RUN_CONFIGURATIONS}`;
+
+/**
+ * The fully-qualified tool names of the mutating run-configuration tools, which go through the
+ * permission gate like any other write.
+ */
+export const SAVE_RUN_CONFIGURATIONS_FQN: string = `mcp__studio__${SAVE_RUN_CONFIGURATIONS}`;
+export const DELETE_RUN_CONFIGURATIONS_FQN: string = `mcp__studio__${DELETE_RUN_CONFIGURATIONS}`;
 
 /**
  * The description the ask-user tool is registered with, shared by the Claude and AI-SDK providers so
@@ -215,6 +231,38 @@ export const PROJECT_PROMPT_APPENDIX: string = [
 ].join('\n');
 
 /**
+ * Appended to the system prompt wherever the run-configuration tools are registered, so the model knows
+ * the schema it is authoring, the house rules, and — crucially — that it should verify what it writes
+ * rather than pattern-match a manifest. This is the whole point of the feature: Studio deliberately
+ * stopped guessing run configurations, and an agent that guesses just as badly is no improvement.
+ */
+export const RUN_CONFIGURATION_PROMPT_APPENDIX: string = [
+  "You can author the open workspace's run configurations — the entries in its Run dropdown, persisted",
+  'in `.studio/workspace.json`:',
+  `- "${LIST_RUN_CONFIGURATIONS}" lists what already exists. Call it first, so you amend rather than`,
+  '  duplicate.',
+  `- "${SAVE_RUN_CONFIGURATIONS}" creates or updates configurations; entries are matched by id, so`,
+  '  saving an existing id replaces that configuration and a new id appends one.',
+  `- "${DELETE_RUN_CONFIGURATIONS}" removes configurations by id.`,
+  'A configuration is an object: `id` (stable, kebab-case, unique), `name` (what the user reads in the',
+  'dropdown), `providerKind` (the ecosystem: dotnet, node, jvm, cpp, rust, go — or `compound`), `mode`',
+  '("run" or "debug"), and optionally `program` + `args` (the command to launch), `cwd` (relative to the',
+  'workspace root), and `env`. When `program` is given it wins; otherwise the provider derives the',
+  'command from the kind and id (for example `node` runs `npm run <id>`, `dotnet` runs',
+  '`dotnet run --project <id>`).',
+  'A configuration may instead be a **compound**: give it `members` — the ids of other configurations —',
+  'and starting it starts all of them in parallel, each individually stoppable. When the user says they',
+  'need several things running together, author the individual configurations AND a compound that starts',
+  'them, rather than leaving them to press Start three times.',
+  'House rules: verify before you write — read the manifests, scripts, and project files, and check that',
+  'a path or script you name actually exists. Do not invent configurations for things that cannot be run',
+  '(a library with no entry point, a lint script the user did not ask for) merely because a manifest',
+  'lists them. Prefer a handful of configurations a developer would actually press over an exhaustive',
+  'dump. Names are for humans: "API (watch)" beats "start:dev". If the workspace is one you cannot make',
+  'sense of, say so instead of authoring guesses.',
+].join('\n');
+
+/**
  * Appended to the system prompt for a terminal-surface run, so the model knows it acts only through
  * the owning terminal.
  */
@@ -261,6 +309,67 @@ export const BINARY_PROMPT_APPENDIX: string = [
   'Offsets and lengths are byte counts in the file. Prefer these tools over the file-system tools for',
   'inspecting or editing this file, since it may have unsaved edits held in the editor.',
 ].join('\n');
+
+/**
+ * Lists the open workspace's run configurations through the renderer bridge and renders them for the
+ * model as JSON (the same shape the save tool accepts, so the model can round-trip an edit).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the configurations, or a note that no workspace is open.
+ */
+export async function listRunConfigurations(context: AgentRunContext): Promise<string> {
+  const result: unknown = await context.bridge.request(LIST_RUN_CONFIGURATIONS, {});
+  const read: { available?: boolean; root?: string; configurations?: unknown[] } = result ?? {};
+  if (read.available !== true) {
+    return 'No workspace folder is open, so there are no run configurations.';
+  }
+  const configurations: unknown[] = read.configurations ?? [];
+  if (configurations.length === 0) {
+    return `The workspace at ${read.root ?? 'the open root'} has no run configurations yet.`;
+  }
+  return `The workspace at ${read.root ?? 'the open root'} has these run configurations:\n${JSON.stringify(
+    configurations,
+    null,
+    2,
+  )}`;
+}
+
+/**
+ * Creates or updates run configurations through the renderer bridge and renders the outcome. The
+ * renderer validates the resulting set as a whole, so a refusal comes back as a reason the model can
+ * act on rather than a silent partial write.
+ * @param context The agent run context (carries the bridge).
+ * @param configurations The configurations to create or update.
+ * @returns Returns a confirmation, or the reason the write was refused.
+ */
+export async function saveRunConfigurations(
+  context: AgentRunContext,
+  configurations: readonly unknown[],
+): Promise<string> {
+  const result: unknown = await context.bridge.request(SAVE_RUN_CONFIGURATIONS, { configurations });
+  const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
+  if (write.ok !== true) {
+    return write.error ?? 'The run configurations could not be saved.';
+  }
+  const ids: string[] = write.ids ?? [];
+  return `Saved ${ids.length} run configuration(s): ${ids.join(', ')}. They are now in the workspace's Run dropdown.`;
+}
+
+/**
+ * Deletes run configurations by id through the renderer bridge and renders the outcome.
+ * @param context The agent run context (carries the bridge).
+ * @param ids The ids of the configurations to delete.
+ * @returns Returns a confirmation, or the reason the deletion was refused.
+ */
+export async function deleteRunConfigurations(
+  context: AgentRunContext,
+  ids: readonly string[],
+): Promise<string> {
+  const result: unknown = await context.bridge.request(DELETE_RUN_CONFIGURATIONS, { ids });
+  const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
+  return write.ok === true
+    ? `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}.`
+    : (write.error ?? 'The run configurations could not be deleted.');
+}
 
 /**
  * Asks the user a question through the run context's input round-trip and renders their answer for
