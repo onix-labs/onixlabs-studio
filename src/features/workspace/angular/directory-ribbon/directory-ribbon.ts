@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal, W
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
-import { Builds } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
@@ -14,6 +14,10 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -41,6 +45,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripButtonSmall,
+    RibbonStripMenuButton,
     RibbonStripField,
     RibbonStripRow,
     Dropdown,
@@ -141,9 +146,46 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether the active workspace is running a task.
+   * Gets whether the active workspace has anything running.
    */
   protected readonly running: Signal<boolean> = this.builds.running;
+
+  /**
+   * Gets the active workspace's in-flight runs, listed by the Stop button's menu.
+   */
+  protected readonly activeRuns: Signal<readonly ActiveRun[]> = this.builds.activeRuns;
+
+  /**
+   * Gets the Stop button's label: stopping one run needs no qualification, but with several in flight
+   * the big button is the "everything" button and says so.
+   */
+  protected readonly stopLabel: Signal<string> = computed((): string =>
+    this.activeRuns().length > 1 ? `Stop All (${this.activeRuns().length})` : 'Stop',
+  );
+
+  /**
+   * Gets the Stop menu's items, one per in-flight run, so a single run can be stopped without stopping
+   * the rest. Runs of the same configuration are numbered in launch order, since their labels alone
+   * would not tell them apart.
+   */
+  protected readonly runMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => {
+      const runs: readonly ActiveRun[] = this.activeRuns();
+      const counts: Map<string, number> = new Map<string, number>();
+      for (const run of runs) {
+        counts.set(run.taskId, (counts.get(run.taskId) ?? 0) + 1);
+      }
+      const seen: Map<string, number> = new Map<string, number>();
+      return runs.map((run: ActiveRun): RibbonMenuItem => {
+        const ordinal: number = (seen.get(run.taskId) ?? 0) + 1;
+        seen.set(run.taskId, ordinal);
+        const duplicated: boolean = (counts.get(run.taskId) ?? 0) > 1;
+        // Deliberately iconless: the stop glyph is a filled square, which in a menu column reads as an
+        // unticked checkbox rather than an action.
+        return { id: run.id, label: duplicated ? `${run.label} (${ordinal})` : run.label };
+      });
+    },
+  );
 
   /**
    * Gets whether the Target group is shown at all: only when the provider declares a build-configuration
@@ -403,11 +445,18 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Stops everything the active workspace is running. Stopping one run of several arrives with the Stop
-   * split-button (P2).
+   * Stops everything the active workspace is running.
    */
   protected onStop(): void {
     this.builds.cancelAll();
+  }
+
+  /**
+   * Stops one in-flight run, chosen from the Stop button's menu, leaving the others running.
+   * @param runId The run to stop.
+   */
+  protected onStopRun(runId: string): void {
+    this.builds.cancel(runId);
   }
 
   /**

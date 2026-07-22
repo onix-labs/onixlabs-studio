@@ -211,7 +211,10 @@ here is a bug — its root is never set at the root injector, so `.studio` would
   build task), `runConfiguration()` (a `.studio` run configuration compiled to a command), and
   `runAction()` (Clean/Rebuild, compiled per ecosystem). Discovered tasks back the Solution group only
   — they never reach the Run dropdown. **Runs are concurrent**: `activeRuns` lists every in-flight run,
-  `cancel(runId)` stops one and `cancelAll()` stops the lot. A run configuration streams into its own
+  `cancel(runId)` stops one and `cancelAll()` stops the lot; the ribbon's Start becomes a Stop
+  split-button whose menu stops a single run. Cancelling kills the task's whole **process tree**
+  (POSIX process group, `taskkill /T` on Windows) with a `SIGKILL` escalation — signalling only the
+  wrapping shell leaves children holding the output pipes open, so the run never appears to end. A run configuration streams into its own
   Output channel (`run:<id>`) so parallel runs stay readable; build/test/action output shares `build`.
 - **`StudioConfig`** — the active workspace's `.studio` persistence.
 

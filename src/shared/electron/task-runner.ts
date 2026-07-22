@@ -4,6 +4,13 @@ import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import { TaskChannel, TaskRunRequest, TaskRunResult } from '@shared/api/task-channels';
 
 /**
+ * How long, in milliseconds, a cancelled task is given to exit after `SIGTERM` before it is killed
+ * outright. Long enough for a server to close its listeners, short enough that a wedged process does
+ * not sit in the Stop menu indefinitely.
+ */
+const TERMINATE_GRACE_MS: number = 5000;
+
+/**
  * Runs tasks as child processes for the renderer: spawns a command through the platform shell,
  * streams its standard output and error back over IPC, reports its exit, and answers cancel requests.
  * One instance is owned by the main process.
@@ -26,6 +33,12 @@ export class TaskRunner {
     string,
     ChildProcessWithoutNullStreams
   >();
+
+  /**
+   * Holds the pending force-kill timers of cancelled runs, keyed by run identifier, so a task that
+   * ignores `SIGTERM` is killed outright rather than lingering.
+   */
+  private readonly forceTimers: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
 
   /**
    * Initializes a new instance of the {@link TaskRunner} class.
@@ -52,9 +65,13 @@ export class TaskRunner {
    * Terminates every running task. Called on application shutdown.
    */
   public disposeAll(): void {
+    for (const timer of this.forceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.forceTimers.clear();
     for (const child of this.runs.values()) {
       try {
-        child.kill();
+        this.killTree(child, 'SIGKILL');
       } catch {
         // Best-effort cleanup on shutdown; ignore individual kill failures.
       }
@@ -91,6 +108,11 @@ export class TaskRunner {
         shell: true,
         cwd,
         env: process.env,
+        // Give the task its own process group (POSIX) so cancelling can signal the whole tree. The
+        // command runs through a shell, so signalling only the shell would leave its children — the
+        // actual server or watcher — running, holding the output pipes open so the task never appears
+        // to exit. Windows has no process groups here; `taskkill /T` walks the tree instead.
+        detached: process.platform !== 'win32',
       });
 
       child.stdout.on('data', (data: Buffer): void => {
@@ -104,6 +126,7 @@ export class TaskRunner {
       });
       child.on('close', (code: number | null, signal: NodeJS.Signals | null): void => {
         this.runs.delete(runId);
+        this.clearForceTimer(runId);
         this.send(TaskChannel.Exit, runId, code, signal);
       });
 
@@ -116,22 +139,77 @@ export class TaskRunner {
   }
 
   /**
-   * Cancels (kills) the task identified by the given run identifier.
+   * Cancels the task identified by the given run identifier by terminating its whole process tree, and
+   * schedules a force-kill in case it ignores the polite signal. The run is *not* dropped here: it is
+   * removed when its `close` event arrives, which is also what tells the renderer the run has ended.
    * @param runId The run identifier.
-   * @returns Returns true when the run existed and was cancelled.
+   * @returns Returns true when the run existed and was signalled.
    */
   private cancel(runId: string): boolean {
     const child: ChildProcessWithoutNullStreams | undefined = this.runs.get(runId);
     if (child === undefined) {
       return false;
     }
-    try {
-      child.kill();
-    } catch {
-      // Ignore kill failures; the run is removed regardless.
+    this.killTree(child, 'SIGTERM');
+    if (!this.forceTimers.has(runId)) {
+      const timer: NodeJS.Timeout = setTimeout((): void => {
+        this.forceTimers.delete(runId);
+        const pending: ChildProcessWithoutNullStreams | undefined = this.runs.get(runId);
+        if (pending !== undefined) {
+          this.killTree(pending, 'SIGKILL');
+        }
+      }, TERMINATE_GRACE_MS);
+      // Do not hold the process open on account of a pending force-kill.
+      timer.unref?.();
+      this.forceTimers.set(runId, timer);
     }
-    this.runs.delete(runId);
     return true;
+  }
+
+  /**
+   * Clears a run's pending force-kill timer, if it has one.
+   * @param runId The run identifier.
+   */
+  private clearForceTimer(runId: string): void {
+    const timer: NodeJS.Timeout | undefined = this.forceTimers.get(runId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.forceTimers.delete(runId);
+    }
+  }
+
+  /**
+   * Terminates a task's whole process tree, not merely the shell that fronts it. On POSIX the child was
+   * spawned into its own process group, so signalling the negated pid reaches every descendant; on
+   * Windows `taskkill /T` walks the tree. Falls back to signalling the child alone when the group
+   * signal fails (for example when the group has already gone).
+   * @param child The task's child process.
+   * @param signal The signal to send.
+   */
+  private killTree(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+    const pid: number | undefined = child.pid;
+    if (pid === undefined) {
+      return;
+    }
+    if (process.platform === 'win32') {
+      try {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F']);
+      } catch {
+        // Fall through to the direct kill below.
+      }
+    } else {
+      try {
+        process.kill(-pid, signal);
+        return;
+      } catch {
+        // The group may already be gone, or the child may not have become a group leader.
+      }
+    }
+    try {
+      child.kill(signal);
+    } catch {
+      // Nothing further to try; the close handler still reports whatever the process does.
+    }
   }
 
   /**

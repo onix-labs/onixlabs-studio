@@ -1,6 +1,6 @@
-import { signal, Signal, WritableSignal } from '@angular/core';
+import { computed, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -14,6 +14,9 @@ import { DirectoryRibbon } from './directory-ribbon';
  */
 interface RibbonInternals {
   runOptions(): readonly DropdownOption[];
+  stopLabel(): string;
+  runMenuItems(): readonly { readonly id: string; readonly label: string }[];
+  onStopRun(runId: string): void;
   selectedRunId(): string | null;
   canRun(): boolean;
   onRun(): void;
@@ -90,8 +93,11 @@ function dotnetWithDebug(): ProjectCapabilities {
  */
 class FakeBuilds {
   public readonly tasks: WritableSignal<readonly BuildTask[]> = signal<readonly BuildTask[]>([]);
-  public readonly running: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly runs: WritableSignal<readonly ActiveRun[]> = signal<readonly ActiveRun[]>([]);
+  public readonly running: Signal<boolean> = computed((): boolean => this.runs().length > 0);
+  public readonly activeRuns: Signal<readonly ActiveRun[]> = this.runs.asReadonly();
   public readonly canBuild: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly cancelledRunIds: string[] = [];
   public readonly runConfigurationCalls: RunConfiguration[] = [];
   public readonly siblingCalls: (readonly RunConfiguration[])[] = [];
   public readonly actionCalls: ProjectAction[] = [];
@@ -107,6 +113,10 @@ class FakeBuilds {
 
   public runAction(action: ProjectAction): void {
     this.actionCalls.push(action);
+  }
+
+  public cancel(runId: string): void {
+    this.cancelledRunIds.push(runId);
   }
 
   public cancelAll(): void {
@@ -300,6 +310,45 @@ describe('DirectoryRibbon', () => {
     internals().onStop();
 
     expect(builds.cancelAllCalls).toBe(1);
+  });
+
+  it('stopMenu_listsEveryRun_andStopsJustTheChosenOne', () => {
+    builds.runs.set([
+      { id: 'r1', label: 'API', taskId: 'api', startedAt: 1 },
+      { id: 'r2', label: 'Web', taskId: 'web', startedAt: 2 },
+    ]);
+    fixture.detectChanges();
+
+    expect(internals().stopLabel()).toBe('Stop All (2)');
+    expect(internals().runMenuItems().map((item) => item.label)).toEqual(['API', 'Web']);
+
+    internals().onStopRun('r2');
+
+    expect(builds.cancelledRunIds).toEqual(['r2']);
+    expect(builds.cancelAllCalls).toBe(0);
+  });
+
+  it('stopMenu_numbersRunsOfTheSameConfiguration_soTheyCanBeToldApart', () => {
+    builds.runs.set([
+      { id: 'r1', label: 'API', taskId: 'api', startedAt: 1 },
+      { id: 'r2', label: 'API', taskId: 'api', startedAt: 2 },
+      { id: 'r3', label: 'Web', taskId: 'web', startedAt: 3 },
+    ]);
+    fixture.detectChanges();
+
+    expect(internals().runMenuItems().map((item) => item.label)).toEqual([
+      'API (1)',
+      'API (2)',
+      'Web',
+    ]);
+  });
+
+  it('stopLabel_withASingleRun_needsNoQualification', () => {
+    builds.runs.set([{ id: 'r1', label: 'API', taskId: 'api', startedAt: 1 }]);
+    fixture.detectChanges();
+
+    expect(internals().stopLabel()).toBe('Stop');
+    expect(internals().runMenuItems()).toHaveLength(1);
   });
 
   it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {
