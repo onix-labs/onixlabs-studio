@@ -25,6 +25,7 @@ import type {
   AiEffort,
   AiImageRef,
   AiProviderInfo,
+  AiSlashCommand,
 } from '@shared/api/ai-types';
 import {
   Agent,
@@ -88,6 +89,39 @@ const IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp',
 const MAX_SUGGESTIONS: number = 8;
 
 /**
+ * Slash commands the composer serves natively, so a provider-discovered command of the same name is not
+ * offered twice (#330).
+ */
+const APP_NATIVE_COMMANDS: ReadonlySet<string> = new Set<string>([
+  'compact',
+  'clear',
+  'mode',
+  'effort',
+]);
+
+/**
+ * Provider commands that have no headless seam — they drive the CLI's own interactive UI or local
+ * state, so dispatching one as an agent turn would not work; they are filtered from the `/` menu (#330).
+ * A conservative list; anything not here is offered and dispatched as input.
+ */
+const NON_DISPATCHABLE_COMMANDS: ReadonlySet<string> = new Set<string>([
+  'login',
+  'logout',
+  'config',
+  'doctor',
+  'status',
+  'cost',
+  'resume',
+  'help',
+  'terminal-setup',
+  'install-github-app',
+  'upgrade',
+  'release-notes',
+  'bug',
+  'vim',
+]);
+
+/**
  * An entry in the composer's suggestion popup: a built-in slash command, a library prompt, a
  * workspace file for an `@`-mention, or the manage-prompts affordance.
  */
@@ -95,7 +129,7 @@ interface ComposerSuggestion {
   /**
    * Gets what accepting the entry does.
    */
-  readonly kind: 'command' | 'prompt' | 'mention' | 'manage';
+  readonly kind: 'command' | 'discovered' | 'prompt' | 'mention' | 'manage';
 
   /**
    * Gets the row's primary label (`/compact`, a relative path, …).
@@ -708,6 +742,7 @@ export class AgentChat implements OnInit {
         );
       return [
         ...commands,
+        ...this.discoveredSuggestions(query),
         ...prompts.slice(0, MAX_SUGGESTIONS),
         {
           kind: 'manage',
@@ -1413,6 +1448,7 @@ export class AgentChat implements OnInit {
   protected suggestIcon(option: ComposerSuggestion): Icon {
     switch (option.kind) {
       case 'command':
+      case 'discovered':
         return Icon.ACTION;
       case 'prompt':
         return Icon.SPARKLE;
@@ -1438,6 +1474,10 @@ export class AgentChat implements OnInit {
     if (option.kind === 'command') {
       this.replaceComposerRange(token.start, end, '');
       this.runCommand(option.value);
+    } else if (option.kind === 'discovered') {
+      // A provider-discovered command (#330): drop `/name ` into the draft so the user can add any
+      // arguments and send it — the live session executes the slash command when the turn runs.
+      this.replaceComposerRange(token.start, end, `/${option.value} `);
     } else if (option.kind === 'prompt') {
       const prompt: AgentPrompt | undefined = this.promptLibrary
         .prompts()
@@ -1455,6 +1495,33 @@ export class AgentChat implements OnInit {
       this.managePromptsOpen.set(true);
     }
     this.suggestToken.set(null);
+  }
+
+  /**
+   * Builds the composer entries for the live provider's discovered slash commands (#330), matching the
+   * typed query, minus the app-native and non-dispatchable ones. Accepting one drops `/name ` into the
+   * draft to send into the live session. Empty for providers that discover none.
+   * @param query The lower-cased query typed after `/`.
+   * @returns Returns the discovered-command suggestions.
+   */
+  private discoveredSuggestions(query: string): readonly ComposerSuggestion[] {
+    return this.agent
+      .discoveredCommands()
+      .filter(
+        (command: AiSlashCommand): boolean =>
+          !APP_NATIVE_COMMANDS.has(command.name) &&
+          !NON_DISPATCHABLE_COMMANDS.has(command.name) &&
+          (query.length === 0 || command.name.toLowerCase().startsWith(query)),
+      )
+      .slice(0, MAX_SUGGESTIONS)
+      .map(
+        (command: AiSlashCommand): ComposerSuggestion => ({
+          kind: 'discovered',
+          label: `/${command.name}`,
+          hint: command.description.length > 0 ? command.description : 'Provider command',
+          value: command.name,
+        }),
+      );
   }
 
   /**

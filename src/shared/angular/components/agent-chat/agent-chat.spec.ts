@@ -10,6 +10,7 @@ import type {
   AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
+  AiSlashCommand,
 } from '@shared/api/ai-types';
 import type { AgentMode } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
@@ -39,6 +40,7 @@ describe('AgentChat', () => {
   let rewinds: { id: string; text: string }[];
   let sentImages: (readonly AiImageRef[])[];
   let providers: WritableSignal<readonly AiProviderInfo[]>;
+  let discoveredCommands: WritableSignal<readonly AiSlashCommand[]>;
   let pendingContextTokens: WritableSignal<number>;
   let compacted: number;
   let clearedChats: number;
@@ -69,6 +71,7 @@ describe('AgentChat', () => {
         supportsImages: true,
       },
     ]);
+    discoveredCommands = signal<readonly AiSlashCommand[]>([]);
     permissionResponses = [];
     sent = [];
     stopped = 0;
@@ -115,6 +118,7 @@ describe('AgentChat', () => {
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       mode: signal<AgentMode>('agent'),
       effort: signal<AiEffort | null>(null),
+      discoveredCommands,
       compact: (): void => void (compacted += 1),
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
@@ -167,6 +171,23 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('discoveredCommands_offerAllButAppNativeAndInteractive', () => {
+    discoveredCommands.set([
+      { name: 'review', description: 'Review the diff', argumentHint: '' },
+      { name: 'clear', description: 'app-native', argumentHint: '' },
+      { name: 'login', description: 'interactive', argumentHint: '' },
+    ]);
+    const comp: { discoveredSuggestions(query: string): readonly { label: string }[] } =
+      component as unknown as {
+        discoveredSuggestions(query: string): readonly { label: string }[];
+      };
+
+    const labels: readonly string[] = comp
+      .discoveredSuggestions('')
+      .map((entry): string => entry.label);
+    expect(labels).toEqual(['/review']);
   });
 
   it('effortCommand_isGatedByTheProvidersCapability_andDispatchesSetEffort', () => {

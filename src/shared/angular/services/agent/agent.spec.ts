@@ -142,6 +142,19 @@ describe('Agent', () => {
     expect(runCalls[0].agentSessionId).toBeTruthy();
   });
 
+  it('commandsEvent_populatesTheDiscoveredCommands', () => {
+    agent.send('hello');
+    expect(agent.discoveredCommands()).toEqual([]);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'commands',
+      commands: [{ name: 'review', description: 'Review the diff', argumentHint: '' }],
+    });
+
+    expect(agent.discoveredCommands().map((command): string => command.name)).toEqual(['review']);
+  });
+
   it('send_carriesTheSelectedEffort_andOmitsItByDefault', () => {
     agent.send('hello');
     expect(runCalls[0].effort).toBeUndefined();

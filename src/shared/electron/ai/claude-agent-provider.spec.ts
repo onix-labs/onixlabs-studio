@@ -79,6 +79,14 @@ class FakeQuery {
     return Promise.resolve();
   }
 
+  public commands: { name: string; description: string; argumentHint: string }[] = [];
+
+  public supportedCommands(): Promise<
+    { name: string; description: string; argumentHint: string }[]
+  > {
+    return Promise.resolve(this.commands);
+  }
+
   public async *[Symbol.asyncIterator](): AsyncGenerator<unknown> {
     while (true) {
       const next: unknown = this.outbox.shift();
@@ -568,6 +576,41 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     // master controller's abort) — a hang here would fail the test by timeout.
     await harness.session.close();
     expect(harness.createQueryCalls()).toBe(1);
+  });
+
+  it('publishesSlashCommands_onOpen_andRefreshesOnCommandsChanged', async () => {
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    await flush();
+    // A mid-session commands_changed push replaces the discovered set.
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'commands_changed',
+      commands: [{ name: 'review', description: 'Review the diff', argumentHint: '' }],
+    });
+    harness.query()?.emit({ type: 'result' });
+    await turn1;
+
+    const commandEvents: Record<string, unknown>[] = (
+      events as unknown as Record<string, unknown>[]
+    ).filter((event: Record<string, unknown>): boolean => event['kind'] === 'commands');
+    // At least the open discovery and the push; the latest carries the pushed set.
+    expect(commandEvents.length).toBeGreaterThanOrEqual(1);
+    const latest: { commands: { name: string }[] } = commandEvents[
+      commandEvents.length - 1
+    ] as unknown as { commands: { name: string }[] };
+    expect(latest.commands.map((command: { name: string }): string => command.name)).toEqual([
+      'review',
+    ]);
+
+    await harness.session.close();
   });
 });
 

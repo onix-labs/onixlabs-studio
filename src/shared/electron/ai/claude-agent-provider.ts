@@ -9,6 +9,7 @@ import type {
   Query,
   SDKMessage,
   SDKUserMessage,
+  SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   ASK_USER,
@@ -1482,6 +1483,43 @@ export class ClaudeAgentSession implements AgentSession {
     );
     this.sdkQuery = await this.deps.createQuery(this.promptStream(), options);
     this.pumpDone = this.pump();
+    // Discover the session's slash commands once it is open (#330); refreshed later by the
+    // `commands_changed` push handled in the pump. Best-effort — a failure never disturbs the run.
+    void this.emitCommands();
+  }
+
+  /**
+   * Fetches the session's current slash commands from the live query and publishes them to the renderer.
+   * Best-effort: any failure (e.g. the query not supporting the control request) is swallowed.
+   */
+  private async emitCommands(): Promise<void> {
+    const query: Query | null = this.sdkQuery;
+    if (query === null) {
+      return;
+    }
+    try {
+      this.publishCommands(await query.supportedCommands());
+    } catch {
+      // Command discovery is best-effort; never let it disturb the session.
+    }
+  }
+
+  /**
+   * Publishes a discovered command set to the renderer through the current turn's context.
+   * @param commands The SDK slash commands.
+   */
+  private publishCommands(commands: readonly SlashCommand[]): void {
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'commands',
+      commands: commands.map(
+        (command: SlashCommand): { name: string; description: string; argumentHint: string } => ({
+          name: command.name,
+          description: command.description,
+          argumentHint: command.argumentHint,
+        }),
+      ),
+    });
   }
 
   /**
@@ -1526,6 +1564,17 @@ export class ClaudeAgentSession implements AgentSession {
             kind: 'session',
             sessionId,
           });
+        }
+        // A mid-session command-list change (e.g. skills discovered as the agent works): replace the
+        // cached set (#330). `supportedCommands()` is captured once at init and never reflects these,
+        // so the push is the only live signal.
+        const changed: { type?: string; subtype?: string; commands?: SlashCommand[] } = message;
+        if (
+          changed.type === 'system' &&
+          changed.subtype === 'commands_changed' &&
+          Array.isArray(changed.commands)
+        ) {
+          this.publishCommands(changed.commands);
         }
         this.deps.handleMessage(message, this.currentContext, this.usageState);
         // A turn's `result` settles that turn but leaves the stream open for the next turn; an

@@ -309,6 +309,44 @@ export interface AiUsageEvent extends AiEventBase {
 }
 
 /**
+ * A slash command a live provider offers, discovered from its session (#330). The `name` has no leading
+ * slash; `argumentHint` describes any arguments (empty when none).
+ */
+export interface AiSlashCommand {
+  /**
+   * Gets the command name, without a leading slash.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a one-line description of what the command does.
+   */
+  readonly description: string;
+
+  /**
+   * Gets a hint describing the command's arguments, or empty when it takes none.
+   */
+  readonly argumentHint: string;
+}
+
+/**
+ * Reports the slash commands a live-harness provider offers, discovered from its held-open session and
+ * refreshed when the provider pushes a change (#330). The renderer merges these into the composer's `/`
+ * menu (deduping app-native commands); a picked command is dispatched into the live session as input.
+ */
+export interface AiCommandsEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'commands';
+
+  /**
+   * Gets the provider's current command set (replaces any previously reported set).
+   */
+  readonly commands: readonly AiSlashCommand[];
+}
+
+/**
  * A streamed event from a running agent turn. Both providers parse their model output into this
  * provider-agnostic protocol.
  */
@@ -322,4 +360,5 @@ export type AiEvent =
   | AiEditDecisionEvent
   | AiSessionEvent
   | AiStatusEvent
-  | AiUsageEvent;
+  | AiUsageEvent
+  | AiCommandsEvent;

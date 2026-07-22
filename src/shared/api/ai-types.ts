@@ -67,6 +67,8 @@ export type {
   AiEditDecisionEvent,
   AiStatusEvent,
   AiUsageEvent,
+  AiSlashCommand,
+  AiCommandsEvent,
   AiEvent,
 } from './ai/ai-event-types';
 export type {
