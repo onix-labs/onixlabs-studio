@@ -1201,6 +1201,15 @@ export class Agent {
    * @param event The event.
    */
   private onEvent(event: AiEvent): void {
+    // Discovered commands are session-level, not per-turn: correlate them to this conversation by its
+    // agent session id (#330), so a discovery answer that arrives between turns — when no run is active
+    // — is not dropped by the per-turn request-id filter below.
+    if (event.kind === 'commands') {
+      if (event.agentSessionId === this.agentSessionId) {
+        this.discoveredCommandsState.set(event.commands);
+      }
+      return;
+    }
     if (event.requestId !== this.activeRequestId) {
       return;
     }
@@ -1298,11 +1307,7 @@ export class Agent {
       case 'status':
         this.onStatus(event.state, event.detail);
         break;
-      case 'commands':
-        // The provider's live command set (#330); replaces any previous set. Persists across turns so
-        // the composer's `/` menu can offer them between runs.
-        this.discoveredCommandsState.set(event.commands);
-        break;
+      // 'commands' is session-level and handled at the top of onEvent (before the per-turn filter).
       default:
         break;
     }

@@ -611,6 +611,7 @@ export class AiManager {
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
       model,
+      agentSessionId: request.agentSessionId ?? null,
       effort,
       permissionPosture,
       toolPolicies,
