@@ -26,6 +26,7 @@ interface FakeStore {
 function fakeStore(options?: {
   initialBlob?: string | null;
   hasLocalLogin?: boolean;
+  hasCodexLogin?: boolean;
   envKey?: string | null;
 }): FakeStore {
   let blob: string | null = options?.initialBlob ?? null;
@@ -35,6 +36,7 @@ function fakeStore(options?: {
       blob = plaintext;
     },
     hasLocalLogin: (): boolean => options?.hasLocalLogin ?? false,
+    hasCodexLogin: (): boolean => options?.hasCodexLogin ?? false,
     envKey: (): string | null => options?.envKey ?? null,
   };
   return { store: new CredentialStore(ports), blob: (): string | null => blob };
@@ -174,11 +176,12 @@ describe('CredentialStore resolution', () => {
   });
 
   it('authFor_carriesLocalLoginAndTheResolvedKey', () => {
-    const { store } = fakeStore({ hasLocalLogin: true });
+    const { store } = fakeStore({ hasLocalLogin: true, hasCodexLogin: true });
     store.setKey('openai', 'sk-openai');
 
     expect(store.authFor('openai', 'api-key')).toEqual({
       hasLocalLogin: true,
+      hasCodexLogin: true,
       apiKey: 'sk-openai',
     });
   });

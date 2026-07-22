@@ -22,6 +22,15 @@ const ANTHROPIC_SEED_MODELS: readonly AiModelInfo[] = [
 ];
 
 /**
+ * The OpenAI Codex models seeded for the Codex connection, in display order. Best-guess defaults the
+ * user can retune once model discovery lands; Codex runs OpenAI models through the `codex` CLI.
+ */
+const CODEX_SEED_MODELS: readonly AiModelInfo[] = [
+  { id: 'gpt-5-codex', label: 'GPT-5 Codex', contextWindow: 400_000 },
+  { id: 'gpt-5', label: 'GPT-5', contextWindow: 400_000 },
+];
+
+/**
  * The local Ollama models seeded for the Ollama connection, in display order.
  */
 const OLLAMA_SEED_MODELS: readonly AiModelInfo[] = [
@@ -34,6 +43,11 @@ const OLLAMA_SEED_MODELS: readonly AiModelInfo[] = [
  * The id of the seeded Claude (local-login) connection — the default active connection.
  */
 export const CLAUDE_CONNECTION_ID: string = 'claude';
+
+/**
+ * The id of the seeded OpenAI Codex (local-login) connection — the second live-harness agent.
+ */
+export const CODEX_CONNECTION_ID: string = 'codex';
 
 /**
  * The id of the seeded Anthropic-API-key connection (formerly the "Vercel" provider).
@@ -63,6 +77,14 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
     auth: 'claude-login',
     models: ANTHROPIC_SEED_MODELS,
     defaultModelId: 'claude-opus-4-8',
+  },
+  {
+    id: CODEX_CONNECTION_ID,
+    kind: 'openai',
+    label: 'OpenAI Codex',
+    auth: 'codex-login',
+    models: CODEX_SEED_MODELS,
+    defaultModelId: 'gpt-5-codex',
   },
   {
     id: ANTHROPIC_KEY_CONNECTION_ID,

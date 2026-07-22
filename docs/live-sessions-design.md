@@ -265,6 +265,21 @@ token meter; `recordAudit` executed actions.
 Sources: OpenAI Codex docs (codex-sdk, non-interactive-mode, app-server), `openai/codex` GitHub
 (sdk/typescript, codex-rs/app-server), `@openai/codex-sdk` on npm.
 
+**Implementation (P5, #329) — the real SDK is simpler than this spike assumed.** `@openai/codex-sdk`
+@0.144.6 is a high-level wrapper, **not** the app-server: `new Codex(opts)` → `startThread`/`resumeThread`
+→ `Thread.runStreamed(input, {signal})` yielding `ThreadEvent`s. A `Thread` is the session; each turn
+resumes the persisted thread (`~/.codex/sessions`) with **no held-open subprocess**, so `close`/idle-reap
+are cheap no-ops. Consequences vs the sketch: **no `execCommandApproval`/`applyPatchApproval`/elicitation
+callbacks** — confinement is therefore **sandbox-only** (`sandboxMode: 'workspace-write'` +
+`workingDirectory` + `additionalDirectories`, `approvalPolicy: 'never'`, `skipGitRepoCheck`), so Studio's
+deny list, audit log, and interactive prompts do not apply to Codex (the sandbox is the boundary,
+satisfying Decision 5). **No mid-turn steer** and **no per-thread model swap** (a model change needs a
+fresh session). The **effort seam never landed** (#316/#320 unmerged), so P5 does not wire reasoning
+effort — it runs at Codex's default; per-provider capability declaration is P6 (#330). `Input.local_image`
+is path-based, so image input is deferred (`supportsImages: false`). Auth mirrors Claude:
+`codex-login` → `~/.codex`, else a stored OpenAI key (the SDK reads `OPENAI_API_KEY` itself). Packaging
+mirrors #141 (`codex-executable.ts` + asarUnpack of `@openai/codex*`), unverified in a packaged build.
+
 ## 10. Risks & open questions
 
 - **Held-open session health** (Spike A): does a Claude `query()` stay healthy across many turns, and how do

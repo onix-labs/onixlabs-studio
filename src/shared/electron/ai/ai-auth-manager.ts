@@ -15,7 +15,7 @@ import { CredentialStore, type CredentialStorePorts } from './credential-store';
 /**
  * The auth kinds a connection can use, for validating IPC requests before they reach the store.
  */
-const AUTH_KINDS: readonly string[] = ['api-key', 'none', 'claude-login'];
+const AUTH_KINDS: readonly string[] = ['api-key', 'none', 'claude-login', 'codex-login'];
 
 /**
  * The status returned when a keyed auth request arrives malformed (it never should from the renderer).
@@ -56,6 +56,14 @@ export class AiAuthManager {
    */
   public hasLocalLogin(): boolean {
     return existsSync(join(homedir(), '.claude'));
+  }
+
+  /**
+   * Reports whether the user has a local Codex login.
+   * @returns Returns true when `~/.codex` exists.
+   */
+  public hasCodexLogin(): boolean {
+    return existsSync(join(homedir(), '.codex'));
   }
 
   /**
@@ -138,6 +146,7 @@ export class AiAuthManager {
       load: (): string | null => this.loadBlob(),
       save: (plaintext: string | null): void => this.saveBlob(plaintext),
       hasLocalLogin: (): boolean => this.hasLocalLogin(),
+      hasCodexLogin: (): boolean => this.hasCodexLogin(),
       envKey: (): string | null => this.envKey(),
     };
   }

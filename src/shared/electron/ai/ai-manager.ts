@@ -41,6 +41,7 @@ import { AiSdkAdapter } from './ai-sdk-adapter';
 import { isConnection, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { CodexAgentProvider } from './codex-agent-provider';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
@@ -353,6 +354,11 @@ export class AiManager {
           connection.id,
           new ClaudeAgentProvider(connection.models, connection.defaultModelId),
         );
+      } else if (connection.auth === 'codex-login') {
+        providers.set(
+          connection.id,
+          new CodexAgentProvider(connection.models, connection.defaultModelId),
+        );
       } else {
         providers.set(connection.id, new AiSdkAdapter(connection));
       }
@@ -468,7 +474,11 @@ export class AiManager {
   private authForConnection(connectionId: string): AgentAuth {
     const connection: AiConnection | undefined = this.connections.get(connectionId);
     return connection === undefined
-      ? { hasLocalLogin: this.auth.hasLocalLogin(), apiKey: null }
+      ? {
+          hasLocalLogin: this.auth.hasLocalLogin(),
+          hasCodexLogin: this.auth.hasCodexLogin(),
+          apiKey: null,
+        }
       : this.auth.authFor(connectionId, connection.auth);
   }
 

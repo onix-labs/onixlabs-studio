@@ -41,6 +41,11 @@ export interface AuthContext {
   readonly hasLocalLogin: boolean;
 
   /**
+   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
+   */
+  readonly hasCodexLogin: boolean;
+
+  /**
    * Gets the development-only `ANTHROPIC_API_KEY` environment key, or null when it is unset.
    */
   readonly envKey: string | null;
@@ -124,6 +129,51 @@ const CLAUDE_LOGIN_STRATEGY: AuthStrategy = {
 };
 
 /**
+ * The `codex-login` strategy: mirrors `claude-login` for OpenAI Codex — prefers the user's local Codex
+ * login (`~/.codex`, the same credential the `codex` CLI uses), falling back to a stored API key.
+ */
+const CODEX_LOGIN_STRATEGY: AuthStrategy = {
+  kind: 'codex-login',
+
+  resolve(context: AuthContext): AiCredential {
+    if (context.hasCodexLogin) {
+      return { source: 'local-login', apiKey: null };
+    }
+    // No env fallback here: `envKey` is the Anthropic key, and the Codex runtime picks up its own
+    // `OPENAI_API_KEY` from the environment, so only an explicitly stored key is surfaced.
+    return context.storedKey !== null
+      ? { source: 'api-key', apiKey: context.storedKey }
+      : { source: 'none', apiKey: null };
+  },
+
+  status(context: AuthContext): AiAuthStatus {
+    const hasStoredKey: boolean = context.storedKey !== null;
+    if (context.hasCodexLogin) {
+      return {
+        source: 'local-login',
+        available: true,
+        hasStoredKey,
+        detail: 'Using your local Codex login (~/.codex).',
+      };
+    }
+    if (hasStoredKey) {
+      return {
+        source: 'api-key',
+        available: true,
+        hasStoredKey: true,
+        detail: 'Using your stored OpenAI API key.',
+      };
+    }
+    return {
+      source: 'none',
+      available: false,
+      hasStoredKey: false,
+      detail: 'Run `codex login`, or add an OpenAI API key.',
+    };
+  },
+};
+
+/**
  * The `api-key` strategy: a connection authenticates solely with its own stored API key (no local
  * login, no environment fallback — those are Anthropic-specific and belong to `claude-login`).
  */
@@ -180,6 +230,7 @@ const NONE_STRATEGY: AuthStrategy = {
  */
 export const AUTH_STRATEGIES: Readonly<Record<AiAuthKind, AuthStrategy>> = {
   'claude-login': CLAUDE_LOGIN_STRATEGY,
+  'codex-login': CODEX_LOGIN_STRATEGY,
   'api-key': API_KEY_STRATEGY,
   none: NONE_STRATEGY,
 };

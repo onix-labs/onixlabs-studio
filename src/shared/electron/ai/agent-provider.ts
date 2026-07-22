@@ -39,9 +39,14 @@ export interface ProviderAvailability {
  */
 export interface AgentAuth {
   /**
-   * Gets a value indicating whether a local Claude login is present.
+   * Gets a value indicating whether a local Claude login (`~/.claude`) is present.
    */
   readonly hasLocalLogin: boolean;
+
+  /**
+   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
+   */
+  readonly hasCodexLogin: boolean;
 
   /**
    * Gets the available API key, or null when none is available.

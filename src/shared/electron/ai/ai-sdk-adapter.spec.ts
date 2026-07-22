@@ -126,16 +126,16 @@ describe('AiSdkAdapter', () => {
   });
 
   it('describesAvailabilityFromTheAuthKindAndKey', () => {
-    const noneAuth: AgentAuth = { hasLocalLogin: false, apiKey: null };
+    const noneAuth: AgentAuth = { hasLocalLogin: false, hasCodexLogin: false, apiKey: null };
     expect(
       new AiSdkAdapter(connection('ollama', { auth: 'none' })).describeAvailability(noneAuth),
     ).toMatchObject({ available: true });
 
     const keyed: AiSdkAdapter = new AiSdkAdapter(connection('openai'));
-    expect(keyed.describeAvailability({ hasLocalLogin: false, apiKey: 'sk-x' }).available).toBe(
+    expect(keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-x' }).available).toBe(
       true,
     );
-    expect(keyed.describeAvailability({ hasLocalLogin: false, apiKey: null }).available).toBe(
+    expect(keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: null }).available).toBe(
       false,
     );
   });
