@@ -346,3 +346,14 @@ Seven design decisions, agreed one-by-one with the maintainer:
 - **P4 (#328)** — cold-start rehydration + idle-reap.
 - **P5 (#329)** — `CodexAgentProvider` (second live-harness).
 - **P6 (#330)** — per-provider capabilities + live command discovery (supersedes #322).
+
+**Implementation (P6, #330):** built the capability seam that P5 found missing — `AiEffort` +
+`supportedEfforts` declared per provider (Claude `low…max`, Codex `minimal…xhigh`, AI-SDK none), surfaced
+on `AiProviderInfo` and gated in the composer like `supportsImages`. `effort` threads renderer→main (a
+per-conversation `Agent` choice), clamped to the provider's range and applied at session open (Claude
+`Options.effort`, Codex `ThreadOptions.modelReasoningEffort`; both frozen at open, no live setter). The
+`/effort <level>` command is gated by `supportedEfforts`. **Live command discovery** (supersedes #322):
+`ClaudeAgentSession.supportedCommands()` on open + `commands_changed` push → a `commands` event →
+`Agent.discoveredCommands` → the composer's `/` menu (minus app-native + a conservative non-dispatchable
+deny-list); a picked command inserts `/name ` and dispatches into the live session. The deny-list and
+dispatch semantics want tuning against a real Claude session (E2E).
