@@ -61,40 +61,82 @@ describe('TerminalSessions', () => {
     expect(sessions.activeId()).toBe(second.id);
   });
 
-  it('setRoot_whenTheFirstRootArrives_opensOneSessionRootedThere', () => {
+  it('setRoot_opensNothingItself_andEnsureShellOpensTheFirstShell', () => {
     sessions.setRoot('/repo');
+    expect(sessions.sessions()).toHaveLength(0);
+
+    sessions.ensureShell();
 
     expect(sessions.sessions()).toHaveLength(1);
+    expect(sessions.sessions()[0].kind).toBe('shell');
     expect(sessions.sessions()[0].cwd).toBe('/repo');
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('ensureShell_beforeARootIsKnown_isANoOp', () => {
+    sessions.ensureShell();
+
+    expect(sessions.sessions()).toHaveLength(0);
+  });
+
+  it('ensureShell_whenAShellExists_addsNothing', () => {
+    sessions.setRoot('/repo');
+    sessions.ensureShell();
+    sessions.ensureShell();
+
+    expect(sessions.sessions()).toHaveLength(1);
+  });
+
+  it('ensureShell_doesNotStealActivationFromALaunchedSession', async () => {
+    sessions.setRoot('/repo');
+    const { session } = await sessions.launch({ name: 'Build', kind: 'task', command: 'make' });
+
+    // The panel mounts because the launch revealed it, then asks for its shell.
+    sessions.ensureShell();
+
+    expect(sessions.sessions()).toHaveLength(2);
+    expect(sessions.activeId()).toBe(session.id);
+  });
+
+  it('setRoot_theFirstRoot_keepsSessionsLaunchedBeforeIt', async () => {
+    const { session } = await sessions.launch({ name: 'Build', kind: 'task', command: 'make', cwd: '/w' });
+
+    sessions.setRoot('/repo');
+
+    expect(sessions.sessions().map((s: TerminalSession): string => s.id)).toEqual([session.id]);
     expect(dispose).not.toHaveBeenCalled();
   });
 
   it('setRoot_whenReAnnouncingTheSameRoot_leavesTheSessionsUntouched', () => {
     sessions.setRoot('/repo');
+    sessions.ensureShell();
     const existing: readonly TerminalSession[] = sessions.sessions();
 
-    // The panel re-announces the root every time it re-mounts after a tool-tab switch.
     sessions.setRoot('/repo');
 
     expect(sessions.sessions()).toEqual(existing);
     expect(dispose).not.toHaveBeenCalled();
   });
 
-  it('setRoot_whenTheRootChanges_disposesTheOldSessionsAndOpensAFreshOne', () => {
+  it('setRoot_whenTheRootChanges_disposesTheOldSessions', () => {
     sessions.setRoot('/repo');
+    sessions.ensureShell();
     const old: string = sessions.sessions()[0].id;
 
     sessions.setRoot('/other');
 
     expect(dispose).toHaveBeenCalledWith(old);
-    expect(sessions.sessions()).toHaveLength(1);
+    expect(sessions.sessions()).toHaveLength(0);
+
+    // The panel's next ensureShell opens the new folder's shell, with naming restarted.
+    sessions.ensureShell();
     expect(sessions.sessions()[0].cwd).toBe('/other');
-    // Naming restarts with the fresh folder.
     expect(sessions.sessions()[0].name).toBe('Terminal 1');
   });
 
-  it('setRoot_whenTheFolderCloses_disposesEverySessionAndOpensNone', () => {
+  it('setRoot_whenTheFolderCloses_disposesEverySession', () => {
     sessions.setRoot('/repo');
+    sessions.ensureShell();
     sessions.create();
     const ids: readonly string[] = sessions.sessions().map((s: TerminalSession): string => s.id);
 
@@ -313,6 +355,7 @@ describe('TerminalSessions', () => {
 
   it('ngOnDestroy_disposesEverySession', () => {
     sessions.setRoot('/repo');
+    sessions.ensureShell();
     sessions.create();
     const ids: readonly string[] = sessions.sessions().map((s: TerminalSession): string => s.id);
 

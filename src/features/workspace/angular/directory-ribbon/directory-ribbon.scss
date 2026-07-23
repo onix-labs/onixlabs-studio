@@ -1,0 +1,58 @@
+// The stop-and-restart confirmation shown when a build action targets a busy Build terminal. Rendered
+// in the app's default (theme-aware) modal card; these classes style only its content.
+.directory-ribbon__confirm-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.directory-ribbon__confirm-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.directory-ribbon__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.directory-ribbon__confirm-button {
+  padding: 0.45rem 1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// The destructive primary action reads in the error/coral tone: it kills the running build.
+.directory-ribbon__confirm-button--danger {
+  color: var(--gray-100);
+  background: var(--accent-coral);
+  border-color: var(--accent-coral);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-coral);
+    border-color: var(--accent-coral);
+    color: var(--gray-100);
+    filter: brightness(1.1);
+  }
+}

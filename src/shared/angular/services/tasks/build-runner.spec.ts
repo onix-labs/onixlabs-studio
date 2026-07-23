@@ -9,6 +9,12 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import {
+  TerminalLaunch,
+  TerminalLaunchOptions,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Output } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildRunner } from './build-runner';
@@ -89,6 +95,45 @@ class FakeDiagnostics {
   }
 }
 
+/**
+ * A controllable fake of the workspace terminal sessions: records launches and lets tests resolve
+ * each launch's completion in order.
+ */
+class FakeTerminalSessions {
+  public readonly launchCalls: TerminalLaunchOptions[] = [];
+  private readonly resolvers: ((code: number) => void)[] = [];
+
+  public launch(options: TerminalLaunchOptions): Promise<TerminalLaunch> {
+    this.launchCalls.push(options);
+    const exited: Promise<number> = new Promise<number>((resolve: (code: number) => void): void => {
+      this.resolvers.push(resolve);
+    });
+    return Promise.resolve({
+      session: {
+        id: options.sessionId ?? 'session',
+        name: options.name,
+        kind: options.kind,
+        generation: this.launchCalls.length - 1,
+        exitCode: null,
+      },
+      exited,
+    });
+  }
+
+  public resolveExit(code: number): void {
+    this.resolvers.shift()?.(code);
+  }
+}
+
+/**
+ * Flushes pending microtasks and timers so a fire-and-forget build completion settles.
+ */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => {
+    setTimeout(resolve, 0);
+  });
+}
+
 const PACKAGE_JSON: string = JSON.stringify({ scripts: { build: 'tsc', test: 'vitest' } });
 
 /**
@@ -104,10 +149,14 @@ function configuration(id: string, name: string): RunConfiguration {
 describe('BuildRunner', () => {
   let api: FakeTaskBridge;
   let diagnostics: FakeDiagnostics;
+  let sessions: FakeTerminalSessions;
+  let buildScrollback: { data: string };
 
   beforeEach(() => {
     api = new FakeTaskBridge();
     diagnostics = new FakeDiagnostics();
+    sessions = new FakeTerminalSessions();
+    buildScrollback = { data: '' };
     (window as unknown as { bridge: Bridge }).bridge = api;
     TestBed.configureTestingModule({
       providers: [
@@ -116,6 +165,14 @@ describe('BuildRunner', () => {
         Documents,
         Output,
         { provide: Diagnostics, useValue: diagnostics },
+        { provide: TerminalSessions, useValue: sessions },
+        {
+          provide: TerminalBridge,
+          useValue: {
+            replay: (): Promise<{ data: string; seq: number; exitCode: number | null; signal: number | null }> =>
+              Promise.resolve({ data: buildScrollback.data, seq: 1, exitCode: 0, signal: null }),
+          },
+        },
       ],
     });
   });
@@ -175,23 +232,26 @@ describe('BuildRunner', () => {
     expect(tasks.some((t: BuildTask): boolean => t.id === 'make:build')).toBe(true);
   });
 
-  it('run_streamsOutputAndPublishesMatchedProblems', async () => {
+  it('run_buildTask_runsInTheBuildTerminalAndPublishesProblemsOnExit', async () => {
     const runner: BuildRunner = await discover();
-    const output: Output = TestBed.inject(Output);
 
     runner.run('dotnet:build');
-    expect(runner.running()).toBe(true);
-    const runId: string = api.runCalls[0].runId;
-    expect(api.runCalls[0].command).toBe('dotnet build');
-
-    api.emitOutput(runId, 'Program.cs(8,9): error CS1002: ; expected [/w/App.csproj]\n');
-    api.emitExit(runId, 1);
-
+    expect(runner.buildBusy()).toBe(true);
+    // Builds never enter the run pool: the Run group's Stop stays untouched by a build.
     expect(runner.running()).toBe(false);
-    // Build output streams into the Build channel, not the default channel.
-    expect(output.snapshotOf('build')).toContain('> dotnet build');
-    expect(output.snapshotOf('build')).toContain('error CS1002');
+    expect(api.runCalls).toHaveLength(0);
+    expect(sessions.launchCalls[0]).toMatchObject({
+      name: 'Build',
+      kind: 'task',
+      command: 'dotnet build',
+      cwd: '/w',
+    });
 
+    buildScrollback.data = 'Program.cs(8,9): error CS1002: ; expected [/w/App.csproj]\r\n';
+    sessions.resolveExit(1);
+    await settle();
+
+    expect(runner.buildBusy()).toBe(false);
     expect(diagnostics.published).toHaveLength(1);
     expect(diagnostics.published[0]).toMatchObject({
       file: 'Program.cs',
@@ -204,35 +264,70 @@ describe('BuildRunner', () => {
     });
   });
 
+  it('run_whileTheBuildTerminalIsBusy_ignoresTheRequestWithoutRestart', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.run('dotnet:build');
+    runner.run('dotnet:build');
+
+    // The ribbon asks before dispatching into a busy build; a bare re-dispatch is ignored.
+    expect(sessions.launchCalls).toHaveLength(1);
+    expect(runner.buildBusy()).toBe(true);
+  });
+
+  it('run_withRestartGranted_relaunchesTheBuildTerminalInPlace', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.run('dotnet:build');
+    runner.run('dotnet:build', { restart: true });
+    await settle();
+
+    expect(sessions.launchCalls).toHaveLength(2);
+    // Both launches reuse the workspace's one Build session.
+    expect(sessions.launchCalls[0].sessionId).toBe(sessions.launchCalls[1].sessionId);
+    expect(runner.buildBusy()).toBe(true);
+  });
+
+  it('run_supersededOrDisposedBuild_publishesNoProblems', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.run('dotnet:build');
+    buildScrollback.data = 'Program.cs(8,9): error CS1002: ; expected\r\n';
+    // The session was disposed mid-run (tab closed / folder changed): no stale publishing.
+    sessions.resolveExit(-1);
+    await settle();
+
+    expect(runner.buildBusy()).toBe(false);
+    expect(diagnostics.published).toHaveLength(0);
+  });
+
   it('run_clearsPreviousProblemsWhenStartingAgain', async () => {
     const runner: BuildRunner = await discover();
 
     runner.run('dotnet:build');
-    api.emitOutput(api.runCalls[0].runId, 'Program.cs(8,9): error CS1002: ; expected\n');
-    api.emitExit(api.runCalls[0].runId, 1);
+    buildScrollback.data = 'Program.cs(8,9): error CS1002: ; expected\r\n';
+    sessions.resolveExit(1);
+    await settle();
     expect(diagnostics.published).toHaveLength(1);
 
     runner.run('dotnet:build');
     expect(diagnostics.published).toHaveLength(0);
   });
 
-  it('launch_routesBuildToTheBuildChannelAndEachRunConfigurationToItsOwn', async () => {
+  it('launch_routesBuildsToTheBuildTerminalAndEachRunConfigurationToItsOwnChannel', async () => {
     const runner: BuildRunner = await discover();
     const output: Output = TestBed.inject(Output);
 
+    // A build never touches the Output surface: it runs in the Build terminal session.
     runner.run('dotnet:build');
-    expect(output.activeChannelId()).toBe('build');
-    api.emitOutput(api.runCalls[0].runId, 'compiling\n');
-    api.emitExit(api.runCalls[0].runId, 0);
-    expect(output.snapshotOf('build')).toContain('compiling');
+    expect(sessions.launchCalls).toHaveLength(1);
+    expect(output.snapshotOf('build')).toBe('');
 
-    // A run configuration gets a channel of its own, named after it, so parallel runs stay readable.
+    // A run configuration still gets an Output channel of its own, named after it.
     runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
     expect(output.activeChannelId()).toBe('run:build');
-    api.emitOutput(api.runCalls[1].runId, 'serving\n');
+    api.emitOutput(api.runCalls[0].runId, 'serving\n');
     expect(output.snapshotOf('run:build')).toContain('serving');
-    // The build output stayed on its own channel.
-    expect(output.snapshotOf('run:build')).not.toContain('compiling');
   });
 
   it('runsSeveralConfigurationsAtOnce_eachWithItsOwnRunOutputAndCancellation', async () => {
@@ -388,8 +483,8 @@ describe('BuildRunner', () => {
 
     runner.runAction('clean');
 
-    expect(api.runCalls[0].command).toBe('dotnet clean');
-    expect(api.runCalls[0].cwd).toBe('/w');
+    expect(sessions.launchCalls[0].command).toBe('dotnet clean');
+    expect(sessions.launchCalls[0].cwd).toBe('/w');
   });
 
   it('runAction_rebuild_runsANonIncrementalBuild', async () => {
@@ -397,7 +492,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('rebuild');
 
-    expect(api.runCalls[0].command).toBe('dotnet build --no-incremental');
+    expect(sessions.launchCalls[0].command).toBe('dotnet build --no-incremental');
   });
 
   it('runAction_doesNothingForAnEcosystemWithNoCommand', async () => {
@@ -412,7 +507,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('clean');
 
-    expect(api.runCalls).toHaveLength(0);
+    expect(sessions.launchCalls).toHaveLength(0);
   });
 
   /**
@@ -450,8 +545,8 @@ describe('BuildRunner', () => {
 
     runner.runAction('build');
 
-    expect(api.runCalls[0].command).toBe('gradle build');
-    expect(api.runCalls[0].cwd).toBe('/j');
+    expect(sessions.launchCalls[0].command).toBe('gradle build');
+    expect(sessions.launchCalls[0].cwd).toBe('/j');
   });
 
   it('runAction_clean_runsMavenCleanForAMavenRoot', async () => {
@@ -461,7 +556,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('clean');
 
-    expect(api.runCalls[0].command).toBe('mvn clean');
+    expect(sessions.launchCalls[0].command).toBe('mvn clean');
   });
 
   it('runConfiguration_jvmGradle_runsGradleRun', async () => {
@@ -514,7 +609,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('clean');
 
-    expect(api.runCalls[0].command).toBe('cmake --build build --target clean');
+    expect(sessions.launchCalls[0].command).toBe('cmake --build build --target clean');
   });
 
   it('runAction_rebuild_runsMakeCleanThenMakeForAMakefileRoot', async () => {
@@ -529,7 +624,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('rebuild');
 
-    expect(api.runCalls[0].command).toBe('make clean && make');
+    expect(sessions.launchCalls[0].command).toBe('make clean && make');
   });
 
   it('runConfiguration_cpp_buildsThenRunsTheTargetBinary', async () => {
@@ -577,7 +672,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('rebuild');
 
-    expect(api.runCalls[0].command).toBe('cargo clean && cargo build');
+    expect(sessions.launchCalls[0].command).toBe('cargo clean && cargo build');
   });
 
   it('runConfiguration_rust_runsTheCrateWithCargoRunDashP', async () => {
@@ -618,7 +713,7 @@ describe('BuildRunner', () => {
 
     runner.runAction('clean');
 
-    expect(api.runCalls[0].command).toBe('go clean');
+    expect(sessions.launchCalls[0].command).toBe('go clean');
   });
 
   it('runConfiguration_go_runsGoRunDot', async () => {

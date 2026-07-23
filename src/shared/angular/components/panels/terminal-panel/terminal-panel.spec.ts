@@ -63,6 +63,16 @@ describe('TerminalPanel', () => {
     host = fixture.nativeElement as HTMLElement;
   });
 
+  /**
+   * Announces a root the way the owning view does: to the dock context (the panel's template guard)
+   * and the session store (the sessions' working directory) together.
+   * @param root The root to announce.
+   */
+  function announceRoot(root: string | null): void {
+    context.setRoot(root);
+    TestBed.inject(TerminalSessions).setRoot(root);
+  }
+
   it('render_whenNoFolderIsOpen_showsTheOpenFolderPrompt', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
@@ -75,7 +85,7 @@ describe('TerminalPanel', () => {
 
   it('render_whenARootIsKnown_opensOneTerminalRootedAtTheFolder', async () => {
     context.setTabId('tab-1');
-    context.setRoot('/repo');
+    announceRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -91,7 +101,7 @@ describe('TerminalPanel', () => {
 
   it('newTerminal_mountsAnAdditionalConcurrentTerminalWithADistinctSession', async () => {
     context.setTabId('tab-1');
-    context.setRoot('/repo');
+    announceRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -110,7 +120,7 @@ describe('TerminalPanel', () => {
 
   it('render_whenOutsideElectron_theHostedTerminalShowsItsUnavailableNotice', async () => {
     context.setTabId('tab-1');
-    context.setRoot('/repo');
+    announceRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -119,13 +129,13 @@ describe('TerminalPanel', () => {
 
   it('root_whenTheFolderCloses_revertsToThePromptAndDisposesTheSessions', async () => {
     context.setTabId('tab-1');
-    context.setRoot('/repo');
+    announceRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
     const sessions: TerminalSessions = TestBed.inject(TerminalSessions);
     const id: string = sessions.sessions()[0].id;
 
-    context.setRoot(null);
+    announceRoot(null);
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -136,7 +146,7 @@ describe('TerminalPanel', () => {
 
   it('destroy_leavesTheSessionsAliveForTheNextPanelToReAttach', async () => {
     context.setTabId('tab-1');
-    context.setRoot('/repo');
+    announceRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
     const sessions: TerminalSessions = TestBed.inject(TerminalSessions);

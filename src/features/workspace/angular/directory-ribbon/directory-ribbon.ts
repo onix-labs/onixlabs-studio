@@ -11,6 +11,7 @@ import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
 import { isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Modal } from '@shared/angular/components/modal/modal';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -49,8 +50,10 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripField,
     RibbonStripRow,
     Dropdown,
+    Modal,
   ],
   templateUrl: './directory-ribbon.html',
+  styleUrl: './directory-ribbon.scss',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -149,6 +152,20 @@ export class DirectoryRibbon {
    * Gets whether the active workspace has anything running.
    */
   protected readonly running: Signal<boolean> = this.builds.running;
+
+  /**
+   * Gets whether the active workspace's Build terminal is busy. Build actions gate on this alone —
+   * not on {@link running} — so a build can start while run configurations are in flight.
+   */
+  protected readonly buildBusy: Signal<boolean> = this.builds.buildBusy;
+
+  /**
+   * Holds the build action awaiting the user's stop-and-restart confirmation, or null when none is.
+   * Set when a build action is requested while the Build terminal is busy; the modal it opens either
+   * dispatches the action with restart granted or discards it.
+   */
+  protected readonly pendingBuildAction: WritableSignal<'build' | 'rebuild' | 'clean' | null> =
+    signal<'build' | 'rebuild' | 'clean' | null>(null);
 
   /**
    * Gets the active workspace's in-flight runs, listed by the Stop button's menu.
@@ -362,21 +379,66 @@ export class DirectoryRibbon {
    * Runs the active workspace's default build task.
    */
   protected onBuild(): void {
-    this.builds.build();
+    this.requestBuildAction('build');
   }
 
   /**
    * Cleans the active workspace's build outputs.
    */
   protected onClean(): void {
-    this.builds.runAction('clean');
+    this.requestBuildAction('clean');
   }
 
   /**
    * Rebuilds the active workspace from clean.
    */
   protected onRebuild(): void {
-    this.builds.runAction('rebuild');
+    this.requestBuildAction('rebuild');
+  }
+
+  /**
+   * Dispatches a build action, or — when the Build terminal is busy — asks whether to stop the
+   * running build and start this one instead (a busy build is never killed silently).
+   * @param action The requested build action.
+   */
+  private requestBuildAction(action: 'build' | 'rebuild' | 'clean'): void {
+    if (this.builds.buildBusy()) {
+      this.pendingBuildAction.set(action);
+      return;
+    }
+    this.dispatchBuildAction(action, false);
+  }
+
+  /**
+   * Confirms the stop-and-restart prompt: the running build is stopped and the pending action starts
+   * in its place.
+   */
+  protected confirmBuildRestart(): void {
+    const action: 'build' | 'rebuild' | 'clean' | null = this.pendingBuildAction();
+    this.pendingBuildAction.set(null);
+    if (action !== null) {
+      this.dispatchBuildAction(action, true);
+    }
+  }
+
+  /**
+   * Dismisses the stop-and-restart prompt, leaving the running build untouched.
+   */
+  protected cancelBuildRestart(): void {
+    this.pendingBuildAction.set(null);
+  }
+
+  /**
+   * Sends a build action to the active workspace's runner.
+   * @param action The build action.
+   * @param restart Whether a busy build may be stopped and replaced.
+   */
+  private dispatchBuildAction(action: 'build' | 'rebuild' | 'clean', restart: boolean): void {
+    if (action === 'build') {
+      this.builds.build({ restart });
+    } else {
+      this.builds.runAction(action, { restart });
+    }
   }
 
   /**

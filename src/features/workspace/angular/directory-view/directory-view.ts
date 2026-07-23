@@ -323,6 +323,13 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly dockTabContext: DockTabContext = inject(DockTabContext);
 
   /**
+   * Holds this tab's terminal session store. The view announces the workspace root to it (the panel
+   * never does — a session launched before the panel mounts must survive the mount), and its
+   * sessions are disposed with the tab.
+   */
+  private readonly terminalSessions: TerminalSessions = inject(TerminalSessions);
+
+  /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
    * {@link Repository}; undefined when running outside Electron.
    */
@@ -408,6 +415,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       const root: string | null = this.workspace.root()?.path ?? null;
       this.activeWorkspace.setRoot(this.tabId(), root);
       this.dockTabContext.setRoot(root);
+      this.terminalSessions.setRoot(root);
     });
 
     // Show the Solution Explorer only while this tab's root has a recognised project system, docking it

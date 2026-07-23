@@ -95,16 +95,15 @@ export class TerminalPanel {
   protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Initializes the panel, announcing the tab's folder to the session store so it can open the first
-   * terminal (and swap sessions out when the folder changes).
+   * Initializes the panel, asking the session store for a shell once a folder is known. The store's
+   * root is announced by the owning view (not here), so a command session launched before this panel
+   * ever mounts is never disturbed by the mount.
    */
   public constructor() {
-    // Announce the root on mount and whenever it changes; the store opens the first terminal once a
-    // folder is known (never before — the shell's working directory would be wrong), keeps sessions
-    // across a re-mount under the same root, and replaces them when the folder changes.
     effect((): void => {
-      const root: string | null = this.root();
-      untracked((): void => this.terminals.setRoot(root));
+      if (this.root() !== null) {
+        untracked((): void => this.terminals.ensureShell());
+      }
     });
   }
 

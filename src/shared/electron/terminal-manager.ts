@@ -260,10 +260,14 @@ export class TerminalManager {
           clearTimeout(pendingKill);
           this.killTimers.delete(id);
         }
+        // node-pty reports signal 0 (not undefined) for a plain exit; only a real signal number means
+        // the process was terminated — 0 must not read as one, or every success would.
+        const endedBy: number | null =
+          typeof event.signal === 'number' && event.signal !== 0 ? event.signal : null;
         // Keep the scrollback (with the exit recorded) so a pane re-attaching later still shows the
         // session's output and exit banner; only dispose removes it.
-        this.scrollback.markExited(id, event.exitCode, event.signal ?? null);
-        this.send(TerminalChannel.Exit, id, event.exitCode, event.signal ?? null);
+        this.scrollback.markExited(id, event.exitCode, endedBy);
+        this.send(TerminalChannel.Exit, id, event.exitCode, endedBy);
         this.terminals.delete(id);
       });
 

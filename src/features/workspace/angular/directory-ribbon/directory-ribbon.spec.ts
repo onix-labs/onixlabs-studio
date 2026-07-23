@@ -29,8 +29,12 @@ interface RibbonInternals {
   buildConfigNames(): readonly string[];
   buildConfigValue(): string;
   targetNames(): readonly string[];
+  onBuild(): void;
   onClean(): void;
   onRebuild(): void;
+  pendingBuildAction(): 'build' | 'rebuild' | 'clean' | null;
+  confirmBuildRestart(): void;
+  cancelBuildRestart(): void;
   onSelectBuildConfiguration(name: string): void;
   onSelectTarget(name: string): void;
   canDebug(): boolean;
@@ -97,11 +101,18 @@ class FakeBuilds {
   public readonly running: Signal<boolean> = computed((): boolean => this.runs().length > 0);
   public readonly activeRuns: Signal<readonly ActiveRun[]> = this.runs.asReadonly();
   public readonly canBuild: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly buildBusy: WritableSignal<boolean> = signal<boolean>(false);
   public readonly cancelledRunIds: string[] = [];
   public readonly runConfigurationCalls: RunConfiguration[] = [];
   public readonly siblingCalls: (readonly RunConfiguration[])[] = [];
   public readonly actionCalls: ProjectAction[] = [];
+  public readonly actionOptions: (object | undefined)[] = [];
+  public readonly buildCalls: (object | undefined)[] = [];
   public cancelAllCalls: number = 0;
+
+  public build(options?: object): void {
+    this.buildCalls.push(options);
+  }
 
   public runConfiguration(
     configuration: RunConfiguration,
@@ -111,8 +122,9 @@ class FakeBuilds {
     this.siblingCalls.push(siblings);
   }
 
-  public runAction(action: ProjectAction): void {
+  public runAction(action: ProjectAction, options?: object): void {
     this.actionCalls.push(action);
+    this.actionOptions.push(options);
   }
 
   public cancel(runId: string): void {
@@ -421,6 +433,57 @@ describe('DirectoryRibbon', () => {
     internals().onRebuild();
 
     expect(builds.actionCalls).toEqual(['clean', 'rebuild']);
+    // Dispatched while idle, so no stop-and-restart was granted.
+    expect(builds.actionOptions).toEqual([{ restart: false }, { restart: false }]);
+  });
+
+  it('buildActions_whileTheBuildTerminalIsBusy_askBeforeStoppingTheRunningBuild', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+    builds.buildBusy.set(true);
+
+    internals().onClean();
+
+    // Nothing dispatched yet: the prompt is pending the user's decision.
+    expect(builds.actionCalls).toEqual([]);
+    expect(internals().pendingBuildAction()).toBe('clean');
+
+    internals().confirmBuildRestart();
+
+    expect(builds.actionCalls).toEqual(['clean']);
+    expect(builds.actionOptions).toEqual([{ restart: true }]);
+    expect(internals().pendingBuildAction()).toBeNull();
+  });
+
+  it('buildActions_dismissingThePrompt_leavesTheRunningBuildUntouched', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+    builds.buildBusy.set(true);
+
+    internals().onBuild();
+    expect(internals().pendingBuildAction()).toBe('build');
+
+    internals().cancelBuildRestart();
+
+    expect(builds.buildCalls).toEqual([]);
+    expect(builds.actionCalls).toEqual([]);
+    expect(internals().pendingBuildAction()).toBeNull();
+  });
+
+  it('build_whileIdle_dispatchesImmediately', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+
+    internals().onBuild();
+
+    expect(builds.buildCalls).toEqual([{ restart: false }]);
+  });
+
+  it('buildActions_neverGateOnRunConfigurations', () => {
+    capabilities.capabilities.set(dotnetCapabilities());
+    // A run configuration is in flight; builds must remain available regardless.
+    builds.runs.set([{ id: 'r1', label: 'Api', taskId: 'api', startedAt: 0 }]);
+
+    expect(internals().canBuild()).toBe(true);
+    internals().onBuild();
+    expect(builds.buildCalls).toEqual([{ restart: false }]);
   });
 
   it('showsTheSelectedBuildConfigurationAndTargetByName', () => {

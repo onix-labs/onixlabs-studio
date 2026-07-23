@@ -2,7 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
-import { ActiveRun, Builds, BuildHandler, BuildTask } from './builds';
+import { ActiveRun, BuildActionOptions, Builds, BuildHandler, BuildTask } from './builds';
 
 /**
  * A controllable fake build handler.
@@ -28,16 +28,26 @@ class FakeHandler implements BuildHandler {
     return this.runsSignal;
   }
 
-  public run(taskId: string): void {
+  public readonly busySignal: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly runOptions: (BuildActionOptions | undefined)[] = [];
+  public readonly actionOptions: (BuildActionOptions | undefined)[] = [];
+
+  public get buildBusy(): WritableSignal<boolean> {
+    return this.busySignal;
+  }
+
+  public run(taskId: string, options?: BuildActionOptions): void {
     this.runCalls.push(taskId);
+    this.runOptions.push(options);
   }
 
   public runConfiguration(configuration: RunConfiguration): void {
     this.configurationCalls.push(configuration);
   }
 
-  public runAction(action: ProjectAction): void {
+  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
     this.actionCalls.push(action);
+    this.actionOptions.push(options);
   }
 
   public cancel(runId: string): void {
@@ -75,6 +85,17 @@ describe('Builds', () => {
     expect(builds.activeRuns()).toEqual([]);
     expect(builds.running()).toBe(false);
     expect(builds.canBuild()).toBe(false);
+    expect(builds.buildBusy()).toBe(false);
+  });
+
+  it('buildBusy_followsTheActiveHandler', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    const handler: FakeHandler = new FakeHandler();
+    builds.register(handler);
+
+    expect(builds.buildBusy()).toBe(false);
+    handler.busySignal.set(true);
+    expect(builds.buildBusy()).toBe(true);
   });
 
   it('running_followsWhetherTheActiveHandlerHasAnyRunInFlight', () => {
@@ -106,6 +127,10 @@ describe('Builds', () => {
     builds.build();
 
     expect(handler.runCalls).toEqual(['build']);
+
+    // The stop-and-restart grant travels through to the handler.
+    builds.build({ restart: true });
+    expect(handler.runOptions[1]).toEqual({ restart: true });
   });
 
   it('unregister_clearsTheHandlerWhenItIsCurrent', () => {
@@ -160,5 +185,9 @@ describe('Builds', () => {
     builds.runAction('clean');
 
     expect(handler.actionCalls).toEqual(['clean']);
+
+    builds.runAction('rebuild', { restart: true });
+    expect(handler.actionCalls).toEqual(['clean', 'rebuild']);
+    expect(handler.actionOptions[1]).toEqual({ restart: true });
   });
 });

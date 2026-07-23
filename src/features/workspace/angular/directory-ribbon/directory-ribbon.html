@@ -1,21 +1,24 @@
 <app-ribbon-overflow>
+  <!-- Build actions gate on the Build terminal alone (never on runs, so a build can start while a
+       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
+       asks whether to stop the running build and start this action instead. -->
   <app-ribbon-strip-group title="Solution">
     <app-ribbon-strip-button
       [icon]="Icon.BUILD"
       label="Build"
-      [disabled]="!canBuild() || running()"
+      [disabled]="!canBuild()"
       (action)="onBuild()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.REBUILD"
       label="Rebuild"
-      [disabled]="!canRebuild() || running()"
+      [disabled]="!canRebuild()"
       (action)="onRebuild()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.CLEAN"
       label="Clean"
-      [disabled]="!canClean() || running()"
+      [disabled]="!canClean()"
       (action)="onClean()"
     />
   </app-ribbon-strip-group>
@@ -142,3 +145,30 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
+
+<!-- Asked when a build action targets a busy Build terminal: the running build is only ever stopped
+     after explicit confirmation, never silently. -->
+<app-modal
+  [open]="pendingBuildAction() !== null"
+  [width]="26"
+  ariaLabel="A build is already running"
+  (dismiss)="cancelBuildRestart()"
+>
+  <h2 class="directory-ribbon__confirm-title">A build is already running</h2>
+  <p class="directory-ribbon__confirm-message">
+    Stop the running build and start this one instead? Its output stays in the Build terminal until
+    the new build replaces it.
+  </p>
+  <div class="directory-ribbon__confirm-actions">
+    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelBuildRestart()">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
+      (click)="confirmBuildRestart()"
+    >
+      Stop &amp; Restart
+    </button>
+  </div>
+</app-modal>

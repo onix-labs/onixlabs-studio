@@ -19,9 +19,10 @@ const TERMINAL_PANEL_ID: string = 'terminal';
 
 /**
  * The synthetic exit code a pending completion resolves with when its session is disposed without an
- * exit of its own (the tab or folder closed while the command ran).
+ * exit of its own (the tab or folder closed while the command ran, or a relaunch replaced it).
+ * Callers awaiting a completion use it to tell "went away" from a real exit.
  */
-const DISPOSED_EXIT_CODE: number = -1;
+export const DISPOSED_EXIT_CODE: number = -1;
 
 /**
  * One docked terminal session: its globally-unique PTY identifier and its display name.
@@ -231,20 +232,46 @@ export class TerminalSessions implements OnDestroy {
   public readonly activeId: Signal<string | null> = this.active.asReadonly();
 
   /**
-   * Sets the folder the sessions are rooted at. The first root opens one terminal; changing to a
-   * different folder (or to none, when the folder closes) disposes the existing sessions — their
-   * shells are rooted in the old folder — and opens a fresh one under the new root. Re-announcing
-   * the same root (as the panel does whenever it re-mounts) leaves the sessions untouched.
+   * Sets the folder the sessions are rooted at. Announced by the owning view (not the panel — a
+   * session can be launched before the panel ever mounts, and the panel's first mount must not
+   * disturb it). Moving to a different folder (or to none, when the folder closes) disposes the
+   * existing sessions — they are rooted in the old folder; re-announcing the same root is a no-op.
+   * The first root deliberately opens nothing: the panel asks for its shell via
+   * {@link ensureShell} when it shows, and launched sessions carry their own working directories.
    * @param root The absolute folder path, or null when no folder is open.
    */
   public setRoot(root: string | null): void {
     if (root === this.root) {
       return;
     }
+    const hadRoot: boolean = this.root !== null;
     this.root = root;
-    this.reset();
-    if (root !== null) {
+    if (hadRoot) {
+      this.reset();
+    }
+  }
+
+  /**
+   * Opens a shell session when none exists, so the terminal panel always shows with a usable shell —
+   * without disturbing command-backed sessions that may already be running. Called by the panel as it
+   * mounts; a no-op before a folder is known (a shell spawned earlier would have the wrong working
+   * directory).
+   */
+  public ensureShell(): void {
+    if (this.root === null) {
+      return;
+    }
+    const hasShell: boolean = this.items().some(
+      (session: TerminalSession): boolean => session.kind === 'shell',
+    );
+    if (!hasShell) {
+      // Keep the current session in front: the panel may be mounting precisely because a launched
+      // session revealed it, and the fresh shell must not steal that activation.
+      const active: string | null = this.active();
       this.create();
+      if (active !== null) {
+        this.active.set(active);
+      }
     }
   }
 

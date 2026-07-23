@@ -186,6 +186,11 @@ export class SourceControlView implements OnInit, OnDestroy {
   private readonly dockTabContext: DockTabContext = inject(DockTabContext);
 
   /**
+   * Holds this tab's terminal session store, told the repository root so its shells start there.
+   */
+  private readonly terminalSessions: TerminalSessions = inject(TerminalSessions);
+
+  /**
    * Holds the status-bar registry this view contributes branch and change status to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
@@ -252,10 +257,13 @@ export class SourceControlView implements OnInit, OnDestroy {
       this.diffs.removeMissing(present);
     });
 
-    // Publish the bound repository's root to the dock context so the docked terminal roots its shell
-    // there.
+    // Publish the bound repository's root to the dock context and the terminal session store, so the
+    // docked terminal roots its shell there (the store learns the root here — never from the panel,
+    // whose mount must not disturb sessions launched before it).
     effect((): void => {
-      this.dockTabContext.setRoot(this.repository.info()?.root ?? null);
+      const root: string | null = this.repository.info()?.root ?? null;
+      this.dockTabContext.setRoot(root);
+      this.terminalSessions.setRoot(root);
     });
 
     // Publish branch and change status to the status strip while active, reading the repository

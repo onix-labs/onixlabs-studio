@@ -68,6 +68,18 @@ export interface ActiveRun {
 }
 
 /**
+ * The options accompanying a build-flavoured action (Build/Rebuild/Clean/test).
+ */
+export interface BuildActionOptions {
+  /**
+   * Gets whether a busy build terminal may be stopped and replaced by this action. Set after the
+   * user confirms the stop-and-restart prompt; without it a busy build leaves the request ignored
+   * (the ribbon asks before ever dispatching into a busy build).
+   */
+  readonly restart?: boolean;
+}
+
+/**
  * The contract a workspace's build runner exposes to the {@link Builds} seam so the root ribbon can
  * drive it.
  */
@@ -83,10 +95,16 @@ export interface BuildHandler {
   readonly activeRuns: Signal<readonly ActiveRun[]>;
 
   /**
+   * Gets whether the workspace's build terminal is busy (a build, clean, or test is in flight).
+   */
+  readonly buildBusy: Signal<boolean>;
+
+  /**
    * Runs the task with the given identifier.
    * @param taskId The task to run.
+   * @param options The action options.
    */
-  run(taskId: string): void;
+  run(taskId: string, options?: BuildActionOptions): void;
 
   /**
    * Runs a `.studio` run configuration, compiling it to a command and executing it like a task. A
@@ -101,8 +119,9 @@ export interface BuildHandler {
    * ecosystem and executing it. Distinct from the discovered tasks, so these never appear in the Run
    * dropdown.
    * @param action The action to run.
+   * @param options The action options.
    */
-  runAction(action: ProjectAction): void;
+  runAction(action: ProjectAction, options?: BuildActionOptions): void;
 
   /**
    * Cancels one in-flight run.
@@ -161,6 +180,13 @@ export class Builds {
   );
 
   /**
+   * Gets whether the active workspace's build terminal is busy (a build, clean, or test in flight).
+   */
+  public readonly buildBusy: Signal<boolean> = computed(
+    (): boolean => this.handler()?.buildBusy() ?? false,
+  );
+
+  /**
    * Registers the active workspace's build handler.
    * @param handler The handler to register.
    */
@@ -194,16 +220,18 @@ export class Builds {
   /**
    * Runs a capability action (Build/Clean/Rebuild…) on the active workspace.
    * @param action The action to run.
+   * @param options The action options.
    */
-  public runAction(action: ProjectAction): void {
-    this.handler()?.runAction(action);
+  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
+    this.handler()?.runAction(action, options);
   }
 
   /**
    * Runs the active workspace's default build task.
+   * @param options The action options.
    */
-  public build(): void {
-    this.runFirst('build');
+  public build(options?: BuildActionOptions): void {
+    this.runFirst('build', options);
   }
 
   /**
@@ -224,11 +252,12 @@ export class Builds {
   /**
    * Runs the first task of a group on the active workspace, when one exists.
    * @param group The group whose first task is run.
+   * @param options The action options.
    */
-  private runFirst(group: BuildGroup): void {
+  private runFirst(group: BuildGroup, options?: BuildActionOptions): void {
     const task: BuildTask | undefined = this.firstOf(group);
     if (task !== undefined) {
-      this.handler()?.run(task.id);
+      this.handler()?.run(task.id, options);
     }
   }
 

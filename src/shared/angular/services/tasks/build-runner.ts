@@ -19,9 +19,15 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import {
+  DISPOSED_EXIT_CODE,
+  TerminalLaunch,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Output, OutputChannel } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { ActiveRun, BuildGroup, BuildHandler, BuildTask } from './builds';
+import { ActiveRun, BuildActionOptions, BuildGroup, BuildHandler, BuildTask } from './builds';
 import { MatchedProblem, parseProblems } from './problem-matcher';
 
 /**
@@ -118,10 +124,13 @@ function groupOf(name: string): BuildGroup {
  * panel and its problems into that workspace's Problems panel.
  *
  * Tasks are discovered from the workspace's ecosystem (a `package.json`'s scripts, a `.NET` project or
- * solution). A run is executed as a captured child process through the main-process task runner; its
- * output streams into the Output channel and, on completion, is parsed by the problem matchers into
- * diagnostics published under this workspace's aggregate. It implements {@link BuildHandler} so the
- * root ribbon can drive whichever workspace is active.
+ * solution). Build-flavoured tasks (build, clean, rebuild, test, capability actions) execute in the
+ * workspace's single reused read-only Build terminal session — a real PTY, so toolchains colour their
+ * output — one at a time: a busy build is only ever stopped and replaced after the user confirms
+ * (never silently), and its output is problem-matched from the session's retained scrollback when it
+ * exits. Run configurations still execute as captured child processes through the main-process task
+ * runner into per-run Output channels (they move to interactive run terminals in a later phase). It
+ * implements {@link BuildHandler} so the root ribbon can drive whichever workspace is active.
  */
 @Service()
 export class BuildRunner implements BuildHandler, OnDestroy {
@@ -144,6 +153,16 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Holds this workspace's documents, used to resolve a problem's file to an open document.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds this workspace's terminal sessions, hosting the reused Build terminal.
+   */
+  private readonly sessions: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the terminal client, used to read the Build session's scrollback for problem matching.
+   */
+  private readonly terminalBridge: TerminalBridge = inject(TerminalBridge);
 
   /**
    * Holds the generic transport, or undefined outside Electron.
@@ -178,16 +197,33 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   public readonly running: Signal<boolean> = computed((): boolean => this.runs().length > 0);
 
   /**
+   * Holds the identifier of this workspace's reused Build terminal session. Stable across launches
+   * (each relaunches in place) and unique per workspace, since the main process keys PTYs globally.
+   */
+  private readonly buildSessionId: string = `build-${crypto.randomUUID()}`;
+
+  /**
+   * Holds whether the Build terminal is busy with an in-flight build-flavoured task.
+   */
+  private readonly buildBusyState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the Build terminal is busy (a build, clean, rebuild, or test in flight).
+   */
+  public readonly buildBusy: Signal<boolean> = this.buildBusyState.asReadonly();
+
+  /**
+   * Holds the token of the current build launch, so a superseded launch's completion neither clears
+   * the busy state nor publishes stale problems.
+   */
+  private currentBuild: symbol | null = null;
+
+  /**
    * Holds the live state of each in-flight run, keyed by run id: what it is running, where its output
    * goes, and the output accumulated for problem matching. Several runs are live at once, so every
    * output and exit event is routed by its run id rather than compared against one active run.
    */
   private readonly live: Map<string, LiveRun> = new Map<string, LiveRun>();
-
-  /**
-   * Holds the Build output channel: build, test, and capability-action task output.
-   */
-  private readonly buildChannel: OutputChannel = this.output.channel('build', 'Build');
 
   /**
    * Holds the problems matched from each finished run's output, keyed by the task that produced them, so
@@ -279,12 +315,17 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * nothing when the task is unknown, a run is already in flight, or Electron is unavailable.
    * @param taskId The task to run.
    */
-  public run(taskId: string): void {
+  public run(taskId: string, options?: BuildActionOptions): void {
     const task: BuildTask | undefined = this.discovered().find(
       (candidate: BuildTask): boolean => candidate.id === taskId,
     );
-    if (task !== undefined) {
+    if (task === undefined) {
+      return;
+    }
+    if (task.group === 'run') {
       this.launch(task);
+    } else {
+      this.dispatchBuild(task, options);
     }
   }
 
@@ -318,7 +359,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * be compiled for the ecosystem.
    * @param action The action to run.
    */
-  public runAction(action: ProjectAction): void {
+  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
     const root: DirectoryListing | null = this.workspace.root();
     if (root === null) {
       return;
@@ -327,7 +368,60 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (command === null) {
       return;
     }
-    this.launch({ id: `action:${action}`, label: command, group: 'other', command, cwd: root.path });
+    this.dispatchBuild(
+      { id: `action:${action}`, label: command, group: 'other', command, cwd: root.path },
+      options,
+    );
+  }
+
+  /**
+   * Executes a build-flavoured task in the workspace's reused Build terminal session: a read-only
+   * PTY, revealed as it starts, interruptible with Ctrl+C. One build runs at a time — a busy Build
+   * terminal leaves the request ignored unless the caller passed `restart` (granted by the ribbon's
+   * stop-and-restart prompt, so a running build is never killed silently). The task's previous
+   * problems are cleared up front and re-matched from the session's scrollback when it exits.
+   * @param task The build-flavoured task to execute.
+   * @param options The action options.
+   */
+  private dispatchBuild(task: BuildTask, options?: BuildActionOptions): void {
+    if (this.buildBusyState() && options?.restart !== true) {
+      return;
+    }
+    const token: symbol = Symbol(task.id);
+    this.currentBuild = token;
+    this.buildBusyState.set(true);
+    // Only this task's problems are stale; another task's diagnostics stay published.
+    this.problemsByTask.delete(task.id);
+    this.republishProblems();
+    void this.runBuildSession(task, token);
+  }
+
+  /**
+   * Launches a build task in the Build session and, once it exits on its own, matches problems from
+   * the session's retained scrollback. A superseded launch (relaunched or disposed) publishes
+   * nothing — the successor's results are the current truth.
+   * @param task The task being executed.
+   * @param token The launch token guarding against superseded completions.
+   */
+  private async runBuildSession(task: BuildTask, token: symbol): Promise<void> {
+    const launch: TerminalLaunch = await this.sessions.launch({
+      sessionId: this.buildSessionId,
+      name: 'Build',
+      kind: 'task',
+      command: task.command,
+      cwd: task.cwd,
+    });
+    const exitCode: number = await launch.exited;
+    if (this.currentBuild !== token) {
+      return;
+    }
+    this.currentBuild = null;
+    this.buildBusyState.set(false);
+    if (exitCode === DISPOSED_EXIT_CODE) {
+      return;
+    }
+    const replay: { data: string } = await this.terminalBridge.replay(this.buildSessionId);
+    this.publishProblems(task, replay.data);
   }
 
   /**
@@ -635,17 +729,16 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Resolves the Output channel a task streams into: a run configuration gets its own channel, named
-   * after it, so parallel runs stay readable instead of interleaving into one stream; build, test, and
-   * capability-action output shares the Build channel, as before. A second run of the same
-   * configuration reuses its channel, appending after the first — its own history in one place.
+   * Resolves the Output channel a task streams into: each run configuration gets its own channel,
+   * named after it, so parallel runs stay readable instead of interleaving into one stream. A second
+   * run of the same configuration reuses its channel, appending after the first — its own history in
+   * one place. Only run-group tasks reach this path: build-flavoured tasks execute in the Build
+   * terminal session instead.
    * @param task The task being launched.
    * @returns Returns the channel to stream into.
    */
   private channelFor(task: BuildTask): OutputChannel {
-    return task.group === 'run'
-      ? this.output.channel(`run:${task.id}`, task.label)
-      : this.buildChannel;
+    return this.output.channel(`run:${task.id}`, task.label);
   }
 
   /**
