@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
-import { TaskChannel, TaskRunRequest } from '@shared/api/task-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import {
   Diagnostic,
@@ -21,25 +20,11 @@ import { BuildRunner } from './build-runner';
 import { ActiveRun, BuildTask } from './builds';
 
 /**
- * A controllable fake transport: routes the task-runner channels (recording runs and capturing the
- * output/exit listeners so tests can emit them) and the workspace open-file channel used to read a
- * discovered `package.json`.
+ * A controllable fake transport routing the workspace open-file channel used to read a discovered
+ * `package.json`. Runs and builds no longer touch the transport — they execute in terminal sessions.
  */
 class FakeTaskBridge implements Bridge {
-  public readonly runCalls: TaskRunRequest[] = [];
-  public readonly cancelCalls: string[] = [];
-  private outputListener: ((...args: unknown[]) => void) | null = null;
-  private exitListener: ((...args: unknown[]) => void) | null = null;
-
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
-    if (channel === (TaskChannel.Run as string)) {
-      this.runCalls.push(args[0] as TaskRunRequest);
-      return Promise.resolve({ success: true, pid: 1 } as T);
-    }
-    if (channel === (TaskChannel.Cancel as string)) {
-      this.cancelCalls.push(args[0] as string);
-      return Promise.resolve(true as T);
-    }
     if (channel === (WorkspaceChannel.OpenFile as string)) {
       const path: string = args[0] as string;
       const selection: OpenSelection | null = path.endsWith('package.json')
@@ -57,28 +42,8 @@ class FakeTaskBridge implements Bridge {
     return undefined;
   }
 
-  public on(channel: string, listener: (...args: unknown[]) => void): () => void {
-    if (channel === (TaskChannel.Output as string)) {
-      this.outputListener = listener;
-      return (): void => {
-        this.outputListener = null;
-      };
-    }
-    if (channel === (TaskChannel.Exit as string)) {
-      this.exitListener = listener;
-      return (): void => {
-        this.exitListener = null;
-      };
-    }
+  public on(): () => void {
     return (): void => undefined;
-  }
-
-  public emitOutput(runId: string, chunk: string): void {
-    this.outputListener?.(runId, chunk, 'stdout');
-  }
-
-  public emitExit(runId: string, code: number | null, signal: string | null = null): void {
-    this.exitListener?.(runId, code, signal);
   }
 }
 
@@ -101,16 +66,18 @@ class FakeDiagnostics {
  */
 class FakeTerminalSessions {
   public readonly launchCalls: TerminalLaunchOptions[] = [];
-  private readonly resolvers: ((code: number) => void)[] = [];
+  public readonly terminateCalls: string[] = [];
+  private readonly resolvers: { id: string; resolve: (code: number) => void }[] = [];
 
   public launch(options: TerminalLaunchOptions): Promise<TerminalLaunch> {
     this.launchCalls.push(options);
+    const id: string = options.sessionId ?? `session-${this.launchCalls.length}`;
     const exited: Promise<number> = new Promise<number>((resolve: (code: number) => void): void => {
-      this.resolvers.push(resolve);
+      this.resolvers.push({ id, resolve });
     });
     return Promise.resolve({
       session: {
-        id: options.sessionId ?? 'session',
+        id,
         name: options.name,
         kind: options.kind,
         generation: this.launchCalls.length - 1,
@@ -120,8 +87,19 @@ class FakeTerminalSessions {
     });
   }
 
-  public resolveExit(code: number): void {
-    this.resolvers.shift()?.(code);
+  public terminate(id: string): void {
+    this.terminateCalls.push(id);
+  }
+
+  public resolveExit(code: number, sessionId?: string): void {
+    const index: number =
+      sessionId === undefined
+        ? 0
+        : this.resolvers.findIndex((entry): boolean => entry.id === sessionId);
+    if (index !== -1 && this.resolvers.length > 0) {
+      const [entry] = this.resolvers.splice(index, 1);
+      entry?.resolve(code);
+    }
   }
 }
 
@@ -239,7 +217,6 @@ describe('BuildRunner', () => {
     expect(runner.buildBusy()).toBe(true);
     // Builds never enter the run pool: the Run group's Stop stays untouched by a build.
     expect(runner.running()).toBe(false);
-    expect(api.runCalls).toHaveLength(0);
     expect(sessions.launchCalls[0]).toMatchObject({
       name: 'Build',
       kind: 'task',
@@ -314,67 +291,109 @@ describe('BuildRunner', () => {
     expect(diagnostics.published).toHaveLength(0);
   });
 
-  it('launch_routesBuildsToTheBuildTerminalAndEachRunConfigurationToItsOwnChannel', async () => {
+  it('launch_routesBuildsToTheBuildSessionAndRunsToInteractiveRunSessions', async () => {
     const runner: BuildRunner = await discover();
     const output: Output = TestBed.inject(Output);
 
-    // A build never touches the Output surface: it runs in the Build terminal session.
+    // Neither a build nor a run touches the Output surface any more.
     runner.run('dotnet:build');
-    expect(sessions.launchCalls).toHaveLength(1);
-    expect(output.snapshotOf('build')).toBe('');
-
-    // A run configuration still gets an Output channel of its own, named after it.
     runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
-    expect(output.activeChannelId()).toBe('run:build');
-    api.emitOutput(api.runCalls[0].runId, 'serving\n');
-    expect(output.snapshotOf('run:build')).toContain('serving');
+
+    expect(output.snapshotOf('build')).toBe('');
+    expect(output.snapshotOf('run:build')).toBe('');
+    expect(sessions.launchCalls).toHaveLength(2);
+    expect(sessions.launchCalls[0].kind).toBe('task');
+    expect(sessions.launchCalls[1]).toMatchObject({
+      kind: 'run',
+      name: 'Run: build',
+      command: 'npm run build',
+    });
+    // The run session is stable per configuration and distinct from the Build session.
+    expect(sessions.launchCalls[1].sessionId).toBeDefined();
+    expect(sessions.launchCalls[1].sessionId).not.toBe(sessions.launchCalls[0].sessionId);
   });
 
-  it('runsSeveralConfigurationsAtOnce_eachWithItsOwnRunOutputAndCancellation', async () => {
+  it('runsSeveralConfigurationsAtOnce_eachInItsOwnSessionWithItsOwnStop', async () => {
     const runner: BuildRunner = await discover();
-    const output: Output = TestBed.inject(Output);
 
     runner.runConfiguration(configuration('api', 'API'));
     runner.runConfiguration(configuration('web', 'Web'));
+    await settle();
 
-    // Neither start was dropped, and both are reported in flight.
-    expect(api.runCalls).toHaveLength(2);
+    // Neither start was dropped: two sessions, both reported in flight.
+    expect(sessions.launchCalls).toHaveLength(2);
+    expect(sessions.launchCalls[0].sessionId).not.toBe(sessions.launchCalls[1].sessionId);
     expect(runner.running()).toBe(true);
     expect(runner.activeRuns().map((run: ActiveRun): string => run.taskId)).toEqual(['api', 'web']);
 
-    // Output is routed by run id, so the two streams never bleed into each other.
-    api.emitOutput(api.runCalls[0].runId, 'api listening\n');
-    api.emitOutput(api.runCalls[1].runId, 'web listening\n');
-    expect(output.snapshotOf('run:api')).toContain('api listening');
-    expect(output.snapshotOf('run:api')).not.toContain('web listening');
-
-    // Stopping one leaves the other running.
+    // Stopping one terminates that session's tree and leaves the other running.
     const first: string = runner.activeRuns()[0].id;
     runner.cancel(first);
-    expect(api.cancelCalls).toEqual([first]);
-    api.emitExit(first, null, 'SIGTERM');
+    expect(sessions.terminateCalls).toEqual([first]);
+    sessions.resolveExit(143, first);
+    await settle();
     expect(runner.activeRuns().map((run: ActiveRun): string => run.taskId)).toEqual(['web']);
     expect(runner.running()).toBe(true);
 
     // And stopping the rest empties the set.
     runner.cancelAll();
-    api.emitExit(runner.activeRuns()[0].id, null, 'SIGTERM');
+    sessions.resolveExit(143, runner.activeRuns()[0].id);
+    await settle();
     expect(runner.activeRuns()).toEqual([]);
     expect(runner.running()).toBe(false);
   });
 
-  it('runsTheSameConfigurationTwice_asTwoIndependentRuns', async () => {
+  it('runningTheSameConfigurationAgain_isIgnoredWithoutRestart', async () => {
     const runner: BuildRunner = await discover();
 
     runner.runConfiguration(configuration('api', 'API'));
     runner.runConfiguration(configuration('api', 'API'));
 
-    expect(api.runCalls).toHaveLength(2);
-    const ids: readonly string[] = runner.activeRuns().map((run: ActiveRun): string => run.id);
-    expect(new Set(ids).size).toBe(2);
+    // Each configuration reuses one session; the ribbon asks before dispatching into a busy one.
+    expect(sessions.launchCalls).toHaveLength(1);
+    expect(runner.activeRuns()).toHaveLength(1);
+  });
 
-    api.emitExit(ids[0], 0);
-    expect(runner.activeRuns().map((run: ActiveRun): string => run.id)).toEqual([ids[1]]);
+  it('runningTheSameConfigurationAgain_withRestartGranted_relaunchesItsSessionInPlace', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration(configuration('api', 'API'));
+    runner.runConfiguration(configuration('api', 'API'), [], { restart: true });
+    await settle();
+
+    expect(sessions.launchCalls).toHaveLength(2);
+    expect(sessions.launchCalls[0].sessionId).toBe(sessions.launchCalls[1].sessionId);
+    // Still one in-flight run: the relaunch replaced the entry rather than adding a second.
+    expect(runner.activeRuns()).toHaveLength(1);
+  });
+
+  it('run_appliesTheConfigurationsEnvironment', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({
+      id: 'api',
+      name: 'API',
+      providerKind: 'node',
+      env: { PORT: '8080' },
+      mode: 'run',
+    });
+
+    expect(sessions.launchCalls[0].env).toEqual({ PORT: '8080' });
+  });
+
+  it('run_anUnrunnableConfiguration_surfacesTheFailureInItsSession', async () => {
+    const runner: BuildRunner = await discover();
+
+    // An unknown provider with no program compiles to nothing runnable.
+    runner.runConfiguration({ id: 'mystery', name: 'Mystery', providerKind: 'plainc', mode: 'run' });
+
+    expect(sessions.launchCalls).toHaveLength(1);
+    expect(sessions.launchCalls[0].name).toBe('Run: Mystery');
+    expect(sessions.launchCalls[0].command).toBe('/bin/sh');
+    // The reason travels as an argument-vector element, immune to shell interpretation.
+    expect(sessions.launchCalls[0].args?.at(-1)).toContain("'Mystery' does not produce a runnable command");
+    // It is not tracked as an in-flight run.
+    expect(runner.activeRuns()).toEqual([]);
   });
 
   it('compound_startsEveryMemberInParallel_andMembersStopIndividually', async () => {
@@ -393,9 +412,11 @@ describe('BuildRunner', () => {
     };
 
     runner.runConfiguration(compound, [...members, compound]);
+    await settle();
 
-    // The compound itself never runs — its members do, each as its own stoppable run.
-    expect(api.runCalls).toHaveLength(3);
+    // The compound itself never runs — its members do, each in its own session, each stoppable.
+    expect(sessions.launchCalls).toHaveLength(3);
+    expect(new Set(sessions.launchCalls.map((call): string | undefined => call.sessionId)).size).toBe(3);
     expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual([
       'Database',
       'API',
@@ -404,7 +425,9 @@ describe('BuildRunner', () => {
 
     const database: string = runner.activeRuns()[0].id;
     runner.cancel(database);
-    api.emitExit(database, null, 'SIGTERM');
+    expect(sessions.terminateCalls).toEqual([database]);
+    sessions.resolveExit(143, database);
+    await settle();
     expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual(['API', 'Web']);
   });
 
@@ -422,7 +445,7 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration(compound, [api1, compound]);
 
-    expect(api.runCalls).toHaveLength(1);
+    expect(sessions.launchCalls).toHaveLength(1);
     expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual(['API']);
   });
 
@@ -437,8 +460,8 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration(configuration);
 
-    expect(api.runCalls[0].command).toBe('dotnet run --project /w/App.csproj');
-    expect(api.runCalls[0].cwd).toBe('/w');
+    expect(sessions.launchCalls[0].command).toBe('dotnet run --project "/w/App.csproj"');
+    expect(sessions.launchCalls[0].cwd).toBe('/w');
   });
 
   it('runConfiguration_nodeScript_runsNpmRun', async () => {
@@ -446,7 +469,21 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('npm run build');
+    expect(sessions.launchCalls[0].command).toBe('npm run build');
+  });
+
+  it('runConfiguration_prefersTheTargetOverTheIdForProviderDefaults', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({
+      id: 'api',
+      name: 'API',
+      providerKind: 'node',
+      target: 'start:api',
+      mode: 'run',
+    });
+
+    expect(sessions.launchCalls[0].command).toBe('npm run start:api');
   });
 
   it('runConfiguration_explicitProgram_runsTheProgramWithItsArguments', async () => {
@@ -461,7 +498,9 @@ describe('BuildRunner', () => {
       mode: 'run',
     });
 
-    expect(api.runCalls[0].command).toBe('./run.sh --fast -v');
+    // An explicit program direct-spawns with its argument vector — no shell joining to misquote.
+    expect(sessions.launchCalls[0].command).toBe('./run.sh');
+    expect(sessions.launchCalls[0].args).toEqual(['--fast', '-v']);
   });
 
   it('runConfiguration_usesTheConfigurationsWorkingDirectoryWhenSet', async () => {
@@ -475,7 +514,21 @@ describe('BuildRunner', () => {
       mode: 'run',
     });
 
-    expect(api.runCalls[0].cwd).toBe('/w/sub');
+    expect(sessions.launchCalls[0].cwd).toBe('/w/sub');
+  });
+
+  it('runConfiguration_resolvesARelativeWorkingDirectoryAgainstTheRoot', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration({
+      id: 'build',
+      name: 'build',
+      providerKind: 'node',
+      cwd: 'packages/api',
+      mode: 'run',
+    });
+
+    expect(sessions.launchCalls[0].cwd).toBe('/w/packages/api');
   });
 
   it('runAction_clean_runsDotnetCleanInTheRoot', async () => {
@@ -567,7 +620,7 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: '/j/build.gradle', name: 'j', providerKind: 'jvm', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('./gradlew run');
+    expect(sessions.launchCalls[0].command).toBe('./gradlew run');
   });
 
   it('runConfiguration_jvmMaven_runsMavenExecJava', async () => {
@@ -577,7 +630,7 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: '/j/pom.xml', name: 'j', providerKind: 'jvm', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('mvn exec:java');
+    expect(sessions.launchCalls[0].command).toBe('mvn exec:java');
   });
 
   it('discover_findsACmakeBuildTaskSoTheBuildButtonEnables', async () => {
@@ -639,7 +692,7 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: 'app', name: 'app', providerKind: 'cpp', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('cmake --build build --target app && ./build/app');
+    expect(sessions.launchCalls[0].command).toBe('cmake --build build --target app && ./build/app');
   });
 
   /**
@@ -680,7 +733,7 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: 'my-crate', name: 'my-crate', providerKind: 'rust', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('cargo run -p my-crate');
+    expect(sessions.launchCalls[0].command).toBe('cargo run -p my-crate');
   });
 
   /**
@@ -721,6 +774,6 @@ describe('BuildRunner', () => {
 
     runner.runConfiguration({ id: 'widget', name: 'widget', providerKind: 'go', mode: 'run' });
 
-    expect(api.runCalls[0].command).toBe('go run .');
+    expect(sessions.launchCalls[0].command).toBe('go run .');
   });
 });

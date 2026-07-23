@@ -8,7 +8,7 @@ import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
-import { isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
+import { expandRunConfiguration, isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -166,6 +166,14 @@ export class DirectoryRibbon {
    */
   protected readonly pendingBuildAction: WritableSignal<'build' | 'rebuild' | 'clean' | null> =
     signal<'build' | 'rebuild' | 'clean' | null>(null);
+
+  /**
+   * Holds the run configuration awaiting the user's stop-and-restart confirmation, or null when none
+   * is. Set when Start targets a configuration whose run session (or a compound member's) is still
+   * running; the modal it opens either relaunches with restart granted or leaves the run alone.
+   */
+  protected readonly pendingRunConfiguration: WritableSignal<RunConfiguration | null> =
+    signal<RunConfiguration | null>(null);
 
   /**
    * Gets the active workspace's in-flight runs, listed by the Stop button's menu.
@@ -397,6 +405,60 @@ export class DirectoryRibbon {
   }
 
   /**
+   * Starts the selected run configuration, or — when it (or one of a compound's members) is still
+   * running — asks whether to stop it and start again (a running program is never killed silently).
+   */
+  protected onRun(): void {
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
+    if (configuration === undefined) {
+      return;
+    }
+    if (this.isConfigurationRunning(configuration)) {
+      this.pendingRunConfiguration.set(configuration);
+      return;
+    }
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: false,
+    });
+  }
+
+  /**
+   * Confirms the run stop-and-restart prompt: the running program is stopped and the configuration
+   * launches again in the same session.
+   */
+  protected confirmRunRestart(): void {
+    const configuration: RunConfiguration | null = this.pendingRunConfiguration();
+    this.pendingRunConfiguration.set(null);
+    if (configuration !== null) {
+      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+        restart: true,
+      });
+    }
+  }
+
+  /**
+   * Dismisses the run stop-and-restart prompt, leaving the running program untouched.
+   */
+  protected cancelRunRestart(): void {
+    this.pendingRunConfiguration.set(null);
+  }
+
+  /**
+   * Determines whether a configuration is currently running: any in-flight run belongs to it (or, for
+   * a compound, to one of its resolved members).
+   * @param configuration The configuration to test.
+   * @returns Returns true when the configuration has a run in flight.
+   */
+  private isConfigurationRunning(configuration: RunConfiguration): boolean {
+    const leafIds: ReadonlySet<string> = new Set<string>(
+      expandRunConfiguration(configuration, this.studio.runConfigurations()).map(
+        (leaf: RunConfiguration): string => leaf.id,
+      ),
+    );
+    return this.activeRuns().some((run): boolean => leafIds.has(run.taskId));
+  }
+
+  /**
    * Dispatches a build action, or — when the Build terminal is busy — asks whether to stop the
    * running build and start this one instead (a busy build is never killed silently).
    * @param action The requested build action.
@@ -464,17 +526,6 @@ export class DirectoryRibbon {
     )?.id;
     if (id !== undefined) {
       void this.studio.setLastTarget(id);
-    }
-  }
-
-  /**
-   * Runs the selected `.studio` run configuration on the active workspace. The workspace's other
-   * configurations travel with it so a compound can resolve its members, which start in parallel.
-   */
-  protected onRun(): void {
-    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
-    if (configuration !== undefined) {
-      this.builds.runConfiguration(configuration, this.studio.runConfigurations());
     }
   }
 

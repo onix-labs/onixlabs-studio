@@ -8,6 +8,7 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  Signal,
   untracked,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
@@ -64,6 +65,7 @@ import {
   WorkspaceSourceControlCommands,
 } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
+import { RUN_PROJECT_MODEL } from '@shared/angular/services/tasks/run-project-model';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
@@ -112,6 +114,12 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     Output,
     Diagnostics,
     BuildRunner,
+    {
+      // Give the build runner this workspace's project model so a run configuration's
+      // provider-default command resolves real targets (a .NET project name to its file).
+      provide: RUN_PROJECT_MODEL,
+      useFactory: (): Signal<ProjectModel | null> => inject(SolutionModel).model,
+    },
     DebugSession,
     LspClient,
     SolutionModel,

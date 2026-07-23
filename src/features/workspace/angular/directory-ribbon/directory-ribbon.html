@@ -146,6 +146,34 @@
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 
+<!-- Asked when Start targets a configuration that is still running: the program is only ever
+     stopped after explicit confirmation, never silently. -->
+<app-modal
+  [open]="pendingRunConfiguration() !== null"
+  [width]="26"
+  ariaLabel="This configuration is still running"
+  (dismiss)="cancelRunRestart()"
+>
+  <h2 class="directory-ribbon__confirm-title">
+    “{{ pendingRunConfiguration()?.name }}” is still running
+  </h2>
+  <p class="directory-ribbon__confirm-message">
+    Stop it and start it again? Its terminal keeps the session tab; the new run replaces the output.
+  </p>
+  <div class="directory-ribbon__confirm-actions">
+    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelRunRestart()">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
+      (click)="confirmRunRestart()"
+    >
+      Stop &amp; Restart
+    </button>
+  </div>
+</app-modal>
+
 <!-- Asked when a build action targets a busy Build terminal: the running build is only ever stopped
      after explicit confirmation, never silently. -->
 <app-modal

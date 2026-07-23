@@ -8,11 +8,9 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { Bridge } from '@shared/api/bridge';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
-import { ProjectAction } from '@shared/api/project-system';
+import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
 import { expandRunConfiguration, RunConfiguration } from '@shared/api/studio';
-import { TaskChannel } from '@shared/api/task-channels';
 import {
   Diagnostic,
   Diagnostics,
@@ -25,36 +23,15 @@ import {
   TerminalLaunch,
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
-import { Output, OutputChannel } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { ActiveRun, BuildActionOptions, BuildGroup, BuildHandler, BuildTask } from './builds';
 import { MatchedProblem, parseProblems } from './problem-matcher';
+import { RUN_PROJECT_MODEL } from './run-project-model';
 
 /**
  * Identifies the diagnostics provider build problems are published under.
  */
 const PROVIDER_ID: string = 'tasks';
-
-/**
- * The live state of one in-flight run: what it is running, the Output channel it streams into, and the
- * output accumulated so far for problem matching once it exits.
- */
-interface LiveRun {
-  /**
-   * Gets the task being run.
-   */
-  readonly task: BuildTask;
-
-  /**
-   * Gets the Output channel the run streams into.
-   */
-  readonly channel: OutputChannel;
-
-  /**
-   * Gets or sets the output accumulated so far.
-   */
-  buffer: string;
-}
 
 /**
  * Matches a .NET solution or project file by extension, used to detect a .NET workspace root.
@@ -128,17 +105,13 @@ function groupOf(name: string): BuildGroup {
  * workspace's single reused read-only Build terminal session — a real PTY, so toolchains colour their
  * output — one at a time: a busy build is only ever stopped and replaced after the user confirms
  * (never silently), and its output is problem-matched from the session's retained scrollback when it
- * exits. Run configurations still execute as captured child processes through the main-process task
- * runner into per-run Output channels (they move to interactive run terminals in a later phase). It
- * implements {@link BuildHandler} so the root ribbon can drive whichever workspace is active.
+ * exits. Run configurations execute as interactive run terminal sessions — one reused session per
+ * configuration, so an interactive program reads the user's keystrokes, and a relaunch replaces the
+ * same tab — with the configuration's environment and working directory applied. It implements
+ * {@link BuildHandler} so the root ribbon can drive whichever workspace is active.
  */
 @Service()
 export class BuildRunner implements BuildHandler, OnDestroy {
-  /**
-   * Holds this workspace's Output channel.
-   */
-  private readonly output: Output = inject(Output);
-
   /**
    * Holds this workspace's diagnostics aggregate.
    */
@@ -165,9 +138,13 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly terminalBridge: TerminalBridge = inject(TerminalBridge);
 
   /**
-   * Holds the generic transport, or undefined outside Electron.
+   * Holds the workspace's project model, when the owning view provides one, used to resolve a run
+   * configuration's provider-default target (a .NET project name to its project file) instead of
+   * trusting the configuration id verbatim.
    */
-  private readonly bridge: Bridge | undefined = window.bridge;
+  private readonly projectModel: Signal<ProjectModel | null> | null = inject(RUN_PROJECT_MODEL, {
+    optional: true,
+  });
 
   /**
    * Holds the discovered tasks.
@@ -219,11 +196,18 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private currentBuild: symbol | null = null;
 
   /**
-   * Holds the live state of each in-flight run, keyed by run id: what it is running, where its output
-   * goes, and the output accumulated for problem matching. Several runs are live at once, so every
-   * output and exit event is routed by its run id rather than compared against one active run.
+   * Holds the prefix of this workspace's run session identifiers. Each configuration reuses one
+   * session (`prefix:configurationId`), stable across launches and unique per workspace, since the
+   * main process keys PTYs globally.
    */
-  private readonly live: Map<string, LiveRun> = new Map<string, LiveRun>();
+  private readonly runSessionPrefix: string = `run-${crypto.randomUUID()}`;
+
+  /**
+   * Holds the token of each running configuration's current launch, keyed by session identifier, so
+   * a superseded launch's completion neither tears down the successor's run entry nor publishes
+   * stale problems.
+   */
+  private readonly currentRuns: Map<string, symbol> = new Map<string, symbol>();
 
   /**
    * Holds the problems matched from each finished run's output, keyed by the task that produced them, so
@@ -251,18 +235,8 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly unregisterProvider: () => void;
 
   /**
-   * Holds the function that removes the task-output listener, or null when not subscribed.
-   */
-  private readonly cleanupOutput: (() => void) | null;
-
-  /**
-   * Holds the function that removes the task-exit listener, or null when not subscribed.
-   */
-  private readonly cleanupExit: (() => void) | null;
-
-  /**
-   * Initializes the runner: registers its diagnostics provider, subscribes to task output and exit,
-   * and re-discovers tasks whenever the workspace root changes.
+   * Initializes the runner: registers its diagnostics provider and re-discovers tasks whenever the
+   * workspace root changes.
    */
   public constructor() {
     const provider: DiagnosticsProvider = {
@@ -276,14 +250,6 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       },
     };
     this.unregisterProvider = this.diagnostics.register(provider);
-    this.cleanupOutput =
-      this.bridge?.on(TaskChannel.Output, (...args: unknown[]): void =>
-        this.onOutput(args[0] as string, args[1] as string),
-      ) ?? null;
-    this.cleanupExit =
-      this.bridge?.on(TaskChannel.Exit, (...args: unknown[]): void =>
-        this.onExit(args[0] as string, args[1] as number | null, args[2] as string | null),
-      ) ?? null;
 
     effect((): void => {
       // Re-discover whenever the workspace root changes (reading the signal registers the dependency).
@@ -301,19 +267,19 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Tears down the diagnostics provider and task listeners, cancelling any in-flight run.
+   * Tears down the diagnostics provider, asking any in-flight run to stop (the terminal sessions
+   * themselves are disposed by their owning store as the tab closes).
    */
   public ngOnDestroy(): void {
     this.cancelAll();
-    this.cleanupOutput?.();
-    this.cleanupExit?.();
     this.unregisterProvider();
   }
 
   /**
-   * Runs the task with the given identifier, streaming its output and publishing its problems. Does
-   * nothing when the task is unknown, a run is already in flight, or Electron is unavailable.
+   * Runs the task with the given identifier: build-flavoured tasks in the Build terminal, run-group
+   * tasks in their own interactive run session. Does nothing when the task is unknown.
    * @param taskId The task to run.
+   * @param options The action options.
    */
   public run(taskId: string, options?: BuildActionOptions): void {
     const task: BuildTask | undefined = this.discovered().find(
@@ -323,7 +289,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return;
     }
     if (task.group === 'run') {
-      this.launch(task);
+      this.dispatchRun(task, options);
     } else {
       this.dispatchBuild(task, options);
     }
@@ -343,13 +309,109 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   public runConfiguration(
     configuration: RunConfiguration,
     siblings: readonly RunConfiguration[] = [],
+    options?: BuildActionOptions,
   ): void {
     for (const leaf of expandRunConfiguration(configuration, siblings)) {
       const task: BuildTask | null = this.toTask(leaf);
       if (task !== null) {
-        this.launch(task);
+        this.dispatchRun(task, options);
+      } else {
+        // Never a silent no-op: the failure surfaces in the leaf's own run session (exactly where
+        // the user is looking), named after it, with the reason on stderr.
+        this.announceUnrunnable(leaf);
       }
     }
+  }
+
+  /**
+   * Executes a run task in its configuration's reused interactive run session: a real PTY the
+   * program's stdin is wired to, revealed as it starts, one session per configuration so parallel
+   * configurations stay separate and a relaunch replaces the same tab (fresh PTY, fresh buffer). One
+   * launch per configuration runs at a time — a busy session leaves the request ignored unless the
+   * caller passed `restart` (granted by the ribbon's stop-and-restart prompt).
+   * @param task The run task to execute.
+   * @param options The action options.
+   */
+  private dispatchRun(task: BuildTask, options?: BuildActionOptions): void {
+    const sessionId: string = this.runSessionId(task.id);
+    if (this.currentRuns.has(sessionId) && options?.restart !== true) {
+      return;
+    }
+    const token: symbol = Symbol(task.id);
+    this.currentRuns.set(sessionId, token);
+    // The session id doubles as the run id: stable per configuration, which is what the Stop menu
+    // stops. A relaunch replaces the stale entry rather than adding a second.
+    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] => [
+      ...current.filter((active: ActiveRun): boolean => active.id !== sessionId),
+      { id: sessionId, label: task.label, taskId: task.id, startedAt: Date.now() },
+    ]);
+    // Only this task's problems are stale; another run's diagnostics stay published.
+    this.problemsByTask.delete(task.id);
+    this.republishProblems();
+    void this.runInSession(task, sessionId, token);
+  }
+
+  /**
+   * Launches a run task in its session and, once it ends on its own, matches problems from the
+   * session's retained scrollback. A superseded launch (relaunched or disposed) publishes nothing and
+   * leaves the successor's run entry alone.
+   * @param task The task being executed.
+   * @param sessionId The configuration's session identifier.
+   * @param token The launch token guarding against superseded completions.
+   */
+  private async runInSession(task: BuildTask, sessionId: string, token: symbol): Promise<void> {
+    const launch: TerminalLaunch = await this.sessions.launch({
+      sessionId,
+      name: `Run: ${task.label}`,
+      kind: 'run',
+      command: task.command,
+      args: task.args,
+      env: task.env,
+      cwd: task.cwd,
+    });
+    const exitCode: number = await launch.exited;
+    if (this.currentRuns.get(sessionId) !== token) {
+      return;
+    }
+    this.currentRuns.delete(sessionId);
+    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] =>
+      current.filter((active: ActiveRun): boolean => active.id !== sessionId),
+    );
+    if (exitCode === DISPOSED_EXIT_CODE) {
+      return;
+    }
+    const replay: { data: string } = await this.terminalBridge.replay(sessionId);
+    this.publishProblems(task, replay.data);
+  }
+
+  /**
+   * Surfaces an unrunnable configuration in its own run session: the session opens (named after the
+   * configuration), prints why nothing could launch, and exits — a visible failure in the place the
+   * output would have appeared, never a silent skip. The message travels as an argument-vector
+   * element, so nothing in it is shell-interpreted.
+   * @param configuration The configuration that produced no runnable command.
+   */
+  private announceUnrunnable(configuration: RunConfiguration): void {
+    const message: string =
+      `Run configuration '${configuration.name}' does not produce a runnable command. ` +
+      `Set a program (with its arguments), or point its target at a real project, script, or crate.`;
+    void this.sessions.launch({
+      sessionId: this.runSessionId(configuration.id),
+      name: `Run: ${configuration.name}`,
+      kind: 'run',
+      command: '/bin/sh',
+      args: ['-c', 'printf \'%s\\n\' "$1" >&2; exit 1', 'sh', message],
+      cwd: this.workspace.root()?.path,
+    });
+  }
+
+  /**
+   * Derives the reused run session identifier for a configuration or run task.
+   * @param taskId The configuration or task identifier.
+   * @returns Returns the session identifier.
+   */
+  private runSessionId(taskId: string): string {
+    return `${this.runSessionPrefix}:${taskId}`;
   }
 
   /**
@@ -702,96 +764,101 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Launches a task as a captured child process, streaming its output and clearing the task's prior
-   * problems. Several runs may be in flight at once — starting one never cancels or blocks another, and
-   * the same task may be started twice — so each gets its own run id, output buffer, and channel.
-   * Does nothing when Electron is unavailable.
-   * @param task The task to launch.
-   */
-  private launch(task: BuildTask): void {
-    if (this.bridge === undefined) {
-      return;
-    }
-    const runId: string = crypto.randomUUID();
-    const channel: OutputChannel = this.channelFor(task);
-    this.live.set(runId, { task, channel, buffer: '' });
-    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] => [
-      ...current,
-      { id: runId, label: task.label, taskId: task.id, startedAt: Date.now() },
-    ]);
-    // Only this task's problems are stale; another run's diagnostics stay published.
-    this.problemsByTask.delete(task.id);
-    this.republishProblems();
-    // Revealing the channel brings it to the front of the Output panel as the run starts.
-    channel.reveal();
-    channel.appendLine(`> ${task.label}`);
-    void this.bridge.invoke(TaskChannel.Run, { runId, command: task.command, cwd: task.cwd });
-  }
-
-  /**
-   * Resolves the Output channel a task streams into: each run configuration gets its own channel,
-   * named after it, so parallel runs stay readable instead of interleaving into one stream. A second
-   * run of the same configuration reuses its channel, appending after the first — its own history in
-   * one place. Only run-group tasks reach this path: build-flavoured tasks execute in the Build
-   * terminal session instead.
-   * @param task The task being launched.
-   * @returns Returns the channel to stream into.
-   */
-  private channelFor(task: BuildTask): OutputChannel {
-    return this.output.channel(`run:${task.id}`, task.label);
-  }
-
-  /**
    * Compiles a run configuration into a runnable task, or null when it names neither a program nor a
-   * kind this runner knows how to launch. An explicit program (with its arguments) wins; otherwise the
-   * command is derived from the provider kind — a .NET project run or an npm script. Build-configuration
-   * and target selection, and environment variables, are layered on by later phases.
+   * kind this runner knows how to launch. An explicit program wins — spawned directly with its
+   * argument vector when one is given (no shell quoting to get wrong) — otherwise the command derives
+   * from the provider kind against the configuration's target (falling back to its id). The
+   * configuration's environment and working directory (resolved against the workspace root when
+   * relative) ride along; build-configuration and target-axis selection remain a later phase.
    * @param configuration The run configuration to compile.
    * @returns Returns the task, or null when it cannot be compiled.
    */
   private toTask(configuration: RunConfiguration): BuildTask | null {
-    const cwd: string = configuration.cwd ?? this.workspace.root()?.path ?? '';
-    const command: string | null = this.commandFor(configuration);
-    if (command === null) {
+    const root: string | undefined = this.workspace.root()?.path;
+    const raw: string | undefined = configuration.cwd;
+    const cwd: string =
+      raw !== undefined && raw.length > 0
+        ? isAbsolute(raw) || root === undefined
+          ? raw
+          : resolvePath(root, raw)
+        : root ?? '';
+    const compiled: { command: string; args?: readonly string[] } | null =
+      this.compileRun(configuration);
+    if (compiled === null) {
       return null;
     }
-    return { id: configuration.id, label: configuration.name, group: 'run', command, cwd };
+    return {
+      id: configuration.id,
+      label: configuration.name,
+      group: 'run',
+      command: compiled.command,
+      args: compiled.args,
+      env: configuration.env,
+      cwd,
+    };
   }
 
   /**
-   * Derives the shell command a run configuration launches: an explicit program and its arguments when
-   * set, otherwise a provider-kind default (`dotnet run --project <id>` or `npm run <id>`), or null for
-   * an unknown provider with no program.
+   * Derives what a run configuration launches: an explicit program (direct-spawned with its argument
+   * vector when one is given), or a provider-kind default against the configuration's target — a .NET
+   * project resolved through the workspace's project model when it is available, an npm script, a
+   * cargo crate — or null for an unknown provider with no program.
    * @param configuration The run configuration.
-   * @returns Returns the command line, or null when none can be derived.
+   * @returns Returns the command (with an optional argument vector), or null when none derives.
    */
-  private commandFor(configuration: RunConfiguration): string | null {
+  private compileRun(
+    configuration: RunConfiguration,
+  ): { command: string; args?: readonly string[] } | null {
     if (configuration.program !== undefined) {
-      const args: string = configuration.args?.join(' ') ?? '';
-      return args.length > 0 ? `${configuration.program} ${args}` : configuration.program;
+      return configuration.args !== undefined && configuration.args.length > 0
+        ? { command: configuration.program, args: configuration.args }
+        : { command: configuration.program };
     }
+    const target: string = configuration.target ?? configuration.id;
     if (configuration.providerKind === 'dotnet') {
-      return `dotnet run --project ${configuration.id}`;
+      return { command: `dotnet run --project "${this.resolveDotnetProject(target)}"` };
     }
     if (configuration.providerKind === 'node') {
-      return `npm run ${configuration.id}`;
+      return { command: `npm run ${target}` };
     }
     if (configuration.providerKind === 'jvm') {
-      return this.jvmRunCommand();
+      const command: string | null = this.jvmRunCommand();
+      return command === null ? null : { command };
     }
     if (configuration.providerKind === 'cpp') {
       // Build the selected CMake executable target, then run the produced binary. A single-config
-      // generator places it at `build/<target>`; the id is the target name.
-      return `cmake --build build --target ${configuration.id} && ./build/${configuration.id}`;
+      // generator places it at `build/<target>`.
+      return { command: `cmake --build build --target ${target} && ./build/${target}` };
     }
     if (configuration.providerKind === 'rust') {
-      // The id is the crate name; `-p` selects it in both a single crate and a workspace.
-      return `cargo run -p ${configuration.id}`;
+      // The target is the crate name; `-p` selects it in both a single crate and a workspace.
+      return { command: `cargo run -p ${target}` };
     }
     if (configuration.providerKind === 'go') {
-      return 'go run .';
+      return { command: 'go run .' };
     }
     return null;
+  }
+
+  /**
+   * Resolves a .NET run target to a real project file path through the workspace's project model,
+   * matching by project name (or project file path tail). Absent a model or a match, the literal
+   * target is returned — `dotnet run --project` accepts a path, so a correct explicit value still
+   * works.
+   * @param target The configured target (or the configuration id standing in for it).
+   * @returns Returns the project file path, or the literal target.
+   */
+  private resolveDotnetProject(target: string): string {
+    const model: ProjectModel | null = this.projectModel?.() ?? null;
+    if (model?.kind !== 'dotnet') {
+      return target;
+    }
+    const lowered: string = target.toLowerCase();
+    const match: ProjectEntry | undefined = model.projects.find(
+      (project: ProjectEntry): boolean =>
+        project.name.toLowerCase() === lowered || project.path.toLowerCase().endsWith(lowered),
+    );
+    return match?.path ?? target;
   }
 
   /**
@@ -815,61 +882,24 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   }
 
   /**
-   * Cancels one in-flight run, leaving every other run alone. A run id that is not (or is no longer) in
-   * flight is ignored.
-   * @param runId The run to cancel.
+   * Stops one in-flight run, leaving every other run alone: its session's process tree is terminated
+   * (SIGTERM escalating to SIGKILL) while the session tab, its output, and its exit banner remain. A
+   * run id that is not (or is no longer) in flight is ignored.
+   * @param runId The run to stop (the configuration's session identifier).
    */
   public cancel(runId: string): void {
-    if (this.live.has(runId)) {
-      void this.bridge?.invoke(TaskChannel.Cancel, runId);
+    if (this.currentRuns.has(runId)) {
+      this.sessions.terminate(runId);
     }
   }
 
   /**
-   * Cancels every in-flight run. The exit events tear each run down, as they do for a single cancel.
+   * Stops every in-flight run. The exit events tear each run down, as they do for a single stop.
    */
   public cancelAll(): void {
-    for (const runId of [...this.live.keys()]) {
-      void this.bridge?.invoke(TaskChannel.Cancel, runId);
+    for (const runId of [...this.currentRuns.keys()]) {
+      this.sessions.terminate(runId);
     }
-  }
-
-  /**
-   * Appends a chunk of a run's output to that run's Output channel and matching buffer. A chunk for a
-   * run this workspace does not own (another workspace's tab shares the same main-process feed) is
-   * ignored.
-   * @param runId The run the chunk belongs to.
-   * @param chunk The output chunk.
-   */
-  private onOutput(runId: string, chunk: string): void {
-    const run: LiveRun | undefined = this.live.get(runId);
-    if (run === undefined) {
-      return;
-    }
-    run.buffer += chunk;
-    run.channel.append(chunk);
-  }
-
-  /**
-   * Finishes one run: writes its exit footer, drops it from the in-flight set, and publishes the problems
-   * matched from its output alongside those of every other task.
-   * @param runId The run that exited.
-   * @param code The exit code, or null when terminated by a signal.
-   * @param signal The terminating signal, or null when exited normally.
-   */
-  private onExit(runId: string, code: number | null, signal: string | null): void {
-    const run: LiveRun | undefined = this.live.get(runId);
-    if (run === undefined) {
-      return;
-    }
-    this.live.delete(runId);
-    this.runs.update((current: readonly ActiveRun[]): readonly ActiveRun[] =>
-      current.filter((active: ActiveRun): boolean => active.id !== runId),
-    );
-    const status: string =
-      signal !== null ? `terminated (${signal})` : `exited with code ${code ?? 0}`;
-    run.channel.appendLine(`> ${run.task.label} ${status}`);
-    this.publishProblems(run.task, run.buffer);
   }
 
   /**

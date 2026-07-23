@@ -28,9 +28,20 @@ export interface BuildTask {
   readonly group: BuildGroup;
 
   /**
-   * Gets the shell command line the task runs.
+   * Gets the command the task runs: a shell command line, or an executable when {@link args} is set.
    */
   readonly command: string;
+
+  /**
+   * Gets the argument vector for a directly-spawned executable, or undefined to run {@link command}
+   * through the platform shell.
+   */
+  readonly args?: readonly string[];
+
+  /**
+   * Gets environment variables layered over the application's environment for the task's process.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 
   /**
    * Gets the absolute working directory the task runs in (the workspace root).
@@ -111,8 +122,13 @@ export interface BuildHandler {
    * compound launches each of its members as its own run.
    * @param configuration The run configuration to run.
    * @param siblings Every configuration in the workspace, used to resolve a compound's members.
+   * @param options The action options ({@link BuildActionOptions.restart} stops a busy leaf first).
    */
-  runConfiguration(configuration: RunConfiguration, siblings: readonly RunConfiguration[]): void;
+  runConfiguration(
+    configuration: RunConfiguration,
+    siblings: readonly RunConfiguration[],
+    options?: BuildActionOptions,
+  ): void;
 
   /**
    * Runs a capability action (Build/Clean/Rebuild…), compiling it to a command for the workspace's
@@ -213,8 +229,9 @@ export class Builds {
   public runConfiguration(
     configuration: RunConfiguration,
     siblings: readonly RunConfiguration[] = [],
+    options?: BuildActionOptions,
   ): void {
-    this.handler()?.runConfiguration(configuration, siblings);
+    this.handler()?.runConfiguration(configuration, siblings, options);
   }
 
   /**

@@ -32,6 +32,9 @@ interface RibbonInternals {
   onBuild(): void;
   onClean(): void;
   onRebuild(): void;
+  pendingRunConfiguration(): RunConfiguration | null;
+  confirmRunRestart(): void;
+  cancelRunRestart(): void;
   pendingBuildAction(): 'build' | 'rebuild' | 'clean' | null;
   confirmBuildRestart(): void;
   cancelBuildRestart(): void;
@@ -107,6 +110,7 @@ class FakeBuilds {
   public readonly siblingCalls: (readonly RunConfiguration[])[] = [];
   public readonly actionCalls: ProjectAction[] = [];
   public readonly actionOptions: (object | undefined)[] = [];
+  public readonly runConfigurationOptions: (object | undefined)[] = [];
   public readonly buildCalls: (object | undefined)[] = [];
   public cancelAllCalls: number = 0;
 
@@ -117,9 +121,11 @@ class FakeBuilds {
   public runConfiguration(
     configuration: RunConfiguration,
     siblings: readonly RunConfiguration[],
+    options?: object,
   ): void {
     this.runConfigurationCalls.push(configuration);
     this.siblingCalls.push(siblings);
+    this.runConfigurationOptions.push(options);
   }
 
   public runAction(action: ProjectAction, options?: object): void {
@@ -299,6 +305,63 @@ describe('DirectoryRibbon', () => {
       configuration('a', 'A'),
     ]);
     expect(internals().canDebug()).toBe(false);
+  });
+
+  it('start_whileTheConfigurationIsRunning_asksBeforeRestarting', () => {
+    const config: RunConfiguration = configuration('a', 'A');
+    studio.runConfigurations.set([config]);
+    // A run of this configuration is in flight (taskId matches the configuration id).
+    builds.runs.set([{ id: 'run:a', label: 'A', taskId: 'a', startedAt: 0 }]);
+
+    internals().onRun();
+
+    expect(builds.runConfigurationCalls).toEqual([]);
+    expect(internals().pendingRunConfiguration()).toEqual(config);
+
+    internals().confirmRunRestart();
+
+    expect(builds.runConfigurationCalls).toEqual([config]);
+    expect(builds.runConfigurationOptions[0]).toEqual({ restart: true });
+    expect(internals().pendingRunConfiguration()).toBeNull();
+  });
+
+  it('start_whileACompoundMemberIsRunning_asksToo', () => {
+    const compound: RunConfiguration = {
+      ...configuration('stack', 'Whole stack'),
+      members: ['a'],
+    };
+    const configurations: readonly RunConfiguration[] = [compound, configuration('a', 'A')];
+    studio.runConfigurations.set(configurations);
+    builds.runs.set([{ id: 'run:a', label: 'A', taskId: 'a', startedAt: 0 }]);
+
+    internals().onRun();
+
+    expect(builds.runConfigurationCalls).toEqual([]);
+    expect(internals().pendingRunConfiguration()).toEqual(compound);
+  });
+
+  it('start_dismissingThePrompt_leavesTheRunUntouched', () => {
+    const config: RunConfiguration = configuration('a', 'A');
+    studio.runConfigurations.set([config]);
+    builds.runs.set([{ id: 'run:a', label: 'A', taskId: 'a', startedAt: 0 }]);
+
+    internals().onRun();
+    internals().cancelRunRestart();
+
+    expect(builds.runConfigurationCalls).toEqual([]);
+    expect(internals().pendingRunConfiguration()).toBeNull();
+  });
+
+  it('start_whileADifferentConfigurationRuns_dispatchesWithoutAsking', () => {
+    studio.runConfigurations.set([configuration('a', 'A'), configuration('b', 'B')]);
+    builds.runs.set([{ id: 'run:b', label: 'B', taskId: 'b', startedAt: 0 }]);
+
+    internals().onRun();
+
+    // The selected configuration (the first, 'a') is idle; concurrency is the point.
+    expect(builds.runConfigurationCalls).toHaveLength(1);
+    expect(builds.runConfigurationOptions[0]).toEqual({ restart: false });
+    expect(internals().pendingRunConfiguration()).toBeNull();
   });
 
   it('runsNothingWhenTheWorkspaceHasNoConfigurations', () => {

@@ -30,6 +30,7 @@ class FakeHandler implements BuildHandler {
 
   public readonly busySignal: WritableSignal<boolean> = signal<boolean>(false);
   public readonly runOptions: (BuildActionOptions | undefined)[] = [];
+  public readonly configurationOptions: (BuildActionOptions | undefined)[] = [];
   public readonly actionOptions: (BuildActionOptions | undefined)[] = [];
 
   public get buildBusy(): WritableSignal<boolean> {
@@ -41,8 +42,13 @@ class FakeHandler implements BuildHandler {
     this.runOptions.push(options);
   }
 
-  public runConfiguration(configuration: RunConfiguration): void {
+  public runConfiguration(
+    configuration: RunConfiguration,
+    _siblings: readonly RunConfiguration[],
+    options?: BuildActionOptions,
+  ): void {
     this.configurationCalls.push(configuration);
+    this.configurationOptions.push(options);
   }
 
   public runAction(action: ProjectAction, options?: BuildActionOptions): void {
@@ -174,8 +180,10 @@ describe('Builds', () => {
       mode: 'run',
     };
     builds.runConfiguration(configuration);
+    builds.runConfiguration(configuration, [], { restart: true });
 
-    expect(handler.configurationCalls).toEqual([configuration]);
+    expect(handler.configurationCalls).toEqual([configuration, configuration]);
+    expect(handler.configurationOptions[1]).toEqual({ restart: true });
   });
 
   it('runAction_forwardsToTheActiveHandler', () => {

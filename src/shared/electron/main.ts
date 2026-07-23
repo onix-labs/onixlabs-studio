@@ -45,7 +45,6 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
-import { TaskRunner } from '@shared/electron/task-runner';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
@@ -233,11 +232,6 @@ class Program {
    * Writes editor content to temporary files so the renderer can execute it.
    */
   private readonly codeRunner: CodeRunner = new CodeRunner();
-
-  /**
-   * Runs tasks as child processes and streams their output to the renderer.
-   */
-  private readonly taskRunner: TaskRunner = new TaskRunner((): BrowserWindow | null => this.window);
 
   /**
    * Runs git safely on behalf of the renderer's source-control surfaces.
@@ -626,7 +620,6 @@ class Program {
     this.terminalManager.register();
     this.fileManager.register();
     this.codeRunner.register();
-    this.taskRunner.register();
     this.gitManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
@@ -851,7 +844,6 @@ class Program {
   private disposeAll(): void {
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
-    this.taskRunner.disposeAll();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();
