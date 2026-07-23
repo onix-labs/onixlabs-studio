@@ -14,7 +14,6 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
-import { Output } from '@shared/angular/services/output/output';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -62,11 +61,6 @@ export class FileOpener {
    * Holds the top-level tab registry.
    */
   private readonly tabs: Tabs = inject(Tabs);
-
-  /**
-   * Holds the shared output channel that records what was opened.
-   */
-  private readonly output: Output = inject(Output);
 
   /**
    * Holds the dock layout the document well lives in.
@@ -145,7 +139,6 @@ export class FileOpener {
       return false;
     }
     this.openDirectory(listing);
-    this.output.appendLine(`Opened folder ${listing.path}`);
     return true;
   }
 
@@ -161,7 +154,6 @@ export class FileOpener {
       return false;
     }
     this.openDirectory(listing);
-    this.output.appendLine(`Opened folder ${listing.path}`);
     return true;
   }
 
@@ -177,13 +169,11 @@ export class FileOpener {
     switch (selection.kind) {
       case 'directory':
         this.openDirectory(selection.directory);
-        this.output.appendLine(`Opened folder ${selection.directory.path}`);
         return true;
       case 'file': {
         const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
         this.documents.openFileInfo(selection.file, type);
         this.recordRecentFile(selection.file);
-        this.output.appendLine(`Opened ${selection.file.path}`);
         return true;
       }
       case 'binary':
@@ -199,12 +189,10 @@ export class FileOpener {
    */
   private openBinary(path: string): boolean {
     if (this.binaryOpener === null) {
-      this.output.appendLine(`Skipped binary file ${path}`);
       return false;
     }
     const tab: Tab = this.binaryOpener.open(path);
     this.recentItems.record(path, tab.title, 'binary');
-    this.output.appendLine(`Opened ${path}`);
     return true;
   }
 
@@ -259,7 +247,6 @@ export class FileOpener {
     });
     this.dockState.tabInto(well.id, id);
     this.dockFocus.focus(well.id);
-    this.output.appendLine(`Opened ${fileInfo.path}`);
     return true;
   }
 

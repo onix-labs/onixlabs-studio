@@ -305,6 +305,18 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
+   * Holds this tab's dock reveal helper, used to bring the Logs panel forward when a debug session
+   * starts (peeking its stack when collapsed).
+   */
+  private readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Holds this tab's multiplexed log surface. Watched so the demoted Logs panel joins the dock (in
+   * the background) exactly when something actually logs, and stays absent when nothing has.
+   */
+  private readonly outputService: Output = inject(Output);
+
+  /**
    * Holds this tab's dock panel registry, used to register the reused commit panel on first use.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
@@ -435,11 +447,21 @@ export class DirectoryView implements OnInit, OnDestroy {
     });
 
     // Reveal the Debug panel (call stack / variables / watch) while a debug session runs, tabbing it
-    // beside Output and activating it; remove it when the session ends. Layout reads/writes are untracked
+    // beside the Error List; remove it when the session ends. Layout reads/writes are untracked
     // so the effect reacts to the session state alone.
     effect((): void => {
       const running: boolean = this.debugSession.state() !== 'idle';
       untracked((): void => this.syncDebugPanel(running));
+    });
+
+    // Materialise the Logs panel in the background once something actually logs (an LSP server, a
+    // debug session): the demoted panel is reachable exactly when it has content, and absent when it
+    // has none. Joining the strip never steals the active tool from the user.
+    effect((): void => {
+      const hasChannels: boolean = this.outputService.channels().length > 0;
+      if (hasChannels) {
+        untracked((): void => this.ensureLogsPanel(false));
+      }
     });
 
     // Start the structure-aware language server as soon as a recognised project model opens, rather
@@ -535,14 +557,40 @@ export class DirectoryView implements OnInit, OnDestroy {
     const present: boolean = collectPanelIds(this.dockState.layout()).includes('debug');
     if (running && !present) {
       const anchor: StackNode | null =
-        findStackOfPanel(this.dockState.layout(), 'output') ??
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
         firstStackOfRole(this.dockState.layout(), 'tool');
       if (anchor !== null) {
         this.dockState.tabInto(anchor.id, 'debug');
-        this.dockState.setActive(anchor.id, 'debug');
       }
+      // Until runInTerminal lands, the debuggee's output arrives in the Logs channel: bring Logs
+      // forward for the session's start, with the Debug panel a tab away for the first break.
+      this.ensureLogsPanel(true);
     } else if (!running && present) {
       this.dockState.removeFromLayout('debug');
+    }
+  }
+
+  /**
+   * Ensures the demoted Logs panel is in the dock, adding it beside the Error List (in the
+   * background, unless asked to bring it forward — joining the strip must not steal the active tool).
+   * @param activate Whether to reveal the panel (peeking its stack when collapsed).
+   */
+  private ensureLogsPanel(activate: boolean): void {
+    if (!collectPanelIds(this.dockState.layout()).includes('output')) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor === null) {
+        return;
+      }
+      const previous: string | null = anchor.active;
+      this.dockState.tabInto(anchor.id, 'output');
+      if (!activate && previous !== null) {
+        this.dockState.setActive(anchor.id, previous);
+      }
+    }
+    if (activate) {
+      this.dockReveal.reveal('output');
     }
   }
 

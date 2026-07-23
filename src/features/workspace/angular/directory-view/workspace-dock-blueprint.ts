@@ -8,8 +8,7 @@ import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
-import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
-import { defaultLayout } from '@shared/angular/services/dock-layout/dock-tree';
+import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
 
 /**
  * The blueprint specialising a dock instance as a workspace (directory / IDE) surface: the File
@@ -28,7 +27,19 @@ import { defaultLayout } from '@shared/angular/services/dock-layout/dock-tree';
 export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
   key: 'workspace',
   createLayout(): DockNode {
-    return defaultLayout();
+    // The file explorer pinned full-height on the left, the agent full-height on the right, and the
+    // document well in the centre with the Error List and a terminal tabbed along the bottom. Logs is
+    // catalogued but not in the starting layout — the directory view adds it (in the background) once
+    // something actually logs, and brings it forward when a debug session starts.
+    return mkSplit(
+      'row',
+      [
+        mkStack('tool', ['files']),
+        mkSplit('col', [mkStack('document', []), mkStack('tool', ['errors', 'terminal'])], [4, 1.5]),
+        mkStack('tool', ['agent']),
+      ],
+      [1.4, 4, 1.6],
+    );
   },
   panels: [
     {
@@ -63,8 +74,11 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       ownsToolStrip: true,
     },
     {
+      // The demoted Output panel: a background home for LSP-server and debug-session logs, out of the
+      // default layout (builds and runs live in terminal sessions). The id stays 'output' so persisted
+      // layouts keep working; only its face says Logs.
       id: 'output',
-      title: 'Output',
+      title: 'Logs',
       icon: Icon.OUTPUT,
       role: 'tool',
       component: OutputPanel,
