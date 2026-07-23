@@ -62,6 +62,15 @@ export class JsDebugSession implements DebugAdapterConnection {
   private readonly targets: DapClient[] = [];
 
   /**
+   * Holds the listeners surfaced the parent's (or a target's) `runInTerminal` reverse requests.
+   */
+  private readonly runInTerminalListeners: Set<
+    (request: DebugProtocol.Request, respond: (body?: unknown, success?: boolean) => void) => void
+  > = new Set<
+    (request: DebugProtocol.Request, respond: (body?: unknown, success?: boolean) => void) => void
+  >();
+
+  /**
    * Holds the target the renderer's requests are routed to: the one that most recently stopped.
    */
   private activeTarget: DapClient | null = null;
@@ -120,7 +129,7 @@ export class JsDebugSession implements DebugAdapterConnection {
   public async start(): Promise<void> {
     this.parent.onEvent((event: DebugProtocol.Event): void => this.onParentEvent(event));
     this.parent.onReverseRequest((request: DebugProtocol.Request): void =>
-      this.onStartDebugging(this.parent, request),
+      this.onReverse(this.parent, request),
     );
     this.parent.onExit((code: number | null, signal: string | null): void =>
       this.onServerClosed(code, signal),
@@ -213,6 +222,47 @@ export class JsDebugSession implements DebugAdapterConnection {
   }
 
   /**
+   * Routes a reverse request from the parent or a target: `runInTerminal` is surfaced to the outside
+   * listeners (the debuggee should live in the workspace's run terminal), answered on the requesting
+   * connection; everything else is the `startDebugging` flow this compound session handles itself.
+   * @param requester The connection that made the request.
+   * @param request The reverse request.
+   */
+  private onReverse(requester: DapClient, request: DebugProtocol.Request): void {
+    if (request.command === 'runInTerminal') {
+      if (this.runInTerminalListeners.size === 0) {
+        requester.respondTo(request, undefined, false);
+        return;
+      }
+      for (const listener of this.runInTerminalListeners) {
+        listener(request, (body?: unknown, success: boolean = true): void =>
+          requester.respondTo(request, body, success),
+        );
+      }
+      return;
+    }
+    this.onStartDebugging(requester, request);
+  }
+
+  /**
+   * Registers a listener for `runInTerminal` reverse requests from the parent or any target, each
+   * delivered with a responder bound to the requesting connection.
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  public onRunInTerminal(
+    listener: (
+      request: DebugProtocol.Request,
+      respond: (body?: unknown, success?: boolean) => void,
+    ) => void,
+  ): () => void {
+    this.runInTerminalListeners.add(listener);
+    return (): void => {
+      this.runInTerminalListeners.delete(listener);
+    };
+  }
+
+  /**
    * Handles a `startDebugging` reverse request from the parent (or a target that itself spawns a child):
    * connects a new target session, initializes it, and launches the requested configuration. The target
    * reports its `initialized` next, handled in {@link onTargetEvent}.
@@ -242,7 +292,7 @@ export class JsDebugSession implements DebugAdapterConnection {
     );
     target.onEvent((event: DebugProtocol.Event): void => this.onTargetEvent(target, event));
     target.onReverseRequest((nested: DebugProtocol.Request): void =>
-      this.onStartDebugging(target, nested),
+      this.onReverse(target, nested),
     );
     target.onExit((): void => this.onTargetClosed(target));
     this.targets.push(target);

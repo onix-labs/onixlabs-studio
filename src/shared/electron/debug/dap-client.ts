@@ -58,6 +58,20 @@ export interface DebugAdapterConnection {
   onExit(listener: (code: number | null, signal: string | null) => void): () => void;
 
   /**
+   * Registers a listener for the adapter's `runInTerminal` reverse requests, each delivered with a
+   * bound responder so the answer reaches the requesting connection (a js-debug target's request must
+   * be answered on that target).
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  onRunInTerminal(
+    listener: (
+      request: DebugProtocol.Request,
+      respond: (body?: unknown, success?: boolean) => void,
+    ) => void,
+  ): () => void;
+
+  /**
    * Tears the connection down. Safe to call repeatedly.
    */
   dispose(): void;
@@ -139,7 +153,10 @@ export class DapClient implements DebugAdapterConnection {
       linesStartAt1: true,
       columnsStartAt1: true,
       pathFormat: 'path',
-      supportsRunInTerminalRequest: false,
+      // The client hosts debuggees in its interactive run terminals on request, so stdin-reading
+      // programs are debuggable; adapters that never ask (or are launched with internalConsole)
+      // keep routing output as events.
+      supportsRunInTerminalRequest: true,
       supportsProgressReporting: false,
       // js-debug spawns a child target session per debuggee and asks the client to start it with a
       // `startDebugging` reverse request; the compound session handles that, so it is advertised here.
@@ -179,6 +196,27 @@ export class DapClient implements DebugAdapterConnection {
    */
   public onReverseRequest(listener: (request: DebugProtocol.Request) => void): () => void {
     return this.protocol.onReverseRequest(listener);
+  }
+
+  /**
+   * Registers a listener for `runInTerminal` reverse requests, with a responder bound to this
+   * connection.
+   * @param listener The listener to add.
+   * @returns Returns a disposer that removes the listener.
+   */
+  public onRunInTerminal(
+    listener: (
+      request: DebugProtocol.Request,
+      respond: (body?: unknown, success?: boolean) => void,
+    ) => void,
+  ): () => void {
+    return this.onReverseRequest((request: DebugProtocol.Request): void => {
+      if (request.command === 'runInTerminal') {
+        listener(request, (body?: unknown, success: boolean = true): void =>
+          this.respondTo(request, body, success),
+        );
+      }
+    });
   }
 
   /**

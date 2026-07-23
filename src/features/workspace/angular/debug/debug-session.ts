@@ -7,10 +7,16 @@ import {
   DebugEventMessage,
   DebugLaunchTarget,
   DebugResolveResult,
+  DebugRunInTerminalRequest,
+  DebugRunInTerminalResponse,
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { Output, OutputChannel } from '@shared/angular/services/output/output';
+import {
+  TerminalLaunch,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/services/debug/debugger';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
@@ -21,6 +27,13 @@ import { SolutionModel } from '@features/workspace/angular/project/solution-mode
  * thread. Adapters that model a single thread (netcoredbg, node) use thread id 1.
  */
 const DEFAULT_THREAD_ID: number = 1;
+
+/**
+ * The adapters that honour `runInTerminal`: launched with an integrated console, they ask the client
+ * to host the debuggee in a run terminal, so stdin-reading programs are debuggable. netcoredbg stays
+ * on internalConsole until a real .NET run confirms its support (see #343).
+ */
+const RUN_IN_TERMINAL_ADAPTERS: ReadonlySet<string> = new Set<string>(['js-debug']);
 
 /**
  * The maximum number of stack frames requested for the call stack, a bound so a runaway recursion does
@@ -170,6 +183,40 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Holds this workspace's terminal sessions, hosting the debuggee when the adapter asks the client
+   * to run it in a terminal.
+   */
+  private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the disposer for the relayed `runInTerminal` subscription, or null when not subscribed.
+   */
+  private runInTerminalDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the reused identifier of this workspace's debug run terminal, minted on first use so
+   * successive debug sessions relaunch the same tab.
+   */
+  private debugTerminalId: string | null = null;
+
+  /**
+   * Holds whether the debug terminal's process is still running, so ending the session can stop a
+   * debuggee the adapter did not tear down (no orphans).
+   */
+  private debugTerminalLive: boolean = false;
+
+  /**
+   * Holds the launched configuration's name while a session runs, naming the debug terminal.
+   */
+  private activeConfigurationName: string = '';
+
+  /**
+   * Holds the launched session's adapter id, deciding whether the launch may ask for an integrated
+   * terminal.
+   */
+  private activeAdapterId: string = '';
+
+  /**
    * Holds the session's lifecycle state.
    */
   private readonly stateSignal: WritableSignal<DebugState> = signal<DebugState>('idle');
@@ -282,6 +329,10 @@ export class DebugSession implements DebugHandler, OnDestroy {
       this.bridge?.on(DebugChannel.AdapterExit, (...args: unknown[]): void =>
         this.onAdapterExit(args[0] as DebugAdapterExit),
       ) ?? null;
+    this.runInTerminalDisposer =
+      this.bridge?.on(DebugChannel.RunInTerminal, (...args: unknown[]): void =>
+        void this.onRunInTerminal(args[0] as DebugRunInTerminalRequest),
+      ) ?? null;
 
     // Re-send breakpoints when their definitions change during a running session. The signature guard
     // ignores verification-only changes (the adapter's response feeds back into the store), which would
@@ -303,6 +354,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     this.stop();
     this.eventDisposer?.();
     this.exitDisposer?.();
+    this.runInTerminalDisposer?.();
   }
 
   /**
@@ -374,6 +426,8 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * @param configuration The run configuration to debug.
    */
   private async launchSession(configuration: RunConfiguration): Promise<void> {
+    this.activeConfigurationName = configuration.name;
+    this.activeAdapterId = this.solutionModel.capabilities()?.debug?.adapter ?? '';
     if (this.bridge === undefined || this.stateSignal() !== 'idle') {
       return;
     }
@@ -733,11 +787,77 @@ export class DebugSession implements DebugHandler, OnDestroy {
       args: target.args ?? configuration.args,
       cwd: target.cwd ?? configuration.cwd ?? root,
       env: target.env ?? configuration.env,
-      // Ask the adapter to run the debuggee under its own console so its stdout/stderr arrive as
-      // `output` events this session routes into the Output channel.
-      console: 'internalConsole',
+      // Adapters that honour runInTerminal host the debuggee in the workspace's run terminal (real
+      // stdin, coloured output); the rest run it under their own console, stdout/stderr arriving as
+      // `output` events this session routes into the Logs channel.
+      console: RUN_IN_TERMINAL_ADAPTERS.has(this.activeAdapterId)
+        ? 'integratedTerminal'
+        : 'internalConsole',
       noDebug: false,
     };
+  }
+
+  /**
+   * Hosts the debuggee in this workspace's reused debug run terminal, answering an adapter's relayed
+   * `runInTerminal` request with the spawned process id so it can attach. External terminals are
+   * declined; the run session gives the program real stdin and the familiar exit banner.
+   * @param message The relayed request.
+   */
+  private async onRunInTerminal(message: DebugRunInTerminalRequest): Promise<void> {
+    if (message.sessionId !== this.currentSession) {
+      return;
+    }
+    const respond: (answer: Omit<DebugRunInTerminalResponse, 'sessionId' | 'seq'>) => void = (
+      answer: Omit<DebugRunInTerminalResponse, 'sessionId' | 'seq'>,
+    ): void => {
+      void this.bridge?.invoke(DebugChannel.RespondRunInTerminal, {
+        sessionId: message.sessionId,
+        seq: message.seq,
+        ...answer,
+      });
+    };
+    if (message.kind === 'external' || message.args.length === 0) {
+      respond({ error: 'External terminals are not supported.' });
+      return;
+    }
+    const [command, ...argv] = message.args;
+    // A null value asks for the variable to be unset — unsupported over the layered environment, so
+    // only real values travel.
+    const env: Record<string, string> = Object.fromEntries(
+      Object.entries(message.env ?? {}).filter(
+        (entry: [string, string | null]): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+    this.debugTerminalId ??= `debug-term-${crypto.randomUUID()}`;
+    const launch: TerminalLaunch = await this.terminals.launch({
+      sessionId: this.debugTerminalId,
+      name: `Debug: ${this.activeConfigurationName.length > 0 ? this.activeConfigurationName : command}`,
+      kind: 'run',
+      command,
+      args: argv,
+      env,
+      cwd: message.cwd.length > 0 ? message.cwd : undefined,
+    });
+    if (launch.processId === null) {
+      respond({ error: 'The debuggee could not be started in a terminal.' });
+      return;
+    }
+    this.debugTerminalLive = true;
+    void launch.exited.then((): void => {
+      this.debugTerminalLive = false;
+    });
+    respond({ processId: launch.processId });
+  }
+
+  /**
+   * Stops the debug terminal's process when the session ends while it still runs, so no debuggee is
+   * orphaned when the adapter does not tear it down itself.
+   */
+  private stopDebugTerminal(): void {
+    if (this.debugTerminalId !== null && this.debugTerminalLive) {
+      this.debugTerminalLive = false;
+      this.terminals.terminate(this.debugTerminalId);
+    }
   }
 
   /**
@@ -745,6 +865,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * synchronisation bookkeeping so the next session re-sends them.
    */
   private reset(): void {
+    this.stopDebugTerminal();
     this.currentSession = null;
     this.threadId = undefined;
     this.capabilities = {};

@@ -84,6 +84,7 @@ class FakeTerminalSessions {
         exitCode: null,
       },
       exited,
+      processId: 4242,
     });
   }
 

@@ -42,6 +42,17 @@ export enum DebugChannel {
    * Notifies the renderer that an adapter process exited (main→renderer, send).
    */
   AdapterExit = 'debug:adapter-exit',
+
+  /**
+   * Asks the renderer to run the debuggee in an interactive run terminal, relaying an adapter's
+   * `runInTerminal` reverse request (main→renderer, send).
+   */
+  RunInTerminal = 'debug:run-in-terminal',
+
+  /**
+   * Carries the renderer's answer to a relayed `runInTerminal` request back to the adapter (invoke).
+   */
+  RespondRunInTerminal = 'debug:respond-run-in-terminal',
 }
 
 /**
@@ -196,4 +207,71 @@ export interface DebugAdapterExit {
    * Gets the terminating signal, or null when the process exited normally.
    */
   readonly signal: string | null;
+}
+
+/**
+ * A relayed `runInTerminal` reverse request: the adapter wants the client to spawn the debuggee (in
+ * an integrated terminal) and report its process id, so the adapter can attach to it.
+ */
+export interface DebugRunInTerminalRequest {
+  /**
+   * Gets the debug session the request belongs to.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the adapter's request sequence number, echoed back by the response.
+   */
+  readonly seq: number;
+
+  /**
+   * Gets the requested terminal kind. Only `integrated` is supported; `external` is declined.
+   */
+  readonly kind: 'integrated' | 'external';
+
+  /**
+   * Gets the adapter's suggested title, when it offered one.
+   */
+  readonly title?: string;
+
+  /**
+   * Gets the working directory the debuggee starts in.
+   */
+  readonly cwd: string;
+
+  /**
+   * Gets the command line as an argument vector (the executable first).
+   */
+  readonly args: readonly string[];
+
+  /**
+   * Gets environment variables to layer over the terminal's; a null value asks for the variable to be
+   * unset (unsupported here and skipped).
+   */
+  readonly env?: Readonly<Record<string, string | null>>;
+}
+
+/**
+ * The renderer's answer to a relayed `runInTerminal` request.
+ */
+export interface DebugRunInTerminalResponse {
+  /**
+   * Gets the debug session the answered request belongs to.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the answered request's sequence number.
+   */
+  readonly seq: number;
+
+  /**
+   * Gets the spawned debuggee's process id, when the launch succeeded.
+   */
+  readonly processId?: number;
+
+  /**
+   * Gets why the request could not be honoured, when it failed.
+   */
+  readonly error?: string;
 }

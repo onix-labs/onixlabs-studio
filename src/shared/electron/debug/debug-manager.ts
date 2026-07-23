@@ -4,6 +4,8 @@ import {
   DebugAdapterExit,
   DebugChannel,
   DebugEventMessage,
+  DebugRunInTerminalRequest,
+  DebugRunInTerminalResponse,
   DebugStartRequest,
   DebugStartResult,
 } from '@shared/api/debug-channels';
@@ -78,6 +80,11 @@ export class DebugManager {
    */
   public register(): void {
     ipcMain.handle(
+      DebugChannel.RespondRunInTerminal,
+      (_event: IpcMainInvokeEvent, payload: unknown): boolean =>
+        this.respondRunInTerminal(payload),
+    );
+    ipcMain.handle(
       DebugChannel.Start,
       (_event: IpcMainInvokeEvent, request: unknown): Promise<DebugStartResult> =>
         this.start(request),
@@ -141,6 +148,12 @@ export class DebugManager {
     );
     client.onExit((code: number | null, signal: string | null): void =>
       this.handleExit(parsed.sessionId, code, signal),
+    );
+    client.onRunInTerminal(
+      (
+        request: DebugProtocol.Request,
+        respond: (body?: unknown, success?: boolean) => void,
+      ): void => this.relayRunInTerminal(parsed.sessionId, request, respond),
     );
     // Register the session before initializing so an event or exit racing the handshake is handled.
     this.sessions.set(parsed.sessionId, { client, rootPath: parsed.rootPath });
@@ -235,10 +248,96 @@ export class DebugManager {
       return;
     }
     this.sessions.delete(id);
+    this.failPendingTerminalRequests(id);
     try {
       session.client.dispose();
     } catch {
       // Best-effort cleanup; the process is killed regardless.
+    }
+  }
+
+  /**
+   * Holds the responders of relayed `runInTerminal` requests awaiting the renderer's answer, keyed
+   * `sessionId:seq`.
+   */
+  private readonly terminalResponders: Map<string, (body?: unknown, success?: boolean) => void> =
+    new Map<string, (body?: unknown, success?: boolean) => void>();
+
+  /**
+   * Relays an adapter's `runInTerminal` reverse request to the renderer, which hosts the debuggee in
+   * the workspace's interactive run terminal and answers with its process id.
+   * @param sessionId The debug session the request belongs to.
+   * @param request The reverse request.
+   * @param respond The responder bound to the requesting connection.
+   */
+  private relayRunInTerminal(
+    sessionId: string,
+    request: DebugProtocol.Request,
+    respond: (body?: unknown, success?: boolean) => void,
+  ): void {
+    const args: {
+      kind?: unknown;
+      title?: unknown;
+      cwd?: unknown;
+      args?: unknown;
+      env?: unknown;
+    } = (request.arguments as object | undefined) ?? {};
+    const argv: readonly string[] = Array.isArray(args.args)
+      ? args.args.filter((entry: unknown): entry is string => typeof entry === 'string')
+      : [];
+    if (argv.length === 0) {
+      respond(undefined, false);
+      return;
+    }
+    this.terminalResponders.set(`${sessionId}:${request.seq}`, respond);
+    const message: DebugRunInTerminalRequest = {
+      sessionId,
+      seq: request.seq,
+      kind: args.kind === 'external' ? 'external' : 'integrated',
+      title: typeof args.title === 'string' ? args.title : undefined,
+      cwd: typeof args.cwd === 'string' ? args.cwd : '',
+      args: argv,
+      env: (args.env as Readonly<Record<string, string | null>> | undefined) ?? undefined,
+    };
+    this.send(DebugChannel.RunInTerminal, message);
+  }
+
+  /**
+   * Completes a relayed `runInTerminal` request with the renderer's answer.
+   * @param payload The candidate response from the renderer.
+   * @returns Returns true when a pending request was completed.
+   */
+  private respondRunInTerminal(payload: unknown): boolean {
+    const response: Partial<DebugRunInTerminalResponse> =
+      (payload as Partial<DebugRunInTerminalResponse> | undefined) ?? {};
+    if (typeof response.sessionId !== 'string' || typeof response.seq !== 'number') {
+      return false;
+    }
+    const key: string = `${response.sessionId}:${response.seq}`;
+    const respond: ((body?: unknown, success?: boolean) => void) | undefined =
+      this.terminalResponders.get(key);
+    if (respond === undefined) {
+      return false;
+    }
+    this.terminalResponders.delete(key);
+    if (typeof response.error === 'string') {
+      respond(undefined, false);
+    } else {
+      respond({ processId: response.processId }, true);
+    }
+    return true;
+  }
+
+  /**
+   * Fails any relayed `runInTerminal` requests still awaiting an answer when their session ends.
+   * @param sessionId The ended session.
+   */
+  private failPendingTerminalRequests(sessionId: string): void {
+    for (const [key, respond] of [...this.terminalResponders]) {
+      if (key.startsWith(`${sessionId}:`)) {
+        this.terminalResponders.delete(key);
+        respond(undefined, false);
+      }
     }
   }
 

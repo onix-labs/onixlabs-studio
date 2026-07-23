@@ -124,6 +124,12 @@ export interface TerminalLaunch {
    * failed outright). Resolves with -1 when the session is disposed mid-run (its tab closed).
    */
   readonly exited: Promise<number>;
+
+  /**
+   * Gets the spawned process id, or null when the launch failed (or ran outside Electron). A debug
+   * flow reports this to the adapter so it can attach to the debuggee.
+   */
+  readonly processId: number | null;
 }
 
 /**
@@ -367,6 +373,7 @@ export class TerminalSessions implements OnDestroy {
       env: options.env,
       cwd,
     });
+    const processId: number | null = result.success ? result.pid ?? null : null;
     if (!result.success) {
       // The main process streamed the failure into the session's scrollback and emitted an exit for
       // it where possible; outside Electron (or on malformed options) resolve the completion here.
@@ -383,7 +390,7 @@ export class TerminalSessions implements OnDestroy {
     const session: TerminalSession =
       this.items().find((candidate: TerminalSession): boolean => candidate.id === id) ??
       ({ id, name: options.name, kind: options.kind, generation: 0, exitCode: null, cwd });
-    return { session, exited };
+    return { session, exited, processId };
   }
 
   /**
