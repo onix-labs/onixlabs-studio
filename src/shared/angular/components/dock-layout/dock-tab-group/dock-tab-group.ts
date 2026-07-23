@@ -367,12 +367,23 @@ export class DockTabGroup {
 
   /**
    * Gets a value indicating whether the active panel can pop out into its own OS window (a pop-out
-   * handler is registered for it).
+   * handler is registered for it). The button renders on every tool group either way, so the chrome
+   * stays consistent; it is disabled for panels whose pop-out support has not been built yet.
    */
   protected readonly canPopOutActive: Signal<boolean> = computed((): boolean => {
     const active: string | null = this.stack().active;
     return active !== null && this.popouts.canPopOut(active);
   });
+
+  /**
+   * Gets the pop-out button's tooltip, explaining the disabled state for panels without pop-out
+   * support.
+   */
+  protected readonly popOutTitle: Signal<string> = computed((): string =>
+    this.canPopOutActive()
+      ? 'Open in New Window'
+      : 'Open in New Window (not available for this panel yet)',
+  );
 
   /**
    * Pops the active panel out into its own OS window through its registered handler.
