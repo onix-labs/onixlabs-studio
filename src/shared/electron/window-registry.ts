@@ -74,6 +74,15 @@ export class WindowRegistry<TWindow> {
   }
 
   /**
+   * Gets a registered entry — the window together with its kind — by identifier.
+   * @param id The identifier to resolve.
+   * @returns Returns the entry, or null when the identifier is unknown.
+   */
+  public entry(id: number): RegisteredWindow<TWindow> | null {
+    return this.entries.get(id) ?? null;
+  }
+
+  /**
    * Gets the main application window: the earliest-registered entry of the main kind.
    * @returns Returns the main window, or null when none is registered.
    */

@@ -56,6 +56,14 @@ describe('WindowRegistry', () => {
     expect(registry.byId(999)).toBeNull();
   });
 
+  it('entry_resolvesTheWindowTogetherWithItsKind', () => {
+    const registry: WindowRegistry<FakeWindow> = new WindowRegistry<FakeWindow>();
+    const window: FakeWindow = { name: 'popout' };
+    const added: RegisteredWindow<FakeWindow> = registry.add('popout', window);
+    expect(registry.entry(added.id)).toEqual({ id: added.id, kind: 'popout', window });
+    expect(registry.entry(999)).toBeNull();
+  });
+
   it('remove_withAnUnknownIdentifier_isANoOp', () => {
     const registry: WindowRegistry<FakeWindow> = new WindowRegistry<FakeWindow>();
     registry.add('main', { name: 'main' });

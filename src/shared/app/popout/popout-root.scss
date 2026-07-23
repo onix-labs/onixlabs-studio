@@ -1,0 +1,69 @@
+// The pop-out root fills the window as a single column: its own slim title bar above the one
+// hosted surface.
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--root-content-background-color);
+}
+
+// The title bar is the window's draggable region. The inline-start padding clears the macOS traffic
+// lights (mirroring the main title strip); on Windows/Linux the custom window controls render at the
+// inline end instead.
+.popout__titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+  padding-block: 0.4rem;
+  padding-inline: 5.5rem 0.5rem;
+  background: var(--title-strip-background-color);
+  border-block-end: 0.0625rem solid var(--title-strip-border-color);
+  -webkit-app-region: drag;
+}
+
+.popout__title {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--title-strip-button-foreground-color--hover);
+}
+
+// The pin opts out of the drag region so it stays clickable.
+.popout__pin {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--title-strip-button-foreground-color);
+  font-size: 1rem;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+
+  &:hover {
+    background: var(--title-strip-button-background-color--hover);
+    color: var(--title-strip-button-foreground-color--hover);
+  }
+
+  &--active {
+    color: var(--accent-color);
+  }
+}
+
+.popout__content {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+
+  app-terminal {
+    flex: 1;
+    min-inline-size: 0;
+  }
+}

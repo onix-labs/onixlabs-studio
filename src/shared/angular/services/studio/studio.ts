@@ -57,4 +57,12 @@ export class Studio {
   public setWindowMovable(movable: boolean): void {
     this.bridge?.send(WindowChannel.SetMovable, movable);
   }
+
+  /**
+   * Sets whether this window floats above every other window — the pop-out title-bar's pin.
+   * @param pinned True to keep the window on top; false to restore normal stacking.
+   */
+  public setWindowAlwaysOnTop(pinned: boolean): void {
+    this.bridge?.send(WindowChannel.SetAlwaysOnTop, pinned);
+  }
 }
