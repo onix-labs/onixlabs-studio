@@ -1,10 +1,12 @@
 import { inject, Service } from '@angular/core';
+import { Studio } from '@shared/angular/services/studio/studio';
 import { DockAutoHide } from './dock-auto-hide';
 import { DockFloating, FloatWindow } from './dock-floating';
 import { DockFocus } from './dock-focus';
 import { DockNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findStackOfPanel } from './dock-tree';
+import { PopoutPanels } from './popout-panels';
 
 /**
  * Reveals a panel in its dock wherever it currently lives, so programmatic flows (a run activating a
@@ -40,11 +42,29 @@ export class DockReveal {
   private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
-   * Reveals a panel: activates it in its stack (focusing the stack), peeks its collapsed stack, or
-   * brings its floating window to the front. A panel absent from the dock is ignored.
+   * Holds the popped-panels registry, so revealing a panel that lives in its own OS window focuses
+   * that window instead of touching the dock.
+   */
+  private readonly popouts: PopoutPanels = inject(PopoutPanels);
+
+  /**
+   * Holds the window-chrome bridge used to focus a popped panel's window.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Reveals a panel: focuses its pop-out window when it lives in one; otherwise activates it in its
+   * stack (focusing the stack), peeks its collapsed stack, or brings its floating window to the
+   * front. A panel absent from the dock is ignored.
    * @param panelId The identifier of the panel to reveal.
    */
   public reveal(panelId: string): void {
+    const popoutId: number | null = this.popouts.windowIdFor(panelId);
+    if (popoutId !== null) {
+      void this.studio.focusPopoutWindow(popoutId);
+      return;
+    }
+
     const floated: boolean = this.floating
       .floats()
       .some((float: FloatWindow): boolean => float.panelId === panelId);

@@ -63,6 +63,15 @@
         background: var(--dock-title-background-color--focused);
         color: var(--dock-title-foreground-color--focused);
       }
+
+      &:disabled {
+        opacity: 0.35;
+
+        &:hover {
+          background: transparent;
+          color: inherit;
+        }
+      }
     }
   }
 }

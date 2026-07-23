@@ -59,10 +59,47 @@ export class Studio {
   }
 
   /**
-   * Sets whether this window floats above every other window — the pop-out title-bar's pin.
-   * @param pinned True to keep the window on top; false to restore normal stacking.
+   * Asks the main process to open a pop-out window carrying the given parameters.
+   * @param params The pop-out parameters (surface selector, title, …).
+   * @returns Returns the pop-out's window identifier, or null when the request was rejected (or
+   * running outside Electron).
    */
-  public setWindowAlwaysOnTop(pinned: boolean): void {
-    this.bridge?.send(WindowChannel.SetAlwaysOnTop, pinned);
+  public openPopoutWindow(params: Readonly<Record<string, string>>): Promise<number | null> {
+    return (
+      this.bridge?.invoke<number | null>(WindowChannel.OpenPopout, params) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Closes a pop-out window.
+   * @param id The pop-out's window identifier.
+   * @returns Returns true when a live pop-out with that identifier was told to close.
+   */
+  public closePopoutWindow(id: number): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(WindowChannel.ClosePopout, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Brings a pop-out window to the front, restoring it first when minimized.
+   * @param id The pop-out's window identifier.
+   * @returns Returns true when a live pop-out with that identifier was focused.
+   */
+  public focusPopoutWindow(id: number): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(WindowChannel.FocusPopout, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Subscribes to pop-out-closed notifications (delivered to the main window).
+   * @param listener Receives the closed pop-out's window identifier.
+   * @returns Returns a function that removes the listener.
+   */
+  public onPopoutClosed(listener: (id: number) => void): () => void {
+    return (
+      this.bridge?.on(WindowChannel.PopoutClosed, (...args: unknown[]): void => {
+        if (typeof args[0] === 'number') {
+          listener(args[0]);
+        }
+      }) ?? ((): void => undefined)
+    );
   }
 }

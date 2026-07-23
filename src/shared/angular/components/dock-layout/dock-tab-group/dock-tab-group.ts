@@ -26,6 +26,7 @@ import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockState } from '../../../services/dock-layout/dock-state';
+import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
@@ -104,6 +105,12 @@ export class DockTabGroup {
    * Holds the auto-hide store the pin button shelves into.
    */
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
+   * Holds the pop-out seam: panels with a registered pop-out handler get the title-bar pop-out
+   * button, which moves them into their own OS window.
+   */
+  private readonly popouts: PopoutPanels = inject(PopoutPanels);
 
   /**
    * Holds the focus tracker that decides which panel is accented.
@@ -355,6 +362,36 @@ export class DockTabGroup {
     if (active !== null) {
       const rect: Rect = this.geometry.rectOf(this.stack().id) ?? FALLBACK_FLOAT_RECT;
       this.floating.float(active, rect);
+    }
+  }
+
+  /**
+   * Gets a value indicating whether the active panel can pop out into its own OS window (a pop-out
+   * handler is registered for it). The button renders on every tool group either way, so the chrome
+   * stays consistent; it is disabled for panels whose pop-out support has not been built yet.
+   */
+  protected readonly canPopOutActive: Signal<boolean> = computed((): boolean => {
+    const active: string | null = this.stack().active;
+    return active !== null && this.popouts.canPopOut(active);
+  });
+
+  /**
+   * Gets the pop-out button's tooltip, explaining the disabled state for panels without pop-out
+   * support.
+   */
+  protected readonly popOutTitle: Signal<string> = computed((): string =>
+    this.canPopOutActive()
+      ? 'Open in New Window'
+      : 'Open in New Window (not available for this panel yet)',
+  );
+
+  /**
+   * Pops the active panel out into its own OS window through its registered handler.
+   */
+  protected popOutActive(): void {
+    const active: string | null = this.stack().active;
+    if (active !== null) {
+      this.popouts.popOut(active);
     }
   }
 

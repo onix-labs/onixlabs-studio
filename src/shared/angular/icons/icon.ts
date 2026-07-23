@@ -574,6 +574,12 @@ export class Icon {
   public static readonly PIN: Icon = new Icon('ph ph-push-pin');
 
   /**
+   * Gets the pop-out icon, shown in a dock group's title bar for panels that can move into their
+   * own OS window.
+   */
+  public static readonly POP_OUT: Icon = new Icon('ph-duotone ph-cards');
+
+  /**
    * Gets the filled pin icon, used to show an item is pinned.
    */
   public static readonly PIN_FILLED: Icon = new Icon('ph-fill ph-push-pin');

@@ -13,9 +13,10 @@ import { TerminalBridge } from '@shared/angular/services/terminal-bridge/termina
 
 /**
  * The identifier the terminal panel is registered under in the dock blueprints, used to reveal the
- * panel that renders these sessions.
+ * panel that renders these sessions (and by the pop-out coordinator to move it between the dock and
+ * its own window).
  */
-const TERMINAL_PANEL_ID: string = 'terminal';
+export const TERMINAL_PANEL_ID: string = 'terminal';
 
 /**
  * The synthetic exit code a pending completion resolves with when its session is disposed without an

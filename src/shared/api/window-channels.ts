@@ -27,12 +27,6 @@ export enum WindowChannel {
   SetMovable = 'window:set-movable',
 
   /**
-   * Sets whether the requesting window floats above every other window — the pop-out title-bar's
-   * pin (renderer→main, send).
-   */
-  SetAlwaysOnTop = 'window:set-always-on-top',
-
-  /**
    * Requests a new pop-out window carrying the given parameters, answering its window identifier —
    * or null when the parameters are rejected (renderer→main, invoke).
    */
