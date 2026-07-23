@@ -75,6 +75,30 @@ describe('parseWorkspace', () => {
     };
     expect(parseWorkspace(JSON.parse(serializeWorkspace(workspace)))).toEqual(workspace);
   });
+
+  it('parse_readsThePresentation_andDropsForeignValues', () => {
+    const parsed: StudioWorkspace = parseWorkspace({
+      runConfigurations: [
+        { id: 'a', name: 'A', providerKind: 'node', presentation: 'window' },
+        { id: 'b', name: 'B', providerKind: 'node', presentation: 'panel' },
+        { id: 'c', name: 'C', providerKind: 'node', presentation: 'billboard' },
+        { id: 'd', name: 'D', providerKind: 'node' },
+      ],
+    });
+    expect(
+      parsed.runConfigurations.map(
+        (configuration: RunConfiguration): string | undefined => configuration.presentation,
+      ),
+    ).toEqual(['window', 'panel', undefined, undefined]);
+  });
+
+  it('presentation_roundTripsThroughSerialization', () => {
+    const workspace: StudioWorkspace = {
+      version: STUDIO_SCHEMA_VERSION,
+      runConfigurations: [{ ...config('a', 'A'), presentation: 'window' }],
+    };
+    expect(parseWorkspace(JSON.parse(serializeWorkspace(workspace)))).toEqual(workspace);
+  });
 });
 
 describe('parseUser', () => {

@@ -7,8 +7,10 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { RunPresentation } from '@shared/api/studio';
 import { TerminalCreateResult, TerminalKind } from '@shared/api/terminal-channels';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 
 /**
@@ -108,6 +110,13 @@ export interface TerminalLaunchOptions {
    * Gets the working directory, or undefined to use the sessions' root folder.
    */
   readonly cwd?: string;
+
+  /**
+   * Gets where the session presents as it launches, or undefined for the default (reveal the
+   * terminal panel in the dock). `window` pops the terminal panel out into its own OS window —
+   * or focuses the pop-out already showing it — with this session active.
+   */
+  readonly presentation?: RunPresentation;
 }
 
 /**
@@ -163,6 +172,12 @@ export class TerminalSessions implements OnDestroy {
    * programmatically.
    */
   private readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Holds the pop-out seam, so a launch whose configuration asks for a window can pop the terminal
+   * panel out instead of revealing the dock.
+   */
+  private readonly popouts: PopoutPanels = inject(PopoutPanels);
 
   /**
    * Holds the sessions in tab order.
@@ -387,7 +402,14 @@ export class TerminalSessions implements OnDestroy {
       this.resolveWaiter(id, 1);
     }
 
-    this.activateAndReveal(id);
+    if (options.presentation === 'window' && this.popouts.canPopOut(TERMINAL_PANEL_ID)) {
+      // The configuration asked for its terminal in a window: pop the panel out (or focus the
+      // pop-out already showing it) with this session active, instead of revealing the dock.
+      this.active.set(id);
+      this.popouts.popOut(TERMINAL_PANEL_ID);
+    } else {
+      this.activateAndReveal(id);
+    }
     const session: TerminalSession =
       this.items().find((candidate: TerminalSession): boolean => candidate.id === id) ??
       ({ id, name: options.name, kind: options.kind, generation: 0, exitCode: null, cwd });

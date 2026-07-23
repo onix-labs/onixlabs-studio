@@ -368,6 +368,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       args: task.args,
       env: task.env,
       cwd: task.cwd,
+      presentation: task.presentation,
     });
     const exitCode: number = await launch.exited;
     if (this.currentRuns.get(sessionId) !== token) {
@@ -795,6 +796,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       args: compiled.args,
       env: configuration.env,
       cwd,
+      presentation: configuration.presentation,
     };
   }
 

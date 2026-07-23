@@ -115,6 +115,13 @@
           <app-setting-row label="Debug" description="Run under the debugger">
             <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
           </app-setting-row>
+
+          <app-setting-row label="New window" description="Show this run's terminal in its own window">
+            <app-toggle
+              [checked]="isWindowPresentation()"
+              (checkedChange)="onPresentationChange($event)"
+            />
+          </app-setting-row>
         } @else {
           <p class="configure__empty">Select or create a configuration to edit.</p>
         }

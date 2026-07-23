@@ -38,6 +38,12 @@ export const STUDIO_SCHEMA_VERSION: number = 1;
 export type RunMode = 'run' | 'debug';
 
 /**
+ * Where a run configuration's terminal presents: in the workspace's terminal panel (the default),
+ * or with the terminal panel popped out into its own OS window.
+ */
+export type RunPresentation = 'panel' | 'window';
+
+/**
  * The provider kind stamped on a compound configuration, which is launched by Studio itself (by starting
  * its members) rather than by any one ecosystem's provider.
  */
@@ -105,6 +111,13 @@ export interface RunConfiguration {
    * Gets whether the configuration launches normally or under the debugger.
    */
   readonly mode: RunMode;
+
+  /**
+   * Gets where the configuration's terminal presents, or undefined for the default (the workspace's
+   * terminal panel). `window` pops the terminal panel out into its own OS window — the whole panel
+   * presents there, with this run's session active.
+   */
+  readonly presentation?: RunPresentation;
 
   /**
    * Gets the ids of the configurations a compound launches in parallel, or undefined for an ordinary
@@ -269,6 +282,12 @@ export function parseRunConfiguration(value: unknown): RunConfiguration | null {
             ),
           ),
     mode: record['mode'] === 'debug' ? 'debug' : 'run',
+    presentation:
+      record['presentation'] === 'window'
+        ? 'window'
+        : record['presentation'] === 'panel'
+          ? 'panel'
+          : undefined,
     members,
   };
 }

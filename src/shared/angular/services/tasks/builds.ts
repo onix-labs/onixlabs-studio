@@ -1,6 +1,6 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ProjectAction } from '@shared/api/project-system';
-import { RunConfiguration } from '@shared/api/studio';
+import { RunConfiguration, RunPresentation } from '@shared/api/studio';
 
 /**
  * Categorises a build task so the ribbon can offer a Build / Run / Test action for the active
@@ -47,6 +47,12 @@ export interface BuildTask {
    * Gets the absolute working directory the task runs in (the workspace root).
    */
   readonly cwd: string;
+
+  /**
+   * Gets where the task's terminal presents, or undefined for the default (the workspace's terminal
+   * panel). Carried from the run configuration that compiled to this task.
+   */
+  readonly presentation?: RunPresentation;
 }
 
 /**
