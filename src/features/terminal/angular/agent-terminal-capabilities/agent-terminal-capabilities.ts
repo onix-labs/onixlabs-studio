@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '@shared/api/ai-types';
+import { TerminalReplay } from '@shared/api/terminal-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
@@ -9,6 +10,17 @@ import { Terminals } from '@shared/angular/services/terminals/terminals';
  * the model's context. Only the most recent lines are kept.
  */
 const MAX_OUTPUT_LINES: number = 200;
+
+/**
+ * Matches the terminal control sequences a raw pty stream carries (OSC titles, CSI styling and
+ * cursor movement, and two-character escapes), so scrollback read through the replay fallback comes
+ * back as plain text. Composed from character codes because a literal escape in a regex trips the
+ * no-control-regex lint rule.
+ */
+const CONTROL_SEQUENCE_PATTERN: RegExp = new RegExp(
+  `${String.fromCharCode(27)}(?:\\][^${String.fromCharCode(7)}${String.fromCharCode(27)}]*(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)?|\\[[0-9;?]*[0-9A-Za-z]|.)`,
+  'g',
+);
 
 /**
  * Holds how long (ms) to wait after sending input before reading the terminal back, so the shell has
@@ -76,7 +88,7 @@ export class AgentTerminalCapabilities {
   public constructor() {
     this.runtime.registerCapability(
       READ_TERMINAL_OUTPUT,
-      (input: unknown): ReadResult => this.readOutput(input),
+      (input: unknown): Promise<ReadResult> => this.readOutput(input),
     );
     this.runtime.registerCapability(
       WRITE_TERMINAL_INPUT,
@@ -90,13 +102,35 @@ export class AgentTerminalCapabilities {
    * @param input The capability input, carrying the owning `tabId`.
    * @returns Returns the {@link ReadResult}.
    */
-  private readOutput(input: unknown): ReadResult {
+  private async readOutput(input: unknown): Promise<ReadResult> {
     const tabId: string | null = this.extractString(input, 'tabId');
-    const text: string | null = tabId === null ? null : this.terminals.readText(tabId);
+    const text: string | null = tabId === null ? null : await this.readSessionText(tabId);
     if (text === null) {
       return { available: false, text: '' };
     }
     return { available: true, text: this.cap(text) };
+  }
+
+  /**
+   * Reads a session's on-screen text: from this window's pane when one is mounted here, otherwise
+   * from the main-process scrollback — the session's pane may live in another window (a popped-out
+   * terminal panel), whose rendered buffer this renderer cannot reach.
+   * @param tabId The terminal identifier.
+   * @returns Returns the session's text, or null when no pane nor scrollback exists for it.
+   */
+  private async readSessionText(tabId: string): Promise<string | null> {
+    const rendered: string | null = this.terminals.readText(tabId);
+    if (rendered !== null) {
+      return rendered;
+    }
+    const replay: TerminalReplay = await this.bridge.replay(tabId);
+    if (replay.data.length === 0 && replay.exitCode === null) {
+      return null;
+    }
+    return replay.data
+      .replace(CONTROL_SEQUENCE_PATTERN, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
   }
 
   /**
@@ -120,7 +154,7 @@ export class AgentTerminalCapabilities {
       return { ok: false };
     }
     await this.delay(SETTLE_DELAY_MS);
-    const output: string | null = this.terminals.readText(tabId);
+    const output: string | null = await this.readSessionText(tabId);
     return { ok: true, output: output === null ? '' : this.cap(output) };
   }
 

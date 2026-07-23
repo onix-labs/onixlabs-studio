@@ -574,6 +574,16 @@ export class Icon {
   public static readonly PIN: Icon = new Icon('ph ph-push-pin');
 
   /**
+   * Gets the pop-out icon, shown on a panel that can move into its own OS window.
+   */
+  public static readonly POP_OUT: Icon = new Icon('ph ph-arrow-square-out');
+
+  /**
+   * Gets the pop-in icon, shown in a pop-out window to dock its panel back into the workspace.
+   */
+  public static readonly POP_IN: Icon = new Icon('ph ph-arrow-square-in');
+
+  /**
    * Gets the filled pin icon, used to show an item is pinned.
    */
   public static readonly PIN_FILLED: Icon = new Icon('ph-fill ph-push-pin');

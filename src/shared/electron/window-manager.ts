@@ -302,6 +302,46 @@ export class WindowManager {
   }
 
   /**
+   * Resolves the registered identifier of the window owning the given web contents.
+   * @param contents The web contents to resolve.
+   * @returns Returns the registered identifier, or null when the contents belong to no registered
+   * window.
+   */
+  public idForWebContents(contents: WebContents): number | null {
+    for (const entry of this.registry.all()) {
+      if (!entry.window.isDestroyed() && entry.window.webContents === contents) {
+        return entry.id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Gets the web contents of the pop-out window with the given identifier.
+   * @param id The registered identifier of the pop-out window.
+   * @returns Returns the web contents, or null when no live pop-out has that identifier.
+   */
+  public popoutWebContents(id: number): WebContents | null {
+    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
+    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
+      return null;
+    }
+    return entry.window.webContents;
+  }
+
+  /**
+   * Closes every pop-out window. Called when the main window reloads: a reloaded renderer has lost
+   * the owner-side state its pop-outs mirrored, so they cannot outlive it.
+   */
+  public closeAllPopouts(): void {
+    for (const entry of this.registry.all()) {
+      if (entry.kind === 'popout' && !entry.window.isDestroyed()) {
+        entry.window.close();
+      }
+    }
+  }
+
+  /**
    * Persists a window's bounds whenever it settles after a move or resize.
    * @param kind The window kind the bounds persist under.
    * @param window The window to track.

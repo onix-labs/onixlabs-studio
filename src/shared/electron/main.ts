@@ -39,6 +39,7 @@ import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
+import { PopoutMirrorRelay } from '@shared/electron/popout-mirror-relay';
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
@@ -169,8 +170,17 @@ class Program {
       // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
       this.openPathsReady = false;
+      // A reloaded main window has lost the owner-side state its pop-outs mirrored (the terminal
+      // session stores), so orphaned pop-outs are closed rather than left showing a dead strip.
+      this.windows.closeAllPopouts();
     },
   });
+
+  /**
+   * Relays the terminal-mirror protocol between the main window (session owner) and pop-out
+   * windows (viewers), stamping messages with the pop-out's registered identifier.
+   */
+  private readonly popoutMirrorRelay: PopoutMirrorRelay = new PopoutMirrorRelay(this.windows);
 
   /**
    * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the
@@ -604,6 +614,7 @@ class Program {
     });
 
     this.logger.register();
+    this.popoutMirrorRelay.register();
     this.securityManager.register();
     this.mediaProtocol.register();
     this.printManager.register();

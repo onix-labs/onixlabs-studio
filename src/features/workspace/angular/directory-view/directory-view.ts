@@ -42,6 +42,8 @@ import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { TerminalPopout } from '@shared/angular/services/terminal-popout/terminal-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
@@ -141,6 +143,10 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
+    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows),
+    // and the coordinator that moves the terminal panel out and back.
+    PopoutPanels,
+    TerminalPopout,
     { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would

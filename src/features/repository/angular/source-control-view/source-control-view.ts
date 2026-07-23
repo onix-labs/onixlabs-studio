@@ -37,6 +37,8 @@ import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-pan
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { TerminalPopout } from '@shared/angular/services/terminal-popout/terminal-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { collectPanelIds } from '@shared/angular/services/dock-layout/dock-tree';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
@@ -101,6 +103,10 @@ const STATUS_PRIORITY: number = 30;
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
+    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows),
+    // and the coordinator that moves the terminal panel out and back.
+    PopoutPanels,
+    TerminalPopout,
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would

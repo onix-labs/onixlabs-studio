@@ -1,0 +1,74 @@
+<div class="terminal-popout">
+  <app-panel-toolbar class="terminal-popout__tabs" role="tablist">
+    @for (session of state().sessions; track session.id) {
+      @if (editingId() === session.id) {
+        <input
+          class="terminal-popout__rename"
+          [value]="session.name"
+          (blur)="commitRename(session.id, $event)"
+          (keydown.enter)="commitRename(session.id, $event)"
+          (keydown.escape)="cancelRename()"
+          aria-label="Rename terminal"
+        />
+      } @else {
+        <button
+          class="panel-toolbar__button terminal-popout__tab"
+          [class.panel-toolbar__button--active]="session.id === state().activeId"
+          (click)="activate(session.id)"
+          (dblclick)="startRename(session)"
+          role="tab"
+          [attr.aria-selected]="session.id === state().activeId"
+        >
+          <app-icon class="terminal-popout__tab-icon" [icon]="Icon.TERMINAL" />
+          <span class="terminal-popout__tab-name">{{ session.name }}</span>
+          <span
+            class="terminal-popout__tab-close"
+            role="button"
+            tabindex="0"
+            aria-label="Close terminal"
+            (click)="close(session.id, $event)"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </span>
+        </button>
+      }
+    }
+    <button
+      class="panel-toolbar__button"
+      (click)="create()"
+      aria-label="New Terminal"
+      title="New Terminal"
+    >
+      <app-icon [icon]="Icon.PLUS" />
+    </button>
+  </app-panel-toolbar>
+  <div class="terminal-popout__bodies">
+    <!-- Panes re-key on the session's generation, exactly like the docked panel: a relaunch-in-place
+         replaces the PTY and its buffer, so the pane remounts and replays the fresh session. Every
+         pane is persistent — this window is a viewer and never disposes a PTY. -->
+    @for (session of state().sessions; track session.id + ':' + session.generation) {
+      <div
+        class="terminal-popout__body"
+        [class.terminal-popout__body--hidden]="session.id !== state().activeId"
+      >
+        <app-terminal
+          [terminalId]="session.id"
+          [kind]="session.kind"
+          [cwd]="session.cwd"
+          [persistent]="true"
+          [isActive]="session.id === state().activeId"
+        />
+      </div>
+    }
+    @if (state().sessions.length === 0) {
+      <div class="terminal-popout__empty">Waiting for the workspace's terminals…</div>
+    }
+  </div>
+  <app-panel-status>
+    <span class="panel-status__item">
+      <app-icon [icon]="Icon.TERMINAL" />
+      {{ shellName(activeSession()?.shell) }}
+    </span>
+    <span class="panel-status__item panel-status__item--push">{{ state().root }}</span>
+  </app-panel-status>
+</div>

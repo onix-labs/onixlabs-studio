@@ -11,21 +11,23 @@ import { WindowControls } from '@shared/angular/components/strips/title-strip/wi
 import { Icon } from '@shared/angular/icons/icon';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { TerminalMirrorBridge } from '@shared/angular/services/terminal-mirror/terminal-mirror-bridge';
 import { parsePopoutSearch } from '@shared/api/popout-params';
+import { TerminalPopoutPanel } from './terminal-popout-panel';
 
 /**
  * Represents the pop-out window's root: a minimal shell with its own title bar (draggable region,
  * always-on-top pin, and the custom window controls on platforms that need them) around a single
  * hosted surface.
  *
- * For now the surface is a scratch shell terminal owned by this window alone — the proving ground
- * for the pop-out fabric (per-session output routing, theming, chrome). The terminal-panel pop-out
- * replaces it with the workspace's session strip in the next phase, at which point this content
- * region becomes a dock container.
+ * The surface is chosen by the pop-out's `panel` parameter: `terminal` hosts the workspace's
+ * mirrored terminal panel (with a dock-back control in the title bar); without a parameter the
+ * window hosts a scratch shell owned by this window alone (the development surface the fabric was
+ * proven on).
  */
 @Component({
   selector: 'app-root',
-  imports: [AppIcon, Terminal, WindowControls],
+  imports: [AppIcon, Terminal, TerminalPopoutPanel, WindowControls],
   templateUrl: './popout-root.html',
   styleUrl: './popout-root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,12 +49,22 @@ export class PopoutRoot {
   private readonly bridge: TerminalBridge = inject(TerminalBridge);
 
   /**
+   * Holds the mirror client, used to request docking the hosted panel back.
+   */
+  private readonly mirror: TerminalMirrorBridge = inject(TerminalMirrorBridge);
+
+  /**
    * Gets the window title, from the pop-out parameters.
    */
   protected readonly title: string;
 
   /**
-   * Gets the identifier of the scratch shell session this window hosts.
+   * Gets the hosted surface selector from the pop-out parameters, or null for the scratch shell.
+   */
+  protected readonly panelKind: string | null;
+
+  /**
+   * Gets the identifier of the scratch shell session this window hosts (scratch mode only).
    */
   protected readonly scratchId: string;
 
@@ -68,13 +80,17 @@ export class PopoutRoot {
   public constructor() {
     const params: Record<string, string> = parsePopoutSearch(window.location.search) ?? {};
     this.title = params['title'] ?? 'Studio';
+    this.panelKind = params['panel'] ?? null;
     this.scratchId = `popout-scratch-${params['scratch'] ?? crypto.randomUUID()}`;
     document.title = this.title;
-    // The scratch shell belongs to this window alone, so it dies with it. Angular destroy hooks do
-    // not run when a window closes, so the disposal rides the unload instead.
-    window.addEventListener('beforeunload', (): void => {
-      void this.bridge.dispose(this.scratchId);
-    });
+    if (this.panelKind === null) {
+      // The scratch shell belongs to this window alone, so it dies with it. Angular destroy hooks
+      // do not run when a window closes, so the disposal rides the unload instead. A mirrored panel
+      // has no such teardown: its sessions belong to the workspace window and must survive.
+      window.addEventListener('beforeunload', (): void => {
+        void this.bridge.dispose(this.scratchId);
+      });
+    }
   }
 
   /**
@@ -83,5 +99,12 @@ export class PopoutRoot {
   protected togglePin(): void {
     this.pinned.update((pinned: boolean): boolean => !pinned);
     this.studio.setWindowAlwaysOnTop(this.pinned());
+  }
+
+  /**
+   * Asks the owner to dock the hosted panel back into the workspace (which closes this window).
+   */
+  protected dockBack(): void {
+    this.mirror.sendAction({ kind: 'dock-back' });
   }
 }

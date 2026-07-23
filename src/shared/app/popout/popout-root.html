@@ -1,5 +1,16 @@
 <header class="popout__titlebar">
   <span class="popout__title">{{ title }}</span>
+  @if (panelKind === 'terminal') {
+    <button
+      type="button"
+      class="popout__pin"
+      aria-label="Dock back into the workspace"
+      title="Dock back into the workspace"
+      (click)="dockBack()"
+    >
+      <app-icon [icon]="Icon.POP_IN" />
+    </button>
+  }
   <button
     type="button"
     class="popout__pin"
@@ -15,5 +26,9 @@
 </header>
 
 <main class="popout__content">
-  <app-terminal [terminalId]="scratchId" [isActive]="true" />
+  @if (panelKind === 'terminal') {
+    <app-terminal-popout-panel />
+  } @else {
+    <app-terminal [terminalId]="scratchId" [isActive]="true" />
+  }
 </main>
