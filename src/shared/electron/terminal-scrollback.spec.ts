@@ -8,14 +8,14 @@ describe('TerminalScrollback', () => {
   });
 
   it('snapshot_whenUnknownId_yieldsAnEmptySnapshot', () => {
-    expect(scrollback.snapshot('missing')).toEqual({ data: '', seq: 0, exitCode: null });
+    expect(scrollback.snapshot('missing')).toEqual({ data: '', seq: 0, exitCode: null, signal: null });
   });
 
   it('append_accumulatesDataAndNumbersChunksSequentially', () => {
     expect(scrollback.append('t1', 'a')).toBe(1);
     expect(scrollback.append('t1', 'b')).toBe(2);
 
-    expect(scrollback.snapshot('t1')).toEqual({ data: 'ab', seq: 2, exitCode: null });
+    expect(scrollback.snapshot('t1')).toEqual({ data: 'ab', seq: 2, exitCode: null, signal: null });
   });
 
   it('append_keysRecordsBySession', () => {
@@ -46,7 +46,15 @@ describe('TerminalScrollback', () => {
 
     scrollback.markExited('t1', 3);
 
-    expect(scrollback.snapshot('t1')).toEqual({ data: 'output', seq: 1, exitCode: 3 });
+    expect(scrollback.snapshot('t1')).toEqual({ data: 'output', seq: 1, exitCode: 3, signal: null });
+  });
+
+  it('markExited_withASignal_recordsIt', () => {
+    scrollback.append('t1', 'output');
+
+    scrollback.markExited('t1', 0, 15);
+
+    expect(scrollback.snapshot('t1')).toEqual({ data: 'output', seq: 1, exitCode: 0, signal: 15 });
   });
 
   it('markExited_whenUnknownId_isIgnored', () => {
@@ -61,7 +69,7 @@ describe('TerminalScrollback', () => {
 
     scrollback.reset('t1');
 
-    expect(scrollback.snapshot('t1')).toEqual({ data: '', seq: 0, exitCode: null });
+    expect(scrollback.snapshot('t1')).toEqual({ data: '', seq: 0, exitCode: null, signal: null });
   });
 
   it('delete_removesTheRecordAndReportsWhetherOneExisted', () => {
@@ -69,7 +77,7 @@ describe('TerminalScrollback', () => {
 
     expect(scrollback.delete('t1')).toBe(true);
     expect(scrollback.delete('t1')).toBe(false);
-    expect(scrollback.snapshot('t1')).toEqual({ data: '', seq: 0, exitCode: null });
+    expect(scrollback.snapshot('t1')).toEqual({ data: '', seq: 0, exitCode: null, signal: null });
   });
 
   it('clear_removesEveryRecord', () => {

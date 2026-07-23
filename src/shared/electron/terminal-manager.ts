@@ -10,9 +10,11 @@ import {
   ShellInfo,
   TerminalChannel,
   TerminalCreateResult,
+  TerminalKind,
   TerminalReplay,
 } from '@shared/api/terminal-channels';
 import { TerminalScrollback } from './terminal-scrollback';
+import { allowsInput, buildSpawnSpec, SpawnSpec } from './terminal-spawn';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -35,6 +37,17 @@ const MIN_DIMENSION: number = 0;
 const LSOF_TIMEOUT_MS: number = 1000;
 
 /**
+ * Specifies the grace period, in milliseconds, between SIGTERM and SIGKILL when terminating a
+ * session's process tree. Mirrors the task runner's escalation.
+ */
+const TERMINATE_GRACE_MS: number = 5000;
+
+/**
+ * Holds the recognised session kinds, used to validate renderer-supplied create options.
+ */
+const TERMINAL_KINDS: ReadonlySet<string> = new Set<string>(['shell', 'run', 'task']);
+
+/**
  * Manages pseudo-terminal sessions for the renderer: spawns node-pty instances, forwards their I/O
  * over IPC, and answers resize/dispose/cwd requests. One instance is owned by the main process.
  */
@@ -54,6 +67,17 @@ export class TerminalManager {
    * it missed while unmounted. Records outlive process exit and are removed only on dispose.
    */
   private readonly scrollback: TerminalScrollback = new TerminalScrollback();
+
+  /**
+   * Holds each session's kind, so the write gate can drop input to read-only `task` sessions.
+   */
+  private readonly kinds: Map<string, TerminalKind> = new Map<string, TerminalKind>();
+
+  /**
+   * Holds the pending SIGKILL escalation timers of terminating sessions, cleared when the process
+   * exits within the grace period (or the session is disposed).
+   */
+  private readonly killTimers: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
 
   /**
    * Initializes a new instance of the {@link TerminalManager} class.
@@ -86,6 +110,9 @@ export class TerminalManager {
     ipcMain.handle(TerminalChannel.Dispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
       typeof id === 'string' ? this.dispose(id) : false,
     );
+    ipcMain.handle(TerminalChannel.Terminate, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
+      typeof id === 'string' ? this.terminate(id) : false,
+    );
     ipcMain.handle(
       TerminalChannel.GetCwd,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
@@ -95,7 +122,7 @@ export class TerminalManager {
     ipcMain.handle(TerminalChannel.Replay, (_event: IpcMainInvokeEvent, id: unknown): TerminalReplay =>
       typeof id === 'string'
         ? this.scrollback.snapshot(id)
-        : { data: '', seq: 0, exitCode: null },
+        : { data: '', seq: 0, exitCode: null, signal: null },
     );
   }
 
@@ -112,6 +139,11 @@ export class TerminalManager {
     }
     this.terminals.clear();
     this.scrollback.clear();
+    this.kinds.clear();
+    for (const timer of this.killTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.killTimers.clear();
   }
 
   /**
@@ -119,8 +151,12 @@ export class TerminalManager {
    * reuses an existing session with the same id. The options come from the renderer and are validated
    * here: a string id is required, and the dimensions and working directory fall back to safe defaults
    * when absent or malformed. The shell is resolved by the main process, never supplied by the caller.
+   * A `run` or `task` session executes its command instead of an interactive shell — via the platform
+   * shell for a bare command line, or directly when an argument vector is given — with any supplied
+   * environment layered over the application's. A command spawn failure is written into the session's
+   * scrollback (with a recorded exit) so an attached pane shows it rather than a silent no-op.
    * @param options The terminal creation options from the renderer.
-   * @returns Returns the result describing success and the spawned shell, or an error.
+   * @returns Returns the result describing success and the spawned executable, or an error.
    */
   private create(options: unknown): TerminalCreateResult {
     if (typeof options !== 'object' || options === null) {
@@ -128,10 +164,14 @@ export class TerminalManager {
     }
     const candidate: {
       id?: unknown;
+      kind?: unknown;
       cols?: unknown;
       rows?: unknown;
       cwd?: unknown;
       shell?: unknown;
+      command?: unknown;
+      args?: unknown;
+      env?: unknown;
     } = options;
     if (typeof candidate.id !== 'string' || candidate.id.length === 0) {
       return { success: false, error: 'Invalid terminal options' };
@@ -142,6 +182,30 @@ export class TerminalManager {
     if (existing !== undefined) {
       return { success: true, pid: existing.pid, shell: existing.process };
     }
+
+    const kind: TerminalKind =
+      typeof candidate.kind === 'string' && TERMINAL_KINDS.has(candidate.kind)
+        ? (candidate.kind as TerminalKind)
+        : 'shell';
+    const command: string | undefined =
+      typeof candidate.command === 'string' && candidate.command.length > 0
+        ? candidate.command
+        : undefined;
+    const args: readonly string[] | undefined =
+      command !== undefined &&
+      Array.isArray(candidate.args) &&
+      candidate.args.every((entry: unknown): entry is string => typeof entry === 'string')
+        ? candidate.args
+        : undefined;
+    const env: Readonly<Record<string, string>> =
+      typeof candidate.env === 'object' && candidate.env !== null
+        ? Object.fromEntries(
+            Object.entries(candidate.env).filter(
+              (entry: [string, unknown]): entry is [string, string] =>
+                typeof entry[1] === 'string',
+            ),
+          )
+        : {};
 
     // Honour a caller-chosen shell only when it is a usable executable; otherwise fall back to the
     // resolved platform default, so a stale or bogus choice never surfaces as a cryptic spawn failure.
@@ -154,19 +218,30 @@ export class TerminalManager {
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
+    const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args);
 
     try {
-      const terminal: pty.IPty = pty.spawn(shell, [], {
+      const terminal: pty.IPty = pty.spawn(spec.file, [...spec.args], {
         name: 'xterm-256color',
         cols,
         rows,
         cwd,
-        env: process.env,
+        env: { ...process.env, ...env },
       });
 
       // A fresh spawn starts a fresh scrollback record, so a session re-created under a reused
       // identifier never replays its predecessor's output.
       this.scrollback.reset(id);
+
+      if (command !== undefined) {
+        // Echo what the session runs, like a prompt would: without it, a command that fails before
+        // printing (a missing binary execs then exits instantly) would leave nothing but a bare exit
+        // banner to diagnose from.
+        const display: string = args !== undefined ? [command, ...args].join(' ') : command;
+        const header: string = `\x1b[90m> ${display}\x1b[0m\r\n`;
+        const headerSeq: number = this.scrollback.append(id, header);
+        this.send(TerminalChannel.Data, id, header, headerSeq);
+      }
 
       terminal.onData((data: string): void => {
         const seq: number = this.scrollback.append(id, data);
@@ -174,17 +249,40 @@ export class TerminalManager {
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
+        // A disposed session was already removed (and possibly replaced under the same id by a
+        // relaunch): its late exit must stay silent, or it would masquerade as the successor's.
+        if (this.terminals.get(id) !== terminal) {
+          return;
+        }
+        // A process that exited within the grace period needs no SIGKILL escalation.
+        const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
+        if (pendingKill !== undefined) {
+          clearTimeout(pendingKill);
+          this.killTimers.delete(id);
+        }
         // Keep the scrollback (with the exit recorded) so a pane re-attaching later still shows the
         // session's output and exit banner; only dispose removes it.
-        this.scrollback.markExited(id, event.exitCode);
+        this.scrollback.markExited(id, event.exitCode, event.signal ?? null);
         this.send(TerminalChannel.Exit, id, event.exitCode, event.signal ?? null);
         this.terminals.delete(id);
       });
 
       this.terminals.set(id, terminal);
-      return { success: true, pid: terminal.pid, shell };
+      this.kinds.set(id, kind);
+      return { success: true, pid: terminal.pid, shell: spec.file };
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : 'Unknown error';
+      if (command !== undefined) {
+        // A failed command spawn must be visible in the session's pane, not a silent no-op: record
+        // the failure in the scrollback with an exit — streamed live too, for an attached pane —
+        // so the pane shows it now or on replay.
+        this.scrollback.reset(id);
+        const line: string = `\x1b[31mFailed to start: ${message}\x1b[0m\r\n`;
+        const seq: number = this.scrollback.append(id, line);
+        this.send(TerminalChannel.Data, id, line, seq);
+        this.scrollback.markExited(id, 1);
+        this.send(TerminalChannel.Exit, id, 1, null);
+      }
       return { success: false, error: message };
     }
   }
@@ -200,7 +298,10 @@ export class TerminalManager {
   }
 
   /**
-   * Writes input data to the session identified by the given id.
+   * Writes input data to the session identified by the given id. This is the single choke point for
+   * every input source (keystrokes, paste, agent writes), so the read-only gate for `task` sessions
+   * lives here: only a bare Ctrl+C passes — the line discipline turns it into SIGINT — and everything
+   * else is dropped.
    * @param id The terminal identifier.
    * @param data The data to write.
    * @returns Returns true when the session exists and the data was written.
@@ -210,8 +311,63 @@ export class TerminalManager {
     if (terminal === undefined) {
       return false;
     }
+    if (!allowsInput(this.kinds.get(id) ?? 'shell', data)) {
+      return false;
+    }
     terminal.write(data);
     return true;
+  }
+
+  /**
+   * Terminates a session's process tree while keeping the session (its tab, scrollback, and the exit
+   * banner the exit event produces): SIGTERM to the PTY's process group, escalating to SIGKILL after
+   * a grace period when it has not exited; Windows uses taskkill's forced tree kill. The PTY child is
+   * a session leader, so signalling its negated pid reaches the whole group a non-interactive shell
+   * runs its children in.
+   * @param id The terminal identifier.
+   * @returns Returns true when the session exists and was signalled.
+   */
+  private terminate(id: string): boolean {
+    const terminal: pty.IPty | undefined = this.terminals.get(id);
+    if (terminal === undefined) {
+      return false;
+    }
+    const pid: number = terminal.pid;
+    if (process.platform === 'win32') {
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
+      return true;
+    }
+    this.signalTree(pid, 'SIGTERM');
+    if (!this.killTimers.has(id)) {
+      this.killTimers.set(
+        id,
+        setTimeout((): void => {
+          this.killTimers.delete(id);
+          if (this.terminals.get(id) === terminal) {
+            this.signalTree(pid, 'SIGKILL');
+          }
+        }, TERMINATE_GRACE_MS),
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Signals a process group by its leader's pid, falling back to the single process when the group
+   * signal fails.
+   * @param pid The group leader's process identifier.
+   * @param signal The signal to deliver.
+   */
+  private signalTree(pid: number, signal: NodeJS.Signals): void {
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      try {
+        process.kill(pid, signal);
+      } catch {
+        // The process is already gone; nothing to signal.
+      }
+    }
   }
 
   /**
@@ -242,6 +398,12 @@ export class TerminalManager {
    */
   private dispose(id: string): boolean {
     const hadScrollback: boolean = this.scrollback.delete(id);
+    this.kinds.delete(id);
+    const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
+    if (pendingKill !== undefined) {
+      clearTimeout(pendingKill);
+      this.killTimers.delete(id);
+    }
     const terminal: pty.IPty | undefined = this.terminals.get(id);
     if (terminal === undefined) {
       return hadScrollback;

@@ -27,6 +27,13 @@ export enum TerminalChannel {
   Dispose = 'terminal:dispose',
 
   /**
+   * Terminates a session's process tree — SIGTERM to the process group, escalating to SIGKILL after a
+   * grace period — while keeping the session's tab, scrollback, and exit banner (renderer→main,
+   * invoke). Dispose removes a session; Terminate merely stops what it is running.
+   */
+  Terminate = 'terminal:terminate',
+
+  /**
    * Requests the current working directory of a session (renderer→main, invoke).
    */
   GetCwd = 'terminal:get-cwd',
@@ -56,6 +63,14 @@ export enum TerminalChannel {
 }
 
 /**
+ * Names the kinds of pseudo-terminal session. The kind decides what the PTY runs and how input is
+ * treated: a `shell` is the interactive shell terminals have always spawned; a `run` executes a
+ * command with full interactive input (a program that reads stdin); a `task` executes a command
+ * read-only — every keystroke is dropped except Ctrl+C, which interrupts it (build consoles).
+ */
+export type TerminalKind = 'shell' | 'run' | 'task';
+
+/**
  * Defines the options for spawning a pseudo-terminal session.
  */
 export interface TerminalCreateOptions {
@@ -63,6 +78,11 @@ export interface TerminalCreateOptions {
    * Gets the unique identifier of the terminal session (the owning tab's id).
    */
   readonly id: string;
+
+  /**
+   * Gets the session kind. Defaults to `shell`.
+   */
+  readonly kind?: TerminalKind;
 
   /**
    * Gets the initial column count, if known.
@@ -81,9 +101,27 @@ export interface TerminalCreateOptions {
 
   /**
    * Gets the shell executable to run. Falls back to the main process's resolved default when absent or
-   * not a usable executable.
+   * not a usable executable. Ignored when a {@link command} is given.
    */
   readonly shell?: string;
+
+  /**
+   * Gets the command a `run` or `task` session executes instead of an interactive shell. Without
+   * {@link args} the string is run through the platform shell non-interactively (so `&&` chains and
+   * quoting work); with {@link args} it is spawned directly as an executable with an argument vector.
+   * The PTY exits when the command does.
+   */
+  readonly command?: string;
+
+  /**
+   * Gets the argument vector for a directly-spawned {@link command}.
+   */
+  readonly args?: readonly string[];
+
+  /**
+   * Gets environment variables layered over the application's environment for the spawned process.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -123,6 +161,13 @@ export interface TerminalReplay {
    * never started).
    */
   readonly exitCode: number | null;
+
+  /**
+   * Gets the number of the signal that ended the process, or null when it exited on its own (a
+   * signal-terminated process often reports exit code 0, so the signal is what distinguishes a stop
+   * from a success).
+   */
+  readonly signal: number | null;
 }
 
 /**

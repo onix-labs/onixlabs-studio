@@ -7,6 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { TerminalCreateResult, TerminalKind } from '@shared/api/terminal-channels';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 
@@ -15,6 +16,12 @@ import { TerminalBridge } from '@shared/angular/services/terminal-bridge/termina
  * panel that renders these sessions.
  */
 const TERMINAL_PANEL_ID: string = 'terminal';
+
+/**
+ * The synthetic exit code a pending completion resolves with when its session is disposed without an
+ * exit of its own (the tab or folder closed while the command ran).
+ */
+const DISPOSED_EXIT_CODE: number = -1;
 
 /**
  * One docked terminal session: its globally-unique PTY identifier and its display name.
@@ -31,6 +38,23 @@ export interface TerminalSession {
   readonly name: string;
 
   /**
+   * Gets the session kind: an interactive `shell`, an interactive `run` command, or a read-only
+   * `task` command.
+   */
+  readonly kind: TerminalKind;
+
+  /**
+   * Counts the launches under this session's tab. A relaunch bumps it, so the panel re-keys the
+   * session's pane — a fresh xterm replaying the fresh PTY's buffer.
+   */
+  readonly generation: number;
+
+  /**
+   * Gets the exit code the session's process ended with, or null while it runs.
+   */
+  readonly exitCode: number | null;
+
+  /**
    * Gets the folder the session's shell was rooted at when created, or undefined when none was known.
    */
   readonly cwd?: string;
@@ -39,6 +63,66 @@ export interface TerminalSession {
    * Gets the shell executable the session actually spawned, or undefined until it reports one.
    */
   readonly shell?: string;
+}
+
+/**
+ * The options for launching a command-backed terminal session.
+ */
+export interface TerminalLaunchOptions {
+  /**
+   * Gets the session to reuse (relaunch-in-place: the previous process is disposed and the tab gets
+   * a fresh PTY and buffer), or undefined to open a new session tab. An unknown identifier opens a
+   * new session under it, so callers may hold a stable identifier across launches.
+   */
+  readonly sessionId?: string;
+
+  /**
+   * Gets the tab's display name (for example `Build`, or `Run: Api`).
+   */
+  readonly name: string;
+
+  /**
+   * Gets the session kind: `run` (interactive) or `task` (read-only; Ctrl+C interrupts).
+   */
+  readonly kind: 'run' | 'task';
+
+  /**
+   * Gets the command to execute — a shell command line, or an executable when {@link args} is given.
+   */
+  readonly command: string;
+
+  /**
+   * Gets the argument vector for a directly-spawned executable, or undefined to run {@link command}
+   * through the platform shell.
+   */
+  readonly args?: readonly string[];
+
+  /**
+   * Gets environment variables layered over the application's environment.
+   */
+  readonly env?: Readonly<Record<string, string>>;
+
+  /**
+   * Gets the working directory, or undefined to use the sessions' root folder.
+   */
+  readonly cwd?: string;
+}
+
+/**
+ * A launched command-backed session: its session model and a promise resolving with the process exit
+ * code — the completion signal build/run flows await (PTY exit is the completion; no sentinels).
+ */
+export interface TerminalLaunch {
+  /**
+   * Gets the launched session.
+   */
+  readonly session: TerminalSession;
+
+  /**
+   * Gets a promise resolving with the exit code once the process ends (immediately, when the launch
+   * failed outright). Resolves with -1 when the session is disposed mid-run (its tab closed).
+   */
+  readonly exited: Promise<number>;
 }
 
 /**
@@ -95,6 +179,48 @@ export class TerminalSessions implements OnDestroy {
   private root: string | null = null;
 
   /**
+   * Holds the pending completion resolvers of launched sessions, keyed by session identifier, each
+   * resolved with the exit code when the session's process ends.
+   */
+  private readonly waiters: Map<string, (exitCode: number) => void> = new Map<
+    string,
+    (exitCode: number) => void
+  >();
+
+  /**
+   * Holds the disposer for the exit-event subscription.
+   */
+  private readonly unsubscribeExit: () => void;
+
+  /**
+   * Initializes a new instance of the {@link TerminalSessions} class, tracking process exits so each
+   * session's model records its exit code (even while no pane is attached) and pending completions
+   * resolve.
+   */
+  public constructor() {
+    this.unsubscribeExit = this.bridge.onExit(
+      (id: string, exitCode: number, signal: number | null): void => {
+        const known: boolean = this.items().some(
+          (session: TerminalSession): boolean => session.id === id,
+        );
+        if (!known) {
+          return;
+        }
+        // A signal-terminated process often reports exit code 0; record the shell convention
+        // (128 + signal) instead, so a stopped run never reads as a success to awaiting callers.
+        const effective: number = signal !== null ? 128 + signal : exitCode;
+        this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+          sessions.map(
+            (session: TerminalSession): TerminalSession =>
+              session.id === id ? { ...session, exitCode: effective } : session,
+          ),
+        );
+        this.resolveWaiter(id, effective);
+      },
+    );
+  }
+
+  /**
    * Gets the sessions in tab order.
    */
   public readonly sessions: Signal<readonly TerminalSession[]> = this.items.asReadonly();
@@ -123,13 +249,16 @@ export class TerminalSessions implements OnDestroy {
   }
 
   /**
-   * Creates a new terminal session rooted at the current folder and makes it active.
+   * Creates a new interactive shell session rooted at the current folder and makes it active.
    * @returns Returns the created session.
    */
   public create(): TerminalSession {
     const session: TerminalSession = {
       id: `term-${crypto.randomUUID()}`,
       name: `Terminal ${++this.sequence}`,
+      kind: 'shell',
+      generation: 0,
+      exitCode: null,
       cwd: this.root ?? undefined,
     };
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] => [
@@ -138,6 +267,145 @@ export class TerminalSessions implements OnDestroy {
     ]);
     this.active.set(session.id);
     return session;
+  }
+
+  /**
+   * Launches a command in a command-backed session and reveals it: a `run` session is interactive
+   * (the program reads the user's keystrokes); a `task` session is read-only except Ctrl+C. Reusing
+   * a session identifier relaunches in place — the previous process is disposed (killing it when
+   * still running) and the tab starts a fresh PTY with a fresh buffer. The PTY is spawned by this
+   * service, not by the panel's pane, so a launch works even while the terminal panel is hidden;
+   * attached panes re-key on the session's generation and replay the new buffer.
+   * @param options The launch options.
+   * @returns Returns the launched session and its completion promise.
+   */
+  public async launch(options: TerminalLaunchOptions): Promise<TerminalLaunch> {
+    const existing: TerminalSession | undefined =
+      options.sessionId === undefined
+        ? undefined
+        : this.items().find(
+            (session: TerminalSession): boolean => session.id === options.sessionId,
+          );
+    const id: string = options.sessionId ?? `term-${crypto.randomUUID()}`;
+    const cwd: string | undefined = options.cwd ?? this.root ?? undefined;
+
+    if (existing !== undefined) {
+      // Relaunch-in-place: silence any pending completion, then dispose the previous PTY (and its
+      // scrollback) so the reused identifier spawns fresh. Disposal never emits an exit event, so
+      // the old process's end cannot masquerade as the new run's.
+      this.resolveWaiter(id, DISPOSED_EXIT_CODE);
+      await this.bridge.dispose(id);
+      this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+        sessions.map(
+          (session: TerminalSession): TerminalSession =>
+            session.id === id
+              ? {
+                  ...session,
+                  name: options.name,
+                  kind: options.kind,
+                  generation: session.generation + 1,
+                  exitCode: null,
+                  cwd,
+                  shell: undefined,
+                }
+              : session,
+        ),
+      );
+    } else {
+      const session: TerminalSession = {
+        id,
+        name: options.name,
+        kind: options.kind,
+        generation: 0,
+        exitCode: null,
+        cwd,
+      };
+      this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] => [
+        ...sessions,
+        session,
+      ]);
+    }
+
+    // Register the completion before spawning, so an instantly-exiting command cannot slip its exit
+    // event past the waiter.
+    const exited: Promise<number> = new Promise<number>((resolve: (code: number) => void): void => {
+      this.waiters.set(id, resolve);
+    });
+
+    const result: TerminalCreateResult = await this.bridge.create({
+      id,
+      kind: options.kind,
+      command: options.command,
+      args: options.args,
+      env: options.env,
+      cwd,
+    });
+    if (!result.success) {
+      // The main process streamed the failure into the session's scrollback and emitted an exit for
+      // it where possible; outside Electron (or on malformed options) resolve the completion here.
+      this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+        sessions.map(
+          (session: TerminalSession): TerminalSession =>
+            session.id === id && session.exitCode === null ? { ...session, exitCode: 1 } : session,
+        ),
+      );
+      this.resolveWaiter(id, 1);
+    }
+
+    this.activateAndReveal(id);
+    const session: TerminalSession =
+      this.items().find((candidate: TerminalSession): boolean => candidate.id === id) ??
+      ({ id, name: options.name, kind: options.kind, generation: 0, exitCode: null, cwd });
+    return { session, exited };
+  }
+
+  /**
+   * Waits for a session's process to end.
+   * @param id The session identifier.
+   * @returns Returns a promise resolving with the exit code — immediately, when it already exited.
+   */
+  public waitForExit(id: string): Promise<number> {
+    const session: TerminalSession | undefined = this.items().find(
+      (candidate: TerminalSession): boolean => candidate.id === id,
+    );
+    if (session?.exitCode != null) {
+      return Promise.resolve(session.exitCode);
+    }
+    const pending: ((exitCode: number) => void) | undefined = this.waiters.get(id);
+    if (pending !== undefined) {
+      // Chain onto the existing waiter so both callers resolve.
+      return new Promise<number>((resolve: (code: number) => void): void => {
+        this.waiters.set(id, (exitCode: number): void => {
+          pending(exitCode);
+          resolve(exitCode);
+        });
+      });
+    }
+    return new Promise<number>((resolve: (code: number) => void): void => {
+      this.waiters.set(id, resolve);
+    });
+  }
+
+  /**
+   * Terminates a session's process tree (SIGTERM escalating to SIGKILL) while keeping its tab,
+   * scrollback, and exit banner — the Stop action for command-backed sessions.
+   * @param id The session identifier.
+   */
+  public terminate(id: string): void {
+    void this.bridge.terminate(id);
+  }
+
+  /**
+   * Resolves and removes a session's pending completion, when one is registered.
+   * @param id The session identifier.
+   * @param exitCode The exit code to resolve with.
+   */
+  private resolveWaiter(id: string, exitCode: number): void {
+    const waiter: ((exitCode: number) => void) | undefined = this.waiters.get(id);
+    if (waiter !== undefined) {
+      this.waiters.delete(id);
+      waiter(exitCode);
+    }
   }
 
   /**
@@ -153,6 +421,7 @@ export class TerminalSessions implements OnDestroy {
     if (index === -1) {
       return;
     }
+    this.resolveWaiter(id, DISPOSED_EXIT_CODE);
     void this.bridge.dispose(id);
     const remaining: readonly TerminalSession[] = sessions.filter(
       (session: TerminalSession): boolean => session.id !== id,
@@ -231,17 +500,20 @@ export class TerminalSessions implements OnDestroy {
   );
 
   /**
-   * Disposes every session when the owning tab closes.
+   * Disposes every session when the owning tab closes, and stops tracking exits.
    */
   public ngOnDestroy(): void {
     this.reset();
+    this.unsubscribeExit();
   }
 
   /**
-   * Disposes every session's PTY and clears the list, restarting the default naming.
+   * Disposes every session's PTY and clears the list, restarting the default naming. Pending
+   * completions resolve with the disposed code so no caller is left awaiting a run that is gone.
    */
   private reset(): void {
     for (const session of this.items()) {
+      this.resolveWaiter(session.id, DISPOSED_EXIT_CODE);
       void this.bridge.dispose(session.id);
     }
     this.items.set([]);

@@ -21,7 +21,18 @@ import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
-import { TerminalCreateResult, TerminalReplay } from '@shared/api/terminal-channels';
+import {
+  TerminalCreateResult,
+  TerminalKind,
+  TerminalReplay,
+} from '@shared/api/terminal-channels';
+
+/**
+ * The interrupt character (Ctrl+C). The single keystroke a read-only `task` pane forwards to its
+ * session, where the terminal line discipline turns it into SIGINT (the main process enforces the
+ * same gate for every other writer).
+ */
+const INTERRUPT: string = '\x03';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
@@ -96,6 +107,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * re-attaches, replaying the output the session produced while no pane was mounted.
    */
   public readonly persistent: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the session kind the pane renders. A `shell` pane spawns its interactive shell on mount (the
+   * historical behaviour); `run` and `task` panes only attach — their command-backed sessions are
+   * spawned by the owning service — and a `task` pane forwards no keystrokes except Ctrl+C.
+   */
+  public readonly kind: InputSignal<TerminalKind> = input<TerminalKind>('shell');
 
   /**
    * Emits once the PTY session is created and its I/O is wired up.
@@ -499,7 +517,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
       fontFamily: '"JetBrains Mono", "Menlo", "Consolas", monospace',
       fontSize: 13,
       theme: this.buildTheme(),
-      cursorBlink: true,
+      // A read-only task console has no meaningful caret; a blinking one would suggest typing works.
+      cursorBlink: this.kind() !== 'task',
       allowProposedApi: true,
       scrollback: 5000,
     });
@@ -552,14 +571,16 @@ export class Terminal implements AfterViewInit, OnDestroy {
       }
     });
 
-    this.cleanupOnExit = this.bridge.onExit((targetId: string, exitCode: number): void => {
-      if (targetId !== id) {
-        return;
-      }
-      this.hasExited = true;
-      this.xterm?.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`);
-      this.exited.emit(exitCode);
-    });
+    this.cleanupOnExit = this.bridge.onExit(
+      (targetId: string, exitCode: number, exitSignal: number | null): void => {
+        if (targetId !== id) {
+          return;
+        }
+        this.hasExited = true;
+        this.xterm?.writeln(this.exitBanner(exitCode, exitSignal));
+        this.exited.emit(exitCode);
+      },
+    );
 
     // Replay whatever the session produced while no pane was attached (empty for a fresh session),
     // then either surface its recorded end or (re)create the PTY — creation reuses a live session
@@ -573,8 +594,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
       // The session ended while detached: show its history and exit banner without spawning a new
       // process in its place; the session stays closable/restartable exactly like a live exit.
       this.hasExited = true;
-      xterm.writeln(`\r\n\x1b[90m[Process exited with code ${replay.exitCode}]\x1b[0m`);
-    } else {
+      xterm.writeln(this.exitBanner(replay.exitCode, replay.signal));
+    } else if (this.kind() === 'shell') {
       const result: TerminalCreateResult = await this.bridge.create({
         id,
         cols: xterm.cols,
@@ -593,6 +614,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
       if (result.shell !== undefined) {
         this.shellChange.emit(result.shell);
       }
+    } else {
+      // Command-backed sessions are spawned by their owning service, never by the pane: attaching
+      // early (before the launch) is fine — the subscription is live and the output streams in —
+      // and attaching to nothing renders an empty pane rather than wrongly spawning a shell. Fit
+      // the PTY to this pane's real size in case it was spawned at the default dimensions.
+      void this.bridge.resize(id, xterm.cols, xterm.rows);
     }
 
     // Go live: write the parked chunks the snapshot did not already contain, in arrival order.
@@ -605,6 +632,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
 
     xterm.onData((data: string): void => {
+      // A read-only task pane forwards only Ctrl+C (interrupt); the main process enforces the same
+      // gate, this just avoids pointless round-trips for swallowed keystrokes.
+      if (this.kind() === 'task' && data !== INTERRUPT) {
+        return;
+      }
       void this.bridge.write(id, data);
     });
 
@@ -621,6 +653,19 @@ export class Terminal implements AfterViewInit, OnDestroy {
     setTimeout((): void => xterm.focus(), FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.ready.emit();
+  }
+
+  /**
+   * Builds the end-of-process banner. A signal-terminated process often reports exit code 0, so the
+   * signal is named when present — a stopped run must not read as a success.
+   * @param exitCode The process exit code.
+   * @param signal The number of the signal that ended it, or null when it exited on its own.
+   * @returns Returns the banner line.
+   */
+  private exitBanner(exitCode: number, signal: number | null): string {
+    return signal !== null
+      ? `\r\n\x1b[90m[Process terminated by signal ${signal}]\x1b[0m`
+      : `\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`;
   }
 
   /**

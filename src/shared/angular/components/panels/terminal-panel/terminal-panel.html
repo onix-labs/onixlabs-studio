@@ -45,13 +45,17 @@
       </button>
     </app-panel-toolbar>
     <div class="terminal-panel__bodies">
-      @for (session of sessions(); track session.id) {
+      <!-- Panes re-key on the session's generation: a relaunch-in-place replaces the PTY and its
+           buffer, so the pane remounts and replays the fresh session instead of appending to the
+           old screen. -->
+      @for (session of sessions(); track session.id + ':' + session.generation) {
         <div
           class="terminal-panel__body"
           [class.terminal-panel__body--hidden]="session.id !== activeId()"
         >
           <app-terminal
             [terminalId]="session.id"
+            [kind]="session.kind"
             [cwd]="session.cwd"
             [persistent]="true"
             [isActive]="isActive() && session.id === activeId()"

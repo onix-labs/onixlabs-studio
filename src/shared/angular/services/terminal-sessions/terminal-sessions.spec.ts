@@ -2,20 +2,42 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
-import { TerminalSession, TerminalSessions } from './terminal-sessions';
+import { TerminalLaunch, TerminalSession, TerminalSessions } from './terminal-sessions';
 
 describe('TerminalSessions', () => {
   let sessions: TerminalSessions;
   let dispose: ReturnType<typeof vi.fn>;
+  let create: ReturnType<typeof vi.fn>;
+  let terminate: ReturnType<typeof vi.fn>;
   let reveal: ReturnType<typeof vi.fn>;
+  let fireExit: (id: string, exitCode: number, signal?: number | null) => void;
 
   beforeEach(() => {
     dispose = vi.fn((): Promise<boolean> => Promise.resolve(true));
+    create = vi.fn((): Promise<{ success: boolean }> => Promise.resolve({ success: true }));
+    terminate = vi.fn((): Promise<boolean> => Promise.resolve(true));
     reveal = vi.fn();
+    let exitListener: (id: string, exitCode: number, signal: number | null) => void = () =>
+      undefined;
+    fireExit = (id: string, exitCode: number, signal: number | null = null): void =>
+      exitListener(id, exitCode, signal);
     TestBed.configureTestingModule({
       providers: [
         TerminalSessions,
-        { provide: TerminalBridge, useValue: { dispose } },
+        {
+          provide: TerminalBridge,
+          useValue: {
+            dispose,
+            create,
+            terminate,
+            onExit: (
+              listener: (id: string, exitCode: number, signal: number | null) => void,
+            ): (() => void) => {
+              exitListener = listener;
+              return (): void => undefined;
+            },
+          },
+        },
         { provide: DockReveal, useValue: { reveal } },
       ],
     });
@@ -164,6 +186,129 @@ describe('TerminalSessions', () => {
 
     expect(sessions.activeId()).toBe(only.id);
     expect(reveal).not.toHaveBeenCalled();
+  });
+
+  it('launch_opensACommandSessionSpawnsItAndRevealsIt', async () => {
+    const { session } = await sessions.launch({
+      name: 'Build',
+      kind: 'task',
+      command: 'dotnet build',
+      cwd: '/repo',
+    });
+
+    expect(session.kind).toBe('task');
+    expect(session.name).toBe('Build');
+    expect(session.generation).toBe(0);
+    expect(session.exitCode).toBeNull();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ id: session.id, kind: 'task', command: 'dotnet build', cwd: '/repo' }),
+    );
+    expect(sessions.activeId()).toBe(session.id);
+    expect(reveal).toHaveBeenCalledWith('terminal');
+  });
+
+  it('launch_exit_resolvesTheCompletionAndRecordsTheExitCode', async () => {
+    const { session, exited } = await sessions.launch({
+      name: 'Run: Api',
+      kind: 'run',
+      command: 'dotnet run',
+    });
+
+    fireExit(session.id, 0);
+
+    await expect(exited).resolves.toBe(0);
+    expect(sessions.sessions()[0].exitCode).toBe(0);
+  });
+
+  it('launch_withAReusedSessionId_relaunchesInPlace', async () => {
+    const first: TerminalLaunch = await sessions.launch({
+      sessionId: 'build-console',
+      name: 'Build',
+      kind: 'task',
+      command: 'make',
+    });
+
+    const second: TerminalLaunch = await sessions.launch({
+      sessionId: 'build-console',
+      name: 'Build',
+      kind: 'task',
+      command: 'make clean && make',
+    });
+
+    // The previous run's completion resolves as disposed, the PTY is disposed for a fresh spawn,
+    // and the same tab (one session) carries a bumped generation with a reset exit.
+    await expect(first.exited).resolves.toBe(-1);
+    expect(dispose).toHaveBeenCalledWith('build-console');
+    expect(sessions.sessions()).toHaveLength(1);
+    expect(second.session.generation).toBe(1);
+    expect(second.session.exitCode).toBeNull();
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'build-console', command: 'make clean && make' }),
+    );
+  });
+
+  it('launch_whenTheSpawnFails_resolvesTheCompletionWithAFailure', async () => {
+    create.mockResolvedValueOnce({ success: false, error: 'nope' });
+
+    const { session, exited } = await sessions.launch({
+      name: 'Run',
+      kind: 'run',
+      command: 'missing-binary',
+    });
+
+    await expect(exited).resolves.toBe(1);
+    expect(sessions.sessions().find((s: TerminalSession): boolean => s.id === session.id)?.exitCode).toBe(1);
+  });
+
+  it('close_ofARunningLaunchedSession_resolvesItsCompletionAsDisposed', async () => {
+    const { session, exited } = await sessions.launch({
+      name: 'Run',
+      kind: 'run',
+      command: 'sleep 100',
+    });
+
+    sessions.close(session.id);
+
+    await expect(exited).resolves.toBe(-1);
+    expect(dispose).toHaveBeenCalledWith(session.id);
+  });
+
+  it('waitForExit_afterTheExit_resolvesImmediately', async () => {
+    const { session } = await sessions.launch({ name: 'Run', kind: 'run', command: 'true' });
+    fireExit(session.id, 3);
+
+    await expect(sessions.waitForExit(session.id)).resolves.toBe(3);
+  });
+
+  it('exit_byASignal_recordsTheShellConventionCodeSoAStopNeverReadsAsSuccess', async () => {
+    const { session, exited } = await sessions.launch({
+      name: 'Run',
+      kind: 'run',
+      command: 'sleep 100',
+    });
+
+    // node-pty reports a SIGTERM'd process as exit code 0 with signal 15.
+    fireExit(session.id, 0, 15);
+
+    await expect(exited).resolves.toBe(143);
+    expect(sessions.sessions()[0].exitCode).toBe(143);
+  });
+
+  it('exitEvents_updateShellSessionsToo', () => {
+    const session: TerminalSession = sessions.create();
+
+    fireExit(session.id, 130);
+
+    expect(sessions.sessions()[0].exitCode).toBe(130);
+  });
+
+  it('terminate_signalsTheSessionWithoutRemovingIt', async () => {
+    const { session } = await sessions.launch({ name: 'Run', kind: 'run', command: 'sleep 100' });
+
+    sessions.terminate(session.id);
+
+    expect(terminate).toHaveBeenCalledWith(session.id);
+    expect(sessions.sessions()).toHaveLength(1);
   });
 
   it('ngOnDestroy_disposesEverySession', () => {

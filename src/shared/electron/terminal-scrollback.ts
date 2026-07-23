@@ -25,6 +25,11 @@ interface ScrollbackRecord {
    * Holds the exit code the session's process ended with, or null while it runs.
    */
   exitCode: number | null;
+
+  /**
+   * Holds the number of the signal that ended the process, or null when it exited on its own.
+   */
+  signal: number | null;
 }
 
 /**
@@ -46,7 +51,7 @@ export class TerminalScrollback {
    * @param id The terminal identifier.
    */
   public reset(id: string): void {
-    this.records.set(id, { data: '', seq: 0, exitCode: null });
+    this.records.set(id, { data: '', seq: 0, exitCode: null, signal: null });
   }
 
   /**
@@ -60,7 +65,7 @@ export class TerminalScrollback {
   public append(id: string, chunk: string): number {
     let record: ScrollbackRecord | undefined = this.records.get(id);
     if (record === undefined) {
-      record = { data: '', seq: 0, exitCode: null };
+      record = { data: '', seq: 0, exitCode: null, signal: null };
       this.records.set(id, record);
     }
     record.data += chunk;
@@ -74,14 +79,16 @@ export class TerminalScrollback {
   }
 
   /**
-   * Records that a session's process has exited, keeping its output replayable.
+   * Records that a session's process has ended, keeping its output replayable.
    * @param id The terminal identifier.
    * @param exitCode The process exit code.
+   * @param signal The number of the signal that ended it, or null when it exited on its own.
    */
-  public markExited(id: string, exitCode: number): void {
+  public markExited(id: string, exitCode: number, signal: number | null = null): void {
     const record: ScrollbackRecord | undefined = this.records.get(id);
     if (record !== undefined) {
       record.exitCode = exitCode;
+      record.signal = signal;
     }
   }
 
@@ -94,8 +101,8 @@ export class TerminalScrollback {
   public snapshot(id: string): TerminalReplay {
     const record: ScrollbackRecord | undefined = this.records.get(id);
     return record === undefined
-      ? { data: '', seq: 0, exitCode: null }
-      : { data: record.data, seq: record.seq, exitCode: record.exitCode };
+      ? { data: '', seq: 0, exitCode: null, signal: null }
+      : { data: record.data, seq: record.seq, exitCode: record.exitCode, signal: record.signal };
   }
 
   /**

@@ -19,7 +19,7 @@ const UNAVAILABLE_RESULT: TerminalCreateResult = {
 /**
  * Holds the empty snapshot returned when a replay is requested outside Electron.
  */
-const EMPTY_REPLAY: TerminalReplay = { data: '', seq: 0, exitCode: null };
+const EMPTY_REPLAY: TerminalReplay = { data: '', seq: 0, exitCode: null, signal: null };
 
 /**
  * Represents the renderer-side terminal client: the typed wrapper around the pty IPC channels, driven
@@ -83,6 +83,16 @@ export class TerminalBridge {
    */
   public dispose(id: string): Promise<boolean> {
     return this.bridge?.invoke<boolean>(TerminalChannel.Dispose, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Terminates a session's process tree (SIGTERM escalating to SIGKILL) while keeping the session
+   * and its scrollback — stop what runs, without removing the tab.
+   * @param id The terminal identifier.
+   * @returns Returns true when the session exists and was signalled.
+   */
+  public terminate(id: string): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(TerminalChannel.Terminate, id) ?? Promise.resolve(false);
   }
 
   /**
