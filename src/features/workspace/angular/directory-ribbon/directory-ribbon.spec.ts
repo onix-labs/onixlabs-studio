@@ -1,6 +1,6 @@
-import { signal, Signal, WritableSignal } from '@angular/core';
+import { computed, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Builds, BuildTask } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -14,7 +14,11 @@ import { DirectoryRibbon } from './directory-ribbon';
  */
 interface RibbonInternals {
   runOptions(): readonly DropdownOption[];
+  stopLabel(): string;
+  runMenuItems(): readonly { readonly id: string; readonly label: string }[];
+  onStopRun(runId: string): void;
   selectedRunId(): string | null;
+  canRun(): boolean;
   onRun(): void;
   onSelectRunItem(id: string): void;
   onStop(): void;
@@ -89,30 +93,34 @@ function dotnetWithDebug(): ProjectCapabilities {
  */
 class FakeBuilds {
   public readonly tasks: WritableSignal<readonly BuildTask[]> = signal<readonly BuildTask[]>([]);
-  public readonly running: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly runs: WritableSignal<readonly ActiveRun[]> = signal<readonly ActiveRun[]>([]);
+  public readonly running: Signal<boolean> = computed((): boolean => this.runs().length > 0);
+  public readonly activeRuns: Signal<readonly ActiveRun[]> = this.runs.asReadonly();
   public readonly canBuild: WritableSignal<boolean> = signal<boolean>(false);
-  public readonly startTask: WritableSignal<BuildTask | undefined> = signal<BuildTask | undefined>(
-    undefined,
-  );
-  public readonly runTaskCalls: string[] = [];
+  public readonly cancelledRunIds: string[] = [];
   public readonly runConfigurationCalls: RunConfiguration[] = [];
+  public readonly siblingCalls: (readonly RunConfiguration[])[] = [];
   public readonly actionCalls: ProjectAction[] = [];
-  public cancelCalls: number = 0;
+  public cancelAllCalls: number = 0;
 
-  public runTask(id: string): void {
-    this.runTaskCalls.push(id);
-  }
-
-  public runConfiguration(configuration: RunConfiguration): void {
+  public runConfiguration(
+    configuration: RunConfiguration,
+    siblings: readonly RunConfiguration[],
+  ): void {
     this.runConfigurationCalls.push(configuration);
+    this.siblingCalls.push(siblings);
   }
 
   public runAction(action: ProjectAction): void {
     this.actionCalls.push(action);
   }
 
-  public cancel(): void {
-    this.cancelCalls += 1;
+  public cancel(runId: string): void {
+    this.cancelledRunIds.push(runId);
+  }
+
+  public cancelAll(): void {
+    this.cancelAllCalls += 1;
   }
 }
 
@@ -222,7 +230,7 @@ describe('DirectoryRibbon', () => {
     expect(component).toBeTruthy();
   });
 
-  it('listsTheStudioConfigurationsWhenPresent', () => {
+  it('listsTheStudioConfigurations', () => {
     studio.runConfigurations.set([configuration('a', 'A'), configuration('b', 'B')]);
 
     const options: readonly DropdownOption[] = internals().runOptions();
@@ -232,11 +240,14 @@ describe('DirectoryRibbon', () => {
     ]);
   });
 
-  it('fallsBackToDiscoveredTasksWhenThereAreNoConfigurations', () => {
+  it('offersNothingToRunWithoutConfigurations_evenWhenTasksWereDiscovered', () => {
+    // Discovered build tasks drive the Solution group's Build action; Studio never guesses them into
+    // the Run dropdown, so a workspace with no authored configurations has nothing to start.
     builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
 
-    const options: readonly DropdownOption[] = internals().runOptions();
-    expect(options).toEqual([{ value: 't', label: 'dotnet run' }]);
+    expect(internals().runOptions()).toEqual([]);
+    expect(internals().selectedRunId()).toBeNull();
+    expect(internals().canRun()).toBe(false);
   });
 
   it('runsAConfigurationThroughTheConfigurationPath', () => {
@@ -246,17 +257,43 @@ describe('DirectoryRibbon', () => {
     internals().onRun();
 
     expect(builds.runConfigurationCalls).toEqual([config]);
-    expect(builds.runTaskCalls).toEqual([]);
   });
 
-  it('runsADiscoveredTaskThroughTheTaskPath', () => {
-    const runnable: BuildTask = task({ id: 't', label: 'dotnet run' });
-    builds.tasks.set([runnable]);
-    builds.startTask.set(runnable);
+  it('runPassesTheWorkspacesOtherConfigurations_soACompoundCanResolveItsMembers', () => {
+    const compound: RunConfiguration = {
+      ...configuration('stack', 'Whole stack'),
+      members: ['a', 'b'],
+    };
+    const configurations: readonly RunConfiguration[] = [
+      compound,
+      configuration('a', 'A'),
+      configuration('b', 'B'),
+    ];
+    studio.runConfigurations.set(configurations);
 
     internals().onRun();
 
-    expect(builds.runTaskCalls).toEqual(['t']);
+    expect(builds.runConfigurationCalls).toEqual([compound]);
+    expect(builds.siblingCalls[0]).toEqual(configurations);
+  });
+
+  it('debugIsDisabledForACompound_whichHasNoSingleProgramToAttachTo', () => {
+    capabilities.capabilities.set(dotnetWithDebug());
+    studio.runConfigurations.set([configuration('a', 'A')]);
+    expect(internals().canDebug()).toBe(true);
+
+    studio.runConfigurations.set([
+      { ...configuration('stack', 'Whole stack'), members: ['a'] },
+      configuration('a', 'A'),
+    ]);
+    expect(internals().canDebug()).toBe(false);
+  });
+
+  it('runsNothingWhenTheWorkspaceHasNoConfigurations', () => {
+    builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
+
+    internals().onRun();
+
     expect(builds.runConfigurationCalls).toEqual([]);
   });
 
@@ -269,10 +306,49 @@ describe('DirectoryRibbon', () => {
     expect(internals().selectedRunId()).toBe('b');
   });
 
-  it('stopCancelsTheActiveRun', () => {
+  it('stopCancelsEverythingTheWorkspaceIsRunning', () => {
     internals().onStop();
 
-    expect(builds.cancelCalls).toBe(1);
+    expect(builds.cancelAllCalls).toBe(1);
+  });
+
+  it('stopMenu_listsEveryRun_andStopsJustTheChosenOne', () => {
+    builds.runs.set([
+      { id: 'r1', label: 'API', taskId: 'api', startedAt: 1 },
+      { id: 'r2', label: 'Web', taskId: 'web', startedAt: 2 },
+    ]);
+    fixture.detectChanges();
+
+    expect(internals().stopLabel()).toBe('Stop All (2)');
+    expect(internals().runMenuItems().map((item) => item.label)).toEqual(['API', 'Web']);
+
+    internals().onStopRun('r2');
+
+    expect(builds.cancelledRunIds).toEqual(['r2']);
+    expect(builds.cancelAllCalls).toBe(0);
+  });
+
+  it('stopMenu_numbersRunsOfTheSameConfiguration_soTheyCanBeToldApart', () => {
+    builds.runs.set([
+      { id: 'r1', label: 'API', taskId: 'api', startedAt: 1 },
+      { id: 'r2', label: 'API', taskId: 'api', startedAt: 2 },
+      { id: 'r3', label: 'Web', taskId: 'web', startedAt: 3 },
+    ]);
+    fixture.detectChanges();
+
+    expect(internals().runMenuItems().map((item) => item.label)).toEqual([
+      'API (1)',
+      'API (2)',
+      'Web',
+    ]);
+  });
+
+  it('stopLabel_withASingleRun_needsNoQualification', () => {
+    builds.runs.set([{ id: 'r1', label: 'API', taskId: 'api', startedAt: 1 }]);
+    fixture.detectChanges();
+
+    expect(internals().stopLabel()).toBe('Stop');
+    expect(internals().runMenuItems()).toHaveLength(1);
   });
 
   it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {
@@ -298,10 +374,8 @@ describe('DirectoryRibbon', () => {
     capabilities.capabilities.set(dotnetWithDebug());
     expect(internals().canDebug()).toBe(true);
 
-    // A discovered task (no run configuration) cannot be debugged, even with an adapter.
+    // With no run configuration there is nothing to debug, even with an adapter.
     studio.runConfigurations.set([]);
-    builds.tasks.set([task({ id: 't', label: 'dotnet run' })]);
-    builds.startTask.set(task({ id: 't', label: 'dotnet run' }));
     expect(internals().canDebug()).toBe(false);
 
     // Not while a session is already running.

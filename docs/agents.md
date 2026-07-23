@@ -191,7 +191,8 @@ modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift
 The directory workspace is **language-agnostic**: it never hard-codes an ecosystem. A `ProjectSystem`
 provider (`shared/electron/project-system`, e.g. `dotnet`, `node`) turns a workspace root into a
 `ProjectModel` _and_ declares a **capability descriptor** — `actions` (Build/Clean/Rebuild…),
-`buildConfigurations`, a `target` axis, and a `debug` adapter — plus discovered `runConfigurations`.
+`buildConfigurations`, a `target` axis, and a `debug` adapter. A provider **never infers run
+configurations** from a root: what to run is authored, not guessed.
 The model (with its capabilities and kind) travels to the renderer over `ProjectChannel.ModelLoad`;
 adding an ecosystem means adding a provider, **never touching the shell or ribbon**.
 
@@ -206,20 +207,40 @@ here is a bug — its root is never set at the root injector, so `.studio` would
   gates Build/Clean/Rebuild on `actions`; the Target group's configuration/target selectors are driven
   by `buildConfigurations`/`target` and hidden when absent. Capabilities are authoritative; a root with
   no provider falls back to discovered tasks so Gradle/Make still build.
-- **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()`/`runTask()` (discovered
-  tasks), `runConfiguration()` (a `.studio` run configuration compiled to a command), and `runAction()`
-  (Clean/Rebuild, compiled per ecosystem and kept out of the Run dropdown).
+- **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()` (the first discovered
+  build task), `runConfiguration()` (a `.studio` run configuration compiled to a command), and
+  `runAction()` (Clean/Rebuild, compiled per ecosystem). Discovered tasks back the Solution group only
+  — they never reach the Run dropdown. **Runs are concurrent**: `activeRuns` lists every in-flight run,
+  `cancel(runId)` stops one and `cancelAll()` stops the lot; the ribbon's Start becomes a Stop
+  split-button whose menu stops a single run. Cancelling kills the task's whole **process tree**
+  (POSIX process group, `taskkill /T` on Windows) with a `SIGKILL` escalation — signalling only the
+  wrapping shell leaves children holding the output pipes open, so the run never appears to end. A run configuration streams into its own
+  Output channel (`run:<id>`) so parallel runs stay readable; build/test/action output shares `build`.
 - **`StudioConfig`** — the active workspace's `.studio` persistence.
 
 **`.studio`** (`shared/electron/studio`, platform-neutral model in `shared/api/studio.ts`) persists
 run configurations per project: `workspace.json` is shared and committed (the run configurations);
 `workspace.user.json` is git-ignored and holds only transient selections (last configuration, target,
-build configuration). The main-process `StudioStore` owns atomic reads/writes, seeds a `.gitignore`
-entry on first write, and seeds default run configurations from the model when a project first opens
-(idempotent — never overwriting an existing `workspace.json`). The renderer reloads on external edits
-through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists these
-configurations (falling back to discovered tasks until they are seeded), and the Configure dialog edits
-them.
+build configuration). The main-process `StudioStore` owns atomic reads/writes and seeds a `.gitignore`
+entry on first write; it never authors run configurations itself. The renderer reloads on external
+edits through the directory-watch feed, guarding against its own writes. The Run group's dropdown lists
+exactly the configurations `workspace.json` declares — a workspace with none has nothing to run — and
+the Configure dialog edits them. A configuration that names `members` is a **compound**: starting it
+starts each member as its own run, in parallel (`expandRunConfiguration` resolves them, tolerating
+unknown members and cycles), so each member stays individually stoppable.
+
+**Authoring is either by hand or by agent — never inferred.** The Configure dialog's **Auto-configure**
+and **Ask agent** buttons dispatch to the _active workspace's own agent_ (`RunConfigurationAgent`
+resolves the active tab's live `AgentHost`), so the work runs in the agent the user already has: its
+transcript appears in the Agent panel and Mission Control, and it inherits write confinement, per-tool
+policy, and the audit log. The agent writes through three project/editor-surface MCP capabilities —
+`list_run_configurations` (read-only, auto-allowed), `save_run_configurations`, and
+`delete_run_configurations` (gated writes) — handled in the renderer against `StudioConfig`, so the Run
+dropdown and the dialog update as the agent works. Every write is validated as a whole
+(`findRunConfigurationIssues`: duplicate ids, members naming nothing, compound cycles) and refused with
+a reason the agent can act on. The dialog is modal, so it renders the agent's own pending
+permission prompts inline (`AgentRequestCard`) — otherwise a run blocked on "Allow Bash?" would stall
+behind it, unanswerable.
 
 ### 4.7 Debugging (DAP)
 

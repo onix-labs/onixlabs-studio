@@ -22,10 +22,8 @@ import {
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
 import type { FileHandle } from 'node:fs/promises';
-import { RunConfiguration } from '@shared/api/studio';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
-import { StudioStore } from './studio/studio-store';
 import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
 
@@ -79,27 +77,19 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
-   * Holds the `.studio` store, used to seed default run configurations when a project first opens.
-   */
-  private readonly studio: StudioStore;
-
-  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window the dialogs are parented to.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
-   * @param studio The `.studio` store used to seed default run configurations.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
-    studio: StudioStore,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
-    this.studio = studio;
   }
 
   /**
@@ -218,28 +208,7 @@ export class WorkspaceManager {
     if (system === null) {
       return null;
     }
-    const model: ProjectModel | null = await system.load(root);
-    if (model !== null) {
-      await this.studio.seedRunConfigurations(root, this.defaultRunConfigurations(model));
-    }
-    return model;
-  }
-
-  /**
-   * Maps a model's discovered run configurations to default `.studio` run configurations, bound to the
-   * model's provider kind, used to seed a freshly-opened project.
-   * @param model The project model.
-   * @returns Returns the default run configurations.
-   */
-  private defaultRunConfigurations(model: ProjectModel): readonly RunConfiguration[] {
-    return model.runConfigurations.map(
-      (descriptor): RunConfiguration => ({
-        id: descriptor.id,
-        name: descriptor.name,
-        providerKind: model.kind,
-        mode: 'run',
-      }),
-    );
+    return system.load(root);
   }
 
   /**

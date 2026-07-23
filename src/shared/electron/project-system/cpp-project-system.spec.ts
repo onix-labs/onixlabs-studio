@@ -1,5 +1,5 @@
 import { BuildConfiguration } from '@shared/api/project-system';
-import { CppProjectSystem, parseCmakeExecutables, parseCmakeProjectName } from './cpp-project-system';
+import { CppProjectSystem, parseCmakeProjectName } from './cpp-project-system';
 
 describe('parseCmakeProjectName', () => {
   it('readsTheProjectCommandName', () => {
@@ -10,31 +10,6 @@ describe('parseCmakeProjectName', () => {
   it('returnsNullWhenAbsent', () => {
     expect(parseCmakeProjectName(null)).toBeNull();
     expect(parseCmakeProjectName('add_executable(app main.cpp)')).toBeNull();
-  });
-});
-
-describe('parseCmakeExecutables', () => {
-  it('readsEveryExecutableTarget', () => {
-    const cmake: string = [
-      'add_executable(app main.cpp)',
-      'add_library(core core.cpp)',
-      'add_executable(tests test.cpp)',
-    ].join('\n');
-    expect(parseCmakeExecutables(cmake)).toEqual(['app', 'tests']);
-  });
-
-  it('skipsAliasAndImportedForms', () => {
-    const cmake: string = [
-      'add_executable(app main.cpp)',
-      'add_executable(app::app ALIAS app)',
-      'add_executable(ext IMPORTED)',
-    ].join('\n');
-    expect(parseCmakeExecutables(cmake)).toEqual(['app']);
-  });
-
-  it('returnsEmptyWhenAbsent', () => {
-    expect(parseCmakeExecutables(null)).toEqual([]);
-    expect(parseCmakeExecutables('project(app)')).toEqual([]);
   });
 });
 

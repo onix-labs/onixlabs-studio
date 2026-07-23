@@ -8,7 +8,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 
@@ -122,10 +121,6 @@ export class GoProjectSystem implements ProjectSystem {
       projects: this.flatten(tree),
       tree,
       capabilities: this.capabilities,
-      runConfigurations: [
-        // `go run .` runs the main package at the module root; the id names the module.
-        { id: name, name, kind: 'project', detail: 'go run .' } satisfies RunConfigurationDescriptor,
-      ],
     };
   }
 

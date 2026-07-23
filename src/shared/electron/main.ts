@@ -291,14 +291,12 @@ class Program {
   private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
 
   /**
-   * Handles workspace (open folder) and directory operations on behalf of the renderer. Seeds default
-   * run configurations into `.studio` through the {@link studioStore} when a project first opens.
+   * Handles workspace (open folder) and directory operations on behalf of the renderer.
    */
   private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
     (): BrowserWindow | null => this.window,
     this.workspaceContext,
     this.trustedPaths,
-    this.studioStore,
   );
 
   /**

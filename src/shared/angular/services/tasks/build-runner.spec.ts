@@ -12,7 +12,7 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { Output } from '../output/output';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { BuildRunner } from './build-runner';
-import { BuildTask } from './builds';
+import { ActiveRun, BuildTask } from './builds';
 
 /**
  * A controllable fake transport: routes the task-runner channels (recording runs and capturing the
@@ -21,6 +21,7 @@ import { BuildTask } from './builds';
  */
 class FakeTaskBridge implements Bridge {
   public readonly runCalls: TaskRunRequest[] = [];
+  public readonly cancelCalls: string[] = [];
   private outputListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
 
@@ -30,6 +31,7 @@ class FakeTaskBridge implements Bridge {
       return Promise.resolve({ success: true, pid: 1 } as T);
     }
     if (channel === (TaskChannel.Cancel as string)) {
+      this.cancelCalls.push(args[0] as string);
       return Promise.resolve(true as T);
     }
     if (channel === (WorkspaceChannel.OpenFile as string)) {
@@ -69,8 +71,8 @@ class FakeTaskBridge implements Bridge {
     this.outputListener?.(runId, chunk, 'stdout');
   }
 
-  public emitExit(runId: string, code: number | null): void {
-    this.exitListener?.(runId, code, null);
+  public emitExit(runId: string, code: number | null, signal: string | null = null): void {
+    this.exitListener?.(runId, code, signal);
   }
 }
 
@@ -88,6 +90,16 @@ class FakeDiagnostics {
 }
 
 const PACKAGE_JSON: string = JSON.stringify({ scripts: { build: 'tsc', test: 'vitest' } });
+
+/**
+ * Builds a node run configuration whose id names an npm script, so it compiles to a command.
+ * @param id The configuration id (the npm script name).
+ * @param name The display name.
+ * @returns Returns the configuration.
+ */
+function configuration(id: string, name: string): RunConfiguration {
+  return { id, name, providerKind: 'node', mode: 'run' };
+}
 
 describe('BuildRunner', () => {
   let api: FakeTaskBridge;
@@ -204,7 +216,7 @@ describe('BuildRunner', () => {
     expect(diagnostics.published).toHaveLength(0);
   });
 
-  it('launch_routesBuildAndRunToDistinctChannelsAndRevealsThem', async () => {
+  it('launch_routesBuildToTheBuildChannelAndEachRunConfigurationToItsOwn', async () => {
     const runner: BuildRunner = await discover();
     const output: Output = TestBed.inject(Output);
 
@@ -214,12 +226,109 @@ describe('BuildRunner', () => {
     api.emitExit(api.runCalls[0].runId, 0);
     expect(output.snapshotOf('build')).toContain('compiling');
 
+    // A run configuration gets a channel of its own, named after it, so parallel runs stay readable.
     runner.runConfiguration({ id: 'build', name: 'build', providerKind: 'node', mode: 'run' });
-    expect(output.activeChannelId()).toBe('run');
+    expect(output.activeChannelId()).toBe('run:build');
     api.emitOutput(api.runCalls[1].runId, 'serving\n');
-    expect(output.snapshotOf('run')).toContain('serving');
+    expect(output.snapshotOf('run:build')).toContain('serving');
     // The build output stayed on its own channel.
-    expect(output.snapshotOf('run')).not.toContain('compiling');
+    expect(output.snapshotOf('run:build')).not.toContain('compiling');
+  });
+
+  it('runsSeveralConfigurationsAtOnce_eachWithItsOwnRunOutputAndCancellation', async () => {
+    const runner: BuildRunner = await discover();
+    const output: Output = TestBed.inject(Output);
+
+    runner.runConfiguration(configuration('api', 'API'));
+    runner.runConfiguration(configuration('web', 'Web'));
+
+    // Neither start was dropped, and both are reported in flight.
+    expect(api.runCalls).toHaveLength(2);
+    expect(runner.running()).toBe(true);
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.taskId)).toEqual(['api', 'web']);
+
+    // Output is routed by run id, so the two streams never bleed into each other.
+    api.emitOutput(api.runCalls[0].runId, 'api listening\n');
+    api.emitOutput(api.runCalls[1].runId, 'web listening\n');
+    expect(output.snapshotOf('run:api')).toContain('api listening');
+    expect(output.snapshotOf('run:api')).not.toContain('web listening');
+
+    // Stopping one leaves the other running.
+    const first: string = runner.activeRuns()[0].id;
+    runner.cancel(first);
+    expect(api.cancelCalls).toEqual([first]);
+    api.emitExit(first, null, 'SIGTERM');
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.taskId)).toEqual(['web']);
+    expect(runner.running()).toBe(true);
+
+    // And stopping the rest empties the set.
+    runner.cancelAll();
+    api.emitExit(runner.activeRuns()[0].id, null, 'SIGTERM');
+    expect(runner.activeRuns()).toEqual([]);
+    expect(runner.running()).toBe(false);
+  });
+
+  it('runsTheSameConfigurationTwice_asTwoIndependentRuns', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration(configuration('api', 'API'));
+    runner.runConfiguration(configuration('api', 'API'));
+
+    expect(api.runCalls).toHaveLength(2);
+    const ids: readonly string[] = runner.activeRuns().map((run: ActiveRun): string => run.id);
+    expect(new Set(ids).size).toBe(2);
+
+    api.emitExit(ids[0], 0);
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.id)).toEqual([ids[1]]);
+  });
+
+  it('compound_startsEveryMemberInParallel_andMembersStopIndividually', async () => {
+    const runner: BuildRunner = await discover();
+    const members: readonly RunConfiguration[] = [
+      configuration('db', 'Database'),
+      configuration('api', 'API'),
+      configuration('web', 'Web'),
+    ];
+    const compound: RunConfiguration = {
+      id: 'stack',
+      name: 'Whole stack',
+      providerKind: 'compound',
+      mode: 'run',
+      members: ['db', 'api', 'web'],
+    };
+
+    runner.runConfiguration(compound, [...members, compound]);
+
+    // The compound itself never runs — its members do, each as its own stoppable run.
+    expect(api.runCalls).toHaveLength(3);
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual([
+      'Database',
+      'API',
+      'Web',
+    ]);
+
+    const database: string = runner.activeRuns()[0].id;
+    runner.cancel(database);
+    api.emitExit(database, null, 'SIGTERM');
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual(['API', 'Web']);
+  });
+
+  it('compound_withUnknownMembersOrACycle_startsOnlyWhatItCanResolve', async () => {
+    const runner: BuildRunner = await discover();
+    const api1: RunConfiguration = configuration('api', 'API');
+    // Names one real member, one that does not exist, and itself.
+    const compound: RunConfiguration = {
+      id: 'stack',
+      name: 'Whole stack',
+      providerKind: 'compound',
+      mode: 'run',
+      members: ['api', 'ghost', 'stack'],
+    };
+
+    runner.runConfiguration(compound, [api1, compound]);
+
+    expect(api.runCalls).toHaveLength(1);
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual(['API']);
   });
 
   it('runConfiguration_dotnetProject_runsDotnetRunAgainstTheProject', async () => {

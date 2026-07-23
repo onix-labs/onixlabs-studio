@@ -6,9 +6,11 @@ import {
   inject,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
+import { RunConfigurationAgent } from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { RunConfiguration } from '@shared/api/studio';
@@ -19,6 +21,8 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { AgentRequestCard } from '@shared/angular/components/agent-request-card/agent-request-card';
+import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent-requests';
 
 /**
  * A group of run configurations sharing a provider kind, shown as a labelled section in the dialog's
@@ -43,10 +47,16 @@ interface ConfigurationGroup {
  * the provider declares them), program, arguments, working directory, environment variables, and
  * whether it runs or debugs. Edits are made against a draft copy taken when the dialog opens, so Cancel
  * discards them and Save writes the whole set back to `workspace.json` through {@link StudioConfig}.
+ *
+ * The dialog is also where configurations are **authored by the agent**: Auto asks the workspace's own
+ * agent to assess the project and write what is worth running, while the prompt box asks for something
+ * specific ("run these three scripts in parallel") and leaves the agent to work out how. The agent
+ * writes through its run-configuration tools, so its work lands in `workspace.json` directly; while it
+ * is authoring, the draft follows what it writes, and the list fills in as the agent goes.
  */
 @Component({
   selector: 'app-configure-dialog',
-  imports: [Modal, AppIcon, Dropdown, SettingRow, TextField, Toggle],
+  imports: [Modal, AppIcon, Dropdown, SettingRow, TextField, Toggle, AgentRequestCard],
   templateUrl: './configure-dialog.html',
   styleUrl: './configure-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -85,6 +95,54 @@ export class ConfigureDialogPanel {
    * Holds the id of the selected configuration, or null when none is selected.
    */
   private readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the seam that dispatches authoring work to the active workspace's agent.
+   */
+  private readonly agent: RunConfigurationAgent = inject(RunConfigurationAgent);
+
+  /**
+   * Holds what the user typed into the prompt box.
+   */
+  protected readonly request: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether the agent has been asked to author configurations since the dialog opened. While it
+   * is set, the draft follows what the agent writes: the user delegated the authoring, so the persisted
+   * set — not the snapshot taken when the dialog opened — is the truth to show.
+   */
+  private readonly delegated: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether run configurations can be authored by the agent from here.
+   */
+  protected readonly canAsk: Signal<boolean> = this.agent.canDispatch;
+
+  /**
+   * Gets why the agent cannot be asked, or null when it can.
+   */
+  protected readonly askUnavailableReason: Signal<string | null> = this.agent.unavailableReason;
+
+  /**
+   * Gets whether the workspace's agent is working, so the dialog can say so while it authors.
+   */
+  protected readonly agentBusy: Signal<boolean> = this.agent.busy;
+
+  /**
+   * Gets the dispatched agent's pending questions and permission prompts, rendered inline: the dialog
+   * is modal, so an unanswered prompt behind it would stall the run with no way to answer.
+   */
+  protected readonly agentRequests: Signal<readonly AgentRequestEntry[]> = computed(
+    (): readonly AgentRequestEntry[] => (this.delegated() ? this.agent.pendingRequests() : []),
+  );
+
+  /**
+   * Gets whether the dialog is showing the agent's work in progress: it was asked from here and the
+   * agent is still running.
+   */
+  protected readonly authoring: Signal<boolean> = computed(
+    (): boolean => this.delegated() && this.agentBusy(),
+  );
 
   /**
    * Gets whether the dialog is open.
@@ -192,15 +250,55 @@ export class ConfigureDialogPanel {
    * the current state and Cancel simply discards the draft.
    */
   public constructor() {
+    // Seeds the draft when the dialog opens, and re-seeds it whenever the persisted set changes while
+    // it is open — which is how the agent's writes appear in the list as it authors them (it writes
+    // straight to `.studio` through its own tools). The selection is kept when it still exists, so a
+    // configuration the user is reading does not jump under them as new ones land.
     effect((): void => {
-      if (this.dialog.isOpen()) {
-        const configurations: RunConfiguration[] = this.studio
-          .runConfigurations()
-          .map((configuration: RunConfiguration): RunConfiguration => ({ ...configuration }));
-        this.draft.set(configurations);
+      if (!this.dialog.isOpen()) {
+        this.delegated.set(false);
+        this.request.set('');
+        return;
+      }
+      const configurations: RunConfiguration[] = this.studio
+        .runConfigurations()
+        .map((configuration: RunConfiguration): RunConfiguration => ({ ...configuration }));
+      this.draft.set(configurations);
+      const selected: string | null = untracked((): string | null => this.selectedId());
+      const stillPresent: boolean = configurations.some(
+        (configuration: RunConfiguration): boolean => configuration.id === selected,
+      );
+      if (!stillPresent) {
         this.selectedId.set(configurations[0]?.id ?? null);
       }
     });
+  }
+
+  /**
+   * Asks the workspace's agent to assess the project and author its run configurations, unattended.
+   */
+  protected onAuto(): void {
+    if (this.agent.dispatchAuto()) {
+      this.delegated.set(true);
+    }
+  }
+
+  /**
+   * Asks the workspace's agent for something specific, described by the user in the prompt box.
+   */
+  protected onAsk(): void {
+    if (this.agent.dispatchRequest(this.request())) {
+      this.delegated.set(true);
+      this.request.set('');
+    }
+  }
+
+  /**
+   * Records what the user types into the prompt box.
+   * @param value The typed request.
+   */
+  protected onRequestInput(value: string): void {
+    this.request.set(value);
   }
 
   /**

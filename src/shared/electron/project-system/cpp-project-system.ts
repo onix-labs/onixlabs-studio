@@ -8,7 +8,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
 
@@ -88,30 +87,8 @@ export function parseCmakeProjectName(cmake: string | null): string | null {
 }
 
 /**
- * Extracts the executable target names from a `CMakeLists.txt`, from every `add_executable(<name> ...)`
- * command. An alias/imported form (whose second token is `ALIAS` or `IMPORTED`) is not a buildable
- * target and is skipped.
- * @param cmake The `CMakeLists.txt` content, or null when absent.
- * @returns Returns the executable target names, in declaration order.
- */
-export function parseCmakeExecutables(cmake: string | null): readonly string[] {
-  if (cmake === null) {
-    return [];
-  }
-  const targets: string[] = [];
-  for (const match of cmake.matchAll(/\badd_executable\s*\(\s*([A-Za-z0-9_.-]+)\s+([A-Za-z0-9_.-]*)/g)) {
-    const second: string = match[2].toUpperCase();
-    if (second !== 'ALIAS' && second !== 'IMPORTED') {
-      targets.push(match[1]);
-    }
-  }
-  return targets;
-}
-
-/**
  * Models a C/C++ workspace built by CMake or Make: a single root project named from its
- * `CMakeLists.txt` (or the directory otherwise), with its source files listed on demand. A CMake
- * project's `add_executable` targets become the discovered run configurations. Deliberately
+ * `CMakeLists.txt` (or the directory otherwise), with its source files listed on demand. Deliberately
  * language-server-agnostic, like the other providers; the workspace view prestarts clangd for `cpp`
  * models.
  */
@@ -150,7 +127,7 @@ export class CppProjectSystem implements ProjectSystem {
 
   /**
    * Builds the C/C++ project model: the single root project, named from its `CMakeLists.txt` when
-   * present, with its CMake executable targets as the discovered run configurations.
+   * present.
    * @param root The absolute workspace root.
    * @returns Returns the model, or null when the root holds no CMake or Make manifest.
    */
@@ -170,7 +147,6 @@ export class CppProjectSystem implements ProjectSystem {
       projects: this.flatten(tree),
       tree,
       capabilities: this.capabilities,
-      runConfigurations: this.runConfigurations(parseCmakeExecutables(cmake)),
     };
   }
 
@@ -185,26 +161,6 @@ export class CppProjectSystem implements ProjectSystem {
     const budget: { remaining: number } = { remaining: MAX_ITEMS };
     const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
     return tree === null ? null : { projectPath, tree };
-  }
-
-  /**
-   * Derives the discovered run configurations from a CMake project's executable targets: one per
-   * target, identified by the target name. A Make project, whose targets are not reliably enumerable,
-   * has none.
-   * @param executables The CMake executable target names.
-   * @returns Returns a run configuration per executable target.
-   */
-  private runConfigurations(
-    executables: readonly string[],
-  ): readonly RunConfigurationDescriptor[] {
-    return executables.map(
-      (target: string): RunConfigurationDescriptor => ({
-        id: target,
-        name: target,
-        kind: 'project',
-        detail: `${BUILD_DIR}/${target}`,
-      }),
-    );
   }
 
   /**

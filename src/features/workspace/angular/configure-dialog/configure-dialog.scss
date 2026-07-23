@@ -161,3 +161,48 @@
     }
   }
 }
+
+// The agent-authoring row beneath the editor: Auto-configure, a prompt box, and Ask agent. It reads as
+// one band above the dialog's Cancel/Save actions, separated from the editor by the same hairline the
+// rest of the dialog uses.
+.configure__agent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 0.0625rem solid var(--dock-border-color);
+}
+
+// The prompt box takes the row's spare width; the two buttons keep their content width.
+.configure__request {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+// The agent button carries its glyph beside the label, so it reads as the agent's action rather than
+// another neutral dialog button.
+.configure__button--agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+// A single line of status beneath the agent row: what the agent is doing, or why it cannot be asked.
+.configure__status {
+  margin: 0;
+  padding-block-start: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--accent-color);
+
+  &--muted {
+    color: var(--gray-500);
+  }
+}
+
+// The agent's pending requests, stacked beneath the agent row while it works.
+.configure__requests {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-block-start: 0.5rem;
+}

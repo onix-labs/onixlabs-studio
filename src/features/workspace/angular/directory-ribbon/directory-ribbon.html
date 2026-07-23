@@ -34,8 +34,16 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Run">
+    <!-- While anything is in flight the primary button is Stop: pressing it stops every run, and its
+         menu lists them so one can be stopped on its own. -->
     @if (running()) {
-      <app-ribbon-strip-button [icon]="Icon.STOP" label="Stop" (action)="onStop()" />
+      <app-ribbon-strip-menu-button
+        [icon]="Icon.STOP"
+        [label]="stopLabel()"
+        [items]="runMenuItems()"
+        (action)="onStop()"
+        (selected)="onStopRun($event)"
+      />
     } @else {
       <app-ribbon-strip-button
         [icon]="Icon.PLAY"
@@ -45,15 +53,26 @@
       />
     }
     <app-ribbon-strip-column [spread]="true">
+      <!-- Selectable while running: runs are concurrent, so picking another configuration and starting
+           it does not disturb what is already in flight. -->
       <app-dropdown
         [options]="runOptions()"
         [value]="selectedRunId() ?? ''"
-        [disabled]="running() || !canRun()"
+        [disabled]="!canRun()"
         [fullWidth]="true"
         ariaLabel="Run configuration"
         (valueChange)="onSelectRunItem($event)"
       />
       <app-ribbon-strip-row>
+        <!-- The big button is Stop while running, so Start stays reachable here to launch another. -->
+        @if (running()) {
+          <app-ribbon-strip-button-small
+            [icon]="Icon.PLAY"
+            label="Start"
+            [disabled]="!canRun()"
+            (action)="onRun()"
+          />
+        }
         <app-ribbon-strip-button-small
           [icon]="Icon.DEBUG"
           label="Debug"

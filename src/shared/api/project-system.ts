@@ -194,38 +194,6 @@ export interface TargetAxis {
 }
 
 /**
- * The kind of a discovered run configuration: a runnable project (.NET) or a manifest script (Node).
- */
-export type RunConfigurationKind = 'project' | 'script';
-
-/**
- * A run configuration discovered from a workspace root — one runnable project, or one manifest script.
- * These are the *discovered defaults* the Run dropdown falls back to until persisted `.studio` run
- * configurations exist; they are not themselves the persisted configuration model.
- */
-export interface RunConfigurationDescriptor {
-  /**
-   * Gets the stable identifier of the run configuration.
-   */
-  readonly id: string;
-
-  /**
-   * Gets the display name of the run configuration.
-   */
-  readonly name: string;
-
-  /**
-   * Gets the kind of run configuration.
-   */
-  readonly kind: RunConfigurationKind;
-
-  /**
-   * Gets a human-readable detail (for example the project path, or `npm run build`), when available.
-   */
-  readonly detail?: string;
-}
-
-/**
  * Declares that a provider's projects can be debugged, and which DAP adapter debugs them. Absent (null)
  * until an adapter is provisioned for the ecosystem, so the ribbon's Debug button stays inert.
  */
@@ -239,8 +207,8 @@ export interface DebugCapability {
 /**
  * The root-independent capabilities a project system declares, so the ribbon can gate its optional
  * controls from data rather than hard-coded assumptions: which {@link ProjectAction actions} it
- * supports, its build configurations and target axis, and whether (and how) it debugs. Discovered,
- * root-dependent run configurations travel separately on {@link ProjectModel.runConfigurations}.
+ * supports, its build configurations and target axis, and whether (and how) it debugs. Run
+ * configurations are not part of this: a project system never infers them from a root.
  */
 export interface ProjectCapabilities {
   /**
@@ -299,10 +267,4 @@ export interface ProjectModel {
    * gate its optional controls from data.
    */
   readonly capabilities: ProjectCapabilities;
-
-  /**
-   * Gets the run configurations discovered from the root (one per runnable project or manifest script),
-   * the Run dropdown's fallback until persisted `.studio` run configurations exist.
-   */
-  readonly runConfigurations: readonly RunConfigurationDescriptor[];
 }

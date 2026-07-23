@@ -8,7 +8,6 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
-  RunConfigurationDescriptor,
 } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
@@ -108,8 +107,6 @@ export class NodeProjectSystem implements ProjectSystem {
       return null;
     }
     const rootName: string = this.packageName(manifest, root);
-    const runConfigurations: readonly RunConfigurationDescriptor[] =
-      this.runConfigurations(manifest);
     const workspaceDirs: readonly string[] = await this.expandWorkspaces(root, manifest);
     if (workspaceDirs.length === 0) {
       const tree: readonly ProjectNode[] = [
@@ -122,7 +119,6 @@ export class NodeProjectSystem implements ProjectSystem {
         projects: this.flatten(tree),
         tree,
         capabilities: this.capabilities,
-        runConfigurations,
       };
     }
     const projects: ProjectNode[] = [];
@@ -149,7 +145,6 @@ export class NodeProjectSystem implements ProjectSystem {
       projects: this.flatten(tree),
       tree,
       capabilities: this.capabilities,
-      runConfigurations,
     };
   }
 
@@ -189,30 +184,6 @@ export class NodeProjectSystem implements ProjectSystem {
       },
       error: null,
     };
-  }
-
-  /**
-   * Derives the discovered run configurations from the root manifest's `scripts`: one per script, run
-   * via `npm run <name>`. These are the Run dropdown's fallback until persisted `.studio` run
-   * configurations exist.
-   * @param manifest The parsed root manifest.
-   * @returns Returns a run configuration per declared script, in declaration order.
-   */
-  private runConfigurations(
-    manifest: Record<string, unknown>,
-  ): readonly RunConfigurationDescriptor[] {
-    const scripts: unknown = manifest['scripts'];
-    if (typeof scripts !== 'object' || scripts === null) {
-      return [];
-    }
-    return Object.keys(scripts as Record<string, unknown>).map(
-      (name: string): RunConfigurationDescriptor => ({
-        id: name,
-        name,
-        kind: 'script',
-        detail: `npm run ${name}`,
-      }),
-    );
   }
 
   /**

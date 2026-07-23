@@ -2,18 +2,22 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal, W
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
-import { Builds } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
-import { RunConfiguration } from '@shared/api/studio';
+import { isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -25,7 +29,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
  * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
  * the {@link Builds} seam to the active workspace's build runner. The Run group is the Tier-1 universal
  * widget: a Start button that toggles to Stop while a run is in flight, a run-configuration dropdown
- * (sourced from the workspace's `.studio` configurations, falling back to discovered tasks), a Debug
+ * (sourced solely from the workspace's authored `.studio` configurations — nothing is inferred), a Debug
  * button that launches the selected configuration under the {@link Debugger} seam, and a Configure
  * button that opens the run-configuration editor. The Solution group's
  * Build/Rebuild/Clean and the Target group's configuration and target selectors gate themselves on the
@@ -41,6 +45,7 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripButtonSmall,
+    RibbonStripMenuButton,
     RibbonStripField,
     RibbonStripRow,
     Dropdown,
@@ -141,9 +146,46 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether the active workspace is running a task.
+   * Gets whether the active workspace has anything running.
    */
   protected readonly running: Signal<boolean> = this.builds.running;
+
+  /**
+   * Gets the active workspace's in-flight runs, listed by the Stop button's menu.
+   */
+  protected readonly activeRuns: Signal<readonly ActiveRun[]> = this.builds.activeRuns;
+
+  /**
+   * Gets the Stop button's label: stopping one run needs no qualification, but with several in flight
+   * the big button is the "everything" button and says so.
+   */
+  protected readonly stopLabel: Signal<string> = computed((): string =>
+    this.activeRuns().length > 1 ? `Stop All (${this.activeRuns().length})` : 'Stop',
+  );
+
+  /**
+   * Gets the Stop menu's items, one per in-flight run, so a single run can be stopped without stopping
+   * the rest. Runs of the same configuration are numbered in launch order, since their labels alone
+   * would not tell them apart.
+   */
+  protected readonly runMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => {
+      const runs: readonly ActiveRun[] = this.activeRuns();
+      const counts: Map<string, number> = new Map<string, number>();
+      for (const run of runs) {
+        counts.set(run.taskId, (counts.get(run.taskId) ?? 0) + 1);
+      }
+      const seen: Map<string, number> = new Map<string, number>();
+      return runs.map((run: ActiveRun): RibbonMenuItem => {
+        const ordinal: number = (seen.get(run.taskId) ?? 0) + 1;
+        seen.set(run.taskId, ordinal);
+        const duplicated: boolean = (counts.get(run.taskId) ?? 0) > 1;
+        // Deliberately iconless: the stop glyph is a filled square, which in a menu column reads as an
+        // unticked checkbox rather than an action.
+        return { id: run.id, label: duplicated ? `${run.label} (${ordinal})` : run.label };
+      });
+    },
+  );
 
   /**
    * Gets whether the Target group is shown at all: only when the provider declares a build-configuration
@@ -203,30 +245,23 @@ export class DirectoryRibbon {
   });
 
   /**
-   * Gets the run configurations offered by the dropdown, sourced from the workspace's `.studio`
-   * configurations when it has any, otherwise from the discovered build tasks as a fallback.
+   * Gets the run configurations offered by the dropdown: the workspace's authored `.studio`
+   * configurations, and nothing else. Studio never infers what a workspace should run, so a workspace
+   * with no configurations offers none.
    */
   protected readonly runOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => {
-      const configurations: readonly RunConfiguration[] = this.studio.runConfigurations();
-      if (configurations.length > 0) {
-        return configurations.map(
-          (configuration: RunConfiguration): DropdownOption => ({
-            value: configuration.id,
-            label: configuration.name,
-          }),
-        );
-      }
-      return this.builds
-        .tasks()
-        .map((task): DropdownOption => ({ value: task.id, label: task.label }));
-    },
+    (): readonly DropdownOption[] =>
+      this.studio.runConfigurations().map(
+        (configuration: RunConfiguration): DropdownOption => ({
+          value: configuration.id,
+          label: configuration.name,
+        }),
+      ),
   );
 
   /**
-   * Gets the id of the effective selected run item: the user's pick when it is still offered, otherwise
-   * the default (the `.studio` selection, or the default build task), or null when there is nothing to
-   * run.
+   * Gets the id of the effective selected run configuration: the user's pick when it is still offered,
+   * otherwise the persisted `.studio` selection, or null when the workspace has no configurations.
    */
   protected readonly selectedRunId: Signal<string | null> = computed((): string | null => {
     const options: readonly DropdownOption[] = this.runOptions();
@@ -239,25 +274,21 @@ export class DirectoryRibbon {
     if (picked !== undefined) {
       return picked.value;
     }
-    const fallback: string | undefined =
-      this.studio.runConfigurations().length > 0
-        ? this.studio.selectedRunConfiguration()?.id
-        : this.builds.startTask()?.id;
-    return fallback ?? options[0].value;
+    return this.studio.selectedRunConfiguration()?.id ?? options[0].value;
   });
 
   /**
-   * Gets whether there is a run item the Start action can launch.
+   * Gets whether there is a run configuration the Start action can launch.
    */
   protected readonly canRun: Signal<boolean> = computed(
     (): boolean => this.selectedRunId() !== null,
   );
 
   /**
-   * Gets the selected `.studio` run configuration, or undefined when the selected run item is a
-   * discovered task (which the debugger cannot launch — it needs a configuration's program/args).
+   * Gets the selected `.studio` run configuration, or undefined when the workspace has none. Both Start
+   * and Debug launch this one.
    */
-  private readonly debugConfiguration: Signal<RunConfiguration | undefined> = computed(
+  private readonly selectedConfiguration: Signal<RunConfiguration | undefined> = computed(
     (): RunConfiguration | undefined => {
       const id: string | null = this.selectedRunId();
       return id === null
@@ -274,12 +305,16 @@ export class DirectoryRibbon {
    * adapter (or none at all) leave the button disabled rather than launching a session that would
    * immediately report it has nowhere to attach.
    */
-  protected readonly canDebug: Signal<boolean> = computed(
-    (): boolean =>
+  protected readonly canDebug: Signal<boolean> = computed((): boolean => {
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
+    return (
       this.capabilities()?.debug != null &&
-      this.debugConfiguration() !== undefined &&
-      !this.debugger.running(),
-  );
+      configuration !== undefined &&
+      // A compound starts several processes; there is no single program to attach to.
+      !isCompoundConfiguration(configuration) &&
+      !this.debugger.running()
+    );
+  });
 
   /**
    * Cuts the selection in the focused editor.
@@ -371,28 +406,19 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Runs the selected run item on the active workspace: a `.studio` run configuration through the
-   * configuration path, or a discovered task through the task path.
+   * Runs the selected `.studio` run configuration on the active workspace. The workspace's other
+   * configurations travel with it so a compound can resolve its members, which start in parallel.
    */
   protected onRun(): void {
-    const id: string | null = this.selectedRunId();
-    if (id === null) {
-      return;
-    }
-    const configuration: RunConfiguration | undefined = this.studio
-      .runConfigurations()
-      .find((candidate: RunConfiguration): boolean => candidate.id === id);
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
-      this.builds.runConfiguration(configuration);
-    } else {
-      this.builds.runTask(id);
+      this.builds.runConfiguration(configuration, this.studio.runConfigurations());
     }
   }
 
   /**
-   * Picks the chosen run item from the dropdown, persisting the choice when it is a `.studio`
-   * configuration.
-   * @param id The id of the chosen run item.
+   * Picks the chosen run configuration from the dropdown, persisting the choice.
+   * @param id The id of the chosen run configuration.
    */
   protected onSelectRunItem(id: string): void {
     this.picked.set(id);
@@ -405,7 +431,7 @@ export class DirectoryRibbon {
    * Launches the selected run configuration under the debugger on the active workspace.
    */
   protected onDebug(): void {
-    const configuration: RunConfiguration | undefined = this.debugConfiguration();
+    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
       this.debugger.launch(configuration);
     }
@@ -419,10 +445,18 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Cancels the active workspace's running task.
+   * Stops everything the active workspace is running.
    */
   protected onStop(): void {
-    this.builds.cancel();
+    this.builds.cancelAll();
+  }
+
+  /**
+   * Stops one in-flight run, chosen from the Stop button's menu, leaving the others running.
+   * @param runId The run to stop.
+   */
+  protected onStopRun(runId: string): void {
+    this.builds.cancel(runId);
   }
 
   /**

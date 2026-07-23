@@ -39,6 +39,35 @@ export interface BuildTask {
 }
 
 /**
+ * One in-flight run of a task or run configuration. Several may be live at once — a workspace can run its
+ * back end, its front end, and a test watcher side by side — so each carries the identity the Stop menu
+ * needs to name it and stop it alone.
+ */
+export interface ActiveRun {
+  /**
+   * Gets the run's unique identifier, assigned when it is launched. Distinct per run, so the same
+   * configuration started twice yields two runs.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display label of what is running (the configuration or task name).
+   */
+  readonly label: string;
+
+  /**
+   * Gets the id of the task or run configuration backing the run, shared by every run of it.
+   */
+  readonly taskId: string;
+
+  /**
+   * Gets the epoch-millisecond timestamp the run was launched at, which tells two runs of the same
+   * configuration apart.
+   */
+  readonly startedAt: number;
+}
+
+/**
  * The contract a workspace's build runner exposes to the {@link Builds} seam so the root ribbon can
  * drive it.
  */
@@ -49,9 +78,9 @@ export interface BuildHandler {
   readonly tasks: Signal<readonly BuildTask[]>;
 
   /**
-   * Gets whether a task is currently running.
+   * Gets the workspace's in-flight runs, in launch order.
    */
-  readonly running: Signal<boolean>;
+  readonly activeRuns: Signal<readonly ActiveRun[]>;
 
   /**
    * Runs the task with the given identifier.
@@ -60,10 +89,12 @@ export interface BuildHandler {
   run(taskId: string): void;
 
   /**
-   * Runs a `.studio` run configuration, compiling it to a command and executing it like a task.
+   * Runs a `.studio` run configuration, compiling it to a command and executing it like a task. A
+   * compound launches each of its members as its own run.
    * @param configuration The run configuration to run.
+   * @param siblings Every configuration in the workspace, used to resolve a compound's members.
    */
-  runConfiguration(configuration: RunConfiguration): void;
+  runConfiguration(configuration: RunConfiguration, siblings: readonly RunConfiguration[]): void;
 
   /**
    * Runs a capability action (Build/Clean/Rebuild…), compiling it to a command for the workspace's
@@ -74,9 +105,15 @@ export interface BuildHandler {
   runAction(action: ProjectAction): void;
 
   /**
-   * Cancels the running task, if any.
+   * Cancels one in-flight run.
+   * @param runId The run to cancel.
    */
-  cancel(): void;
+  cancel(runId: string): void;
+
+  /**
+   * Cancels every in-flight run.
+   */
+  cancelAll(): void;
 }
 
 /**
@@ -95,17 +132,25 @@ export class Builds {
   private readonly handler: WritableSignal<BuildHandler | null> = signal<BuildHandler | null>(null);
 
   /**
-   * Gets the tasks discovered for the active workspace.
+   * Gets the build/test tasks discovered for the active workspace. These drive the Solution group's
+   * Build action only — the Run dropdown is fed exclusively by authored `.studio` run configurations.
    */
   public readonly tasks: Signal<readonly BuildTask[]> = computed(
     (): readonly BuildTask[] => this.handler()?.tasks() ?? [],
   );
 
   /**
-   * Gets whether the active workspace is running a task.
+   * Gets the active workspace's in-flight runs, in launch order.
+   */
+  public readonly activeRuns: Signal<readonly ActiveRun[]> = computed(
+    (): readonly ActiveRun[] => this.handler()?.activeRuns() ?? [],
+  );
+
+  /**
+   * Gets whether the active workspace has anything running.
    */
   public readonly running: Signal<boolean> = computed(
-    (): boolean => this.handler()?.running() ?? false,
+    (): boolean => this.activeRuns().length > 0,
   );
 
   /**
@@ -113,14 +158,6 @@ export class Builds {
    */
   public readonly canBuild: Signal<boolean> = computed(
     (): boolean => this.firstOf('build') !== undefined,
-  );
-
-  /**
-   * Gets the default run task the ribbon selects when the user has not picked one: the first run task,
-   * then the first build task, then the first discovered task.
-   */
-  public readonly startTask: Signal<BuildTask | undefined> = computed(
-    (): BuildTask | undefined => this.firstOf('run') ?? this.firstOf('build') ?? this.tasks()[0],
   );
 
   /**
@@ -142,19 +179,16 @@ export class Builds {
   }
 
   /**
-   * Runs a task by identifier on the active workspace.
-   * @param taskId The task to run.
-   */
-  public runTask(taskId: string): void {
-    this.handler()?.run(taskId);
-  }
-
-  /**
-   * Runs a `.studio` run configuration on the active workspace.
+   * Runs a `.studio` run configuration on the active workspace. A compound launches each of its members
+   * as its own run, in parallel.
    * @param configuration The run configuration to run.
+   * @param siblings Every configuration in the workspace, used to resolve a compound's members.
    */
-  public runConfiguration(configuration: RunConfiguration): void {
-    this.handler()?.runConfiguration(configuration);
+  public runConfiguration(
+    configuration: RunConfiguration,
+    siblings: readonly RunConfiguration[] = [],
+  ): void {
+    this.handler()?.runConfiguration(configuration, siblings);
   }
 
   /**
@@ -173,10 +207,18 @@ export class Builds {
   }
 
   /**
-   * Cancels the active workspace's running task, if any.
+   * Cancels one in-flight run on the active workspace.
+   * @param runId The run to cancel.
    */
-  public cancel(): void {
-    this.handler()?.cancel();
+  public cancel(runId: string): void {
+    this.handler()?.cancel(runId);
+  }
+
+  /**
+   * Cancels every in-flight run on the active workspace.
+   */
+  public cancelAll(): void {
+    this.handler()?.cancelAll();
   }
 
   /**
