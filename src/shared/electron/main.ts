@@ -16,6 +16,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
+import { buildPopoutSearch, sanitizePopoutParams } from '@shared/api/popout-params';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
@@ -521,6 +522,32 @@ class Program {
 
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
+
+    ipcMain.on(WindowChannel.SetAlwaysOnTop, (event: IpcMainEvent, pinned: unknown): void => {
+      if (typeof pinned !== 'boolean') {
+        return;
+      }
+
+      BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(pinned);
+    });
+
+    // Pop-out windows are main-created only (the renderer's window.open is denied by the security
+    // guards), so this is the one door: parameters are validated before they touch a load URL.
+    ipcMain.handle(WindowChannel.OpenPopout, (_event: IpcMainInvokeEvent, params: unknown): number | null => {
+      const sanitized: Record<string, string> | null = sanitizePopoutParams(params);
+      if (sanitized === null) {
+        return null;
+      }
+      return this.windows.createPopoutWindow(buildPopoutSearch(sanitized)).id;
+    });
+
+    ipcMain.handle(WindowChannel.ClosePopout, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
+      typeof id === 'number' ? this.windows.closePopout(id) : false,
+    );
+
+    ipcMain.handle(WindowChannel.FocusPopout, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
+      typeof id === 'number' ? this.windows.focusPopout(id) : false,
+    );
 
     ipcMain.on(AppChannel.ConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);

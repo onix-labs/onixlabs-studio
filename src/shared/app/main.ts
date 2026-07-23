@@ -1,5 +1,8 @@
 import { bootstrapApplication } from '@angular/platform-browser';
+import { parsePopoutSearch } from '@shared/api/popout-params';
 import { config } from './config';
+import { popoutConfig } from './popout/popout-config';
+import { PopoutRoot } from './popout/popout-root';
 import { Root } from './root/root';
 
 /**
@@ -41,6 +44,18 @@ if (shouldReduceEffects()) {
   root.setAttribute('data-reduced-gpu', 'true');
 }
 
-bootstrapApplication(Root, config).catch((error: unknown): void => {
-  console.error(error);
-});
+// A window opened by the main process as a pop-out carries a role flag in its query string; it
+// boots the minimal pop-out shell with the minimal provider set instead of the full IDE. The
+// branch lives here — before bootstrap — because it is the provider set that must differ: a
+// template-level branch inside Root would still run every app initializer (open-with draining the
+// shared OS open-paths queue, the close-confirmation answerer, the AI runtime), which belong to
+// the one main window.
+if (parsePopoutSearch(window.location.search) !== null) {
+  bootstrapApplication(PopoutRoot, popoutConfig).catch((error: unknown): void => {
+    console.error(error);
+  });
+} else {
+  bootstrapApplication(Root, config).catch((error: unknown): void => {
+    console.error(error);
+  });
+}

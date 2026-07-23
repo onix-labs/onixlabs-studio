@@ -1,4 +1,5 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
+import { WindowChannel } from '@shared/api/window-channels';
 import { restoreWindowRect, StoredWindowState, WindowRect } from './window-state';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
@@ -74,6 +75,27 @@ export class WindowManager {
    * drags collapse into a single write.
    */
   private static readonly BOUNDS_SAVE_DEBOUNCE_MS: number = 500;
+
+  /**
+   * Holds the default pop-out-window width, used when no usable bounds are persisted.
+   */
+  private static readonly POPOUT_DEFAULT_WIDTH: number = 960;
+
+  /**
+   * Holds the default pop-out-window height, used when no usable bounds are persisted.
+   */
+  private static readonly POPOUT_DEFAULT_HEIGHT: number = 640;
+
+  /**
+   * Holds the minimum pop-out-window width. Pop-outs host a single surface, so they may shrink far
+   * below the IDE window's minimum.
+   */
+  private static readonly POPOUT_MIN_WIDTH: number = 480;
+
+  /**
+   * Holds the minimum pop-out-window height.
+   */
+  private static readonly POPOUT_MIN_HEIGHT: number = 320;
 
   /**
    * Holds the registered windows.
@@ -178,6 +200,105 @@ export class WindowManager {
     else void window.loadFile(this.options.indexHtml);
 
     return window;
+  }
+
+  /**
+   * Creates a pop-out window — a secondary window hosting a single surface (a dock panel) rather
+   * than the full IDE — and loads the application shell into it with the given query string, which
+   * the renderer entry reads to boot the minimal pop-out root. Pop-outs close plainly: they never
+   * gate application lifecycle, so no quit-confirmation hook is attached.
+   * @param search The query string to load the shell with, including its leading `?`.
+   * @returns Returns the registered entry, whose identifier addresses the window later.
+   */
+  public createPopoutWindow(search: string): RegisteredWindow<BrowserWindow> {
+    const stored: StoredWindowState | null = WindowStateStore.read('popout');
+    const restored: WindowRect | null =
+      stored === null
+        ? null
+        : restoreWindowRect(
+            stored,
+            screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
+            WindowManager.POPOUT_MIN_WIDTH,
+            WindowManager.POPOUT_MIN_HEIGHT,
+          );
+
+    const window: BrowserWindow = new BrowserWindow({
+      backgroundColor: '#000000',
+      width: restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH,
+      height: restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT,
+      ...(restored !== null ? { x: restored.x, y: restored.y } : {}),
+      minWidth: WindowManager.POPOUT_MIN_WIDTH,
+      minHeight: WindowManager.POPOUT_MIN_HEIGHT,
+      show: false,
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 14, y: 14 },
+      webPreferences: {
+        preload: this.options.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    if (stored?.maximized === true) {
+      window.maximize();
+    }
+
+    const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
+    window.once('ready-to-show', (): void => window.show());
+    // Same zoom policy as the main window: page zoom is disabled app-wide, so any persisted
+    // per-origin level is reset on every load.
+    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    window.on('close', (): void => this.saveBounds('popout', window));
+    window.on('closed', (): void => {
+      this.registry.remove(entry.id);
+      // The main window owns every popped-out surface; it is told when a pop-out goes away so it
+      // can take the surface back.
+      const main: BrowserWindow | null = this.main();
+      if (main !== null && !main.isDestroyed()) {
+        main.webContents.send(WindowChannel.PopoutClosed, entry.id);
+      }
+    });
+    this.trackBounds('popout', window);
+
+    this.options.applySecurity(window.webContents);
+
+    if (this.options.startUrl !== undefined) void window.loadURL(this.options.startUrl + search);
+    else void window.loadFile(this.options.indexHtml, { search });
+
+    return entry;
+  }
+
+  /**
+   * Closes the pop-out window with the given identifier. Main windows are never closed through
+   * this path — their close runs the quit protocol instead.
+   * @param id The registered identifier of the pop-out window.
+   * @returns Returns true when a pop-out window with that identifier existed and was told to close.
+   */
+  public closePopout(id: number): boolean {
+    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
+    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
+      return false;
+    }
+    entry.window.close();
+    return true;
+  }
+
+  /**
+   * Brings the pop-out window with the given identifier to the front, restoring it first when it is
+   * minimized.
+   * @param id The registered identifier of the pop-out window.
+   * @returns Returns true when a pop-out window with that identifier existed and was focused.
+   */
+  public focusPopout(id: number): boolean {
+    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
+    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
+      return false;
+    }
+    if (entry.window.isMinimized()) {
+      entry.window.restore();
+    }
+    entry.window.focus();
+    return true;
   }
 
   /**

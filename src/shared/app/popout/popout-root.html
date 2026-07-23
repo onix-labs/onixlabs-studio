@@ -1,0 +1,19 @@
+<header class="popout__titlebar">
+  <span class="popout__title">{{ title }}</span>
+  <button
+    type="button"
+    class="popout__pin"
+    [class.popout__pin--active]="pinned()"
+    [attr.aria-pressed]="pinned()"
+    aria-label="Keep window on top"
+    title="Keep window on top"
+    (click)="togglePin()"
+  >
+    <app-icon [icon]="pinned() ? Icon.PIN_FILLED : Icon.PIN" />
+  </button>
+  <app-window-controls />
+</header>
+
+<main class="popout__content">
+  <app-terminal [terminalId]="scratchId" [isActive]="true" />
+</main>
