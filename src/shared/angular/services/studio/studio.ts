@@ -59,14 +59,6 @@ export class Studio {
   }
 
   /**
-   * Sets whether this window floats above every other window — the pop-out title-bar's pin.
-   * @param pinned True to keep the window on top; false to restore normal stacking.
-   */
-  public setWindowAlwaysOnTop(pinned: boolean): void {
-    this.bridge?.send(WindowChannel.SetAlwaysOnTop, pinned);
-  }
-
-  /**
    * Asks the main process to open a pop-out window carrying the given parameters.
    * @param params The pop-out parameters (surface selector, title, …).
    * @returns Returns the pop-out's window identifier, or null when the request was rejected (or

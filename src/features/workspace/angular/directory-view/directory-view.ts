@@ -356,6 +356,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly terminalSessions: TerminalSessions = inject(TerminalSessions);
 
   /**
+   * Holds this tab's terminal pop-out coordinator. Instantiated eagerly so it registers the
+   * terminal panel's pop-out handler with the dock chrome before the dock first renders.
+   */
+  private readonly terminalPopout: TerminalPopout = inject(TerminalPopout);
+
+  /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
    * {@link Repository}; undefined when running outside Electron.
    */

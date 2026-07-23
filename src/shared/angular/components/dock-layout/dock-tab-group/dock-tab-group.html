@@ -21,6 +21,17 @@
         >
           <app-icon [icon]="Icon.FLOAT" />
         </button>
+        @if (canPopOutActive()) {
+          <button
+            type="button"
+            title="Open in New Window"
+            aria-label="Open in New Window"
+            (mousedown)="$event.stopPropagation()"
+            (click)="popOutActive()"
+          >
+            <app-icon [icon]="Icon.POP_OUT" />
+          </button>
+        }
         @if (activePanel(); as panel) {
           <button
             type="button"

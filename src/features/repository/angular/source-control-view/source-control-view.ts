@@ -197,6 +197,12 @@ export class SourceControlView implements OnInit, OnDestroy {
   private readonly terminalSessions: TerminalSessions = inject(TerminalSessions);
 
   /**
+   * Holds this tab's terminal pop-out coordinator. Instantiated eagerly so it registers the
+   * terminal panel's pop-out handler with the dock chrome before the dock first renders.
+   */
+  private readonly terminalPopout: TerminalPopout = inject(TerminalPopout);
+
+  /**
    * Holds the status-bar registry this view contributes branch and change status to.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);

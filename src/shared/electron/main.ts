@@ -533,14 +533,6 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
 
-    ipcMain.on(WindowChannel.SetAlwaysOnTop, (event: IpcMainEvent, pinned: unknown): void => {
-      if (typeof pinned !== 'boolean') {
-        return;
-      }
-
-      BrowserWindow.fromWebContents(event.sender)?.setAlwaysOnTop(pinned);
-    });
-
     // Pop-out windows are main-created only (the renderer's window.open is denied by the security
     // guards), so this is the one door: parameters are validated before they touch a load URL.
     ipcMain.handle(WindowChannel.OpenPopout, (_event: IpcMainInvokeEvent, params: unknown): number | null => {

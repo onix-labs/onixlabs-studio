@@ -17,7 +17,6 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
-import { TerminalPopout } from '@shared/angular/services/terminal-popout/terminal-popout';
 import {
   TerminalSession,
   TerminalSessions,
@@ -71,11 +70,6 @@ export class TerminalPanel {
   private readonly terminals: TerminalSessions = inject(TerminalSessions);
 
   /**
-   * Holds the pop-out coordinator, so the panel can move into its own OS window.
-   */
-  private readonly popout: TerminalPopout = inject(TerminalPopout);
-
-  /**
    * Gets the absolute path the terminals' shells start in, or null when no folder is open.
    */
   protected readonly root: Signal<string | null> = this.context.root;
@@ -118,13 +112,6 @@ export class TerminalPanel {
    */
   protected create(): void {
     this.terminals.create();
-  }
-
-  /**
-   * Pops the panel out into its own OS window, session strip included.
-   */
-  protected popOut(): void {
-    void this.popout.popOut();
   }
 
   /**

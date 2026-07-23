@@ -574,14 +574,10 @@ export class Icon {
   public static readonly PIN: Icon = new Icon('ph ph-push-pin');
 
   /**
-   * Gets the pop-out icon, shown on a panel that can move into its own OS window.
+   * Gets the pop-out icon, shown in a dock group's title bar for panels that can move into their
+   * own OS window.
    */
-  public static readonly POP_OUT: Icon = new Icon('ph ph-arrow-square-out');
-
-  /**
-   * Gets the pop-in icon, shown in a pop-out window to dock its panel back into the workspace.
-   */
-  public static readonly POP_IN: Icon = new Icon('ph ph-arrow-square-in');
+  public static readonly POP_OUT: Icon = new Icon('ph-duotone ph-cards');
 
   /**
    * Gets the filled pin icon, used to show an item is pinned.

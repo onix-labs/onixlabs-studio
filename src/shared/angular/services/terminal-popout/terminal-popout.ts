@@ -102,6 +102,10 @@ export class TerminalPopout implements OnDestroy {
    */
   public constructor() {
     this.unsubscribes.push(
+      // The dock group chrome offers pop-out for panels registered here.
+      this.popouts.registerPopOut(TERMINAL_PANEL_ID, (): void => {
+        void this.popOut();
+      }),
       this.mirror.onReady((popoutId: number): void => {
         if (popoutId === this.window()) {
           this.publish();

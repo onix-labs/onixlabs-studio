@@ -43,14 +43,6 @@
       >
         <app-icon [icon]="Icon.PLUS" />
       </button>
-      <button
-        class="panel-toolbar__button terminal-panel__pop-out"
-        (click)="popOut()"
-        aria-label="Open in new window"
-        title="Open in new window"
-      >
-        <app-icon [icon]="Icon.POP_OUT" />
-      </button>
     </app-panel-toolbar>
     <div class="terminal-panel__bodies">
       <!-- Panes re-key on the session's generation: a relaunch-in-place replaces the PTY and its

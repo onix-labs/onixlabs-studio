@@ -1,57 +1,32 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-  signal,
-  WritableSignal,
-} from '@angular/core';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { WindowControls } from '@shared/angular/components/strips/title-strip/window-controls/window-controls';
-import { Icon } from '@shared/angular/icons/icon';
-import { Studio } from '@shared/angular/services/studio/studio';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
-import { TerminalMirrorBridge } from '@shared/angular/services/terminal-mirror/terminal-mirror-bridge';
 import { parsePopoutSearch } from '@shared/api/popout-params';
 import { TerminalPopoutPanel } from './terminal-popout-panel';
 
 /**
- * Represents the pop-out window's root: a minimal shell with its own title bar (draggable region,
- * always-on-top pin, and the custom window controls on platforms that need them) around a single
- * hosted surface.
+ * Represents the pop-out window's root: a minimal shell with its own title bar (the draggable
+ * region, plus the custom window controls on platforms that need them) around a single hosted
+ * surface. Closing the window IS the dock-back gesture — the owner returns the hosted panel to the
+ * workspace dock when the window goes away — so the title bar carries no extra controls.
  *
  * The surface is chosen by the pop-out's `panel` parameter: `terminal` hosts the workspace's
- * mirrored terminal panel (with a dock-back control in the title bar); without a parameter the
- * window hosts a scratch shell owned by this window alone (the development surface the fabric was
- * proven on).
+ * mirrored terminal panel; without a parameter the window hosts a scratch shell owned by this
+ * window alone (the development surface the fabric was proven on).
  */
 @Component({
   selector: 'app-root',
-  imports: [AppIcon, Terminal, TerminalPopoutPanel, WindowControls],
+  imports: [Terminal, TerminalPopoutPanel, WindowControls],
   templateUrl: './popout-root.html',
   styleUrl: './popout-root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PopoutRoot {
   /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the window-chrome bridge wrapper used to pin the window.
-   */
-  private readonly studio: Studio = inject(Studio);
-
-  /**
    * Holds the terminal bridge, used to dispose the scratch session when the window goes away.
    */
   private readonly bridge: TerminalBridge = inject(TerminalBridge);
-
-  /**
-   * Holds the mirror client, used to request docking the hosted panel back.
-   */
-  private readonly mirror: TerminalMirrorBridge = inject(TerminalMirrorBridge);
 
   /**
    * Gets the window title, from the pop-out parameters.
@@ -67,11 +42,6 @@ export class PopoutRoot {
    * Gets the identifier of the scratch shell session this window hosts (scratch mode only).
    */
   protected readonly scratchId: string;
-
-  /**
-   * Gets a value indicating whether the window is pinned above every other window.
-   */
-  protected readonly pinned: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Initializes a new instance of the {@link PopoutRoot} class, reading the pop-out parameters the
@@ -91,20 +61,5 @@ export class PopoutRoot {
         void this.bridge.dispose(this.scratchId);
       });
     }
-  }
-
-  /**
-   * Toggles whether the window floats above every other window.
-   */
-  protected togglePin(): void {
-    this.pinned.update((pinned: boolean): boolean => !pinned);
-    this.studio.setWindowAlwaysOnTop(this.pinned());
-  }
-
-  /**
-   * Asks the owner to dock the hosted panel back into the workspace (which closes this window).
-   */
-  protected dockBack(): void {
-    this.mirror.sendAction({ kind: 'dock-back' });
   }
 }

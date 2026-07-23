@@ -32,31 +32,6 @@
   color: var(--title-strip-button-foreground-color--hover);
 }
 
-// The pin opts out of the drag region so it stays clickable.
-.popout__pin {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  border: none;
-  border-radius: 0.375rem;
-  background: transparent;
-  color: var(--title-strip-button-foreground-color);
-  font-size: 1rem;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-
-  &:hover {
-    background: var(--title-strip-button-background-color--hover);
-    color: var(--title-strip-button-foreground-color--hover);
-  }
-
-  &--active {
-    color: var(--accent-color);
-  }
-}
-
 .popout__content {
   flex: 1;
   min-block-size: 0;
