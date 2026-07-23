@@ -21,7 +21,7 @@ import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
-import { TerminalCreateResult } from '@shared/api/terminal-channels';
+import { TerminalCreateResult, TerminalReplay } from '@shared/api/terminal-channels';
 
 /**
  * Holds the delay, in milliseconds, used to defer initial focus until the view has settled.
@@ -88,6 +88,14 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * is re-fitted and focused.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the PTY session outlives this pane. When true, destroying the
+   * pane detaches from the session instead of disposing it — the session's owner (for example a
+   * workspace's terminal-sessions service) disposes it — and a later pane under the same identifier
+   * re-attaches, replaying the output the session produced while no pane was mounted.
+   */
+  public readonly persistent: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Emits once the PTY session is created and its I/O is wired up.
@@ -178,6 +186,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private hasExited: boolean = false;
 
   /**
+   * Holds output chunks parked while the scrollback snapshot is in flight during initialisation, or
+   * null once live (chunks are then written straight to the terminal). Parked chunks the snapshot
+   * already contains are discarded by sequence number when the snapshot lands.
+   */
+  private pendingChunks: { data: string; seq: number }[] | null = null;
+
+  /**
    * Holds a value indicating whether scroll lock is engaged, freezing the viewport as output streams.
    */
   private scrollLocked: boolean = false;
@@ -211,14 +226,17 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Tears down the xterm instance, listeners, and PTY session on destroy.
+   * Tears down the xterm instance and listeners on destroy — and the PTY session too, unless the
+   * pane is {@link persistent} (then the session and its retained scrollback live on for a later
+   * pane to re-attach to). Disposing also clears the session's retained scrollback in the main
+   * process, even when the process itself has already exited.
    */
   public ngOnDestroy(): void {
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
     this.terminals.unregister(this.terminalId());
-    if (!this.hasExited) {
+    if (!this.persistent()) {
       void this.bridge.dispose(this.terminalId());
     }
     this.xterm?.dispose();
@@ -452,9 +470,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.resizeObserver = null;
     this.terminalReady.set(false);
 
-    if (!this.hasExited) {
-      await this.bridge.dispose(id);
-    }
+    // Dispose even when the process has already exited: that clears the session's retained
+    // scrollback, so the fresh session starts from a clean record rather than replaying the old one.
+    await this.bridge.dispose(id);
     this.hasExited = false;
 
     this.xterm?.dispose();
@@ -519,26 +537,17 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     fitAddon.fit();
 
-    const result: TerminalCreateResult = await this.bridge.create({
-      id,
-      cols: xterm.cols,
-      rows: xterm.rows,
-      cwd: this.cwd(),
-      shell: this.overriddenShell ?? this.shell(),
-    });
-    if (!result.success) {
-      xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);
-      return;
-    }
-    // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of the
-    // configured default; a New session explicitly resets this first.
-    this.overriddenShell = result.shell ?? this.overriddenShell;
-    if (result.shell !== undefined) {
-      this.shellChange.emit(result.shell);
-    }
-
-    this.cleanupOnData = this.bridge.onData((targetId: string, data: string): void => {
-      if (targetId === id) {
+    // Subscribe before replaying, parking chunks until the snapshot lands: the snapshot's sequence
+    // number then tells which parked chunks it already contains, so nothing is lost or duplicated
+    // while the two race.
+    this.pendingChunks = [];
+    this.cleanupOnData = this.bridge.onData((targetId: string, data: string, seq: number): void => {
+      if (targetId !== id) {
+        return;
+      }
+      if (this.pendingChunks !== null) {
+        this.pendingChunks.push({ data, seq });
+      } else {
         this.writeOutput(data);
       }
     });
@@ -551,6 +560,49 @@ export class Terminal implements AfterViewInit, OnDestroy {
       this.xterm?.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`);
       this.exited.emit(exitCode);
     });
+
+    // Replay whatever the session produced while no pane was attached (empty for a fresh session),
+    // then either surface its recorded end or (re)create the PTY — creation reuses a live session
+    // under the same identifier, so re-attaching never respawns the shell.
+    const replay: TerminalReplay = await this.bridge.replay(id);
+    if (replay.data.length > 0) {
+      xterm.write(replay.data);
+    }
+
+    if (replay.exitCode !== null) {
+      // The session ended while detached: show its history and exit banner without spawning a new
+      // process in its place; the session stays closable/restartable exactly like a live exit.
+      this.hasExited = true;
+      xterm.writeln(`\r\n\x1b[90m[Process exited with code ${replay.exitCode}]\x1b[0m`);
+    } else {
+      const result: TerminalCreateResult = await this.bridge.create({
+        id,
+        cols: xterm.cols,
+        rows: xterm.rows,
+        cwd: this.cwd(),
+        shell: this.overriddenShell ?? this.shell(),
+      });
+      if (!result.success) {
+        this.pendingChunks = null;
+        xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);
+        return;
+      }
+      // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of
+      // the configured default; a New session explicitly resets this first.
+      this.overriddenShell = result.shell ?? this.overriddenShell;
+      if (result.shell !== undefined) {
+        this.shellChange.emit(result.shell);
+      }
+    }
+
+    // Go live: write the parked chunks the snapshot did not already contain, in arrival order.
+    const parked: readonly { data: string; seq: number }[] = this.pendingChunks ?? [];
+    this.pendingChunks = null;
+    for (const chunk of parked) {
+      if (chunk.seq > replay.seq) {
+        this.writeOutput(chunk.data);
+      }
+    }
 
     xterm.onData((data: string): void => {
       void this.bridge.write(id, data);

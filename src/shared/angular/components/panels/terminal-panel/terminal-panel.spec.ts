@@ -1,11 +1,16 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { vi } from 'vitest';
 import { Icon } from '@shared/angular/icons/icon';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import {
+  TerminalSession,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { AccentColor, ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { TerminalPanel } from './terminal-panel';
 
@@ -24,8 +29,10 @@ describe('TerminalPanel', () => {
   let fixture: ComponentFixture<TerminalPanel>;
   let context: DockTabContext;
   let host: HTMLElement;
+  let dispose: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    dispose = vi.fn((): Promise<boolean> => Promise.resolve(true));
     await TestBed.configureTestingModule({
       imports: [TerminalPanel],
       providers: [
@@ -35,7 +42,7 @@ describe('TerminalPanel', () => {
           provide: TerminalBridge,
           useValue: {
             isElectron: false,
-            dispose: (): Promise<boolean> => Promise.resolve(true),
+            dispose,
             onData: (): (() => void) => (): void => undefined,
             onExit: (): (() => void) => (): void => undefined,
           },
@@ -110,11 +117,13 @@ describe('TerminalPanel', () => {
     expect(host.textContent).toContain('Terminal is only available when running inside Electron.');
   });
 
-  it('root_whenTheFolderCloses_revertsToThePrompt', async () => {
+  it('root_whenTheFolderCloses_revertsToThePromptAndDisposesTheSessions', async () => {
     context.setTabId('tab-1');
     context.setRoot('/repo');
     fixture.detectChanges();
     await fixture.whenStable();
+    const sessions: TerminalSessions = TestBed.inject(TerminalSessions);
+    const id: string = sessions.sessions()[0].id;
 
     context.setRoot(null);
     fixture.detectChanges();
@@ -122,5 +131,35 @@ describe('TerminalPanel', () => {
 
     expect(host.querySelector('app-terminal')).toBeNull();
     expect(host.querySelector('.terminal-panel__empty')).not.toBeNull();
+    expect(dispose).toHaveBeenCalledWith(id);
+  });
+
+  it('destroy_leavesTheSessionsAliveForTheNextPanelToReAttach', async () => {
+    context.setTabId('tab-1');
+    context.setRoot('/repo');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const sessions: TerminalSessions = TestBed.inject(TerminalSessions);
+    host.querySelector<HTMLButtonElement>('button[aria-label="New Terminal"]')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const ids: readonly string[] = sessions.sessions().map((s: TerminalSession): string => s.id);
+    expect(ids).toHaveLength(2);
+
+    // A tool-tab switch destroys the panel; its persistent panes must detach, not dispose.
+    fixture.destroy();
+    expect(dispose).not.toHaveBeenCalled();
+    expect(sessions.sessions().map((s: TerminalSession): string => s.id)).toEqual(ids);
+
+    // A re-created panel (the tool tab switching back) renders the same sessions again.
+    const revived: ComponentFixture<TerminalPanel> = TestBed.createComponent(TerminalPanel);
+    revived.componentRef.setInput('panel', PANEL);
+    revived.detectChanges();
+    await revived.whenStable();
+    const terminals: Terminal[] = revived.debugElement
+      .queryAll(By.directive(Terminal))
+      .map((element): Terminal => element.componentInstance as Terminal);
+    expect(terminals.map((terminal: Terminal): string => terminal.terminalId())).toEqual([...ids]);
+    expect(terminals.every((terminal: Terminal): boolean => terminal.persistent())).toBe(true);
   });
 });

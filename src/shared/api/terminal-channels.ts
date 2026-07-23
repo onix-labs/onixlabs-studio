@@ -37,7 +37,15 @@ export enum TerminalChannel {
   ListShells = 'terminal:list-shells',
 
   /**
-   * Carries output data from a session to the renderer (main→renderer, send).
+   * Requests a session's retained scrollback snapshot, so a re-attaching terminal pane can replay the
+   * output it missed while no pane was mounted (renderer→main, invoke).
+   */
+  Replay = 'terminal:replay',
+
+  /**
+   * Carries output data from a session to the renderer, with the chunk's sequence number in the
+   * session's output stream so a replaying pane can discard chunks its snapshot already contains
+   * (main→renderer, send).
    */
   Data = 'terminal:data',
 
@@ -91,6 +99,30 @@ export interface ShellInfo {
    * Gets the absolute path to the shell executable.
    */
   readonly path: string;
+}
+
+/**
+ * Defines a session's retained scrollback snapshot, replayed into a re-attaching terminal pane. The
+ * main process retains each session's recent output (and its exit, when it has ended) so a pane that
+ * was unmounted — for example while another tool tab was active — can restore what it missed.
+ */
+export interface TerminalReplay {
+  /**
+   * Gets the retained output, bounded to the most recent span of the session's stream.
+   */
+  readonly data: string;
+
+  /**
+   * Gets the sequence number of the last output chunk the snapshot includes; live chunks bearing a
+   * sequence number at or below this are already part of {@link data}.
+   */
+  readonly seq: number;
+
+  /**
+   * Gets the exit code the session's process ended with, or null while it is still running (or was
+   * never started).
+   */
+  readonly exitCode: number | null;
 }
 
 /**

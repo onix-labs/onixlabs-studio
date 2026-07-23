@@ -34,8 +34,10 @@ import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { collectPanelIds } from '@shared/angular/services/dock-layout/dock-tree';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
@@ -94,6 +96,11 @@ const STATUS_PRIORITY: number = 30;
     DockFloating,
     DockAutoHide,
     DockDrag,
+    DockReveal,
+    // The terminal sessions live at this view's level, not in the dock's terminal panel: tool stacks
+    // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
+    // every PTY down on a tool-tab switch. Here they live as long as the tab.
+    TerminalSessions,
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would

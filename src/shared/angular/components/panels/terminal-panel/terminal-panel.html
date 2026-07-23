@@ -52,7 +52,8 @@
         >
           <app-terminal
             [terminalId]="session.id"
-            [cwd]="root"
+            [cwd]="session.cwd"
+            [persistent]="true"
             [isActive]="isActive() && session.id === activeId()"
             (shellChange)="onShell(session.id, $event)"
           />

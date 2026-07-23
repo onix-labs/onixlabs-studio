@@ -17,16 +17,22 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
-import { TerminalSession, TerminalSessions } from './terminal-sessions';
+import {
+  TerminalSession,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 
 /**
  * Hosts one or more interactive terminals as a dockable IDE panel for a workspace or repository tab. It
  * embeds the shared {@link Terminal} pane once per session — all mounted at once, only the active one
- * visible — so switching between terminals (or hiding the panel on a tab switch) never tears a PTY down.
- * A tab strip switches, closes, and renames terminals, and a New Terminal button adds one; the shells
- * are rooted at the tab's folder (or repository root), so a tab with no folder open shows a prompt
- * instead. The per-panel {@link TerminalSessions} owns the list, so each dock's terminal panel is
- * independent.
+ * visible — so switching between terminals never tears a PTY down. A tab strip switches, closes, and
+ * renames terminals, and a New Terminal button adds one; the shells are rooted at the tab's folder (or
+ * repository root), so a tab with no folder open shows a prompt instead.
+ *
+ * The panel is a view over the owning tab's {@link TerminalSessions} (provided at the view level, not
+ * here): tool stacks destroy an inactive panel when another activates, so the sessions and their PTYs
+ * live with the tab, and the panes it embeds are persistent — re-mounting the panel re-attaches each
+ * pane to its session, replaying the output produced while the panel was away.
  */
 @Component({
   selector: 'app-terminal-panel',
@@ -34,7 +40,6 @@ import { TerminalSession, TerminalSessions } from './terminal-sessions';
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [TerminalSessions],
 })
 export class TerminalPanel {
   /**
@@ -90,15 +95,16 @@ export class TerminalPanel {
   protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Initializes the panel, opening one terminal once a folder is known.
+   * Initializes the panel, announcing the tab's folder to the session store so it can open the first
+   * terminal (and swap sessions out when the folder changes).
    */
   public constructor() {
-    // Open with a terminal as soon as a folder is available; never spawn a shell before the root is
-    // known (its working directory would be wrong).
+    // Announce the root on mount and whenever it changes; the store opens the first terminal once a
+    // folder is known (never before — the shell's working directory would be wrong), keeps sessions
+    // across a re-mount under the same root, and replaces them when the folder changes.
     effect((): void => {
-      if (this.root() !== null) {
-        untracked((): void => this.terminals.ensureOne());
-      }
+      const root: string | null = this.root();
+      untracked((): void => this.terminals.setRoot(root));
     });
   }
 

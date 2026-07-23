@@ -40,6 +40,8 @@ import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
@@ -126,6 +128,11 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     DockFloating,
     DockAutoHide,
     DockDrag,
+    DockReveal,
+    // The terminal sessions live at this view's level, not in the dock's terminal panel: tool stacks
+    // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
+    // every PTY down on a tool-tab switch. Here they live as long as the tab.
+    TerminalSessions,
     { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would

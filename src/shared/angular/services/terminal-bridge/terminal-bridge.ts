@@ -5,6 +5,7 @@ import {
   TerminalChannel,
   TerminalCreateOptions,
   TerminalCreateResult,
+  TerminalReplay,
 } from '@shared/api/terminal-channels';
 
 /**
@@ -14,6 +15,11 @@ const UNAVAILABLE_RESULT: TerminalCreateResult = {
   success: false,
   error: 'Terminal is only available when running inside Electron.',
 };
+
+/**
+ * Holds the empty snapshot returned when a replay is requested outside Electron.
+ */
+const EMPTY_REPLAY: TerminalReplay = { data: '', seq: 0, exitCode: null };
 
 /**
  * Represents the renderer-side terminal client: the typed wrapper around the pty IPC channels, driven
@@ -99,14 +105,28 @@ export class TerminalBridge {
   }
 
   /**
+   * Reads a session's retained scrollback snapshot, so a re-attaching pane can replay the output it
+   * missed while unmounted.
+   * @param id The terminal identifier.
+   * @returns Returns the snapshot, or an empty snapshot outside Electron (or for an unknown session).
+   */
+  public replay(id: string): Promise<TerminalReplay> {
+    return (
+      this.bridge?.invoke<TerminalReplay>(TerminalChannel.Replay, id) ??
+      Promise.resolve(EMPTY_REPLAY)
+    );
+  }
+
+  /**
    * Subscribes to output data from sessions.
-   * @param listener Receives the terminal id and the output data chunk.
+   * @param listener Receives the terminal id, the output data chunk, and the chunk's sequence number
+   * in the session's output stream (used to reconcile live chunks with a replay snapshot).
    * @returns Returns a function that removes the listener.
    */
-  public onData(listener: (id: string, data: string) => void): () => void {
+  public onData(listener: (id: string, data: string, seq: number) => void): () => void {
     return (
       this.bridge?.on(TerminalChannel.Data, (...args: unknown[]): void =>
-        listener(args[0] as string, args[1] as string),
+        listener(args[0] as string, args[1] as string, args[2] as number),
       ) ?? ((): void => undefined)
     );
   }

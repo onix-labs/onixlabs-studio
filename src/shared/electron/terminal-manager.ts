@@ -6,7 +6,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { readFileSync } from 'node:fs';
-import { ShellInfo, TerminalChannel, TerminalCreateResult } from '@shared/api/terminal-channels';
+import {
+  ShellInfo,
+  TerminalChannel,
+  TerminalCreateResult,
+  TerminalReplay,
+} from '@shared/api/terminal-channels';
+import { TerminalScrollback } from './terminal-scrollback';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -42,6 +48,12 @@ export class TerminalManager {
    * Holds the running pseudo-terminal sessions, keyed by terminal identifier.
    */
   private readonly terminals: Map<string, pty.IPty> = new Map<string, pty.IPty>();
+
+  /**
+   * Holds each session's retained scrollback, so a re-attaching renderer pane can replay the output
+   * it missed while unmounted. Records outlive process exit and are removed only on dispose.
+   */
+  private readonly scrollback: TerminalScrollback = new TerminalScrollback();
 
   /**
    * Initializes a new instance of the {@link TerminalManager} class.
@@ -80,6 +92,11 @@ export class TerminalManager {
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
     ipcMain.handle(TerminalChannel.ListShells, (): readonly ShellInfo[] => this.listShells());
+    ipcMain.handle(TerminalChannel.Replay, (_event: IpcMainInvokeEvent, id: unknown): TerminalReplay =>
+      typeof id === 'string'
+        ? this.scrollback.snapshot(id)
+        : { data: '', seq: 0, exitCode: null },
+    );
   }
 
   /**
@@ -94,6 +111,7 @@ export class TerminalManager {
       }
     }
     this.terminals.clear();
+    this.scrollback.clear();
   }
 
   /**
@@ -146,11 +164,19 @@ export class TerminalManager {
         env: process.env,
       });
 
+      // A fresh spawn starts a fresh scrollback record, so a session re-created under a reused
+      // identifier never replays its predecessor's output.
+      this.scrollback.reset(id);
+
       terminal.onData((data: string): void => {
-        this.send(TerminalChannel.Data, id, data);
+        const seq: number = this.scrollback.append(id, data);
+        this.send(TerminalChannel.Data, id, data, seq);
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
+        // Keep the scrollback (with the exit recorded) so a pane re-attaching later still shows the
+        // session's output and exit banner; only dispose removes it.
+        this.scrollback.markExited(id, event.exitCode);
         this.send(TerminalChannel.Exit, id, event.exitCode, event.signal ?? null);
         this.terminals.delete(id);
       });
@@ -209,14 +235,16 @@ export class TerminalManager {
   }
 
   /**
-   * Disposes (kills) the session identified by the given id.
+   * Disposes (kills) the session identified by the given id, discarding its retained scrollback. An
+   * already-exited session no longer has a process, but disposing it still clears its scrollback.
    * @param id The terminal identifier.
-   * @returns Returns true when the session existed and was disposed.
+   * @returns Returns true when a session (or its retained scrollback) existed and was removed.
    */
   private dispose(id: string): boolean {
+    const hadScrollback: boolean = this.scrollback.delete(id);
     const terminal: pty.IPty | undefined = this.terminals.get(id);
     if (terminal === undefined) {
-      return false;
+      return hadScrollback;
     }
     try {
       terminal.kill();
