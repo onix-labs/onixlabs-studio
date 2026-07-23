@@ -6,6 +6,7 @@ import {
   MessageBoxReturnValue,
   OpenDialogReturnValue,
   SaveDialogReturnValue,
+  WebContents,
 } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -50,7 +51,8 @@ const CANCEL_BUTTON_INDEX: number = 2;
  */
 export class FileManager {
   /**
-   * Holds the function used to resolve the window that owns the dialogs.
+   * Holds the function used to resolve the window dialogs fall back to when the requesting window
+   * is gone.
    */
   private readonly windowGetter: () => BrowserWindow | null;
 
@@ -61,7 +63,8 @@ export class FileManager {
 
   /**
    * Initializes a new instance of the {@link FileManager} class.
-   * @param windowGetter A function that returns the window the dialogs are parented to.
+   * @param windowGetter A function that returns the window dialogs are parented to when the
+   * requesting window is gone.
    * @param trusted The store used to remember files chosen through the save dialog.
    */
   public constructor(windowGetter: () => BrowserWindow | null, trusted: TrustedPaths) {
@@ -87,27 +90,33 @@ export class FileManager {
         hasBom: unknown,
       ): Promise<FileWriteResult> => this.write(filePath, content, hasBom === true),
     );
-    ipcMain.handle(FileChannel.OpenFileDialog, (): Promise<FileInfo | null> => this.openDialog());
-    ipcMain.handle(FileChannel.PickImage, (): Promise<string | null> => this.pickImage());
+    ipcMain.handle(
+      FileChannel.OpenFileDialog,
+      (event: IpcMainInvokeEvent): Promise<FileInfo | null> => this.openDialog(event.sender),
+    );
+    ipcMain.handle(
+      FileChannel.PickImage,
+      (event: IpcMainInvokeEvent): Promise<string | null> => this.pickImage(event.sender),
+    );
     ipcMain.handle(
       FileChannel.PickPath,
-      (_event: IpcMainInvokeEvent, kind: unknown): Promise<string | null> =>
-        this.pickPath(kind === 'folder' ? 'folder' : 'file'),
+      (event: IpcMainInvokeEvent, kind: unknown): Promise<string | null> =>
+        this.pickPath(event.sender, kind === 'folder' ? 'folder' : 'file'),
     );
     ipcMain.handle(
       FileChannel.SaveFileDialog,
-      (_event: IpcMainInvokeEvent, defaultPath: unknown): Promise<string | null> =>
-        this.saveDialog(typeof defaultPath === 'string' ? defaultPath : undefined),
+      (event: IpcMainInvokeEvent, defaultPath: unknown): Promise<string | null> =>
+        this.saveDialog(event.sender, typeof defaultPath === 'string' ? defaultPath : undefined),
     );
     ipcMain.handle(
       FileChannel.ConfirmSave,
-      (_event: IpcMainInvokeEvent, fileName: unknown): Promise<SaveDialogChoice> =>
-        this.confirmSave(typeof fileName === 'string' ? fileName : ''),
+      (event: IpcMainInvokeEvent, fileName: unknown): Promise<SaveDialogChoice> =>
+        this.confirmSave(event.sender, typeof fileName === 'string' ? fileName : ''),
     );
     ipcMain.handle(
       FileChannel.ConfirmDestructive,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<boolean> =>
-        this.confirmDestructive(request),
+      (event: IpcMainInvokeEvent, request: unknown): Promise<boolean> =>
+        this.confirmDestructive(event.sender, request),
     );
   }
 
@@ -155,11 +164,26 @@ export class FileManager {
   }
 
   /**
+   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
+   * back to the main application window.
+   * @param sender The web contents that requested the dialog.
+   * @returns Returns the owning window, or null when no window is available.
+   */
+  private dialogParent(sender: WebContents): BrowserWindow | null {
+    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
+    if (requester !== null && !requester.isDestroyed()) {
+      return requester;
+    }
+    return this.windowGetter();
+  }
+
+  /**
    * Shows an open-file dialog and reads the chosen file.
+   * @param sender The web contents that requested the dialog.
    * @returns Returns the chosen file's info, or null when cancelled or unreadable.
    */
-  private async openDialog(): Promise<FileInfo | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async openDialog(sender: WebContents): Promise<FileInfo | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
@@ -179,10 +203,11 @@ export class FileManager {
 
   /**
    * Shows an open-image dialog and returns the chosen file's path, without reading its contents.
+   * @param sender The web contents that requested the dialog.
    * @returns Returns the chosen image's absolute path, or null when cancelled.
    */
-  private async pickImage(): Promise<string | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async pickImage(sender: WebContents): Promise<string | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
@@ -202,11 +227,12 @@ export class FileManager {
   /**
    * Shows an open dialog for a single file or folder and returns the chosen path, without reading its
    * contents. Used to attach context to an agent conversation.
+   * @param sender The web contents that requested the dialog.
    * @param kind Whether to pick a file or a folder.
    * @returns Returns the chosen path, or null when cancelled.
    */
-  private async pickPath(kind: 'file' | 'folder'): Promise<string | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async pickPath(sender: WebContents, kind: 'file' | 'folder'): Promise<string | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
@@ -221,11 +247,12 @@ export class FileManager {
 
   /**
    * Shows a save-file dialog and returns the chosen path.
+   * @param sender The web contents that requested the dialog.
    * @param defaultPath The path suggested in the dialog.
    * @returns Returns the chosen path, or null when cancelled.
    */
-  private async saveDialog(defaultPath?: string): Promise<string | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async saveDialog(sender: WebContents, defaultPath?: string): Promise<string | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
@@ -243,11 +270,12 @@ export class FileManager {
 
   /**
    * Shows a confirmation dialog asking whether to save unsaved changes.
+   * @param sender The web contents that requested the dialog.
    * @param fileName The name of the file with unsaved changes.
    * @returns Returns the user's choice.
    */
-  private async confirmSave(fileName: string): Promise<SaveDialogChoice> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async confirmSave(sender: WebContents, fileName: string): Promise<SaveDialogChoice> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return 'cancel';
     }
@@ -272,10 +300,11 @@ export class FileManager {
   /**
    * Shows a destructive-action confirmation dialog. Cancel is the default and the escape action, so
    * a stray Return or Escape never confirms the destruction.
+   * @param sender The web contents that requested the dialog.
    * @param request The dialog's title, message, detail, and confirm-button label.
    * @returns Returns true when the user explicitly confirmed.
    */
-  private async confirmDestructive(request: unknown): Promise<boolean> {
+  private async confirmDestructive(sender: WebContents, request: unknown): Promise<boolean> {
     const candidate: Partial<ConfirmDestructiveRequest> = request ?? {};
     if (
       typeof candidate.title !== 'string' ||
@@ -285,7 +314,7 @@ export class FileManager {
     ) {
       return false;
     }
-    const window: BrowserWindow | null = this.windowGetter();
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return false;
     }

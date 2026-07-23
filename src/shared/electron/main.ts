@@ -47,6 +47,7 @@ import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
+import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
 
@@ -153,9 +154,22 @@ class Program {
   private static readonly GPU_INFO_TIMEOUT_MS: number = 3_000;
 
   /**
-   * Holds the main application window, or null before it is created or after it is closed.
+   * Owns every application window: creation, the registry resolving the main window that
+   * renderer-push events target, and per-kind bounds persistence. The main window's lifecycle hooks
+   * stay here (as options) because they drive the app-wide quit protocol.
    */
-  private window: BrowserWindow | null = null;
+  private readonly windows: WindowManager = new WindowManager({
+    preloadPath: path.join(__dirname, 'preload.js'),
+    startUrl: Program.START_URL,
+    indexHtml: Program.INDEX_HTML,
+    applySecurity: (contents: WebContents): void => this.applyWebContentsSecurity(contents),
+    onMainClose: (event: ElectronEvent): void => this.onWindowClose(event),
+    onMainDidFinishLoad: (): void => {
+      // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
+      // drains them over TakePendingOpenPaths.
+      this.openPathsReady = false;
+    },
+  });
 
   /**
    * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the
@@ -209,7 +223,7 @@ class Program {
    * Manages pseudo-terminal sessions on behalf of the renderer.
    */
   private readonly terminalManager: TerminalManager = new TerminalManager(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -224,7 +238,7 @@ class Program {
   );
 
   private readonly fileManager: FileManager = new FileManager(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
   );
 
@@ -236,13 +250,13 @@ class Program {
   /**
    * Runs git safely on behalf of the renderer's source-control surfaces.
    */
-  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null => this.window);
+  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null => this.windows.main());
 
   /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
   private readonly fileWatcher: FileWatcher = new FileWatcher(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -250,13 +264,13 @@ class Program {
    * explorers' live refresh and the source-control view's automatic git status.
    */
   private readonly directoryWatcher: DirectoryWatcher = new DirectoryWatcher(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
    */
-  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null => this.window);
+  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null => this.windows.main());
 
   /**
    * Owns the runtime security policy: the Content-Security-Policy header and the image-source policy.
@@ -288,7 +302,7 @@ class Program {
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
    */
   private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
   );
@@ -346,7 +360,7 @@ class Program {
    * and language features to the renderer.
    */
   private readonly lspManager: LspManager = new LspManager(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.lspServerRegistry,
   );
@@ -367,7 +381,7 @@ class Program {
    * events and the renderer's requests.
    */
   private readonly debugManager: DebugManager = new DebugManager(
-    (): BrowserWindow | null => this.window,
+    (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.debugAdapterRegistry,
   );
@@ -447,14 +461,7 @@ class Program {
     for (const filePath of openFilePathsFromArgv(argv, process.defaultApp === true)) {
       this.dispatchOpenPath(filePath);
     }
-    const window: BrowserWindow | null = this.window;
-    if (window === null) {
-      return;
-    }
-    if (window.isMinimized()) {
-      window.restore();
-    }
-    window.focus();
+    this.windows.focusMain();
   }
 
   /**
@@ -473,56 +480,12 @@ class Program {
       return;
     }
     this.trustedPaths.remember(filePath);
-    const window: BrowserWindow | null = this.window;
+    const window: BrowserWindow | null = this.windows.main();
     if (this.openPathsReady && window !== null && !window.isDestroyed()) {
       window.webContents.send(AppChannel.OpenPath, filePath);
       return;
     }
     this.pendingOpenPaths.push(filePath);
-  }
-
-  /**
-   * Creates the main application window and loads the Angular application into it.
-   */
-  private createWindow(): void {
-    const window: BrowserWindow = new BrowserWindow({
-      backgroundColor: '#000000',
-      width: 1280,
-      height: 800,
-      minWidth: 800,
-      minHeight: 600,
-      show: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-
-    window.once('ready-to-show', (): void => window.show());
-    // Page zoom is disabled (the application menu omits the zoom roles), but Chromium persists zoom
-    // levels per-origin in the session, so a level set before zoom was disabled would silently apply
-    // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
-    window.webContents.on('did-finish-load', (): void => {
-      window.webContents.setZoomLevel(0);
-      // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
-      // drains them over TakePendingOpenPaths.
-      this.openPathsReady = false;
-    });
-    window.on('close', this.onWindowClose.bind(this));
-    window.on('closed', (): void => {
-      this.window = null;
-    });
-
-    this.applyWebContentsSecurity(window.webContents);
-
-    this.window = window;
-
-    if (Program.START_URL !== undefined) void window.loadURL(Program.START_URL);
-    else void window.loadFile(Program.INDEX_HTML);
   }
 
   /**
@@ -746,7 +709,7 @@ class Program {
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
     // the renderer's preload reads it synchronously (before the first paint).
     await this.resolveGpuRenderingRecommendation();
-    this.createWindow();
+    this.windows.createMainWindow();
     // Windows/Linux deliver OS-opened files as launch arguments (macOS sends open-file events,
     // handled in initialize); queue them for the renderer to drain once it is listening.
     for (const filePath of openFilePathsFromArgv(process.argv, process.defaultApp === true)) {
@@ -902,7 +865,7 @@ class Program {
    * @returns Returns true when the application may quit.
    */
   private requestRendererClose(): Promise<boolean> {
-    const window: BrowserWindow | null = this.window;
+    const window: BrowserWindow | null = this.windows.main();
     if (window === null) {
       return Promise.resolve(true);
     }
@@ -933,7 +896,7 @@ class Program {
    * Handles the app onActivate event.
    */
   private onActivate(): void {
-    if (BrowserWindow.getAllWindows().length === 0) this.createWindow();
+    if (this.windows.main() === null) this.windows.createMainWindow();
   }
 
   /**

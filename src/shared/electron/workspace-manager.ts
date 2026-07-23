@@ -4,6 +4,7 @@ import {
   ipcMain,
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
+  WebContents,
 } from 'electron';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
@@ -62,7 +63,8 @@ const MAX_READ_BYTES: number = 1024 * 1024;
  */
 export class WorkspaceManager {
   /**
-   * Holds the function used to resolve the window that owns the dialogs.
+   * Holds the function used to resolve the window dialogs fall back to when the requesting window
+   * is gone.
    */
   private readonly windowGetter: () => BrowserWindow | null;
 
@@ -78,7 +80,8 @@ export class WorkspaceManager {
 
   /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
-   * @param windowGetter A function that returns the window the dialogs are parented to.
+   * @param windowGetter A function that returns the window dialogs are parented to when the
+   * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
    */
@@ -96,7 +99,10 @@ export class WorkspaceManager {
    * Registers the workspace IPC handlers.
    */
   public register(): void {
-    ipcMain.handle(WorkspaceChannel.Open, (): Promise<OpenSelection | null> => this.open());
+    ipcMain.handle(
+      WorkspaceChannel.Open,
+      (event: IpcMainInvokeEvent): Promise<OpenSelection | null> => this.open(event.sender),
+    );
     ipcMain.handle(
       WorkspaceChannel.OpenFile,
       (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
@@ -127,7 +133,8 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFolder,
-      (): Promise<DirectoryListing | null> => this.openFolder(),
+      (event: IpcMainInvokeEvent): Promise<DirectoryListing | null> =>
+        this.openFolder(event.sender),
     );
     ipcMain.handle(
       WorkspaceChannel.CloseFolder,
@@ -226,11 +233,26 @@ export class WorkspaceManager {
   }
 
   /**
+   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
+   * back to the main application window.
+   * @param sender The web contents that requested the dialog.
+   * @returns Returns the owning window, or null when no window is available.
+   */
+  private dialogParent(sender: WebContents): BrowserWindow | null {
+    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
+    if (requester !== null && !requester.isDestroyed()) {
+      return requester;
+    }
+    return this.windowGetter();
+  }
+
+  /**
    * Shows an open-folder dialog and, when a folder is chosen, sets it as the workspace root.
+   * @param sender The web contents that requested the dialog.
    * @returns Returns the root directory listing, or null when the dialog was cancelled or unreadable.
    */
-  private async openFolder(): Promise<DirectoryListing | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async openFolder(sender: WebContents): Promise<DirectoryListing | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
@@ -255,10 +277,11 @@ export class WorkspaceManager {
    * Shows a combined open dialog allowing either a file or a folder to be chosen. A folder becomes
    * the workspace root; a file is returned as text content, or as a binary marker when it is not
    * decodable text.
+   * @param sender The web contents that requested the dialog.
    * @returns Returns the selection, or null when the dialog was cancelled or unreadable.
    */
-  private async open(): Promise<OpenSelection | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async open(sender: WebContents): Promise<OpenSelection | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }

@@ -7,6 +7,7 @@ import {
   ipcMain,
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
+  WebContents,
 } from 'electron';
 import { GitRunResult, RepositoryInfo, SourceControlChannel } from '../api/source-control-channels';
 
@@ -64,7 +65,8 @@ function isSafeOperand(value: unknown): value is string {
  */
 export class GitManager {
   /**
-   * Holds the accessor for the current application window, used to parent the open dialog.
+   * Holds the accessor for the main application window, the dialog parent of last resort when the
+   * requesting window is gone.
    */
   private readonly windowGetter: () => BrowserWindow | null;
 
@@ -79,7 +81,8 @@ export class GitManager {
 
   /**
    * Initialises a new instance of the {@link GitManager} class.
-   * @param windowGetter Returns the current application window, or null when none is open.
+   * @param windowGetter Returns the window dialogs are parented to when the requesting window is
+   * gone, or null when none is open.
    */
   public constructor(windowGetter: () => BrowserWindow | null) {
     this.windowGetter = windowGetter;
@@ -91,7 +94,8 @@ export class GitManager {
   public register(): void {
     ipcMain.handle(
       SourceControlChannel.OpenRepository,
-      (): Promise<RepositoryInfo | null> => this.openRepository(),
+      (event: IpcMainInvokeEvent): Promise<RepositoryInfo | null> =>
+        this.openRepository(event.sender),
     );
     ipcMain.handle(
       SourceControlChannel.ResolveRepository,
@@ -187,12 +191,27 @@ export class GitManager {
   }
 
   /**
+   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
+   * back to the main application window.
+   * @param sender The web contents that requested the dialog.
+   * @returns Returns the owning window, or null when no window is available.
+   */
+  private dialogParent(sender: WebContents): BrowserWindow | null {
+    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
+    if (requester !== null && !requester.isDestroyed()) {
+      return requester;
+    }
+    return this.windowGetter();
+  }
+
+  /**
    * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root,
    * opening it for subsequent operations.
+   * @param sender The web contents that requested the dialog.
    * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
    */
-  private async openRepository(): Promise<RepositoryInfo | null> {
-    const window: BrowserWindow | null = this.windowGetter();
+  private async openRepository(sender: WebContents): Promise<RepositoryInfo | null> {
+    const window: BrowserWindow | null = this.dialogParent(sender);
     if (window === null) {
       return null;
     }
