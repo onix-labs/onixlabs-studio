@@ -132,6 +132,27 @@ export function restoreWindowRect(
 }
 
 /**
+ * Parses the position requested by a `window.open` features string (`left=…,top=…`), as a tear-out
+ * drag passes it. Parsed defensively — the string is renderer-supplied — and only a complete,
+ * finite pair is honoured.
+ * @param features The raw features string from the window-open request.
+ * @returns Returns the requested position, or null when the features carry no usable position.
+ */
+export function parseRequestedPosition(features: string): { x: number; y: number } | null {
+  const entries: Map<string, number> = new Map<string, number>();
+  for (const part of features.split(',')) {
+    const [key, raw] = part.split('=');
+    const value: number = Number(raw);
+    if (key !== undefined && raw !== undefined && Number.isFinite(value)) {
+      entries.set(key.trim().toLowerCase(), value);
+    }
+  }
+  const x: number | undefined = entries.get('left');
+  const y: number | undefined = entries.get('top');
+  return x !== undefined && y !== undefined ? { x: Math.round(x), y: Math.round(y) } : null;
+}
+
+/**
  * Determines whether a value is a finite number.
  * @param value The value to test.
  * @returns Returns true when the value is a finite number.

@@ -302,6 +302,14 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   wherever their DOM renders, so PTY output keeps flowing over the main window's bridge, and a
   popped pane re-attaches through the same scrollback replay as any remount (the pop-out never
   disposes a PTY — panes are `persistent`).
+- **Drag gestures.** A tool tab dragged beyond the window edge **tears out** into a pop-out at the
+  drop point (`DockDrag.registerExternalDrop` → `PanelPopout`; the requested position rides the
+  `window.open` features string, parsed and display-clamped by the main process). One dropped onto
+  an open pop-out window **joins it as a tab** — windows host several panels behind a
+  `PopoutTabStrip` in their chrome, hit-tested by screen rect (same-renderer children expose their
+  bounds directly). In-window void drops still float; document tabs never tear out. Cross-window
+  hit-testing only engages outside the main viewport, so a pop-out overlapping the dock never
+  shadows in-window drops.
 - **Move, not clone.** A panel (and a terminal session) renders in exactly one window; closing a
   pop-out docks the panel back to the stack/index it left. Closing the main window quits the app;
   pop-outs never gate lifecycle. `DockReveal` focuses a popped panel's window instead of touching

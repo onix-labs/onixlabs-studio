@@ -69,4 +69,46 @@ describe('DockDrag', () => {
 
     expect(drag.active()).toBe(false);
   });
+
+  it('registerExternalDrop_whenReleaseHitsNoDockTarget_offersTheDropWithTheReleaseEvent', () => {
+    const taken: { id: string; screenX: number }[] = [];
+    drag.registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean => {
+      taken.push({ id: panel.id, screenX: event.screenX });
+      return true;
+    });
+    drag.begin('output', new MouseEvent('mousedown', { clientX: 100, clientY: 100 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }));
+
+    document.dispatchEvent(new MouseEvent('mouseup', { screenX: 2000, screenY: 300 }));
+
+    expect(taken).toEqual([{ id: 'output', screenX: 2000 }]);
+    expect(drag.active()).toBe(false);
+  });
+
+  it('registerExternalDrop_whenThePressNeverBecameADrag_isNotConsulted', () => {
+    let offered: number = 0;
+    drag.registerExternalDrop((): boolean => {
+      offered++;
+      return true;
+    });
+    drag.begin('output', new MouseEvent('mousedown', { clientX: 100, clientY: 100 }));
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    expect(offered).toBe(0);
+  });
+
+  it('registerExternalDrop_disposer_removesTheHandlerUnlessReplaced', () => {
+    let offered: number = 0;
+    const dispose: () => void = drag.registerExternalDrop((): boolean => {
+      offered++;
+      return true;
+    });
+    dispose();
+    drag.begin('output', new MouseEvent('mousedown', { clientX: 100, clientY: 100 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    expect(offered).toBe(0);
+  });
 });
