@@ -34,6 +34,7 @@ import {
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 
 /**
@@ -145,9 +146,15 @@ export class PanelPopout implements OnDestroy {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
-   * Holds the owning tab's context, whose root names the pop-out windows.
+   * Holds the owning tab's context, whose root names the pop-out windows and whose tab id scopes
+   * their keyboard accelerators.
    */
   private readonly context: DockTabContext = inject(DockTabContext);
+
+  /**
+   * Holds the keyboard accelerator router pop-out windows forward their key presses to.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds this view's injector, the parent of every pop-out dock's injector, so popped panels
@@ -268,6 +275,17 @@ export class PanelPopout implements OnDestroy {
     };
     this.windows.push(popout);
     window.onClosed((): void => this.handleWindowClosed(popout));
+
+    // Keyboard accelerators enter through one listener per window — the shell's for the main
+    // window (Root.onWindowKeydown), and this one for the pop-out. It dispatches with the OWNING
+    // view's scope, so chords act on this view even while another tab is active in the main
+    // window. Bubble phase, like the shell's: an embedded editor or terminal consumes the keys it
+    // owns before they reach the router. The listener dies with the window's document.
+    document.defaultView?.addEventListener('keydown', (event: KeyboardEvent): void => {
+      if (this.keybindings.dispatch(event, this.context.tabId())) {
+        event.preventDefault();
+      }
+    });
 
     // The window's dock takes over outside drops released from ITS drags, so panels move between
     // windows and back to the main dock by the same gesture.

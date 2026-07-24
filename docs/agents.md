@@ -317,6 +317,12 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   close on outside clicks there), CDK tab drag-reorder tracks the child document, and positioning
   measures the child viewport. Main-window triggers keep resolving the root instances — never
   route overlays across windows by hand.
+- **Keyboard accelerators per window.** Accelerators enter through one bubble-phase `keydown`
+  listener per window: the shell's (`Root.onWindowKeydown`) for the main window, and one
+  `PanelPopout` attaches to each pop-out, dispatching with the OWNING view's scope
+  (`Keybindings.dispatch(event, scope)`) so chords act on that view even while another tab is
+  active in the main window. Bubble phase keeps editor-first semantics — an embedded engine
+  consumes the keys it owns before the router sees them.
 - **Drag gestures.** A tool tab dragged beyond its window's edge **tears out** into a new pop-out
   at the drop point (`DockDrag.registerExternalDrop`; the requested position rides the
   `window.open` features string, parsed and display-clamped by the main process). Dropped onto an
