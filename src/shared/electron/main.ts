@@ -625,7 +625,7 @@ class Program {
       if (details.url === AUX_PANEL_URL) {
         return {
           action: 'allow',
-          overrideBrowserWindowOptions: this.windows.auxiliaryWindowOptions(),
+          overrideBrowserWindowOptions: this.windows.auxiliaryWindowOptions(details.features),
         };
       }
       void this.openExternalUrl(details.url);

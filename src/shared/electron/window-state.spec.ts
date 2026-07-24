@@ -1,4 +1,5 @@
 import {
+  parseRequestedPosition,
   parseStoredWindowState,
   restoreWindowRect,
   StoredWindowState,
@@ -123,5 +124,26 @@ describe('restoreWindowRect', () => {
       width: 1281,
       height: 800,
     });
+  });
+});
+
+describe('parseRequestedPosition', () => {
+  it('withLeftAndTop_returnsTheRoundedPosition', () => {
+    expect(parseRequestedPosition('left=120.6,top=45.2')).toEqual({ x: 121, y: 45 });
+  });
+
+  it('withExtraFeatures_ignoresThem', () => {
+    expect(parseRequestedPosition('popup=1,left=10,top=20,width=960')).toEqual({ x: 10, y: 20 });
+  });
+
+  it('withCasingAndSpaces_normalisesTheKeys', () => {
+    expect(parseRequestedPosition(' Left=10 , TOP=20 ')).toEqual({ x: 10, y: 20 });
+  });
+
+  it('withAnIncompleteOrMalformedPair_returnsNull', () => {
+    expect(parseRequestedPosition('')).toBeNull();
+    expect(parseRequestedPosition('left=10')).toBeNull();
+    expect(parseRequestedPosition('left=abc,top=20')).toBeNull();
+    expect(parseRequestedPosition('left=Infinity,top=20')).toBeNull();
   });
 });

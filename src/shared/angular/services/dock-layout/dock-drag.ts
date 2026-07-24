@@ -73,6 +73,17 @@ const DEFAULT_GHOST: { readonly width: number; readonly height: number } = {
 };
 
 /**
+ * Takes a drag released over none of the dock's own targets — outside the window, or over another
+ * window entirely. The handler decides from the event's coordinates whether the drop is its to
+ * take (tearing the panel out into a new OS window, moving it into an existing one); a drop it
+ * declines falls back to the dock's own void behaviour (floating the panel).
+ * @param panel The dragged panel.
+ * @param event The release event, carrying viewport and screen coordinates.
+ * @returns Returns true when the drop was consumed.
+ */
+export type ExternalDropHandler = (panel: DockPanel, event: MouseEvent) => boolean;
+
+/**
  * The distance, in pixels, the cursor must travel before a press becomes a drag. Below it a press
  * is treated as a click, so dragging never starts from a stationary mousedown.
  */
@@ -206,7 +217,13 @@ export class DockDrag {
   /**
    * Holds the bound release handler so it can be detached.
    */
-  private readonly releaseHandler: () => void = (): void => this.onRelease();
+  private readonly releaseHandler: (event: MouseEvent) => void = (event: MouseEvent): void =>
+    this.onRelease(event);
+
+  /**
+   * Holds the external drop handler, or null when none is registered.
+   */
+  private externalDrop: ExternalDropHandler | null = null;
 
   /**
    * Gets the panel being dragged, or null when idle.
@@ -249,6 +266,20 @@ export class DockDrag {
   public readonly showEdges: Signal<boolean> = computed(
     (): boolean => this.draggedPanel()?.role === 'tool',
   );
+
+  /**
+   * Registers the handler offered drops released over none of the dock's own targets.
+   * @param handler The external drop handler.
+   * @returns Returns a function that deregisters the handler (unless it was replaced since).
+   */
+  public registerExternalDrop(handler: ExternalDropHandler): () => void {
+    this.externalDrop = handler;
+    return (): void => {
+      if (this.externalDrop === handler) {
+        this.externalDrop = null;
+      }
+    };
+  }
 
   /**
    * Begins a compass dock drag for the given panel.
@@ -378,10 +409,12 @@ export class DockDrag {
   }
 
   /**
-   * Ends the drag: commits the resolved target, floats the panel when dropped on void, or does
-   * nothing when the press never became a drag.
+   * Ends the drag: commits the resolved target, offers a target-less release to the external drop
+   * handler (a tear-out beyond the window, a drop onto another window), floats the panel when
+   * dropped on in-window void, or does nothing when the press never became a drag.
+   * @param event The release event.
    */
-  private onRelease(): void {
+  private onRelease(event: MouseEvent): void {
     this.document.removeEventListener('mousemove', this.moveHandler);
     this.document.removeEventListener('mouseup', this.releaseHandler);
 
@@ -395,6 +428,8 @@ export class DockDrag {
     }
     if (target !== null) {
       this.applyDock(panel, target);
+    } else if (this.externalDrop?.(panel, event) === true) {
+      return;
     } else if (ghost !== null) {
       this.floating.float(panel.id, ghost);
     }

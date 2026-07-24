@@ -1,5 +1,10 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
-import { restoreWindowRect, StoredWindowState, WindowRect } from './window-state';
+import {
+  parseRequestedPosition,
+  restoreWindowRect,
+  StoredWindowState,
+  WindowRect,
+} from './window-state';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
 
@@ -203,18 +208,34 @@ export class WindowManager {
 
   /**
    * Builds the window options an allowed auxiliary panel window opens with: pop-out chrome and the
-   * persisted pop-out bounds when they are still reachable. The hardened webPreferences are
-   * inherited from the opener; adoption (guards, registry, bounds tracking) happens in
-   * {@link adoptAuxiliaryWindow} once the window exists.
+   * persisted pop-out bounds when they are still reachable. A position requested by the opener (a
+   * tear-out drag placing the window at the drop point) wins over the persisted one, clamped
+   * against the current displays so a drop near a screen edge never strands the window. The
+   * hardened webPreferences are inherited from the opener; adoption (guards, registry, bounds
+   * tracking) happens in {@link adoptAuxiliaryWindow} once the window exists.
+   * @param features The raw features string of the window-open request.
    * @returns Returns the constructor options for the auxiliary window.
    */
-  public auxiliaryWindowOptions(): Electron.BrowserWindowConstructorOptions {
+  public auxiliaryWindowOptions(features: string): Electron.BrowserWindowConstructorOptions {
     const restored: WindowRect | null = this.restoredRect('popout');
+    const width: number = restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH;
+    const height: number = restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT;
+    const requested: { x: number; y: number } | null = parseRequestedPosition(features);
+    const placed: WindowRect | null =
+      requested === null
+        ? null
+        : restoreWindowRect(
+            { bounds: { x: requested.x, y: requested.y, width, height }, maximized: false },
+            screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
+            WindowManager.POPOUT_MIN_WIDTH,
+            WindowManager.POPOUT_MIN_HEIGHT,
+          );
+    const rect: WindowRect | null = placed ?? restored;
     return {
       backgroundColor: '#000000',
-      width: restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH,
-      height: restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT,
-      ...(restored !== null ? { x: restored.x, y: restored.y } : {}),
+      width: rect?.width ?? width,
+      height: rect?.height ?? height,
+      ...(rect !== null ? { x: rect.x, y: rect.y } : {}),
       minWidth: WindowManager.POPOUT_MIN_WIDTH,
       minHeight: WindowManager.POPOUT_MIN_HEIGHT,
       titleBarStyle: 'hiddenInset',

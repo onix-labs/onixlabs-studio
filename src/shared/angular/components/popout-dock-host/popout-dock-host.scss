@@ -1,0 +1,12 @@
+// Fills the auxiliary window's content column so the hosted dock gets the full area.
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+}
+
+app-dock-container {
+  flex: 1;
+  min-block-size: 0;
+}
