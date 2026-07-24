@@ -66,7 +66,6 @@ const AUX_STYLES: string = `
   .aux-window__titlebar { display: flex; align-items: center; flex: none;
     padding-block: 0.75rem; padding-inline: 5.5rem 0.75rem;
     background: var(--title-strip-background-color);
-    border-block-end: 0.0625rem solid var(--title-strip-border-color);
     -webkit-app-region: drag; user-select: none; }
   .aux-window__title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; font-size: 0.8rem; font-weight: 600;
