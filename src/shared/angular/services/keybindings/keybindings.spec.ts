@@ -98,6 +98,34 @@ describe('Keybindings', () => {
     expect(calls).toEqual([]);
   });
 
+  it('dispatch_withAPreferredScope_routesToItEvenWhileAnotherIsActive', (): void => {
+    // A pop-out window dispatches with its owning view's scope: the view keeps working there even
+    // while another tab is active (and hence another scope) in the main window.
+    const calls: string[] = [];
+    keybindings.register('tab-1', [
+      { id: 'code.save', command: (): void => void calls.push('popped-save') },
+    ]);
+    keybindings.register('tab-2', [
+      { id: 'terminal.clear', command: (): void => void calls.push('clear') },
+    ]);
+
+    expect(keybindings.dispatch(modEvent('s'), 'tab-1')).toBe(true);
+    expect(calls).toEqual(['popped-save']);
+  });
+
+  it('dispatch_withAPreferredScope_stillFallsBackToTheGlobalScope', (): void => {
+    const calls: string[] = [];
+    keybindings.register('tab-1', [
+      { id: 'code.save', command: (): void => void calls.push('save') },
+    ]);
+    keybindings.registerGlobal([
+      { id: 'code.saveAs', command: (): void => void calls.push('global-save-as') },
+    ]);
+
+    expect(keybindings.dispatch(modEvent('S', { shiftKey: true }), 'tab-1')).toBe(true);
+    expect(calls).toEqual(['global-save-as']);
+  });
+
   it('dispatch_afterAnotherScopeActivates_routesToTheNewScope', (): void => {
     const calls: string[] = [];
     keybindings.register('tab-1', [

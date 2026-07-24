@@ -268,23 +268,26 @@ export class Keybindings {
   }
 
   /**
-   * Dispatches a key event to the matching accelerator — the active scope first, then the shell's
-   * global scope. Within a scope, the first registered binding whose effective chord matches wins,
-   * which is also how a surfaced conflict resolves.
+   * Dispatches a key event to the matching accelerator — the preferred scope (or the active one)
+   * first, then the shell's global scope. Within a scope, the first registered binding whose
+   * effective chord matches wins, which is also how a surfaced conflict resolves.
    * @param event The keyboard event to match.
+   * @param scope The scope to prefer over the active one. A pop-out window dispatches with its
+   * owning view's scope, so its chords act on that view even while another tab is active in the
+   * main window (a view's registrations are retained through deactivation).
    * @returns Returns true when a bound command was invoked, so the caller can suppress the event's
    * default; false when no accelerator matched.
    */
-  public dispatch(event: KeyboardEvent): boolean {
+  public dispatch(event: KeyboardEvent, scope?: string): boolean {
     const chord: string | null = this.chordFromEvent(event);
     if (chord === null) {
       return false;
     }
-    for (const scope of [this.activeScope(), GLOBAL_SCOPE]) {
-      if (scope === null) {
+    for (const candidate of [scope ?? this.activeScope(), GLOBAL_SCOPE]) {
+      if (candidate === null) {
         continue;
       }
-      for (const registration of this.scopes.get(scope) ?? []) {
+      for (const registration of this.scopes.get(candidate) ?? []) {
         if (this.effectiveChord(registration.id) === chord) {
           registration.command();
           return true;
