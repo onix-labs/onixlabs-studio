@@ -302,6 +302,65 @@ export class WindowManager {
   }
 
   /**
+   * Builds the window options an allowed auxiliary panel window opens with: pop-out chrome and the
+   * persisted pop-out bounds when they are still reachable. The hardened webPreferences are
+   * inherited from the opener; adoption (guards, registry, bounds tracking) happens in
+   * {@link adoptAuxiliaryWindow} once the window exists.
+   * @returns Returns the constructor options for the auxiliary window.
+   */
+  public auxiliaryWindowOptions(): Electron.BrowserWindowConstructorOptions {
+    const restored: WindowRect | null = this.restoredRect('popout');
+    return {
+      backgroundColor: '#000000',
+      width: restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH,
+      height: restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT,
+      ...(restored !== null ? { x: restored.x, y: restored.y } : {}),
+      minWidth: WindowManager.POPOUT_MIN_WIDTH,
+      minHeight: WindowManager.POPOUT_MIN_HEIGHT,
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 14, y: 14 },
+    };
+  }
+
+  /**
+   * Adopts an auxiliary panel window the renderer opened through the allowed window.open path:
+   * hardens its web contents, registers it as a pop-out (so reveals and bounds persistence treat it
+   * like any other), resets its zoom, and reports its closure to the main window.
+   * @param window The created auxiliary window.
+   */
+  public adoptAuxiliaryWindow(window: BrowserWindow): void {
+    const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
+    this.options.applySecurity(window.webContents);
+    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    window.on('close', (): void => this.saveBounds('popout', window));
+    window.on('closed', (): void => {
+      this.registry.remove(entry.id);
+      const main: BrowserWindow | null = this.main();
+      if (main !== null && !main.isDestroyed()) {
+        main.webContents.send(WindowChannel.PopoutClosed, entry.id);
+      }
+    });
+    this.trackBounds('popout', window);
+  }
+
+  /**
+   * Restores the persisted rectangle for a window kind against the current displays.
+   * @param kind The window kind to restore.
+   * @returns Returns the rectangle, or null when none is usable.
+   */
+  private restoredRect(kind: WindowKind): WindowRect | null {
+    const stored: StoredWindowState | null = WindowStateStore.read(kind);
+    return stored === null
+      ? null
+      : restoreWindowRect(
+          stored,
+          screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
+          kind === 'main' ? WindowManager.MIN_WIDTH : WindowManager.POPOUT_MIN_WIDTH,
+          kind === 'main' ? WindowManager.MIN_HEIGHT : WindowManager.POPOUT_MIN_HEIGHT,
+        );
+  }
+
+  /**
    * Resolves the registered identifier of the window owning the given web contents.
    * @param contents The web contents to resolve.
    * @returns Returns the registered identifier, or null when the contents belong to no registered

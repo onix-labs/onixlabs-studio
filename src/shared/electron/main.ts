@@ -16,7 +16,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
-import { buildPopoutSearch, sanitizePopoutParams } from '@shared/api/popout-params';
+import { AUX_PANEL_URL, buildPopoutSearch, sanitizePopoutParams } from '@shared/api/popout-params';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
@@ -645,8 +645,22 @@ class Program {
     });
 
     contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
+      // The one allowed window.open target: an auxiliary panel window (a same-renderer child the
+      // opener scripts directly — a dock panel popping out with its services intact). The child
+      // carries no navigable content of its own, inherits this window's hardened webPreferences,
+      // and is adopted below (guards, registry, bounds). Everything else stays denied (#116).
+      if (details.url === AUX_PANEL_URL) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: this.windows.auxiliaryWindowOptions(),
+        };
+      }
       void this.openExternalUrl(details.url);
       return { action: 'deny' };
+    });
+
+    contents.on('did-create-window', (window: BrowserWindow): void => {
+      this.windows.adoptAuxiliaryWindow(window);
     });
   }
 

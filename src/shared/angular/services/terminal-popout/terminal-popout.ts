@@ -178,7 +178,12 @@ export class TerminalPopout implements OnDestroy {
     // The unmounting panes detach as viewers; the pop-out's panes attach and replay, so the output
     // produced in between is never lost.
     this.dockState.removeFromLayout(TERMINAL_PANEL_ID);
-    this.popouts.markPopped(TERMINAL_PANEL_ID, popoutId);
+    this.popouts.markPopped(TERMINAL_PANEL_ID, (): void => {
+      const current: number | null = this.window();
+      if (current !== null) {
+        void this.studio.focusPopoutWindow(current);
+      }
+    });
     this.window.set(popoutId);
   }
 

@@ -175,7 +175,7 @@ describe('TerminalPopout', () => {
       title: 'Terminal — proj',
     });
     expect(dockState.removeFromLayout).toHaveBeenCalledWith('terminal');
-    expect(TestBed.inject(PopoutPanels).windowIdFor('terminal')).toBe(42);
+    expect(TestBed.inject(PopoutPanels).isPopped('terminal')).toBe(true);
     expect(popout.poppedOut()).toBe(true);
   });
 
@@ -250,7 +250,7 @@ describe('TerminalPopout', () => {
     // Origin index was 1 (between errors and debug); the re-added tab lands last and is moved back.
     expect(dockState.reorderTab).toHaveBeenCalledWith('tools', 2, 1);
     expect(reveal.reveal).toHaveBeenCalledWith('terminal');
-    expect(TestBed.inject(PopoutPanels).windowIdFor('terminal')).toBeNull();
+    expect(TestBed.inject(PopoutPanels).isPopped('terminal')).toBe(false);
     expect(popout.poppedOut()).toBe(false);
   });
 
