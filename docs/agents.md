@@ -282,6 +282,38 @@ The client, session manager, adapter registry, and provisioner live in `shared/e
   verification is layered on transiently and never persisted. The gutter and current-execution-line
   marker live in the **shared code-document core** so both the well and standalone code leaves show them.
 
+### 4.8 Multi-window (pop-out panels)
+
+Studio is one Angular application in one **main window**, plus secondary OS windows that are always
+**viewers over state owned elsewhere** — never second owners.
+
+- **`WindowManager` (main)** owns every `BrowserWindow`: a kind-aware registry (`main` | `popout`),
+  per-kind bounds persistence (`window-state.json`, off-screen bounds re-centred), and
+  `applyWebContentsSecurity` on every window it creates or adopts. Push-style IPC still targets the
+  main window by default; invoke-style handlers reply to their caller and are window-agnostic.
+- **Two pop-out mechanisms, one chrome.** The dock group title bar offers pop-out (cards icon)
+  through the per-view `PopoutPanels` seam: a panel-specific handler wins, else the generic fallback.
+  - **Terminal panel** (specific): a separate full shell window (`?window=popout` boot branch in
+    `src/shared/app/main.ts` with a minimal provider set — never `OpenWith`, `Lifecycle`, or the
+    agent initializers). The workspace window's `TerminalSessions` remains the single owner; a
+    main-process relay mirrors session **metadata** to the pop-out, whose persistent panes attach to
+    the main-owned PTYs by id (`terminal:attach`/`detach` routes live output to the viewing window;
+    exits always also reach the owner). The pop-out never disposes a PTY.
+  - **Every other panel** (fallback, `PanelPopout`): a **same-renderer auxiliary window** — the one
+    `window.open` target the security guards allow (`AUX_PANEL_URL`); everything else is still denied
+    (#116). The child shares the renderer process, so the panel component renders into the child's
+    document **with the owning view's injector** and keeps its real services; `AuxiliaryWindows`
+    mirrors stylesheets and theme attributes into open children. No per-panel data plumbing exists —
+    do not add mirrors for these panels.
+- **Move, not clone.** A panel (and a terminal session) renders in exactly one window; closing a
+  pop-out docks the panel back to the stack/index it left. Closing the main window quits the app;
+  pop-outs never gate lifecycle. `DockReveal` focuses a popped panel's window instead of touching
+  the dock. Run configurations may declare `presentation: 'window'` to pop the terminal panel on
+  launch.
+- **Cross-window sync** rides `SettingsStore.onExternalChange` (localStorage `storage` events, which
+  fire only in non-writing windows — the built-in echo guard); `Theme` and `Settings` re-apply
+  external changes live.
+
 ---
 
 ## 5. AI agent — access & permission model
