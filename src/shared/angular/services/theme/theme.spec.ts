@@ -51,4 +51,22 @@ describe('Theme', () => {
     );
     expect(localStorage.getItem('theme.accent')).toBe(JSON.stringify('green'));
   });
+
+  it('externalChange_fromAnotherWindow_appliesTheStoredModeAndAccentLive', () => {
+    const service: Theme = TestBed.inject(Theme);
+
+    // Another window wrote the store, then the browser notified this one.
+    localStorage.setItem('theme.mode', JSON.stringify('dark'));
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'theme.mode' }));
+    localStorage.setItem('theme.accent', JSON.stringify('green'));
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'theme.accent' }));
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(service.mode()).toBe('dark');
+    expect(service.accent()).toBe('green');
+    expect(document.documentElement.dataset['themeMode']).toBe('dark');
+    expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe(
+      'var(--accent-green)',
+    );
+  });
 });

@@ -159,6 +159,16 @@ export class Theme {
       this.systemPrefersDark.set(event.matches);
     });
 
+    // Another window may change the theme (the settings UI lives in the main window; pop-out
+    // windows must follow live). The store's external-change notification only ever fires in the
+    // windows that did not write, so re-applying the stored value here cannot echo back.
+    this.settings.onExternalChange(MODE_KEY, (): void => {
+      this.modeSignal.set(this.settings.get<ThemeMode>(MODE_KEY, DEFAULT_MODE));
+    });
+    this.settings.onExternalChange(ACCENT_KEY, (): void => {
+      this.accentSignal.set(this.settings.get<AccentColor>(ACCENT_KEY, DEFAULT_ACCENT));
+    });
+
     effect((): void => {
       const root: HTMLElement = this.document.documentElement;
       root.dataset['themeMode'] = this.resolvedMode();

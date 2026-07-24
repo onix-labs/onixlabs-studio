@@ -174,7 +174,14 @@ describe('DebugSession', () => {
       providers: [
         DebugSession,
         Breakpoints,
-        { provide: SettingsStore, useValue: { get: <T>(_k: string, f: T): T => f, set: (): void => undefined } },
+        {
+          provide: SettingsStore,
+          useValue: {
+            get: <T>(_k: string, f: T): T => f,
+            set: (): void => undefined,
+            onExternalChange: (): (() => void) => (): void => undefined,
+          },
+        },
         { provide: Workspace, useValue: { root } },
         { provide: Output, useValue: output },
         { provide: SolutionModel, useValue: { capabilities: caps } },

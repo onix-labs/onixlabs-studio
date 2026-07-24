@@ -37,4 +37,28 @@ describe('SettingsStore', () => {
 
     expect(service.get('broken', 'fallback')).toBe('fallback');
   });
+
+  it('onExternalChange_firesForItsKeyOnly', () => {
+    let fired: number = 0;
+    service.onExternalChange('mode', (): void => {
+      fired++;
+    });
+
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'mode' }));
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'other' }));
+
+    expect(fired).toBe(1);
+  });
+
+  it('onExternalChange_disposer_removesTheListener', () => {
+    let fired: number = 0;
+    const dispose: () => void = service.onExternalChange('mode', (): void => {
+      fired++;
+    });
+
+    dispose();
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'mode' }));
+
+    expect(fired).toBe(0);
+  });
 });
