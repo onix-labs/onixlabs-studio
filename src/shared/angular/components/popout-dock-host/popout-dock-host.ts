@@ -1,6 +1,14 @@
 import { DOCUMENT } from '@angular/common';
+import {
+  OverlayContainer,
+  OverlayKeyboardDispatcher,
+  OverlayOutsideClickDispatcher,
+} from '@angular/cdk/overlay';
+import { ScrollDispatcher, ViewportRuler } from '@angular/cdk/scrolling';
+import { DragDropRegistry } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, inject, InjectionToken } from '@angular/core';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { PopoutViewportRuler } from '@shared/angular/components/popout-dock-host/popout-viewport-ruler';
 import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
@@ -63,6 +71,18 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
     DockDrag,
     DockReveal,
     PopoutPanels,
+    // The CDK layers below are window-scoped so overlays and drags triggered anywhere in this
+    // subtree operate in the pop-out's document, not the opener's: CDK resolves them through the
+    // triggering element's injector (createOverlayRef/createDragRef), which walks up to here. The
+    // overlay container lands in this window's body, outside-click closing listens on this
+    // window's body, drag move/up tracking binds to this document (tab reordering), scrollables
+    // register against this window, and positioning measures this window's viewport.
+    OverlayContainer,
+    OverlayOutsideClickDispatcher,
+    OverlayKeyboardDispatcher,
+    ScrollDispatcher,
+    DragDropRegistry,
+    { provide: ViewportRuler, useClass: PopoutViewportRuler },
     {
       provide: DOCUMENT,
       useFactory: (): Document => inject(POPOUT_DOCK_CONFIG).document,

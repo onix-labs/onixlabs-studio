@@ -310,6 +310,13 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   parent chain to the owning view. Window layouts are ephemeral (`DockBlueprint.key` is optional;
   no key → no persistence). Closing a window returns every panel it hosts to the main-dock
   position it left; closing a panel *inside* a window closes it exactly as the main dock would.
+- **Window-scoped CDK.** `PopoutDockHost` also provides `OverlayContainer`, the outside-click
+  dispatcher, `ScrollDispatcher`, `DragDropRegistry`, and a fresh-measuring `ViewportRuler`
+  subclass. CDK resolves these through the triggering element's injector (`createOverlayRef` /
+  `createDragRef`), so menus and overlays opened from a popped panel render in ITS window (and
+  close on outside clicks there), CDK tab drag-reorder tracks the child document, and positioning
+  measures the child viewport. Main-window triggers keep resolving the root instances — never
+  route overlays across windows by hand.
 - **Drag gestures.** A tool tab dragged beyond its window's edge **tears out** into a new pop-out
   at the drop point (`DockDrag.registerExternalDrop`; the requested position rides the
   `window.open` features string, parsed and display-clamped by the main process). Dropped onto an
