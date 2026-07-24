@@ -43,6 +43,7 @@ import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-bluepr
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
 import { TerminalPopout } from '@shared/angular/services/terminal-popout/terminal-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -144,9 +145,11 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
     // The pop-out seam: which panels live in their own OS windows (reveals focus those windows),
-    // and the coordinator that moves the terminal panel out and back.
+    // the terminal's mirror-based coordinator, and the generic auxiliary-window coordinator that
+    // covers every other panel.
     PopoutPanels,
     TerminalPopout,
+    PanelPopout,
     { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would
@@ -360,6 +363,12 @@ export class DirectoryView implements OnInit, OnDestroy {
    * terminal panel's pop-out handler with the dock chrome before the dock first renders.
    */
   private readonly terminalPopout: TerminalPopout = inject(TerminalPopout);
+
+  /**
+   * Holds this tab's generic panel pop-out coordinator (the fallback covering every panel).
+   * Instantiated eagerly for the same reason.
+   */
+  private readonly panelPopout: PanelPopout = inject(PanelPopout);
 
   /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped

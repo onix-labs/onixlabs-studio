@@ -11,6 +11,15 @@ export const POPOUT_FLAG_KEY: string = 'window';
 export const POPOUT_FLAG_VALUE: string = 'popout';
 
 /**
+ * Names the exact URL an auxiliary panel window is opened with — the ONE `window.open` target the
+ * security guards allow. An auxiliary window shares the opener's renderer process, so the opener
+ * builds its DOM directly and a dock panel renders into it with the workspace's own services; the
+ * sentinel fragment keeps the allow surgically narrow (#116: everything else is still denied and
+ * routed to the system browser).
+ */
+export const AUX_PANEL_URL: string = 'about:blank#studio-panel';
+
+/**
  * Holds the maximum number of parameters a pop-out request may carry.
  */
 const MAX_PARAMS: number = 16;

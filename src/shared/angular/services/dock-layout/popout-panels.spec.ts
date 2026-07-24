@@ -1,36 +1,35 @@
 import { PopoutPanels } from './popout-panels';
 
 describe('PopoutPanels', () => {
-  it('whenEmpty_reportsNoPanelAsPopped', () => {
+  it('whenEmpty_reportsNoPanelAsPoppedOrPoppable', () => {
     const panels: PopoutPanels = new PopoutPanels();
-    expect(panels.windowIdFor('terminal')).toBeNull();
+    expect(panels.isPopped('terminal')).toBe(false);
+    expect(panels.canPopOut('terminal')).toBe(false);
   });
 
-  it('markPopped_recordsThePanelAndItsWindow', () => {
+  it('markPopped_recordsThePanelAndRoutesFocusToItsWindow', () => {
     const panels: PopoutPanels = new PopoutPanels();
-    panels.markPopped('terminal', 7);
-    expect(panels.windowIdFor('terminal')).toBe(7);
-    expect(panels.windowIdFor('errors')).toBeNull();
+    let focused: number = 0;
+    panels.markPopped('terminal', (): void => {
+      focused++;
+    });
+    expect(panels.isPopped('terminal')).toBe(true);
+    expect(panels.isPopped('errors')).toBe(false);
+    panels.focusPopped('terminal');
+    expect(focused).toBe(1);
   });
 
-  it('markPopped_replacesAnEarlierWindowForTheSamePanel', () => {
+  it('focusPopped_ofAPanelThatIsNotPopped_isANoOp', () => {
     const panels: PopoutPanels = new PopoutPanels();
-    panels.markPopped('terminal', 7);
-    panels.markPopped('terminal', 9);
-    expect(panels.windowIdFor('terminal')).toBe(9);
+    panels.focusPopped('terminal');
+    expect(panels.isPopped('terminal')).toBe(false);
   });
 
   it('clear_removesThePanel', () => {
     const panels: PopoutPanels = new PopoutPanels();
-    panels.markPopped('terminal', 7);
+    panels.markPopped('terminal', (): void => undefined);
     panels.clear('terminal');
-    expect(panels.windowIdFor('terminal')).toBeNull();
-  });
-
-  it('clear_ofAnUnknownPanel_isANoOp', () => {
-    const panels: PopoutPanels = new PopoutPanels();
-    panels.clear('terminal');
-    expect(panels.windowIdFor('terminal')).toBeNull();
+    expect(panels.isPopped('terminal')).toBe(false);
   });
 
   it('registerPopOut_makesThePanelPoppableAndRoutesTheAction', () => {
@@ -45,9 +44,27 @@ describe('PopoutPanels', () => {
     expect(popped).toBe(1);
   });
 
-  it('popOut_ofAPanelWithoutAHandler_isANoOp', () => {
+  it('registerFallback_makesEveryPanelPoppable_butSpecificHandlersWin', () => {
     const panels: PopoutPanels = new PopoutPanels();
+    const calls: string[] = [];
+    panels.registerFallback((panelId: string): void => {
+      calls.push(`fallback:${panelId}`);
+    });
+    panels.registerPopOut('terminal', (): void => {
+      calls.push('specific:terminal');
+    });
+
+    expect(panels.canPopOut('errors')).toBe(true);
+    expect(panels.canPopOut('terminal')).toBe(true);
     panels.popOut('errors');
+    panels.popOut('terminal');
+    expect(calls).toEqual(['fallback:errors', 'specific:terminal']);
+  });
+
+  it('registerFallback_disposer_removesTheFallbackUnlessReplaced', () => {
+    const panels: PopoutPanels = new PopoutPanels();
+    const dispose: () => void = panels.registerFallback((): void => undefined);
+    dispose();
     expect(panels.canPopOut('errors')).toBe(false);
   });
 
