@@ -45,6 +45,21 @@ const FOCUS_DELAY_MS: number = 0;
 const SELECTION_ALPHA: number = 0.3;
 
 /**
+ * Holds the smallest host size, in CSS pixels, a pane may fit (and resize its PTY) at. A host below
+ * this is not a real layout — it is hidden, detached, or mid-layout (a dock teardown, an auxiliary
+ * window whose stylesheets are still loading) — and fitting then would clamp xterm to its 2-column
+ * minimum and ship that to the PTY. The PTY resize is last-writer-wins across panes, and a shell
+ * redrawing its prompt at 2 columns hard-wraps it into the retained scrollback, permanently
+ * polluting every later replay.
+ */
+const MIN_FIT_WIDTH_PX: number = 40;
+
+/**
+ * Holds the smallest host height, in CSS pixels, a pane may fit at. See {@link MIN_FIT_WIDTH_PX}.
+ */
+const MIN_FIT_HEIGHT_PX: number = 20;
+
+/**
  * Represents the shared terminal pane: an xterm.js instance wired to a main-process node-pty session
  * through the {@link TerminalBridge}. It is the reusable capability wrapper consumed by the terminal
  * feature view and by docked terminal panels; it renders and drives a single terminal and nothing
@@ -254,9 +269,6 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
     this.terminals.unregister(this.terminalId());
-    // Withdraw this window as the session's viewer so its live output returns to the main window
-    // (a no-op when another window's pane has attached since — the pop-out handoff).
-    void this.bridge.detach(this.terminalId());
     if (!this.persistent()) {
       void this.bridge.dispose(this.terminalId());
     }
@@ -268,17 +280,38 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
   /**
    * Re-fits the terminal to its container and notifies the PTY of the new size. Safe to call at any
-   * time; a fit on a zero-sized host (e.g. while hidden) is ignored.
+   * time; a host without a plausible layout (hidden, detached, or mid-layout) is ignored — neither
+   * xterm nor the PTY is resized from a degenerate geometry.
    */
   public handleResize(): void {
-    if (this.xterm === null || this.fitAddon === null) {
+    if (this.xterm === null || this.fitAddon === null || !this.fitToHost(this.fitAddon)) {
       return;
     }
+    void this.bridge.resize(this.terminalId(), this.xterm.cols, this.xterm.rows);
+  }
+
+  /**
+   * Fits the terminal to its host, when the host has a real layout to fit to. Guarding here (not
+   * just at the PTY write) also keeps xterm itself from being clamped to its tiny minimum grid by
+   * a transient zero-size measurement, which would reflow the buffer.
+   * @param fitAddon The fit addon of the current xterm.
+   * @returns Returns true when the terminal was fitted to a plausible host size.
+   */
+  private fitToHost(fitAddon: FitAddon): boolean {
+    const host: HTMLDivElement = this.container().nativeElement;
+    if (
+      !host.isConnected ||
+      host.clientWidth < MIN_FIT_WIDTH_PX ||
+      host.clientHeight < MIN_FIT_HEIGHT_PX
+    ) {
+      return false;
+    }
     try {
-      this.fitAddon.fit();
-      void this.bridge.resize(this.terminalId(), this.xterm.cols, this.xterm.rows);
+      fitAddon.fit();
+      return true;
     } catch {
-      // Fit can throw when the host has zero size (e.g. while hidden); ignore.
+      // Fit can still throw on edge geometries; treat it as no usable layout.
+      return false;
     }
   }
 
@@ -557,13 +590,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
       return false;
     });
 
-    fitAddon.fit();
-
-    // Declare this window the session's viewer before subscribing: without it, a pane in a
-    // secondary (pop-out) window would render while the live output streamed to the main window.
-    // Attaching before the replay below means anything routed elsewhere first is still covered by
-    // the snapshot.
-    void this.bridge.attach(id);
+    // Initial fit, skipped for hosts without a real layout yet (a hidden pane, an auxiliary window
+    // still styling itself): xterm keeps its default grid and the resize observer below fits it —
+    // and only then the PTY — once the host has a usable size.
+    this.fitToHost(fitAddon);
 
     // Subscribe before replaying, parking chunks until the snapshot lands: the snapshot's sequence
     // number then tells which parked chunks it already contains, so nothing is lost or duplicated

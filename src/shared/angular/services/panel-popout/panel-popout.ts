@@ -42,12 +42,14 @@ interface OpenPanel {
 }
 
 /**
- * The generic pop-out coordinator: moves ANY dock panel into its own OS window and back. It is the
- * {@link PopoutPanels} FALLBACK — panels with a bespoke coordinator (the terminal's main-process
- * mirror) keep it; every other panel is hosted through an auxiliary window, where the panel
- * component renders into the child document with THIS view's injector. The panel therefore keeps
- * its real services — diagnostics, logs, debug state, the agent conversation — and its actions
- * (revealing a document, running a search) land in this workspace exactly as if it were docked.
+ * The pop-out coordinator: moves ANY dock panel into its own OS window and back. It registers as
+ * the {@link PopoutPanels} handler; a popped panel is hosted through an auxiliary window, where the
+ * panel component renders into the child document with THIS view's injector. The panel therefore
+ * keeps its real services — diagnostics, logs, debug state, the terminal sessions, the agent
+ * conversation — and its actions (revealing a document, running a search) land in this workspace
+ * exactly as if it were docked. Panels whose state lives outside the component (the terminal's
+ * PTYs and retained scrollback in the main process) survive the move the same way they survive any
+ * remount: the popped component re-attaches and replays.
  *
  * Closing the window returns the panel to the stack and tab position it left. Provided per view
  * alongside the dock services, and instantiated eagerly so the dock chrome offers pop-out from the
@@ -101,18 +103,16 @@ export class PanelPopout implements OnDestroy {
   private readonly open: Map<string, OpenPanel> = new Map<string, OpenPanel>();
 
   /**
-   * Holds the fallback deregistration.
+   * Holds the handler deregistration.
    */
-  private readonly disposeFallback: () => void;
+  private readonly disposeHandler: () => void;
 
   /**
    * Initializes a new instance of the {@link PanelPopout} class, registering as the pop-out
-   * fallback for every panel.
+   * handler for every panel.
    */
   public constructor() {
-    this.disposeFallback = this.popouts.registerFallback((panelId: string): void =>
-      this.popOut(panelId),
-    );
+    this.disposeHandler = this.popouts.register((panelId: string): void => this.popOut(panelId));
   }
 
   /**
@@ -210,7 +210,7 @@ export class PanelPopout implements OnDestroy {
    * re-docked — the view's dock is being destroyed with them.
    */
   public ngOnDestroy(): void {
-    this.disposeFallback();
+    this.disposeHandler();
     for (const [panelId, entry] of this.open) {
       this.open.delete(panelId);
       this.applicationRef.detachView(entry.component.hostView);
