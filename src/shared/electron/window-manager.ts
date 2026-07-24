@@ -1,5 +1,4 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
-import { WindowChannel } from '@shared/api/window-channels';
 import { restoreWindowRect, StoredWindowState, WindowRect } from './window-state';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
@@ -46,8 +45,8 @@ export interface WindowManagerOptions {
 
 /**
  * Owns every application window: creation and loading, the registry that resolves the main window
- * for renderer-push targets, and per-kind bounds persistence. The single-window app registers only
- * the main window today; pop-out windows join the same registry in later phases.
+ * for renderer-push targets, and per-kind bounds persistence. Besides the main window, the registry
+ * holds the auxiliary pop-out windows the renderer opens (adopted in {@link adoptAuxiliaryWindow}).
  */
 export class WindowManager {
   /**
@@ -203,105 +202,6 @@ export class WindowManager {
   }
 
   /**
-   * Creates a pop-out window — a secondary window hosting a single surface (a dock panel) rather
-   * than the full IDE — and loads the application shell into it with the given query string, which
-   * the renderer entry reads to boot the minimal pop-out root. Pop-outs close plainly: they never
-   * gate application lifecycle, so no quit-confirmation hook is attached.
-   * @param search The query string to load the shell with, including its leading `?`.
-   * @returns Returns the registered entry, whose identifier addresses the window later.
-   */
-  public createPopoutWindow(search: string): RegisteredWindow<BrowserWindow> {
-    const stored: StoredWindowState | null = WindowStateStore.read('popout');
-    const restored: WindowRect | null =
-      stored === null
-        ? null
-        : restoreWindowRect(
-            stored,
-            screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
-            WindowManager.POPOUT_MIN_WIDTH,
-            WindowManager.POPOUT_MIN_HEIGHT,
-          );
-
-    const window: BrowserWindow = new BrowserWindow({
-      backgroundColor: '#000000',
-      width: restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH,
-      height: restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT,
-      ...(restored !== null ? { x: restored.x, y: restored.y } : {}),
-      minWidth: WindowManager.POPOUT_MIN_WIDTH,
-      minHeight: WindowManager.POPOUT_MIN_HEIGHT,
-      show: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
-      webPreferences: {
-        preload: this.options.preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-    if (stored?.maximized === true) {
-      window.maximize();
-    }
-
-    const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
-    window.once('ready-to-show', (): void => window.show());
-    // Same zoom policy as the main window: page zoom is disabled app-wide, so any persisted
-    // per-origin level is reset on every load.
-    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
-    window.on('close', (): void => this.saveBounds('popout', window));
-    window.on('closed', (): void => {
-      this.registry.remove(entry.id);
-      // The main window owns every popped-out surface; it is told when a pop-out goes away so it
-      // can take the surface back.
-      const main: BrowserWindow | null = this.main();
-      if (main !== null && !main.isDestroyed()) {
-        main.webContents.send(WindowChannel.PopoutClosed, entry.id);
-      }
-    });
-    this.trackBounds('popout', window);
-
-    this.options.applySecurity(window.webContents);
-
-    if (this.options.startUrl !== undefined) void window.loadURL(this.options.startUrl + search);
-    else void window.loadFile(this.options.indexHtml, { search });
-
-    return entry;
-  }
-
-  /**
-   * Closes the pop-out window with the given identifier. Main windows are never closed through
-   * this path — their close runs the quit protocol instead.
-   * @param id The registered identifier of the pop-out window.
-   * @returns Returns true when a pop-out window with that identifier existed and was told to close.
-   */
-  public closePopout(id: number): boolean {
-    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
-    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
-      return false;
-    }
-    entry.window.close();
-    return true;
-  }
-
-  /**
-   * Brings the pop-out window with the given identifier to the front, restoring it first when it is
-   * minimized.
-   * @param id The registered identifier of the pop-out window.
-   * @returns Returns true when a pop-out window with that identifier existed and was focused.
-   */
-  public focusPopout(id: number): boolean {
-    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
-    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
-      return false;
-    }
-    if (entry.window.isMinimized()) {
-      entry.window.restore();
-    }
-    entry.window.focus();
-    return true;
-  }
-
-  /**
    * Builds the window options an allowed auxiliary panel window opens with: pop-out chrome and the
    * persisted pop-out bounds when they are still reachable. The hardened webPreferences are
    * inherited from the opener; adoption (guards, registry, bounds tracking) happens in
@@ -324,8 +224,9 @@ export class WindowManager {
 
   /**
    * Adopts an auxiliary panel window the renderer opened through the allowed window.open path:
-   * hardens its web contents, registers it as a pop-out (so reveals and bounds persistence treat it
-   * like any other), resets its zoom, and reports its closure to the main window.
+   * hardens its web contents, registers it as a pop-out (so bounds persistence and reload cleanup
+   * treat it like any other), and resets its zoom. The opener observes the window's closure itself
+   * (it holds the DOM window), so no notification is sent.
    * @param window The created auxiliary window.
    */
   public adoptAuxiliaryWindow(window: BrowserWindow): void {
@@ -333,13 +234,7 @@ export class WindowManager {
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.on('close', (): void => this.saveBounds('popout', window));
-    window.on('closed', (): void => {
-      this.registry.remove(entry.id);
-      const main: BrowserWindow | null = this.main();
-      if (main !== null && !main.isDestroyed()) {
-        main.webContents.send(WindowChannel.PopoutClosed, entry.id);
-      }
-    });
+    window.on('closed', (): void => this.registry.remove(entry.id));
     this.trackBounds('popout', window);
   }
 
@@ -361,36 +256,8 @@ export class WindowManager {
   }
 
   /**
-   * Resolves the registered identifier of the window owning the given web contents.
-   * @param contents The web contents to resolve.
-   * @returns Returns the registered identifier, or null when the contents belong to no registered
-   * window.
-   */
-  public idForWebContents(contents: WebContents): number | null {
-    for (const entry of this.registry.all()) {
-      if (!entry.window.isDestroyed() && entry.window.webContents === contents) {
-        return entry.id;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Gets the web contents of the pop-out window with the given identifier.
-   * @param id The registered identifier of the pop-out window.
-   * @returns Returns the web contents, or null when no live pop-out has that identifier.
-   */
-  public popoutWebContents(id: number): WebContents | null {
-    const entry: RegisteredWindow<BrowserWindow> | null = this.registry.entry(id);
-    if (entry?.kind !== 'popout' || entry.window.isDestroyed()) {
-      return null;
-    }
-    return entry.window.webContents;
-  }
-
-  /**
-   * Closes every pop-out window. Called when the main window reloads: a reloaded renderer has lost
-   * the owner-side state its pop-outs mirrored, so they cannot outlive it.
+   * Closes every pop-out window. Called when the main window reloads: auxiliary windows share the
+   * main renderer's JS context, so a reload leaves them dead — they cannot outlive it.
    */
   public closeAllPopouts(): void {
     for (const entry of this.registry.all()) {

@@ -1,5 +1,5 @@
 import { OnDestroy, Service } from '@angular/core';
-import { AUX_PANEL_URL } from '@shared/api/popout-params';
+import { AUX_PANEL_URL } from '@shared/api/window-channels';
 
 /**
  * One auxiliary window: a same-renderer child window whose DOM the opener scripts directly, hosting

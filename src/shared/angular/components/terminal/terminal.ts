@@ -254,9 +254,6 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
     this.terminals.unregister(this.terminalId());
-    // Withdraw this window as the session's viewer so its live output returns to the main window
-    // (a no-op when another window's pane has attached since — the pop-out handoff).
-    void this.bridge.detach(this.terminalId());
     if (!this.persistent()) {
       void this.bridge.dispose(this.terminalId());
     }
@@ -558,12 +555,6 @@ export class Terminal implements AfterViewInit, OnDestroy {
     });
 
     fitAddon.fit();
-
-    // Declare this window the session's viewer before subscribing: without it, a pane in a
-    // secondary (pop-out) window would render while the live output streamed to the main window.
-    // Attaching before the replay below means anything routed elsewhere first is still covered by
-    // the snapshot.
-    void this.bridge.attach(id);
 
     // Subscribe before replaying, parking chunks until the snapshot lands: the snapshot's sequence
     // number then tells which parked chunks it already contains, so nothing is lost or duplicated

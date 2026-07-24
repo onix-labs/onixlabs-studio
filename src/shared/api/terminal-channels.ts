@@ -50,20 +50,6 @@ export enum TerminalChannel {
   Replay = 'terminal:replay',
 
   /**
-   * Declares the requesting window the session's viewer: its live output is routed there instead of
-   * the main window. A pane calls this as it mounts — before fetching its replay snapshot, so the
-   * snapshot covers anything routed elsewhere first (renderer→main, invoke).
-   */
-  Attach = 'terminal:attach',
-
-  /**
-   * Withdraws the requesting window as the session's viewer (a pane unmounting), returning its live
-   * output to the main window. Ignored when another window has attached since (renderer→main,
-   * invoke).
-   */
-  Detach = 'terminal:detach',
-
-  /**
    * Carries output data from a session to the renderer, with the chunk's sequence number in the
    * session's output stream so a replaying pane can discard chunks its snapshot already contains
    * (main→renderer, send).

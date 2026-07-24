@@ -39,7 +39,6 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
-import { TerminalPopout } from '@shared/angular/services/terminal-popout/terminal-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { collectPanelIds } from '@shared/angular/services/dock-layout/dock-tree';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
@@ -104,11 +103,9 @@ const STATUS_PRIORITY: number = 30;
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
-    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows),
-    // the terminal's mirror-based coordinator, and the generic auxiliary-window coordinator that
-    // covers every other panel.
+    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows)
+    // and the auxiliary-window coordinator that pops any panel into one.
     PopoutPanels,
-    TerminalPopout,
     PanelPopout,
     { provide: DOCK_BLUEPRINT, useValue: REPOSITORY_DOCK_BLUEPRINT },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
@@ -200,14 +197,8 @@ export class SourceControlView implements OnInit, OnDestroy {
   private readonly terminalSessions: TerminalSessions = inject(TerminalSessions);
 
   /**
-   * Holds this tab's terminal pop-out coordinator. Instantiated eagerly so it registers the
-   * terminal panel's pop-out handler with the dock chrome before the dock first renders.
-   */
-  private readonly terminalPopout: TerminalPopout = inject(TerminalPopout);
-
-  /**
-   * Holds this tab's generic panel pop-out coordinator (the fallback covering every panel).
-   * Instantiated eagerly for the same reason.
+   * Holds this tab's panel pop-out coordinator. Instantiated eagerly so it registers the pop-out
+   * handler with the dock chrome before the dock first renders.
    */
   private readonly panelPopout: PanelPopout = inject(PanelPopout);
 

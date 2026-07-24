@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, IpcMainInvokeEvent, WebContents } from 'electron';
+import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import { execFile } from 'node:child_process';
 import { accessSync, constants as fsConstants } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -53,18 +53,9 @@ const TERMINAL_KINDS: ReadonlySet<string> = new Set<string>(['shell', 'run', 'ta
  */
 export class TerminalManager {
   /**
-   * Holds the function used to resolve the main window — the default target for session output, and
-   * the window that always receives exits (the session stores that track runs live there).
+   * Holds the function used to resolve the window session output and exits are sent to.
    */
   private readonly windowGetter: () => BrowserWindow | null;
-
-  /**
-   * Holds each session's viewing window: the web contents its live output routes to instead of the
-   * main window. Written by {@link TerminalChannel.Attach}/{@link TerminalChannel.Detach} as panes
-   * mount and unmount; a destroyed viewer falls back to the main window at send time, so stale
-   * entries are harmless.
-   */
-  private readonly viewers: Map<string, WebContents> = new Map<string, WebContents>();
 
   /**
    * Holds the running pseudo-terminal sessions, keyed by terminal identifier.
@@ -133,22 +124,6 @@ export class TerminalManager {
         ? this.scrollback.snapshot(id)
         : { data: '', seq: 0, exitCode: null, signal: null },
     );
-    ipcMain.handle(TerminalChannel.Attach, (event: IpcMainInvokeEvent, id: unknown): boolean => {
-      if (typeof id !== 'string' || id.length === 0) {
-        return false;
-      }
-      this.viewers.set(id, event.sender);
-      return true;
-    });
-    ipcMain.handle(TerminalChannel.Detach, (event: IpcMainInvokeEvent, id: unknown): boolean => {
-      // Only the current viewer may withdraw: a pane unmounting after another window took over
-      // (a pop-out handoff) must not strip the new viewer's routing.
-      if (typeof id !== 'string' || this.viewers.get(id) !== event.sender) {
-        return false;
-      }
-      this.viewers.delete(id);
-      return true;
-    });
   }
 
   /**
@@ -165,7 +140,6 @@ export class TerminalManager {
     this.terminals.clear();
     this.scrollback.clear();
     this.kinds.clear();
-    this.viewers.clear();
     for (const timer of this.killTimers.values()) {
       clearTimeout(timer);
     }
@@ -266,12 +240,12 @@ export class TerminalManager {
         const display: string = args !== undefined ? [command, ...args].join(' ') : command;
         const header: string = `\x1b[90m> ${display}\x1b[0m\r\n`;
         const headerSeq: number = this.scrollback.append(id, header);
-        this.sendToSession(id, TerminalChannel.Data, id, header, headerSeq);
+        this.sendToWindow(TerminalChannel.Data, id, header, headerSeq);
       }
 
       terminal.onData((data: string): void => {
         const seq: number = this.scrollback.append(id, data);
-        this.sendToSession(id, TerminalChannel.Data, id, data, seq);
+        this.sendToWindow(TerminalChannel.Data, id, data, seq);
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
@@ -293,7 +267,7 @@ export class TerminalManager {
         // Keep the scrollback (with the exit recorded) so a pane re-attaching later still shows the
         // session's output and exit banner; only dispose removes it.
         this.scrollback.markExited(id, event.exitCode, endedBy);
-        this.sendToSession(id, TerminalChannel.Exit, id, event.exitCode, endedBy);
+        this.sendToWindow(TerminalChannel.Exit, id, event.exitCode, endedBy);
         this.terminals.delete(id);
       });
 
@@ -309,9 +283,9 @@ export class TerminalManager {
         this.scrollback.reset(id);
         const line: string = `\x1b[31mFailed to start: ${message}\x1b[0m\r\n`;
         const seq: number = this.scrollback.append(id, line);
-        this.sendToSession(id, TerminalChannel.Data, id, line, seq);
+        this.sendToWindow(TerminalChannel.Data, id, line, seq);
         this.scrollback.markExited(id, 1);
-        this.sendToSession(id, TerminalChannel.Exit, id, 1, null);
+        this.sendToWindow(TerminalChannel.Exit, id, 1, null);
       }
       return { success: false, error: message };
     }
@@ -429,7 +403,6 @@ export class TerminalManager {
   private dispose(id: string): boolean {
     const hadScrollback: boolean = this.scrollback.delete(id);
     this.kinds.delete(id);
-    this.viewers.delete(id);
     const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
     if (pendingKill !== undefined) {
       clearTimeout(pendingKill);
@@ -603,26 +576,14 @@ export class TerminalManager {
   }
 
   /**
-   * Sends a session's message to its viewing window — the window whose pane attached to the session
-   * — falling back to the main window when no viewer is attached (or its window is gone). Exits are
-   * additionally delivered to the main window: the session stores that track runs and resolve
-   * completion waiters live there, and must observe an exit wherever the pane is shown.
-   * @param id The session identifier the message belongs to.
+   * Sends a session's message to the renderer window, when it is still alive.
    * @param channel The IPC channel to send on.
    * @param args The arguments to send.
    */
-  private sendToSession(id: string, channel: TerminalChannel, ...args: readonly unknown[]): void {
-    const main: BrowserWindow | null = this.windowGetter();
-    const mainContents: WebContents | null =
-      main !== null && !main.isDestroyed() ? main.webContents : null;
-    const viewer: WebContents | undefined = this.viewers.get(id);
-    const target: WebContents | null =
-      viewer !== undefined && !viewer.isDestroyed() ? viewer : mainContents;
-    if (target !== null) {
-      target.send(channel, ...args);
-    }
-    if (channel === TerminalChannel.Exit && mainContents !== null && target !== mainContents) {
-      mainContents.send(channel, ...args);
+  private sendToWindow(channel: TerminalChannel, ...args: readonly unknown[]): void {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window !== null && !window.isDestroyed()) {
+      window.webContents.send(channel, ...args);
     }
   }
 }

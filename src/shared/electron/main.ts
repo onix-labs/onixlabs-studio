@@ -16,9 +16,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
-import { AUX_PANEL_URL, buildPopoutSearch, sanitizePopoutParams } from '@shared/api/popout-params';
 import { ShellChannel } from '@shared/api/shell-channels';
-import { WindowChannel } from '@shared/api/window-channels';
+import { AUX_PANEL_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
@@ -39,7 +38,6 @@ import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
-import { PopoutMirrorRelay } from '@shared/electron/popout-mirror-relay';
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
@@ -170,17 +168,11 @@ class Program {
       // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
       this.openPathsReady = false;
-      // A reloaded main window has lost the owner-side state its pop-outs mirrored (the terminal
-      // session stores), so orphaned pop-outs are closed rather than left showing a dead strip.
+      // A reloaded main window has lost the renderer state its pop-outs rendered from (auxiliary
+      // windows share its JS context), so orphaned pop-outs are closed rather than left dead.
       this.windows.closeAllPopouts();
     },
   });
-
-  /**
-   * Relays the terminal-mirror protocol between the main window (session owner) and pop-out
-   * windows (viewers), stamping messages with the pop-out's registered identifier.
-   */
-  private readonly popoutMirrorRelay: PopoutMirrorRelay = new PopoutMirrorRelay(this.windows);
 
   /**
    * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the
@@ -533,24 +525,6 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
 
-    // Pop-out windows are main-created only (the renderer's window.open is denied by the security
-    // guards), so this is the one door: parameters are validated before they touch a load URL.
-    ipcMain.handle(WindowChannel.OpenPopout, (_event: IpcMainInvokeEvent, params: unknown): number | null => {
-      const sanitized: Record<string, string> | null = sanitizePopoutParams(params);
-      if (sanitized === null) {
-        return null;
-      }
-      return this.windows.createPopoutWindow(buildPopoutSearch(sanitized)).id;
-    });
-
-    ipcMain.handle(WindowChannel.ClosePopout, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
-      typeof id === 'number' ? this.windows.closePopout(id) : false,
-    );
-
-    ipcMain.handle(WindowChannel.FocusPopout, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
-      typeof id === 'number' ? this.windows.focusPopout(id) : false,
-    );
-
     ipcMain.on(AppChannel.ConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);
     });
@@ -606,7 +580,6 @@ class Program {
     });
 
     this.logger.register();
-    this.popoutMirrorRelay.register();
     this.securityManager.register();
     this.mediaProtocol.register();
     this.printManager.register();

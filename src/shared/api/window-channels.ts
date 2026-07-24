@@ -1,8 +1,7 @@
 /**
- * Names the window IPC channels: the custom title-bar's control operations (which act on the
- * requesting window) and the pop-out window lifecycle (which the main process owns — the renderer
- * can never open windows itself). The shared window client and the main-process handlers name their
- * channels from here, over the generic {@link import('./bridge').Bridge} transport.
+ * Names the window IPC channels: the custom title-bar's control operations, which act on the
+ * requesting window. The shared window client and the main-process handlers name their channels
+ * from here, over the generic {@link import('./bridge').Bridge} transport.
  */
 export enum WindowChannel {
   /**
@@ -25,27 +24,13 @@ export enum WindowChannel {
    * (renderer→main, send).
    */
   SetMovable = 'window:set-movable',
-
-  /**
-   * Requests a new pop-out window carrying the given parameters, answering its window identifier —
-   * or null when the parameters are rejected (renderer→main, invoke).
-   */
-  OpenPopout = 'window:open-popout',
-
-  /**
-   * Closes the pop-out window with the given identifier (renderer→main, invoke).
-   */
-  ClosePopout = 'window:close-popout',
-
-  /**
-   * Brings the pop-out window with the given identifier to the front, restoring it first when
-   * minimized (renderer→main, invoke).
-   */
-  FocusPopout = 'window:focus-popout',
-
-  /**
-   * Notifies the main window that a pop-out window has closed, carrying its identifier
-   * (main→renderer, send).
-   */
-  PopoutClosed = 'window:popout-closed',
 }
+
+/**
+ * Names the exact URL an auxiliary panel window is opened with — the ONE `window.open` target the
+ * security guards allow. An auxiliary window shares the opener's renderer process, so the opener
+ * builds its DOM directly and a dock panel renders into it with the workspace's own services; the
+ * sentinel fragment keeps the allow surgically narrow (#116: everything else is still denied and
+ * routed to the system browser).
+ */
+export const AUX_PANEL_URL: string = 'about:blank#studio-panel';

@@ -1,15 +1,13 @@
 import { Service, signal, WritableSignal } from '@angular/core';
 
 /**
- * The pop-out seam of this view's dock: which panels CAN pop out into their own OS windows, and
- * which currently ARE popped out. The dock group chrome offers the pop-out action for poppable
- * panels; `DockReveal` consults the popped set so revealing a popped panel focuses its window
+ * The pop-out seam of this view's dock: whether panels can pop out into their own OS windows, and
+ * which currently ARE popped out. The dock group chrome offers the pop-out action when a handler is
+ * registered; `DockReveal` consults the popped set so revealing a popped panel focuses its window
  * instead of touching the dock.
  *
- * Capability comes in two layers: a panel-specific handler (the terminal's mirror-based
- * coordinator) wins; otherwise the registered FALLBACK — the generic auxiliary-window pop-out that
- * hosts any panel component in a child window — covers every panel. Provided per view alongside
- * the rest of the dock services.
+ * Capability comes from ONE registered handler — the auxiliary-window pop-out that hosts any panel
+ * component in a child window. Provided per view alongside the rest of the dock services.
  */
 @Service()
 export class PopoutPanels {
@@ -21,81 +19,41 @@ export class PopoutPanels {
   >(new Map<string, () => void>());
 
   /**
-   * Holds the panel-specific pop-out handlers.
+   * Holds the pop-out handler covering every panel, or null when none is registered.
    */
-  private readonly handlers: WritableSignal<ReadonlyMap<string, () => void>> = signal<
-    ReadonlyMap<string, () => void>
-  >(new Map<string, () => void>());
-
-  /**
-   * Holds the fallback pop-out handler covering panels without a specific one, or null when none
-   * is registered.
-   */
-  private readonly fallback: WritableSignal<((panelId: string) => void) | null> = signal<
+  private readonly handler: WritableSignal<((panelId: string) => void) | null> = signal<
     ((panelId: string) => void) | null
   >(null);
 
   /**
-   * Registers a panel's specific pop-out handler.
-   * @param panelId The panel identifier.
-   * @param handler The action that pops the panel out.
+   * Registers the pop-out handler covering every panel.
+   * @param handler The action that pops a panel out, given its identifier.
    * @returns Returns a function that deregisters the handler (unless it was replaced since).
    */
-  public registerPopOut(panelId: string, handler: () => void): () => void {
-    this.handlers.update(
-      (current: ReadonlyMap<string, () => void>): ReadonlyMap<string, () => void> =>
-        new Map<string, () => void>(current).set(panelId, handler),
-    );
+  public register(handler: (panelId: string) => void): () => void {
+    this.handler.set(handler);
     return (): void => {
-      this.handlers.update(
-        (current: ReadonlyMap<string, () => void>): ReadonlyMap<string, () => void> => {
-          if (current.get(panelId) !== handler) {
-            return current;
-          }
-          const next: Map<string, () => void> = new Map<string, () => void>(current);
-          next.delete(panelId);
-          return next;
-        },
-      );
-    };
-  }
-
-  /**
-   * Registers the fallback pop-out handler covering every panel without a specific one.
-   * @param handler The action that pops a panel out, given its identifier.
-   * @returns Returns a function that deregisters the fallback (unless it was replaced since).
-   */
-  public registerFallback(handler: (panelId: string) => void): () => void {
-    this.fallback.set(handler);
-    return (): void => {
-      if (this.fallback() === handler) {
-        this.fallback.set(null);
+      if (this.handler() === handler) {
+        this.handler.set(null);
       }
     };
   }
 
   /**
-   * Determines whether a panel can pop out. Reactive: reading it inside a computation tracks the
-   * handler registrations.
-   * @param panelId The panel identifier.
-   * @returns Returns true when the panel can pop out.
+   * Determines whether panels can pop out (a handler is registered). Reactive: reading it inside a
+   * computation tracks the handler registration.
+   * @returns Returns true when panels can pop out.
    */
-  public canPopOut(panelId: string): boolean {
-    return this.handlers().has(panelId) || this.fallback() !== null;
+  public canPopOut(): boolean {
+    return this.handler() !== null;
   }
 
   /**
-   * Pops a panel out through its specific handler, falling back to the generic one. Panels with
-   * neither are ignored.
+   * Pops a panel out through the registered handler. Ignored when none is registered.
    * @param panelId The panel identifier.
    */
   public popOut(panelId: string): void {
-    const specific: (() => void) | undefined = this.handlers().get(panelId);
-    if (specific !== undefined) {
-      specific();
-      return;
-    }
-    this.fallback()?.(panelId);
+    this.handler()?.(panelId);
   }
 
   /**

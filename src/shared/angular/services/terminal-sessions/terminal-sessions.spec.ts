@@ -252,9 +252,9 @@ describe('TerminalSessions', () => {
 
   it('launch_withWindowPresentation_popsThePanelOutInsteadOfRevealingTheDock', async () => {
     const popouts: PopoutPanels = TestBed.inject(PopoutPanels);
-    let popped: number = 0;
-    popouts.registerPopOut('terminal', (): void => {
-      popped++;
+    const popped: string[] = [];
+    popouts.register((panelId: string): void => {
+      popped.push(panelId);
     });
 
     const { session } = await sessions.launch({
@@ -265,7 +265,7 @@ describe('TerminalSessions', () => {
     });
 
     expect(sessions.activeId()).toBe(session.id);
-    expect(popped).toBe(1);
+    expect(popped).toEqual(['terminal']);
     expect(reveal).not.toHaveBeenCalled();
   });
 

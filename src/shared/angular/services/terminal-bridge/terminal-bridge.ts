@@ -128,26 +128,6 @@ export class TerminalBridge {
   }
 
   /**
-   * Declares this window the session's viewer, routing its live output here instead of the main
-   * window. Called by a pane as it mounts, before it fetches its replay snapshot.
-   * @param id The terminal identifier.
-   * @returns Returns true when the viewer was recorded.
-   */
-  public attach(id: string): Promise<boolean> {
-    return this.bridge?.invoke<boolean>(TerminalChannel.Attach, id) ?? Promise.resolve(false);
-  }
-
-  /**
-   * Withdraws this window as the session's viewer, returning its live output to the main window.
-   * Ignored when another window has attached since.
-   * @param id The terminal identifier.
-   * @returns Returns true when this window was the viewer and was withdrawn.
-   */
-  public detach(id: string): Promise<boolean> {
-    return this.bridge?.invoke<boolean>(TerminalChannel.Detach, id) ?? Promise.resolve(false);
-  }
-
-  /**
    * Subscribes to output data from sessions.
    * @param listener Receives the terminal id, the output data chunk, and the chunk's sequence number
    * in the session's output stream (used to reconcile live chunks with a replay snapshot).

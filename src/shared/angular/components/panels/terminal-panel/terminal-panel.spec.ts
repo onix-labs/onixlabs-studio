@@ -43,8 +43,6 @@ describe('TerminalPanel', () => {
           useValue: {
             isElectron: false,
             dispose,
-            attach: (): Promise<boolean> => Promise.resolve(false),
-            detach: (): Promise<boolean> => Promise.resolve(false),
             onData: (): (() => void) => (): void => undefined,
             onExit: (): (() => void) => (): void => undefined,
           },

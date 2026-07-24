@@ -291,20 +291,17 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   per-kind bounds persistence (`window-state.json`, off-screen bounds re-centred), and
   `applyWebContentsSecurity` on every window it creates or adopts. Push-style IPC still targets the
   main window by default; invoke-style handlers reply to their caller and are window-agnostic.
-- **Two pop-out mechanisms, one chrome.** The dock group title bar offers pop-out (cards icon)
-  through the per-view `PopoutPanels` seam: a panel-specific handler wins, else the generic fallback.
-  - **Terminal panel** (specific): a separate full shell window (`?window=popout` boot branch in
-    `src/shared/app/main.ts` with a minimal provider set — never `OpenWith`, `Lifecycle`, or the
-    agent initializers). The workspace window's `TerminalSessions` remains the single owner; a
-    main-process relay mirrors session **metadata** to the pop-out, whose persistent panes attach to
-    the main-owned PTYs by id (`terminal:attach`/`detach` routes live output to the viewing window;
-    exits always also reach the owner). The pop-out never disposes a PTY.
-  - **Every other panel** (fallback, `PanelPopout`): a **same-renderer auxiliary window** — the one
-    `window.open` target the security guards allow (`AUX_PANEL_URL`); everything else is still denied
-    (#116). The child shares the renderer process, so the panel component renders into the child's
-    document **with the owning view's injector** and keeps its real services; `AuxiliaryWindows`
-    mirrors stylesheets and theme attributes into open children. No per-panel data plumbing exists —
-    do not add mirrors for these panels.
+- **One pop-out mechanism, one chrome.** The dock group title bar offers pop-out (cards icon)
+  through the per-view `PopoutPanels` seam, handled by `PanelPopout` for **every panel**: a
+  **same-renderer auxiliary window** — the one `window.open` target the security guards allow
+  (`AUX_PANEL_URL`); everything else is still denied (#116). The child shares the renderer process,
+  so the panel component renders into the child's document **with the owning view's injector** and
+  keeps its real services; `AuxiliaryWindows` mirrors stylesheets and theme attributes into open
+  children. No per-panel data plumbing exists — do not add mirrors or per-window IPC routing for
+  popped panels. The terminal panel works this way too: its panes live in the opener's JS context
+  wherever their DOM renders, so PTY output keeps flowing over the main window's bridge, and a
+  popped pane re-attaches through the same scrollback replay as any remount (the pop-out never
+  disposes a PTY — panes are `persistent`).
 - **Move, not clone.** A panel (and a terminal session) renders in exactly one window; closing a
   pop-out docks the panel back to the stack/index it left. Closing the main window quits the app;
   pop-outs never gate lifecycle. `DockReveal` focuses a popped panel's window instead of touching

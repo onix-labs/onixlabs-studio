@@ -402,7 +402,7 @@ export class TerminalSessions implements OnDestroy {
       this.resolveWaiter(id, 1);
     }
 
-    if (options.presentation === 'window' && this.popouts.canPopOut(TERMINAL_PANEL_ID)) {
+    if (options.presentation === 'window' && this.popouts.canPopOut()) {
       // The configuration asked for its terminal in a window: pop the panel out (or focus the
       // pop-out already showing it) with this session active, instead of revealing the dock.
       this.active.set(id);
