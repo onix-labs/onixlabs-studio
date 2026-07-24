@@ -12,18 +12,6 @@ export interface AuxiliaryWindow {
   readonly contentHost: HTMLElement;
 
   /**
-   * Gets the element a tab strip renders into (between the title bar and the content), for windows
-   * hosting more than one surface. Empty otherwise, and collapsed by its own styling.
-   */
-  readonly stripHost: HTMLElement;
-
-  /**
-   * Sets the window title (the OS title bar and the chrome's title text).
-   * @param title The window title.
-   */
-  setTitle(title: string): void;
-
-  /**
    * Determines whether a screen point lies within the window's frame, for hit-testing a drag
    * released over it.
    * @param screenX The point's screen x coordinate.
@@ -83,8 +71,6 @@ const AUX_STYLES: string = `
   .aux-window__title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; font-size: 0.8rem; font-weight: 600;
     color: var(--title-strip-button-foreground-color--hover); }
-  .aux-window__strip { flex: none; }
-  .aux-window__strip:empty { display: none; }
   .aux-window__content { flex: 1; min-block-size: 0; display: flex; flex-direction: column; }
   .aux-window__content > * { flex: 1; min-block-size: 0; }
 `;
@@ -158,12 +144,9 @@ export class AuxiliaryWindows implements OnDestroy {
     titleText.className = 'aux-window__title';
     titleText.textContent = title;
     titlebar.appendChild(titleText);
-    const stripHost: HTMLElement = doc.createElement('nav');
-    stripHost.className = 'aux-window__strip';
     const contentHost: HTMLElement = doc.createElement('main');
     contentHost.className = 'aux-window__content';
     doc.body.appendChild(titlebar);
-    doc.body.appendChild(stripHost);
     doc.body.appendChild(contentHost);
 
     this.children.add(child);
@@ -192,11 +175,6 @@ export class AuxiliaryWindows implements OnDestroy {
 
     return {
       contentHost,
-      stripHost,
-      setTitle: (next: string): void => {
-        doc.title = next;
-        titleText.textContent = next;
-      },
       containsScreenPoint: (screenX: number, screenY: number): boolean =>
         !child.closed &&
         screenX >= child.screenX &&
