@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { TerminalLaunch, TerminalSession, TerminalSessions } from './terminal-sessions';
 
@@ -245,6 +246,37 @@ describe('TerminalSessions', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ id: session.id, kind: 'task', command: 'dotnet build', cwd: '/repo' }),
     );
+    expect(sessions.activeId()).toBe(session.id);
+    expect(reveal).toHaveBeenCalledWith('terminal');
+  });
+
+  it('launch_withWindowPresentation_popsThePanelOutInsteadOfRevealingTheDock', async () => {
+    const popouts: PopoutPanels = TestBed.inject(PopoutPanels);
+    let popped: number = 0;
+    popouts.registerPopOut('terminal', (): void => {
+      popped++;
+    });
+
+    const { session } = await sessions.launch({
+      name: 'Run: Api',
+      kind: 'run',
+      command: 'node api.js',
+      presentation: 'window',
+    });
+
+    expect(sessions.activeId()).toBe(session.id);
+    expect(popped).toBe(1);
+    expect(reveal).not.toHaveBeenCalled();
+  });
+
+  it('launch_withWindowPresentation_butNoPopOutSupport_fallsBackToTheDockReveal', async () => {
+    const { session } = await sessions.launch({
+      name: 'Run: Api',
+      kind: 'run',
+      command: 'node api.js',
+      presentation: 'window',
+    });
+
     expect(sessions.activeId()).toBe(session.id);
     expect(reveal).toHaveBeenCalledWith('terminal');
   });

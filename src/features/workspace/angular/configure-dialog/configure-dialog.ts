@@ -246,6 +246,13 @@ export class ConfigureDialogPanel {
   );
 
   /**
+   * Gets whether the selected configuration presents its terminal in its own OS window.
+   */
+  protected readonly isWindowPresentation: Signal<boolean> = computed(
+    (): boolean => this.selected()?.presentation === 'window',
+  );
+
+  /**
    * Seeds the draft from the persisted configurations whenever the dialog opens, so edits start from
    * the current state and Cancel simply discards the draft.
    */
@@ -430,6 +437,15 @@ export class ConfigureDialogPanel {
    */
   protected onModeChange(debug: boolean): void {
     this.patch({ mode: debug ? 'debug' : 'run' });
+  }
+
+  /**
+   * Applies the presentation toggle: on presents the run's terminal in its own OS window; off
+   * returns to the default (the field is dropped, so the persisted file stays minimal).
+   * @param window Whether the run's terminal presents in its own window.
+   */
+  protected onPresentationChange(window: boolean): void {
+    this.patch({ presentation: window ? 'window' : undefined });
   }
 
   /**
