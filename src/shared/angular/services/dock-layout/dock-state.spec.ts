@@ -36,6 +36,14 @@ class FakeStore {
   public set<T>(key: string, value: T): void {
     this.map.set(key, value);
   }
+
+  /**
+   * Cross-window change notifications never fire in this hermetic stand-in.
+   * @returns Returns a no-op disposer.
+   */
+  public onExternalChange(): () => void {
+    return (): void => undefined;
+  }
 }
 
 /**

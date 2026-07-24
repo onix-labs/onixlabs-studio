@@ -39,6 +39,29 @@ export class SettingsStore {
   }
 
   /**
+   * Subscribes to changes ANOTHER window makes to the given key, so per-window state read once at
+   * boot (the theme, the settings map) can follow live edits made elsewhere — a pop-out window
+   * following the main window's appearance. The browser fires the `storage` event only in the
+   * windows that did not perform the write, so a listener that re-reads and applies the value can
+   * never echo the change back to its source.
+   * @param key The key to watch.
+   * @param listener Invoked after another window changes the key; re-read through {@link get}.
+   * @returns Returns a function that removes the listener.
+   */
+  public onExternalChange(key: string, listener: () => void): () => void {
+    if (typeof globalThis.addEventListener !== 'function') {
+      return (): void => undefined;
+    }
+    const handler: (event: Event) => void = (event: Event): void => {
+      if ((event as StorageEvent).key === key) {
+        listener();
+      }
+    };
+    globalThis.addEventListener('storage', handler);
+    return (): void => globalThis.removeEventListener('storage', handler);
+  }
+
+  /**
    * Reads the raw string stored under the given key, returning null when storage is unavailable or
    * the key is absent.
    * @param key The key to read.

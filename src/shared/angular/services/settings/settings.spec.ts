@@ -244,4 +244,34 @@ describe('Settings', () => {
     expect(service.aiActiveConnection()?.id).toBe('ollama');
     expect(service.connectionModelFor('ollama')).toBe('qwen3:8b');
   });
+
+  it('externalChange_fromAnotherWindow_appliesTheStoredOverridesLive', () => {
+    const service: Settings = TestBed.inject(Settings);
+    expect(service.get('application.printMargin')).not.toBe('wide');
+
+    // Another window wrote the settings blob, then the browser notified this one.
+    localStorage.setItem('settings', JSON.stringify({ 'application.printMargin': 'wide' }));
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'settings' }));
+
+    expect(service.get('application.printMargin')).toBe('wide');
+  });
+
+  it('externalChange_isNotEchoedBackToTheStore_butLocalEditsStillPersist', () => {
+    const service: Settings = TestBed.inject(Settings);
+    TestBed.inject(ApplicationRef).tick();
+
+    const external: string = JSON.stringify({ 'application.printMargin': 'wide' });
+    localStorage.setItem('settings', external);
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'settings' }));
+    TestBed.inject(ApplicationRef).tick();
+
+    // The persist effect must not clobber the store with a re-serialisation of what it just read
+    // (the guard suppresses the write, so the other window's exact blob remains).
+    expect(localStorage.getItem('settings')).toBe(external);
+
+    service.set('application.printMargin', 'narrow');
+    TestBed.inject(ApplicationRef).tick();
+    expect(service.get('application.printMargin')).toBe('narrow');
+    expect(localStorage.getItem('settings')).not.toBe(external);
+  });
 });

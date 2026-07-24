@@ -630,11 +630,29 @@ export class Settings {
   );
 
   /**
-   * Initialises the service, persisting the override map to the store whenever it changes.
+   * Holds the last override map applied from another window's write, so the auto-persist effect can
+   * tell an externally-sourced state (which must not be written back) from a local edit. The browser
+   * never fires the storage notification in the writing window, so this guard only ever suppresses
+   * the redundant re-write of a value that is already in the store.
+   */
+  private externallyApplied: SettingsOverrides | null = null;
+
+  /**
+   * Initialises the service: persists the override map to the store whenever it changes locally, and
+   * follows changes other windows make to it (a pop-out window tracking the main window's settings —
+   * and the reverse), so every window's signals reflect the latest write.
    */
   public constructor() {
     effect((): void => {
-      this.store.set<SettingsOverrides>(SETTINGS_KEY, this.overrides());
+      const overrides: SettingsOverrides = this.overrides();
+      if (overrides !== this.externallyApplied) {
+        this.store.set<SettingsOverrides>(SETTINGS_KEY, overrides);
+      }
+    });
+    this.store.onExternalChange(SETTINGS_KEY, (): void => {
+      const loaded: SettingsOverrides = this.load();
+      this.externallyApplied = loaded;
+      this.overrides.set(loaded);
     });
   }
 
