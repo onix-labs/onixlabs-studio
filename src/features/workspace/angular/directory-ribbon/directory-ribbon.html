@@ -144,6 +144,57 @@
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
+
+  <!-- Layout presets: which panels exist and where they dock. Session tweaks are ephemeral —
+       switching, resetting, or relaunching re-applies the selected preset's saved definition;
+       Save as…/Update are the only writes. Built-ins are immutable, so the modifying actions
+       enable only for user presets. -->
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-column [spread]="true">
+      <app-dropdown
+        [options]="presetOptions()"
+        [value]="activePresetId()"
+        [disabled]="!canUsePresets()"
+        [fullWidth]="true"
+        ariaLabel="Layout preset"
+        (valueChange)="onSelectPreset($event)"
+      />
+      <app-ribbon-strip-row>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.SAVE_AS"
+          label="Save As"
+          [disabled]="!canUsePresets()"
+          (action)="onSavePresetAs()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.SAVE"
+          label="Update"
+          [disabled]="!canModifyPreset()"
+          (action)="onUpdatePreset()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.REFRESH"
+          label="Reset"
+          [disabled]="!canUsePresets()"
+          (action)="onResetPreset()"
+        />
+      </app-ribbon-strip-row>
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.PENCIL"
+        label="Rename"
+        [disabled]="!canModifyPreset()"
+        (action)="onRenamePreset()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.TRASH"
+        label="Delete"
+        [disabled]="!canModifyPreset()"
+        (action)="onDeletePreset()"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
 </app-ribbon-overflow>
 
 <!-- Asked when Start targets a configuration that is still running: the program is only ever
@@ -170,6 +221,43 @@
       (click)="confirmRunRestart()"
     >
       Stop &amp; Restart
+    </button>
+  </div>
+</app-modal>
+
+<!-- Names a layout preset: saving the current arrangement as a new preset, or renaming the active
+     user preset. -->
+<app-modal
+  [open]="presetPrompt() !== null"
+  [width]="26"
+  ariaLabel="Name the layout preset"
+  (dismiss)="cancelPresetPrompt()"
+>
+  <h2 class="directory-ribbon__confirm-title">
+    {{ presetPrompt() === 'rename' ? 'Rename preset' : 'Save layout as preset' }}
+  </h2>
+  <input
+    #presetInput
+    class="directory-ribbon__prompt-input"
+    type="text"
+    [value]="presetPromptName()"
+    (input)="onPresetPromptInput($event)"
+    (keydown.enter)="confirmPresetPrompt()"
+    (keydown.escape)="cancelPresetPrompt()"
+    placeholder="Preset name"
+    aria-label="Preset name"
+  />
+  <div class="directory-ribbon__confirm-actions">
+    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPresetPrompt()">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="directory-ribbon__confirm-button"
+      [disabled]="presetPromptName().trim().length === 0"
+      (click)="confirmPresetPrompt()"
+    >
+      {{ presetPrompt() === 'rename' ? 'Rename' : 'Save' }}
     </button>
   </div>
 </app-modal>

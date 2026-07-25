@@ -39,7 +39,11 @@ import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
+import { LayoutPresets, LayoutPresetSession } from '@shared/angular/services/layout-presets/layout-presets';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
@@ -147,7 +151,30 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
     // and the auxiliary-window coordinator that pops any panel into one.
     PopoutPanels,
     PanelPopout,
-    { provide: DOCK_BLUEPRINT, useValue: WORKSPACE_DOCK_BLUEPRINT },
+    {
+      // The dock seeds from the root's ACTIVE LAYOUT PRESET rather than a persisted tree: the
+      // blueprint carries no key (session layout tweaks are ephemeral by ruling — every
+      // construction and reset re-applies the preset's saved definition), and createLayout reads
+      // the preset store at call time so DockState.reset() is exactly "apply the active preset".
+      provide: DOCK_BLUEPRINT,
+      useFactory: (): DockBlueprint => {
+        const presets: LayoutPresets = inject(LayoutPresets);
+        const context: DockTabContext = inject(DockTabContext);
+        const known: ReadonlySet<string> = new Set<string>(
+          WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
+        );
+        return {
+          panels: WORKSPACE_DOCK_BLUEPRINT.panels,
+          createLayout: (): DockNode => {
+            const layout: DockNode | null = presets.layoutForRoot(context.root());
+            return (
+              (layout !== null ? restoreLayout(layout, known) : null) ??
+              WORKSPACE_DOCK_BLUEPRINT.createLayout()
+            );
+          },
+        };
+      },
+    },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
@@ -362,6 +389,37 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly panelPopout: PanelPopout = inject(PanelPopout);
 
   /**
+   * Holds the layout preset store this view registers its session with while active.
+   */
+  private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
+
+  /**
+   * Holds the root the active layout preset was last applied for, so the root announcement re-seeds
+   * the dock exactly once per root (the dock constructed before the root was known, on the
+   * default preset).
+   */
+  private appliedPresetRoot: string | null = null;
+
+  /**
+   * Holds the disposer of the registered layout preset session, or null while inactive.
+   */
+  private disposeLayoutSession: (() => void) | null = null;
+
+  /**
+   * Holds the layout preset session: the preset commands capture this dock's current tree for
+   * Save as…/Update through it, and re-seed the dock when a preset is selected or reset. Applying
+   * first returns any popped-out panels — the incoming preset defines which panels exist.
+   */
+  private readonly layoutSession: LayoutPresetSession = {
+    root: this.dockTabContext.root,
+    capture: (): DockNode => this.dockState.layout(),
+    apply: (): void => {
+      this.panelPopout.returnAll();
+      this.dockState.reset();
+    },
+  };
+
+  /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
    * {@link Repository}; undefined when running outside Electron.
    */
@@ -414,6 +472,41 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.debugger.unregister(this.debugSession);
         this.workspaceCapabilities.unregister(this.solutionModel.model);
       }
+    });
+
+    // The Coding built-in is today's workspace default layout; registration is idempotent, so
+    // every workspace tab may declare it. The Git built-in arrives with the union panel catalogue.
+    this.layoutPresets.registerBuiltIn({
+      id: 'coding',
+      name: 'Coding',
+      createLayout: (): DockNode => WORKSPACE_DOCK_BLUEPRINT.createLayout(),
+    });
+
+    // Register this tab's layout-preset session while active, so the ribbon's VIEW group commands
+    // (select, save as, update, reset…) act on this dock.
+    effect((): void => {
+      if (this.isActive()) {
+        this.disposeLayoutSession = this.layoutPresets.register(this.layoutSession);
+      } else {
+        this.disposeLayoutSession?.();
+        this.disposeLayoutSession = null;
+      }
+    });
+
+    // The dock constructed before the root was announced, seeded with the DEFAULT preset. Once the
+    // root is known, re-seed from the root's own persisted pick — but only when it differs, so the
+    // common case never resets a freshly-built dock.
+    effect((): void => {
+      const root: string | null = this.dockTabContext.root();
+      if (root === null || root === this.appliedPresetRoot) {
+        return;
+      }
+      this.appliedPresetRoot = root;
+      untracked((): void => {
+        if (this.layoutPresets.activeFor(root) !== this.layoutPresets.activeFor(null)) {
+          this.layoutSession.apply();
+        }
+      });
     });
 
     // Register this workspace's source-control handler while active, so the directory ribbon's Source

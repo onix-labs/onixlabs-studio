@@ -1,4 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  Signal,
+  signal,
+  viewChild,
+  WritableSignal,
+} from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
@@ -10,6 +21,10 @@ import { WorkspaceCapabilities } from '@shared/angular/services/workspace/worksp
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
 import { expandRunConfiguration, isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
+import {
+  LayoutPresetInfo,
+  LayoutPresets,
+} from '@shared/angular/services/layout-presets/layout-presets';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -598,5 +613,155 @@ export class DirectoryRibbon {
    */
   protected onPull(): void {
     this.sourceControl.pull();
+  }
+
+  /**
+   * Holds the layout preset store the View group's commands dispatch through.
+   */
+  private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
+
+  /**
+   * Gets the layout presets as dropdown options.
+   */
+  protected readonly presetOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.layoutPresets.presets().map(
+        (preset: LayoutPresetInfo): DropdownOption => ({ value: preset.id, label: preset.name }),
+      ),
+  );
+
+  /**
+   * Gets the active preset's identifier, or the empty string while no workspace view is registered.
+   */
+  protected readonly activePresetId: Signal<string> = computed(
+    (): string => this.layoutPresets.activeId() ?? '',
+  );
+
+  /**
+   * Gets a value indicating whether preset commands can act: a workspace view is registered with a
+   * root open.
+   */
+  protected readonly canUsePresets: Signal<boolean> = computed(
+    (): boolean => this.layoutPresets.activeRoot() !== null,
+  );
+
+  /**
+   * Gets a value indicating whether the active preset is a user preset, so Update, Rename, and
+   * Delete apply (built-ins are immutable — forked with Save as…).
+   */
+  protected readonly canModifyPreset: Signal<boolean> = this.layoutPresets.activeIsUserPreset;
+
+  /**
+   * Holds which preset name prompt is open, or null when none is.
+   */
+  protected readonly presetPrompt: WritableSignal<'save-as' | 'rename' | null> = signal<
+    'save-as' | 'rename' | null
+  >(null);
+
+  /**
+   * Holds the name being edited in the preset prompt.
+   */
+  protected readonly presetPromptName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the preset prompt's name input, focused when the prompt opens (the `autofocus` attribute
+   * is unreliable on dynamically-inserted content and flagged for accessibility).
+   */
+  private readonly presetInput: Signal<ElementRef<HTMLInputElement> | undefined> =
+    viewChild<ElementRef<HTMLInputElement>>('presetInput');
+
+  /**
+   * Initializes the ribbon, focusing the preset prompt's name input whenever the prompt opens.
+   */
+  public constructor() {
+    effect((): void => {
+      if (this.presetPrompt() !== null) {
+        const input: HTMLInputElement | undefined = this.presetInput()?.nativeElement;
+        if (input !== undefined) {
+          setTimeout((): void => input.focus(), 0);
+        }
+      }
+    });
+  }
+
+  /**
+   * Applies the chosen layout preset to the active workspace.
+   * @param id The chosen preset identifier.
+   */
+  protected onSelectPreset(id: string): void {
+    this.layoutPresets.select(id);
+  }
+
+  /**
+   * Opens the Save as… prompt for a new preset named after the current layout.
+   */
+  protected onSavePresetAs(): void {
+    this.presetPromptName.set('');
+    this.presetPrompt.set('save-as');
+  }
+
+  /**
+   * Writes the current layout into the active user preset.
+   */
+  protected onUpdatePreset(): void {
+    this.layoutPresets.updateActive();
+  }
+
+  /**
+   * Opens the rename prompt for the active user preset.
+   */
+  protected onRenamePreset(): void {
+    const active: LayoutPresetInfo | undefined = this.layoutPresets
+      .presets()
+      .find((preset: LayoutPresetInfo): boolean => preset.id === this.activePresetId());
+    this.presetPromptName.set(active?.name ?? '');
+    this.presetPrompt.set('rename');
+  }
+
+  /**
+   * Deletes the active user preset; its workspaces fall back to the default preset.
+   */
+  protected onDeletePreset(): void {
+    this.layoutPresets.remove(this.activePresetId());
+  }
+
+  /**
+   * Re-applies the active preset's saved definition, discarding the session's layout tweaks.
+   */
+  protected onResetPreset(): void {
+    this.layoutPresets.reset();
+  }
+
+  /**
+   * Records the prompt's name as it is edited.
+   * @param event The input event carrying the name.
+   */
+  protected onPresetPromptInput(event: Event): void {
+    this.presetPromptName.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Confirms the open preset prompt: saving the current layout as a new preset, or renaming the
+   * active one.
+   */
+  protected confirmPresetPrompt(): void {
+    const name: string = this.presetPromptName().trim();
+    const mode: 'save-as' | 'rename' | null = this.presetPrompt();
+    this.presetPrompt.set(null);
+    if (name.length === 0 || mode === null) {
+      return;
+    }
+    if (mode === 'save-as') {
+      this.layoutPresets.saveAs(name);
+    } else {
+      this.layoutPresets.rename(this.activePresetId(), name);
+    }
+  }
+
+  /**
+   * Dismisses the preset prompt without applying it.
+   */
+  protected cancelPresetPrompt(): void {
+    this.presetPrompt.set(null);
   }
 }
