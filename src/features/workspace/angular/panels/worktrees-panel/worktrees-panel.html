@@ -5,7 +5,7 @@
       class="worktrees__row worktrees__row--orchestrator"
       title="The container's coordinating agent arrives in a later phase."
     >
-      <app-icon [icon]="Icon.AGENT" [size]="16" />
+      <app-icon [icon]="Icon.AGENT" [size]="1" />
       <span class="worktrees__text">
         <span class="worktrees__label">Orchestrator</span>
       </span>
@@ -20,7 +20,7 @@
         (click)="onActivate(checkout.id)"
         (keydown.enter)="onActivate(checkout.id)"
       >
-        <app-icon [icon]="Icon.WORKTREE" [size]="16" />
+        <app-icon [icon]="Icon.WORKTREE" [size]="1" />
         <span class="worktrees__text">
           <span class="worktrees__label">{{ labelOf(checkout.id) }}</span>
           @if (branchOf(checkout.id)) {
@@ -37,7 +37,7 @@
             title="Remove worktree"
             (click)="onRemove(checkout.id, $event)"
           >
-            <app-icon [icon]="Icon.TRASH" [size]="14" />
+            <app-icon [icon]="Icon.TRASH" [size]="0.85" />
           </button>
         }
       </div>
@@ -50,7 +50,7 @@
 
   <div class="worktrees__actions">
     <button type="button" class="worktrees__add" [disabled]="busy()" (click)="onAdd()">
-      <app-icon [icon]="Icon.PLUS" [size]="14" />
+      <app-icon [icon]="Icon.PLUS" [size]="0.85" />
       {{ session.busy() === 'add' ? 'Cloning…' : 'New Worktree' }}
     </button>
     <button
@@ -61,7 +61,7 @@
       title="Refresh"
       (click)="onRefresh()"
     >
-      <app-icon [icon]="Icon.REFRESH" [size]="14" />
+      <app-icon [icon]="Icon.REFRESH" [size]="0.85" />
     </button>
   </div>
 </div>

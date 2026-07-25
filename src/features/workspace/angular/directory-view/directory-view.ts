@@ -718,14 +718,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       const leading: StatusSegment[] = [
         { id: 'sc-branch', text: branch?.name ?? 'detached HEAD', icon: Icon.SOURCE_CONTROL },
       ];
-      // The worktree indicator: which checkout the container tab is scoped to. The Worktrees panel
-      // is the switcher; this is the always-visible answer to "which one am I looking at?".
+      // The worktree indicator: which checkout the container tab is scoped to. Shown only when it
+      // says something the branch segment does not (an alias) — an unaliased checkout's label IS
+      // its branch, and "main main" is noise.
       if (this.worktreeSession.isContainer()) {
-        leading.unshift({
-          id: 'sc-worktree',
-          text: this.worktreeSession.activeLabel() ?? '',
-          icon: Icon.WORKTREE,
-        });
+        const label: string | null = this.worktreeSession.activeLabel();
+        if (label !== null && label !== (branch?.name ?? '')) {
+          leading.unshift({ id: 'sc-worktree', text: label, icon: Icon.WORKTREE });
+        }
       }
       if (branch !== undefined && (branch.ahead > 0 || branch.behind > 0)) {
         leading.push({ id: 'sc-sync', text: `↑${branch.ahead} ↓${branch.behind}` });
