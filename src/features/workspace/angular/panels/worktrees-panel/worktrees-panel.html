@@ -27,6 +27,19 @@
             <span class="worktrees__branch">{{ branchOf(checkout.id) }}</span>
           }
         </span>
+        @if (isDuplicateBranch(checkout.id)) {
+          <span class="worktrees__warning" title="Another checkout is on this branch">
+            <app-icon [icon]="Icon.WARNING" [size]="0.85" />
+          </span>
+        }
+        @if (agentStateOf(checkout.id); as state) {
+          <span
+            class="worktrees__agent worktrees__agent--{{ state }}"
+            [title]="state === 'running' ? 'Agent running' : 'Agent idle'"
+          >
+            <app-icon [icon]="Icon.AGENT" [size]="0.85" />
+          </span>
+        }
         <span class="worktrees__meta">{{ statusOf(checkout.id) }}</span>
         @if (canRemove()) {
           <button

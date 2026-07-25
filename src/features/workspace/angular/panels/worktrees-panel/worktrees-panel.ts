@@ -127,6 +127,31 @@ export class WorktreesPanel {
   }
 
   /**
+   * Resolves a checkout's agent state for the activity glyph: running, idle, or null when the
+   * checkout has not been materialised yet (no sub-view, so no agent).
+   * @param id The checkout id.
+   * @returns Returns the agent state, or null.
+   */
+  protected agentStateOf(id: string): 'running' | 'idle' | null {
+    const running: Signal<boolean> | undefined = this.session.agentActivity().get(id);
+    if (running === undefined) {
+      return null;
+    }
+    return running() ? 'running' : 'idle';
+  }
+
+  /**
+   * Determines whether a checkout shares its branch with another checkout — the Studio-level
+   * collision warning (full clones mean git itself no longer refuses the same branch twice).
+   * @param id The checkout id.
+   * @returns Returns true when another checkout is on the same branch.
+   */
+  protected isDuplicateBranch(id: string): boolean {
+    const branch: string | null = this.session.statuses().get(id)?.branch ?? null;
+    return branch !== null && this.session.duplicateBranches().has(branch);
+  }
+
+  /**
    * Resolves a checkout's status text: clean or the changed-entry count, plus ahead/behind when
    * either is non-zero.
    * @param id The checkout id.

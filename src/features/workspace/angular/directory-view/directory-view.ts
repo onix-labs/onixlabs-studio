@@ -296,6 +296,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
 
   /**
+   * Holds this view's live agent, whose running state a checkout sub-view publishes to the
+   * Worktrees panel's activity glyphs.
+   */
+  private readonly agent: Agent = inject(Agent);
+
+  /**
    * Holds this tab's agent-host registrar, so the workspace agent appears in Mission Control for the
    * tab's whole life — not only while its docked agent panel is the active dock tool. Finalised in
    * {@link ngOnInit} once the tab id is readable.
@@ -971,6 +977,14 @@ export class DirectoryView implements OnInit, OnDestroy {
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
     // dispatch and other per-view registries, which must not collide across a container's sub-views.
     this.dockTabContext.setTabId(this.viewScope());
+    // A checkout sub-view publishes its agent's running state to the Worktrees panel, so the
+    // panel's activity glyph mirrors the SAME live agent Mission Control does.
+    const checkout: string | null = this.checkoutId();
+    if (checkout !== null) {
+      this.destroyRef.onDestroy(
+        this.worktreeSession.registerAgentActivity(checkout, this.agent.isRunning),
+      );
+    }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {

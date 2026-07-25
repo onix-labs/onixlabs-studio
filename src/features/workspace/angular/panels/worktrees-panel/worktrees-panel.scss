@@ -78,6 +78,40 @@
   white-space: nowrap;
 }
 
+.worktrees__warning {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--warning-color);
+}
+
+.worktrees__agent {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.worktrees__agent--idle {
+  color: var(--form-muted-foreground-color);
+  opacity: 0.6;
+}
+
+.worktrees__agent--running {
+  color: var(--accent-color);
+  animation: worktrees-agent-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes worktrees-agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .worktrees__remove {
   display: inline-flex;
   align-items: center;

@@ -65,6 +65,16 @@ export class WorktreeSession {
   private readonly claimedRoots: Set<string> = new Set<string>();
 
   /**
+   * Holds each materialised checkout's agent-running signal, keyed by checkout id. Registered by
+   * the checkout's sub-view from its OWN live {@link import('@shared/angular/services/agent/agent').Agent}
+   * — the same instance Mission Control mirrors — so the panel's activity glyphs are never a
+   * second source of truth.
+   */
+  private readonly activitySignal: WritableSignal<ReadonlyMap<string, Signal<boolean>>> = signal<
+    ReadonlyMap<string, Signal<boolean>>
+  >(new Map<string, Signal<boolean>>());
+
+  /**
    * Gets the container root path, or null while the tab is an ordinary workspace.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
@@ -97,6 +107,34 @@ export class WorktreeSession {
    * Gets the operation currently in flight, or null when idle.
    */
   public readonly busy: Signal<'add' | 'remove' | null> = this.busySignal.asReadonly();
+
+  /**
+   * Gets each materialised checkout's agent-running signal, keyed by checkout id. A checkout with
+   * no entry has not been materialised (no sub-view, so no agent yet).
+   */
+  public readonly agentActivity: Signal<ReadonlyMap<string, Signal<boolean>>> =
+    this.activitySignal.asReadonly();
+
+  /**
+   * Gets the branches checked out by more than one checkout. Full clones mean git no longer
+   * refuses the same branch twice, so the collision guard is Studio's: the panel warns on every
+   * checkout whose branch appears here.
+   */
+  public readonly duplicateBranches: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const counts: Map<string, number> = new Map<string, number>();
+      for (const status of this.statusSignal().values()) {
+        if (status.branch !== null) {
+          counts.set(status.branch, (counts.get(status.branch) ?? 0) + 1);
+        }
+      }
+      return new Set<string>(
+        [...counts.entries()]
+          .filter((entry: [string, number]): boolean => entry[1] > 1)
+          .map((entry: [string, number]): string => entry[0]),
+      );
+    },
+  );
 
   /**
    * Gets the active checkout's display label (its alias, else its branch), or null before the
@@ -143,6 +181,29 @@ export class WorktreeSession {
    */
   public activate(id: string): void {
     this.activeIdSignal.set(id);
+  }
+
+  /**
+   * Registers a materialised checkout's agent-running signal, powering the panel's activity glyph.
+   * @param id The checkout id.
+   * @param running The checkout agent's live running signal.
+   * @returns Returns a disposer that unregisters the signal (called on sub-view destroy).
+   */
+  public registerAgentActivity(id: string, running: Signal<boolean>): () => void {
+    const next: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
+      this.activitySignal(),
+    );
+    next.set(id, running);
+    this.activitySignal.set(next);
+    return (): void => {
+      const current: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
+        this.activitySignal(),
+      );
+      if (current.get(id) === running) {
+        current.delete(id);
+        this.activitySignal.set(current);
+      }
+    };
   }
 
   /**
