@@ -83,6 +83,11 @@ import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
+import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
+import {
+  SourceControlCommandHandler,
+  SourceControlCommands,
+} from '@shared/angular/services/source-control-commands/source-control-commands';
 
 /**
  * Maps a project model's kind to the language server prestarted when its workspace opens, so the
@@ -160,11 +165,23 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
       useFactory: (): DockBlueprint => {
         const presets: LayoutPresets = inject(LayoutPresets);
         const context: DockTabContext = inject(DockTabContext);
-        const known: ReadonlySet<string> = new Set<string>(
+        // The unified panel catalogue: the workspace panels plus the repository view's own
+        // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
+        // the workspace definition. Any preset may arrange any of them.
+        const workspaceIds: ReadonlySet<string> = new Set<string>(
           WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
         );
+        const panels: readonly DockPanel[] = [
+          ...WORKSPACE_DOCK_BLUEPRINT.panels,
+          ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
+            (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
+          ),
+        ];
+        const known: ReadonlySet<string> = new Set<string>(
+          panels.map((panel: DockPanel): string => panel.id),
+        );
         return {
-          panels: WORKSPACE_DOCK_BLUEPRINT.panels,
+          panels,
           createLayout: (): DockNode => {
             const layout: DockNode | null = presets.layoutForRoot(context.root());
             return (
@@ -444,6 +461,52 @@ export class DirectoryView implements OnInit, OnDestroy {
   };
 
   /**
+   * Holds the repository command facade behind the ribbon's Repository/Sync/Changes/Branch groups.
+   */
+  private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
+
+  /**
+   * Holds this workspace's repository command handler. Commit REVEALS the commit panel (the
+   * message is written there — workspace semantics, unlike the repository view's direct commit);
+   * New Branch reveals the branches rail, whose own controls create branches, until the branch
+   * dialog generalizes in P3 of #351.
+   */
+  private readonly repositoryCommandHandler: SourceControlCommandHandler = {
+    refresh: (): void => void this.repository.refresh(),
+    fetch: (): void => void this.repository.fetch(),
+    pull: (): void => void this.pushOrPull('pull'),
+    push: (): void => void this.pushOrPull('push'),
+    stageAll: (): void => void this.repository.stageAll(),
+    commit: (): void => void this.revealCommit(),
+    stash: (): void => void this.repository.stash(),
+    newBranch: (): void => this.revealPanel('branches'),
+    toggleInlineDiff: (): void => this.diffs.toggleInline(),
+    // Already a workspace: the repository view's escape hatch has no meaning here.
+    openAsWorkspace: (): void => undefined,
+  };
+
+  /**
+   * Reveals a catalogued panel, tabbing it beside the File Explorer (falling back to the agent's
+   * group) when it is not already in the layout, then activating and focusing it.
+   * @param panelId The panel identifier.
+   */
+  private revealPanel(panelId: string): void {
+    if (!collectPanelIds(this.dockState.layout()).includes(panelId)) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'files') ??
+        findStackOfPanel(this.dockState.layout(), 'agent');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, panelId);
+      }
+    }
+    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
+    if (stack !== null) {
+      this.dockState.setActive(stack.id, panelId);
+      this.dockFocus.focus(stack.id);
+    }
+  }
+
+  /**
    * Initializes a new instance of the {@link DirectoryView} class, wiring the document cleanup that
    * releases a well document once its dock panel has actually been closed (a panel that is merely
    * split or moved stays in the layout, so its document is kept). A removed document's docked
@@ -474,12 +537,18 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
-    // The Coding built-in is today's workspace default layout; registration is idempotent, so
-    // every workspace tab may declare it. The Git built-in arrives with the union panel catalogue.
+    // The built-ins: Coding is today's workspace default layout; Git is the repository view's
+    // arrangement (branches rail, diff well over history, commit + agent) over the same unified
+    // catalogue. Registration is idempotent, so every workspace tab may declare them.
     this.layoutPresets.registerBuiltIn({
       id: 'coding',
       name: 'Coding',
       createLayout: (): DockNode => WORKSPACE_DOCK_BLUEPRINT.createLayout(),
+    });
+    this.layoutPresets.registerBuiltIn({
+      id: 'git',
+      name: 'Git',
+      createLayout: (): DockNode => REPOSITORY_DOCK_BLUEPRINT.createLayout(),
     });
 
     // Register this tab's layout-preset session while active, so the ribbon's VIEW group commands
@@ -509,13 +578,16 @@ export class DirectoryView implements OnInit, OnDestroy {
       });
     });
 
-    // Register this workspace's source-control handler while active, so the directory ribbon's Source
-    // Control group (open in source control, commit, push, pull) reaches this tab's repository.
+    // Register this workspace's source-control handlers while active: the workspace facade (open
+    // in source control, commit, push, pull) and the repository command facade behind the ribbon's
+    // Repository/Sync/Changes/Branch groups, both reaching this tab's repository.
     effect((): void => {
       if (this.isActive()) {
         this.workspaceSourceControl.register(this.sourceControlHandler);
+        this.repositoryCommands.register(this.repositoryCommandHandler);
       } else {
         this.workspaceSourceControl.unregister(this.sourceControlHandler);
+        this.repositoryCommands.unregister(this.repositoryCommandHandler);
       }
     });
 

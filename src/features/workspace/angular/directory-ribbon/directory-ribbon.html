@@ -114,35 +114,66 @@
     </app-ribbon-strip-group>
   }
 
-  <app-ribbon-strip-group title="Source Control">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button
-        [icon]="Icon.SOURCE_CONTROL"
-        label="Source Control"
-        [disabled]="!hasRepository()"
-        (action)="onOpenSourceControl()"
-      />
-    </app-ribbon-strip-column>
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.GIT_COMMIT"
-        label="Commit"
-        [disabled]="!hasRepository()"
-        (action)="onCommit()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ARROW_UP"
-        label="Push"
-        [disabled]="!hasRepository()"
-        (action)="onPush()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ARROW_DOWN"
-        label="Pull"
-        [disabled]="!hasRepository()"
-        (action)="onPull()"
-      />
-    </app-ribbon-strip-column>
+  <!-- The repository groups (the former Source Control group dissolved into them, per the unified
+       ribbon of #351): every action gates on the open folder being a git repository. -->
+  <app-ribbon-strip-group title="Repository">
+    <app-ribbon-strip-button
+      [icon]="Icon.REFRESH"
+      label="Refresh"
+      [disabled]="!hasRepository()"
+      (action)="onRepoRefresh()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.CLOUD"
+      label="Fetch"
+      [disabled]="!hasRepository()"
+      (action)="onRepoFetch()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Sync">
+    <app-ribbon-strip-button
+      [icon]="Icon.ARROW_DOWN"
+      label="Pull"
+      [disabled]="!hasRepository()"
+      (action)="onPull()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.ARROW_UP"
+      label="Push"
+      [disabled]="!hasRepository()"
+      (action)="onPush()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Changes">
+    <app-ribbon-strip-button
+      [icon]="Icon.PLUS"
+      label="Stage All"
+      [disabled]="!hasRepository()"
+      (action)="onStageAll()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.GIT_COMMIT"
+      label="Commit"
+      [disabled]="!hasRepository()"
+      (action)="onCommit()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Branch">
+    <app-ribbon-strip-button
+      [icon]="Icon.SOURCE_CONTROL"
+      label="New Branch"
+      [disabled]="!hasRepository()"
+      (action)="onNewBranch()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.STASH"
+      label="Stash"
+      [disabled]="!hasRepository()"
+      (action)="onStash()"
+    />
   </app-ribbon-strip-group>
 
   <!-- Layout presets: which panels exist and where they dock. Session tweaks are ephemeral —
@@ -192,6 +223,12 @@
         label="Delete"
         [disabled]="!canModifyPreset()"
         (action)="onDeletePreset()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.GIT_DIFF"
+        label="Diff Layout"
+        [disabled]="!hasRepository()"
+        (action)="onToggleDiff()"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

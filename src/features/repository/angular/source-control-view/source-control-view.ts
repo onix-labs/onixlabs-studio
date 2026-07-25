@@ -50,13 +50,13 @@ import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import {
   SourceControlCommandHandler,
   SourceControlCommands,
-} from '@features/repository/angular/source-control-commands/source-control-commands';
+} from '@shared/angular/services/source-control-commands/source-control-commands';
 import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
-import { REPOSITORY_DOCK_BLUEPRINT } from './repository-dock-blueprint';
+import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
 
 /**
  * Identifies this view's status-bar contribution.

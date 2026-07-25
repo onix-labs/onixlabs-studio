@@ -13,6 +13,7 @@ import {
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
+import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
@@ -613,6 +614,54 @@ export class DirectoryRibbon {
    */
   protected onPull(): void {
     this.sourceControl.pull();
+  }
+
+  /**
+   * Holds the repository command facade behind the Repository/Sync/Changes/Branch groups, served
+   * by the active workspace's registered handler.
+   */
+  private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
+
+  /**
+   * Re-reads the repository state.
+   */
+  protected onRepoRefresh(): void {
+    this.repositoryCommands.refresh();
+  }
+
+  /**
+   * Fetches from the remote without integrating.
+   */
+  protected onRepoFetch(): void {
+    this.repositoryCommands.fetch();
+  }
+
+  /**
+   * Stages every unstaged change.
+   */
+  protected onStageAll(): void {
+    this.repositoryCommands.stageAll();
+  }
+
+  /**
+   * Starts branch creation (the branches rail hosts the controls).
+   */
+  protected onNewBranch(): void {
+    this.repositoryCommands.newBranch();
+  }
+
+  /**
+   * Stashes the working tree.
+   */
+  protected onStash(): void {
+    this.repositoryCommands.stash();
+  }
+
+  /**
+   * Toggles the diff layout between inline and side-by-side.
+   */
+  protected onToggleDiff(): void {
+    this.repositoryCommands.toggleInlineDiff();
   }
 
   /**
