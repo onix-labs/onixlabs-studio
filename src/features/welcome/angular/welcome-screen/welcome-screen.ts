@@ -14,7 +14,6 @@ import {
   RecentItems,
   RecentKind,
 } from '@shared/angular/services/recent-items/recent-items';
-import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -97,8 +96,6 @@ export class WelcomeScreen {
   /**
    * Holds the opener that opens a git repository into a source-control tab.
    */
-  private readonly repositoryOpener: RepositoryOpener = inject(RepositoryOpener);
-
   /**
    * Holds the recent-items registry surfaced in the right-hand panel.
    */
@@ -367,16 +364,6 @@ export class WelcomeScreen {
   }
 
   /**
-   * Shows the open-repository dialog and opens the chosen git repository in a source-control tab. The
-   * welcome screen is dismissed only when a repository was opened, so cancelling returns to it.
-   */
-  protected async openRepository(): Promise<void> {
-    if (await this.repositoryOpener.openInteractive()) {
-      this.welcomeModal.close();
-    }
-  }
-
-  /**
    * Closes the welcome screen when it is shown as a dismissable modal. Invoked by the modal's dismiss
    * output, which only fires when dismissal is permitted; the guard keeps it safe regardless.
    */
@@ -396,7 +383,9 @@ export class WelcomeScreen {
       case 'directory':
         return this.fileOpener.reopenDirectory(item.path);
       case 'repository':
-        return this.repositoryOpener.openFolder(item.path);
+        // A retired repository recent opens as an ordinary folder (ruling 3 of #351): the unified
+        // workspace view carries the Git preset, so nothing is lost.
+        return this.fileOpener.reopenDirectory(item.path);
       case 'markdown':
       case 'code':
       case 'binary':

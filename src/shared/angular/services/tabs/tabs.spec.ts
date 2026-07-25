@@ -200,7 +200,7 @@ describe('Tabs', () => {
 
   it('open_whenSameResourceDifferentType_opensASeparateTab', () => {
     service.open('directory', '/ws');
-    service.open('source-control', '/ws');
+    service.open('markdown', '/ws');
 
     expect(service.tabs()).toHaveLength(2);
   });
@@ -217,6 +217,6 @@ describe('Tabs', () => {
 
     expect(service.findByResource('directory', '/ws')?.id).toBe(tab.id);
     expect(service.findByResource('directory', '/missing')).toBeUndefined();
-    expect(service.findByResource('source-control', '/ws')).toBeUndefined();
+    expect(service.findByResource('markdown', '/ws')).toBeUndefined();
   });
 });
