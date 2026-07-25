@@ -129,6 +129,14 @@
       [disabled]="!hasRepository()"
       (action)="onRepoFetch()"
     />
+    @if (canPromote()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.WORKTREE"
+        label="Promote"
+        [disabled]="!hasRepository()"
+        (action)="onPromote()"
+      />
+    }
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Sync">
@@ -302,6 +310,31 @@
       (click)="confirmPresetPrompt()"
     >
       {{ presetPrompt() === 'rename' ? 'Rename' : 'Save' }}
+    </button>
+  </div>
+</app-modal>
+
+<!-- Asked before a repository is promoted into a worktree container: promotion restructures the
+     folder on disk, so it is never run from a bare button press. -->
+<app-modal
+  [open]="promoteConfirmOpen()"
+  [width]="28"
+  ariaLabel="Promote to worktree"
+  (dismiss)="cancelPromote()"
+>
+  <h2 class="directory-ribbon__confirm-title">Promote to worktree?</h2>
+  <p class="directory-ribbon__confirm-message">
+    The folder becomes a worktree container: everything in it moves into a checkout directory, and
+    further checkouts of the same repository can then work in parallel — each on its own branch,
+    with its own terminals, agent, and debugger. The view reloads around the container; the path you
+    open stays the same.
+  </p>
+  <div class="directory-ribbon__confirm-actions">
+    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPromote()">
+      Cancel
+    </button>
+    <button type="button" class="directory-ribbon__confirm-button" (click)="confirmPromote()">
+      Promote
     </button>
   </div>
 </app-modal>

@@ -10,6 +10,7 @@ import {
   serializeWorktreeConfig,
   WORKTREE_CONFIG_FILE,
   WorktreeCheckoutInfo,
+  WorktreeCheckoutStatus,
   WorktreeConfig,
   WorktreeDescriptor,
   WorktreeOutcome,
@@ -270,6 +271,57 @@ describe('WorktreeOperations', () => {
       if (!outcome.ok) {
         expect(outcome.error).toContain('no origin');
       }
+    });
+  });
+
+  describe('openCheckout', () => {
+    it('registersTheCheckoutDirectoryAsAWorkspaceRoot', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      const outcome: WorktreeOutcome<string> = await operations.openCheckout(root, id);
+
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) {
+        return;
+      }
+      expect(outcome.value).toBe(path.join(root, id));
+      expect(workspace.isRoot(outcome.value)).toBe(true);
+    });
+
+    it('refusesUnregisteredIds', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      expect((await operations.openCheckout(root, '../evil')).ok).toBe(false);
+      expect((await operations.openCheckout(root, '01234567-89ab-cdef-0123-456789abcdef')).ok).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('status', () => {
+    it('reportsBranchChangesAndNullSyncCountsForLocalOnlyCheckouts', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      await fs.writeFile(path.join(root, id, 'dirty.txt'), 'change\n', 'utf8');
+
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+
+      expect(statuses).toHaveLength(1);
+      expect(statuses?.[0].id).toBe(id);
+      expect(statuses?.[0].branch).toBe('main');
+      expect(statuses?.[0].changes).toBe(1);
+      // The fixture has no upstream, so ahead/behind are unknowable rather than zero.
+      expect(statuses?.[0].ahead).toBeNull();
+      expect(statuses?.[0].behind).toBeNull();
+    });
+
+    it('returnsNullForRootsThatAreNotContainers', async () => {
+      const plain: string = path.join(base, 'plain');
+      await fs.mkdir(plain);
+      workspace.addRoot(plain);
+
+      expect(await operations.status(plain)).toBeNull();
     });
   });
 

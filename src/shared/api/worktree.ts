@@ -126,6 +126,39 @@ export interface WorktreeDescriptor {
 }
 
 /**
+ * A checkout's lightweight repository status, as shown in the Worktrees panel: how many working-tree
+ * entries are changed and how far the branch is ahead of / behind its upstream. Null fields mean the
+ * value could not be read (the directory is missing, the clone is damaged, or — for ahead/behind —
+ * the branch has no upstream).
+ */
+export interface WorktreeCheckoutStatus {
+  /**
+   * Gets the checkout's stable identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the branch the checkout currently has checked out, or null when it cannot be read.
+   */
+  readonly branch: string | null;
+
+  /**
+   * Gets the number of changed working-tree entries, or null when the status cannot be read.
+   */
+  readonly changes: number | null;
+
+  /**
+   * Gets how many commits the branch is ahead of its upstream, or null when it has none.
+   */
+  readonly ahead: number | null;
+
+  /**
+   * Gets how many commits the branch is behind its upstream, or null when it has none.
+   */
+  readonly behind: number | null;
+}
+
+/**
  * The options accepted when adding a checkout: the branch to check out (created when it does not
  * exist) and an optional display alias. Both are optional — a bare add clones the origin's default
  * branch.

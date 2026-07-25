@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   inject,
@@ -8,6 +9,8 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  output,
+  OutputEmitterRef,
   Signal,
   untracked,
 } from '@angular/core';
@@ -43,7 +46,10 @@ import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-lay
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
-import { LayoutPresets, LayoutPresetSession } from '@shared/angular/services/layout-presets/layout-presets';
+import {
+  LayoutPresets,
+  LayoutPresetSession,
+} from '@shared/angular/services/layout-presets/layout-presets';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
@@ -89,6 +95,7 @@ import {
   SourceControlCommandHandler,
   SourceControlCommands,
 } from '@shared/angular/services/source-control-commands/source-control-commands';
+import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
 
 /**
  * Maps a project model's kind to the language server prestarted when its workspace opens, so the
@@ -194,7 +201,7 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
         return {
           panels,
           createLayout: (): DockNode => {
-            const layout: DockNode | null = presets.layoutForRoot(context.root());
+            const layout: DockNode | null = presets.layoutForRoot(context.presetRoot());
             return (
               (layout !== null ? restoreLayout(layout, known) : null) ??
               WORKSPACE_DOCK_BLUEPRINT.createLayout()
@@ -232,9 +239,61 @@ export class DirectoryView implements OnInit, OnDestroy {
   public readonly tabId: InputSignal<string> = input.required<string>();
 
   /**
-   * Gets a value indicating whether the view belongs to the active tab.
+   * Gets a value indicating whether the view belongs to the active tab (and, for a worktree
+   * checkout's sub-view, the active checkout).
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the root listing the host resolved for this view, or null to consume the tab's stashed
+   * initial folder (the pre-host behavior, kept for a blank tab whose folder is opened in-view).
+   */
+  public readonly listing: InputSignal<DirectoryListing | null> = input<DirectoryListing | null>(
+    null,
+  );
+
+  /**
+   * Gets the worktree checkout this view is scoped to, or null for an ordinary workspace view.
+   * Distinguishes the sub-views sharing one tab: keybinding scopes, pop-out dispatch, and status
+   * ownership key on the combined view scope rather than the raw tab id.
+   */
+  public readonly checkoutId: InputSignal<string | null> = input<string | null>(null);
+
+  /**
+   * Gets the path layout presets are keyed on, or null to key on this view's own root. A checkout's
+   * sub-view keys on its CONTAINER path, so all checkouts of one container share one preset pick.
+   */
+  public readonly layoutRoot: InputSignal<string | null> = input<string | null>(null);
+
+  /**
+   * Gets the host's promote action, or null when promotion is unavailable (the view is already a
+   * checkout inside a container, or the tab is not hosted).
+   */
+  public readonly promoteHandler: InputSignal<(() => void) | null> = input<(() => void) | null>(
+    null,
+  );
+
+  /**
+   * Emits this view's workspace root whenever it changes, so the host can re-resolve what the tab
+   * is (a folder opened in-view may turn out to be a worktree container).
+   */
+  public readonly rootChanged: OutputEmitterRef<string | null> = output<string | null>();
+
+  /**
+   * Gets this view's unique scope id: the tab id alone for an ordinary workspace, or the tab id
+   * qualified by the checkout for a container's sub-view — so sub-views sharing a tab never collide
+   * on scope-keyed registries.
+   */
+  private readonly viewScope: Signal<string> = computed((): string => {
+    const checkout: string | null = this.checkoutId();
+    return checkout === null ? this.tabId() : `${this.tabId()}:${checkout}`;
+  });
+
+  /**
+   * Holds the tab-level worktree session (host-provided): container state for the Worktrees panel,
+   * the active-checkout selection, and host root-ownership claims.
+   */
+  private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
 
   /**
    * Holds this tab's agent-host registrar, so the workspace agent appears in Mission Control for the
@@ -354,7 +413,6 @@ export class DirectoryView implements OnInit, OnDestroy {
     WorkspaceSourceControlCommands,
   );
 
-
   /**
    * Holds this tab's dock focus tracker, used to accent the dock when the commit panel is revealed.
    */
@@ -435,6 +493,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private appliedPresetRoot: string | null = null;
 
   /**
+   * Holds the last root emitted through {@link rootChanged}, so the announcement fires only on a
+   * real change (the announcing effect also re-runs on activation).
+   */
+  private announcedRoot: string | null | undefined = undefined;
+
+  /**
    * Holds the disposer of the registered layout preset session, or null while inactive.
    */
   private disposeLayoutSession: (() => void) | null = null;
@@ -445,7 +509,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * first returns any popped-out panels — the incoming preset defines which panels exist.
    */
   private readonly layoutSession: LayoutPresetSession = {
-    root: this.dockTabContext.root,
+    root: this.dockTabContext.presetRoot,
     capture: (): DockNode => this.dockState.layout(),
     apply: (): void => {
       this.panelPopout.returnAll();
@@ -500,7 +564,29 @@ export class DirectoryView implements OnInit, OnDestroy {
     toggleInlineDiff: (): void => this.diffs.toggleInline(),
     // Already a workspace: the repository view's escape hatch has no meaning here.
     openAsWorkspace: (): void => undefined,
+    // Promotion is the host's structural act (the tab is rebuilt as a container around this view),
+    // so the view only relays it; a checkout's sub-view gets no handler and cannot promote.
+    canPromoteToWorktree: computed((): boolean => this.promoteHandler() !== null),
+    promoteToWorktree: (): void => this.promoteHandler()?.(),
   };
+
+  /**
+   * Resolves the worktree container's display name (its directory basename), or null when this view
+   * is not part of a container.
+   * @returns Returns the container name, or null.
+   */
+  private containerName(): string | null {
+    const root: string | null = this.worktreeSession.root();
+    if (root === null) {
+      return null;
+    }
+    return (
+      root
+        .split(/[\\/]/)
+        .filter((part: string): boolean => part.length > 0)
+        .pop() ?? null
+    );
+  }
 
   /**
    * Reveals a catalogued panel, tabbing it beside the File Explorer (falling back to the agent's
@@ -583,7 +669,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // root is known, re-seed from the root's own persisted pick — but only when it differs, so the
     // common case never resets a freshly-built dock.
     effect((): void => {
-      const root: string | null = this.dockTabContext.root();
+      const root: string | null = this.dockTabContext.presetRoot();
       if (root === null || root === this.appliedPresetRoot) {
         return;
       }
@@ -618,10 +704,13 @@ export class DirectoryView implements OnInit, OnDestroy {
     });
 
     // Publish branch and change status to the status strip while active (ported from the retired
-    // repository view). Clears when inactive or no repository is bound.
+    // repository view). Clears when inactive or no repository is bound. The owner is qualified by
+    // the view scope: a container tab hosts several sub-views whose activation effects run in
+    // creation order, so a shared owner key could be wiped by a later-created sibling deactivating.
     effect((): void => {
+      const owner: string = `${STATUS_OWNER}:${this.viewScope()}`;
       if (!this.isActive() || !this.repository.isBound()) {
-        this.statusBar.clearOwner(STATUS_OWNER);
+        this.statusBar.clearOwner(owner);
         return;
       }
       const branch: GitBranch | undefined = this.repository.currentBranch();
@@ -629,14 +718,24 @@ export class DirectoryView implements OnInit, OnDestroy {
       const leading: StatusSegment[] = [
         { id: 'sc-branch', text: branch?.name ?? 'detached HEAD', icon: Icon.SOURCE_CONTROL },
       ];
+      // The worktree indicator: which checkout the container tab is scoped to. The Worktrees panel
+      // is the switcher; this is the always-visible answer to "which one am I looking at?".
+      if (this.worktreeSession.isContainer()) {
+        leading.unshift({
+          id: 'sc-worktree',
+          text: this.worktreeSession.activeLabel() ?? '',
+          icon: Icon.WORKTREE,
+        });
+      }
       if (branch !== undefined && (branch.ahead > 0 || branch.behind > 0)) {
         leading.push({ id: 'sc-sync', text: `↑${branch.ahead} ↓${branch.behind}` });
       }
       const trailing: StatusSegment[] = [
         { id: 'sc-changes', text: `${changes} changed`, icon: Icon.PENCIL },
-        { id: 'sc-repo', text: this.repository.repoName() },
+        // A checkout's directory is a GUID, so the container tab names the container instead.
+        { id: 'sc-repo', text: this.containerName() ?? this.repository.repoName() },
       ];
-      this.statusBar.contribute(STATUS_OWNER, { leading, trailing }, STATUS_PRIORITY);
+      this.statusBar.contribute(owner, { leading, trailing }, STATUS_PRIORITY);
     });
 
     // Register this workspace's source-control handlers while active: the workspace facade (open
@@ -671,9 +770,18 @@ export class DirectoryView implements OnInit, OnDestroy {
 
     effect((): void => {
       const root: string | null = this.workspace.root()?.path ?? null;
-      this.activeWorkspace.setRoot(this.tabId(), root);
+      // Only the visible view publishes the tab's root: a container tab hosts several sub-views
+      // under one tab id, and the hidden ones must not overwrite the active checkout's root.
+      if (this.isActive()) {
+        this.activeWorkspace.setRoot(this.tabId(), root);
+      }
       this.dockTabContext.setRoot(root);
+      this.dockTabContext.setPresetRoot(this.layoutRoot());
       this.terminalSessions.setRoot(root);
+      if (root !== this.announcedRoot) {
+        this.announcedRoot = root;
+        this.rootChanged.emit(root);
+      }
     });
 
     // Show the Solution Explorer only while this tab's root has a recognised project system, docking it
@@ -707,7 +815,8 @@ export class DirectoryView implements OnInit, OnDestroy {
     // solution, the TypeScript server for a Node/npm workspace, jdtls for a Gradle/Maven JVM build.
     effect((): void => {
       const model: ProjectModel | null = this.solutionModel.model();
-      const serverId: string | null = model === null ? null : PRESTART_SERVERS[model.kind] ?? null;
+      const serverId: string | null =
+        model === null ? null : (PRESTART_SERVERS[model.kind] ?? null);
       if (model !== null && serverId !== null) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
@@ -735,13 +844,31 @@ export class DirectoryView implements OnInit, OnDestroy {
     // panel in this tab's dock. Bound only while active, so background tabs do not intercept the chord.
     effect((): void => {
       if (this.isActive()) {
-        this.keybindings.register(this.tabId(), [
+        this.keybindings.register(this.viewScope(), [
           { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
       } else {
-        this.keybindings.deactivate(this.tabId());
+        this.keybindings.deactivate(this.viewScope());
         this.workspaceFind.unregister(this.revealSearchHandler);
+      }
+    });
+
+    // Keep the Worktrees panel present while this view belongs to a container: every preset apply
+    // rebuilds the layout from the preset's definition, so the container's defining panel is
+    // re-added (and shown) whenever it is missing.
+    effect((): void => {
+      if (!this.worktreeSession.isContainer()) {
+        return;
+      }
+      const layout: DockNode = this.dockState.layout();
+      if (collectPanelIds(layout).includes('worktrees')) {
+        return;
+      }
+      const anchor: StackNode | null =
+        findStackOfPanel(layout, 'files') ?? firstStackOfRole(layout, 'tool');
+      if (anchor !== null) {
+        untracked((): void => this.dockState.tabInto(anchor.id, 'worktrees'));
       }
     });
   }
@@ -841,9 +968,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.documents.setOwningTab(this.tabId());
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
-    this.dockTabContext.setTabId(this.tabId());
-    const initial: DirectoryListing | undefined = this.workspaces.takeInitial(this.tabId());
-    if (initial !== undefined) {
+    // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
+    // dispatch and other per-view registries, which must not collide across a container's sub-views.
+    this.dockTabContext.setTabId(this.viewScope());
+    const initial: DirectoryListing | null =
+      this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
+    if (initial !== null) {
       this.workspace.openListing(initial);
     }
   }
@@ -855,14 +985,27 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.builds.unregister(this.buildRunner);
     this.debugger.unregister(this.debugSession);
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
-    this.keybindings.forget(this.tabId());
+    this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
-    this.activeWorkspace.clearRoot(this.tabId());
+    this.statusBar.clearOwner(`${STATUS_OWNER}:${this.viewScope()}`);
+    // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
+    // must not clear the tab's published root — the successor view republishes it, but only the
+    // whole tab closing should drop the entry.
+    if (this.checkoutId() === null) {
+      this.activeWorkspace.clearRoot(this.tabId());
+    }
     this.workspaceGit.dispose();
     if (this.repository.isBound()) {
       void this.repository.close();
     }
-    void this.workspace.closeFolder();
+    // A host-claimed root (the container itself, or a checkout the host registered) outlives this
+    // view: release the local state and watcher, but leave the main-process root open.
+    const root: string | null = this.workspace.root()?.path ?? null;
+    if (root !== null && this.worktreeSession.isClaimed(root)) {
+      this.workspace.releaseFolder();
+    } else {
+      void this.workspace.closeFolder();
+    }
   }
 
   /**

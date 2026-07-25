@@ -6,6 +6,7 @@ import { SearchPanel } from '@features/workspace/angular/panels/search-panel/sea
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
+import { WorktreesPanel } from '@features/workspace/angular/panels/worktrees-panel/worktrees-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
@@ -35,7 +36,11 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['files']),
-        mkSplit('col', [mkStack('document', []), mkStack('tool', ['errors', 'terminal'])], [4, 1.5]),
+        mkSplit(
+          'col',
+          [mkStack('document', []), mkStack('tool', ['errors', 'terminal'])],
+          [4, 1.5],
+        ),
         mkStack('tool', ['agent']),
       ],
       [1.4, 4, 1.6],
@@ -85,6 +90,15 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       ownsToolStrip: true,
     },
     { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
+    {
+      // The container overview and switcher. Catalogued for every workspace tab but added to the
+      // layout only while the tab hosts a worktree container (the directory view syncs it).
+      id: 'worktrees',
+      title: 'Worktrees',
+      icon: Icon.WORKTREE,
+      role: 'tool',
+      component: WorktreesPanel,
+    },
     {
       id: 'errors',
       title: 'Error List',
