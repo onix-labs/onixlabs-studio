@@ -56,3 +56,24 @@
     filter: brightness(1.1);
   }
 }
+
+// The preset prompt's name input follows the shared form-control tokens (matching the terminal
+// panel's inline rename field).
+.directory-ribbon__prompt-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin-block: 0.75rem 1rem;
+  padding: 0.4rem 0.6rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}

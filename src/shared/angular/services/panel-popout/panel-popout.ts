@@ -576,6 +576,31 @@ export class PanelPopout implements OnDestroy {
   }
 
   /**
+   * Closes every pop-out window and clears their panels' popped state WITHOUT restoring the panels
+   * to the layout. Used when a layout preset is applied: the incoming preset defines which panels
+   * exist and where, so the caller re-seeds the dock immediately after — restoring first would be
+   * wasted work, and a panel absent from the preset is simply gone (as the preset dictates).
+   */
+  public returnAll(): void {
+    for (const popout of [...this.windows]) {
+      const index: number = this.windows.indexOf(popout);
+      if (index !== -1) {
+        this.windows.splice(index, 1);
+      }
+      popout.watcher?.destroy();
+      popout.watcher = null;
+      for (const panelId of popout.tracked) {
+        this.origins.delete(panelId);
+        this.popouts.clear(panelId);
+      }
+      popout.tracked = new Set<string>();
+      this.applicationRef.detachView(popout.host.hostView);
+      popout.host.destroy();
+      popout.window.close();
+    }
+  }
+
+  /**
    * Closes every pop-out window when the owning view goes away. The panels are not re-docked — the
    * view's dock is being destroyed with them.
    */
