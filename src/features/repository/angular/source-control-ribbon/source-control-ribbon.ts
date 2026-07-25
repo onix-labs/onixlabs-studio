@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { SourceControlCommands } from '@features/repository/angular/source-control-commands/source-control-commands';
+import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
