@@ -26,12 +26,6 @@ export type SolutionRowKind = 'solution' | 'folder' | 'project' | 'item-folder' 
 const ROOT_KEY: string = 'solution-root';
 
 /**
- * The key of the solution file's own row, nested under the workspace root when the model was
- * assembled from a real solution file.
- */
-const SOLUTION_KEY: string = 'solution-file';
-
-/**
  * How many projects' contents are evaluated at once when a solution opens, bounding the number of
  * concurrent `dotnet` evaluations.
  */
@@ -211,8 +205,9 @@ export class SolutionModel {
     // still loading (each project and the folders above it carry the same aggregate spinner).
     const loading: boolean = this.loadingProjects().size > 0;
     // The root row is the WORKSPACE — its display name (name plus branch), never a GUID path
-    // segment; the raw folder name is only the pre-announcement fallback. A real solution file
-    // nests beneath it.
+    // segment; the raw folder name is only the pre-announcement fallback. The structure nests
+    // directly beneath it (the solution file gets no row of its own — it would only repeat the
+    // repository's name).
     const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
       this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, null),
@@ -220,23 +215,6 @@ export class SolutionModel {
     if (expanded) {
       if (filtering) {
         this.appendNodesFiltered(model.tree, 1, '', rows, query);
-      } else if (model.solution !== null) {
-        const solutionExpanded: boolean = this.expandedKeys().has(SOLUTION_KEY);
-        rows.push(
-          this.row(
-            SOLUTION_KEY,
-            1,
-            this.solutionName(model),
-            'solution',
-            true,
-            solutionExpanded,
-            loading,
-            null,
-          ),
-        );
-        if (solutionExpanded) {
-          this.appendNodes(model.tree, 2, '', rows);
-        }
       } else {
         this.appendNodes(model.tree, 1, '', rows);
       }
@@ -411,7 +389,7 @@ export class SolutionModel {
    * stay visible.
    */
   public collapseAll(): void {
-    this.expandedKeys.set(new Set<string>([ROOT_KEY, SOLUTION_KEY]));
+    this.expandedKeys.set(new Set<string>([ROOT_KEY]));
   }
 
   /**
@@ -540,7 +518,6 @@ export class SolutionModel {
         loading.add(project.path);
       }
       expanded.add(ROOT_KEY);
-      expanded.add(SOLUTION_KEY);
     }
     this.loadingProjects.set(loading);
     this.expandedKeys.set(expanded);
@@ -594,19 +571,6 @@ export class SolutionModel {
     const loading: Set<string> = new Set<string>(this.loadingProjects());
     loading.delete(path);
     this.loadingProjects.set(loading);
-  }
-
-  /**
-   * Resolves the solution root's display name: the solution file's name, or the root folder's name when
-   * the model was assembled from loose projects.
-   * @param model The model.
-   * @returns Returns the root display name.
-   */
-  private solutionName(model: ProjectModel): string {
-    if (model.solution !== null) {
-      return model.solution.name;
-    }
-    return this.folderName(model.root);
   }
 
   /**
@@ -838,7 +802,7 @@ export class SolutionModel {
    * @returns Returns the set of every expandable key.
    */
   private allExpandableKeys(model: ProjectModel): Set<string> {
-    const keys: Set<string> = new Set<string>([ROOT_KEY, SOLUTION_KEY]);
+    const keys: Set<string> = new Set<string>([ROOT_KEY]);
     const walkItems: (nodes: readonly ProjectItemNode[], parentKey: string) => void = (
       nodes: readonly ProjectItemNode[],
       parentKey: string,

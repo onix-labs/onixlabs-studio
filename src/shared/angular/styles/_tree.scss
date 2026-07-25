@@ -103,11 +103,11 @@ app-tree-view {
   overflow: hidden;
   text-overflow: ellipsis;
 
-  .tree-row.active &,
-  &.bold {
+  .tree-row.active & {
     color: var(--dock-tab-foreground-color--active);
   }
 
+  // Semibold weight only — no colour lift, so a root row reads as a heading, not a highlight.
   &.bold {
     font-weight: 600;
   }

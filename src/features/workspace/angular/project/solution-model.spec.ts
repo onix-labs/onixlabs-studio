@@ -197,14 +197,13 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    // The root node is the WORKSPACE (its display name, falling back to the folder); the solution
-    // file nests beneath it, and the structure beneath the solution. The folder's contents stay
-    // hidden until it is opened.
+    // The root node is the WORKSPACE (its display name, falling back to the folder); the structure
+    // nests directly beneath it — the solution file gets no row of its own. The folder's contents
+    // stay hidden until it is opened.
     expect(rowFor(model, 'root')?.kind).toBe('solution');
     expect(rowFor(model, 'root')?.depth).toBe(0);
-    expect(rowFor(model, 'MySolution')?.depth).toBe(1);
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'B']);
-    expect(rowFor(model, 'Group')?.depth).toBe(2);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
+    expect(rowFor(model, 'Group')?.depth).toBe(1);
     expect(rowFor(model, 'Group')?.expanded).toBe(false);
   });
 
@@ -275,8 +274,8 @@ describe('SolutionModel', () => {
     // The tree stays collapsed to the root while loading; the root, the folder above a still-loading
     // project, and each still-loading top-level project carry the spinner, and a loading project cannot
     // be expanded until its contents arrive.
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'B']);
-    expect(rowFor(model, 'MySolution')?.loading).toBe(true);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
+    expect(rowFor(model, 'root')?.loading).toBe(true);
     expect(rowFor(model, 'Group')?.loading).toBe(true);
     expect(rowFor(model, 'B')?.loading).toBe(true);
     expect(rowFor(model, 'B')?.expandable).toBe(false);
@@ -284,11 +283,11 @@ describe('SolutionModel', () => {
     project.resolveAll();
     await flush();
     // Once every project's contents have loaded, the spinners clear and the tree stays collapsed.
-    expect(rowFor(model, 'MySolution')?.loading).toBe(false);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
     expect(rowFor(model, 'Group')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.expandable).toBe(true);
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
@@ -304,7 +303,7 @@ describe('SolutionModel', () => {
 
     // A's contents appear with no further fetch; its sub-folder is collapsed so its file is hidden.
     expect(project.itemRequests.length).toBe(requestsAfterOpen);
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'A', 'Sub', 'g.cs', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'A', 'Sub', 'g.cs', 'B']);
   });
 
   it('toggle_collapsingTheRoot_hidesEverything', async () => {
@@ -312,12 +311,8 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    // Collapsing the solution row hides the structure; collapsing the workspace root hides even the
-    // solution row.
-    model.toggle(rowFor(model, 'MySolution')!);
-    expect(labels(model)).toEqual(['root', 'MySolution']);
-
     model.toggle(rowFor(model, 'root')!);
+
     expect(labels(model)).toEqual(['root']);
   });
 
@@ -331,7 +326,7 @@ describe('SolutionModel', () => {
 
     // The solution folder, the project, and the item folder all expanded, so the file is visible.
     expect(revealed).toBe(true);
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'A', 'Sub', 'f.cs', 'g.cs', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'A', 'Sub', 'f.cs', 'g.cs', 'B']);
     expect(model.selectedKey()).toBe('file:/root/A/Sub/f.cs');
   });
 
@@ -344,7 +339,7 @@ describe('SolutionModel', () => {
     const revealed: boolean = model.revealPath('/elsewhere/x.cs');
 
     expect(revealed).toBe(false);
-    expect(labels(model)).toEqual(['root', 'MySolution', 'Group', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
     expect(model.selectedKey()).toBeNull();
   });
 
