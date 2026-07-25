@@ -42,7 +42,6 @@ interface TabGroup {
  */
 const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string }[] = [
   { type: 'directory', label: 'Workspaces' },
-  { type: 'source-control', label: 'Repositories' },
   { type: 'code', label: 'Code Files' },
   { type: 'markdown', label: 'Markdown Files' },
   { type: 'terminal', label: 'Terminals' },

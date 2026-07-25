@@ -19,7 +19,6 @@ import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
 import { provideMissionControlFeature } from '@features/mission-control/angular/mission-control.feature';
-import { provideRepositoryFeature } from '@features/repository/angular/repository.feature';
 import { provideSettingsFeature } from '@features/settings/angular/settings.feature';
 import { provideTerminalFeature } from '@features/terminal/angular/terminal.feature';
 import { provideWorkspaceFeature } from '@features/workspace/angular/workspace.feature';
@@ -69,7 +68,6 @@ export const config: ApplicationConfig = {
     // Stand up the binary feature: register its hex-editor tab view + ribbon with the shell.
     provideBinaryFeature(),
     // Stand up the repository feature: register its source-control view + ribbon with the shell.
-    provideRepositoryFeature(),
     // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.
     provideWorkspaceFeature(),
     // Stand up the Mission Control feature: register its all-agents view + ribbon with the shell.

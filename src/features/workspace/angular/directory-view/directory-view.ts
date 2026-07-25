@@ -64,8 +64,9 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { Output } from '@shared/angular/services/output/output';
-import { RepositoryOpener } from '@shared/angular/services/repositories/repository-opener';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { GitBranch } from '@shared/angular/services/repository/repository-data';
+import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
@@ -96,6 +97,16 @@ import {
  * clangd for a CMake/Make C/C++ project, rust-analyzer for a Cargo project, gopls for a Go module. A
  * kind with no entry prestarts nothing.
  */
+/**
+ * Names this view's status-strip contribution (ported from the retired repository view).
+ */
+const STATUS_OWNER: string = 'source-control';
+
+/**
+ * Orders the source-control status segments among other contributors.
+ */
+const STATUS_PRIORITY: number = 30;
+
 const PRESTART_SERVERS: Readonly<Record<string, string>> = {
   dotnet: 'csharp',
   node: 'typescript',
@@ -343,11 +354,6 @@ export class DirectoryView implements OnInit, OnDestroy {
     WorkspaceSourceControlCommands,
   );
 
-  /**
-   * Holds the (root) repository opener used to open this workspace's repository in the source-control
-   * view.
-   */
-  private readonly repositoryOpener: RepositoryOpener = inject(RepositoryOpener);
 
   /**
    * Holds this tab's dock focus tracker, used to accent the dock when the commit panel is revealed.
@@ -409,6 +415,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the layout preset store this view registers its session with while active.
    */
   private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
+
+  /**
+   * Holds the status strip this view contributes branch and change segments to.
+   */
+  private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
    * Holds the root the active layout preset was last applied for, so the root announcement re-seeds
@@ -576,6 +587,36 @@ export class DirectoryView implements OnInit, OnDestroy {
           this.layoutSession.apply();
         }
       });
+    });
+
+    // Bind the scoped repository as soon as the open folder proves to be one, so the ribbon's
+    // repository groups and the status segments work without the commit panel having been opened.
+    effect((): void => {
+      if (this.workspaceGit.isRepository()) {
+        untracked((): void => void this.ensureRepository());
+      }
+    });
+
+    // Publish branch and change status to the status strip while active (ported from the retired
+    // repository view). Clears when inactive or no repository is bound.
+    effect((): void => {
+      if (!this.isActive() || !this.repository.isBound()) {
+        this.statusBar.clearOwner(STATUS_OWNER);
+        return;
+      }
+      const branch: GitBranch | undefined = this.repository.currentBranch();
+      const changes: number = this.repository.changeCount();
+      const leading: StatusSegment[] = [
+        { id: 'sc-branch', text: branch?.name ?? 'detached HEAD', icon: Icon.SOURCE_CONTROL },
+      ];
+      if (branch !== undefined && (branch.ahead > 0 || branch.behind > 0)) {
+        leading.push({ id: 'sc-sync', text: `↑${branch.ahead} ↓${branch.behind}` });
+      }
+      const trailing: StatusSegment[] = [
+        { id: 'sc-changes', text: `${changes} changed`, icon: Icon.PENCIL },
+        { id: 'sc-repo', text: this.repository.repoName() },
+      ];
+      this.statusBar.contribute(STATUS_OWNER, { leading, trailing }, STATUS_PRIORITY);
     });
 
     // Register this workspace's source-control handlers while active: the workspace facade (open
@@ -805,14 +846,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Opens this workspace's repository in the full source-control view (a new tab, reused when already
-   * open). A no-op when no folder is open.
+   * Switches this tab to the Git layout preset — the unified view's source-control arrangement.
+   * The standalone repository view is retired (#360); "open in source control" now means "set the
+   * stage for source-control work" in place.
    */
   private openInSourceControl(): void {
-    const path: string | undefined = this.workspace.root()?.path;
-    if (path !== undefined) {
-      void this.repositoryOpener.openFolder(path);
-    }
+    this.layoutPresets.select('git');
   }
 
   /**

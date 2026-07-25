@@ -10,7 +10,6 @@ export type TabType =
   | 'binary'
   | 'terminal'
   | 'agent'
-  | 'source-control'
   | 'mission-control'
   | 'settings';
 
@@ -84,7 +83,6 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   binary: { label: 'Binary', icon: Icon.BINARY },
   terminal: { label: 'Terminal', icon: Icon.TERMINAL },
   agent: { label: 'Agent', icon: Icon.AGENT },
-  'source-control': { label: 'Source Control', icon: Icon.SOURCE_CONTROL },
   'mission-control': { label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },
   settings: { label: 'Settings', icon: Icon.SETTINGS },
 };
