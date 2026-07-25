@@ -191,6 +191,13 @@
         (valueChange)="onSelectPreset($event)"
       />
       <app-ribbon-strip-row>
+        @if (presetTransient()) {
+          <app-ribbon-strip-button-small
+            [icon]="Icon.UNDO"
+            label="Return"
+            (action)="onReturnPreset()"
+          />
+        }
         <app-ribbon-strip-button-small
           [icon]="Icon.SAVE_AS"
           label="Save As"

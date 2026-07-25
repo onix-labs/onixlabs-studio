@@ -422,6 +422,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
+   * Holds a value indicating whether the transient Git switch should return to the prior preset
+   * once the change count reaches zero (the commit that motivated the switch landed).
+   */
+  private returnWhenCommitted: boolean = false;
+
+  /**
    * Holds the root the active layout preset was last applied for, so the root announcement re-seeds
    * the dock exactly once per root (the dock constructed before the root was known, on the
    * default preset).
@@ -594,6 +600,20 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.workspaceGit.isRepository()) {
         untracked((): void => void this.ensureRepository());
+      }
+    });
+
+    // Return from the transient Git stage once the commit lands (every change dealt with). A
+    // manual preset change clears the transient state in the store, disarming this.
+    effect((): void => {
+      if (
+        this.returnWhenCommitted &&
+        this.layoutPresets.transientActive() &&
+        this.repository.isBound() &&
+        this.repository.changeCount() === 0
+      ) {
+        this.returnWhenCommitted = false;
+        untracked((): void => this.layoutPresets.returnFromTransient());
       }
     });
 
@@ -861,6 +881,16 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private async revealCommit(): Promise<void> {
     if (!(await this.ensureRepository())) {
+      return;
+    }
+    // Ruling 6 of #351: the IDE sets the stage rather than injecting panels. Commit switches to
+    // the Git preset TRANSIENTLY — the persisted pick is untouched — and returns automatically
+    // once the changes it staged for reach zero (the commit landed). The panel-injection path
+    // below remains for the odd case where no Git preset exists.
+    if (this.layoutPresets.switchTransient('git')) {
+      if (this.repository.changeCount() > 0) {
+        this.returnWhenCommitted = true;
+      }
       return;
     }
     if (!this.commitRegistered) {

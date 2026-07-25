@@ -148,6 +148,15 @@ export class LayoutPresets {
     signal<LayoutPresetSession | null>(null);
 
   /**
+   * Holds the transient preset overlay, or null when none is active: a contextual switch (the IDE
+   * setting the stage — ruling 6 of #351) that shadows the persisted pick without writing it, and
+   * remembers the preset it left so returning restores it. Cleared by an explicit {@link select}
+   * (the user took over) and by a session change (a different tab is its own context).
+   */
+  private readonly transient: WritableSignal<{ id: string; returnTo: string | null } | null> =
+    signal<{ id: string; returnTo: string | null } | null>(null);
+
+  /**
    * Gets every preset for the discoverability surfaces: built-ins first, then user presets in
    * creation order.
    */
@@ -187,8 +196,16 @@ export class LayoutPresets {
     if (session === null) {
       return null;
     }
-    return this.activeFor(session.root());
+    return this.transient()?.id ?? this.activeFor(session.root());
   });
+
+  /**
+   * Gets a value indicating whether a transient (contextual) preset switch is active, so the
+   * ribbon can offer returning to the preset it left.
+   */
+  public readonly transientActive: Signal<boolean> = computed(
+    (): boolean => this.transient() !== null,
+  );
 
   /**
    * Gets a value indicating whether the active preset is a user preset, so Update, Rename, and
@@ -225,6 +242,7 @@ export class LayoutPresets {
    * @returns Returns a function that unregisters the session (unless it was replaced since).
    */
   public register(session: LayoutPresetSession): () => void {
+    this.transient.set(null);
     this.session.set(session);
     return (): void => {
       if (this.session() === session) {
@@ -271,7 +289,7 @@ export class LayoutPresets {
    * @returns Returns the layout tree, or null when no presets are registered.
    */
   public layoutForRoot(root: string | null): DockNode | null {
-    const active: string | null = this.activeFor(root);
+    const active: string | null = this.transient()?.id ?? this.activeFor(root);
     return active === null ? null : this.layoutOf(active);
   }
 
@@ -285,8 +303,40 @@ export class LayoutPresets {
     if (session === null || this.layoutOf(id) === null) {
       return;
     }
+    this.transient.set(null);
     this.pick(session.root(), id);
     session.apply();
+  }
+
+  /**
+   * Switches to a preset TRANSIENTLY — a contextual stage-set that shadows the persisted pick
+   * without writing it, remembering the preset it left. A second transient switch keeps the
+   * original return target. Ignored while no session is registered, for an unknown preset, or when
+   * the preset is already showing.
+   * @param id The preset identifier.
+   * @returns Returns true when the switch happened (so callers can arm their return trigger).
+   */
+  public switchTransient(id: string): boolean {
+    const session: LayoutPresetSession | null = this.session();
+    if (session === null || this.layoutOf(id) === null || this.activeId() === id) {
+      return false;
+    }
+    const returnTo: string | null = this.transient()?.returnTo ?? this.activeId();
+    this.transient.set({ id, returnTo });
+    session.apply();
+    return true;
+  }
+
+  /**
+   * Returns from a transient switch to the preset it left, re-seeding the dock. A no-op when no
+   * transient switch is active.
+   */
+  public returnFromTransient(): void {
+    if (this.transient() === null) {
+      return;
+    }
+    this.transient.set(null);
+    this.session()?.apply();
   }
 
   /**
