@@ -701,6 +701,19 @@ export class DirectoryRibbon {
   protected readonly canModifyPreset: Signal<boolean> = this.layoutPresets.activeIsUserPreset;
 
   /**
+   * Gets a value indicating whether a transient (contextual) preset switch is active, showing the
+   * Return affordance.
+   */
+  protected readonly presetTransient: Signal<boolean> = this.layoutPresets.transientActive;
+
+  /**
+   * Returns from the transient preset switch to the preset it left.
+   */
+  protected onReturnPreset(): void {
+    this.layoutPresets.returnFromTransient();
+  }
+
+  /**
    * Holds which preset name prompt is open, or null when none is.
    */
   protected readonly presetPrompt: WritableSignal<'save-as' | 'rename' | null> = signal<

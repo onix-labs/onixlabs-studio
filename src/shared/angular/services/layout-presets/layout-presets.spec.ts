@@ -176,6 +176,55 @@ describe('LayoutPresets', () => {
     expect(presets.presets().some((preset): boolean => preset.id === 'coding')).toBe(true);
   });
 
+  it('switchTransient_shadowsThePickWithoutPersistingIt_andReturnRestores', (): void => {
+    const presets: LayoutPresets = build();
+    presets.registerBuiltIn({
+      id: 'git',
+      name: 'Git',
+      createLayout: (): DockNode => mkStack('tool', ['branches']),
+    });
+    presets.register(session);
+
+    expect(presets.switchTransient('git')).toBe(true);
+    expect(presets.activeId()).toBe('git');
+    expect(presets.transientActive()).toBe(true);
+    // The persisted pick is untouched.
+    expect(presets.activeFor('/repo')).toBe('coding');
+    expect(applied).toBe(1);
+
+    presets.returnFromTransient();
+    expect(presets.activeId()).toBe('coding');
+    expect(presets.transientActive()).toBe(false);
+    expect(applied).toBe(2);
+  });
+
+  it('switchTransient_whenAlreadyShowingOrUnknown_declines', (): void => {
+    const presets: LayoutPresets = build();
+    presets.register(session);
+
+    expect(presets.switchTransient('coding')).toBe(false);
+    expect(presets.switchTransient('missing')).toBe(false);
+    expect(applied).toBe(0);
+  });
+
+  it('select_whileTransient_takesOverAndDisarmsIt', (): void => {
+    const presets: LayoutPresets = build();
+    presets.registerBuiltIn({
+      id: 'git',
+      name: 'Git',
+      createLayout: (): DockNode => mkStack('tool', ['branches']),
+    });
+    presets.register(session);
+    presets.switchTransient('git');
+
+    presets.select('git');
+    expect(presets.transientActive()).toBe(false);
+    expect(presets.activeFor('/repo')).toBe('git');
+
+    presets.returnFromTransient();
+    expect(presets.activeId()).toBe('git');
+  });
+
   it('persistedPresets_surviveAServiceRebuild_andMalformedEntriesAreDropped', (): void => {
     const first: LayoutPresets = build();
     first.register(session);
