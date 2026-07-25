@@ -45,6 +45,7 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
+import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { WindowManager } from '@shared/electron/window-manager';
@@ -306,6 +307,15 @@ class Program {
    */
   private readonly workspaceManager: WorkspaceManager = new WorkspaceManager(
     (): BrowserWindow | null => this.windows.main(),
+    this.workspaceContext,
+    this.trustedPaths,
+  );
+
+  /**
+   * Handles worktree-container operations (kind resolution, promotion, checkout add/remove) on
+   * behalf of the renderer, confined to trusted paths and the open workspace roots.
+   */
+  private readonly worktreeManager: WorktreeManager = new WorktreeManager(
     this.workspaceContext,
     this.trustedPaths,
   );
@@ -590,6 +600,7 @@ class Program {
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
+    this.worktreeManager.register();
     this.binaryDisassembler.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();

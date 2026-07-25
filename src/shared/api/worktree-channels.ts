@@ -1,0 +1,97 @@
+import {
+  WorkspaceKind,
+  WorktreeAddOptions,
+  WorktreeCheckoutInfo,
+  WorktreeDescriptor,
+  WorktreeOutcome,
+} from './worktree';
+
+/**
+ * Names the worktree-container IPC channels: resolving what kind of thing a directory is, describing
+ * a container's live checkout state, and the container mutations (promote, add checkout, remove
+ * checkout). The renderer's worktree service and the main-process worktree manager name their
+ * channels from here, over the generic {@link import('./bridge').Bridge} transport; the payload types
+ * live in {@link import('./worktree')}, which is platform-neutral.
+ *
+ * Confinement mirrors the workspace surfaces: `Resolve` is honoured only for paths the user has
+ * opened through a dialog before (trusted paths) or paths within an open root, and every other
+ * channel requires its container root to be an open workspace root — the renderer cannot inspect or
+ * mutate directories the user never opened.
+ */
+export enum WorktreeChannel {
+  /**
+   * Resolves what a directory is — container, workspace, or plain folder (invoke).
+   */
+  Resolve = 'worktree:resolve',
+
+  /**
+   * Describes a container's origin and live checkout states (invoke).
+   */
+  Describe = 'worktree:describe',
+
+  /**
+   * Promotes an open repository workspace, in place, into a worktree container (invoke).
+   */
+  Promote = 'worktree:promote',
+
+  /**
+   * Adds a checkout to a container — a new full clone of the container's origin (invoke).
+   */
+  AddCheckout = 'worktree:add-checkout',
+
+  /**
+   * Removes a registered checkout, sending its directory to the OS trash (invoke).
+   */
+  RemoveCheckout = 'worktree:remove-checkout',
+}
+
+/**
+ * The renderer-facing worktree surface, implemented over the bridge against the main-process
+ * worktree manager. Methods return null (or a failed outcome) rather than throwing when a path is
+ * unconfined, so callers treat denial exactly like absence.
+ */
+export interface WorktreeClient {
+  /**
+   * Resolves what a directory is. Honoured for trusted (previously dialog-opened) paths and paths
+   * within an open root.
+   * @param target The absolute directory path.
+   * @returns Returns the kind, or null when the path is denied or unreadable.
+   */
+  resolve(target: string): Promise<WorkspaceKind | null>;
+
+  /**
+   * Describes an open container root's origin and live checkout states.
+   * @param root The container root, which must be an open workspace root.
+   * @returns Returns the descriptor, or null when the root is not open or not a container.
+   */
+  describe(root: string): Promise<WorktreeDescriptor | null>;
+
+  /**
+   * Promotes an open repository workspace, in place, into a worktree container: the entire prior
+   * contents move into the first checkout directory and the container configuration is seeded.
+   * @param root The repository workspace root, which must be an open workspace root.
+   * @returns Returns the promoted container's descriptor, or the failure reason.
+   */
+  promote(root: string): Promise<WorktreeOutcome<WorktreeDescriptor>>;
+
+  /**
+   * Adds a checkout to an open container root: a new full clone of the container's origin (or of an
+   * existing sibling checkout for a local-only container), optionally switched to a branch.
+   * @param root The container root, which must be an open workspace root.
+   * @param options The branch and alias options.
+   * @returns Returns the new checkout's info, or the failure reason.
+   */
+  addCheckout(
+    root: string,
+    options: WorktreeAddOptions,
+  ): Promise<WorktreeOutcome<WorktreeCheckoutInfo>>;
+
+  /**
+   * Removes a registered checkout from an open container root, sending its directory to the OS
+   * trash and updating the registry.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The checkout id to remove.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  removeCheckout(root: string, id: string): Promise<WorktreeOutcome<null>>;
+}
