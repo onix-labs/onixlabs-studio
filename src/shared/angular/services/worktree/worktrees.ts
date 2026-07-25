@@ -36,6 +36,8 @@ function createClient(bridge: Bridge): WorktreeClient {
       bridge.invoke(WorktreeChannel.OpenCheckout, root, id),
     status: (root: string): Promise<readonly WorktreeCheckoutStatus[] | null> =>
       bridge.invoke(WorktreeChannel.Status, root),
+    branches: (root: string): Promise<readonly string[] | null> =>
+      bridge.invoke(WorktreeChannel.Branches, root),
   };
 }
 

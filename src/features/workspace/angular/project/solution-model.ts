@@ -11,6 +11,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
@@ -19,9 +20,16 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 export type SolutionRowKind = 'solution' | 'folder' | 'project' | 'item-folder' | 'file';
 
 /**
- * The key of the synthetic solution root row that every other row nests under.
+ * The key of the synthetic workspace root row that every other row nests under. Its label is the
+ * workspace's display name (name plus branch), never a path segment.
  */
 const ROOT_KEY: string = 'solution-root';
+
+/**
+ * The key of the solution file's own row, nested under the workspace root when the model was
+ * assembled from a real solution file.
+ */
+const SOLUTION_KEY: string = 'solution-file';
 
 /**
  * How many projects' contents are evaluated at once when a solution opens, bounding the number of
@@ -97,6 +105,11 @@ export class SolutionModel {
    * Holds this tab's workspace, whose root the model is built for.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the view's dock context, whose display name titles the workspace root row.
+   */
+  private readonly context: DockTabContext = inject(DockTabContext);
 
   /**
    * Holds the directory-watch service the root is subscribed to, so external on-disk changes reload
@@ -197,12 +210,33 @@ export class SolutionModel {
     // The root shows its full structure immediately, and spins while any project anywhere beneath it is
     // still loading (each project and the folders above it carry the same aggregate spinner).
     const loading: boolean = this.loadingProjects().size > 0;
+    // The root row is the WORKSPACE — its display name (name plus branch), never a GUID path
+    // segment; the raw folder name is only the pre-announcement fallback. A real solution file
+    // nests beneath it.
+    const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, loading, null),
+      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, null),
     ];
     if (expanded) {
       if (filtering) {
         this.appendNodesFiltered(model.tree, 1, '', rows, query);
+      } else if (model.solution !== null) {
+        const solutionExpanded: boolean = this.expandedKeys().has(SOLUTION_KEY);
+        rows.push(
+          this.row(
+            SOLUTION_KEY,
+            1,
+            this.solutionName(model),
+            'solution',
+            true,
+            solutionExpanded,
+            loading,
+            null,
+          ),
+        );
+        if (solutionExpanded) {
+          this.appendNodes(model.tree, 2, '', rows);
+        }
       } else {
         this.appendNodes(model.tree, 1, '', rows);
       }
@@ -377,7 +411,7 @@ export class SolutionModel {
    * stay visible.
    */
   public collapseAll(): void {
-    this.expandedKeys.set(new Set<string>([ROOT_KEY]));
+    this.expandedKeys.set(new Set<string>([ROOT_KEY, SOLUTION_KEY]));
   }
 
   /**
@@ -506,6 +540,7 @@ export class SolutionModel {
         loading.add(project.path);
       }
       expanded.add(ROOT_KEY);
+      expanded.add(SOLUTION_KEY);
     }
     this.loadingProjects.set(loading);
     this.expandedKeys.set(expanded);
@@ -571,8 +606,17 @@ export class SolutionModel {
     if (model.solution !== null) {
       return model.solution.name;
     }
-    const segments: string[] = model.root.replace(/[/\\]+$/, '').split(/[/\\]/);
-    return segments[segments.length - 1] || model.root;
+    return this.folderName(model.root);
+  }
+
+  /**
+   * Resolves a root path's folder name.
+   * @param root The root path.
+   * @returns Returns the trailing path segment.
+   */
+  private folderName(root: string): string {
+    const segments: string[] = root.replace(/[/\\]+$/, '').split(/[/\\]/);
+    return segments[segments.length - 1] || root;
   }
 
   /**
@@ -794,7 +838,7 @@ export class SolutionModel {
    * @returns Returns the set of every expandable key.
    */
   private allExpandableKeys(model: ProjectModel): Set<string> {
-    const keys: Set<string> = new Set<string>([ROOT_KEY]);
+    const keys: Set<string> = new Set<string>([ROOT_KEY, SOLUTION_KEY]);
     const walkItems: (nodes: readonly ProjectItemNode[], parentKey: string) => void = (
       nodes: readonly ProjectItemNode[],
       parentKey: string,

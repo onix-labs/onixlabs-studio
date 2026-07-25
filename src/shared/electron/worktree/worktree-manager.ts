@@ -83,5 +83,10 @@ export class WorktreeManager {
         root: unknown,
       ): Promise<readonly WorktreeCheckoutStatus[] | null> => this.operations.status(root),
     );
+    ipcMain.handle(
+      WorktreeChannel.Branches,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[] | null> =>
+        this.operations.branches(root),
+    );
   }
 }

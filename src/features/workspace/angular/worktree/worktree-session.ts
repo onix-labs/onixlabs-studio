@@ -271,7 +271,36 @@ export class WorktreeSession {
   }
 
   /**
+   * Gets the branches currently checked out across the container's checkouts — the ones a new
+   * checkout may not take.
+   */
+  public readonly takenBranches: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const taken: Set<string> = new Set<string>();
+    for (const status of this.statusSignal().values()) {
+      if (status.branch !== null) {
+        taken.add(status.branch);
+      }
+    }
+    return taken;
+  });
+
+  /**
+   * Reads the repository's known branch names for the New Worktree picker.
+   * @returns Returns the branch names (local and remote, deduplicated), or an empty list when they
+   * cannot be read.
+   */
+  public async loadBranches(): Promise<readonly string[]> {
+    const root: string | null = this.rootSignal();
+    if (root === null || this.worktrees.client === undefined) {
+      return [];
+    }
+    return (await this.worktrees.client.branches(root)) ?? [];
+  }
+
+  /**
    * Adds a checkout — a new full clone — to the container, refreshing the descriptor on success.
+   * A branch another checkout already has is refused here (and again in the main process), keeping
+   * checkouts branch-distinct at creation; post-creation drift is warned about, not prevented.
    * @param options The branch and alias options.
    * @returns Returns the new checkout's info, or the failure reason.
    */
@@ -279,6 +308,11 @@ export class WorktreeSession {
     const root: string | null = this.rootSignal();
     if (root === null || this.worktrees.client === undefined) {
       return worktreeError('The tab is not a worktree container.');
+    }
+    if (options.branch !== undefined && this.takenBranches().has(options.branch)) {
+      return worktreeError(
+        `The branch "${options.branch}" is already checked out by another worktree.`,
+      );
     }
     this.busySignal.set('add');
     try {

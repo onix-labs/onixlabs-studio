@@ -790,6 +790,28 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // The view's display label — "Baz (main)": the container name for a checkout (its directory is
+    // a GUID, never shown), else the folder name, plus the live branch. Surfaces titled per view
+    // (the solution explorer root, pop-out windows) read it from the dock context.
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      if (root === null) {
+        this.dockTabContext.setDisplayName(null);
+        return;
+      }
+      const base: string =
+        this.containerName() ??
+        root
+          .split(/[\\/]/)
+          .filter((part: string): boolean => part.length > 0)
+          .pop() ??
+        root;
+      const branch: string | null = this.workspaceGit.branch();
+      const suffix: string =
+        branch !== null ? ` (${branch})` : this.workspaceGit.isRepository() ? ' (detached)' : '';
+      this.dockTabContext.setDisplayName(`${base}${suffix}`);
+    });
+
     // Show the Solution Explorer only while this tab's root has a recognised project system, docking it
     // beside the File Explorer; remove it when the model goes away. The layout reads/writes are
     // untracked so the effect reacts to the model alone, not to unrelated dock rearrangements.
