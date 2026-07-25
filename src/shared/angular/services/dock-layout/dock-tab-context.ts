@@ -40,12 +40,25 @@ export class DockTabContext {
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
 
   /**
+   * Holds the view's display label — the workspace or container name plus its live branch (for
+   * example `Baz (main)`) — or null to fall back to the root path's basename. A worktree checkout's
+   * directory is a GUID, so surfaces titled per view (pop-out windows, explorer roots) read this
+   * instead of the path.
+   */
+  private readonly displayNameSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the path layout presets are keyed on: the explicitly-set preset root when one was given
    * (a worktree checkout keys on its container), else the tab's own root.
    */
   public readonly presetRoot: Signal<string | null> = computed(
     (): string | null => this.presetRootSignal() ?? this.rootSignal(),
   );
+
+  /**
+   * Gets the view's display label, or null to fall back to the root path's basename.
+   */
+  public readonly displayName: Signal<string | null> = this.displayNameSignal.asReadonly();
 
   /**
    * Sets the owning tab's identifier.
@@ -69,5 +82,13 @@ export class DockTabContext {
    */
   public setPresetRoot(root: string | null): void {
     this.presetRootSignal.set(root);
+  }
+
+  /**
+   * Sets the view's display label.
+   * @param name The label, or null to fall back to the root path's basename.
+   */
+  public setDisplayName(name: string | null): void {
+    this.displayNameSignal.set(name);
   }
 }

@@ -325,6 +325,41 @@ describe('WorktreeOperations', () => {
     });
   });
 
+  describe('branches', () => {
+    it('listsLocalBranchesFromTheFirstCheckout', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      await git(path.join(root, descriptor.checkouts[0].id), 'branch', 'feature/extra');
+
+      const branches: readonly string[] | null = await operations.branches(root);
+
+      expect(branches).toEqual(['feature/extra', 'main']);
+    });
+
+    it('returnsNullForRootsThatAreNotContainers', async () => {
+      const plain: string = path.join(base, 'plain');
+      await fs.mkdir(plain);
+      workspace.addRoot(plain);
+
+      expect(await operations.branches(plain)).toBeNull();
+    });
+  });
+
+  describe('addCheckout branch guard', () => {
+    it('refusesABranchAnotherCheckoutAlreadyHas', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      const outcome: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+        branch: 'main',
+      });
+
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.error).toContain('already checked out');
+      }
+      expect((await operations.describe(root))?.checkouts).toHaveLength(1);
+    });
+  });
+
   describe('removeCheckout', () => {
     it('trashesTheDirectoryAndUpdatesTheRegistry', GIT_TEST_TIMEOUT, async () => {
       const { root } = await promoteFixture();

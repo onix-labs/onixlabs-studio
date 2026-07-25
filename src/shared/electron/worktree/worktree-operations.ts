@@ -271,6 +271,16 @@ export class WorktreeOperations {
       return worktreeError('The container has no origin and no existing checkout to clone from.');
     }
 
+    // The Studio-level uniqueness guard: a branch already checked out by another checkout is
+    // refused at creation (full clones mean git itself would not object). Drift after creation —
+    // switching branches in a terminal — is reported by the panel's warnings, not prevented.
+    if (branch !== undefined) {
+      const taken: readonly WorktreeCheckoutStatus[] | null = await this.status(resolved);
+      if (taken?.some((entry: WorktreeCheckoutStatus): boolean => entry.branch === branch)) {
+        return worktreeError(`The branch "${branch}" is already checked out by another worktree.`);
+      }
+    }
+
     const id: string = mintCheckoutId();
     const clone: GitResult = await this.git(
       resolved,
@@ -357,6 +367,55 @@ export class WorktreeOperations {
       statuses.push(await this.readStatus(resolved, checkout.id));
     }
     return statuses;
+  }
+
+  /**
+   * Reads the repository's known branch names — local heads plus remote branches with their remote
+   * prefix stripped, deduplicated and sorted — from the container's first existing checkout, for
+   * the New Worktree branch picker.
+   * @param root The container root, which must be an open workspace root.
+   * @returns Returns the branch names, or null when the root is not open, not a container, or has
+   * no existing checkout to read from.
+   */
+  public async branches(root: unknown): Promise<readonly string[] | null> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return null;
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return null;
+    }
+    const source: string | null = await this.firstExistingCheckout(resolved, config);
+    if (source === null) {
+      return null;
+    }
+    // Full refnames, not short ones: a LOCAL branch may itself contain slashes (feature/x), so only
+    // the refs/heads/ vs refs/remotes/<remote>/ prefix can classify a name reliably.
+    const result: GitResult = await this.git(source, [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/heads',
+      'refs/remotes',
+    ]);
+    if (!result.success) {
+      return null;
+    }
+    const names: Set<string> = new Set<string>();
+    for (const line of (result.stdout ?? '').split('\n')) {
+      const ref: string = line.trim();
+      if (ref.startsWith('refs/heads/')) {
+        names.add(ref.slice('refs/heads/'.length));
+      } else if (ref.startsWith('refs/remotes/')) {
+        const remote: string = ref.slice('refs/remotes/'.length);
+        const separator: number = remote.indexOf('/');
+        const name: string = separator === -1 ? '' : remote.slice(separator + 1);
+        if (name.length > 0 && name !== 'HEAD') {
+          names.add(name);
+        }
+      }
+    }
+    return [...names].sort((a: string, b: string): number => a.localeCompare(b));
   }
 
   /**

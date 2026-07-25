@@ -65,6 +65,16 @@ export class WorktreeSession {
   private readonly claimedRoots: Set<string> = new Set<string>();
 
   /**
+   * Holds each materialised checkout's agent-running signal, keyed by checkout id. Registered by
+   * the checkout's sub-view from its OWN live {@link import('@shared/angular/services/agent/agent').Agent}
+   * — the same instance Mission Control mirrors — so the panel's activity glyphs are never a
+   * second source of truth.
+   */
+  private readonly activitySignal: WritableSignal<ReadonlyMap<string, Signal<boolean>>> = signal<
+    ReadonlyMap<string, Signal<boolean>>
+  >(new Map<string, Signal<boolean>>());
+
+  /**
    * Gets the container root path, or null while the tab is an ordinary workspace.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
@@ -97,6 +107,34 @@ export class WorktreeSession {
    * Gets the operation currently in flight, or null when idle.
    */
   public readonly busy: Signal<'add' | 'remove' | null> = this.busySignal.asReadonly();
+
+  /**
+   * Gets each materialised checkout's agent-running signal, keyed by checkout id. A checkout with
+   * no entry has not been materialised (no sub-view, so no agent yet).
+   */
+  public readonly agentActivity: Signal<ReadonlyMap<string, Signal<boolean>>> =
+    this.activitySignal.asReadonly();
+
+  /**
+   * Gets the branches checked out by more than one checkout. Full clones mean git no longer
+   * refuses the same branch twice, so the collision guard is Studio's: the panel warns on every
+   * checkout whose branch appears here.
+   */
+  public readonly duplicateBranches: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const counts: Map<string, number> = new Map<string, number>();
+      for (const status of this.statusSignal().values()) {
+        if (status.branch !== null) {
+          counts.set(status.branch, (counts.get(status.branch) ?? 0) + 1);
+        }
+      }
+      return new Set<string>(
+        [...counts.entries()]
+          .filter((entry: [string, number]): boolean => entry[1] > 1)
+          .map((entry: [string, number]): string => entry[0]),
+      );
+    },
+  );
 
   /**
    * Gets the active checkout's display label (its alias, else its branch), or null before the
@@ -143,6 +181,29 @@ export class WorktreeSession {
    */
   public activate(id: string): void {
     this.activeIdSignal.set(id);
+  }
+
+  /**
+   * Registers a materialised checkout's agent-running signal, powering the panel's activity glyph.
+   * @param id The checkout id.
+   * @param running The checkout agent's live running signal.
+   * @returns Returns a disposer that unregisters the signal (called on sub-view destroy).
+   */
+  public registerAgentActivity(id: string, running: Signal<boolean>): () => void {
+    const next: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
+      this.activitySignal(),
+    );
+    next.set(id, running);
+    this.activitySignal.set(next);
+    return (): void => {
+      const current: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
+        this.activitySignal(),
+      );
+      if (current.get(id) === running) {
+        current.delete(id);
+        this.activitySignal.set(current);
+      }
+    };
   }
 
   /**
@@ -210,7 +271,36 @@ export class WorktreeSession {
   }
 
   /**
+   * Gets the branches currently checked out across the container's checkouts — the ones a new
+   * checkout may not take.
+   */
+  public readonly takenBranches: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const taken: Set<string> = new Set<string>();
+    for (const status of this.statusSignal().values()) {
+      if (status.branch !== null) {
+        taken.add(status.branch);
+      }
+    }
+    return taken;
+  });
+
+  /**
+   * Reads the repository's known branch names for the New Worktree picker.
+   * @returns Returns the branch names (local and remote, deduplicated), or an empty list when they
+   * cannot be read.
+   */
+  public async loadBranches(): Promise<readonly string[]> {
+    const root: string | null = this.rootSignal();
+    if (root === null || this.worktrees.client === undefined) {
+      return [];
+    }
+    return (await this.worktrees.client.branches(root)) ?? [];
+  }
+
+  /**
    * Adds a checkout — a new full clone — to the container, refreshing the descriptor on success.
+   * A branch another checkout already has is refused here (and again in the main process), keeping
+   * checkouts branch-distinct at creation; post-creation drift is warned about, not prevented.
    * @param options The branch and alias options.
    * @returns Returns the new checkout's info, or the failure reason.
    */
@@ -218,6 +308,11 @@ export class WorktreeSession {
     const root: string | null = this.rootSignal();
     if (root === null || this.worktrees.client === undefined) {
       return worktreeError('The tab is not a worktree container.');
+    }
+    if (options.branch !== undefined && this.takenBranches().has(options.branch)) {
+      return worktreeError(
+        `The branch "${options.branch}" is already checked out by another worktree.`,
+      );
     }
     this.busySignal.set('add');
     try {

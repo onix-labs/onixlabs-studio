@@ -296,6 +296,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
 
   /**
+   * Holds this view's live agent, whose running state a checkout sub-view publishes to the
+   * Worktrees panel's activity glyphs.
+   */
+  private readonly agent: Agent = inject(Agent);
+
+  /**
    * Holds this tab's agent-host registrar, so the workspace agent appears in Mission Control for the
    * tab's whole life — not only while its docked agent panel is the active dock tool. Finalised in
    * {@link ngOnInit} once the tab id is readable.
@@ -784,6 +790,28 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // The view's display label — "Baz (main)": the container name for a checkout (its directory is
+    // a GUID, never shown), else the folder name, plus the live branch. Surfaces titled per view
+    // (the solution explorer root, pop-out windows) read it from the dock context.
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      if (root === null) {
+        this.dockTabContext.setDisplayName(null);
+        return;
+      }
+      const base: string =
+        this.containerName() ??
+        root
+          .split(/[\\/]/)
+          .filter((part: string): boolean => part.length > 0)
+          .pop() ??
+        root;
+      const branch: string | null = this.workspaceGit.branch();
+      const suffix: string =
+        branch !== null ? ` (${branch})` : this.workspaceGit.isRepository() ? ' (detached)' : '';
+      this.dockTabContext.setDisplayName(`${base}${suffix}`);
+    });
+
     // Show the Solution Explorer only while this tab's root has a recognised project system, docking it
     // beside the File Explorer; remove it when the model goes away. The layout reads/writes are
     // untracked so the effect reacts to the model alone, not to unrelated dock rearrangements.
@@ -971,6 +999,14 @@ export class DirectoryView implements OnInit, OnDestroy {
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
     // dispatch and other per-view registries, which must not collide across a container's sub-views.
     this.dockTabContext.setTabId(this.viewScope());
+    // A checkout sub-view publishes its agent's running state to the Worktrees panel, so the
+    // panel's activity glyph mirrors the SAME live agent Mission Control does.
+    const checkout: string | null = this.checkoutId();
+    if (checkout !== null) {
+      this.destroyRef.onDestroy(
+        this.worktreeSession.registerAgentActivity(checkout, this.agent.isRunning),
+      );
+    }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {

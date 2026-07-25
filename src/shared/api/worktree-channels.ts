@@ -57,6 +57,12 @@ export enum WorktreeChannel {
    * ahead/behind — for the Worktrees panel (invoke).
    */
   Status = 'worktree:status',
+
+  /**
+   * Reads the repository's known branch names (local and remote, deduplicated) from an existing
+   * checkout, for the New Worktree branch picker (invoke).
+   */
+  Branches = 'worktree:branches',
 }
 
 /**
@@ -124,4 +130,13 @@ export interface WorktreeClient {
    * a container.
    */
   status(root: string): Promise<readonly WorktreeCheckoutStatus[] | null>;
+
+  /**
+   * Reads the repository's known branch names (local and remote, deduplicated and sorted) from an
+   * existing checkout.
+   * @param root The container root, which must be an open workspace root.
+   * @returns Returns the branch names, or null when the root is not open, not a container, or has
+   * no existing checkout to read from.
+   */
+  branches(root: string): Promise<readonly string[] | null>;
 }

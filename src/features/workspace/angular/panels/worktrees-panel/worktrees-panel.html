@@ -1,48 +1,61 @@
 <div class="worktrees">
-  <div class="worktrees__list">
-    <!-- Reserved for the container's coordinating agent (a later phase); inert until then. -->
-    <div
-      class="worktrees__row worktrees__row--orchestrator"
-      title="The container's coordinating agent arrives in a later phase."
-    >
-      <app-icon [icon]="Icon.AGENT" [size]="1" />
-      <span class="worktrees__text">
-        <span class="worktrees__label">Orchestrator</span>
-      </span>
-    </div>
-
-    @for (checkout of checkouts(); track checkout.id) {
-      <div
-        class="worktrees__row"
-        role="button"
-        tabindex="0"
-        [class.worktrees__row--active]="checkout.id === activeId()"
-        (click)="onActivate(checkout.id)"
-        (keydown.enter)="onActivate(checkout.id)"
-      >
-        <app-icon [icon]="Icon.WORKTREE" [size]="1" />
-        <span class="worktrees__text">
-          <span class="worktrees__label">{{ labelOf(checkout.id) }}</span>
-          @if (branchOf(checkout.id)) {
-            <span class="worktrees__branch">{{ branchOf(checkout.id) }}</span>
+  <app-list-view
+    class="worktrees__list"
+    [rows]="listRows()"
+    [selectedId]="activeId()"
+    (rowClick)="onRowClick($event)"
+  >
+    <ng-template let-row>
+      @if (row.id === ORCHESTRATOR_ID) {
+        <!-- Reserved for the container's coordinating agent (a later phase); inert until then. -->
+        <div
+          class="worktrees__entry worktrees__entry--orchestrator"
+          title="The container's coordinating agent arrives in a later phase."
+        >
+          <app-icon [icon]="Icon.AGENT" [size]="1" />
+          <span class="worktrees__text">
+            <span class="worktrees__label">Orchestrator</span>
+          </span>
+        </div>
+      } @else {
+        <div class="worktrees__entry">
+          <app-icon [icon]="Icon.WORKTREE" [size]="1" />
+          <span class="worktrees__text">
+            <span class="worktrees__label">{{ labelOf(row.id) }}</span>
+            @if (branchOf(row.id)) {
+              <span class="worktrees__branch">{{ branchOf(row.id) }}</span>
+            }
+          </span>
+          @if (isDuplicateBranch(row.id)) {
+            <span class="worktrees__warning" title="Another checkout is on this branch">
+              <app-icon [icon]="Icon.WARNING" [size]="0.85" />
+            </span>
           }
-        </span>
-        <span class="worktrees__meta">{{ statusOf(checkout.id) }}</span>
-        @if (canRemove()) {
-          <button
-            type="button"
-            class="worktrees__remove"
-            [disabled]="busy()"
-            aria-label="Remove worktree"
-            title="Remove worktree"
-            (click)="onRemove(checkout.id, $event)"
-          >
-            <app-icon [icon]="Icon.TRASH" [size]="0.85" />
-          </button>
-        }
-      </div>
-    }
-  </div>
+          @if (agentStateOf(row.id); as state) {
+            <span
+              class="worktrees__agent worktrees__agent--{{ state }}"
+              [title]="state === 'running' ? 'Agent running' : 'Agent idle'"
+            >
+              <app-icon [icon]="Icon.AGENT" [size]="0.85" />
+            </span>
+          }
+          <span class="worktrees__meta">{{ statusOf(row.id) }}</span>
+          @if (canRemove()) {
+            <button
+              type="button"
+              class="worktrees__remove"
+              [disabled]="busy()"
+              aria-label="Remove worktree"
+              title="Remove worktree"
+              (click)="onRemove(row.id, $event)"
+            >
+              <app-icon [icon]="Icon.TRASH" [size]="0.85" />
+            </button>
+          }
+        </div>
+      }
+    </ng-template>
+  </app-list-view>
 
   @if (lastError(); as error) {
     <p class="worktrees__error">{{ error }}</p>
@@ -66,23 +79,34 @@
   </div>
 </div>
 
-<!-- Names the new checkout: the branch to check out (created when missing) and an optional alias. -->
+<!-- Names the new checkout: a branch from the picker (branches other checkouts hold are excluded)
+     or a brand-new branch, plus an optional alias. -->
 <app-modal [open]="addOpen()" [width]="26" ariaLabel="New worktree" (dismiss)="cancelAdd()">
   <h2 class="worktrees__confirm-title">New worktree</h2>
   <p class="worktrees__confirm-message">
-    Clones the repository into a new checkout. Give it a branch to work on; the branch is created
-    when it does not exist yet.
+    Clones the repository into a new checkout on the chosen branch. Branches already checked out by
+    another worktree are not offered.
   </p>
-  <input
-    class="worktrees__prompt-input"
-    type="text"
-    [value]="addBranch()"
-    (input)="onBranchInput($event)"
-    (keydown.enter)="confirmAdd()"
-    (keydown.escape)="cancelAdd()"
-    placeholder="Branch (optional)"
-    aria-label="Branch"
+  <app-dropdown
+    class="worktrees__prompt-dropdown"
+    [options]="branchOptions()"
+    [value]="branchPick()"
+    [fullWidth]="true"
+    ariaLabel="Branch"
+    (valueChange)="onBranchPick($event)"
   />
+  @if (branchPick() === NEW_BRANCH) {
+    <input
+      class="worktrees__prompt-input"
+      type="text"
+      [value]="addBranch()"
+      (input)="onBranchInput($event)"
+      (keydown.enter)="confirmAdd()"
+      (keydown.escape)="cancelAdd()"
+      placeholder="New branch name"
+      aria-label="New branch name"
+    />
+  }
   <input
     class="worktrees__prompt-input"
     type="text"
@@ -95,7 +119,14 @@
   />
   <div class="worktrees__confirm-actions">
     <button type="button" class="worktrees__confirm-button" (click)="cancelAdd()">Cancel</button>
-    <button type="button" class="worktrees__confirm-button" (click)="confirmAdd()">Create</button>
+    <button
+      type="button"
+      class="worktrees__confirm-button"
+      [disabled]="!canCreate()"
+      (click)="confirmAdd()"
+    >
+      Create
+    </button>
   </div>
 </app-modal>
 

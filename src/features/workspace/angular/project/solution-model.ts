@@ -11,6 +11,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
@@ -19,7 +20,8 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 export type SolutionRowKind = 'solution' | 'folder' | 'project' | 'item-folder' | 'file';
 
 /**
- * The key of the synthetic solution root row that every other row nests under.
+ * The key of the synthetic workspace root row that every other row nests under. Its label is the
+ * workspace's display name (name plus branch), never a path segment.
  */
 const ROOT_KEY: string = 'solution-root';
 
@@ -97,6 +99,11 @@ export class SolutionModel {
    * Holds this tab's workspace, whose root the model is built for.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the view's dock context, whose display name titles the workspace root row.
+   */
+  private readonly context: DockTabContext = inject(DockTabContext);
 
   /**
    * Holds the directory-watch service the root is subscribed to, so external on-disk changes reload
@@ -197,11 +204,26 @@ export class SolutionModel {
     // The root shows its full structure immediately, and spins while any project anywhere beneath it is
     // still loading (each project and the folders above it carry the same aggregate spinner).
     const loading: boolean = this.loadingProjects().size > 0;
+    // The root row is the WORKSPACE — its display name (name plus branch), never a GUID path
+    // segment; the raw folder name is only the pre-announcement fallback. The structure nests
+    // directly beneath it: neither the solution file nor a lone root-level project gets a row of
+    // its own — each would only repeat the repository's name.
+    const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, this.solutionName(model), 'solution', true, expanded, loading, null),
+      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, null),
     ];
+    const hoisted: string | null = this.hoistedProjectPath(model);
     if (expanded) {
-      if (filtering) {
+      if (hoisted !== null) {
+        const items: ProjectItems | undefined = this.itemsByProject().get(hoisted);
+        if (items !== undefined) {
+          if (filtering) {
+            this.appendItemsFiltered(items.tree, 1, `project:${hoisted}`, rows, query);
+          } else {
+            this.appendItems(items.tree, 1, `project:${hoisted}`, rows);
+          }
+        }
+      } else if (filtering) {
         this.appendNodesFiltered(model.tree, 1, '', rows, query);
       } else {
         this.appendNodes(model.tree, 1, '', rows);
@@ -562,17 +584,34 @@ export class SolutionModel {
   }
 
   /**
-   * Resolves the solution root's display name: the solution file's name, or the root folder's name when
-   * the model was assembled from loose projects.
+   * Resolves the path of the project to hoist: when the model is a SINGLE project living in the
+   * workspace root itself, its row would only repeat the workspace's name, so its contents render
+   * directly under the root row instead. A single project in a subdirectory, or any multi-project
+   * model, keeps its explicit rows.
    * @param model The model.
-   * @returns Returns the root display name.
+   * @returns Returns the hoisted project's path, or null when nothing is hoisted.
    */
-  private solutionName(model: ProjectModel): string {
-    if (model.solution !== null) {
-      return model.solution.name;
+  private hoistedProjectPath(model: ProjectModel): string | null {
+    if (model.tree.length !== 1) {
+      return null;
     }
-    const segments: string[] = model.root.replace(/[/\\]+$/, '').split(/[/\\]/);
-    return segments[segments.length - 1] || model.root;
+    const only: ProjectNode = model.tree[0];
+    if (only.type !== 'project') {
+      return null;
+    }
+    const root: string = model.root.replace(/[/\\]+$/, '');
+    const directory: string = only.path.replace(/[/\\][^/\\]*$/, '');
+    return directory === root ? only.path : null;
+  }
+
+  /**
+   * Resolves a root path's folder name.
+   * @param root The root path.
+   * @returns Returns the trailing path segment.
+   */
+  private folderName(root: string): string {
+    const segments: string[] = root.replace(/[/\\]+$/, '').split(/[/\\]/);
+    return segments[segments.length - 1] || root;
   }
 
   /**
