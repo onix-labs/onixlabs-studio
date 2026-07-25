@@ -206,14 +206,24 @@ export class SolutionModel {
     const loading: boolean = this.loadingProjects().size > 0;
     // The root row is the WORKSPACE — its display name (name plus branch), never a GUID path
     // segment; the raw folder name is only the pre-announcement fallback. The structure nests
-    // directly beneath it (the solution file gets no row of its own — it would only repeat the
-    // repository's name).
+    // directly beneath it: neither the solution file nor a lone root-level project gets a row of
+    // its own — each would only repeat the repository's name.
     const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
       this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, null),
     ];
+    const hoisted: string | null = this.hoistedProjectPath(model);
     if (expanded) {
-      if (filtering) {
+      if (hoisted !== null) {
+        const items: ProjectItems | undefined = this.itemsByProject().get(hoisted);
+        if (items !== undefined) {
+          if (filtering) {
+            this.appendItemsFiltered(items.tree, 1, `project:${hoisted}`, rows, query);
+          } else {
+            this.appendItems(items.tree, 1, `project:${hoisted}`, rows);
+          }
+        }
+      } else if (filtering) {
         this.appendNodesFiltered(model.tree, 1, '', rows, query);
       } else {
         this.appendNodes(model.tree, 1, '', rows);
@@ -571,6 +581,27 @@ export class SolutionModel {
     const loading: Set<string> = new Set<string>(this.loadingProjects());
     loading.delete(path);
     this.loadingProjects.set(loading);
+  }
+
+  /**
+   * Resolves the path of the project to hoist: when the model is a SINGLE project living in the
+   * workspace root itself, its row would only repeat the workspace's name, so its contents render
+   * directly under the root row instead. A single project in a subdirectory, or any multi-project
+   * model, keeps its explicit rows.
+   * @param model The model.
+   * @returns Returns the hoisted project's path, or null when nothing is hoisted.
+   */
+  private hoistedProjectPath(model: ProjectModel): string | null {
+    if (model.tree.length !== 1) {
+      return null;
+    }
+    const only: ProjectNode = model.tree[0];
+    if (only.type !== 'project') {
+      return null;
+    }
+    const root: string = model.root.replace(/[/\\]+$/, '');
+    const directory: string = only.path.replace(/[/\\][^/\\]*$/, '');
+    return directory === root ? only.path : null;
   }
 
   /**

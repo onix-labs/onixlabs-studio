@@ -207,6 +207,43 @@ describe('SolutionModel', () => {
     expect(rowFor(model, 'Group')?.expanded).toBe(false);
   });
 
+  it('rows_withASingleProjectInTheWorkspaceRoot_hoistsItsContentsUnderTheRoot', async () => {
+    // A lone project living in the workspace root itself (a plain npm package, a single .csproj)
+    // would only repeat the workspace's name — its contents render directly under the root row.
+    project.model = {
+      kind: 'node',
+      root: '/root',
+      solution: null,
+      projects: [{ name: 'root', path: '/root/package.json' }],
+      tree: [{ type: 'project', name: 'root', path: '/root/package.json' }],
+      capabilities: sampleCapabilities(),
+    };
+    project.itemsByPath.set('/root/package.json', {
+      projectPath: '/root/package.json',
+      tree: [{ type: 'file', name: 'index.js', path: '/root/index.js' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(labels(model)).toEqual(['root', 'index.js']);
+    expect(rowFor(model, 'index.js')?.depth).toBe(1);
+  });
+
+  it('rows_withASingleProjectInASubdirectory_keepsItsRow', async () => {
+    project.model = {
+      kind: 'node',
+      root: '/root',
+      solution: null,
+      projects: [{ name: 'App', path: '/root/app/package.json' }],
+      tree: [{ type: 'project', name: 'App', path: '/root/app/package.json' }],
+      capabilities: sampleCapabilities(),
+    };
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(labels(model)).toEqual(['root', 'App']);
+  });
+
   it('rootOpens_withModel_exposesTheCapabilitiesAndRunConfigurationsFromTheLoadedModel', async () => {
     project.model = sampleModel();
     const model: SolutionModel = build();
