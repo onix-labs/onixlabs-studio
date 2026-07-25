@@ -2,6 +2,7 @@ import { ipcMain, IpcMainInvokeEvent, shell } from 'electron';
 import {
   WorkspaceKind,
   WorktreeCheckoutInfo,
+  WorktreeCheckoutStatus,
   WorktreeDescriptor,
   WorktreeOutcome,
 } from '@shared/api/worktree';
@@ -69,6 +70,18 @@ export class WorktreeManager {
       WorktreeChannel.RemoveCheckout,
       (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<null>> =>
         this.operations.removeCheckout(root, id),
+    );
+    ipcMain.handle(
+      WorktreeChannel.OpenCheckout,
+      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<string>> =>
+        this.operations.openCheckout(root, id),
+    );
+    ipcMain.handle(
+      WorktreeChannel.Status,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+      ): Promise<readonly WorktreeCheckoutStatus[] | null> => this.operations.status(root),
     );
   }
 }

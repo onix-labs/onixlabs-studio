@@ -463,6 +463,12 @@ export class Icon {
   public static readonly STASH: Icon = new Icon('ph-duotone ph-archive');
 
   /**
+   * Gets the worktree icon shown on the Worktrees panel, the ribbon's Promote action, and the
+   * status strip's active-checkout indicator.
+   */
+  public static readonly WORKTREE: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
    * Gets the remote (cloud) icon shown on the source-control remotes section.
    */
   public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');

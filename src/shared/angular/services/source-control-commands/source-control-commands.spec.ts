@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { SourceControlCommandHandler, SourceControlCommands } from './source-control-commands';
@@ -38,6 +39,10 @@ function createRecordingHandler(calls: string[]): SourceControlCommandHandler {
     },
     openAsWorkspace: (): void => {
       calls.push('openAsWorkspace');
+    },
+    canPromoteToWorktree: signal<boolean>(true),
+    promoteToWorktree: (): void => {
+      calls.push('promoteToWorktree');
     },
   };
 }

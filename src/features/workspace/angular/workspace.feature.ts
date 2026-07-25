@@ -1,9 +1,14 @@
-import { EnvironmentProviders, inject, makeEnvironmentProviders, provideAppInitializer } from '@angular/core';
+import {
+  EnvironmentProviders,
+  inject,
+  makeEnvironmentProviders,
+  provideAppInitializer,
+} from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { WORKSPACE_KEYBINDINGS } from './workspace-keybindings';
+import { DirectoryHost } from './directory-host/directory-host';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
-import { DirectoryView } from './directory-view/directory-view';
 import { AgentRunConfigurationCapabilities } from './agent-run-configuration-capabilities/agent-run-configuration-capabilities';
 
 /**
@@ -13,7 +18,9 @@ import { AgentRunConfigurationCapabilities } from './agent-run-configuration-cap
  */
 const workspaceFeature: FeatureDescriptor = {
   type: 'directory',
-  view: DirectoryView,
+  // The host decides what the tab is: a single workspace view, or a worktree container hosting one
+  // kept-alive sub-view per checkout.
+  view: DirectoryHost,
   ribbon: DirectoryRibbon,
 };
 

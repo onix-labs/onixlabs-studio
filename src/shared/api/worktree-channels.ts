@@ -2,6 +2,7 @@ import {
   WorkspaceKind,
   WorktreeAddOptions,
   WorktreeCheckoutInfo,
+  WorktreeCheckoutStatus,
   WorktreeDescriptor,
   WorktreeOutcome,
 } from './worktree';
@@ -43,6 +44,19 @@ export enum WorktreeChannel {
    * Removes a registered checkout, sending its directory to the OS trash (invoke).
    */
   RemoveCheckout = 'worktree:remove-checkout',
+
+  /**
+   * Registers a container's checkout directory as an open workspace root, so the per-checkout view
+   * can use the root-confined surfaces (studio persistence, git, watchers) exactly like an
+   * ordinarily-opened workspace (invoke).
+   */
+  OpenCheckout = 'worktree:open-checkout',
+
+  /**
+   * Reads every registered checkout's lightweight status — branch, changed-entry count, and
+   * ahead/behind — for the Worktrees panel (invoke).
+   */
+  Status = 'worktree:status',
 }
 
 /**
@@ -94,4 +108,20 @@ export interface WorktreeClient {
    * @returns Returns a null value on success, or the failure reason.
    */
   removeCheckout(root: string, id: string): Promise<WorktreeOutcome<null>>;
+
+  /**
+   * Registers a checkout's directory as an open workspace root, returning its absolute path.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The registered checkout id to open.
+   * @returns Returns the checkout's absolute path, or the failure reason.
+   */
+  openCheckout(root: string, id: string): Promise<WorktreeOutcome<string>>;
+
+  /**
+   * Reads every registered checkout's lightweight status.
+   * @param root The container root, which must be an open workspace root.
+   * @returns Returns the statuses in registration order, or null when the root is not open or not
+   * a container.
+   */
+  status(root: string): Promise<readonly WorktreeCheckoutStatus[] | null>;
 }

@@ -339,6 +339,38 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   fire only in non-writing windows — the built-in echo guard); `Theme` and `Settings` re-apply
   external changes live.
 
+### 4.9 Worktree containers (multi-branch workspaces)
+
+A **worktree** is Studio's product concept, deliberately NOT git's `worktree` feature: a container
+directory holding **independent full clones** of one repository (GUID-named checkout directories,
+each on its own branch) plus `.studio/worktree.json` (the container's self-identification and
+checkout registry — unrelated to a checkout's own committed `.studio` run configurations). The
+model, defensive parsing, and strict checkout-id validation live in `@shared/api/worktree`; the
+disk/git mechanics in the Electron-free `WorktreeOperations` (promotion moves the entire working
+copy — including its `.studio` — into the first checkout, in place and rolled back on failure;
+removal goes to the OS trash, never a hard delete), wrapped by `WorktreeManager` behind
+`WorktreeChannel`.
+
+- **The host decides what a tab is.** The `directory` tab type mounts `DirectoryHost`, which
+  resolves the opened folder's kind (`worktree` → `workspace` → `folder`, container first) before
+  any view exists. Single mode renders one `DirectoryView` exactly as before; container mode
+  renders **one kept-alive `DirectoryView` per visited checkout** — mount-all/hide-inactive one
+  level down, created lazily on first activation — so switching checkouts is **purely visual** and
+  every checkout keeps its documents, terminals, agent conversation, and debugger state.
+- **`WorktreeSession`** (host-provided, one per tab) is the shared container state: descriptor,
+  per-checkout statuses, the active-checkout selection, add/remove mutations, and **host root
+  ownership** — roots the host registered (the container, each opened checkout) are "claimed", and
+  a sub-view whose root is claimed releases local state on destroy (`Workspace.releaseFolder`)
+  instead of closing the root. Never close a claimed root from a view.
+- **Sub-view identity is the view scope** (`tabId` alone, or `tabId:checkoutId`): it keys
+  keybinding scopes, pop-out dispatch (`DockTabContext.tabId`), and status-bar owners, so
+  a container's sub-views never collide on scope-keyed registries. Anything needing the REAL tab
+  id (agent-host registration, document ownership, `ActiveWorkspace`) still uses the raw input.
+- **Presets key on the container**: a checkout's dock reads its layout pick from the container
+  path (`DockTabContext.presetRoot`), so all checkouts of one container share one pick. The
+  Worktrees panel is catalogued for every workspace tab but synced into the layout only while the
+  tab is a container; checkouts are labelled by alias or branch, **never by GUID**.
+
 ---
 
 ## 5. AI agent — access & permission model

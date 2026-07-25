@@ -1,0 +1,30 @@
+@switch (phase()) {
+  @case ('single') {
+    <app-directory-view
+      [tabId]="tabId()"
+      [isActive]="isActive()"
+      [listing]="singleListing()"
+      [promoteHandler]="promoteAction"
+      (rootChanged)="onSingleRoot($event)"
+    />
+  }
+  @case ('container') {
+    @for (entry of loaded(); track entry.id) {
+      <div
+        class="directory-host__checkout"
+        [class.directory-host__checkout--hidden]="entry.id !== session.activeId()"
+      >
+        <app-directory-view
+          [tabId]="tabId()"
+          [isActive]="isActive() && entry.id === session.activeId()"
+          [listing]="entry.listing"
+          [checkoutId]="entry.id"
+          [layoutRoot]="session.root()"
+        />
+      </div>
+    }
+    @if (loadingActive()) {
+      <div class="directory-host__loading">Opening worktree…</div>
+    }
+  }
+}

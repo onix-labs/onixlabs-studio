@@ -315,6 +315,16 @@ export class Workspace {
     if (root !== undefined) {
       await (this.bridge?.invoke<void>(WorkspaceChannel.CloseFolder, root) ?? Promise.resolve());
     }
+    this.releaseFolder();
+  }
+
+  /**
+   * Releases the open folder's local state — the watcher, tree, and selection — WITHOUT closing the
+   * root in the main process. Used when the root's lifecycle belongs to someone else: a worktree
+   * container's host keeps the root open across the sub-view teardown that this workspace instance
+   * dies in.
+   */
+  public releaseFolder(): void {
     this.watchDisposer?.();
     this.watchDisposer = null;
     this.rootListing.set(null);

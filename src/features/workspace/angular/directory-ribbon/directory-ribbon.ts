@@ -20,7 +20,11 @@ import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
-import { expandRunConfiguration, isCompoundConfiguration, RunConfiguration } from '@shared/api/studio';
+import {
+  expandRunConfiguration,
+  isCompoundConfiguration,
+  RunConfiguration,
+} from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   LayoutPresetInfo,
@@ -145,9 +149,7 @@ export class DirectoryRibbon {
    */
   protected readonly canBuild: Signal<boolean> = computed((): boolean => {
     const capabilities: ProjectCapabilities | null = this.capabilities();
-    return capabilities !== null
-      ? capabilities.actions.includes('build')
-      : this.builds.canBuild();
+    return capabilities !== null ? capabilities.actions.includes('build') : this.builds.canBuild();
   });
 
   /**
@@ -256,9 +258,8 @@ export class DirectoryRibbon {
     const selectedId: string | undefined =
       this.studio.lastBuildConfiguration() ?? capabilities?.buildConfigurations[0]?.id;
     return (
-      capabilities?.buildConfigurations.find(
-        (configuration) => configuration.id === selectedId,
-      )?.name ?? ''
+      capabilities?.buildConfigurations.find((configuration) => configuration.id === selectedId)
+        ?.name ?? ''
     );
   });
 
@@ -665,6 +666,40 @@ export class DirectoryRibbon {
   }
 
   /**
+   * Gets whether the active view can promote its repository into a worktree container (an ordinary
+   * repository workspace can; a checkout inside a container cannot).
+   */
+  protected readonly canPromote: Signal<boolean> = this.repositoryCommands.canPromoteToWorktree;
+
+  /**
+   * Holds whether the promote confirmation is open.
+   */
+  protected readonly promoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Opens the promote confirmation: promotion restructures the folder on disk, so it is never run
+   * from a bare button press.
+   */
+  protected onPromote(): void {
+    this.promoteConfirmOpen.set(true);
+  }
+
+  /**
+   * Confirms the promotion.
+   */
+  protected confirmPromote(): void {
+    this.promoteConfirmOpen.set(false);
+    this.repositoryCommands.promoteToWorktree();
+  }
+
+  /**
+   * Cancels the promotion.
+   */
+  protected cancelPromote(): void {
+    this.promoteConfirmOpen.set(false);
+  }
+
+  /**
    * Holds the layout preset store the View group's commands dispatch through.
    */
   private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
@@ -674,9 +709,11 @@ export class DirectoryRibbon {
    */
   protected readonly presetOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.layoutPresets.presets().map(
-        (preset: LayoutPresetInfo): DropdownOption => ({ value: preset.id, label: preset.name }),
-      ),
+      this.layoutPresets
+        .presets()
+        .map(
+          (preset: LayoutPresetInfo): DropdownOption => ({ value: preset.id, label: preset.name }),
+        ),
   );
 
   /**

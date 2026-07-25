@@ -13,6 +13,7 @@ import {
   WorkspaceKind,
   WorktreeCheckout,
   WorktreeCheckoutInfo,
+  WorktreeCheckoutStatus,
   WorktreeConfig,
   WORKTREE_CONFIG_FILE,
   WorktreeDescriptor,
@@ -300,6 +301,100 @@ export class WorktreeOperations {
       );
     }
     return worktreeOk(await this.describeCheckout(resolved, { id, alias }));
+  }
+
+  /**
+   * Registers a checkout's directory as an open workspace root, so the per-checkout view can use
+   * every root-confined surface (studio persistence, git, watchers) exactly like an
+   * ordinarily-opened workspace. Sound because the checkout lies within an already-open container
+   * root the user chose; the renderer still cannot conjure roots elsewhere.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @returns Returns the checkout's absolute path, or the failure reason.
+   */
+  public async openCheckout(root: unknown, id: unknown): Promise<WorktreeOutcome<string>> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return worktreeError('The workspace is not open.');
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return worktreeError('The workspace is not a worktree container.');
+    }
+    if (
+      !isSafeCheckoutId(id) ||
+      !config.checkouts.some((entry: WorktreeCheckout): boolean => entry.id === id)
+    ) {
+      return worktreeError('The checkout is not registered in this container.');
+    }
+    const directory: string = path.join(resolved, id);
+    if (!(await this.isDirectory(directory))) {
+      return worktreeError('The checkout directory is missing.');
+    }
+    this.workspace.addRoot(directory);
+    return worktreeOk(directory);
+  }
+
+  /**
+   * Reads every registered checkout's lightweight status — branch, changed working-tree entries,
+   * and ahead/behind relative to its upstream — for the Worktrees panel. A checkout whose state
+   * cannot be read reports null fields rather than failing the whole read.
+   * @param root The container root, which must be an open workspace root.
+   * @returns Returns the statuses in registration order, or null when the root is not open or not
+   * a container.
+   */
+  public async status(root: unknown): Promise<readonly WorktreeCheckoutStatus[] | null> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return null;
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return null;
+    }
+    const statuses: WorktreeCheckoutStatus[] = [];
+    for (const checkout of config.checkouts) {
+      statuses.push(await this.readStatus(resolved, checkout.id));
+    }
+    return statuses;
+  }
+
+  /**
+   * Reads one checkout's lightweight status.
+   * @param root The resolved container root.
+   * @param id The registered checkout id.
+   * @returns Returns the status, with null fields for whatever cannot be read.
+   */
+  private async readStatus(root: string, id: string): Promise<WorktreeCheckoutStatus> {
+    const directory: string = path.join(root, id);
+    if (!(await this.isDirectory(directory))) {
+      return { id, branch: null, changes: null, ahead: null, behind: null };
+    }
+    const branch: string | null = await this.readBranch(directory);
+    const porcelain: GitResult = await this.git(directory, ['status', '--porcelain']);
+    const changes: number | null = porcelain.success
+      ? (porcelain.stdout ?? '').split('\n').filter((line: string): boolean => line.length > 0)
+          .length
+      : null;
+    // `--left-right --count upstream...HEAD` prints "<behind>\t<ahead>": the left column counts
+    // commits only in the upstream, the right column commits only in HEAD. No upstream fails the
+    // command, which reads as "no counts" rather than zero.
+    const counts: GitResult = await this.git(directory, [
+      'rev-list',
+      '--left-right',
+      '--count',
+      '@{upstream}...HEAD',
+    ]);
+    let ahead: number | null = null;
+    let behind: number | null = null;
+    if (counts.success) {
+      const parts: readonly string[] = (counts.stdout ?? '').split(/\s+/);
+      const left: number = Number.parseInt(parts[0] ?? '', 10);
+      const right: number = Number.parseInt(parts[1] ?? '', 10);
+      behind = Number.isNaN(left) ? null : left;
+      ahead = Number.isNaN(right) ? null : right;
+    }
+    return { id, branch, changes, ahead, behind };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
 
 /**
  * Carries the identity of the tab hosting a dock instance to the panels projected inside it. Dock
@@ -23,6 +23,13 @@ export class DockTabContext {
   private readonly rootSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the path layout presets are keyed on for this dock, or null to key on {@link root}. A
+   * worktree checkout's dock keys its preset pick on the CONTAINER path, so every checkout of one
+   * container shares a single pick.
+   */
+  private readonly presetRootSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the owning tab's identifier.
    */
   public readonly tabId: Signal<string> = this.tabIdSignal.asReadonly();
@@ -31,6 +38,14 @@ export class DockTabContext {
    * Gets the absolute path the tab is rooted at, or null when none is open.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
+
+  /**
+   * Gets the path layout presets are keyed on: the explicitly-set preset root when one was given
+   * (a worktree checkout keys on its container), else the tab's own root.
+   */
+  public readonly presetRoot: Signal<string | null> = computed(
+    (): string | null => this.presetRootSignal() ?? this.rootSignal(),
+  );
 
   /**
    * Sets the owning tab's identifier.
@@ -46,5 +61,13 @@ export class DockTabContext {
    */
   public setRoot(root: string | null): void {
     this.rootSignal.set(root);
+  }
+
+  /**
+   * Sets the path layout presets are keyed on, overriding the tab root.
+   * @param root The preset-keying path, or null to key on the tab root.
+   */
+  public setPresetRoot(root: string | null): void {
+    this.presetRootSignal.set(root);
   }
 }
