@@ -53,6 +53,17 @@ export interface SourceControlCommandHandler {
    * Opens the repository's root as a workspace (a new directory tab).
    */
   openAsWorkspace(): void;
+
+  /**
+   * Gets whether the view can promote its repository into a worktree container (an ordinary
+   * single-repository workspace can; a checkout inside a container cannot).
+   */
+  readonly canPromoteToWorktree: Signal<boolean>;
+
+  /**
+   * Promotes the view's repository, in place, into a worktree container.
+   */
+  promoteToWorktree(): void;
 }
 
 /**
@@ -163,5 +174,19 @@ export class SourceControlCommands {
    */
   public openAsWorkspace(): void {
     this.handler()?.openAsWorkspace();
+  }
+
+  /**
+   * Gets whether the active view can promote its repository into a worktree container.
+   */
+  public readonly canPromoteToWorktree: Signal<boolean> = computed(
+    (): boolean => this.handler()?.canPromoteToWorktree() ?? false,
+  );
+
+  /**
+   * Invokes the promote-to-worktree command on the active repository.
+   */
+  public promoteToWorktree(): void {
+    this.handler()?.promoteToWorktree();
   }
 }

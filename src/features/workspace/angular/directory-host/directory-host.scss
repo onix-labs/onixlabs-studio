@@ -1,0 +1,29 @@
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+app-directory-view {
+  display: block;
+  block-size: 100%;
+}
+
+// A checkout sub-view: kept mounted while hidden, exactly like inactive app tabs, so its documents,
+// terminals, agent conversation, and debugger state survive checkout switches.
+.directory-host__checkout {
+  block-size: 100%;
+
+  &--hidden {
+    display: none;
+  }
+}
+
+.directory-host__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.9rem;
+}

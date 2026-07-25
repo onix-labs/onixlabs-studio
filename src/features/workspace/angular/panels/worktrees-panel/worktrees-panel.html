@@ -1,0 +1,155 @@
+<div class="worktrees">
+  <app-list-view
+    class="worktrees__list"
+    [rows]="listRows()"
+    [selectedId]="activeId()"
+    (rowClick)="onRowClick($event)"
+  >
+    <ng-template let-row>
+      @if (row.id === ORCHESTRATOR_ID) {
+        <!-- Reserved for the container's coordinating agent (a later phase); inert until then. -->
+        <div
+          class="worktrees__entry worktrees__entry--orchestrator"
+          title="The container's coordinating agent arrives in a later phase."
+        >
+          <app-icon [icon]="Icon.AGENT" [size]="1" />
+          <span class="worktrees__text">
+            <span class="worktrees__label">Orchestrator</span>
+          </span>
+        </div>
+      } @else {
+        <div class="worktrees__entry">
+          <app-icon [icon]="Icon.WORKTREE" [size]="1" />
+          <span class="worktrees__text">
+            <span class="worktrees__label">{{ labelOf(row.id) }}</span>
+            @if (branchOf(row.id)) {
+              <span class="worktrees__branch">{{ branchOf(row.id) }}</span>
+            }
+          </span>
+          @if (isDuplicateBranch(row.id)) {
+            <span class="worktrees__warning" title="Another checkout is on this branch">
+              <app-icon [icon]="Icon.WARNING" [size]="0.85" />
+            </span>
+          }
+          @if (agentStateOf(row.id); as state) {
+            <span
+              class="worktrees__agent worktrees__agent--{{ state }}"
+              [title]="state === 'running' ? 'Agent running' : 'Agent idle'"
+            >
+              <app-icon [icon]="Icon.AGENT" [size]="0.85" />
+            </span>
+          }
+          <span class="worktrees__meta">{{ statusOf(row.id) }}</span>
+          @if (canRemove()) {
+            <button
+              type="button"
+              class="worktrees__remove"
+              [disabled]="busy()"
+              aria-label="Remove worktree"
+              title="Remove worktree"
+              (click)="onRemove(row.id, $event)"
+            >
+              <app-icon [icon]="Icon.TRASH" [size]="0.85" />
+            </button>
+          }
+        </div>
+      }
+    </ng-template>
+  </app-list-view>
+
+  @if (lastError(); as error) {
+    <p class="worktrees__error">{{ error }}</p>
+  }
+
+  <div class="worktrees__actions">
+    <button type="button" class="worktrees__add" [disabled]="busy()" (click)="onAdd()">
+      <app-icon [icon]="Icon.PLUS" [size]="0.85" />
+      {{ session.busy() === 'add' ? 'Cloning…' : 'New Worktree' }}
+    </button>
+    <button
+      type="button"
+      class="worktrees__refresh"
+      [disabled]="busy()"
+      aria-label="Refresh worktrees"
+      title="Refresh"
+      (click)="onRefresh()"
+    >
+      <app-icon [icon]="Icon.REFRESH" [size]="0.85" />
+    </button>
+  </div>
+</div>
+
+<!-- Names the new checkout: a branch from the picker (branches other checkouts hold are excluded)
+     or a brand-new branch, plus an optional alias. -->
+<app-modal [open]="addOpen()" [width]="26" ariaLabel="New worktree" (dismiss)="cancelAdd()">
+  <h2 class="worktrees__confirm-title">New worktree</h2>
+  <p class="worktrees__confirm-message">
+    Clones the repository into a new checkout on the chosen branch. Branches already checked out by
+    another worktree are not offered.
+  </p>
+  <app-dropdown
+    class="worktrees__prompt-dropdown"
+    [options]="branchOptions()"
+    [value]="branchPick()"
+    [fullWidth]="true"
+    ariaLabel="Branch"
+    (valueChange)="onBranchPick($event)"
+  />
+  @if (branchPick() === NEW_BRANCH) {
+    <input
+      class="worktrees__prompt-input"
+      type="text"
+      [value]="addBranch()"
+      (input)="onBranchInput($event)"
+      (keydown.enter)="confirmAdd()"
+      (keydown.escape)="cancelAdd()"
+      placeholder="New branch name"
+      aria-label="New branch name"
+    />
+  }
+  <input
+    class="worktrees__prompt-input"
+    type="text"
+    [value]="addAlias()"
+    (input)="onAliasInput($event)"
+    (keydown.enter)="confirmAdd()"
+    (keydown.escape)="cancelAdd()"
+    placeholder="Alias (optional)"
+    aria-label="Alias"
+  />
+  <div class="worktrees__confirm-actions">
+    <button type="button" class="worktrees__confirm-button" (click)="cancelAdd()">Cancel</button>
+    <button
+      type="button"
+      class="worktrees__confirm-button"
+      [disabled]="!canCreate()"
+      (click)="confirmAdd()"
+    >
+      Create
+    </button>
+  </div>
+</app-modal>
+
+<!-- Asked before a checkout is removed: removal is always explicit, never silent. -->
+<app-modal
+  [open]="removeTarget() !== null"
+  [width]="26"
+  ariaLabel="Remove worktree"
+  (dismiss)="cancelRemove()"
+>
+  <h2 class="worktrees__confirm-title">Remove “{{ removeLabel() }}”?</h2>
+  <p class="worktrees__confirm-message">
+    Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
+    remain on the remote.
+  </p>
+  <div class="worktrees__confirm-actions">
+    <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">Cancel</button>
+    <button
+      type="button"
+      class="worktrees__confirm-button worktrees__confirm-button--danger"
+      (click)="confirmRemove()"
+    >
+      Remove
+    </button>
+  </div>
+</app-modal>

@@ -201,8 +201,8 @@ export class PanelPopout implements OnDestroy {
   public constructor() {
     this.unregister.push(
       this.popouts.register((panelId: string): void => this.popOut(panelId)),
-      this.dockDrag.registerExternalDrop(
-        (panel: DockPanel, event: MouseEvent): boolean => this.handleMainDrop(panel, event),
+      this.dockDrag.registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
+        this.handleMainDrop(panel, event),
       ),
     );
   }
@@ -242,8 +242,11 @@ export class PanelPopout implements OnDestroy {
    */
   private openWindow(panelId: string, at?: AuxiliaryWindowPosition): PopoutWindow | null {
     const root: string | null = this.context.root();
+    // The display name carries the workspace/container name and branch; the path basename is only
+    // a fallback (a worktree checkout's directory is a GUID, never shown).
     const title: string =
-      root === null ? 'ONIXLabs Studio' : (root.split(/[\\/]/).pop() ?? root);
+      this.context.displayName() ??
+      (root === null ? 'ONIXLabs Studio' : (root.split(/[\\/]/).pop() ?? root));
     const window: AuxiliaryWindow | null = this.aux.open(title, at);
     if (window === null) {
       return null;
@@ -292,9 +295,8 @@ export class PanelPopout implements OnDestroy {
     this.unregister.push(
       host.injector
         .get(DockDrag)
-        .registerExternalDrop(
-          (panel: DockPanel, event: MouseEvent): boolean =>
-            this.handleWindowDrop(popout, panel, event),
+        .registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
+          this.handleWindowDrop(popout, panel, event),
         ),
     );
 

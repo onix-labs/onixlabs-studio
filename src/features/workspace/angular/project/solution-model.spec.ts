@@ -197,13 +197,51 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    // The root node is the solution name; only the root starts expanded, so the top-level folder and
-    // project nest under it while the folder's contents stay hidden until it is opened.
-    expect(rowFor(model, 'MySolution')?.kind).toBe('solution');
-    expect(rowFor(model, 'MySolution')?.depth).toBe(0);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
+    // The root node is the WORKSPACE (its display name, falling back to the folder); the structure
+    // nests directly beneath it — the solution file gets no row of its own. The folder's contents
+    // stay hidden until it is opened.
+    expect(rowFor(model, 'root')?.kind).toBe('solution');
+    expect(rowFor(model, 'root')?.depth).toBe(0);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
     expect(rowFor(model, 'Group')?.depth).toBe(1);
     expect(rowFor(model, 'Group')?.expanded).toBe(false);
+  });
+
+  it('rows_withASingleProjectInTheWorkspaceRoot_hoistsItsContentsUnderTheRoot', async () => {
+    // A lone project living in the workspace root itself (a plain npm package, a single .csproj)
+    // would only repeat the workspace's name — its contents render directly under the root row.
+    project.model = {
+      kind: 'node',
+      root: '/root',
+      solution: null,
+      projects: [{ name: 'root', path: '/root/package.json' }],
+      tree: [{ type: 'project', name: 'root', path: '/root/package.json' }],
+      capabilities: sampleCapabilities(),
+    };
+    project.itemsByPath.set('/root/package.json', {
+      projectPath: '/root/package.json',
+      tree: [{ type: 'file', name: 'index.js', path: '/root/index.js' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(labels(model)).toEqual(['root', 'index.js']);
+    expect(rowFor(model, 'index.js')?.depth).toBe(1);
+  });
+
+  it('rows_withASingleProjectInASubdirectory_keepsItsRow', async () => {
+    project.model = {
+      kind: 'node',
+      root: '/root',
+      solution: null,
+      projects: [{ name: 'App', path: '/root/app/package.json' }],
+      tree: [{ type: 'project', name: 'App', path: '/root/app/package.json' }],
+      capabilities: sampleCapabilities(),
+    };
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(labels(model)).toEqual(['root', 'App']);
   });
 
   it('rootOpens_withModel_exposesTheCapabilitiesAndRunConfigurationsFromTheLoadedModel', async () => {
@@ -214,7 +252,10 @@ describe('SolutionModel', () => {
     // The capability descriptor rides the model over the ModelLoad channel, so the renderer exposes
     // exactly what the provider stamped on in the main process.
     expect(model.capabilities()?.actions).toEqual(['build', 'clean', 'rebuild']);
-    expect(model.capabilities()?.buildConfigurations.map((c) => c.name)).toEqual(['Debug', 'Release']);
+    expect(model.capabilities()?.buildConfigurations.map((c) => c.name)).toEqual([
+      'Debug',
+      'Release',
+    ]);
     expect(model.capabilities()?.target?.label).toBe('Platform');
     expect(model.capabilities()?.debug).toBeNull();
   });
@@ -270,8 +311,8 @@ describe('SolutionModel', () => {
     // The tree stays collapsed to the root while loading; the root, the folder above a still-loading
     // project, and each still-loading top-level project carry the spinner, and a loading project cannot
     // be expanded until its contents arrive.
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
-    expect(rowFor(model, 'MySolution')?.loading).toBe(true);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
+    expect(rowFor(model, 'root')?.loading).toBe(true);
     expect(rowFor(model, 'Group')?.loading).toBe(true);
     expect(rowFor(model, 'B')?.loading).toBe(true);
     expect(rowFor(model, 'B')?.expandable).toBe(false);
@@ -279,11 +320,11 @@ describe('SolutionModel', () => {
     project.resolveAll();
     await flush();
     // Once every project's contents have loaded, the spinners clear and the tree stays collapsed.
-    expect(rowFor(model, 'MySolution')?.loading).toBe(false);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
     expect(rowFor(model, 'Group')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.expandable).toBe(true);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
@@ -299,7 +340,7 @@ describe('SolutionModel', () => {
 
     // A's contents appear with no further fetch; its sub-folder is collapsed so its file is hidden.
     expect(project.itemRequests.length).toBe(requestsAfterOpen);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'Sub', 'g.cs', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'A', 'Sub', 'g.cs', 'B']);
   });
 
   it('toggle_collapsingTheRoot_hidesEverything', async () => {
@@ -307,9 +348,9 @@ describe('SolutionModel', () => {
     const model: SolutionModel = build();
     await open(model);
 
-    model.toggle(rowFor(model, 'MySolution')!);
+    model.toggle(rowFor(model, 'root')!);
 
-    expect(labels(model)).toEqual(['MySolution']);
+    expect(labels(model)).toEqual(['root']);
   });
 
   it('revealPath_expandsTheChainToTheFileAndSelectsIt', async () => {
@@ -322,7 +363,7 @@ describe('SolutionModel', () => {
 
     // The solution folder, the project, and the item folder all expanded, so the file is visible.
     expect(revealed).toBe(true);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'A', 'Sub', 'f.cs', 'g.cs', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'A', 'Sub', 'f.cs', 'g.cs', 'B']);
     expect(model.selectedKey()).toBe('file:/root/A/Sub/f.cs');
   });
 
@@ -335,7 +376,7 @@ describe('SolutionModel', () => {
     const revealed: boolean = model.revealPath('/elsewhere/x.cs');
 
     expect(revealed).toBe(false);
-    expect(labels(model)).toEqual(['MySolution', 'Group', 'B']);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
     expect(model.selectedKey()).toBeNull();
   });
 
