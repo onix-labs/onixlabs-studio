@@ -47,6 +47,8 @@ export interface SettingsValues {
   readonly 'application.undoStackSize': number;
   readonly 'application.printMargin': PrintMargin;
 
+  readonly 'notifications.toastDuration': number;
+
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
@@ -217,6 +219,30 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    id: 'notifications',
+    label: 'Notifications',
+    settings: [
+      {
+        key: 'notifications.toastDuration',
+        title: 'Toast duration',
+        description:
+          'How long a transient notification toast stays on screen. Hovering a toast pauses its ' +
+          'timer, and error toasts always stay until dismissed.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '3', label: '3 seconds' },
+            { value: '5', label: '5 seconds' },
+            { value: '8', label: '8 seconds' },
+            { value: '10', label: '10 seconds' },
+          ],
+        },
+        default: 5,
+      },
+    ],
+  },
+  {
     id: 'workspaces',
     label: 'Workspaces',
     settings: [
@@ -276,7 +302,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'textEditor.global.lineHeight',
         title: 'Line height',
-        description: 'The line height as a multiple of the font size; Auto derives it automatically.',
+        description:
+          'The line height as a multiple of the font size; Auto derives it automatically.',
         control: {
           kind: 'select',
           valueType: 'number',
@@ -400,7 +427,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'textEditor.global.accentSelection',
         title: 'Accent selection',
-        description: 'Use the accent colour for selected text in the editor (off uses the default).',
+        description:
+          'Use the accent colour for selected text in the editor (off uses the default).',
         control: { kind: 'toggle' },
         default: true,
       },
@@ -686,7 +714,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'ai.agentShell',
         title: 'Agent shell',
         description:
-          "The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an " +
+          'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
           'installed shell, or use the default login shell.',
         control: { kind: 'custom', component: 'ai-agent-shell' },
         default: '',

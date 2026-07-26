@@ -27,6 +27,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 type SettingsSectionId =
   | 'appearance'
   | 'application'
+  | 'notifications'
   | 'text-editor'
   | 'markdown'
   | 'terminal'
@@ -114,6 +115,7 @@ export class SettingsView {
   protected readonly sections: readonly SettingsNavSection[] = [
     { id: 'appearance', label: 'Appearance', icon: Icon.PALETTE },
     { id: 'application', label: 'Application', icon: Icon.APPLICATION },
+    { id: 'notifications', label: 'Notifications', icon: Icon.BELL },
     { id: 'workspaces', label: 'Workspaces', icon: Icon.DIRECTORY },
     { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
     { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },

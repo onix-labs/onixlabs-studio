@@ -12,6 +12,7 @@ import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/sho
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ShortcutsOverlayPanel } from '@shared/angular/components/shortcuts-overlay/shortcuts-overlay-panel';
+import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
 import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
@@ -32,6 +33,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     WelcomeScreen,
     ShortcutsOverlayPanel,
     ConfigureDialogPanel,
+    ToastHost,
   ],
   templateUrl: './root.html',
   styleUrl: './root.scss',

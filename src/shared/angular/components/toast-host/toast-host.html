@@ -1,0 +1,40 @@
+<!-- polite: arrivals are announced without interrupting; errors additionally carry role="alert". -->
+<div class="toast-stack" aria-live="polite" aria-label="Notifications">
+  @for (toast of toasts(); track toast.id) {
+    <article
+      class="toast"
+      [class.toast--info]="toast.severity === 'info'"
+      [class.toast--success]="toast.severity === 'success'"
+      [class.toast--warning]="toast.severity === 'warning'"
+      [class.toast--error]="toast.severity === 'error'"
+      [attr.role]="toast.severity === 'error' ? 'alert' : 'status'"
+      (mouseenter)="pause(toast)"
+      (mouseleave)="resume(toast)"
+    >
+      <app-icon class="toast__icon" [icon]="iconFor(toast.severity)" [size]="1.4" />
+      <div class="toast__body">
+        <p class="toast__title">{{ toast.title }}</p>
+        @if (toast.detail) {
+          <p class="toast__detail">{{ toast.detail }}</p>
+        }
+        @if (toast.actions.length > 0) {
+          <div class="toast__actions">
+            @for (action of toast.actions; track action.label) {
+              <button type="button" class="toast__action" (click)="onAction(toast, action)">
+                {{ action.label }}
+              </button>
+            }
+          </div>
+        }
+      </div>
+      <button
+        type="button"
+        class="toast__close"
+        [attr.aria-label]="'Dismiss: ' + toast.title"
+        (click)="onDismiss(toast)"
+      >
+        <app-icon [icon]="Icon.CLOSE" [size]="1.1" />
+      </button>
+    </article>
+  }
+</div>

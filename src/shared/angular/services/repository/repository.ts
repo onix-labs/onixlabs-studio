@@ -2,6 +2,10 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { RepositoryInfo } from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import {
   FileDiff,
   MutationResult,
   SourceControlProvider,
@@ -34,6 +38,20 @@ const LOG_LIMIT: number = 500;
  * so a burst (a checkout, a build touching many files) refreshes once rather than per file.
  */
 const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
+
+/**
+ * Specifies the network operations whose outcomes raise a notification toast.
+ */
+type NetworkOperation = 'fetch' | 'pull' | 'push';
+
+/**
+ * The display labels of the network operations, used in their failure toasts.
+ */
+const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
+  fetch: 'Fetch',
+  pull: 'Pull',
+  push: 'Push',
+};
 
 /**
  * The lane colours, cycled by lane index, that tint the commit-graph edges and nodes. Drawn from the
@@ -69,6 +87,12 @@ export class Repository {
    * tree (or the repository itself) outside the application refresh the model.
    */
   private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the application-wide notification store network-operation and commit outcomes are raised
+   * to, so they surface as toasts wherever the operation was started from.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
@@ -525,6 +549,7 @@ export class Repository {
 
   /**
    * Commits the staged changes with the draft message, clearing the draft on success, then reloads.
+   * A successful commit raises a toast offering to push it.
    * @returns Returns the outcome.
    */
   public async commit(): Promise<MutationResult> {
@@ -534,19 +559,50 @@ export class Repository {
     );
     if (result.success) {
       this.commitMessageSignal.set('');
+      this.notifyCommitted();
     }
     return result;
   }
 
   /**
    * Commits exactly the given files with the draft message: the index is reset, the files are staged
-   * (adding any untracked ones), and the result is committed. The draft is cleared on success. A
-   * failure part-way leaves the index reflecting the attempted selection; the surfaced error explains
-   * what failed and a refresh keeps the panel truthful.
+   * (adding any untracked ones), and the result is committed. The draft is cleared on success and a
+   * toast offers to push the commit. A failure part-way leaves the index reflecting the attempted
+   * selection; the surfaced error explains what failed and a refresh keeps the panel truthful.
    * @param paths The repository-relative paths to commit; must not be empty.
    * @returns Returns the outcome.
    */
   public async commitFiles(paths: readonly string[]): Promise<MutationResult> {
+    const result: MutationResult = await this.performCommitFiles(paths);
+    if (result.success) {
+      this.notifyCommitted();
+    }
+    return result;
+  }
+
+  /**
+   * Commits exactly the given files with the draft message, then pushes the current branch. The push
+   * only runs when the commit succeeded, and only the push outcome raises a toast — offering to push
+   * a commit already being pushed would be noise.
+   * @param paths The repository-relative paths to commit; must not be empty.
+   * @returns Returns the outcome of the push, or of the commit when it failed.
+   */
+  public async commitAndPushFiles(paths: readonly string[]): Promise<MutationResult> {
+    const committed: MutationResult = await this.performCommitFiles(paths);
+    if (!committed.success) {
+      return committed;
+    }
+    return this.push();
+  }
+
+  /**
+   * Runs the selective commit shared by {@link commitFiles} and {@link commitAndPushFiles}: the
+   * index is reset, the files are staged (adding any untracked ones), the result is committed, and
+   * the draft is cleared on success.
+   * @param paths The repository-relative paths to commit; must not be empty.
+   * @returns Returns the outcome.
+   */
+  private async performCommitFiles(paths: readonly string[]): Promise<MutationResult> {
     if (paths.length === 0) {
       return { success: false, error: 'No files are selected to commit' };
     }
@@ -567,20 +623,6 @@ export class Repository {
       this.commitMessageSignal.set('');
     }
     return result;
-  }
-
-  /**
-   * Commits exactly the given files with the draft message, then pushes the current branch. The push
-   * only runs when the commit succeeded.
-   * @param paths The repository-relative paths to commit; must not be empty.
-   * @returns Returns the outcome of the push, or of the commit when it failed.
-   */
-  public async commitAndPushFiles(paths: readonly string[]): Promise<MutationResult> {
-    const committed: MutationResult = await this.commitFiles(paths);
-    if (!committed.success) {
-      return committed;
-    }
-    return this.push();
   }
 
   /**
@@ -620,40 +662,47 @@ export class Repository {
   }
 
   /**
-   * Fetches all remotes, then reloads so ahead/behind and remote refs update.
+   * Fetches all remotes, then reloads so ahead/behind and remote refs update. The outcome raises a
+   * toast.
    * @returns Returns the outcome.
    */
-  public fetch(): Promise<MutationResult> {
-    return this.mutate(
+  public async fetch(): Promise<MutationResult> {
+    const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.fetch(),
     );
+    this.notifyNetworkOutcome('fetch', result);
+    return result;
   }
 
   /**
-   * Pulls the current branch from its upstream, then reloads.
+   * Pulls the current branch from its upstream, then reloads. The outcome raises a toast.
    * @returns Returns the outcome.
    */
-  public pull(): Promise<MutationResult> {
-    return this.mutate(
+  public async pull(): Promise<MutationResult> {
+    const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
     );
+    this.notifyNetworkOutcome('pull', result);
+    return result;
   }
 
   /**
    * Pushes the current branch, then reloads. A branch with no upstream is pushed with its upstream
    * set to the first configured remote (defaulting to `origin`), so a freshly-created branch publishes
-   * without a separate step.
+   * without a separate step. The outcome raises a toast.
    * @returns Returns the outcome.
    */
-  public push(): Promise<MutationResult> {
+  public async push(): Promise<MutationResult> {
     const branch: GitBranch | undefined = this.currentBranch();
     const setUpstream: { readonly remote: string; readonly branch: string } | undefined =
       branch !== undefined && branch.upstream === undefined
         ? { remote: this.remotesSignal()[0]?.name ?? 'origin', branch: branch.name }
         : undefined;
-    return this.mutate(
+    const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.push(setUpstream),
     );
+    this.notifyNetworkOutcome('push', result);
+    return result;
   }
 
   /**
@@ -674,6 +723,83 @@ export class Repository {
       await this.refresh();
     }
     return result;
+  }
+
+  /**
+   * Raises a toast for a network operation's outcome. Success and failure share a coalescing key, so
+   * a retried operation's fresh outcome replaces the stale toast instead of stacking beside it.
+   * @param operation The finished operation.
+   * @param result The operation's outcome.
+   */
+  private notifyNetworkOutcome(operation: NetworkOperation, result: MutationResult): void {
+    if (result.success) {
+      this.notifyNetworkSuccess(operation);
+    } else {
+      this.notifyNetworkFailure(operation, result.error);
+    }
+  }
+
+  /**
+   * Raises the transient toast reporting a successful network operation.
+   * @param operation The finished operation.
+   */
+  private notifyNetworkSuccess(operation: NetworkOperation): void {
+    const branch: string = this.currentBranch()?.name ?? 'HEAD';
+    const titles: Readonly<Record<NetworkOperation, string>> = {
+      fetch: 'Fetched all remotes',
+      pull: `Pulled ${branch}`,
+      push: `Pushed ${branch}`,
+    };
+    this.notifications.notify({
+      severity: operation === 'fetch' ? 'info' : 'success',
+      title: titles[operation],
+      detail: this.repoName(),
+      key: this.notificationKey(operation),
+    });
+  }
+
+  /**
+   * Raises the sticky error toast reporting a failed network operation, so an auth or conflict
+   * failure never vanishes silently — whichever surface the operation was started from.
+   * @param operation The failed operation.
+   * @param error The failure detail, when the provider supplied one.
+   */
+  private notifyNetworkFailure(operation: NetworkOperation, error: string | undefined): void {
+    const label: string = NETWORK_OPERATION_LABELS[operation];
+    const repo: string = this.repoName();
+    this.notifications.notify({
+      severity: 'error',
+      title: repo === '' ? `${label} failed` : `${label} failed — ${repo}`,
+      detail: error,
+      key: this.notificationKey(operation),
+    });
+  }
+
+  /**
+   * Raises the toast reporting a successful commit, offering to push it when the repository has a
+   * remote to push to.
+   */
+  private notifyCommitted(): void {
+    const branch: string = this.currentBranch()?.name ?? 'HEAD';
+    const actions: readonly NotificationAction[] =
+      this.remotesSignal().length > 0 ? [{ label: 'Push', run: (): void => void this.push() }] : [];
+    this.notifications.notify({
+      severity: 'success',
+      title: `Committed to ${branch}`,
+      detail: this.repoName(),
+      actions,
+      key: this.notificationKey('commit'),
+    });
+  }
+
+  /**
+   * Builds an operation's toast-coalescing key, scoped to the bound root so several open
+   * repositories never coalesce each other's outcomes.
+   * @param operation The operation the key identifies.
+   * @returns Returns the coalescing key.
+   */
+  private notificationKey(operation: string): string {
+    return `source-control:${operation}:${this.infoSignal()?.root ?? ''}`;
   }
 
   /**
