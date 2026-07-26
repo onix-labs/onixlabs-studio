@@ -180,6 +180,37 @@ describe('Notifications', () => {
     expect(service.toasts().length).toBe(0);
   });
 
+  it('notify_whenRoutedHistoryOnly_recordsWithoutAToast', () => {
+    service.notify({ severity: 'success', title: 'Quiet', route: 'history-only' });
+
+    expect(service.toasts().length).toBe(0);
+    expect(service.history().length).toBe(1);
+    expect(service.unseenCount()).toBe(1);
+  });
+
+  it('notify_whenRoutedToastOnly_toastsWithoutARecord', () => {
+    service.notify({ severity: 'info', title: 'Ephemeral', route: 'toast-only' });
+
+    expect(service.toasts().length).toBe(1);
+    expect(service.history().length).toBe(0);
+  });
+
+  it('dismissByKey_whenAKeyedToastIsLive_removesIt', () => {
+    service.notify({ severity: 'info', title: 'Ask', key: 'agent-ask:1', route: 'toast-only' });
+
+    service.dismissByKey('agent-ask:1');
+
+    expect(service.toasts().length).toBe(0);
+  });
+
+  it('dismissByKey_whenNoToastCarriesTheKey_leavesTheStackAlone', () => {
+    service.notify({ severity: 'info', title: 'Other' });
+
+    service.dismissByKey('agent-ask:missing');
+
+    expect(service.toasts().length).toBe(1);
+  });
+
   it('clearAll_whenCalled_emptiesTheHistoryAndTheStack', () => {
     service.notify({ severity: 'info', title: 'A' });
     service.notify({ severity: 'error', title: 'B' });

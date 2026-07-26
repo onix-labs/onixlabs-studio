@@ -25,7 +25,13 @@ import type {
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 
@@ -389,7 +395,10 @@ export class Agent {
   public readonly model: Signal<string> = computed((): string => {
     const chosen: string | null = this.modelOverride();
     const models: readonly AiModelInfo[] = this.models();
-    if (chosen !== null && models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
+    if (
+      chosen !== null &&
+      models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)
+    ) {
       return chosen;
     }
     if (this.providerOverride() === null) {
@@ -435,6 +444,18 @@ export class Agent {
    * Holds the settings service, the source of the run's permission posture and token cap.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the application-wide notification store terminal run states are raised to, so a run that
+   * ends in a background tab surfaces as a toast (and one the user is watching is still recorded).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the tab registry, consulted for the owning tab's title and active state when a run ends,
+   * and driven by a completion toast's Show action.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
 
   /**
    * Holds the destroy notifier used to unsubscribe this conversation from runtime events.
@@ -664,9 +685,7 @@ export class Agent {
    */
   public readonly contextWindow: Signal<number> = computed((): number => {
     const id: string = this.model();
-    return (
-      this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0
-    );
+    return this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0;
   });
 
   /**
@@ -1033,18 +1052,14 @@ export class Agent {
     this.compacting = true;
     this.compactionText = '';
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(
-      this.provider(),
-      this.compactionPrompt(history),
-      {
-        workspaceRoot: this.runWorkspaceRoot(),
-        model: this.model(),
-        permissionPosture: 'prompt',
-        tokenCap: this.settings.aiTokenCap(),
-        runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
-        mode: 'chat',
-      },
-    );
+    this.activeRequestId = this.runtime.run(this.provider(), this.compactionPrompt(history), {
+      workspaceRoot: this.runWorkspaceRoot(),
+      model: this.model(),
+      permissionPosture: 'prompt',
+      tokenCap: this.settings.aiTokenCap(),
+      runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
+      mode: 'chat',
+    });
   }
 
   /**
@@ -1336,11 +1351,70 @@ export class Agent {
     } else if (state === 'completed' && !this.producedReply()) {
       this.push({ kind: 'assistant', text: '_The model returned no output._' });
     }
+    this.notifyRunEnded(state, detail);
     // A completed run dispatches the next queued message; a failed or stopped run holds the queue so
     // messages never fire into a broken or deliberately-stopped conversation.
     if (state === 'completed') {
       this.dispatchQueue();
     }
+  }
+
+  /**
+   * Raises a notification for a run that ended on its own — completed or failed. An aborted run is
+   * the user's own Stop and stays silent. When the conversation is on screen (its owning tab, or
+   * Mission Control, is active) the outcome is recorded in the history without a toast; otherwise a
+   * toast offers to jump to the owning tab.
+   * @param state The terminal state.
+   * @param detail The failure reason carried by an error event.
+   */
+  private notifyRunEnded(state: AiRunState, detail: string): void {
+    if (state !== 'completed' && state !== 'error') {
+      return;
+    }
+    const tabId: string | undefined = this.lastOwningTabId;
+    const label: string =
+      this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
+    const watching: boolean = this.isConversationVisible(tabId);
+    const actions: readonly NotificationAction[] =
+      tabId === undefined || watching
+        ? []
+        : [{ label: 'Show', run: (): void => this.tabs.activate(tabId) }];
+    const failed: boolean = state === 'error';
+    this.notifications.notify({
+      severity: failed ? 'error' : 'success',
+      title: failed ? `Agent failed — ${label}` : `Agent finished — ${label}`,
+      ...(failed ? { detail: this.failureCause(detail) } : {}),
+      actions,
+      key: `agent:${tabId ?? 'panel'}`,
+      route: watching ? 'history-only' : 'default',
+    });
+  }
+
+  /**
+   * Gets whether the conversation is on screen: its owning tab is active, or Mission Control (which
+   * mirrors every live conversation) is.
+   * @param tabId The owning tab's identifier, when known.
+   * @returns Returns whether the conversation is visible.
+   */
+  private isConversationVisible(tabId: string | undefined): boolean {
+    const active: Tab | undefined = this.tabs.activeTab();
+    if (active === undefined) {
+      return false;
+    }
+    return active.id === tabId || active.type === 'mission-control';
+  }
+
+  /**
+   * Condenses a failure detail to its one-line cause for a toast (the structured transcript error
+   * item carries the full diagnostics).
+   * @param detail The failure detail carried by the status event.
+   * @returns Returns the condensed cause.
+   */
+  private failureCause(detail: string): string {
+    const reason: string =
+      detail.trim().length > 0 ? detail.trim() : 'The agent run ended with an error.';
+    const firstLine: string = reason.split('\n', 1)[0];
+    return firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine;
   }
 
   /**
@@ -1496,11 +1570,13 @@ export class Agent {
     if (last?.kind === kind && last.parentToolId === parentToolId) {
       // The matched item is the trailing one, so fold the chunk into the tail directly rather than
       // scanning the whole transcript for it on every streamed token (the hot streaming path).
-      this.updateLast((existing: AgentItem): AgentItem => ({
-        ...existing,
-        text: existing.text + delta,
-        ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
-      }));
+      this.updateLast(
+        (existing: AgentItem): AgentItem => ({
+          ...existing,
+          text: existing.text + delta,
+          ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
+        }),
+      );
     } else {
       this.push({
         kind,
@@ -1522,9 +1598,7 @@ export class Agent {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map(
         (item: AgentItem): AgentItem =>
-          item.kind === 'tool' && item.toolId === toolId
-            ? { ...item, agentTokens: tokens }
-            : item,
+          item.kind === 'tool' && item.toolId === toolId ? { ...item, agentTokens: tokens } : item,
       ),
     );
   }

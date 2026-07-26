@@ -305,11 +305,11 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
 - **Pop-out windows are real docks.** A pop-out window is titled after the workspace (or
   repository) and hosts a full `DockContainer` via `PopoutDockHost`, whose component providers
   scope a fresh set of dock services (state, geometry, drag, floating, auto-hide, focus, reveal, a
-  handler-less `PopoutPanels`) to the window — including `DOCUMENT` overridden to the child's — 
+  handler-less `PopoutPanels`) to the window — including `DOCUMENT` overridden to the child's —
   while the panel registry, tab context, and every panel's backing service resolve through the
   parent chain to the owning view. Window layouts are ephemeral (`DockBlueprint.key` is optional;
   no key → no persistence). Closing a window returns every panel it hosts to the main-dock
-  position it left; closing a panel *inside* a window closes it exactly as the main dock would.
+  position it left; closing a panel _inside_ a window closes it exactly as the main dock would.
 - **Window-scoped CDK.** `PopoutDockHost` also provides `OverlayContainer`, the outside-click
   dispatcher, `ScrollDispatcher`, `DragDropRegistry`, and a fresh-measuring `ViewportRuler`
   subclass. CDK resolves these through the triggering element's injector (`createOverlayRef` /
@@ -370,6 +370,32 @@ removal goes to the OS trash, never a hard delete), wrapped by `WorktreeManager`
   path (`DockTabContext.presetRoot`), so all checkouts of one container share one pick. The
   Worktrees panel is catalogued for every workspace tab but synced into the layout only while the
   tab is a container; checkouts are labelled by alias or branch, **never by GUID**.
+
+### 4.10 Notifications (toasts + the status-strip centre)
+
+`shared/angular/services/notifications` is the app-wide notification store. `app-toast-host`
+(slotted in `root`) renders its toast stack bottom-right above the status strip; the status-strip
+bell opens its bounded history flyout. Raise events with `Notifications.notify()`:
+
+- **Severity** (`info|success|warning|error`) drives the icon, colour, and default stickiness: an
+  `error` toast stays until dismissed — **a failure must never vanish silently** — everything else
+  auto-dismisses after `notifications.toastDuration` (hover pauses the timer).
+- **Route** picks the surfaces: `default` (toast + history), `history-only` (record without an
+  interruption — used when the source is already on screen), `toast-only` (transient state that
+  would be stale as a record, e.g. an agent ask; retract it with `dismissByKey`).
+- **Coalescing `key`** — a repeat outcome replaces its live toast in place (a retried push), keyed
+  per source **and root** so parallel workspaces never coalesce each other's outcomes.
+- **Main window only, by design.** Pop-out windows share the renderer, so an action taken in a
+  pop-out raises through the same singleton and its toast renders in the main window. Never add
+  per-window toast hosts or notification IPC.
+- **User-initiated endings stay silent.** A cancelled run, a stopped agent turn: no toast — ending
+  it was the user's own action. Anything ending on its own always surfaces (or lands history-only
+  when its surface is visible).
+- Sources today: `Repository` (network ops + the commit → Push offer, wired at the mutate funnel so
+  every commit surface is covered), `BuildRunner` (run/build exits, with a Show-terminal action),
+  `Agent.onStatus` (attention-aware: history-only while the owning tab or Mission Control is
+  active), and `AgentRequestToasts` (pending asks, behind `notifications.agentRequestToasts`; the
+  title-strip inbox itself is gated by `notifications.agentRequestsInTabList`).
 
 ---
 

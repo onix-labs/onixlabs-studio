@@ -48,6 +48,8 @@ export interface SettingsValues {
   readonly 'application.printMargin': PrintMargin;
 
   readonly 'notifications.toastDuration': number;
+  readonly 'notifications.agentRequestsInTabList': boolean;
+  readonly 'notifications.agentRequestToasts': boolean;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
 
@@ -239,6 +241,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 5,
+      },
+      {
+        key: 'notifications.agentRequestsInTabList',
+        title: 'Agent requests in the tab list',
+        description:
+          'Ring the tab-list bell while an agent waits on a question or permission, listing the ' +
+          'pending requests with inline answers under their tabs.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'notifications.agentRequestToasts',
+        title: 'Agent requests as toasts',
+        description:
+          'Also raise a toast when an agent in a background tab asks a question or requests ' +
+          'permission. Answering stays in the tab-list bell and the conversation; the toast jumps ' +
+          'to the asking tab.',
+        control: { kind: 'toggle' },
+        default: false,
       },
     ],
   },

@@ -8,6 +8,7 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
   TerminalLaunch,
@@ -92,6 +93,12 @@ class FakeTerminalSessions {
     this.terminateCalls.push(id);
   }
 
+  public readonly revealCalls: string[] = [];
+
+  public activateAndReveal(id: string): void {
+    this.revealCalls.push(id);
+  }
+
   public resolveExit(code: number, sessionId?: string): void {
     const index: number =
       sessionId === undefined
@@ -148,7 +155,12 @@ describe('BuildRunner', () => {
         {
           provide: TerminalBridge,
           useValue: {
-            replay: (): Promise<{ data: string; seq: number; exitCode: number | null; signal: number | null }> =>
+            replay: (): Promise<{
+              data: string;
+              seq: number;
+              exitCode: number | null;
+              signal: number | null;
+            }> =>
               Promise.resolve({ data: buildScrollback.data, seq: 1, exitCode: 0, signal: null }),
           },
         },
@@ -386,13 +398,20 @@ describe('BuildRunner', () => {
     const runner: BuildRunner = await discover();
 
     // An unknown provider with no program compiles to nothing runnable.
-    runner.runConfiguration({ id: 'mystery', name: 'Mystery', providerKind: 'plainc', mode: 'run' });
+    runner.runConfiguration({
+      id: 'mystery',
+      name: 'Mystery',
+      providerKind: 'plainc',
+      mode: 'run',
+    });
 
     expect(sessions.launchCalls).toHaveLength(1);
     expect(sessions.launchCalls[0].name).toBe('Run: Mystery');
     expect(sessions.launchCalls[0].command).toBe('/bin/sh');
     // The reason travels as an argument-vector element, immune to shell interpretation.
-    expect(sessions.launchCalls[0].args?.at(-1)).toContain("'Mystery' does not produce a runnable command");
+    expect(sessions.launchCalls[0].args?.at(-1)).toContain(
+      "'Mystery' does not produce a runnable command",
+    );
     // It is not tracked as an in-flight run.
     expect(runner.activeRuns()).toEqual([]);
   });
@@ -417,7 +436,9 @@ describe('BuildRunner', () => {
 
     // The compound itself never runs — its members do, each in its own session, each stoppable.
     expect(sessions.launchCalls).toHaveLength(3);
-    expect(new Set(sessions.launchCalls.map((call): string | undefined => call.sessionId)).size).toBe(3);
+    expect(
+      new Set(sessions.launchCalls.map((call): string | undefined => call.sessionId)).size,
+    ).toBe(3);
     expect(runner.activeRuns().map((run: ActiveRun): string => run.label)).toEqual([
       'Database',
       'API',
@@ -732,7 +753,12 @@ describe('BuildRunner', () => {
   it('runConfiguration_rust_runsTheCrateWithCargoRunDashP', async () => {
     const runner: BuildRunner = await discoverCargo();
 
-    runner.runConfiguration({ id: 'my-crate', name: 'my-crate', providerKind: 'rust', mode: 'run' });
+    runner.runConfiguration({
+      id: 'my-crate',
+      name: 'my-crate',
+      providerKind: 'rust',
+      mode: 'run',
+    });
 
     expect(sessions.launchCalls[0].command).toBe('cargo run -p my-crate');
   });
@@ -776,5 +802,77 @@ describe('BuildRunner', () => {
     runner.runConfiguration({ id: 'widget', name: 'widget', providerKind: 'go', mode: 'run' });
 
     expect(sessions.launchCalls[0].command).toBe('go run .');
+  });
+
+  it('build_whenItSucceeds_raisesASuccessToast', async () => {
+    const runner: BuildRunner = await discover();
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    runner.run('dotnet:build');
+    sessions.resolveExit(0);
+    await settle();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('success');
+    expect(toast.title).toBe('Build succeeded');
+  });
+
+  it('build_whenItFails_raisesAStickyToastThatOpensTheBuildTerminal', async () => {
+    const runner: BuildRunner = await discover();
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    runner.run('dotnet:build');
+    sessions.resolveExit(1);
+    await settle();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.sticky).toBe(true);
+    expect(toast.title).toBe('Build failed');
+    toast.actions[0].run();
+    expect(sessions.revealCalls).toEqual([sessions.launchCalls[0].sessionId]);
+  });
+
+  it('run_whenItFinishesCleanly_raisesASuccessToast', async () => {
+    const runner: BuildRunner = await discover();
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    runner.runConfiguration(configuration('api', 'API'));
+    await settle();
+    sessions.resolveExit(0, runner.activeRuns()[0].id);
+    await settle();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('success');
+    expect(toast.title).toBe('Run finished — API');
+  });
+
+  it('run_whenItFailsOnItsOwn_raisesAFailureToastWithTheExitCode', async () => {
+    const runner: BuildRunner = await discover();
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    runner.runConfiguration(configuration('api', 'API'));
+    await settle();
+    sessions.resolveExit(3, runner.activeRuns()[0].id);
+    await settle();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.title).toBe('Run failed — API');
+    expect(toast.detail).toBe('Exited with code 3.');
+  });
+
+  it('run_whenTheUserStopsIt_raisesNoToast', async () => {
+    const runner: BuildRunner = await discover();
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    runner.runConfiguration(configuration('api', 'API'));
+    await settle();
+    const runId: string = runner.activeRuns()[0].id;
+    runner.cancel(runId);
+    sessions.resolveExit(143, runId);
+    await settle();
+
+    expect(notifications.toasts().length).toBe(0);
   });
 });

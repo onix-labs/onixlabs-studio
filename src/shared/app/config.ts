@@ -5,6 +5,7 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
+import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
@@ -55,6 +56,11 @@ export const config: ApplicationConfig = {
     // `@page` rule before the first document is printed or exported.
     provideAppInitializer((): void => {
       inject(Printing);
+    }),
+    // Instantiate the agent-request toast bridge at start-up so pending agent asks surface as
+    // toasts (when the setting is on) whichever panels happen to be mounted.
+    provideAppInitializer((): void => {
+      inject(AgentRequestToasts);
     }),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.
