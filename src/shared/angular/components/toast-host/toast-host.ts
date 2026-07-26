@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
+import { severityIcon } from '@shared/angular/icons/severity-icon';
 import {
   Notification,
   NotificationAction,
@@ -174,16 +175,7 @@ export class ToastHost implements OnDestroy {
    * @returns Returns the severity's icon.
    */
   protected iconFor(severity: NotificationSeverity): Icon {
-    switch (severity) {
-      case 'success':
-        return Icon.SUCCESS;
-      case 'warning':
-        return Icon.WARNING;
-      case 'error':
-        return Icon.ERROR;
-      default:
-        return Icon.INFO;
-    }
+    return severityIcon(severity);
   }
 
   /**

@@ -5,15 +5,17 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
+import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu/status-strip-notifications-menu';
 
 /**
  * Represents the status strip, which shows contextual segments published by the active view and
  * falls back to the active tab (or a ready indicator) when nothing has been published. The language
- * servers running for the active workspace are surfaced by the embedded drop-up menu.
+ * servers running for the active workspace and the notification centre are surfaced by the embedded
+ * drop-up menus.
  */
 @Component({
   selector: 'app-status-strip-container',
-  imports: [AppIcon, StatusStripLspMenu],
+  imports: [AppIcon, StatusStripLspMenu, StatusStripNotificationsMenu],
   templateUrl: './status-strip-container.html',
   styleUrl: './status-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

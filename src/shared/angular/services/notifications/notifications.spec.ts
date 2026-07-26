@@ -99,4 +99,95 @@ describe('Notifications', () => {
 
     expect(service.toasts().length).toBe(0);
   });
+
+  it('notify_whenCalled_prependsToTheHistory', () => {
+    service.notify({ severity: 'info', title: 'First' });
+    service.notify({ severity: 'success', title: 'Second' });
+
+    const titles: readonly string[] = service
+      .history()
+      .map((entry: Notification): string => entry.title);
+    expect(titles).toEqual(['Second', 'First']);
+  });
+
+  it('notify_whenCalled_stampsTheTimestamp', () => {
+    const before: number = Date.now();
+
+    service.notify({ severity: 'info', title: 'Stamped' });
+
+    expect(service.history()[0].timestamp).toBeGreaterThanOrEqual(before);
+  });
+
+  it('notify_whenCoalescing_keepsBothHistoryEntries', () => {
+    service.notify({ severity: 'error', title: 'Push failed', key: 'push' });
+
+    service.notify({ severity: 'success', title: 'Pushed main', key: 'push' });
+
+    expect(service.toasts().length).toBe(1);
+    expect(service.history().length).toBe(2);
+  });
+
+  it('history_whenOverCapacity_dropsTheOldestEntries', () => {
+    for (let index: number = 0; index < 105; index++) {
+      service.notify({ severity: 'info', title: `Entry ${index}` });
+    }
+
+    expect(service.history().length).toBe(100);
+    expect(service.history()[0].title).toBe('Entry 104');
+  });
+
+  it('unseenCount_countsNotificationsRaisedSinceLastSeen', () => {
+    service.notify({ severity: 'info', title: 'A' });
+    service.notify({ severity: 'info', title: 'B' });
+
+    expect(service.unseenCount()).toBe(2);
+  });
+
+  it('markAllSeen_whenCalled_zeroesTheUnseenCount', () => {
+    service.notify({ severity: 'info', title: 'A' });
+
+    service.markAllSeen();
+
+    expect(service.unseenCount()).toBe(0);
+  });
+
+  it('markAllSeen_thenANewNotification_countsOnlyTheNewOne', () => {
+    service.notify({ severity: 'info', title: 'Old' });
+    service.markAllSeen();
+
+    service.notify({ severity: 'info', title: 'New' });
+
+    expect(service.unseenCount()).toBe(1);
+  });
+
+  it('dismiss_whenCalled_keepsTheHistoryEntry', () => {
+    service.notify({ severity: 'error', title: 'Kept in history' });
+    const toast: Notification = service.toasts()[0];
+
+    service.dismiss(toast.id);
+
+    expect(service.toasts().length).toBe(0);
+    expect(service.history().length).toBe(1);
+  });
+
+  it('removeFromHistory_whenCalled_removesTheEntryAndItsLiveToast', () => {
+    service.notify({ severity: 'error', title: 'Clear me' });
+    const entry: Notification = service.history()[0];
+
+    service.removeFromHistory(entry.id);
+
+    expect(service.history().length).toBe(0);
+    expect(service.toasts().length).toBe(0);
+  });
+
+  it('clearAll_whenCalled_emptiesTheHistoryAndTheStack', () => {
+    service.notify({ severity: 'info', title: 'A' });
+    service.notify({ severity: 'error', title: 'B' });
+
+    service.clearAll();
+
+    expect(service.history().length).toBe(0);
+    expect(service.toasts().length).toBe(0);
+    expect(service.unseenCount()).toBe(0);
+  });
 });

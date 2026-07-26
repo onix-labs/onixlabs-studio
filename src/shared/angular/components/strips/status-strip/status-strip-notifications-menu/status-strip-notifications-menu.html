@@ -1,0 +1,61 @@
+<button
+  type="button"
+  class="notifications-menu__trigger"
+  [class.notifications-menu__trigger--alert]="unseenCount() > 0"
+  [title]="triggerTitle()"
+  [attr.aria-label]="triggerTitle()"
+  [cdkMenuTriggerFor]="menu"
+  [cdkMenuPosition]="menuPosition"
+  (cdkMenuOpened)="onOpened()"
+>
+  <app-icon [icon]="Icon.BELL" />
+  @if (unseenCount() > 0) {
+    <span class="notifications-menu__count">{{ unseenCount() }}</span>
+  }
+</button>
+
+<ng-template #menu>
+  <div class="notifications-menu__panel" cdkMenu>
+    <div class="notifications-menu__header">
+      <p class="notifications-menu__heading">Notifications</p>
+      @if (history().length > 0) {
+        <!-- A plain button rather than a cdkMenuItem so clearing keeps the flyout open on its
+             empty state; the stopPropagation keeps the click from reaching the menu. -->
+        <button
+          type="button"
+          class="notifications-menu__clear"
+          (pointerdown)="$event.preventDefault()"
+          (click)="clearAll(); $event.stopPropagation()"
+        >
+          Clear all
+        </button>
+      }
+    </div>
+    @if (history().length === 0) {
+      <p class="notifications-menu__empty">No notifications</p>
+    }
+    @for (entry of history(); track entry.id) {
+      <div class="notifications-menu__item notifications-menu__item--{{ entry.severity }}">
+        <app-icon class="notifications-menu__item-icon" [icon]="iconFor(entry.severity)" />
+        <span class="notifications-menu__item-text">
+          <span class="notifications-menu__item-title">{{ entry.title }}</span>
+          @if (entry.detail) {
+            <span class="notifications-menu__item-detail">{{ entry.detail }}</span>
+          }
+          <span class="notifications-menu__item-time">{{ relativeTime(entry.timestamp) }}</span>
+        </span>
+        <!-- Plain button (not a cdkMenuItem) so several entries can be removed in a row. -->
+        <button
+          type="button"
+          class="notifications-menu__remove"
+          title="Remove"
+          [attr.aria-label]="'Remove: ' + entry.title"
+          (pointerdown)="$event.preventDefault()"
+          (click)="remove(entry); $event.stopPropagation()"
+        >
+          <app-icon [icon]="Icon.CLOSE" />
+        </button>
+      </div>
+    }
+  </div>
+</ng-template>
