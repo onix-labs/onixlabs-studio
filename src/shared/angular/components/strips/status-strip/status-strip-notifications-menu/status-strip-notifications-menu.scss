@@ -1,0 +1,36 @@
+// The trigger reads as a status segment: flush with the strip until hovered, picking up the accent
+// while notifications wait — mirroring the title strip's requests bell. The drop-up panel renders
+// through the CDK overlay (outside this component), so its styles live in the global _menu.scss.
+:host {
+  display: inline-flex;
+}
+
+.notifications-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--title-strip-button-background-color--hover);
+    outline: none;
+  }
+
+  &--alert {
+    color: var(--accent-color);
+  }
+}
+
+.notifications-menu__count {
+  font-size: 0.7rem;
+  font-weight: 600;
+}

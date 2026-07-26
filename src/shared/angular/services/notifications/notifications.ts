@@ -1,4 +1,4 @@
-import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
 
 /**
  * The maximum number of toasts held at once. An arrival beyond the cap evicts the oldest transient
@@ -6,6 +6,12 @@ import { Service, Signal, signal, WritableSignal } from '@angular/core';
  * screen.
  */
 const MAX_TOASTS: number = 5;
+
+/**
+ * The maximum number of notifications the history keeps. The history backs the status-strip
+ * notification centre; beyond the cap the oldest entries fall away.
+ */
+const MAX_HISTORY: number = 100;
 
 /**
  * Specifies a notification's severity, which drives its icon and colour and whether it defaults to
@@ -105,6 +111,11 @@ export interface Notification {
    * Gets a value indicating whether the toast stays until explicitly dismissed.
    */
   readonly sticky: boolean;
+
+  /**
+   * Gets when the notification was raised, as an epoch millisecond timestamp.
+   */
+  readonly timestamp: number;
 }
 
 /**
@@ -131,9 +142,39 @@ export class Notifications {
   >([]);
 
   /**
+   * Holds the recent notifications, newest first, bounded to {@link MAX_HISTORY}. Independent of the
+   * toast stack: a toast's departure (auto-dismiss or manual) leaves its history entry as the record.
+   */
+  private readonly historySignal: WritableSignal<readonly Notification[]> = signal<
+    readonly Notification[]
+  >([]);
+
+  /**
+   * Holds the identifier of the newest notification the user had seen when the centre was last
+   * opened; entries above it count as unseen. Identifiers are monotonic, so a plain watermark
+   * suffices.
+   */
+  private readonly lastSeenId: WritableSignal<number> = signal<number>(0);
+
+  /**
    * Gets the live toasts, oldest first.
    */
   public readonly toasts: Signal<readonly Notification[]> = this.toastsSignal.asReadonly();
+
+  /**
+   * Gets the recent notifications, newest first.
+   */
+  public readonly history: Signal<readonly Notification[]> = this.historySignal.asReadonly();
+
+  /**
+   * Gets the number of notifications raised since the centre was last opened.
+   */
+  public readonly unseenCount: Signal<number> = computed(
+    (): number =>
+      this.historySignal().filter(
+        (notification: Notification): boolean => notification.id > this.lastSeenId(),
+      ).length,
+  );
 
   /**
    * Raises a notification, coalescing it onto a live toast with the same key or appending it to the
@@ -149,14 +190,18 @@ export class Notifications {
       actions: request.actions ?? [],
       key: request.key,
       sticky: request.sticky ?? request.severity === 'error',
+      timestamp: Date.now(),
     };
     this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
       this.insert(current, notification),
     );
+    this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>
+      [notification, ...current].slice(0, MAX_HISTORY),
+    );
   }
 
   /**
-   * Dismisses a single toast.
+   * Dismisses a single toast. Its history entry stays as the record of the event.
    * @param id The identifier of the toast to dismiss.
    */
   public dismiss(id: number): void {
@@ -166,10 +211,39 @@ export class Notifications {
   }
 
   /**
-   * Dismisses every toast.
+   * Dismisses every toast. The history keeps its entries.
    */
   public dismissAll(): void {
     this.toastsSignal.set([]);
+  }
+
+  /**
+   * Marks every notification as seen, clearing the unseen count. Called when the notification
+   * centre opens.
+   */
+  public markAllSeen(): void {
+    const newest: Notification | undefined = this.historySignal()[0];
+    this.lastSeenId.set(newest?.id ?? 0);
+  }
+
+  /**
+   * Removes a notification from the history, also dismissing its toast when it is still live —
+   * clearing an entry from the centre clears it everywhere.
+   * @param id The identifier of the notification to remove.
+   */
+  public removeFromHistory(id: number): void {
+    this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>
+      current.filter((notification: Notification): boolean => notification.id !== id),
+    );
+    this.dismiss(id);
+  }
+
+  /**
+   * Clears the notification centre: every history entry and every live toast.
+   */
+  public clearAll(): void {
+    this.historySignal.set([]);
+    this.dismissAll();
   }
 
   /**
