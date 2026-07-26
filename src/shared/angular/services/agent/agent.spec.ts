@@ -10,7 +10,10 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
+import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Agent, AgentItem } from './agent';
 
 /**
@@ -760,6 +763,67 @@ describe('Agent', () => {
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'The run failed.' });
 
     expect(lastItem()?.errorToolContext).toBe('Bash: command not found');
+  });
+
+  it('status_whenABackgroundRunCompletes_raisesASuccessToastThatShowsTheTab', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    const notifications: Notifications = TestBed.inject(Notifications);
+    const owning: Tab = tabs.open('terminal');
+    tabs.open('settings');
+
+    agent.send('hello', owning.id);
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('success');
+    expect(toast.title).toBe(`Agent finished — ${owning.title}`);
+    expect(toast.actions.map((action): string => action.label)).toEqual(['Show']);
+
+    toast.actions[0].run();
+    expect(tabs.activeTab()?.id).toBe(owning.id);
+  });
+
+  it('status_whenAWatchedRunCompletes_recordsItWithoutAToast', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    const notifications: Notifications = TestBed.inject(Notifications);
+    const owning: Tab = tabs.open('terminal');
+
+    agent.send('hello', owning.id);
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    expect(notifications.toasts().length).toBe(0);
+    expect(notifications.history().length).toBe(1);
+  });
+
+  it('status_whenABackgroundRunFails_raisesAStickyErrorWithTheOneLineCause', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    const notifications: Notifications = TestBed.inject(Notifications);
+    const owning: Tab = tabs.open('terminal');
+    tabs.open('settings');
+
+    agent.send('hello', owning.id);
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Request failed\n{"type":"overloaded_error"}',
+    });
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.sticky).toBe(true);
+    expect(toast.title).toBe(`Agent failed — ${owning.title}`);
+    expect(toast.detail).toBe('Request failed');
+  });
+
+  it('status_whenAborted_raisesNoNotification', () => {
+    const notifications: Notifications = TestBed.inject(Notifications);
+
+    agent.send('hello');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+    expect(notifications.toasts().length).toBe(0);
+    expect(notifications.history().length).toBe(0);
   });
 
   it('retry_whenClicked_reRunsTheFailedTurnWithoutDuplicatingTheUserMessage', () => {

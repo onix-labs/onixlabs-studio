@@ -21,6 +21,14 @@ const MAX_HISTORY: number = 100;
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
 
 /**
+ * Specifies where a notification surfaces: the toast stack and the history both (`default`), the
+ * history alone (`history-only` — a record without an interruption, for an outcome whose surface
+ * the user is already watching), or the toast stack alone (`toast-only` — transient state that
+ * would be stale as a record, such as an agent ask that retracts once answered).
+ */
+export type NotificationRoute = 'default' | 'history-only' | 'toast-only';
+
+/**
  * Defines an action offered on a notification, rendered as a button on its toast.
  */
 export interface NotificationAction {
@@ -71,6 +79,11 @@ export interface NotificationRequest {
    * severity (`error` is sticky; everything else is transient).
    */
   readonly sticky?: boolean;
+
+  /**
+   * Gets where the notification surfaces, or undefined for the default (toast and history both).
+   */
+  readonly route?: NotificationRoute;
 }
 
 /**
@@ -178,10 +191,12 @@ export class Notifications {
 
   /**
    * Raises a notification, coalescing it onto a live toast with the same key or appending it to the
-   * stack (evicting the oldest transient toast when the stack is full).
+   * stack (evicting the oldest transient toast when the stack is full), and recording it in the
+   * history — each side skipped when the request routes away from it.
    * @param request The notification to raise.
    */
   public notify(request: NotificationRequest): void {
+    const route: NotificationRoute = request.route ?? 'default';
     const notification: Notification = {
       id: this.nextId++,
       severity: request.severity,
@@ -192,11 +207,26 @@ export class Notifications {
       sticky: request.sticky ?? request.severity === 'error',
       timestamp: Date.now(),
     };
+    if (route !== 'history-only') {
+      this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
+        this.insert(current, notification),
+      );
+    }
+    if (route !== 'toast-only') {
+      this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>
+        [notification, ...current].slice(0, MAX_HISTORY),
+      );
+    }
+  }
+
+  /**
+   * Dismisses the live toast carrying a coalescing key, if any. Lets the raiser of a keyed toast
+   * retract it once its moment has passed (an agent ask that was answered elsewhere).
+   * @param key The coalescing key.
+   */
+  public dismissByKey(key: string): void {
     this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
-      this.insert(current, notification),
-    );
-    this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>
-      [notification, ...current].slice(0, MAX_HISTORY),
+      current.filter((toast: Notification): boolean => toast.key !== key),
     );
   }
 

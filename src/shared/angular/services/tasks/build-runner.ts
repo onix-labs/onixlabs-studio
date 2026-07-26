@@ -17,6 +17,7 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
   DISPOSED_EXIT_CODE,
@@ -131,6 +132,19 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Holds this workspace's terminal sessions, hosting the reused Build terminal.
    */
   private readonly sessions: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the application-wide notification store run and build outcomes are raised to, so a
+   * completion or failure surfaces even while its terminal is buried behind other panels.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the session identifiers of runs the user stopped, consumed as each stop's exit lands. A
+   * stopped process exits with a real signal code (not the disposed sentinel), and a user-initiated
+   * stop must not raise a failure toast — ending it was the user's own action.
+   */
+  private readonly stoppedRuns: Set<string> = new Set<string>();
 
   /**
    * Holds the terminal client, used to read the Build session's scrollback for problem matching.
@@ -371,6 +385,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       presentation: task.presentation,
     });
     const exitCode: number = await launch.exited;
+    const stoppedByUser: boolean = this.stoppedRuns.delete(sessionId);
     if (this.currentRuns.get(sessionId) !== token) {
       return;
     }
@@ -381,8 +396,39 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (exitCode === DISPOSED_EXIT_CODE) {
       return;
     }
+    if (!stoppedByUser) {
+      this.notifyRunOutcome(task, sessionId, exitCode);
+    }
     const replay: { data: string } = await this.terminalBridge.replay(sessionId);
     this.publishProblems(task, replay.data);
+  }
+
+  /**
+   * Raises a toast for a finished run — the run ended on its own (a stopped or superseded run stays
+   * silent: ending it was the user's own action). A failure's toast opens the run's terminal, where
+   * the output that explains it lives.
+   * @param task The task that ran.
+   * @param sessionId The run's session identifier.
+   * @param exitCode The run's exit code.
+   */
+  private notifyRunOutcome(task: BuildTask, sessionId: string, exitCode: number): void {
+    if (exitCode === 0) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `Run finished — ${task.label}`,
+        key: `run:${sessionId}`,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: `Run failed — ${task.label}`,
+      detail: `Exited with code ${exitCode}.`,
+      actions: [
+        { label: 'Show terminal', run: (): void => this.sessions.activateAndReveal(sessionId) },
+      ],
+      key: `run:${sessionId}`,
+    });
   }
 
   /**
@@ -483,8 +529,39 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (exitCode === DISPOSED_EXIT_CODE) {
       return;
     }
+    this.notifyBuildOutcome(task, exitCode);
     const replay: { data: string } = await this.terminalBridge.replay(this.buildSessionId);
     this.publishProblems(task, replay.data);
+  }
+
+  /**
+   * Raises a toast for a finished build-flavoured task (a stopped or superseded one stays silent). A
+   * failure's toast opens the Build terminal; the Error List carries the matched problems either way.
+   * @param task The task that ran.
+   * @param exitCode The task's exit code.
+   */
+  private notifyBuildOutcome(task: BuildTask, exitCode: number): void {
+    if (exitCode === 0) {
+      this.notifications.notify({
+        severity: 'success',
+        title: 'Build succeeded',
+        detail: task.label,
+        key: `build:${this.buildSessionId}`,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: 'Build failed',
+      detail: `${task.label} exited with code ${exitCode}.`,
+      actions: [
+        {
+          label: 'Show terminal',
+          run: (): void => this.sessions.activateAndReveal(this.buildSessionId),
+        },
+      ],
+      key: `build:${this.buildSessionId}`,
+    });
   }
 
   /**
@@ -782,7 +859,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         ? isAbsolute(raw) || root === undefined
           ? raw
           : resolvePath(root, raw)
-        : root ?? '';
+        : (root ?? '');
     const compiled: { command: string; args?: readonly string[] } | null =
       this.compileRun(configuration);
     if (compiled === null) {
@@ -891,6 +968,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   public cancel(runId: string): void {
     if (this.currentRuns.has(runId)) {
+      this.stoppedRuns.add(runId);
       this.sessions.terminate(runId);
     }
   }
@@ -900,6 +978,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   public cancelAll(): void {
     for (const runId of [...this.currentRuns.keys()]) {
+      this.stoppedRuns.add(runId);
       this.sessions.terminate(runId);
     }
   }
@@ -1082,8 +1161,20 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return [];
     }
     return [
-      { id: 'cargo:build', label: 'cargo build', group: 'build', command: 'cargo build', cwd: root.path },
-      { id: 'cargo:test', label: 'cargo test', group: 'test', command: 'cargo test', cwd: root.path },
+      {
+        id: 'cargo:build',
+        label: 'cargo build',
+        group: 'build',
+        command: 'cargo build',
+        cwd: root.path,
+      },
+      {
+        id: 'cargo:test',
+        label: 'cargo test',
+        group: 'test',
+        command: 'cargo test',
+        cwd: root.path,
+      },
       { id: 'cargo:run', label: 'cargo run', group: 'run', command: 'cargo run', cwd: root.path },
     ];
   }
@@ -1105,7 +1196,13 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         command: 'go build ./...',
         cwd: root.path,
       },
-      { id: 'go:test', label: 'go test ./...', group: 'test', command: 'go test ./...', cwd: root.path },
+      {
+        id: 'go:test',
+        label: 'go test ./...',
+        group: 'test',
+        command: 'go test ./...',
+        cwd: root.path,
+      },
       { id: 'go:run', label: 'go run .', group: 'run', command: 'go run .', cwd: root.path },
     ];
   }

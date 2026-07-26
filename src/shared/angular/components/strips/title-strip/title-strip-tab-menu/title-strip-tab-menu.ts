@@ -14,6 +14,7 @@ import {
   AgentRequestEntry,
   AgentRequests,
 } from '@shared/angular/services/agent-requests/agent-requests';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -86,6 +87,20 @@ export class TitleStripTabMenu {
   private readonly tabCloser: TabCloser = inject(TabCloser);
 
   /**
+   * Holds the settings store, read for the toggle that shows or hides agent requests here.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether agent requests surface in this menu at all (the bell, the per-tab markers, and the
+   * inline request entries). When off, the menu is a plain tab list and requests are answered in the
+   * conversation (or surfaced as toasts when that setting is on).
+   */
+  private readonly showRequests: Signal<boolean> = this.settings.value(
+    'notifications.agentRequestsInTabList',
+  );
+
+  /**
    * Gets the identifier of the active tab, or undefined when no tab is open.
    */
   protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
@@ -121,6 +136,9 @@ export class TitleStripTabMenu {
   protected readonly entriesByTab: Signal<ReadonlyMap<string, readonly AgentRequestEntry[]>> =
     computed((): ReadonlyMap<string, readonly AgentRequestEntry[]> => {
       const map: Map<string, AgentRequestEntry[]> = new Map<string, AgentRequestEntry[]>();
+      if (!this.showRequests()) {
+        return map;
+      }
       for (const entry of this.agentRequests.entries()) {
         if (entry.tabId !== null) {
           const list: AgentRequestEntry[] = map.get(entry.tabId) ?? [];
@@ -137,9 +155,11 @@ export class TitleStripTabMenu {
    */
   protected readonly unattributed: Signal<readonly AgentRequestEntry[]> = computed(
     (): readonly AgentRequestEntry[] =>
-      this.agentRequests
-        .entries()
-        .filter((entry: AgentRequestEntry): boolean => entry.tabId === null),
+      this.showRequests()
+        ? this.agentRequests
+            .entries()
+            .filter((entry: AgentRequestEntry): boolean => entry.tabId === null)
+        : [],
   );
 
   /**
@@ -168,14 +188,20 @@ export class TitleStripTabMenu {
   }
 
   /**
-   * Gets the number of pending agent requests, flipping the trigger from chevron to bell.
+   * Gets the number of pending agent requests, flipping the trigger from chevron to bell. Zero
+   * whenever the tab-list surfacing is switched off, so the trigger stays a plain chevron.
    */
-  protected readonly requestCount: Signal<number> = this.agentRequests.count;
+  protected readonly requestCount: Signal<number> = computed((): number =>
+    this.showRequests() ? this.agentRequests.count() : 0,
+  );
 
   /**
    * Gets the identifiers of the tabs with pending requests, marked with a bell in the tab list.
    */
-  protected readonly requestTabIds: Signal<ReadonlySet<string>> = this.agentRequests.tabIds;
+  protected readonly requestTabIds: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> =>
+      this.showRequests() ? this.agentRequests.tabIds() : new Set<string>(),
+  );
 
   /**
    * Gets the trigger's tooltip: the open-tabs default, or the pending-request count.
