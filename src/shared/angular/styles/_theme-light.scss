@@ -119,9 +119,12 @@
   // The pane cell that frames each panel, sitting one shade lighter than the workspace container.
   --dock-pane-background-color: var(--gray-450);
 
-  // Semantic status colour (a darker amber for legibility on the light surface). Add sibling
-  // --error/--success/--info tokens here as consumers appear.
+  // Semantic status colours (darker shades for legibility on the light surface), consumed by the
+  // toast notifications and any surface reporting severity.
   --warning-color: #b7791f;
+  --error-color: #cf222e;
+  --success-color: #1a7f37;
+  --info-color: #0969da;
 
   // Monaco change-margin save-state marks: unsaved (yellow), saved-this-session (green), deleted (red).
   --change-margin-unsaved: #d7a824;

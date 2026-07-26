@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
@@ -152,11 +153,21 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Makes the next push fail with this message, so failure toasts can be exercised.
+   */
+  public failNextPushWith: string | null = null;
+
   public push(setUpstream?: {
     readonly remote: string;
     readonly branch: string;
   }): Promise<MutationResult> {
     this.calls.push(`push:${setUpstream?.remote ?? ''}/${setUpstream?.branch ?? ''}`);
+    if (this.failNextPushWith !== null) {
+      const error: string = this.failNextPushWith;
+      this.failNextPushWith = null;
+      return Promise.resolve({ success: false, error });
+    }
     return Promise.resolve({ success: true });
   }
 
@@ -190,6 +201,7 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
 describe('Repository', () => {
   let repository: Repository;
   let provider: FakeProvider;
+  let notifications: Notifications;
 
   beforeEach(async () => {
     TestBed.configureTestingModule({
@@ -207,6 +219,7 @@ describe('Repository', () => {
       ],
     });
     repository = TestBed.inject(Repository);
+    notifications = TestBed.inject(Notifications);
     repository.bind({ root: '/repo', name: 'repo' });
     await repository.refresh();
   });
@@ -391,5 +404,87 @@ describe('Repository', () => {
 
     expect(result.success).toBe(false);
     expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
+  });
+
+  it('push_whenItSucceeds_raisesASuccessToast', async () => {
+    await repository.push();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('success');
+    expect(toast.title).toBe('Pushed main');
+    expect(toast.detail).toBe('repo');
+  });
+
+  it('push_whenItFails_raisesAStickyErrorToastWithTheDetail', async () => {
+    provider.failNextPushWith = 'Authentication required.';
+
+    await repository.push();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.sticky).toBe(true);
+    expect(toast.title).toBe('Push failed — repo');
+    expect(toast.detail).toBe('Authentication required.');
+  });
+
+  it('push_whenRetriedAfterAFailure_replacesTheFailureToast', async () => {
+    provider.failNextPushWith = 'offline';
+    await repository.push();
+
+    await repository.push();
+
+    expect(notifications.toasts().length).toBe(1);
+    expect(notifications.toasts()[0].severity).toBe('success');
+  });
+
+  it('fetch_whenItSucceeds_raisesAnInfoToast', async () => {
+    await repository.fetch();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('info');
+    expect(toast.title).toBe('Fetched all remotes');
+  });
+
+  it('commit_whenTheRepositoryHasARemote_raisesAToastOfferingPush', async () => {
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    repository.setCommitMessage('feat: toast');
+
+    await repository.commit();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.severity).toBe('success');
+    expect(toast.title).toBe('Committed to main');
+    expect(toast.actions.map((action): string => action.label)).toEqual(['Push']);
+  });
+
+  it('commit_whenTheRepositoryHasNoRemote_raisesAToastWithoutActions', async () => {
+    repository.setCommitMessage('feat: no remote');
+
+    await repository.commit();
+
+    expect(notifications.toasts()[0].actions).toEqual([]);
+  });
+
+  it('committedToast_whenItsPushActionRuns_pushesTheBranch', async () => {
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    repository.setCommitMessage('feat: push me');
+    await repository.commit();
+
+    notifications.toasts()[0].actions[0].run();
+
+    expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(true);
+  });
+
+  it('commitAndPushFiles_raisesOnlyThePushToast', async () => {
+    repository.setCommitMessage('feat: combined');
+
+    await repository.commitAndPushFiles(['a.ts']);
+
+    const titles: readonly string[] = notifications
+      .toasts()
+      .map((toast: Notification): string => toast.title);
+    expect(titles).toEqual(['Pushed main']);
   });
 });

@@ -19,3 +19,8 @@
 
 <!-- The run-configuration Configure dialog stays mounted; the directory ribbon toggles its state. -->
 <app-configure-dialog />
+
+<!-- Toast notifications overlay the content cell's bottom-right corner, above the status strip.
+     Main window only by design: pop-out windows share the renderer, so their actions raise
+     through the same store and surface here. -->
+<app-toast-host class="toast-host" />

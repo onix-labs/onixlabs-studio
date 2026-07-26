@@ -45,3 +45,15 @@
 .welcome-screen {
   display: contents;
 }
+
+// Toasts share the content cell and hug its bottom-right corner, so they always sit exactly above
+// the status strip whatever its height. The z-index lifts them over the content; the host itself is
+// input-transparent (only its toasts accept the pointer).
+.toast-host {
+  grid-area: empty;
+  align-self: end;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+  z-index: 50;
+}
