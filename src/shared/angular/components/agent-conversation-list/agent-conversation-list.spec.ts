@@ -205,9 +205,9 @@ describe('AgentConversationList', () => {
     expect(names).toContain('Work');
 
     // The Work node reports one filed conversation; All Conversations reports both.
-    const counts: string[] = Array.from(
-      host.querySelectorAll<HTMLElement>('.history__count'),
-    ).map((element: HTMLElement): string => element.textContent?.trim() ?? '');
+    const counts: string[] = Array.from(host.querySelectorAll<HTMLElement>('.history__count')).map(
+      (element: HTMLElement): string => element.textContent?.trim() ?? '',
+    );
     expect(counts).toContain('2');
     expect(counts).toContain('1');
   });

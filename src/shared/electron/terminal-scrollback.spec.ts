@@ -8,7 +8,12 @@ describe('TerminalScrollback', () => {
   });
 
   it('snapshot_whenUnknownId_yieldsAnEmptySnapshot', () => {
-    expect(scrollback.snapshot('missing')).toEqual({ data: '', seq: 0, exitCode: null, signal: null });
+    expect(scrollback.snapshot('missing')).toEqual({
+      data: '',
+      seq: 0,
+      exitCode: null,
+      signal: null,
+    });
   });
 
   it('append_accumulatesDataAndNumbersChunksSequentially', () => {
@@ -46,7 +51,12 @@ describe('TerminalScrollback', () => {
 
     scrollback.markExited('t1', 3);
 
-    expect(scrollback.snapshot('t1')).toEqual({ data: 'output', seq: 1, exitCode: 3, signal: null });
+    expect(scrollback.snapshot('t1')).toEqual({
+      data: 'output',
+      seq: 1,
+      exitCode: 3,
+      signal: null,
+    });
   });
 
   it('markExited_withASignal_recordsIt', () => {

@@ -45,9 +45,7 @@ describe('AgentTerminalCapabilities', () => {
         return Promise.resolve(true);
       },
       replay: (id: string): Promise<TerminalReplay> =>
-        Promise.resolve(
-          replays.get(id) ?? { data: '', seq: 0, exitCode: null, signal: null },
-        ),
+        Promise.resolve(replays.get(id) ?? { data: '', seq: 0, exitCode: null, signal: null }),
     };
     TestBed.configureTestingModule({
       providers: [

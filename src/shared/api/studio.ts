@@ -277,8 +277,7 @@ export function parseRunConfiguration(value: unknown): RunConfiguration | null {
         ? undefined
         : Object.fromEntries(
             Object.entries(env).filter(
-              (entry: [string, unknown]): entry is [string, string] =>
-                typeof entry[1] === 'string',
+              (entry: [string, unknown]): entry is [string, string] => typeof entry[1] === 'string',
             ),
           ),
     mode: record['mode'] === 'debug' ? 'debug' : 'run',
@@ -379,8 +378,9 @@ export function parseWorkspace(raw: unknown): StudioWorkspace {
   const runConfigurations: RunConfiguration[] = Array.isArray(rawConfigurations)
     ? rawConfigurations
         .map(parseRunConfiguration)
-        .filter((configuration: RunConfiguration | null): configuration is RunConfiguration =>
-          configuration !== null,
+        .filter(
+          (configuration: RunConfiguration | null): configuration is RunConfiguration =>
+            configuration !== null,
         )
     : [];
   return { version, runConfigurations, providerKind: optionalString(record, 'providerKind') };
@@ -475,7 +475,9 @@ export function findRunConfigurationIssues(
       if (memberId === configuration.id) {
         issues.push(`Compound "${configuration.id}" names itself as a member.`);
       } else if (!byId.has(memberId)) {
-        issues.push(`Compound "${configuration.id}" names a member "${memberId}" that does not exist.`);
+        issues.push(
+          `Compound "${configuration.id}" names a member "${memberId}" that does not exist.`,
+        );
       }
     }
   }
@@ -490,7 +492,10 @@ export function findRunConfigurationIssues(
       return;
     }
     if (state.get(configuration.id) === 'visiting') {
-      const cycle: readonly string[] = [...trail.slice(trail.indexOf(configuration.id)), configuration.id];
+      const cycle: readonly string[] = [
+        ...trail.slice(trail.indexOf(configuration.id)),
+        configuration.id,
+      ];
       issues.push(`Compound cycle: ${cycle.join(' → ')}.`);
       return;
     }

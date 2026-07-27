@@ -66,12 +66,12 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
    */
   protected readonly channelOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.output
-        .channels()
-        .map((channel: OutputChannelInfo): DropdownOption => ({
+      this.output.channels().map(
+        (channel: OutputChannelInfo): DropdownOption => ({
           value: channel.id,
           label: channel.label,
-        })),
+        }),
+      ),
   );
 
   /**

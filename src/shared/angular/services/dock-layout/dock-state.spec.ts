@@ -309,7 +309,13 @@ describe('DockState close guard', () => {
       createLayout: (): DockNode =>
         mkSplit('row', [mkStack('tool', ['explorer']), mkStack('document', ['doc-1'])], [1, 2]),
       panels: [
-        { id: 'explorer', title: 'Explorer', icon: Icon.CODE, role: 'tool', component: PersistStubPanel },
+        {
+          id: 'explorer',
+          title: 'Explorer',
+          icon: Icon.CODE,
+          role: 'tool',
+          component: PersistStubPanel,
+        },
         {
           id: 'doc-1',
           title: 'a.ts',
@@ -323,7 +329,9 @@ describe('DockState close guard', () => {
         },
       ],
     };
-    TestBed.configureTestingModule({ providers: [{ provide: DOCK_BLUEPRINT, useValue: blueprint }] });
+    TestBed.configureTestingModule({
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: blueprint }],
+    });
     return TestBed.inject(DockState);
   }
 

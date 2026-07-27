@@ -230,7 +230,10 @@ export class DotnetProjectSystem implements ProjectSystem {
       configurationName,
     );
     if (targetPath === null) {
-      return { target: null, error: 'The build succeeded but its output assembly could not be found.' };
+      return {
+        target: null,
+        error: 'The build succeeded but its output assembly could not be found.',
+      };
     }
     return { target: { program: targetPath, cwd: path.dirname(projectPath) }, error: null };
   }
@@ -242,9 +245,10 @@ export class DotnetProjectSystem implements ProjectSystem {
    * @returns Returns the MSBuild configuration name.
    */
   private buildConfigurationName(id: string | undefined): string {
-    const match: { id: string; name: string } | undefined = DOTNET_CAPABILITIES.buildConfigurations.find(
-      (candidate: { id: string; name: string }): boolean => candidate.id === id,
-    );
+    const match: { id: string; name: string } | undefined =
+      DOTNET_CAPABILITIES.buildConfigurations.find(
+        (candidate: { id: string; name: string }): boolean => candidate.id === id,
+      );
     return match?.name ?? 'Debug';
   }
 

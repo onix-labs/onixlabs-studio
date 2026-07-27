@@ -254,13 +254,15 @@ class Program {
   /**
    * Runs git safely on behalf of the renderer's source-control surfaces.
    */
-  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null => this.windows.main());
+  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null =>
+    this.windows.main(),
+  );
 
   /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
-  private readonly fileWatcher: FileWatcher = new FileWatcher(
-    (): BrowserWindow | null => this.windows.main(),
+  private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null =>
+    this.windows.main(),
   );
 
   /**
@@ -274,7 +276,9 @@ class Program {
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
    */
-  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null => this.windows.main());
+  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null =>
+    this.windows.main(),
+  );
 
   /**
    * Owns the runtime security policy: the Content-Security-Policy header and the image-source policy.

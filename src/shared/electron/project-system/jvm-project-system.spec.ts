@@ -36,9 +36,9 @@ describe('parseGradleModules', () => {
 
 describe('parseMavenName', () => {
   it('prefersTheNameElement', () => {
-    expect(parseMavenName('<project><name>My App</name><artifactId>app</artifactId></project>')).toBe(
-      'My App',
-    );
+    expect(
+      parseMavenName('<project><name>My App</name><artifactId>app</artifactId></project>'),
+    ).toBe('My App');
   });
 
   it('fallsBackToTheProjectArtifactIdNotTheParent', () => {

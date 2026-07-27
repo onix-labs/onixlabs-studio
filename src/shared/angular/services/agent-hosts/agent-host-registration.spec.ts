@@ -5,7 +5,10 @@ import type { AgentSurface } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
-import { AgentRequestSource, AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
+import {
+  AgentRequestSource,
+  AgentRequests,
+} from '@shared/angular/services/agent-requests/agent-requests';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentHostRegistrar, createAgentHostRegistrar } from './agent-host-registration';

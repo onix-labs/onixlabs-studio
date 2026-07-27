@@ -42,8 +42,12 @@ describe('parseStoredWindowState', () => {
     expect(parseStoredWindowState({ maximized: true })).toBeNull();
     expect(parseStoredWindowState({ bounds: 'wide' })).toBeNull();
     expect(parseStoredWindowState({ bounds: { x: 0, y: 0, width: 100 } })).toBeNull();
-    expect(parseStoredWindowState({ bounds: { x: '0', y: 0, width: 100, height: 100 } })).toBeNull();
-    expect(parseStoredWindowState({ bounds: { x: 0, y: Infinity, width: 100, height: 100 } })).toBeNull();
+    expect(
+      parseStoredWindowState({ bounds: { x: '0', y: 0, width: 100, height: 100 } }),
+    ).toBeNull();
+    expect(
+      parseStoredWindowState({ bounds: { x: 0, y: Infinity, width: 100, height: 100 } }),
+    ).toBeNull();
   });
 
   it('withNonPositiveDimensions_returnsNull', () => {
@@ -54,7 +58,9 @@ describe('parseStoredWindowState', () => {
 
 describe('restoreWindowRect', () => {
   it('withNoDisplays_returnsNull', () => {
-    expect(restoreWindowRect(stored({ x: 0, y: 0, width: 1280, height: 800 }), [], 800, 600)).toBeNull();
+    expect(
+      restoreWindowRect(stored({ x: 0, y: 0, width: 1280, height: 800 }), [], 800, 600),
+    ).toBeNull();
   });
 
   it('withOnScreenBounds_keepsThemInPlace', () => {

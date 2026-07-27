@@ -230,8 +230,9 @@ export class Breakpoints {
     for (const [path, list] of this.state()) {
       next.set(
         path,
-        list.map((breakpoint: Breakpoint): Breakpoint =>
-          breakpoint.verified ? { ...breakpoint, verified: false } : breakpoint,
+        list.map(
+          (breakpoint: Breakpoint): Breakpoint =>
+            breakpoint.verified ? { ...breakpoint, verified: false } : breakpoint,
         ),
       );
     }

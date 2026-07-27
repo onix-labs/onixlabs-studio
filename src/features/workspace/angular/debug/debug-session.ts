@@ -330,8 +330,10 @@ export class DebugSession implements DebugHandler, OnDestroy {
         this.onAdapterExit(args[0] as DebugAdapterExit),
       ) ?? null;
     this.runInTerminalDisposer =
-      this.bridge?.on(DebugChannel.RunInTerminal, (...args: unknown[]): void =>
-        void this.onRunInTerminal(args[0] as DebugRunInTerminalRequest),
+      this.bridge?.on(
+        DebugChannel.RunInTerminal,
+        (...args: unknown[]): void =>
+          void this.onRunInTerminal(args[0] as DebugRunInTerminalRequest),
       ) ?? null;
 
     // Re-send breakpoints when their definitions change during a running session. The signature guard
@@ -458,16 +460,21 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return;
     }
     if (resolution.target === null) {
-      this.debugChannel.appendLine(`Debug failed: ${resolution.error ?? 'could not resolve launch target'}`);
+      this.debugChannel.appendLine(
+        `Debug failed: ${resolution.error ?? 'could not resolve launch target'}`,
+      );
       this.reset();
       return;
     }
 
-    const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(DebugChannel.Start, {
-      sessionId,
-      adapterId: adapter,
-      rootPath: root,
-    });
+    const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(
+      DebugChannel.Start,
+      {
+        sessionId,
+        adapterId: adapter,
+        rootPath: root,
+      },
+    );
     if (this.currentSession !== sessionId) {
       return;
     }
@@ -507,8 +514,9 @@ export class DebugSession implements DebugHandler, OnDestroy {
         this.appendOutput(message.body as DebugProtocol.OutputEvent['body'] | undefined);
         break;
       case 'stopped': {
-        const body: DebugProtocol.StoppedEvent['body'] | undefined =
-          message.body as DebugProtocol.StoppedEvent['body'] | undefined;
+        const body: DebugProtocol.StoppedEvent['body'] | undefined = message.body as
+          | DebugProtocol.StoppedEvent['body']
+          | undefined;
         this.threadId = body?.threadId ?? this.threadId;
         this.stateSignal.set('stopped');
         void this.refreshCallStack();
@@ -519,8 +527,9 @@ export class DebugSession implements DebugHandler, OnDestroy {
         this.stateSignal.set('running');
         break;
       case 'exited': {
-        const body: DebugProtocol.ExitedEvent['body'] | undefined =
-          message.body as DebugProtocol.ExitedEvent['body'] | undefined;
+        const body: DebugProtocol.ExitedEvent['body'] | undefined = message.body as
+          | DebugProtocol.ExitedEvent['body']
+          | undefined;
         this.debugChannel.appendLine(`Debuggee exited with code ${body?.exitCode ?? 0}.`);
         break;
       }
@@ -560,10 +569,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private async syncBreakpoints(): Promise<void> {
     this.lastSyncSignature = definitionSignature(this.breakpoints.all());
-    const paths: Set<string> = new Set<string>([
-      ...this.syncedPaths,
-      ...this.breakpoints.paths(),
-    ]);
+    const paths: Set<string> = new Set<string>([...this.syncedPaths, ...this.breakpoints.paths()]);
     for (const path of paths) {
       await this.syncFile(path);
     }
@@ -594,8 +600,9 @@ export class DebugSession implements DebugHandler, OnDestroy {
       ),
     };
     try {
-      const body: DebugProtocol.SetBreakpointsResponse['body'] =
-        await this.request<DebugProtocol.SetBreakpointsResponse['body']>('setBreakpoints', args);
+      const body: DebugProtocol.SetBreakpointsResponse['body'] = await this.request<
+        DebugProtocol.SetBreakpointsResponse['body']
+      >('setBreakpoints', args);
       this.breakpoints.applyVerification(
         path,
         (body?.breakpoints ?? []).map((breakpoint: DebugProtocol.Breakpoint) => ({

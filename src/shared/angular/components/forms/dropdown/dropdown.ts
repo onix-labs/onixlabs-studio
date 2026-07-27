@@ -111,10 +111,13 @@ export class Dropdown {
    * Gets the selected option's colour chip, shown in the control's face for colour options, or
    * undefined when the selected option carries no colour.
    */
-  protected readonly selectedColor: Signal<string | undefined> = computed((): string | undefined => {
-    const value: string = this.value();
-    return this.options().find((option: DropdownOption): boolean => option.value === value)?.color;
-  });
+  protected readonly selectedColor: Signal<string | undefined> = computed(
+    (): string | undefined => {
+      const value: string = this.value();
+      return this.options().find((option: DropdownOption): boolean => option.value === value)
+        ?.color;
+    },
+  );
 
   /**
    * Reflects {@link value} onto the native select after each render so the displayed option stays in

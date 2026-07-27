@@ -271,7 +271,10 @@ describe('DebugSession', () => {
   });
 
   it('onInitialized_sendsConfigurationDoneWhenSupported', async () => {
-    bridge.startResult = { success: true, capabilities: { supportsConfigurationDoneRequest: true } };
+    bridge.startResult = {
+      success: true,
+      capabilities: { supportsConfigurationDoneRequest: true },
+    };
     const session: DebugSession = build();
     session.launch(config());
     await flush();
@@ -399,7 +402,10 @@ describe('DebugSession', () => {
   });
 
   it('onInitialized_sendsSetBreakpointsBeforeConfigurationDone', async () => {
-    bridge.startResult = { success: true, capabilities: { supportsConfigurationDoneRequest: true } };
+    bridge.startResult = {
+      success: true,
+      capabilities: { supportsConfigurationDoneRequest: true },
+    };
     const session: DebugSession = build();
     const breakpoints: Breakpoints = TestBed.inject(Breakpoints);
     breakpoints.add('/ws/main.ts', 12, { condition: 'x > 1' });
@@ -546,7 +552,9 @@ describe('DebugSession', () => {
 
   it('evaluate_returnsResultAgainstTheSelectedFrame', async () => {
     bridge.responses.set('stackTrace', {
-      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+      stackFrames: [
+        { id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 },
+      ],
     });
     bridge.responses.set('scopes', { scopes: [] });
     bridge.responses.set('evaluate', { result: '42', variablesReference: 0 });
@@ -581,9 +589,13 @@ describe('DebugSession', () => {
 
   it('continued_clearsInspection', async () => {
     bridge.responses.set('stackTrace', {
-      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+      stackFrames: [
+        { id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 },
+      ],
     });
-    bridge.responses.set('scopes', { scopes: [{ name: 'Locals', variablesReference: 2, expensive: false }] });
+    bridge.responses.set('scopes', {
+      scopes: [{ name: 'Locals', variablesReference: 2, expensive: false }],
+    });
     const session: DebugSession = build();
     session.launch(config());
     await flush();
@@ -611,7 +623,9 @@ describe('DebugSession', () => {
 
   it('terminated_clearsInspection', async () => {
     bridge.responses.set('stackTrace', {
-      stackFrames: [{ id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 }],
+      stackFrames: [
+        { id: 1000, name: 'Main', source: { path: '/ws/Program.cs' }, line: 1, column: 1 },
+      ],
     });
     bridge.responses.set('scopes', { scopes: [] });
     const session: DebugSession = build();

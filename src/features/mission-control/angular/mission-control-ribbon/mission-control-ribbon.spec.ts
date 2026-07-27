@@ -4,7 +4,10 @@ import { TestBed } from '@angular/core/testing';
 import type { AiPermissionPosture } from '@shared/api/ai-types';
 import type { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
-import { AgentRequestEntry, AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
+import {
+  AgentRequestEntry,
+  AgentRequests,
+} from '@shared/angular/services/agent-requests/agent-requests';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlRibbon } from './mission-control-ribbon';

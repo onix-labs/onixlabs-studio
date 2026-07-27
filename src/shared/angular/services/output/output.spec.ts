@@ -56,14 +56,20 @@ describe('Output', () => {
   });
 
   it('startsWithOnlyTheDefaultChannelActive', () => {
-    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([
+      DEFAULT_CHANNEL,
+    ]);
     expect(output.activeChannelId()).toBe(DEFAULT_CHANNEL);
   });
 
   it('channel_registersTheChannelForSelection', () => {
     output.channel('build', 'Build');
     output.channel('run', 'Run');
-    expect(output.channels().map((c: OutputChannelInfo): string => c.label)).toEqual(['General', 'Build', 'Run']);
+    expect(output.channels().map((c: OutputChannelInfo): string => c.label)).toEqual([
+      'General',
+      'Build',
+      'Run',
+    ]);
   });
 
   it('channels_keepSeparateBuffers', () => {
@@ -100,12 +106,16 @@ describe('Output', () => {
     expect(output.activeChannelId()).toBe('debug');
 
     output.remove('debug');
-    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([
+      DEFAULT_CHANNEL,
+    ]);
     expect(output.activeChannelId()).toBe(DEFAULT_CHANNEL);
   });
 
   it('remove_ignoresTheDefaultChannel', () => {
     output.remove(DEFAULT_CHANNEL);
-    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([DEFAULT_CHANNEL]);
+    expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([
+      DEFAULT_CHANNEL,
+    ]);
   });
 });

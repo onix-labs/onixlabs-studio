@@ -235,8 +235,8 @@ export class JvmProjectSystem implements ProjectSystem {
     const pomPath: string = path.join(root, MAVEN_POM);
     const pom: string | null = await this.readFile(pomPath);
     const rootName: string = parseMavenName(pom) ?? path.basename(root);
-    const moduleDirs: readonly string[] = parseMavenModules(pom).map(
-      (module: string): string => path.join(root, module),
+    const moduleDirs: readonly string[] = parseMavenModules(pom).map((module: string): string =>
+      path.join(root, module),
     );
     const modules: readonly ProjectNode[] = await this.moduleNodes(moduleDirs, [MAVEN_POM]);
     return this.model(root, rootName, pomPath, modules);
@@ -320,7 +320,7 @@ export class JvmProjectSystem implements ProjectSystem {
     if ((await this.firstPresent(root, GRADLE_SETTINGS_FILES)) !== null) {
       return 'gradle';
     }
-    if ((await this.exists(path.join(root, MAVEN_POM)))) {
+    if (await this.exists(path.join(root, MAVEN_POM))) {
       return 'maven';
     }
     return null;

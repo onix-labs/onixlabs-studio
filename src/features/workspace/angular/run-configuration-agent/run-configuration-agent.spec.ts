@@ -138,12 +138,20 @@ describe('RunConfigurationAgent', () => {
     const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
 
     requests.set([
-      { key: 'a', tabId: 'tab-2', label: 'Other', item: {}, agent: theirs.agent } as AgentRequestEntry,
+      {
+        key: 'a',
+        tabId: 'tab-2',
+        label: 'Other',
+        item: {},
+        agent: theirs.agent,
+      } as AgentRequestEntry,
       { key: 'b', tabId: 'tab-1', label: 'Mine', item: {}, agent: mine.agent } as AgentRequestEntry,
     ]);
 
     // The dialog is modal, so it must show its own agent's prompts — and only those.
-    expect(seam.pendingRequests().map((entry: AgentRequestEntry): string => entry.key)).toEqual(['b']);
+    expect(seam.pendingRequests().map((entry: AgentRequestEntry): string => entry.key)).toEqual([
+      'b',
+    ]);
   });
 
   it('busy_followsTheResolvedAgentsRunState', () => {

@@ -113,17 +113,16 @@ export class DebugPanel {
   /**
    * Gets the call-stack rows for the tree.
    */
-  protected readonly callStackRows: Signal<readonly TreeRow[]> = computed(
-    (): readonly TreeRow[] =>
-      this.session.callStack().map(
-        (frame: DebugFrame): TreeRow => ({
-          id: `frame:${frame.id}`,
-          depth: 0,
-          expandable: false,
-          expanded: false,
-          data: { frame } satisfies FrameRowData,
-        }),
-      ),
+  protected readonly callStackRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
+    this.session.callStack().map(
+      (frame: DebugFrame): TreeRow => ({
+        id: `frame:${frame.id}`,
+        depth: 0,
+        expandable: false,
+        expanded: false,
+        data: { frame } satisfies FrameRowData,
+      }),
+    ),
   );
 
   /**
@@ -138,7 +137,9 @@ export class DebugPanel {
    * Holds the fetched child variables, keyed by their variables reference, for lazy expansion.
    */
   private readonly variableChildren: WritableSignal<ReadonlyMap<number, readonly DebugVariable[]>> =
-    signal<ReadonlyMap<number, readonly DebugVariable[]>>(new Map<number, readonly DebugVariable[]>());
+    signal<ReadonlyMap<number, readonly DebugVariable[]>>(
+      new Map<number, readonly DebugVariable[]>(),
+    );
 
   /**
    * Holds the ids of the expanded variable rows.
@@ -155,11 +156,11 @@ export class DebugPanel {
     const expanded: ReadonlySet<string> = this.expandedRows();
     const cache: ReadonlyMap<number, readonly DebugVariable[]> = this.variableChildren();
     const rows: TreeRow[] = [];
-    const walk: (
+    const walk: (variables: readonly DebugVariable[], parentId: string, depth: number) => void = (
       variables: readonly DebugVariable[],
       parentId: string,
       depth: number,
-    ) => void = (variables: readonly DebugVariable[], parentId: string, depth: number): void => {
+    ): void => {
       variables.forEach((variable: DebugVariable, index: number): void => {
         const id: string = `${parentId}/${index}`;
         const canExpand: boolean = variable.variablesReference > 0;
@@ -196,9 +197,9 @@ export class DebugPanel {
   /**
    * Holds the watch expressions, in the order the user added them.
    */
-  protected readonly watchExpressions: WritableSignal<readonly string[]> = signal<readonly string[]>(
-    [],
-  );
+  protected readonly watchExpressions: WritableSignal<readonly string[]> = signal<
+    readonly string[]
+  >([]);
 
   /**
    * Holds the latest evaluation of each watch expression, keyed by the expression.

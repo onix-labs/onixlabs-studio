@@ -20,10 +20,12 @@ describe('buildSpawnSpec', () => {
   });
 
   it('withAnArgumentVector_spawnsTheCommandDirectly', () => {
-    expect(buildSpawnSpec('darwin', '/bin/zsh', 'dotnet', ['run', '--project', 'src/Api'])).toEqual({
-      file: 'dotnet',
-      args: ['run', '--project', 'src/Api'],
-    });
+    expect(buildSpawnSpec('darwin', '/bin/zsh', 'dotnet', ['run', '--project', 'src/Api'])).toEqual(
+      {
+        file: 'dotnet',
+        args: ['run', '--project', 'src/Api'],
+      },
+    );
   });
 });
 

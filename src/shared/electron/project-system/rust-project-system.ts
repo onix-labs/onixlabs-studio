@@ -160,7 +160,9 @@ export class RustProjectSystem implements ProjectSystem {
       parseCargoWorkspaceMembers(toml),
     );
     if (memberDirs.length === 0) {
-      const tree: readonly ProjectNode[] = [{ type: 'project', name: rootName, path: manifestPath }];
+      const tree: readonly ProjectNode[] = [
+        { type: 'project', name: rootName, path: manifestPath },
+      ];
       return this.model(root, tree, null);
     }
     const members: ProjectNode[] = [];

@@ -32,7 +32,9 @@ describe('parsePyprojectName', () => {
 
 describe('parseSetupPyName', () => {
   it('readsTheSetupKeywordArgument', () => {
-    expect(parseSetupPyName('setup(\n  name="legacy-app",\n  version="0.1",\n)')).toBe('legacy-app');
+    expect(parseSetupPyName('setup(\n  name="legacy-app",\n  version="0.1",\n)')).toBe(
+      'legacy-app',
+    );
   });
 
   it('returnsNullWhenAbsent', () => {

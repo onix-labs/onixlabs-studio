@@ -32,7 +32,11 @@ export interface GateableTool {
 export const GATEABLE_TOOLS: readonly GateableTool[] = [
   { name: 'Write', label: 'Write file', description: 'Create or overwrite a file.' },
   { name: 'Edit', label: 'Edit file', description: 'Modify part of an existing file.' },
-  { name: 'MultiEdit', label: 'Multi-edit file', description: 'Apply several edits to a file at once.' },
+  {
+    name: 'MultiEdit',
+    label: 'Multi-edit file',
+    description: 'Apply several edits to a file at once.',
+  },
   {
     name: 'NotebookEdit',
     label: 'Edit notebook',

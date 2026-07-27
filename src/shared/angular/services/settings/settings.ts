@@ -583,7 +583,8 @@ export class Settings {
   /**
    * Gets the extra directories the agent may write to beyond the workspace root (absolute paths).
    */
-  public readonly aiAllowedWritePaths: Signal<readonly string[]> = this.value('ai.allowedWritePaths');
+  public readonly aiAllowedWritePaths: Signal<readonly string[]> =
+    this.value('ai.allowedWritePaths');
 
   /**
    * Gets the paths the agent may never write to (absolute paths or bare path segments).
@@ -604,9 +605,8 @@ export class Settings {
    * Gets how long (in minutes) an idle agent keeps its live session before idle-reap closes it, or 0 to
    * never reap on idle. A reaped session reopens transparently (via resume) on the next message.
    */
-  public readonly aiAgentSessionLifetimeMinutes: Signal<number> = this.value(
-    'ai.agentSessionLifetime',
-  );
+  public readonly aiAgentSessionLifetimeMinutes: Signal<number> =
+    this.value('ai.agentSessionLifetime');
 
   /**
    * Gets the shell whose login profile the agent sources its environment from (an absolute path), or

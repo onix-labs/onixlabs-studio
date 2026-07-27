@@ -190,9 +190,7 @@ export class Builds {
   /**
    * Gets whether the active workspace has anything running.
    */
-  public readonly running: Signal<boolean> = computed(
-    (): boolean => this.activeRuns().length > 0,
-  );
+  public readonly running: Signal<boolean> = computed((): boolean => this.activeRuns().length > 0);
 
   /**
    * Gets whether the active workspace has a runnable build task.

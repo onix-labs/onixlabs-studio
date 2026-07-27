@@ -44,9 +44,10 @@ interface Knobs {
  * for a host with no project behind it).
  * @returns Returns the tile's derived state and the knobs backing it.
  */
-function setUp(
-  options: { tabId?: string | null; branch?: Signal<string | null> } = {},
-): { state: TileState; knobs: Knobs } {
+function setUp(options: { tabId?: string | null; branch?: Signal<string | null> } = {}): {
+  state: TileState;
+  knobs: Knobs;
+} {
   const running: WritableSignal<boolean> = signal<boolean>(false);
   const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
   const hideEmpty: WritableSignal<boolean> = signal<boolean>(false);
@@ -70,7 +71,9 @@ function setUp(
     setWidth: (): void => undefined,
   };
   const tabsStub: Partial<Tabs> = { get: () => undefined, activate: () => undefined };
-  const tilesStub: Partial<MissionControlTiles> = { register: (): (() => void) => (): void => undefined };
+  const tilesStub: Partial<MissionControlTiles> = {
+    register: (): (() => void) => (): void => undefined,
+  };
 
   TestBed.configureTestingModule({
     imports: [MissionControlAgentTile],

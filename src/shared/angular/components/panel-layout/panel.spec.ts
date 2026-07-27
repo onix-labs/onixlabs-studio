@@ -51,12 +51,9 @@ class StubLayoutContext implements PanelLayoutContext {
 class TestHost {
   public readonly defaultEdge: WritableSignal<PanelEdge> = signal<PanelEdge>('right');
   // The tests exercise every edge, so the stub panel allows all of them unless a test narrows it.
-  public readonly allowedEdges: WritableSignal<readonly PanelEdge[]> = signal<readonly PanelEdge[]>([
-    'left',
-    'right',
-    'top',
-    'bottom',
-  ]);
+  public readonly allowedEdges: WritableSignal<readonly PanelEdge[]> = signal<readonly PanelEdge[]>(
+    ['left', 'right', 'top', 'bottom'],
+  );
   public readonly visible: WritableSignal<boolean> = signal<boolean>(true);
 }
 

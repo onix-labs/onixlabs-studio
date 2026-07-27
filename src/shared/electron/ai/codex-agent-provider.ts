@@ -457,7 +457,9 @@ export class CodexAgentSession implements AgentSession {
           this.emitToolEnd(item.id, item.status === 'completed', undefined, context);
         } else {
           const detail: string = item.changes
-            .map((change: { path: string; kind: string }): string => `${change.kind} ${change.path}`)
+            .map(
+              (change: { path: string; kind: string }): string => `${change.kind} ${change.path}`,
+            )
             .join(', ');
           this.emitToolStart(item.id, 'Edit', detail, context);
         }

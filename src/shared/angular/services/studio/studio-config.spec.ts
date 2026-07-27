@@ -30,7 +30,10 @@ class FakeBridge implements Bridge {
     if (channel === (StudioChannel.Load as string)) {
       return Promise.resolve(this.snapshot as T);
     }
-    if (channel === (StudioChannel.SaveWorkspace as string) || channel === (StudioChannel.SaveUser as string)) {
+    if (
+      channel === (StudioChannel.SaveWorkspace as string) ||
+      channel === (StudioChannel.SaveUser as string)
+    ) {
       this.saves.push({ channel, root: args[0] as string, payload: args[1] });
       return Promise.resolve(true as T);
     }
@@ -81,7 +84,12 @@ function config(id: string, name: string): RunConfiguration {
 function sampleSnapshot(): StudioSnapshot {
   return {
     workspace: { version: 1, runConfigurations: [config('a', 'A'), config('b', 'B')] },
-    user: { version: 1, selectedRunConfigurationId: 'b', lastTarget: 'x64', lastBuildConfiguration: 'release' },
+    user: {
+      version: 1,
+      selectedRunConfigurationId: 'b',
+      lastTarget: 'x64',
+      lastBuildConfiguration: 'release',
+    },
   };
 }
 
@@ -208,7 +216,10 @@ describe('StudioConfig', () => {
     rootPath.set('/root');
     await settle();
 
-    bridge.snapshot = { workspace: { version: 1, runConfigurations: [config('z', 'Z')] }, user: { version: 1 } };
+    bridge.snapshot = {
+      workspace: { version: 1, runConfigurations: [config('z', 'Z')] },
+      user: { version: 1 },
+    };
     watch.emit(['/root/.studio']);
     await settle();
 
@@ -221,7 +232,10 @@ describe('StudioConfig', () => {
     rootPath.set('/root');
     await settle();
 
-    bridge.snapshot = { workspace: { version: 1, runConfigurations: [config('z', 'Z')] }, user: { version: 1 } };
+    bridge.snapshot = {
+      workspace: { version: 1, runConfigurations: [config('z', 'Z')] },
+      user: { version: 1 },
+    };
     watch.emit(['/root/src']);
     await settle();
 
@@ -235,7 +249,10 @@ describe('StudioConfig', () => {
 
     // A save sets the self-write guard; the change event it would raise must not overwrite what we set.
     await studio.saveWorkspace({ version: 1, runConfigurations: [config('x', 'X')] });
-    bridge.snapshot = { workspace: { version: 1, runConfigurations: [config('z', 'Z')] }, user: { version: 1 } };
+    bridge.snapshot = {
+      workspace: { version: 1, runConfigurations: [config('z', 'Z')] },
+      user: { version: 1 },
+    };
     watch.emit(['/root/.studio']);
     await settle();
 

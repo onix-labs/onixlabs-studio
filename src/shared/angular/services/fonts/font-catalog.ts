@@ -1,12 +1,4 @@
-import {
-  computed,
-  DOCUMENT,
-  inject,
-  Service,
-  signal,
-  Signal,
-  WritableSignal,
-} from '@angular/core';
+import { computed, DOCUMENT, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { ChoiceOption } from '@shared/angular/services/settings/settings-schema';
 
 /**

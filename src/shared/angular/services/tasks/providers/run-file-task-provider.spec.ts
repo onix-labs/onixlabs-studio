@@ -79,7 +79,9 @@ describe('RunFileTaskProvider', () => {
     const command: string | null = (await task?.resolve()) ?? null;
 
     expect(writeCalls[0].extension).toBe('.rs');
-    expect(command).toBe('rustc "/tmp/tab-1/run.rs" -o "/tmp/tab-1/run.rs.out" && "/tmp/tab-1/run.rs.out"');
+    expect(command).toBe(
+      'rustc "/tmp/tab-1/run.rs" -o "/tmp/tab-1/run.rs.out" && "/tmp/tab-1/run.rs.out"',
+    );
   });
 
   it('resolve_forGo_runsTheFileWithGoRun', async () => {

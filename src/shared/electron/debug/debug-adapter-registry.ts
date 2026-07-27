@@ -268,7 +268,8 @@ export class DebugAdapterRegistry {
     // pinned binary if the adapter ships one.
     const located: string | null = await this.provisioner.locate(entry.binary, rootPath);
     const binaryPath: string | null =
-      located ?? (entry.provision !== undefined ? await this.provisioner.ensure(entry.provision) : null);
+      located ??
+      (entry.provision !== undefined ? await this.provisioner.ensure(entry.provision) : null);
     if (binaryPath === null) {
       return {
         spec: null,

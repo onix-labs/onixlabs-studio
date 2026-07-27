@@ -94,7 +94,11 @@ class FakeLsp implements Bridge {
   }
 
   public logMessage(sessionId: string, message: string): void {
-    this.notificationListener?.({ sessionId, method: 'window/logMessage', params: { type: 3, message } });
+    this.notificationListener?.({
+      sessionId,
+      method: 'window/logMessage',
+      params: { type: 3, message },
+    });
   }
 
   public exit(sessionId: string): void {
@@ -264,9 +268,9 @@ describe('LspClient', () => {
     lsp.logMessage('/root::typescript', 'indexing project');
 
     expect(output.snapshotOf('lsp:typescript')).toContain('indexing project');
-    expect(output.channels().some((c: OutputChannelInfo): boolean => c.id === 'lsp:typescript')).toBe(
-      true,
-    );
+    expect(
+      output.channels().some((c: OutputChannelInfo): boolean => c.id === 'lsp:typescript'),
+    ).toBe(true);
   });
 
   it('syncDocument_supportedFileInRoot_startsServerAndSendsDidOpen', async () => {

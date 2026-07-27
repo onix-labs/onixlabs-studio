@@ -364,7 +364,9 @@ export class AgentConversationList {
    * Gets a value indicating whether there are no conversations to show at all (so an empty message
    * replaces the tree body).
    */
-  protected readonly isEmpty: Signal<boolean> = computed((): boolean => this.matching().length === 0);
+  protected readonly isEmpty: Signal<boolean> = computed(
+    (): boolean => this.matching().length === 0,
+  );
 
   /**
    * Gets the number of conversations checked for deletion.

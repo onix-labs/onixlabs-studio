@@ -389,7 +389,7 @@ export class TerminalSessions implements OnDestroy {
       env: options.env,
       cwd,
     });
-    const processId: number | null = result.success ? result.pid ?? null : null;
+    const processId: number | null = result.success ? (result.pid ?? null) : null;
     if (!result.success) {
       // The main process streamed the failure into the session's scrollback and emitted an exit for
       // it where possible; outside Electron (or on malformed options) resolve the completion here.
@@ -410,9 +410,9 @@ export class TerminalSessions implements OnDestroy {
     } else {
       this.activateAndReveal(id);
     }
-    const session: TerminalSession =
-      this.items().find((candidate: TerminalSession): boolean => candidate.id === id) ??
-      ({ id, name: options.name, kind: options.kind, generation: 0, exitCode: null, cwd });
+    const session: TerminalSession = this.items().find(
+      (candidate: TerminalSession): boolean => candidate.id === id,
+    ) ?? { id, name: options.name, kind: options.kind, generation: 0, exitCode: null, cwd };
     return { session, exited, processId };
   }
 
@@ -553,7 +553,8 @@ export class TerminalSessions implements OnDestroy {
    */
   public readonly activeSession: Signal<TerminalSession | null> = computed(
     (): TerminalSession | null =>
-      this.items().find((session: TerminalSession): boolean => session.id === this.active()) ?? null,
+      this.items().find((session: TerminalSession): boolean => session.id === this.active()) ??
+      null,
   );
 
   /**

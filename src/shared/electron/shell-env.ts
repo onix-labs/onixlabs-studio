@@ -40,7 +40,12 @@ interface CaptureOptions {
  * @returns Returns the shell executable path.
  */
 function resolveDefaultShell(): string {
-  const candidates: (string | undefined)[] = [process.env['SHELL'], '/bin/zsh', '/bin/bash', '/bin/sh'];
+  const candidates: (string | undefined)[] = [
+    process.env['SHELL'],
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+  ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim().length > 0) {
       return candidate.trim();

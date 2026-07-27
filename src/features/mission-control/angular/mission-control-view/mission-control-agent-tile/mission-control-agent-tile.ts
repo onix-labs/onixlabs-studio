@@ -84,7 +84,8 @@ export class MissionControlAgentTile {
   /**
    * Holds the tile's host element, measured at the start of a resize drag.
    */
-  private readonly elementRef: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly elementRef: ElementRef<HTMLElement> =
+    inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
    * Holds the view-scoped tile registry, so the agent rail can scroll this column into view.
@@ -114,9 +115,7 @@ export class MissionControlAgentTile {
   /**
    * Gets the tile's stable key — the origin tab id, or the host's own id for hosts with no tab.
    */
-  protected readonly key: Signal<string> = computed(
-    (): string => this.host.tabId ?? this.host.id,
-  );
+  protected readonly key: Signal<string> = computed((): string => this.host.tabId ?? this.host.id);
 
   /**
    * Gets the host's tab id as a chat input (undefined when the host has no owning tab).

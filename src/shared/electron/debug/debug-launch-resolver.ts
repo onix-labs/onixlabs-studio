@@ -43,10 +43,7 @@ export class DebugLaunchResolver {
    * @param projectSystems The registry resolving a provider kind to its project system.
    * @param workspaceContext The open-workspace tracker used to confine resolution to opened roots.
    */
-  public constructor(
-    projectSystems: ProjectSystemRegistry,
-    workspaceContext: WorkspaceContext,
-  ) {
+  public constructor(projectSystems: ProjectSystemRegistry, workspaceContext: WorkspaceContext) {
     this.projectSystems = projectSystems;
     this.workspaceContext = workspaceContext;
   }

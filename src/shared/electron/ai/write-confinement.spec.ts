@@ -99,7 +99,9 @@ describe('write-confinement', () => {
     });
 
     it('isWriteDenied_whenAbsoluteEntryContainsTarget_isTrue', () => {
-      expect(isWriteDenied('/home/dev/project/.git/x', ['/home/dev/project/.git'], ROOT)).toBe(true);
+      expect(isWriteDenied('/home/dev/project/.git/x', ['/home/dev/project/.git'], ROOT)).toBe(
+        true,
+      );
       expect(isWriteDenied('/home/dev/project/src/a.ts', ['/home/dev/project/.git'], ROOT)).toBe(
         false,
       );

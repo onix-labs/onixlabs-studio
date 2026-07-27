@@ -19,10 +19,9 @@ describe('WindowRegistry', () => {
     const first: RegisteredWindow<FakeWindow> = registry.add('main', { name: 'main' });
     const second: RegisteredWindow<FakeWindow> = registry.add('popout', { name: 'popout' });
     expect(first.id).not.toBe(second.id);
-    expect(registry.all().map((entry: RegisteredWindow<FakeWindow>): string => entry.window.name)).toEqual([
-      'main',
-      'popout',
-    ]);
+    expect(
+      registry.all().map((entry: RegisteredWindow<FakeWindow>): string => entry.window.name),
+    ).toEqual(['main', 'popout']);
   });
 
   it('main_returnsTheMainWindowAndIgnoresPopouts', () => {

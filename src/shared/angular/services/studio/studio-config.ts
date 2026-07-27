@@ -56,7 +56,8 @@ export class StudioConfig {
   /**
    * Holds the current snapshot for the open root, defaulting to an empty snapshot.
    */
-  private readonly current: WritableSignal<StudioSnapshot> = signal<StudioSnapshot>(emptySnapshot());
+  private readonly current: WritableSignal<StudioSnapshot> =
+    signal<StudioSnapshot>(emptySnapshot());
 
   /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
@@ -179,7 +180,10 @@ export class StudioConfig {
    * @param channel The save channel.
    * @param payload The shared or user configuration to write.
    */
-  private async persist(channel: StudioChannel, payload: StudioWorkspace | StudioUser): Promise<void> {
+  private async persist(
+    channel: StudioChannel,
+    payload: StudioWorkspace | StudioUser,
+  ): Promise<void> {
     const root: string | null = this.activeWorkspace.rootPath();
     if (this.bridge === undefined || root === null) {
       return;

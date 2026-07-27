@@ -75,9 +75,7 @@ export class StudioStore {
     const workspace: StudioWorkspace = parseWorkspace(
       await this.readJson(path.join(directory, STUDIO_WORKSPACE_FILE)),
     );
-    const user: StudioUser = parseUser(
-      await this.readJson(path.join(directory, STUDIO_USER_FILE)),
-    );
+    const user: StudioUser = parseUser(await this.readJson(path.join(directory, STUDIO_USER_FILE)));
     return { workspace, user };
   }
 
