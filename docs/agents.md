@@ -101,7 +101,7 @@ Do **not** sub-divide a capability wrapper or "improve" it while touching it. It
 
 ## 4. The runtime seams
 
-These four mechanisms are why a feature is a deletable plug-in. Know them before adding or changing a
+These mechanisms are why a feature is a deletable plug-in. Know them before adding or changing a
 feature.
 
 ### 4.1 Feature registry (tab views + ribbons)
@@ -396,6 +396,67 @@ bell opens its bounded history flyout. Raise events with `Notifications.notify()
   `Agent.onStatus` (attention-aware: history-only while the owning tab or Mission Control is
   active), and `AgentRequestToasts` (pending asks, behind `notifications.agentRequestToasts`; the
   title-strip inbox itself is gated by `notifications.agentRequestsInTabList`).
+
+### 4.11 Workspace ribbon (command seams + layout presets)
+
+A contextual ribbon is rendered by the **shell**, not inside the view it acts on, so it resolves the
+_root_ injector. A workspace tab's state — its document well, its repository, its search — lives in
+per-view services provided by `directory-view`, which the ribbon therefore **cannot inject**. Every
+workspace ribbon control routes through a registration seam instead: the active view registers a
+handler while it is active, the ribbon calls the seam, and the seam forwards to whichever view is
+registered (or does nothing when no directory tab is active).
+
+- `WorkspaceDocumentCommands` — File group: `save`, `saveAll`, plus `canSave`/`hasUnsavedChanges`
+  signals that gate the buttons.
+- `WorkspaceSourceControlCommands` — the everyday git actions (commit, push, pull, open in source
+  control), with `hasRepository` gating the whole Source Control group.
+- `WorkspaceFind` — reveals the multi-file Search panel.
+- `SourceControlCommands` — the repo-global remainder: `fetch`, `stash`, and the worktree promotion
+  pair. Deliberately small; it shrank as the panels took over the selection-scoped actions.
+
+> **Ribbon or panel?** The ribbon carries only actions that are repo-global and act on no selection
+> — Commit (which sets the stage rather than committing), the network trio, Promote. Anything acting
+> on something the user can see and select — a branch, a stash, an individual change, the diff
+> layout — belongs on that thing's panel, as a row action or a `PanelToolbar` button.
+
+A panel owns its tool strip by declaring `ownsToolStrip: true` on its `DockPanel` and rendering
+`<app-panel-toolbar>` itself; the dock then omits the generic strip (whose `DEFAULT_TOOLS` are
+presentational stubs). The Repository rail owns branch creation and the stash actions; the Commit
+panel owns the diff-layout toggle and Discard All. Both are catalogued in
+`REPOSITORY_DOCK_BLUEPRINT`, which the workspace merges into its own catalogue — so a panel flagged
+there is flagged for every surface that shows it.
+
+> **Two seams, one group.** `WorkspaceSourceControlCommands` and `SourceControlCommands` are both
+> registered by `directory-view` and both consumed by the ribbon's Source Control group; the split is
+> historical (the first was the workspace's everyday facade, the second the retired repository view's
+> wider one) rather than a design boundary. Merging them is a fair future cleanup.
+
+> **Adding a workspace ribbon control?** Add a method to the matching seam and register it in
+> `directory-view` — never inject a view-scoped service into a ribbon. A control that appears to do
+> nothing at runtime is almost always this mistake.
+
+**Editor commands reach well documents by document id.** `CodeDocumentPanel` registers an
+`EditorCommandHandler` with `EditorCommands` under its document id (activating and standing down with
+the well's active document, forgetting it on destroy) exactly as a standalone code tab registers under
+its tab id. This is what lets the ribbon's Edit group, its save actions, and Clean's Format / Code
+Cleanup act on the focused well document; without the registration they resolve no handler and are
+silent no-ops.
+
+**Layout presets** (`shared/angular/services/layout-presets`) name _which panels exist and where they
+dock_. The persistence model is deliberately narrow — three things and nothing else:
+
+- **Definitions are app-wide**, agnostic to the loaded workspace (`layout.presets`). Built-ins are
+  immutable: fork them with Save As rather than updating in place.
+- **Each workspace root remembers its active pick** (`layout.active-presets`).
+- **One preset is the app-wide default** (`layout.default-preset`) — the View button's target, and
+  what a root falls back to before it has a pick. A default **always exists as long as any preset
+  does**: with none chosen the first preset stands in, so `defaultId()` never answers "none".
+  Deleting the default clears the choice rather than stranding it.
+
+Session layout is **ephemeral by ruling**: closing, moving, or resizing panels writes nowhere, and
+every launch, preset switch, and reset re-applies the active preset's saved definition. Save As and
+Update are the only writes. The active view registers a `LayoutPresetSession` (exactly as it registers
+its build runner) through which the ribbon captures the current layout and re-seeds the dock.
 
 ---
 
