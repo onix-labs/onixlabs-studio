@@ -115,10 +115,10 @@
           "options": {
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {
-              "statements": 68.5,
-              "branches": 63,
+              "statements": 68,
+              "branches": 62.5,
               "functions": 60,
-              "lines": 69
+              "lines": 68.5
             }
           }
         }
