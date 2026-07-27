@@ -132,11 +132,13 @@ describe('AiSdkAdapter', () => {
     ).toMatchObject({ available: true });
 
     const keyed: AiSdkAdapter = new AiSdkAdapter(connection('openai'));
-    expect(keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-x' }).available).toBe(
-      true,
-    );
-    expect(keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: null }).available).toBe(
-      false,
-    );
+    expect(
+      keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-x' })
+        .available,
+    ).toBe(true);
+    expect(
+      keyed.describeAvailability({ hasLocalLogin: false, hasCodexLogin: false, apiKey: null })
+        .available,
+    ).toBe(false);
   });
 });

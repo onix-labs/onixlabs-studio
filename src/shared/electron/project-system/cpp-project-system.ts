@@ -175,7 +175,9 @@ export class CppProjectSystem implements ProjectSystem {
       return null;
     }
     const names: ReadonlySet<string> = new Set<string>(
-      entries.filter((entry: Dirent): boolean => entry.isFile()).map((entry: Dirent): string => entry.name),
+      entries
+        .filter((entry: Dirent): boolean => entry.isFile())
+        .map((entry: Dirent): string => entry.name),
     );
     if (names.has(CMAKE_MANIFEST)) {
       return path.join(root, CMAKE_MANIFEST);

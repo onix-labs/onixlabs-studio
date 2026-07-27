@@ -154,10 +154,7 @@ describe('AgentRequestCard', () => {
   });
 
   it('question_whenNoQuestionText_fallsBackToADefaultHeading', async () => {
-    const entry: AgentRequestEntry = makeEntry(
-      { kind: 'input-request' },
-      responses,
-    );
+    const entry: AgentRequestEntry = makeEntry({ kind: 'input-request' }, responses);
     const host: HTMLElement = await render(entry);
 
     expect(host.querySelector('.request__heading')?.textContent).toContain(

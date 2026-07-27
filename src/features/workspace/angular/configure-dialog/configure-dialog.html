@@ -1,9 +1,4 @@
-<app-modal
-  [open]="isOpen()"
-  [width]="52"
-  ariaLabel="Run Configurations"
-  (dismiss)="onCancel()"
->
+<app-modal [open]="isOpen()" [width]="52" ariaLabel="Run Configurations" (dismiss)="onCancel()">
   <div class="configure">
     <h2 class="configure__title">Run Configurations</h2>
 
@@ -116,7 +111,10 @@
             <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
           </app-setting-row>
 
-          <app-setting-row label="New window" description="Show this run's terminal in its own window">
+          <app-setting-row
+            label="New window"
+            description="Show this run's terminal in its own window"
+          >
             <app-toggle
               [checked]="isWindowPresentation()"
               (checkedChange)="onPresentationChange($event)"
@@ -136,7 +134,10 @@
         type="button"
         class="configure__button configure__button--agent"
         [disabled]="!canAsk() || authoring()"
-        [title]="askUnavailableReason() ?? 'Let the agent assess this project and set up its run configurations'"
+        [title]="
+          askUnavailableReason() ??
+          'Let the agent assess this project and set up its run configurations'
+        "
         (click)="onAuto()"
       >
         <app-icon [icon]="Icon.AGENT" />
@@ -171,8 +172,8 @@
 
     @if (authoring()) {
       <p class="configure__status">
-        The agent is working — configurations appear here as it writes them. Watch its progress in the
-        Agent panel or Mission Control.
+        The agent is working — configurations appear here as it writes them. Watch its progress in
+        the Agent panel or Mission Control.
       </p>
     } @else if (askUnavailableReason(); as reason) {
       <p class="configure__status configure__status--muted">{{ reason }}</p>

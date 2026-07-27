@@ -12,7 +12,11 @@ import {
 import { WorkspaceContext } from '../workspace-context';
 import { DapClient, DebugAdapterConnection } from './dap-client';
 import { StdioTransport } from './dap-transport';
-import { DebugAdapterRegistry, DebugAdapterResolution, DebugAdapterSpec } from './debug-adapter-registry';
+import {
+  DebugAdapterRegistry,
+  DebugAdapterResolution,
+  DebugAdapterSpec,
+} from './debug-adapter-registry';
 import { JsDebugSession } from './js-debug-session';
 
 /**
@@ -81,8 +85,7 @@ export class DebugManager {
   public register(): void {
     ipcMain.handle(
       DebugChannel.RespondRunInTerminal,
-      (_event: IpcMainInvokeEvent, payload: unknown): boolean =>
-        this.respondRunInTerminal(payload),
+      (_event: IpcMainInvokeEvent, payload: unknown): boolean => this.respondRunInTerminal(payload),
     );
     ipcMain.handle(
       DebugChannel.Start,

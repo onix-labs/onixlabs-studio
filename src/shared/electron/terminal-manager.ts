@@ -119,10 +119,12 @@ export class TerminalManager {
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
     ipcMain.handle(TerminalChannel.ListShells, (): readonly ShellInfo[] => this.listShells());
-    ipcMain.handle(TerminalChannel.Replay, (_event: IpcMainInvokeEvent, id: unknown): TerminalReplay =>
-      typeof id === 'string'
-        ? this.scrollback.snapshot(id)
-        : { data: '', seq: 0, exitCode: null, signal: null },
+    ipcMain.handle(
+      TerminalChannel.Replay,
+      (_event: IpcMainInvokeEvent, id: unknown): TerminalReplay =>
+        typeof id === 'string'
+          ? this.scrollback.snapshot(id)
+          : { data: '', seq: 0, exitCode: null, signal: null },
     );
   }
 
@@ -201,8 +203,7 @@ export class TerminalManager {
       typeof candidate.env === 'object' && candidate.env !== null
         ? Object.fromEntries(
             Object.entries(candidate.env).filter(
-              (entry: [string, unknown]): entry is [string, string] =>
-                typeof entry[1] === 'string',
+              (entry: [string, unknown]): entry is [string, string] => typeof entry[1] === 'string',
             ),
           )
         : {};

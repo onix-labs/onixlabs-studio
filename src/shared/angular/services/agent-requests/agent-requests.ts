@@ -121,7 +121,9 @@ export class AgentRequests {
    */
   public register(source: AgentRequestSource): () => void {
     if (
-      this.sources().some((existing: AgentRequestSource): boolean => existing.agent === source.agent)
+      this.sources().some(
+        (existing: AgentRequestSource): boolean => existing.agent === source.agent,
+      )
     ) {
       return (): void => {
         // Already registered by another surface onto the same agent; nothing to remove.

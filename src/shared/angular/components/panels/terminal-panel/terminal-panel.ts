@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
   untracked,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -95,14 +97,31 @@ export class TerminalPanel {
   protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the inline rename box, focused when a rename begins (the `autofocus` attribute is unreliable
+   * on dynamically-inserted content and flagged for accessibility).
+   */
+  private readonly renameInput: Signal<ElementRef<HTMLInputElement> | undefined> =
+    viewChild<ElementRef<HTMLInputElement>>('renameInput');
+
+  /**
    * Initializes the panel, asking the session store for a shell once a folder is known. The store's
    * root is announced by the owning view (not here), so a command session launched before this panel
-   * ever mounts is never disturbed by the mount.
+   * ever mounts is never disturbed by the mount. It also focuses the rename box whenever an inline
+   * rename begins, so the name can be typed straight away.
    */
   public constructor() {
     effect((): void => {
       if (this.root() !== null) {
         untracked((): void => this.terminals.ensureShell());
+      }
+    });
+
+    effect((): void => {
+      if (this.editingId() !== null) {
+        const input: HTMLInputElement | undefined = this.renameInput()?.nativeElement;
+        if (input !== undefined) {
+          setTimeout((): void => input.focus(), 0);
+        }
       }
     });
   }

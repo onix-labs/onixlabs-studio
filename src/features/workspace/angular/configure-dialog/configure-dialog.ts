@@ -186,7 +186,10 @@ export class ConfigureDialogPanel {
   protected readonly buildConfigOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
       this.workspaceCapabilities.capabilities()?.buildConfigurations.map(
-        (configuration): DropdownOption => ({ value: configuration.id, label: configuration.name }),
+        (configuration): DropdownOption => ({
+          value: configuration.id,
+          label: configuration.name,
+        }),
       ) ?? [],
   );
 
@@ -195,9 +198,11 @@ export class ConfigureDialogPanel {
    */
   protected readonly targetOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.workspaceCapabilities.capabilities()?.target?.options.map(
-        (option): DropdownOption => ({ value: option.id, label: option.name }),
-      ) ?? [],
+      this.workspaceCapabilities
+        .capabilities()
+        ?.target?.options.map(
+          (option): DropdownOption => ({ value: option.id, label: option.name }),
+        ) ?? [],
   );
 
   /**
@@ -341,7 +346,11 @@ export class ConfigureDialogPanel {
     if (source === null) {
       return;
     }
-    const copy: RunConfiguration = { ...source, id: crypto.randomUUID(), name: `${source.name} copy` };
+    const copy: RunConfiguration = {
+      ...source,
+      id: crypto.randomUUID(),
+      name: `${source.name} copy`,
+    };
     this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] => [
       ...list,
       copy,
@@ -376,7 +385,9 @@ export class ConfigureDialogPanel {
    * @param buildConfiguration The build-configuration id.
    */
   protected onBuildConfiguration(buildConfiguration: string): void {
-    this.patch({ buildConfiguration: buildConfiguration.length > 0 ? buildConfiguration : undefined });
+    this.patch({
+      buildConfiguration: buildConfiguration.length > 0 ? buildConfiguration : undefined,
+    });
   }
 
   /**
@@ -400,7 +411,9 @@ export class ConfigureDialogPanel {
    * @param text The arguments text.
    */
   protected onArgs(text: string): void {
-    const args: string[] = text.split(/\s+/).filter((argument: string): boolean => argument.length > 0);
+    const args: string[] = text
+      .split(/\s+/)
+      .filter((argument: string): boolean => argument.length > 0);
     this.patch({ args: args.length > 0 ? args : undefined });
   }
 

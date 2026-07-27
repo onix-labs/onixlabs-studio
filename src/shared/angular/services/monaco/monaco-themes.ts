@@ -53,7 +53,9 @@ export function accentSelectionHex(rgb: string): string | null {
   const channels: (string | null)[] = parts.map((part: string): string | null => {
     const value: number = Number(part);
     return part.length > 0 && Number.isFinite(value)
-      ? Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')
+      ? Math.max(0, Math.min(255, Math.round(value)))
+          .toString(16)
+          .padStart(2, '0')
       : null;
   });
   return channels.some((channel: string | null): boolean => channel === null)
@@ -69,10 +71,7 @@ export function accentSelectionHex(rgb: string): string | null {
  * @param accentSelection Whether the editor selection uses the accent colour (#314) rather than the
  * neutral grey default.
  */
-export function defineThemes(
-  monaco: typeof MonacoApi | undefined,
-  accentSelection: boolean,
-): void {
+export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelection: boolean): void {
   if (monaco === undefined) {
     return;
   }

@@ -52,9 +52,9 @@ describe('RustProjectSystem', () => {
   it('declaresTheRustKindWithDevReleaseAndATargetTripleAxis', () => {
     expect(provider.kind).toBe('rust');
     expect(provider.capabilities.actions).toEqual(['build', 'clean', 'rebuild']);
-    expect(provider.capabilities.buildConfigurations.map((c: { id: string }): string => c.id)).toEqual(
-      ['dev', 'release'],
-    );
+    expect(
+      provider.capabilities.buildConfigurations.map((c: { id: string }): string => c.id),
+    ).toEqual(['dev', 'release']);
     expect(provider.capabilities.target?.kind).toBe('target-triple');
     expect(provider.capabilities.debug).toBeNull();
   });

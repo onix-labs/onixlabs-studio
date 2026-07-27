@@ -35,7 +35,9 @@ describe('SettingsView', () => {
     return (
       Array.from(element.querySelectorAll<HTMLSelectElement>('select')).find(
         (select: HTMLSelectElement): boolean =>
-          Array.from(select.options).some((option: HTMLOptionElement): boolean => option.value === value),
+          Array.from(select.options).some(
+            (option: HTMLOptionElement): boolean => option.value === value,
+          ),
       ) ?? null
     );
   }

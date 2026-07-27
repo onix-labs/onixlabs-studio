@@ -104,7 +104,9 @@ export class Tabs {
     // every existing tab of the same or higher pin priority, so ordinary tabs open at the end and each
     // pinned tab lands in its reserved place.
     const rank: number = this.pinRank(type);
-    const index: number = current.filter((existing: Tab): boolean => this.pinRank(existing.type) <= rank).length;
+    const index: number = current.filter(
+      (existing: Tab): boolean => this.pinRank(existing.type) <= rank,
+    ).length;
     this.tabList.set([...current.slice(0, index), tab, ...current.slice(index)]);
     this.activeId.set(tab.id);
     return tab;

@@ -3,7 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AgentSurface } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
-import { AGENT_HOST, AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
+import {
+  AGENT_HOST,
+  AgentHost,
+  AgentHosts,
+} from '@shared/angular/services/agent-hosts/agent-hosts';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TileScrollMode } from '@shared/angular/services/settings/settings-registry';

@@ -51,7 +51,10 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { resolveBundledClaudeExecutable } from './claude-executable';
-import { applyCapturedEnvironment, captureShellEnvironmentCached } from '@shared/electron/shell-env';
+import {
+  applyCapturedEnvironment,
+  captureShellEnvironmentCached,
+} from '@shared/electron/shell-env';
 import {
   ASK_USER_DESCRIPTION,
   ASK_USER_FQN,
@@ -398,7 +401,7 @@ export class ClaudeAgentProvider implements AgentProvider {
                         name: z
                           .string()
                           .min(1)
-                          .describe("Display name shown in the Run dropdown, written for a human."),
+                          .describe('Display name shown in the Run dropdown, written for a human.'),
                         providerKind: z
                           .string()
                           .optional()
@@ -408,7 +411,9 @@ export class ClaudeAgentProvider implements AgentProvider {
                         mode: z
                           .enum(['run', 'debug'])
                           .optional()
-                          .describe('Whether it launches normally ("run", the default) or under the debugger.'),
+                          .describe(
+                            'Whether it launches normally ("run", the default) or under the debugger.',
+                          ),
                         program: z
                           .string()
                           .optional()
@@ -422,7 +427,9 @@ export class ClaudeAgentProvider implements AgentProvider {
                         cwd: z
                           .string()
                           .optional()
-                          .describe('Working directory to launch in; defaults to the workspace root.'),
+                          .describe(
+                            'Working directory to launch in; defaults to the workspace root.',
+                          ),
                         env: z
                           .record(z.string(), z.string())
                           .optional()
@@ -443,7 +450,7 @@ export class ClaudeAgentProvider implements AgentProvider {
               ),
               tool(
                 DELETE_RUN_CONFIGURATIONS,
-                "Delete run configurations from the open workspace by id.",
+                'Delete run configurations from the open workspace by id.',
                 {
                   ids: z
                     .array(z.string().min(1))
@@ -480,7 +487,9 @@ export class ClaudeAgentProvider implements AgentProvider {
                             ),
                         },
                         async (args: { text: string; submit?: boolean }) =>
-                          text(await writeTerminalInput(getContext(), args.text, args.submit ?? true)),
+                          text(
+                            await writeTerminalInput(getContext(), args.text, args.submit ?? true),
+                          ),
                       ),
                     ]),
               ]
@@ -530,7 +539,9 @@ export class ClaudeAgentProvider implements AgentProvider {
                         .describe('The number of bytes to disassemble (bounded; defaults to 256).'),
                     },
                     async (args: { offset: number; length?: number }) =>
-                      text(await readBinaryDisassembly(getContext(), args.offset, args.length ?? 256)),
+                      text(
+                        await readBinaryDisassembly(getContext(), args.offset, args.length ?? 256),
+                      ),
                   ),
                   ...(readOnly
                     ? []

@@ -21,11 +21,7 @@ import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
-import {
-  TerminalCreateResult,
-  TerminalKind,
-  TerminalReplay,
-} from '@shared/api/terminal-channels';
+import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
 
 /**
  * The interrupt character (Ctrl+C). The single keystroke a read-only `task` pane forwards to its
@@ -644,7 +640,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
       });
       if (!result.success) {
         this.pendingChunks = null;
-        xterm.writeln(`\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`);
+        xterm.writeln(
+          `\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`,
+        );
         return;
       }
       // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of

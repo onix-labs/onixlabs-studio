@@ -23,7 +23,10 @@ interface CapturedGlyph {
 interface EditorHarness {
   readonly monaco: typeof MonacoApi;
   readonly editor: MonacoApi.editor.IStandaloneCodeEditor;
-  click(line: number | undefined, options?: { right?: boolean; alt?: boolean; type?: number }): void;
+  click(
+    line: number | undefined,
+    options?: { right?: boolean; alt?: boolean; type?: number },
+  ): void;
   glyphs(): CapturedGlyph[];
 }
 

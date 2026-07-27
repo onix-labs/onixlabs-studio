@@ -141,7 +141,13 @@ describe('DebugPanel', () => {
   let component: DebugPanel;
   let c: Testable;
 
-  const panel: DockPanel = { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel };
+  const panel: DockPanel = {
+    id: 'debug',
+    title: 'Debug',
+    icon: Icon.DEBUG,
+    role: 'tool',
+    component: DebugPanel,
+  };
 
   function build(): void {
     session = new FakeSession();
@@ -153,7 +159,10 @@ describe('DebugPanel', () => {
         { provide: DebugSession, useValue: session as unknown as DebugSession },
         { provide: FileOpener, useValue: opener as unknown as FileOpener },
         { provide: Editors, useValue: editors as unknown as Editors },
-        { provide: Documents, useValue: { findIdByPath: (): string => 'doc1' } as unknown as Documents },
+        {
+          provide: Documents,
+          useValue: { findIdByPath: (): string => 'doc1' } as unknown as Documents,
+        },
       ],
     });
     fixture = TestBed.createComponent(DebugPanel);

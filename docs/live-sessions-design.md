@@ -37,17 +37,17 @@ Studio runs agents **transiently**, one SDK call per turn:
 
 **Only the live-session pillar is missing.**
 
-## 3. The core distinction: two provider *shapes*
+## 3. The core distinction: two provider _shapes_
 
 The primary axis is **agent-harness vs raw-model**, not vendor:
 
-| | **Live-harness provider** | **Stateless-model provider** |
-|---|---|---|
-| Examples | Claude Code, **OpenAI Codex** | OpenAI API, Qwen, Ollama (via Vercel AI SDK) |
-| Who owns the agent loop | The harness (external runtime) | **Studio** |
-| Session | A live subprocess session, held open | The replayed transcript; each call is stateless |
-| Integration | Spawn + speak a streaming protocol | HTTP request per turn |
-| Wants persistence? | **Yes** — hold the session open | No — nothing to hold |
+|                         | **Live-harness provider**            | **Stateless-model provider**                    |
+| ----------------------- | ------------------------------------ | ----------------------------------------------- |
+| Examples                | Claude Code, **OpenAI Codex**        | OpenAI API, Qwen, Ollama (via Vercel AI SDK)    |
+| Who owns the agent loop | The harness (external runtime)       | **Studio**                                      |
+| Session                 | A live subprocess session, held open | The replayed transcript; each call is stateless |
+| Integration             | Spawn + speak a streaming protocol   | HTTP request per turn                           |
+| Wants persistence?      | **Yes** — hold the session open      | No — nothing to hold                            |
 
 The same underlying model can appear as either shape depending on how it is integrated (Codex-the-agent =
 harness; the raw OpenAI API = stateless). Both must sit behind **one `AgentProvider` seam**, and the UI must
@@ -101,7 +101,7 @@ heavier than a `claude`/`codex` subprocess). The lifetime setting + memory valve
 
 **Implementation (P3, #327 — Claude path):** the lifecycle above landed as designed, with these concrete
 choices. A live session is `ClaudeAgentSession` (implements `AgentSession`), holding one SDK `query()` open;
-`AiManager` keys held-open sessions by a **renderer-minted `agentSessionId`** — stable per conversation, *not*
+`AiManager` keys held-open sessions by a **renderer-minted `agentSessionId`** — stable per conversation, _not_
 the SDK session id, which avoids a before-id-known race and decouples routing from resume. The session's
 options split **frozen-at-open** (cwd, the surface/mode-scoped MCP tool set, allowed/`disallowedTools`,
 sandbox, system prompt, resume, env, opening model) from **per-turn** (the tool handlers, `canUseTool`, and the
@@ -128,7 +128,7 @@ frozen/armed per turn (fine while live).
   durable record for display + the resume key. Avoid double-writing divergent histories.
 
 **Implementation (P4, #328):** cold-start reopen replaced P3's transient fallback — `AiManager.dispatchLive`
-now opens a *live* session for a turn that carries a `resumeSessionId` but has no live entry (a restored,
+now opens a _live_ session for a turn that carries a `resumeSessionId` but has no live entry (a restored,
 rewound, or post-restart conversation), and the provider emits the SDK `resume` from the opening context, so
 the reopened session keeps its model context. Idle-reap landed as a per-session timer armed when a turn
 settles and cleared while one runs, driven by the new **`ai.agentSessionLifetime`** setting (30 m / 60 m /
@@ -151,7 +151,7 @@ Move from per-**run** to per-**session**, keeping per-turn semantics within:
 - **Abort** splits into **interrupt-turn** (default Stop button) vs **close-session** (New chat / tab close).
 - The **wall-clock timeout** and **token-budget** become per-turn budgets within a persistent session (the
   session itself has no fixed end); revisit whether a session-level idle timeout replaces the run timeout.
-- Steering (already streaming-input based) becomes the *normal* path: every `send` after the first is a
+- Steering (already streaming-input based) becomes the _normal_ path: every `send` after the first is a
   steer into the open session.
 
 ## 8. Spike A — can one Claude `query()` hold a multi-turn session open?
@@ -187,7 +187,7 @@ user message through the existing `setSteerHandler`/`pendingSteers` path (rename
    reserve for **agent disposal / New chat**. `interrupt()` stops the **current turn** and keeps the session
    → the right primitive for a per-message **Stop** button. Today's abort→`closeInput` tears everything down.
 4. **`resume` is cold-start only.** While the query is held open, context is in-process and `resume` must NOT
-   be set. Keep `resume` for reconstituting a conversation into a *new* held-open query (app restart / crash /
+   be set. Keep `resume` for reconstituting a conversation into a _new_ held-open query (app restart / crash /
    post-idle-reap); drop it for same-query turns.
 5. **Cost is cumulative across the held-open query; `num_turns` is per-turn.** The provider already tracks
    per-turn cost deltas via `usageState.lastCostUsd` — keep that; don't assume `num_turns` accumulates.
@@ -205,11 +205,12 @@ subprocess warm — a weaker but viable model. Not needed based on this spike.
 
 ## 9. Spike B — OpenAI Codex integration surface
 
-**Verdict: strong fit behind the existing seam.** Codex is *more* integration-ready than Claude Code. (Codex
+**Verdict: strong fit behind the existing seam.** Codex is _more_ integration-ready than Claude Code. (Codex
 not installed locally; findings are from current Jul-2026 web sources + `npm view` — SDK & CLI both at
 **0.144.6**, fast-moving; runtime-behaviour claims marked unverified.)
 
 **Three programmatic surfaces**, all wrapping the same Rust core:
+
 - **`codex exec`** — one-shot headless, JSONL with `--json`. **Unsuitable for Studio** — approval requests
   fail the run unless auto-approved. (CI use only.)
 - **`@openai/codex-sdk`** — official TS/Node SDK; **spawns the CLI and exchanges JSONL over stdio**, exactly
@@ -226,11 +227,12 @@ not installed locally; findings are from current Jul-2026 web sources + `npm vie
 
 **Approvals are the key match.** The app-server sends **server-initiated JSON-RPC requests and blocks on the
 reply** — structurally identical to Studio's `requestPermission`/`requestEditDecision`/`requestInput`:
+
 - `execCommandApproval` → `context.requestPermission`
 - `applyPatchApproval` (carries diffs) → `context.requestEditDecision` (`hasDiff` staged preview)
 - elicitation → `context.requestInput`
-Governed by `approval_policy` (`user`/auto) + `sandboxPolicy` (`read-only`/`workspace-write`/
-`danger-full-access`/**`externalSandbox`** for pre-sandboxed hosts).
+  Governed by `approval_policy` (`user`/auto) + `sandboxPolicy` (`read-only`/`workspace-write`/
+  `danger-full-access`/**`externalSandbox`** for pre-sandboxed hosts).
 
 **Other capabilities:** reasoning effort `none|minimal|low|medium|high|xhigh` (**superset of Claude's**, per
 thread/turn; `model/list` discovers models + efforts); model selection; images (`local_image` inputs). Auth:
@@ -247,6 +249,7 @@ persistent `codex app-server`; `initialize` handshake; `thread/start`|`resume`|`
 token meter; `recordAudit` executed actions.
 
 **Divergences that stress the abstraction (design carefully):**
+
 - **Enforcement locus differs — the biggest task.** Studio's hard, non-overridable **write-confinement**
   (agent-confinement ruling) is enforced today via `canUseTool`/`disallowedTools`. Codex has **no per-tool
   denylist** — enforcement is `sandboxPolicy` + `approval_policy`. Confinement must map onto
@@ -309,6 +312,7 @@ mirrors #141 (`codex-executable.ts` + asarUnpack of `@openai/codex*`), unverifie
    stateless-model — without special-casing the UI.
 
 **Carry-forward conditions into later phases:**
+
 - **P3/P5 — confinement equivalence is the top design risk.** Both harnesses can execute without a per-call
   gate (Claude's classifier-auto-run; Codex's sandbox/approval-policy). Studio's hard write-confinement must
   be enforced through the harness's real mechanism (Claude `disallowedTools`/sandbox; Codex `sandboxPolicy`

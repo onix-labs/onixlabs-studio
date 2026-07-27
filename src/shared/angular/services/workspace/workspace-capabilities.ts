@@ -15,9 +15,8 @@ export class WorkspaceCapabilities {
   /**
    * Holds the active workspace's project-model source, or null when no workspace is active.
    */
-  private readonly source: WritableSignal<Signal<ProjectModel | null> | null> = signal<Signal<
-    ProjectModel | null
-  > | null>(null);
+  private readonly source: WritableSignal<Signal<ProjectModel | null> | null> =
+    signal<Signal<ProjectModel | null> | null>(null);
 
   /**
    * Gets the active workspace's declared capabilities, or null when none are available.

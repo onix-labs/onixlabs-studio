@@ -238,14 +238,18 @@ describe('compound run configurations', () => {
     const selfish: RunConfiguration = compound('selfish', ['api', 'ghost', 'selfish']);
 
     expect(
-      expandRunConfiguration(selfish, [api, selfish]).map((leaf: RunConfiguration): string => leaf.id),
+      expandRunConfiguration(selfish, [api, selfish]).map(
+        (leaf: RunConfiguration): string => leaf.id,
+      ),
     ).toEqual(['api']);
 
     // A two-step cycle terminates just as surely, and neither compound is launched as a leaf.
     const left: RunConfiguration = compound('left', ['right']);
     const right: RunConfiguration = compound('right', ['left', 'api']);
     expect(
-      expandRunConfiguration(left, [left, right, api]).map((leaf: RunConfiguration): string => leaf.id),
+      expandRunConfiguration(left, [left, right, api]).map(
+        (leaf: RunConfiguration): string => leaf.id,
+      ),
     ).toEqual(['api']);
   });
 
@@ -282,7 +286,10 @@ describe('findRunConfigurationIssues', () => {
   });
 
   it('reportsADuplicateId', () => {
-    const issues: readonly string[] = findRunConfigurationIssues([config('a', 'A'), config('a', 'B')]);
+    const issues: readonly string[] = findRunConfigurationIssues([
+      config('a', 'A'),
+      config('a', 'B'),
+    ]);
 
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain('Duplicate run configuration id "a"');
@@ -312,7 +319,12 @@ describe('findRunConfigurationIssues', () => {
     const api: RunConfiguration = config('api', 'API');
 
     expect(
-      findRunConfigurationIssues([api, compound('one', ['api']), compound('two', ['api']), compound('both', ['one', 'two'])]),
+      findRunConfigurationIssues([
+        api,
+        compound('one', ['api']),
+        compound('two', ['api']),
+        compound('both', ['one', 'two']),
+      ]),
     ).toEqual([]);
   });
 });

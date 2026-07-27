@@ -1151,7 +1151,9 @@ export class BinaryDocuments implements UnsavedWorkSource {
    * @returns Returns the dirty documents the tab hosts.
    */
   public dirtyDocumentsFor(tabId: string): readonly UnsavedDocument[] {
-    return this.dirtyDocuments().filter((document: UnsavedDocument): boolean => document.id === tabId);
+    return this.dirtyDocuments().filter(
+      (document: UnsavedDocument): boolean => document.id === tabId,
+    );
   }
 
   /**

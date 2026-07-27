@@ -67,9 +67,9 @@ describe('codex-login strategy', () => {
   const strategy: AuthStrategy = strategyFor('codex-login');
 
   it('resolvesLocalCodexLoginFirst', () => {
-    expect(
-      strategy.resolve(context({ hasCodexLogin: true, storedKey: 'k', envKey: 'e' })),
-    ).toEqual({ source: 'local-login', apiKey: null });
+    expect(strategy.resolve(context({ hasCodexLogin: true, storedKey: 'k', envKey: 'e' }))).toEqual(
+      { source: 'local-login', apiKey: null },
+    );
   });
 
   it('fallsBackToStoredKeyOnly_ignoringTheAnthropicEnvKey', () => {

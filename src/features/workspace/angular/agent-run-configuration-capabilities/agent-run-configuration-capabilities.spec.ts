@@ -204,7 +204,9 @@ describe('AgentRunConfigurationCapabilities', () => {
       { id: 'all', name: 'Everything', providerKind: 'compound', mode: 'run', members: ['api'] },
     ]);
 
-    const result: WriteResult = await call<WriteResult>(DELETE_RUN_CONFIGURATIONS, { ids: ['api'] });
+    const result: WriteResult = await call<WriteResult>(DELETE_RUN_CONFIGURATIONS, {
+      ids: ['api'],
+    });
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('api');

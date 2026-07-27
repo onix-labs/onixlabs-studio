@@ -106,8 +106,9 @@ export class BreakpointGutterController {
   public render(breakpoints: readonly Breakpoint[]): void {
     this.current = breakpoints;
     this.decorations.set(
-      breakpoints.map((breakpoint: Breakpoint): MonacoApi.editor.IModelDeltaDecoration =>
-        this.glyphDecoration(breakpoint),
+      breakpoints.map(
+        (breakpoint: Breakpoint): MonacoApi.editor.IModelDeltaDecoration =>
+          this.glyphDecoration(breakpoint),
       ),
     );
   }

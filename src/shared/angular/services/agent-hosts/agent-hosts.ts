@@ -75,7 +75,9 @@ export class AgentHosts {
   /**
    * Holds the registered live hosts.
    */
-  private readonly hostList: WritableSignal<readonly AgentHost[]> = signal<readonly AgentHost[]>([]);
+  private readonly hostList: WritableSignal<readonly AgentHost[]> = signal<readonly AgentHost[]>(
+    [],
+  );
 
   /**
    * Tracks the counter that assigns each registration a unique identity.
@@ -91,7 +93,8 @@ export class AgentHosts {
    * Gets the number of live hosts whose agent is currently running.
    */
   public readonly runningCount: Signal<number> = computed(
-    (): number => this.hostList().filter((host: AgentHost): boolean => host.agent.isRunning()).length,
+    (): number =>
+      this.hostList().filter((host: AgentHost): boolean => host.agent.isRunning()).length,
   );
 
   /**
@@ -112,7 +115,10 @@ export class AgentHosts {
     }
     this.sequence += 1;
     const full: AgentHost = { ...host, id: `agent-host-${this.sequence}` };
-    this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => [...current, full]);
+    this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => [
+      ...current,
+      full,
+    ]);
     return (): void => {
       this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] =>
         current.filter((existing: AgentHost): boolean => existing !== full),

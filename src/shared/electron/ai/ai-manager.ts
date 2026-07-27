@@ -249,7 +249,10 @@ export class AiManager {
    * `agentSessionId`. Each outlives its turns; closed on New chat / tab close (via `closeSession`) or
    * shutdown. Empty while {@link LIVE_SESSIONS_ENABLED} is false.
    */
-  private readonly liveSessions: Map<string, LiveSessionEntry> = new Map<string, LiveSessionEntry>();
+  private readonly liveSessions: Map<string, LiveSessionEntry> = new Map<
+    string,
+    LiveSessionEntry
+  >();
 
   /**
    * Holds the bridge to the renderer's in-app capabilities.
@@ -674,7 +677,8 @@ export class AiManager {
     });
     // Route the turn into a held-open live session when one applies (#327); otherwise run it transiently
     // through the provider as today. `finish` is per-turn cleanup either way and never closes the session.
-    const turn: Promise<void> = this.dispatchLive(request, context, provider) ?? provider.run(context);
+    const turn: Promise<void> =
+      this.dispatchLive(request, context, provider) ?? provider.run(context);
     void turn
       .then((): void =>
         this.finish(request.requestId, controller.signal.aborted ? 'aborted' : 'completed', ''),

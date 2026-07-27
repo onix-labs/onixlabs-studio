@@ -42,9 +42,8 @@ export class AgentConversationStore {
       (_event: IpcMainInvokeEvent, contextId: unknown): readonly AgentConversationSummary[] =>
         this.list(contextId),
     );
-    ipcMain.handle(
-      AgentConversationChannel.ListAll,
-      (): readonly AgentConversationSummary[] => this.listAll(),
+    ipcMain.handle(AgentConversationChannel.ListAll, (): readonly AgentConversationSummary[] =>
+      this.listAll(),
     );
     ipcMain.handle(
       AgentConversationChannel.Load,

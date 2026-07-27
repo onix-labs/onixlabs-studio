@@ -233,7 +233,8 @@ export class MarkdownRibbon {
    */
   protected readonly isDocumentEmpty: Signal<boolean> = computed((): boolean => {
     const id: string | undefined = this.tabs.activeTabId();
-    const content: string = (id === undefined ? undefined : this.documents.get(id)?.content()) ?? '';
+    const content: string =
+      (id === undefined ? undefined : this.documents.get(id)?.content()) ?? '';
     return content.trim().length === 0;
   });
 

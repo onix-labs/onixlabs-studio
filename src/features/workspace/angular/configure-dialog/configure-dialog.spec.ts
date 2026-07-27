@@ -193,10 +193,11 @@ describe('ConfigureDialogPanel', () => {
     dialog.open();
     tick();
 
-    expect(internals().groups().flatMap((g) => g.configurations.map((c) => c.name))).toEqual([
-      'A',
-      'B',
-    ]);
+    expect(
+      internals()
+        .groups()
+        .flatMap((g) => g.configurations.map((c) => c.name)),
+    ).toEqual(['A', 'B']);
     expect(internals().selected()?.id).toBe('a');
   });
 
@@ -218,10 +219,11 @@ describe('ConfigureDialogPanel', () => {
 
     internals().onDuplicate();
 
-    expect(internals().groups().flatMap((g) => g.configurations.map((c) => c.name))).toEqual([
-      'A',
-      'A copy',
-    ]);
+    expect(
+      internals()
+        .groups()
+        .flatMap((g) => g.configurations.map((c) => c.name)),
+    ).toEqual(['A', 'A copy']);
     expect(internals().selected()?.name).toBe('A copy');
   });
 
@@ -232,7 +234,11 @@ describe('ConfigureDialogPanel', () => {
 
     internals().onDelete();
 
-    expect(internals().groups().flatMap((g) => g.configurations.map((c) => c.id))).toEqual(['b']);
+    expect(
+      internals()
+        .groups()
+        .flatMap((g) => g.configurations.map((c) => c.id)),
+    ).toEqual(['b']);
   });
 
   it('savesTheDraftAndClosesTheDialog', () => {
@@ -266,9 +272,17 @@ describe('ConfigureDialogPanel', () => {
     dialog.open();
     tick();
 
-    expect(internals().buildConfigOptions().map((o) => o.label)).toEqual(['Debug', 'Release']);
+    expect(
+      internals()
+        .buildConfigOptions()
+        .map((o) => o.label),
+    ).toEqual(['Debug', 'Release']);
     expect(internals().hasTarget()).toBe(true);
-    expect(internals().targetOptions().map((o) => o.label)).toEqual(['Any CPU']);
+    expect(
+      internals()
+        .targetOptions()
+        .map((o) => o.label),
+    ).toEqual(['Any CPU']);
   });
 
   it('roundTripsArgumentsAndEnvironmentThroughTheirTextForms', () => {
@@ -377,11 +391,11 @@ describe('ConfigureDialogPanel agent authoring', () => {
     ]);
     tick();
 
-    expect(internals().groups().flatMap((g) => g.configurations.map((c) => c.id))).toEqual([
-      'a',
-      'b',
-      'c',
-    ]);
+    expect(
+      internals()
+        .groups()
+        .flatMap((g) => g.configurations.map((c) => c.id)),
+    ).toEqual(['a', 'b', 'c']);
     // The configuration the user was reading does not jump under them as new ones arrive.
     expect(internals().selected()?.id).toBe('b');
   });

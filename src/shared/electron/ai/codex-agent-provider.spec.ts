@@ -168,7 +168,11 @@ describe('CodexAgentProvider', () => {
       allowedWritePaths: [],
     };
 
-    const high: ThreadOptions = build({ ...base, mode: 'agent', effort: 'high' } as AgentRunContext);
+    const high: ThreadOptions = build({
+      ...base,
+      mode: 'agent',
+      effort: 'high',
+    } as AgentRunContext);
     expect(high.modelReasoningEffort).toBe('high');
     expect(high.sandboxMode).toBe('workspace-write');
 
@@ -234,10 +238,9 @@ describe('CodexAgentSession', () => {
     ];
     const controller: AbortController = new AbortController();
 
-    await makeSession(
+    await makeSession(codexCtx('run-1', controller.signal, events), client).turn(
       codexCtx('run-1', controller.signal, events),
-      client,
-    ).turn(codexCtx('run-1', controller.signal, events));
+    );
 
     expect(client.startCalls).toBe(1);
     expect(client.resumeCalls).toBe(0);
@@ -261,10 +264,9 @@ describe('CodexAgentSession', () => {
     client.thread.queued = [{ type: 'turn.completed', usage: ZERO_USAGE }];
     const controller: AbortController = new AbortController();
 
-    await makeSession(
+    await makeSession(codexCtx('run-1', controller.signal, events, 'th-existing'), client).turn(
       codexCtx('run-1', controller.signal, events, 'th-existing'),
-      client,
-    ).turn(codexCtx('run-1', controller.signal, events, 'th-existing'));
+    );
 
     expect(client.startCalls).toBe(0);
     expect(client.resumeCalls).toBe(1);
@@ -282,10 +284,9 @@ describe('CodexAgentSession', () => {
     ];
     const controller: AbortController = new AbortController();
 
-    await makeSession(
+    await makeSession(codexCtx('run-1', controller.signal, events), client).turn(
       codexCtx('run-1', controller.signal, events),
-      client,
-    ).turn(codexCtx('run-1', controller.signal, events));
+    );
 
     const deltas: unknown[] = (events as unknown as Record<string, unknown>[])
       .filter((event: Record<string, unknown>): boolean => event['kind'] === 'text')
@@ -302,9 +303,29 @@ describe('CodexAgentSession', () => {
       client,
     );
 
-    thread.queued = [{ type: 'turn.completed', usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1, reasoning_output_tokens: 0 } }];
+    thread.queued = [
+      {
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 1,
+          cached_input_tokens: 0,
+          output_tokens: 1,
+          reasoning_output_tokens: 0,
+        },
+      },
+    ];
     await session.turn(codexCtx('run-1', new AbortController().signal, events));
-    thread.queued = [{ type: 'turn.completed', usage: { input_tokens: 2, cached_input_tokens: 0, output_tokens: 2, reasoning_output_tokens: 0 } }];
+    thread.queued = [
+      {
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 2,
+          cached_input_tokens: 0,
+          output_tokens: 2,
+          reasoning_output_tokens: 0,
+        },
+      },
+    ];
     await session.turn(codexCtx('run-2', new AbortController().signal, events));
 
     expect(client.startCalls).toBe(1);

@@ -77,8 +77,7 @@ const KOTLIN_LS_URL: string =
  * Holds the expected SHA-256 of the pinned Kotlin server distribution. The download is verified against
  * this before it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const KOTLIN_LS_SHA256: string =
-  '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
+const KOTLIN_LS_SHA256: string = '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
 
 /**
  * Holds the pinned version of the rust-analyzer language server (a rust-lang release, date-tagged). The
@@ -686,7 +685,9 @@ export class LspProvisioner {
     }
     candidates.push('go');
     if (process.platform === 'win32') {
-      candidates.push(path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'Go', 'bin', exe));
+      candidates.push(
+        path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'Go', 'bin', exe),
+      );
     } else {
       candidates.push('/usr/local/go/bin/go', '/opt/homebrew/bin/go', '/usr/local/bin/go');
     }

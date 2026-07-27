@@ -301,7 +301,9 @@ export class LspServerRegistry {
     const env: Record<string, string> | undefined =
       home === undefined
         ? undefined
-        : { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.join(home, '.cargo', 'bin')}` };
+        : {
+            PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.join(home, '.cargo', 'bin')}`,
+          };
     return resolved(this.withExtraArgs('rust', { command: binary, args: [], env }));
   }
 
@@ -315,7 +317,9 @@ export class LspServerRegistry {
   private async buildGo(): Promise<LspResolution> {
     const go: string | null = await this.provisioner.detectGo(null);
     if (go === null) {
-      return unavailable('Go toolchain not found — install Go from go.dev, or add it to your PATH.');
+      return unavailable(
+        'Go toolchain not found — install Go from go.dev, or add it to your PATH.',
+      );
     }
     const gopls: string | null = await this.provisioner.ensureGopls(go);
     if (gopls === null) {

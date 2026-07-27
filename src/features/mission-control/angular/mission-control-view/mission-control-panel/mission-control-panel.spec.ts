@@ -3,7 +3,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AiPermissionPosture } from '@shared/api/ai-types';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
-import { AgentRequestEntry, AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
+import {
+  AgentRequestEntry,
+  AgentRequests,
+} from '@shared/angular/services/agent-requests/agent-requests';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';

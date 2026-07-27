@@ -315,9 +315,7 @@ export class Output {
         clearListeners: new Set<() => void>(),
       };
       this.channelStates.set(id, state);
-      this.channelList.set(
-        [...this.channelStates.values()].map((each: ChannelState) => each.info),
-      );
+      this.channelList.set([...this.channelStates.values()].map((each: ChannelState) => each.info));
     }
     return state;
   }

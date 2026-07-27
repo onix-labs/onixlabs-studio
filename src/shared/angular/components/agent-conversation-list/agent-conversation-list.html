@@ -287,7 +287,9 @@
   (dismiss)="onCancelCategory()"
 >
   @if (categoryEditor(); as editor) {
-    <h2 class="history__modal-title">{{ editor.id === null ? 'New category' : 'Rename category' }}</h2>
+    <h2 class="history__modal-title">
+      {{ editor.id === null ? 'New category' : 'Rename category' }}
+    </h2>
     <input
       class="history__modal-input"
       type="text"

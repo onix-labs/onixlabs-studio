@@ -7,7 +7,12 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
  * read-only tool are intentionally excluded: the editor tools act on the open buffer the user can
  * see and undo, not an arbitrary path, and reads are out of scope for write confinement.
  */
-export const CONFINED_WRITE_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+export const CONFINED_WRITE_TOOLS: readonly string[] = [
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+];
 
 /**
  * The input keys a confined write tool carries its target path under: `file_path` for Write/Edit/
@@ -67,16 +72,14 @@ export function isWriteWithinRoots(target: string, roots: readonly string[]): bo
  * @param base The directory a relative target resolves against (the run's working directory).
  * @returns Returns true when the write is denied.
  */
-export function isWriteDenied(
-  target: string,
-  denyList: readonly string[],
-  base: string,
-): boolean {
+export function isWriteDenied(target: string, denyList: readonly string[], base: string): boolean {
   if (denyList.length === 0) {
     return false;
   }
   const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
-  const segments: readonly string[] = resolvedTarget.split(sep).filter((s: string): boolean => s.length > 0);
+  const segments: readonly string[] = resolvedTarget
+    .split(sep)
+    .filter((s: string): boolean => s.length > 0);
   return denyList.some((entry: string): boolean => {
     if (entry.length === 0) {
       return false;
@@ -104,7 +107,9 @@ export function sanitizeWritePaths(value: unknown, requireAbsolute: boolean): re
   return value
     .filter((entry: unknown): entry is string => typeof entry === 'string')
     .map((entry: string): string => entry.trim())
-    .filter((entry: string): boolean => entry.length > 0 && (!requireAbsolute || isAbsolute(entry)));
+    .filter(
+      (entry: string): boolean => entry.length > 0 && (!requireAbsolute || isAbsolute(entry)),
+    );
 }
 
 /**

@@ -35,7 +35,11 @@ function response(
 
 describe('encodeMessage', () => {
   it('framesWithAByteCountedContentLengthHeader', () => {
-    const encoded: string = encodeMessage({ seq: 1, type: 'event', event: 'x' } as DebugProtocol.Event);
+    const encoded: string = encodeMessage({
+      seq: 1,
+      type: 'event',
+      event: 'x',
+    } as DebugProtocol.Event);
     const [header, body]: string[] = encoded.split('\r\n\r\n');
     expect(header).toBe(`Content-Length: ${new TextEncoder().encode(body).length}`);
     expect(JSON.parse(body)).toEqual({ seq: 1, type: 'event', event: 'x' });
@@ -68,7 +72,9 @@ describe('DapMessageDecoder', () => {
 
   it('reassemblesAMessageSplitAcrossChunks', () => {
     const decoder: DapMessageDecoder = new DapMessageDecoder();
-    const whole: Uint8Array = bytes(response(1, 'initialize', { body: { supportsStepBack: true } }));
+    const whole: Uint8Array = bytes(
+      response(1, 'initialize', { body: { supportsStepBack: true } }),
+    );
     const first: Uint8Array = whole.subarray(0, 12);
     const second: Uint8Array = whole.subarray(12);
     expect(decoder.append(first)).toEqual([]);
@@ -107,7 +113,9 @@ describe('DapMessageDecoder', () => {
     const decoder: DapMessageDecoder = new DapMessageDecoder();
     const body: string = JSON.stringify({ seq: 1, type: 'event', event: 'x' });
     const framed: string = `content-length: ${new TextEncoder().encode(body).length}\r\n\r\n${body}`;
-    const messages: DebugProtocol.ProtocolMessage[] = decoder.append(new TextEncoder().encode(framed));
+    const messages: DebugProtocol.ProtocolMessage[] = decoder.append(
+      new TextEncoder().encode(framed),
+    );
     expect(messages).toHaveLength(1);
   });
 });
@@ -127,7 +135,9 @@ describe('DapProtocol', () => {
     const protocol: DapProtocol = new DapProtocol((m) => sent.push(m));
     const pending: Promise<DebugProtocol.Capabilities> =
       protocol.sendRequest<DebugProtocol.Capabilities>('initialize');
-    protocol.handleMessage(response(sent[0].seq, 'initialize', { body: { supportsStepBack: true } }));
+    protocol.handleMessage(
+      response(sent[0].seq, 'initialize', { body: { supportsStepBack: true } }),
+    );
     await expect(pending).resolves.toEqual({ supportsStepBack: true });
   });
 

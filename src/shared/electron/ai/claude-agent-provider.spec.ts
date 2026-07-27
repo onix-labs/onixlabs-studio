@@ -665,10 +665,14 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     const { options, setCurrent } = await build(turnA);
     const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;
 
-    const first: PermissionResult = await gate('Bash', { command: 'ls' }, {
-      signal: new AbortController().signal,
-      toolUseID: 'tool-1',
-    });
+    const first: PermissionResult = await gate(
+      'Bash',
+      { command: 'ls' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-1',
+      },
+    );
     expect(first.behavior).toBe('allow');
     expect(grantsA).toEqual(['Bash']);
 
@@ -681,10 +685,14 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         },
       }),
     );
-    const second: PermissionResult = await gate('Bash', { command: 'ls' }, {
-      signal: new AbortController().signal,
-      toolUseID: 'tool-1',
-    });
+    const second: PermissionResult = await gate(
+      'Bash',
+      { command: 'ls' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-1',
+      },
+    );
     expect(second.behavior).toBe('deny');
     expect(grantsB).toEqual(['Bash']);
     // The first turn's gate was not consulted again.
@@ -706,10 +714,14 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         },
       }),
     );
-    const result: PermissionResult = await gate('Bash', { command: 'ls' }, {
-      signal: new AbortController().signal,
-      toolUseID: 'tool-1',
-    });
+    const result: PermissionResult = await gate(
+      'Bash',
+      { command: 'ls' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-1',
+      },
+    );
     expect(result.behavior).toBe('allow');
     expect(prompted).toBe(false);
   });

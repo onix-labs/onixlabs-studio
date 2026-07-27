@@ -100,7 +100,12 @@ describe('TerminalSessions', () => {
   });
 
   it('setRoot_theFirstRoot_keepsSessionsLaunchedBeforeIt', async () => {
-    const { session } = await sessions.launch({ name: 'Build', kind: 'task', command: 'make', cwd: '/w' });
+    const { session } = await sessions.launch({
+      name: 'Build',
+      kind: 'task',
+      command: 'make',
+      cwd: '/w',
+    });
 
     sessions.setRoot('/repo');
 
@@ -244,7 +249,12 @@ describe('TerminalSessions', () => {
     expect(session.generation).toBe(0);
     expect(session.exitCode).toBeNull();
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ id: session.id, kind: 'task', command: 'dotnet build', cwd: '/repo' }),
+      expect.objectContaining({
+        id: session.id,
+        kind: 'task',
+        command: 'dotnet build',
+        cwd: '/repo',
+      }),
     );
     expect(sessions.activeId()).toBe(session.id);
     expect(reveal).toHaveBeenCalledWith('terminal');
@@ -331,7 +341,9 @@ describe('TerminalSessions', () => {
     });
 
     await expect(exited).resolves.toBe(1);
-    expect(sessions.sessions().find((s: TerminalSession): boolean => s.id === session.id)?.exitCode).toBe(1);
+    expect(
+      sessions.sessions().find((s: TerminalSession): boolean => s.id === session.id)?.exitCode,
+    ).toBe(1);
   });
 
   it('close_ofARunningLaunchedSession_resolvesItsCompletionAsDisposed', async () => {
