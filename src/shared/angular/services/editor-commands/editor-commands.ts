@@ -40,6 +40,14 @@ export interface EditorCommandHandler {
   formatDocument(): void;
 
   /**
+   * Cleans the document up: organises its imports, then formats it. Optional, since it depends on the
+   * editor having a language server that offers the organise-imports source action — an editor
+   * without one (the markdown surface) simply does not implement it.
+   * @returns Returns a promise that completes when the clean-up has run.
+   */
+  codeCleanup?(): Promise<void>;
+
+  /**
    * Saves the document, prompting for a path when it has never been saved.
    */
   save(): void;
@@ -313,6 +321,23 @@ export class EditorCommands {
    */
   public formatDocument(): void {
     this.activeHandler()?.formatDocument();
+  }
+
+  /**
+   * Gets a value indicating whether the active editor offers code clean-up, so a ribbon can disable
+   * the action rather than offer one that would do nothing.
+   */
+  public readonly canCodeCleanup: Signal<boolean> = computed(
+    (): boolean => this.activeHandler()?.codeCleanup !== undefined,
+  );
+
+  /**
+   * Invokes the code-cleanup command on the active editor: organise imports, then format. Resolves
+   * without doing anything when no editor is active or the active one offers no clean-up.
+   * @returns Returns a promise that completes when the clean-up has run.
+   */
+  public async codeCleanup(): Promise<void> {
+    await this.activeHandler()?.codeCleanup?.();
   }
 
   /**

@@ -57,6 +57,136 @@
   }
 }
 
+// The Save As dialog's Default box, sitting between the name field and the actions.
+.directory-ribbon__prompt-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-end: 1.3rem;
+  font-size: 0.85rem;
+  color: var(--body-foreground-color);
+  cursor: default;
+}
+
+// The Manage dialog's preset list. Scrolls in place rather than growing the dialog, so a long list
+// of user presets cannot push the actions off-screen.
+.directory-ribbon__preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 1.3rem;
+  padding: 0;
+  max-block-size: 15rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.directory-ribbon__preset-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &:hover {
+    background: var(--dock-hover-background-color, transparent);
+  }
+}
+
+// The default marker: a star that reads muted until it is the chosen one, so exactly one row in the
+// list is lit at a time.
+.directory-ribbon__preset-default {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+  opacity: 0.35;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    opacity: 0.7;
+    outline: none;
+  }
+}
+
+.directory-ribbon__preset-default--on {
+  color: var(--accent-surface-border-color);
+  opacity: 1;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.directory-ribbon__preset-name {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  color: var(--body-foreground-color);
+}
+
+// Marks a preset the user cannot rename or delete.
+.directory-ribbon__preset-tag {
+  flex: none;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--form-muted-foreground-color);
+}
+
+.directory-ribbon__preset-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--accent-coral);
+    outline: none;
+  }
+}
+
+// The Manage dialog's inline rename field, sharing the prompt input's form-control tokens at a
+// row-sized scale.
+.directory-ribbon__preset-input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: 0.3rem 0.5rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+// The Manage dialog's leading action sits away from Done, since it acts on the layout rather than on
+// the dialog. Opt-in, so the other dialogs keep Cancel next to their primary action.
+.directory-ribbon__confirm-actions--split {
+  justify-content: space-between;
+}
+
 // The preset prompt's name input follows the shared form-control tokens (matching the terminal
 // panel's inline rename field).
 .directory-ribbon__prompt-input {

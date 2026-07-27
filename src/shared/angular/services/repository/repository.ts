@@ -493,8 +493,23 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public discard(file: GitFileChange): Promise<MutationResult> {
+    return this.discardFiles([file]);
+  }
+
+  /**
+   * Discards several files' uncommitted changes in one command — restoring tracked files to `HEAD`,
+   * deleting untracked ones — then reloads once. Destructive; the caller confirms first. Discarding
+   * nothing succeeds without touching the provider, so a caller need not guard an empty selection.
+   * @param files The files whose changes are discarded.
+   * @returns Returns the outcome.
+   */
+  public discardFiles(files: readonly GitFileChange[]): Promise<MutationResult> {
+    if (files.length === 0) {
+      return Promise.resolve({ success: true });
+    }
+    const paths: readonly string[] = files.map((file: GitFileChange): string => file.path);
     return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.discard([file.path]),
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.discard(paths),
     );
   }
 
@@ -651,13 +666,68 @@ export class Repository {
   }
 
   /**
-   * Creates a branch at the current head and checks it out, then reloads.
-   * @param name The new branch name.
+   * Restores a stash onto the working tree, keeping it on the stack, then reloads and selects the
+   * working tree so the restored changes are what the user is looking at.
+   * @param index The stack index of the stash (0 is the most recent).
    * @returns Returns the outcome.
    */
-  public createBranch(name: string): Promise<MutationResult> {
+  public applyStash(index: number): Promise<MutationResult> {
+    return this.restoreStash(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.applyStash(index),
+    );
+  }
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack, then reloads and selects the
+   * working tree.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  public popStash(index: number): Promise<MutationResult> {
+    return this.restoreStash(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.popStash(index),
+    );
+  }
+
+  /**
+   * Deletes a stash without restoring it, then reloads. Destructive; the caller confirms first.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  public dropStash(index: number): Promise<MutationResult> {
     return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.createBranch(name),
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.dropStash(index),
+    );
+  }
+
+  /**
+   * Runs a stash restore, selecting the working tree on success: the point of restoring a stash is to
+   * work on what it brought back, so the panel follows the changes rather than leaving the user on
+   * whatever commit they had selected.
+   * @param restore The restore operation to run.
+   * @returns Returns the outcome.
+   */
+  private async restoreStash(
+    restore: (provider: SourceControlProvider) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const result: MutationResult = await this.mutate(restore);
+    if (result.success) {
+      this.selectNode(WORKING_NODE_ID);
+    }
+    return result;
+  }
+
+  /**
+   * Creates a branch at the current head, optionally checking it out, then reloads.
+   * @param name The new branch name.
+   * @param checkout Whether to check the new branch out; when false the current branch stays checked
+   * out and only the branch list changes.
+   * @returns Returns the outcome.
+   */
+  public createBranch(name: string, checkout: boolean = true): Promise<MutationResult> {
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.createBranch(name, checkout),
     );
   }
 

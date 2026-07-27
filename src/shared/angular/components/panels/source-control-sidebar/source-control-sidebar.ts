@@ -19,6 +19,9 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
@@ -120,6 +123,11 @@ interface RepoNode {
   readonly branch?: GitBranch;
 
   /**
+   * Gets the stash, for a stash row (drives the apply, pop, and drop actions).
+   */
+  readonly stash?: GitStash;
+
+  /**
    * Gets the commit a row navigates to when selected (a branch tip or a tag's commit).
    */
   readonly commit?: string;
@@ -162,16 +170,23 @@ interface SectionDef {
 }
 
 /**
- * Renders the source-control view's left rail: a pinned uncommitted-changes entry followed by the
- * repository tree — collapsible sections for local branches, remotes, tags, and stashes, then
- * placeholder sections for pull requests, issues, and CI/CD actions. The tree is presented through the
- * shared {@link TreeView}: this component flattens the repository model into rows and projects each
- * row's content. Selecting the working entry or a branch drives the repository's selection and
- * checkout; the forge sections are stubbed with sample data until they are wired to a provider.
+ * Renders the source-control view's left rail: its own tool strip over the repository tree —
+ * collapsible sections for local branches, remotes, tags, and stashes, then placeholder sections for
+ * pull requests, issues, and CI/CD actions. The tree is presented through the shared {@link TreeView}:
+ * this component flattens the repository model into rows and projects each row's content. The forge
+ * sections are stubbed with sample data until they are wired to a provider.
+ *
+ * This panel owns the branch and stash actions, per the ribbon-versus-panel rule: the ribbon carries
+ * only the repo-global actions, and anything acting on a row the user can see lives here. Branches
+ * check out and are created from here (the tool strip's New Branch dialog); stashes apply, pop, and
+ * drop from their rows, dropping behind a confirmation. The uncommitted-changes entry is not a
+ * separate header but a badge on the CHECKED-OUT branch's row — uncommitted changes belong to the
+ * branch they sit on — and it is always present (muted at zero) so the Commit panel's composer stays
+ * reachable from the rail even when the tree is clean.
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [AppIcon, TreeView],
+  imports: [AppIcon, Checkbox, Modal, PanelToolbar, TreeView],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -251,13 +266,31 @@ export class SourceControlSidebar {
   ];
 
   /**
+   * Holds the filter text narrowing the tree, or an empty string when nothing is filtered.
+   */
+  protected readonly filter: WritableSignal<string> = signal<string>('');
+
+  /**
    * Gets the flattened repository tree: each expanded section's header followed by its children.
+   *
+   * While a filter is set the collapsed state is ignored — every section is searched, only matching
+   * children are kept, and a section with no matches is dropped entirely. A filter that matches
+   * nothing therefore yields an empty tree rather than a list of empty section headers.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
     const expanded: ReadonlySet<string> = this.expandedSections();
+    const needle: string = this.filter().trim().toLowerCase();
+    const filtering: boolean = needle.length > 0;
     const out: TreeRow[] = [];
     for (const section of this.sections) {
-      const open: boolean = expanded.has(section.key);
+      const open: boolean = filtering || expanded.has(section.key);
+      const children: readonly TreeRow[] = open ? section.children() : [];
+      const matched: readonly TreeRow[] = filtering
+        ? children.filter((row: TreeRow): boolean => this.matches(row, needle))
+        : children;
+      if (filtering && matched.length === 0) {
+        continue;
+      }
       out.push({
         id: `section:${section.key}`,
         depth: 0,
@@ -270,12 +303,65 @@ export class SourceControlSidebar {
           sectionKey: section.key,
         },
       });
-      if (open) {
-        out.push(...section.children());
-      }
+      out.push(...matched);
     }
     return out;
   });
+
+  /**
+   * Determines whether a row survives the filter. Placeholder rows never match: an empty section's
+   * "No tags" message is chrome, not a result.
+   * @param row The row to test.
+   * @param needle The lower-cased filter text.
+   * @returns Returns true when the row matches.
+   */
+  private matches(row: TreeRow, needle: string): boolean {
+    const node: RepoNode = this.nodeOf(row);
+    return node.kind !== 'empty' && node.label.toLowerCase().includes(needle);
+  }
+
+  /**
+   * Records the filter text as it is typed.
+   * @param event The input event carrying the text.
+   */
+  protected onFilterInput(event: Event): void {
+    this.filter.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Clears the filter, restoring the sections' own collapsed state.
+   */
+  protected clearFilter(): void {
+    this.filter.set('');
+  }
+
+  /**
+   * Collapses every section. Disabled while filtering, when the collapsed state is not in force.
+   */
+  protected collapseAll(): void {
+    this.expandedSections.set(new Set<string>());
+  }
+
+  /**
+   * Re-reads the repository state.
+   */
+  protected refresh(): void {
+    void this.repository.refresh();
+  }
+
+  /**
+   * Fetches every remote, so the remote-tracking branches this rail lists are current.
+   */
+  protected fetch(): void {
+    void this.repository.fetch();
+  }
+
+  /**
+   * Stashes the working-tree changes.
+   */
+  protected stash(): void {
+    void this.repository.stash();
+  }
 
   /**
    * Gets the id of the row to highlight: the checked-out branch's row, or null when there is none.
@@ -336,18 +422,149 @@ export class SourceControlSidebar {
   }
 
   /**
-   * Selects the working-tree node, so the detail and diff panes show the uncommitted changes.
+   * Checks out a branch.
+   * @param branch The branch to check out.
+   */
+  protected checkout(branch: GitBranch): void {
+    void this.repository.checkout(branch.name);
+  }
+
+  /**
+   * Selects the working tree, so the Commit panel shows the uncommitted changes and its composer.
+   * Reached from the changes badge on the checked-out branch's row: uncommitted changes belong to
+   * the branch they sit on, so that is where the rail shows them.
    */
   protected selectWorking(): void {
     this.repository.selectNode(this.workingNodeId);
   }
 
   /**
-   * Checks out a branch.
-   * @param branch The branch to check out.
+   * Gets a value indicating whether the working tree is the current selection, so the changes badge
+   * can show itself as active.
    */
-  protected checkout(branch: GitBranch): void {
-    void this.repository.checkout(branch.name);
+  protected readonly workingSelected: Signal<boolean> = computed(
+    (): boolean => this.repository.selectedNodeId() === this.workingNodeId,
+  );
+
+  /**
+   * Restores a stash onto the working tree, keeping it on the stack.
+   * @param stash The stash to apply.
+   */
+  protected applyStash(stash: GitStash): void {
+    void this.repository.applyStash(stash.index);
+  }
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack.
+   * @param stash The stash to pop.
+   */
+  protected popStash(stash: GitStash): void {
+    void this.repository.popStash(stash.index);
+  }
+
+  /**
+   * Holds the stash awaiting the user's drop confirmation, or null when none is. Dropping discards
+   * the stashed work with no way back, so it is never done from a bare button press.
+   */
+  protected readonly pendingDrop: WritableSignal<GitStash | null> = signal<GitStash | null>(null);
+
+  /**
+   * Opens the drop confirmation for a stash.
+   * @param stash The stash to drop.
+   */
+  protected requestDropStash(stash: GitStash): void {
+    this.pendingDrop.set(stash);
+  }
+
+  /**
+   * Confirms the drop, deleting the stash without restoring it.
+   */
+  protected confirmDropStash(): void {
+    const stash: GitStash | null = this.pendingDrop();
+    this.pendingDrop.set(null);
+    if (stash !== null) {
+      void this.repository.dropStash(stash.index);
+    }
+  }
+
+  /**
+   * Dismisses the drop confirmation, leaving the stash alone.
+   */
+  protected cancelDropStash(): void {
+    this.pendingDrop.set(null);
+  }
+
+  /**
+   * Holds whether the new-branch dialog is open.
+   */
+  protected readonly branchDialogOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name being entered in the new-branch dialog.
+   */
+  protected readonly branchName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether the new branch is checked out once created. On by default: creating a branch is
+   * nearly always the first step of working on it.
+   */
+  protected readonly branchCheckout: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Gets the reason the entered branch name cannot be used, or null when it can. Git would reject a
+   * duplicate itself, but saying so before the command runs is friendlier than surfacing its error.
+   */
+  protected readonly branchNameError: Signal<string | null> = computed((): string | null => {
+    const name: string = this.branchName().trim();
+    if (name.length === 0) {
+      return null;
+    }
+    return this.repository.branches().some((branch: GitBranch): boolean => branch.name === name)
+      ? 'A branch with this name already exists.'
+      : null;
+  });
+
+  /**
+   * Gets a value indicating whether the new-branch dialog can be submitted.
+   */
+  protected readonly canCreateBranch: Signal<boolean> = computed(
+    (): boolean => this.branchName().trim().length > 0 && this.branchNameError() === null,
+  );
+
+  /**
+   * Opens the new-branch dialog.
+   */
+  protected openBranchDialog(): void {
+    this.branchName.set('');
+    this.branchCheckout.set(true);
+    this.branchDialogOpen.set(true);
+  }
+
+  /**
+   * Confirms the new-branch dialog, creating the branch at the current head.
+   */
+  protected confirmBranch(): void {
+    if (!this.canCreateBranch()) {
+      return;
+    }
+    const name: string = this.branchName().trim();
+    this.branchDialogOpen.set(false);
+    void this.repository.createBranch(name, this.branchCheckout());
+  }
+
+  /**
+   * Dismisses the new-branch dialog without creating anything.
+   */
+  protected cancelBranch(): void {
+    this.branchDialogOpen.set(false);
+  }
+
+  /**
+   * Records the branch name as it is typed.
+   * @param event The input event carrying the name.
+   */
+  protected onBranchNameInput(event: Event): void {
+    this.branchName.set((event.target as HTMLInputElement).value);
   }
 
   /**
@@ -456,7 +673,7 @@ export class SourceControlSidebar {
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'stash', icon: Icon.STASH, label: stash.message },
+        data: { kind: 'stash', icon: Icon.STASH, label: stash.message, stash },
       }),
     );
   }

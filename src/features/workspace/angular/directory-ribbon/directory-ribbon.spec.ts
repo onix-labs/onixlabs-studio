@@ -7,6 +7,17 @@ import { WorkspaceCapabilities } from '@shared/angular/services/workspace/worksp
 import { ProjectAction, ProjectCapabilities } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { RibbonMenuItem } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { DockNode, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  LayoutPresetInfo,
+  LayoutPresets,
+} from '@shared/angular/services/layout-presets/layout-presets';
+import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
+import {
+  WorkspaceDocumentCommandHandler,
+  WorkspaceDocumentCommands,
+} from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { DirectoryRibbon } from './directory-ribbon';
 
 /**
@@ -42,6 +53,75 @@ interface RibbonInternals {
   onSelectTarget(name: string): void;
   canDebug(): boolean;
   onDebug(): void;
+  canSave(): boolean;
+  hasUnsavedChanges(): boolean;
+  saveMenuItems(): readonly RibbonMenuItem[];
+  onSave(): void;
+  onSaveAll(): void;
+  onSaveMenuItem(id: string): void;
+  buildMenuItems(): readonly RibbonMenuItem[];
+  cleanMenuItems(): readonly RibbonMenuItem[];
+  onBuildMenuItem(id: string): void;
+  onCleanMenuItem(id: string): void;
+  commitMenuItems(): readonly RibbonMenuItem[];
+  onCommitMenuItem(id: string): void;
+  presets(): readonly LayoutPresetInfo[];
+  presetMenuItems(): readonly RibbonMenuItem[];
+  defaultPresetName(): string;
+  defaultPresetId(): string | null;
+  onApplyDefaultPreset(): void;
+  onSelectPreset(id: string): void;
+  onSavePresetAs(): void;
+  saveAsOpen(): boolean;
+  saveAsName: WritableSignal<string>;
+  saveAsDefault: WritableSignal<boolean>;
+  confirmSaveAs(): void;
+  cancelSaveAs(): void;
+  manageOpen(): boolean;
+  onManagePresets(): void;
+  closeManage(): void;
+  onSetDefaultPreset(id: string): void;
+  onRenamePreset(id: string, name: string): void;
+  onDeletePreset(id: string): void;
+  onResetPreset(): void;
+}
+
+/**
+ * A recording stand-in for a workspace's document well, behind the ribbon's File group.
+ */
+class FakeDocumentHandler implements WorkspaceDocumentCommandHandler {
+  public readonly canSave: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly hasUnsavedChanges: WritableSignal<boolean> = signal<boolean>(false);
+  public saveCalls: number = 0;
+  public saveAllCalls: number = 0;
+
+  public save(): void {
+    this.saveCalls++;
+  }
+
+  public saveAll(): void {
+    this.saveAllCalls++;
+  }
+}
+
+/**
+ * A recording stand-in for the repository command facade behind the Source Control group.
+ */
+class FakeRepositoryCommands {
+  public readonly calls: string[] = [];
+  public readonly canPromoteToWorktree: WritableSignal<boolean> = signal<boolean>(false);
+
+  public fetch(): void {
+    this.calls.push('fetch');
+  }
+
+  public stash(): void {
+    this.calls.push('stash');
+  }
+
+  public promoteToWorktree(): void {
+    this.calls.push('promoteToWorktree');
+  }
 }
 
 /**
@@ -215,6 +295,9 @@ describe('DirectoryRibbon', () => {
   let studio: FakeStudio;
   let capabilities: FakeCapabilities;
   let debuggerSeam: FakeDebugger;
+  let documentHandler: FakeDocumentHandler;
+  let repositoryCommands: FakeRepositoryCommands;
+  let presets: LayoutPresets;
 
   /**
    * Reveals the protected surface under test.
@@ -225,10 +308,15 @@ describe('DirectoryRibbon', () => {
   }
 
   beforeEach(async () => {
+    // The preset store persists through localStorage; clear it so each test starts with no saved
+    // presets and no chosen default.
+    localStorage.clear();
     builds = new FakeBuilds();
     studio = new FakeStudio();
     capabilities = new FakeCapabilities();
     debuggerSeam = new FakeDebugger();
+    documentHandler = new FakeDocumentHandler();
+    repositoryCommands = new FakeRepositoryCommands();
     await TestBed.configureTestingModule({
       imports: [DirectoryRibbon],
       providers: [
@@ -236,8 +324,24 @@ describe('DirectoryRibbon', () => {
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: capabilities },
         { provide: Debugger, useValue: debuggerSeam },
+        { provide: SourceControlCommands, useValue: repositoryCommands },
       ],
     }).compileComponents();
+
+    // The well and the preset store are what the File and View groups act through; register the
+    // stand-ins exactly as an active directory view would.
+    TestBed.inject(WorkspaceDocumentCommands).register(documentHandler);
+    presets = TestBed.inject(LayoutPresets);
+    presets.registerBuiltIn({
+      id: 'coding',
+      name: 'Coding',
+      createLayout: (): DockNode => mkStack('tool', ['files']),
+    });
+    presets.register({
+      root: signal<string | null>('/repo'),
+      capture: (): DockNode => mkStack('tool', ['errors']),
+      apply: (): void => undefined,
+    });
 
     fixture = TestBed.createComponent(DirectoryRibbon);
     component = fixture.componentInstance;
@@ -395,7 +499,11 @@ describe('DirectoryRibbon', () => {
     fixture.detectChanges();
 
     expect(internals().stopLabel()).toBe('Stop All (2)');
-    expect(internals().runMenuItems().map((item) => item.label)).toEqual(['API', 'Web']);
+    expect(
+      internals()
+        .runMenuItems()
+        .map((item) => item.label),
+    ).toEqual(['API', 'Web']);
 
     internals().onStopRun('r2');
 
@@ -411,11 +519,11 @@ describe('DirectoryRibbon', () => {
     ]);
     fixture.detectChanges();
 
-    expect(internals().runMenuItems().map((item) => item.label)).toEqual([
-      'API (1)',
-      'API (2)',
-      'Web',
-    ]);
+    expect(
+      internals()
+        .runMenuItems()
+        .map((item) => item.label),
+    ).toEqual(['API (1)', 'API (2)', 'Web']);
   });
 
   it('stopLabel_withASingleRun_needsNoQualification', () => {
@@ -565,5 +673,223 @@ describe('DirectoryRibbon', () => {
 
     expect(studio.buildConfigCalls).toEqual(['release']);
     expect(studio.targetCalls).toEqual(['x64']);
+  });
+
+  describe('the File group', () => {
+    it('saveAndSaveAll_routeThroughTheWorkspaceDocumentSeam', () => {
+      internals().onSave();
+      internals().onSaveMenuItem('save-all');
+
+      expect(documentHandler.saveCalls).toBe(1);
+      expect(documentHandler.saveAllCalls).toBe(1);
+    });
+
+    it('saveAll_isDisabledUntilSomethingIsUnsaved', () => {
+      expect(internals().saveMenuItems()[0].disabled).toBe(true);
+
+      documentHandler.hasUnsavedChanges.set(true);
+
+      expect(internals().saveMenuItems()[0].disabled).toBe(false);
+      expect(internals().hasUnsavedChanges()).toBe(true);
+    });
+
+    it('mirrorsTheWellsSaveableState', () => {
+      expect(internals().canSave()).toBe(true);
+
+      documentHandler.canSave.set(false);
+
+      expect(internals().canSave()).toBe(false);
+    });
+  });
+
+  describe('the Solution group', () => {
+    it('buildMenu_carriesRebuild_disabledWhenTheProviderDoesNotDeclareIt', () => {
+      capabilities.capabilities.set(null);
+      expect(internals().buildMenuItems()[0].disabled).toBe(true);
+
+      capabilities.capabilities.set(dotnetCapabilities());
+      expect(internals().buildMenuItems()[0].disabled).toBe(false);
+    });
+
+    it('buildMenu_dispatchesRebuildThroughTheActionPath', () => {
+      capabilities.capabilities.set(dotnetCapabilities());
+
+      internals().onBuildMenuItem('rebuild');
+
+      expect(builds.actionCalls).toEqual(['rebuild']);
+    });
+
+    it('cleanMenu_carriesTheDocumentLevelTidyingActions_disabledWithoutAFocusedEditor', () => {
+      const items: readonly RibbonMenuItem[] = internals().cleanMenuItems();
+
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual([
+        'Format',
+        'Code Cleanup',
+      ]);
+      // No editor is registered in this bare fixture, so both actions stay inert.
+      expect(items.every((item: RibbonMenuItem): boolean => item.disabled === true)).toBe(true);
+    });
+  });
+
+  describe('the Source Control group', () => {
+    it('commitMenu_carriesStashAlone_andDispatchesIt', () => {
+      // Staging is deliberately absent: a commit resets the index and stages exactly the files
+      // checked in the Commit panel, so staging beforehand cannot change what a commit contains.
+      expect(
+        internals()
+          .commitMenuItems()
+          .map((item): string => item.id),
+      ).toEqual(['stash']);
+
+      internals().onCommitMenuItem('stash');
+
+      expect(repositoryCommands.calls).toEqual(['stash']);
+    });
+
+    it('carriesOnlyTheRepoGlobalActions_leavingSelectionScopedOnesToThePanels', () => {
+      // Refresh, New Branch and Diff Layout belong to the Repository and Commit panels; the ribbon
+      // must no longer dispatch them, and Stage All is gone for good.
+      const ribbon: Record<string, unknown> = internals() as unknown as Record<string, unknown>;
+
+      expect(ribbon['onStageAll']).toBeUndefined();
+      expect(ribbon['onRepoRefresh']).toBeUndefined();
+      expect(ribbon['onNewBranch']).toBeUndefined();
+      expect(ribbon['onToggleDiff']).toBeUndefined();
+      expect(typeof ribbon['onRepoFetch']).toBe('function');
+      expect(typeof ribbon['onStash']).toBe('function');
+    });
+  });
+
+  describe('the View group', () => {
+    /**
+     * Saves the current layout as a user preset through the Save As dialog.
+     * @param name The preset name.
+     * @param makeDefault Whether to tick the dialog's Default box.
+     * @returns Returns the new preset's identifier.
+     */
+    function saveAs(name: string, makeDefault: boolean): string {
+      internals().onSavePresetAs();
+      internals().saveAsName.set(name);
+      internals().saveAsDefault.set(makeDefault);
+      internals().confirmSaveAs();
+      return (
+        internals()
+          .presets()
+          .find((preset: LayoutPresetInfo): boolean => preset.name === name)?.id ?? ''
+      );
+    }
+
+    it('theBigButtonNamesTheDefaultPreset_whichIsTheFirstOneUntilOneIsChosen', () => {
+      expect(internals().defaultPresetName()).toBe('Coding');
+      expect(internals().defaultPresetId()).toBe('coding');
+    });
+
+    it('theBigButtonAppliesTheDefaultPreset', () => {
+      const customId: string = saveAs('Custom', false);
+      // Saving made the custom preset this root's pick, so applying the default moves off it.
+      expect(
+        internals()
+          .presetMenuItems()
+          .find((item): boolean => item.active === true)?.id,
+      ).toBe(customId);
+
+      internals().onApplyDefaultPreset();
+
+      expect(
+        internals()
+          .presetMenuItems()
+          .find((item): boolean => item.active === true)?.id,
+      ).toBe('coding');
+    });
+
+    it('theMenuListsEveryPreset_markingTheOneShowing', () => {
+      const customId: string = saveAs('Custom', false);
+
+      const items: readonly RibbonMenuItem[] = internals().presetMenuItems();
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['Coding', 'Custom']);
+      expect(items.find((item: RibbonMenuItem): boolean => item.id === customId)?.active).toBe(
+        true,
+      );
+      expect(items.find((item: RibbonMenuItem): boolean => item.id === 'coding')?.active).toBe(
+        false,
+      );
+    });
+
+    it('choosingFromTheMenuApplies_butDoesNotChangeTheDefault', () => {
+      const customId: string = saveAs('Custom', false);
+
+      internals().onSelectPreset(customId);
+
+      expect(internals().defaultPresetId()).toBe('coding');
+      expect(internals().defaultPresetName()).toBe('Coding');
+    });
+
+    it('saveAs_withTheDefaultBoxTicked_makesTheNewPresetTheDefault', () => {
+      const customId: string = saveAs('Custom', true);
+
+      expect(internals().defaultPresetId()).toBe(customId);
+      expect(internals().defaultPresetName()).toBe('Custom');
+      expect(internals().saveAsOpen()).toBe(false);
+    });
+
+    it('saveAs_withAnEmptyName_savesNothingAndStaysOpen', () => {
+      internals().onSavePresetAs();
+      internals().saveAsName.set('   ');
+
+      internals().confirmSaveAs();
+
+      expect(internals().presets().length).toBe(1);
+      expect(internals().saveAsOpen()).toBe(true);
+    });
+
+    it('saveAs_reopening_startsFromACleanNameAndUntickedDefault', () => {
+      saveAs('Custom', true);
+
+      internals().onSavePresetAs();
+
+      expect(internals().saveAsName()).toBe('');
+      expect(internals().saveAsDefault()).toBe(false);
+    });
+
+    it('manage_renamesAndDeletesUserPresets_andSetsTheDefault', () => {
+      const customId: string = saveAs('Custom', false);
+      internals().onManagePresets();
+      expect(internals().manageOpen()).toBe(true);
+
+      internals().onSetDefaultPreset(customId);
+      expect(internals().defaultPresetId()).toBe(customId);
+
+      internals().onRenamePreset(customId, 'Renamed');
+      expect(internals().defaultPresetName()).toBe('Renamed');
+
+      internals().onDeletePreset(customId);
+      expect(
+        internals()
+          .presets()
+          .map((preset): string => preset.name),
+      ).toEqual(['Coding']);
+      // The deleted preset held the default, so it falls back rather than stranding the choice.
+      expect(internals().defaultPresetId()).toBe('coding');
+
+      internals().closeManage();
+      expect(internals().manageOpen()).toBe(false);
+    });
+
+    it('manage_cannotRenameOrDeleteABuiltIn_butCanMakeItTheDefault', () => {
+      const customId: string = saveAs('Custom', true);
+
+      internals().onRenamePreset('coding', 'Hacked');
+      internals().onDeletePreset('coding');
+
+      expect(
+        internals()
+          .presets()
+          .map((preset): string => preset.name),
+      ).toEqual(['Coding', 'Custom']);
+      expect(internals().defaultPresetId()).toBe(customId);
+
+      internals().onSetDefaultPreset('coding');
+      expect(internals().defaultPresetId()).toBe('coding');
+    });
   });
 });

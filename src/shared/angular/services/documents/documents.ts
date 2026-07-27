@@ -285,6 +285,24 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Gets the number of documents with unsaved changes, as a signal, so surfaces that enable on unsaved
+   * work (the ribbon's Save All) re-derive as documents are edited, saved, opened and closed. The
+   * method form is a plain read and would not re-run them.
+   */
+  public readonly dirtyCount: Signal<number> = computed((): number => {
+    // Track membership as well as content: a document opened or closed changes the answer without any
+    // existing document's dirty state changing.
+    this.entriesVersion();
+    let count: number = 0;
+    for (const entry of this.entries.values()) {
+      if (entry.document.dirty()) {
+        count += 1;
+      }
+    }
+    return count;
+  });
+
+  /**
    * Lists the documents with unsaved changes, in insertion order.
    * @returns Returns each dirty document's id and display name.
    */
@@ -310,7 +328,9 @@ export class Documents implements UnsavedWorkSource {
     if (this.owningTabId !== null) {
       return this.owningTabId === tabId ? this.dirtyDocuments() : [];
     }
-    return this.dirtyDocuments().filter((document: UnsavedDocument): boolean => document.id === tabId);
+    return this.dirtyDocuments().filter(
+      (document: UnsavedDocument): boolean => document.id === tabId,
+    );
   }
 
   /**
@@ -456,6 +476,22 @@ export class Documents implements UnsavedWorkSource {
   public saveActive(): Promise<boolean> {
     const id: string | null = this.resolveActiveId();
     return id === null ? Promise.resolve(false) : this.save(id);
+  }
+
+  /**
+   * Saves every document with unsaved changes, prompting for a path for each that has never been
+   * saved. Saves are sequenced rather than run together: an unsaved document opens a save dialog, and
+   * several dialogs racing each other would be unusable.
+   * @returns Returns true when every dirty document was saved (false when any failed or was cancelled).
+   */
+  public async saveAll(): Promise<boolean> {
+    let saved: boolean = true;
+    for (const document of this.dirtyDocuments()) {
+      if (!(await this.save(document.id))) {
+        saved = false;
+      }
+    }
+    return saved;
   }
 
   /**

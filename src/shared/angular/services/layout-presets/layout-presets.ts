@@ -100,11 +100,18 @@ const PRESETS_KEY: string = 'layout.presets';
 const ACTIVE_KEY: string = 'layout.active-presets';
 
 /**
+ * Holds the storage key the app-wide default preset persists under.
+ */
+const DEFAULT_KEY: string = 'layout.default-preset';
+
+/**
  * The store and command façade for dock layout presets — named layout trees defining WHICH panels
  * exist in a workspace view and WHERE they dock.
  *
  * Persistence follows the 2026-07-25 rulings exactly: preset DEFINITIONS are app-wide (agnostic to
- * the loaded workspace) and each workspace root's ACTIVE PICK is remembered — nothing else. The
+ * the loaded workspace), each workspace root's ACTIVE PICK is remembered, and one preset is marked
+ * the app-wide DEFAULT — nothing else. A default always exists as long as any preset does: with none
+ * chosen the first preset stands in, so {@link defaultId} never has to answer "none". The
  * session's current layout is ephemeral: closing or moving panels never writes anywhere, and every
  * launch re-applies the active preset's saved definition. A preset only changes through the
  * explicit commands here (Save as…, Update, Rename, Delete). Built-ins are immutable.
@@ -142,6 +149,15 @@ export class LayoutPresets {
   >(this.store.get<Readonly<Record<string, string>>>(ACTIVE_KEY, {}));
 
   /**
+   * Holds the user's chosen default preset, or null when they have never chosen one. Null is not the
+   * absence of a default — {@link defaultId} always resolves one — it only means nothing was chosen,
+   * so the first preset stands in and keeps standing in as presets come and go.
+   */
+  private readonly chosenDefault: WritableSignal<string | null> = signal<string | null>(
+    this.store.get<string | null>(DEFAULT_KEY, null),
+  );
+
+  /**
    * Holds the active view's registered session, or null when no workspace view is active.
    */
   private readonly session: WritableSignal<LayoutPresetSession | null> =
@@ -177,6 +193,32 @@ export class LayoutPresets {
         }),
       ),
     ],
+  );
+
+  /**
+   * Gets the default preset's identifier. A default always exists as long as any preset does: the
+   * user's chosen one while it still names a preset, otherwise the first preset (built-ins first).
+   * This is what the ribbon's View button applies, and what a workspace root falls back to before it
+   * has a pick of its own.
+   */
+  public readonly defaultId: Signal<string | null> = computed((): string | null => {
+    const chosen: string | null = this.chosenDefault();
+    if (
+      chosen !== null &&
+      this.presets().some((preset: LayoutPresetInfo): boolean => preset.id === chosen)
+    ) {
+      return chosen;
+    }
+    return this.presets()[0]?.id ?? null;
+  });
+
+  /**
+   * Gets the default preset, or null before any preset is registered.
+   */
+  public readonly defaultPreset: Signal<LayoutPresetInfo | null> = computed(
+    (): LayoutPresetInfo | null =>
+      this.presets().find((preset: LayoutPresetInfo): boolean => preset.id === this.defaultId()) ??
+      null,
   );
 
   /**
@@ -253,7 +295,7 @@ export class LayoutPresets {
 
   /**
    * Resolves the preset active for a workspace root: its persisted pick when it names a preset
-   * that still exists, else the first built-in.
+   * that still exists, else the default preset.
    * @param root The workspace root, or null while no folder is open.
    * @returns Returns the active preset identifier, or null when no presets are registered at all.
    */
@@ -262,7 +304,21 @@ export class LayoutPresets {
     if (pick !== undefined && this.layoutOf(pick) !== null) {
       return pick;
     }
-    return this.builtIns()[0]?.id ?? this.userPresets()[0]?.id ?? null;
+    return this.defaultId();
+  }
+
+  /**
+   * Makes a preset the app-wide default — the one the ribbon's View button applies and the one a
+   * workspace root falls back to before it has a pick of its own. Unknown identifiers are ignored, so
+   * a stale id can never displace a working default.
+   * @param id The preset identifier.
+   */
+  public setDefault(id: string): void {
+    if (this.layoutOf(id) === null) {
+      return;
+    }
+    this.chosenDefault.set(id);
+    this.store.set(DEFAULT_KEY, id);
   }
 
   /**
@@ -351,8 +407,10 @@ export class LayoutPresets {
    * Saves the session's current layout as a new user preset and makes it the active one. The
    * layout is captured as it stands — saving is the only way layout changes reach a definition.
    * @param name The new preset's display name.
+   * @param makeDefault Whether the new preset also becomes the app-wide default, replacing the
+   * previous one.
    */
-  public saveAs(name: string): void {
+  public saveAs(name: string, makeDefault: boolean = false): void {
     const session: LayoutPresetSession | null = this.session();
     const trimmed: string = name.trim();
     if (session === null || trimmed.length === 0) {
@@ -363,11 +421,15 @@ export class LayoutPresets {
       name: trimmed,
       layout: structuredClone(session.capture()),
     };
-    this.userPresets.update(
-      (current: readonly StoredPreset[]): readonly StoredPreset[] => [...current, preset],
-    );
+    this.userPresets.update((current: readonly StoredPreset[]): readonly StoredPreset[] => [
+      ...current,
+      preset,
+    ]);
     this.persistPresets();
     this.pick(session.root(), preset.id);
+    if (makeDefault) {
+      this.setDefault(preset.id);
+    }
   }
 
   /**
@@ -381,12 +443,11 @@ export class LayoutPresets {
       return;
     }
     const layout: DockNode = structuredClone(session.capture());
-    this.userPresets.update(
-      (current: readonly StoredPreset[]): readonly StoredPreset[] =>
-        current.map(
-          (preset: StoredPreset): StoredPreset =>
-            preset.id === active ? { ...preset, layout } : preset,
-        ),
+    this.userPresets.update((current: readonly StoredPreset[]): readonly StoredPreset[] =>
+      current.map(
+        (preset: StoredPreset): StoredPreset =>
+          preset.id === active ? { ...preset, layout } : preset,
+      ),
     );
     this.persistPresets();
   }
@@ -401,20 +462,21 @@ export class LayoutPresets {
     if (trimmed.length === 0) {
       return;
     }
-    this.userPresets.update(
-      (current: readonly StoredPreset[]): readonly StoredPreset[] =>
-        current.map(
-          (preset: StoredPreset): StoredPreset =>
-            preset.id === id ? { ...preset, name: trimmed } : preset,
-        ),
+    this.userPresets.update((current: readonly StoredPreset[]): readonly StoredPreset[] =>
+      current.map(
+        (preset: StoredPreset): StoredPreset =>
+          preset.id === id ? { ...preset, name: trimmed } : preset,
+      ),
     );
     this.persistPresets();
   }
 
   /**
    * Deletes a user preset. Built-ins and unknown identifiers are ignored. Roots whose pick named
-   * the deleted preset fall back to the first built-in on their next resolution; when the
-   * registered session was showing it, its dock re-seeds from the fallback immediately.
+   * the deleted preset fall back to the default preset on their next resolution; when the
+   * registered session was showing it, its dock re-seeds from the fallback immediately. Deleting the
+   * default preset drops the choice too, so the default falls back to the first preset rather than
+   * hanging on an id nothing resolves.
    * @param id The preset identifier.
    */
   public remove(id: string): void {
@@ -422,11 +484,14 @@ export class LayoutPresets {
       return;
     }
     const wasActive: boolean = this.activeId() === id;
-    this.userPresets.update(
-      (current: readonly StoredPreset[]): readonly StoredPreset[] =>
-        current.filter((preset: StoredPreset): boolean => preset.id !== id),
+    this.userPresets.update((current: readonly StoredPreset[]): readonly StoredPreset[] =>
+      current.filter((preset: StoredPreset): boolean => preset.id !== id),
     );
     this.persistPresets();
+    if (this.chosenDefault() === id) {
+      this.chosenDefault.set(null);
+      this.store.set(DEFAULT_KEY, null);
+    }
     if (wasActive) {
       this.session()?.apply();
     }

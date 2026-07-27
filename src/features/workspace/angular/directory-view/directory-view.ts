@@ -57,6 +57,10 @@ import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout'
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
+import {
+  WorkspaceDocumentCommandHandler,
+  WorkspaceDocumentCommands,
+} from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
@@ -536,6 +540,23 @@ export class DirectoryView implements OnInit, OnDestroy {
   private commitRegistered: boolean = false;
 
   /**
+   * Holds the document-command seam the directory ribbon's File group dispatches through.
+   */
+  private readonly workspaceDocuments: WorkspaceDocumentCommands =
+    inject(WorkspaceDocumentCommands);
+
+  /**
+   * Holds the document command handler this tab registers while active, exposing this view-scoped
+   * {@link Documents} instance's well to the directory ribbon's Save and Save All.
+   */
+  private readonly documentHandler: WorkspaceDocumentCommandHandler = {
+    canSave: computed((): boolean => this.documents.activeDocumentId() !== null),
+    hasUnsavedChanges: computed((): boolean => this.documents.dirtyCount() > 0),
+    save: (): void => void this.documents.saveActive(),
+    saveAll: (): void => void this.documents.saveAll(),
+  };
+
+  /**
    * Holds the source-control command handler this tab registers while active, exposing the workspace's
    * everyday git actions (open in source control, commit, push, pull) to the directory ribbon.
    */
@@ -553,23 +574,13 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
 
   /**
-   * Holds this workspace's repository command handler. Commit REVEALS the commit panel (the
-   * message is written there — workspace semantics, unlike the repository view's direct commit);
-   * New Branch reveals the branches rail, whose own controls create branches, until the branch
-   * dialog generalizes in P3 of #351.
+   * Holds this workspace's repository command handler — the repo-global remainder behind the
+   * ribbon's Source Control group. Branch, stash-entry, and per-change actions are not here: the
+   * Repository and Commit panels own those and reach this view's {@link Repository} directly.
    */
   private readonly repositoryCommandHandler: SourceControlCommandHandler = {
-    refresh: (): void => void this.repository.refresh(),
     fetch: (): void => void this.repository.fetch(),
-    pull: (): void => void this.pushOrPull('pull'),
-    push: (): void => void this.pushOrPull('push'),
-    stageAll: (): void => void this.repository.stageAll(),
-    commit: (): void => void this.revealCommit(),
     stash: (): void => void this.repository.stash(),
-    newBranch: (): void => this.revealPanel('branches'),
-    toggleInlineDiff: (): void => this.diffs.toggleInline(),
-    // Already a workspace: the repository view's escape hatch has no meaning here.
-    openAsWorkspace: (): void => undefined,
     // Promotion is the host's structural act (the tab is rebuilt as a container around this view),
     // so the view only relays it; a checkout's sub-view gets no handler and cannot promote.
     canPromoteToWorktree: computed((): boolean => this.promoteHandler() !== null),
@@ -592,27 +603,6 @@ export class DirectoryView implements OnInit, OnDestroy {
         .filter((part: string): boolean => part.length > 0)
         .pop() ?? null
     );
-  }
-
-  /**
-   * Reveals a catalogued panel, tabbing it beside the File Explorer (falling back to the agent's
-   * group) when it is not already in the layout, then activating and focusing it.
-   * @param panelId The panel identifier.
-   */
-  private revealPanel(panelId: string): void {
-    if (!collectPanelIds(this.dockState.layout()).includes(panelId)) {
-      const anchor: StackNode | null =
-        findStackOfPanel(this.dockState.layout(), 'files') ??
-        findStackOfPanel(this.dockState.layout(), 'agent');
-      if (anchor !== null) {
-        this.dockState.tabInto(anchor.id, panelId);
-      }
-    }
-    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
-    if (stack !== null) {
-      this.dockState.setActive(stack.id, panelId);
-      this.dockFocus.focus(stack.id);
-    }
   }
 
   /**
@@ -874,11 +864,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (this.isActive()) {
         this.keybindings.register(this.viewScope(), [
           { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
+          { id: 'workspace.saveAll', command: (): void => void this.documents.saveAll() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
+        this.workspaceDocuments.register(this.documentHandler);
       } else {
         this.keybindings.deactivate(this.viewScope());
         this.workspaceFind.unregister(this.revealSearchHandler);
+        this.workspaceDocuments.unregister(this.documentHandler);
       }
     });
 
@@ -1023,6 +1016,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
+    this.workspaceDocuments.unregister(this.documentHandler);
     this.statusBar.clearOwner(`${STATUS_OWNER}:${this.viewScope()}`);
     // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
     // must not clear the tab's published root — the successor view republishes it, but only the
@@ -1079,6 +1073,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         icon: Icon.LIST_ALL,
         role: 'tool',
         component: CommitDetail,
+        ownsToolStrip: true,
       });
       this.commitRegistered = true;
     }

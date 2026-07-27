@@ -6,41 +6,21 @@ import { SourceControlCommandHandler, SourceControlCommands } from './source-con
 /**
  * Builds a handler that records the name of each command invoked on it.
  * @param calls The array invocation names are pushed to.
+ * @param canPromote Whether the handler reports itself promotable.
  * @returns Returns the recording handler.
  */
-function createRecordingHandler(calls: string[]): SourceControlCommandHandler {
+function createRecordingHandler(
+  calls: string[],
+  canPromote: boolean = true,
+): SourceControlCommandHandler {
   return {
-    refresh: (): void => {
-      calls.push('refresh');
-    },
     fetch: (): void => {
       calls.push('fetch');
-    },
-    pull: (): void => {
-      calls.push('pull');
-    },
-    push: (): void => {
-      calls.push('push');
-    },
-    stageAll: (): void => {
-      calls.push('stageAll');
-    },
-    commit: (): void => {
-      calls.push('commit');
     },
     stash: (): void => {
       calls.push('stash');
     },
-    newBranch: (): void => {
-      calls.push('newBranch');
-    },
-    toggleInlineDiff: (): void => {
-      calls.push('toggleInlineDiff');
-    },
-    openAsWorkspace: (): void => {
-      calls.push('openAsWorkspace');
-    },
-    canPromoteToWorktree: signal<boolean>(true),
+    canPromoteToWorktree: signal<boolean>(canPromote),
     promoteToWorktree: (): void => {
       calls.push('promoteToWorktree');
     },
@@ -69,36 +49,28 @@ describe('SourceControlCommands', () => {
     const calls: string[] = [];
     commands.register(createRecordingHandler(calls));
 
-    commands.refresh();
     commands.fetch();
-    commands.pull();
-    commands.push();
-    commands.stageAll();
-    commands.commit();
     commands.stash();
-    commands.newBranch();
-    commands.toggleInlineDiff();
-    commands.openAsWorkspace();
+    commands.promoteToWorktree();
 
-    expect(calls).toEqual([
-      'refresh',
-      'fetch',
-      'pull',
-      'push',
-      'stageAll',
-      'commit',
-      'stash',
-      'newBranch',
-      'toggleInlineDiff',
-      'openAsWorkspace',
-    ]);
+    expect(calls).toEqual(['fetch', 'stash', 'promoteToWorktree']);
+  });
+
+  it('canPromoteToWorktree_mirrorsTheHandler_andIsFalseWithoutOne', () => {
+    expect(commands.canPromoteToWorktree()).toBe(false);
+
+    commands.register(createRecordingHandler([], true));
+    expect(commands.canPromoteToWorktree()).toBe(true);
+
+    commands.register(createRecordingHandler([], false));
+    expect(commands.canPromoteToWorktree()).toBe(false);
   });
 
   it('commands_whenNoHandlerRegistered_areNoOps', () => {
     expect((): void => {
-      commands.refresh();
-      commands.commit();
-      commands.openAsWorkspace();
+      commands.fetch();
+      commands.stash();
+      commands.promoteToWorktree();
     }).not.toThrow();
   });
 
@@ -108,7 +80,7 @@ describe('SourceControlCommands', () => {
     commands.register(handler);
 
     commands.unregister(handler);
-    commands.refresh();
+    commands.fetch();
 
     expect(commands.hasActiveRepository()).toBe(false);
     expect(calls).toEqual([]);
@@ -119,9 +91,9 @@ describe('SourceControlCommands', () => {
     commands.register(createRecordingHandler(calls));
 
     commands.unregister(createRecordingHandler([]));
-    commands.refresh();
+    commands.fetch();
 
     expect(commands.hasActiveRepository()).toBe(true);
-    expect(calls).toEqual(['refresh']);
+    expect(calls).toEqual(['fetch']);
   });
 });

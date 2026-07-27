@@ -162,14 +162,33 @@ export class GitManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stash(root),
     );
     ipcMain.handle(
+      SourceControlChannel.StashApply,
+      (_event: IpcMainInvokeEvent, root: unknown, index: unknown): Promise<GitRunResult> =>
+        this.stashCommand(root, 'apply', index),
+    );
+    ipcMain.handle(
+      SourceControlChannel.StashPop,
+      (_event: IpcMainInvokeEvent, root: unknown, index: unknown): Promise<GitRunResult> =>
+        this.stashCommand(root, 'pop', index),
+    );
+    ipcMain.handle(
+      SourceControlChannel.StashDrop,
+      (_event: IpcMainInvokeEvent, root: unknown, index: unknown): Promise<GitRunResult> =>
+        this.stashCommand(root, 'drop', index),
+    );
+    ipcMain.handle(
       SourceControlChannel.Checkout,
       (_event: IpcMainInvokeEvent, root: unknown, branch: unknown): Promise<GitRunResult> =>
         this.checkout(root, branch),
     );
     ipcMain.handle(
       SourceControlChannel.CreateBranch,
-      (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
-        this.createBranch(root, name),
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        name: unknown,
+        checkout: unknown,
+      ): Promise<GitRunResult> => this.createBranch(root, name, checkout),
     );
     ipcMain.handle(
       SourceControlChannel.Fetch,
@@ -515,6 +534,26 @@ export class GitManager {
   }
 
   /**
+   * Runs a stash-stack command against one entry. The stash is addressed by its stack index rather
+   * than by a caller-supplied selector, so the operand is built here from a validated number and no
+   * renderer string ever reaches the git command line.
+   * @param root The repository root.
+   * @param command The stash subcommand to run.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the raw command result.
+   */
+  private stashCommand(
+    root: unknown,
+    command: 'apply' | 'pop' | 'drop',
+    index: unknown,
+  ): Promise<GitRunResult> {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return Promise.resolve({ success: false, error: 'Invalid stash index' });
+    }
+    return this.runInRoot(root, ['stash', command, `stash@{${index}}`]);
+  }
+
+  /**
    * Checks out an existing branch.
    * @param root The repository root.
    * @param branch The branch name.
@@ -528,17 +567,21 @@ export class GitManager {
   }
 
   /**
-   * Creates a branch at the current head and checks it out. Git validates the branch name and rejects
-   * an invalid one.
+   * Creates a branch at the current head, checking it out when asked. Git validates the branch name
+   * and rejects an invalid one.
    * @param root The repository root.
    * @param name The new branch name.
+   * @param checkout Whether to check the new branch out.
    * @returns Returns the raw command result.
    */
-  private createBranch(root: unknown, name: unknown): Promise<GitRunResult> {
+  private createBranch(root: unknown, name: unknown, checkout: unknown): Promise<GitRunResult> {
     if (!isSafeOperand(name)) {
       return Promise.resolve({ success: false, error: 'Invalid branch name' });
     }
-    return this.runInRoot(root, ['checkout', '-b', name]);
+    // `checkout -b` creates and switches; `branch` creates and leaves the current branch checked out.
+    return checkout === false
+      ? this.runInRoot(root, ['branch', name])
+      : this.runInRoot(root, ['checkout', '-b', name]);
   }
 
   /**

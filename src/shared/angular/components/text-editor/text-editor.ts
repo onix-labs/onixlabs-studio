@@ -398,6 +398,23 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Runs a built-in Monaco action and waits for it to finish, so actions that must be sequenced (for
+   * example organising imports before formatting) can be chained. Unlike {@link trigger}, this
+   * resolves the action through the editor's action registry, so an action the editor does not
+   * provide resolves without running anything rather than being dispatched blindly.
+   * @param action The Monaco action identifier.
+   * @returns Returns a promise that completes when the action has run.
+   */
+  public async runAction(action: string): Promise<void> {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+    editor.focus();
+    await editor.getAction(action)?.run();
+  }
+
+  /**
    * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
    */
   public paste(): void {

@@ -19,6 +19,10 @@ import {
 } from '@shared/angular/components/text-editor/text-editor';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
+import {
+  EditorCommandHandler,
+  EditorCommands,
+} from '@shared/angular/services/editor-commands/editor-commands';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
@@ -84,6 +88,20 @@ export class CodeDocumentPanel {
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
    */
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
+
+  /**
+   * Holds the editor-command registry this panel registers its editor with, keyed by document id. A
+   * well document is an editor like any other: registering here is what lets the workspace ribbon's
+   * Edit commands, its Save actions, and its Clean group's Format and Code Cleanup reach the focused
+   * well document — without it those controls resolve no handler and silently do nothing.
+   */
+  private readonly editorCommands: EditorCommands = inject(EditorCommands);
+
+  /**
+   * Holds the command handler registered with the {@link EditorCommands} registry, or null before the
+   * editor exists and after disposal.
+   */
+  private commandHandler: EditorCommandHandler | null = null;
 
   /**
    * Holds the document-bound code editor core this panel drives, so it can attach the change margin to
@@ -216,8 +234,25 @@ export class CodeDocumentPanel {
       this.changeMargin?.setBaseline(savedContent, hasSavedVersion);
     });
 
+    // Follow the well's active document with the editor-command registry, so the ribbon's edit, save
+    // and clean-up commands act on the document the user is looking at. Registration itself marks the
+    // handler active, so this only has to re-mark it when focus returns and stand it down when it
+    // leaves; the handler stays registered either way, so a docked agent can still reach the editor.
+    effect((): void => {
+      if (this.commandHandler === null || !this.paneReady()) {
+        return;
+      }
+      if (this.isActive()) {
+        this.editorCommands.register(this.documentId(), this.commandHandler);
+      } else {
+        this.editorCommands.deactivate(this.documentId());
+      }
+    });
+
     destroyRef.onDestroy((): void => {
       this.documentStatus.clear(this.documentId());
+      this.editorCommands.forget(this.documentId());
+      this.commandHandler = null;
       if (this.modelUri !== null) {
         this.editors.unregister(this.modelUri);
         this.modelUri = null;
@@ -249,7 +284,41 @@ export class CodeDocumentPanel {
         document.filePath() !== null,
       );
     }
+    this.registerCommandHandler(pane);
     this.paneReady.set(true);
+  }
+
+  /**
+   * Registers this well document's editor with the {@link EditorCommands} registry, mapping each
+   * command to the pane's editor API. Save routes through the workspace-scoped documents service, so
+   * the file is written by the same instance that owns the well's documents.
+   * @param pane The pane whose editor backs the commands.
+   */
+  private registerCommandHandler(pane: TextEditor): void {
+    this.commandHandler = {
+      cut: (): void => pane.trigger('editor.action.clipboardCutAction'),
+      copy: (): void => pane.trigger('editor.action.clipboardCopyAction'),
+      paste: (): void => pane.paste(),
+      undo: (): void => pane.trigger('undo'),
+      redo: (): void => pane.trigger('redo'),
+      // The well carries no find panel of its own, so Find opens Monaco's own widget in place.
+      find: (): void => pane.trigger('actions.find'),
+      formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
+      codeCleanup: async (): Promise<void> => {
+        // Sequenced, not fired together: organising imports rewrites the very lines the formatter
+        // would otherwise lay out, so formatting has to see the tidied text.
+        await pane.runAction('editor.action.organizeImports');
+        await pane.runAction('editor.action.formatDocument');
+      },
+      save: (): void => void this.documents.save(this.documentId()),
+      saveAs: (): void => void this.documents.saveAs(this.documentId()),
+      getText: (): string => pane.getValue(),
+      getSelectionText: (): string => pane.getSelectionText(),
+      replaceText: (text: string): void => pane.replaceAll(text),
+      replaceRange: (start: number, length: number, text: string): void =>
+        pane.replaceRange(start, length, text),
+    };
+    this.editorCommands.register(this.documentId(), this.commandHandler);
   }
 
   /**

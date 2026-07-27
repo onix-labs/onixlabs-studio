@@ -29,6 +29,17 @@ export interface RibbonMenuItem {
    * Gets the optional icon shown beside the item's label.
    */
   readonly icon?: Icon;
+
+  /**
+   * Gets a value indicating whether the item is the current selection, shown with an accent marker.
+   * Used by menus that list a set one member of which is showing (for example the layout presets).
+   */
+  readonly active?: boolean;
+
+  /**
+   * Gets a value indicating whether the item is inert (shown muted and not selectable).
+   */
+  readonly disabled?: boolean;
 }
 
 /**

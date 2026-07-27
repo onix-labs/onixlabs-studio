@@ -92,7 +92,7 @@ describe('LayoutPresets', () => {
     expect(presets.presets()).toEqual([{ id: 'coding', name: 'Coding', builtIn: true }]);
   });
 
-  it('activeFor_prefersThePersistedPick_andFallsBackToTheFirstBuiltIn', (): void => {
+  it('activeFor_prefersThePersistedPick_andFallsBackToTheDefault', (): void => {
     store.values.set('layout.active-presets', { '/repo': 'missing' });
     const presets: LayoutPresets = build();
 
@@ -101,15 +101,85 @@ describe('LayoutPresets', () => {
     expect(presets.activeFor(null)).toBe('coding');
   });
 
+  it('defaultId_withNothingChosen_isTheFirstPreset', (): void => {
+    const presets: LayoutPresets = build();
+
+    expect(presets.defaultId()).toBe('coding');
+    expect(presets.defaultPreset()?.name).toBe('Coding');
+  });
+
+  it('setDefault_persistsTheChoice_andRedirectsTheFallbackForRootsWithoutAPick', (): void => {
+    const presets: LayoutPresets = build();
+    presets.register(session);
+    presets.saveAs('Custom');
+    const customId: string = presets.presets().find((preset): boolean => !preset.builtIn)?.id ?? '';
+
+    presets.setDefault(customId);
+
+    expect(presets.defaultId()).toBe(customId);
+    expect(store.values.get('layout.default-preset')).toBe(customId);
+    // A root that has never picked follows the default; the one that saved the preset keeps its pick.
+    expect(presets.activeFor('/untouched')).toBe(customId);
+  });
+
+  it('setDefault_ignoresAnUnknownPreset_soAStaleIdCannotDisplaceAWorkingDefault', (): void => {
+    const presets: LayoutPresets = build();
+
+    presets.setDefault('missing');
+
+    expect(presets.defaultId()).toBe('coding');
+    expect(store.values.has('layout.default-preset')).toBe(false);
+  });
+
+  it('defaultId_whenTheChosenPresetIsGone_fallsBackToTheFirstPreset', (): void => {
+    store.values.set('layout.default-preset', 'deleted-preset');
+    const presets: LayoutPresets = build();
+
+    expect(presets.defaultId()).toBe('coding');
+  });
+
+  it('saveAs_withMakeDefault_marksTheNewPresetTheDefault', (): void => {
+    const presets: LayoutPresets = build();
+    presets.register(session);
+
+    presets.saveAs('Agentic Development', true);
+
+    const customId: string = presets.presets().find((preset): boolean => !preset.builtIn)?.id ?? '';
+    expect(presets.defaultId()).toBe(customId);
+    expect(store.values.get('layout.default-preset')).toBe(customId);
+  });
+
+  it('saveAs_withoutMakeDefault_leavesTheDefaultAlone', (): void => {
+    const presets: LayoutPresets = build();
+    presets.register(session);
+
+    presets.saveAs('Agentic Development');
+
+    expect(presets.defaultId()).toBe('coding');
+  });
+
+  it('remove_droppingTheDefault_clearsTheChoiceRatherThanStrandingIt', (): void => {
+    const presets: LayoutPresets = build();
+    presets.register(session);
+    presets.saveAs('Custom', true);
+    const customId: string = presets.presets().find((preset): boolean => !preset.builtIn)?.id ?? '';
+    expect(presets.defaultId()).toBe(customId);
+
+    presets.remove(customId);
+
+    expect(presets.defaultId()).toBe('coding');
+    expect(store.values.get('layout.default-preset')).toBe(null);
+  });
+
   it('saveAs_capturesTheSessionLayout_persists_andBecomesTheRootsActivePick', (): void => {
     const presets: LayoutPresets = build();
     presets.register(session);
 
     presets.saveAs('Agentic Development');
 
-    const saved: readonly { id: string; name: string }[] = presets.presets().filter(
-      (preset): boolean => !preset.builtIn,
-    );
+    const saved: readonly { id: string; name: string }[] = presets
+      .presets()
+      .filter((preset): boolean => !preset.builtIn);
     expect(saved.length).toBe(1);
     expect(saved[0].name).toBe('Agentic Development');
     expect(presets.activeFor('/repo')).toBe(saved[0].id);
@@ -164,7 +234,9 @@ describe('LayoutPresets', () => {
     );
 
     presets.rename('coding', 'Hacked');
-    expect(presets.presets().find((preset): boolean => preset.id === 'coding')?.name).toBe('Coding');
+    expect(presets.presets().find((preset): boolean => preset.id === 'coding')?.name).toBe(
+      'Coding',
+    );
 
     // Removing the active preset re-seeds the session from the fallback.
     const before: number = applied;
@@ -235,9 +307,9 @@ describe('LayoutPresets', () => {
     TestBed.resetTestingModule();
     const second: LayoutPresets = build();
 
-    const user: readonly { name: string }[] = second.presets().filter(
-      (preset): boolean => !preset.builtIn,
-    );
+    const user: readonly { name: string }[] = second
+      .presets()
+      .filter((preset): boolean => !preset.builtIn);
     expect(user.map((preset): string => preset.name)).toEqual(['Kept']);
   });
 });

@@ -1,25 +1,14 @@
 <app-ribbon-overflow>
-  <!-- Build actions gate on the Build terminal alone (never on runs, so a build can start while a
-       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
-       asks whether to stop the running build and start this action instead. -->
-  <app-ribbon-strip-group title="Solution">
-    <app-ribbon-strip-button
-      [icon]="Icon.BUILD"
-      label="Build"
-      [disabled]="!canBuild()"
-      (action)="onBuild()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.REBUILD"
-      label="Rebuild"
-      [disabled]="!canRebuild()"
-      (action)="onRebuild()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.CLEAN"
-      label="Clean"
-      [disabled]="!canClean()"
-      (action)="onClean()"
+  <!-- Save acts on the well's focused document; Save All writes every document holding unsaved
+       changes, and is what the workspace's Save accelerator invokes. -->
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [items]="saveMenuItems()"
+      [disabled]="!canSave() && !hasUnsavedChanges()"
+      (action)="onSave()"
+      (selected)="onSaveMenuItem($event)"
     />
   </app-ribbon-strip-group>
 
@@ -34,6 +23,51 @@
       <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
       <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
     </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <!-- Layout presets: which panels exist and where they dock. Session tweaks are ephemeral —
+       switching, resetting, or relaunching re-applies the selected preset's saved definition;
+       Save/Save As are the only writes. The big button names and applies the DEFAULT preset, and its
+       menu lists every preset; the default itself is set when saving one, or in Manage. Built-ins are
+       immutable, so Save (overwrite) enables only for user presets. -->
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.LAYOUT_PRESET"
+      [label]="defaultPresetName()"
+      [items]="presetMenuItems()"
+      [disabled]="!canUsePresets()"
+      (action)="onApplyDefaultPreset()"
+      (selected)="onSelectPreset($event)"
+    />
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SAVE"
+        label="Save"
+        [disabled]="!canModifyPreset()"
+        (action)="onUpdatePreset()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SAVE_AS"
+        label="Save As"
+        [disabled]="!canUsePresets()"
+        (action)="onSavePresetAs()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.MANAGE"
+        label="Manage"
+        [disabled]="!canUsePresets()"
+        (action)="onManagePresets()"
+      />
+    </app-ribbon-strip-column>
+    @if (presetTransient()) {
+      <app-ribbon-strip-column>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.UNDO"
+          label="Return"
+          (action)="onReturnPreset()"
+        />
+      </app-ribbon-strip-column>
+    }
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Run">
@@ -91,6 +125,29 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
+  <!-- Build actions gate on the Build terminal alone (never on runs, so a build can start while a
+       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
+       asks whether to stop the running build and start this action instead. Clean's menu carries the
+       document-level tidying actions, which act on the well's focused editor rather than the build. -->
+  <app-ribbon-strip-group title="Solution">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.BUILD"
+      label="Build"
+      [items]="buildMenuItems()"
+      [disabled]="!canBuild() && !canRebuild()"
+      (action)="onBuild()"
+      (selected)="onBuildMenuItem($event)"
+    />
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.CLEAN"
+      label="Clean"
+      [items]="cleanMenuItems()"
+      [disabled]="!canClean() && !hasActiveEditor()"
+      (action)="onClean()"
+      (selected)="onCleanMenuItem($event)"
+    />
+  </app-ribbon-strip-group>
+
   @if (targetGroupVisible()) {
     <app-ribbon-strip-group title="Target">
       <app-ribbon-strip-column [spread]="true">
@@ -114,21 +171,40 @@
     </app-ribbon-strip-group>
   }
 
-  <!-- The repository groups (the former Source Control group dissolved into them, per the unified
-       ribbon of #351): every action gates on the open folder being a git repository. -->
-  <app-ribbon-strip-group title="Repository">
-    <app-ribbon-strip-button
-      [icon]="Icon.REFRESH"
-      label="Refresh"
+  <!-- The repo-global git actions, and only those: Commit (which sets the stage rather than
+       committing here — the Commit panel owns the message and the file selection), the three network
+       actions, and the structural Promote. Everything that acts on something the user can see and
+       select — branches, stashes, individual changes, the diff layout — lives on the Repository and
+       Commit panels instead. Every action gates on the open folder being a repository. -->
+  <app-ribbon-strip-group title="Source Control">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.GIT_COMMIT"
+      label="Commit"
+      [items]="commitMenuItems()"
       [disabled]="!hasRepository()"
-      (action)="onRepoRefresh()"
+      (action)="onCommit()"
+      (selected)="onCommitMenuItem($event)"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.CLOUD"
-      label="Fetch"
-      [disabled]="!hasRepository()"
-      (action)="onRepoFetch()"
-    />
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ARROW_DOWN"
+        label="Pull"
+        [disabled]="!hasRepository()"
+        (action)="onPull()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ARROW_UP"
+        label="Push"
+        [disabled]="!hasRepository()"
+        (action)="onPush()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CLOUD"
+        label="Fetch"
+        [disabled]="!hasRepository()"
+        (action)="onRepoFetch()"
+      />
+    </app-ribbon-strip-column>
     @if (canPromote()) {
       <app-ribbon-strip-button
         [icon]="Icon.WORKTREE"
@@ -137,115 +213,6 @@
         (action)="onPromote()"
       />
     }
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Sync">
-    <app-ribbon-strip-button
-      [icon]="Icon.ARROW_DOWN"
-      label="Pull"
-      [disabled]="!hasRepository()"
-      (action)="onPull()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.ARROW_UP"
-      label="Push"
-      [disabled]="!hasRepository()"
-      (action)="onPush()"
-    />
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Changes">
-    <app-ribbon-strip-button
-      [icon]="Icon.PLUS"
-      label="Stage All"
-      [disabled]="!hasRepository()"
-      (action)="onStageAll()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.GIT_COMMIT"
-      label="Commit"
-      [disabled]="!hasRepository()"
-      (action)="onCommit()"
-    />
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Branch">
-    <app-ribbon-strip-button
-      [icon]="Icon.SOURCE_CONTROL"
-      label="New Branch"
-      [disabled]="!hasRepository()"
-      (action)="onNewBranch()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.STASH"
-      label="Stash"
-      [disabled]="!hasRepository()"
-      (action)="onStash()"
-    />
-  </app-ribbon-strip-group>
-
-  <!-- Layout presets: which panels exist and where they dock. Session tweaks are ephemeral —
-       switching, resetting, or relaunching re-applies the selected preset's saved definition;
-       Save as…/Update are the only writes. Built-ins are immutable, so the modifying actions
-       enable only for user presets. -->
-  <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-column [spread]="true">
-      <app-dropdown
-        [options]="presetOptions()"
-        [value]="activePresetId()"
-        [disabled]="!canUsePresets()"
-        [fullWidth]="true"
-        ariaLabel="Layout preset"
-        (valueChange)="onSelectPreset($event)"
-      />
-      <app-ribbon-strip-row>
-        @if (presetTransient()) {
-          <app-ribbon-strip-button-small
-            [icon]="Icon.UNDO"
-            label="Return"
-            (action)="onReturnPreset()"
-          />
-        }
-        <app-ribbon-strip-button-small
-          [icon]="Icon.SAVE_AS"
-          label="Save As"
-          [disabled]="!canUsePresets()"
-          (action)="onSavePresetAs()"
-        />
-        <app-ribbon-strip-button-small
-          [icon]="Icon.SAVE"
-          label="Update"
-          [disabled]="!canModifyPreset()"
-          (action)="onUpdatePreset()"
-        />
-        <app-ribbon-strip-button-small
-          [icon]="Icon.REFRESH"
-          label="Reset"
-          [disabled]="!canUsePresets()"
-          (action)="onResetPreset()"
-        />
-      </app-ribbon-strip-row>
-    </app-ribbon-strip-column>
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.PENCIL"
-        label="Rename"
-        [disabled]="!canModifyPreset()"
-        (action)="onRenamePreset()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.TRASH"
-        label="Delete"
-        [disabled]="!canModifyPreset()"
-        (action)="onDeletePreset()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.GIT_DIFF"
-        label="Diff Layout"
-        [disabled]="!hasRepository()"
-        (action)="onToggleDiff()"
-      />
-    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 
@@ -277,39 +244,106 @@
   </div>
 </app-modal>
 
-<!-- Names a layout preset: saving the current arrangement as a new preset, or renaming the active
-     user preset. -->
+<!-- Saves the current arrangement as a new layout preset. The Default box makes it the preset the
+     View button applies, replacing whichever preset held that role. -->
 <app-modal
-  [open]="presetPrompt() !== null"
+  [open]="saveAsOpen()"
   [width]="26"
-  ariaLabel="Name the layout preset"
-  (dismiss)="cancelPresetPrompt()"
+  ariaLabel="Save layout as preset"
+  (dismiss)="cancelSaveAs()"
 >
-  <h2 class="directory-ribbon__confirm-title">
-    {{ presetPrompt() === 'rename' ? 'Rename preset' : 'Save layout as preset' }}
-  </h2>
+  <h2 class="directory-ribbon__confirm-title">Save layout as preset</h2>
   <input
     #presetInput
     class="directory-ribbon__prompt-input"
     type="text"
-    [value]="presetPromptName()"
-    (input)="onPresetPromptInput($event)"
-    (keydown.enter)="confirmPresetPrompt()"
-    (keydown.escape)="cancelPresetPrompt()"
+    [value]="saveAsName()"
+    (input)="saveAsName.set($any($event.target).value)"
+    (keydown.enter)="confirmSaveAs()"
+    (keydown.escape)="cancelSaveAs()"
     placeholder="Preset name"
     aria-label="Preset name"
   />
+  <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+       rule cannot see through the component boundary to verify this statically. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+  <label class="directory-ribbon__prompt-check">
+    <app-checkbox [(checked)]="saveAsDefault" />
+    <span>Make this the default view</span>
+  </label>
   <div class="directory-ribbon__confirm-actions">
-    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPresetPrompt()">
+    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelSaveAs()">
       Cancel
     </button>
     <button
       type="button"
       class="directory-ribbon__confirm-button"
-      [disabled]="presetPromptName().trim().length === 0"
-      (click)="confirmPresetPrompt()"
+      [disabled]="saveAsName().trim().length === 0"
+      (click)="confirmSaveAs()"
     >
-      {{ presetPrompt() === 'rename' ? 'Rename' : 'Save' }}
+      Save
+    </button>
+  </div>
+</app-modal>
+
+<!-- Manages the layout presets: which one is the default, what the user's presets are called, and
+     which of them to drop. Built-ins can be made the default but never renamed or deleted. Edits
+     apply as they are made, so the dialog only closes. -->
+<app-modal [open]="manageOpen()" [width]="32" ariaLabel="Manage layouts" (dismiss)="closeManage()">
+  <h2 class="directory-ribbon__confirm-title">Manage layouts</h2>
+  <p class="directory-ribbon__confirm-message">
+    The default is the layout the View button applies, and the one a workspace opens with until it
+    is switched.
+  </p>
+  <ul class="directory-ribbon__preset-list">
+    @for (preset of presets(); track preset.id) {
+      <li class="directory-ribbon__preset-row">
+        <button
+          type="button"
+          class="directory-ribbon__preset-default"
+          [class.directory-ribbon__preset-default--on]="preset.id === defaultPresetId()"
+          [attr.aria-pressed]="preset.id === defaultPresetId()"
+          [attr.aria-label]="'Make ' + preset.name + ' the default'"
+          [title]="preset.id === defaultPresetId() ? 'Default layout' : 'Make default'"
+          (click)="onSetDefaultPreset(preset.id)"
+        >
+          <app-icon [icon]="Icon.STAR" [size]="0.875" />
+        </button>
+        @if (preset.builtIn) {
+          <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
+          <span class="directory-ribbon__preset-tag">Built-in</span>
+        } @else {
+          <input
+            class="directory-ribbon__preset-input"
+            type="text"
+            [value]="preset.name"
+            [attr.aria-label]="'Rename ' + preset.name"
+            (change)="onRenamePreset(preset.id, $any($event.target).value)"
+          />
+          <button
+            type="button"
+            class="directory-ribbon__preset-delete"
+            [attr.aria-label]="'Delete ' + preset.name"
+            title="Delete"
+            (click)="onDeletePreset(preset.id)"
+          >
+            <app-icon [icon]="Icon.TRASH" [size]="0.875" />
+          </button>
+        }
+      </li>
+    }
+  </ul>
+  <div class="directory-ribbon__confirm-actions directory-ribbon__confirm-actions--split">
+    <button
+      type="button"
+      class="directory-ribbon__confirm-button"
+      title="Discard this session's layout tweaks and re-apply the showing preset"
+      (click)="onResetPreset()"
+    >
+      Reset Layout
+    </button>
+    <button type="button" class="directory-ribbon__confirm-button" (click)="closeManage()">
+      Done
     </button>
   </div>
 </app-modal>

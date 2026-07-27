@@ -184,6 +184,39 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Restores a stash onto the working tree, keeping it on the stack.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  public applyStash(index: number): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.stashApply(this.root, index),
+    );
+  }
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  public popStash(index: number): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.stashPop(this.root, index),
+    );
+  }
+
+  /**
+   * Deletes a stash without restoring it. Destructive; the caller confirms first.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  public dropStash(index: number): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.stashDrop(this.root, index),
+    );
+  }
+
+  /**
    * Checks out an existing branch.
    * @param branch The branch name.
    * @returns Returns the outcome.
@@ -195,13 +228,15 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
-   * Creates a branch at the current head and checks it out.
+   * Creates a branch at the current head, optionally checking it out.
    * @param name The new branch name.
+   * @param checkout Whether to check the new branch out.
    * @returns Returns the outcome.
    */
-  public createBranch(name: string): Promise<MutationResult> {
+  public createBranch(name: string, checkout: boolean): Promise<MutationResult> {
     return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.createBranch(this.root, name),
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.createBranch(this.root, name, checkout),
     );
   }
 

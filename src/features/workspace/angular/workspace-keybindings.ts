@@ -5,5 +5,12 @@ import { KeybindingCatalogueEntry } from '@shared/angular/services/keybindings/k
  */
 export const WORKSPACE_KEYBINDINGS: KeybindingCatalogueEntry = {
   view: 'Workspace',
-  bindings: [{ id: 'workspace.findInFiles', description: 'Find in files', chord: 'Mod+Shift+F' }],
+  bindings: [
+    { id: 'workspace.findInFiles', description: 'Find in files', chord: 'Mod+Shift+F' },
+    {
+      id: 'workspace.saveAll',
+      description: 'Save all documents in the well',
+      chord: 'Mod+S',
+    },
+  ],
 };

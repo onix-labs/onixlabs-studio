@@ -119,6 +119,27 @@ export interface SourceControlProvider {
   stash(): Promise<MutationResult>;
 
   /**
+   * Restores a stash onto the working tree, keeping it on the stack.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  applyStash(index: number): Promise<MutationResult>;
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  popStash(index: number): Promise<MutationResult>;
+
+  /**
+   * Deletes a stash without restoring it. Destructive; the caller confirms first.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the outcome.
+   */
+  dropStash(index: number): Promise<MutationResult>;
+
+  /**
    * Checks out an existing branch.
    * @param branch The branch name.
    * @returns Returns the outcome.
@@ -126,11 +147,12 @@ export interface SourceControlProvider {
   checkout(branch: string): Promise<MutationResult>;
 
   /**
-   * Creates a branch at the current head and checks it out.
+   * Creates a branch at the current head, optionally checking it out.
    * @param name The new branch name.
+   * @param checkout Whether to check the new branch out.
    * @returns Returns the outcome.
    */
-  createBranch(name: string): Promise<MutationResult>;
+  createBranch(name: string, checkout: boolean): Promise<MutationResult>;
 
   /**
    * Fetches all remotes, pruning deleted remote-tracking branches.

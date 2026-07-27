@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -121,9 +122,26 @@ class StubRepository {
     this.calls.push(`setCommitMessage:${message}`);
   }
 
+  /**
+   * Mirrors the real repository's bound state, gating the tool strip's Refresh.
+   */
+  public readonly isBound: WritableSignal<boolean> = signal<boolean>(true);
+
   public discard(file: GitFileChange): Promise<MutationResult> {
     this.calls.push(`discard:${file.path}`);
     return Promise.resolve({ success: true });
+  }
+
+  public discardFiles(files: readonly GitFileChange[]): Promise<MutationResult> {
+    this.calls.push(
+      `discardFiles:${files.map((file: GitFileChange): string => file.path).join(',')}`,
+    );
+    return Promise.resolve({ success: true });
+  }
+
+  public refresh(): Promise<void> {
+    this.calls.push('refresh');
+    return Promise.resolve();
   }
 
   public commitFiles(paths: readonly string[]): Promise<MutationResult> {
@@ -154,6 +172,7 @@ describe('CommitDetail', () => {
   let generator: StubGenerator;
   let opened: GitFileChange[];
   let confirmAnswer: boolean;
+  let diffs: Diffs;
   let host: HTMLElement;
 
   beforeEach(async () => {
@@ -183,6 +202,7 @@ describe('CommitDetail', () => {
       ],
     }).compileComponents();
 
+    diffs = TestBed.inject(Diffs);
     fixture = TestBed.createComponent(CommitDetail);
     fixture.componentRef.setInput('panel', PANEL);
     host = fixture.nativeElement as HTMLElement;
@@ -416,5 +436,84 @@ describe('CommitDetail', () => {
     textarea.dispatchEvent(new Event('input'));
 
     expect(repository.calls).toContain('setCommitMessage:wip: draft message');
+  });
+
+  describe('the tool strip', () => {
+    /**
+     * Resolves a tool-strip button by its accessible label.
+     * @param label The button's aria-label.
+     * @returns Returns the button.
+     */
+    function tool(label: string): HTMLButtonElement {
+      return host.querySelector<HTMLButtonElement>(`app-panel-toolbar [aria-label="${label}"]`)!;
+    }
+
+    it('diffLayout_togglesTheSharedInlinePreference_andReflectsIt', async () => {
+      expect(tool('Diff Layout').getAttribute('aria-pressed')).toBe('false');
+
+      tool('Diff Layout').click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(diffs.inlineDiff()).toBe(true);
+      expect(tool('Diff Layout').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('refresh_reReadsTheRepository', async () => {
+      tool('Refresh').click();
+      await fixture.whenStable();
+
+      expect(repository.calls).toContain('refresh');
+    });
+
+    it('discardAll_isDisabledWhenTheWorkingTreeIsClean', () => {
+      expect(tool('Discard All').disabled).toBe(true);
+
+      repository.unstaged.set([makeFile('a.ts', 'modified')]);
+      fixture.detectChanges();
+
+      expect(tool('Discard All').disabled).toBe(false);
+    });
+
+    it('discardAll_whenDismissed_discardsNothing', async () => {
+      confirmAnswer = false;
+      repository.unstaged.set([makeFile('a.ts', 'modified')]);
+      fixture.detectChanges();
+
+      tool('Discard All').click();
+      await fixture.whenStable();
+
+      expect(
+        repository.calls.some((call: string): boolean => call.startsWith('discardFiles')),
+      ).toBe(false);
+    });
+
+    it('discardAll_whenConfirmed_discardsTheWholeWorkingTreeInOneCall', async () => {
+      confirmAnswer = true;
+      repository.staged.set([makeFile('staged.ts', 'modified')]);
+      repository.unstaged.set([makeFile('untracked.ts', 'added', true)]);
+      fixture.detectChanges();
+
+      tool('Discard All').click();
+      await fixture.whenStable();
+
+      // Tracked first, untracked after, and one call rather than one per file.
+      expect(repository.calls).toContain('discardFiles:staged.ts,untracked.ts');
+    });
+
+    it('discardAll_ignoresTheCommitCheckboxes_actingOnTheWholeWorkingTree', async () => {
+      confirmAnswer = true;
+      repository.staged.set([makeFile('kept.ts', 'modified')]);
+      repository.unstaged.set([makeFile('unchecked.ts', 'added', true)]);
+      repository.isWorkingSelected.set(true);
+      fixture.detectChanges();
+
+      // An untracked file defaults to UNCHECKED, so it would be excluded from a commit — but
+      // discarding is about the working tree, not about what the next commit contains.
+      tool('Discard All').click();
+      await fixture.whenStable();
+
+      expect(repository.calls).toContain('discardFiles:kept.ts,unchecked.ts');
+    });
   });
 });

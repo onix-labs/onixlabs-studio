@@ -133,13 +133,28 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public applyStash(index: number): Promise<MutationResult> {
+    this.calls.push(`applyStash:${index}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public popStash(index: number): Promise<MutationResult> {
+    this.calls.push(`popStash:${index}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public dropStash(index: number): Promise<MutationResult> {
+    this.calls.push(`dropStash:${index}`);
+    return Promise.resolve({ success: true });
+  }
+
   public checkout(branch: string): Promise<MutationResult> {
     this.calls.push(`checkout:${branch}`);
     return Promise.resolve({ success: true });
   }
 
-  public createBranch(name: string): Promise<MutationResult> {
-    this.calls.push(`createBranch:${name}`);
+  public createBranch(name: string, checkout: boolean): Promise<MutationResult> {
+    this.calls.push(`createBranch:${name}:${checkout}`);
     return Promise.resolve({ success: true });
   }
 
@@ -486,5 +501,42 @@ describe('Repository', () => {
       .toasts()
       .map((toast: Notification): string => toast.title);
     expect(titles).toEqual(['Pushed main']);
+  });
+
+  it('applyStash_restoresTheStashAndSelectsTheWorkingTree', async () => {
+    repository.selectNode('c2');
+
+    await repository.applyStash(2);
+
+    expect(provider.calls).toContain('applyStash:2');
+    // The point of restoring is to work on what came back, so the selection follows it.
+    expect(repository.selectedNodeId()).toBe(WORKING_NODE_ID);
+  });
+
+  it('popStash_restoresTheStashAndSelectsTheWorkingTree', async () => {
+    repository.selectNode('c2');
+
+    await repository.popStash(0);
+
+    expect(provider.calls).toContain('popStash:0');
+    expect(repository.selectedNodeId()).toBe(WORKING_NODE_ID);
+  });
+
+  it('dropStash_deletesTheStashWithoutMovingTheSelection', async () => {
+    repository.selectNode('c2');
+
+    await repository.dropStash(1);
+
+    expect(provider.calls).toContain('dropStash:1');
+    // Nothing was restored, so there is no reason to leave the commit the user was reading.
+    expect(repository.selectedNodeId()).toBe('c2');
+  });
+
+  it('createBranch_checksTheNewBranchOutUnlessToldNotTo', async () => {
+    await repository.createBranch('feature/one');
+    expect(provider.calls).toContain('createBranch:feature/one:true');
+
+    await repository.createBranch('feature/two', false);
+    expect(provider.calls).toContain('createBranch:feature/two:false');
   });
 });
