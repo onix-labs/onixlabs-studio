@@ -212,7 +212,8 @@ export interface DebugCapability {
  */
 export interface ProjectCapabilities {
   /**
-   * Gets the actions the provider supports (an absent action is not rendered, not greyed).
+   * Gets the actions the provider supports (an absent action is not rendered, not greyed — and a
+   * group left with no rendered action disappears with them, rather than standing as dead chrome).
    */
   readonly actions: readonly ProjectAction[];
 
@@ -263,8 +264,9 @@ export interface ProjectModel {
   readonly tree: readonly ProjectNode[];
 
   /**
-   * Gets the root-independent capabilities the producing project system declares, so the ribbon can
-   * gate its optional controls from data.
+   * Gets the capabilities in force for this root, so the ribbon can gate its optional controls from
+   * data: the producing project system's declared baseline, narrowed where the root itself decides
+   * what is possible (a Node package declares only the actions its manifest scripts back).
    */
   readonly capabilities: ProjectCapabilities;
 }

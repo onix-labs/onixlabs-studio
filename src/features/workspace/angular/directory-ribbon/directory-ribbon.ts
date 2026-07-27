@@ -59,16 +59,6 @@ const SAVE_ALL: string = 'save-all';
 const BUILD_REBUILD: string = 'rebuild';
 
 /**
- * Identifies the Format item in the Solution group's Clean split button menu.
- */
-const CLEAN_FORMAT: string = 'format';
-
-/**
- * Identifies the Code Cleanup item in the Solution group's Clean split button menu.
- */
-const CLEAN_CODE_CLEANUP: string = 'code-cleanup';
-
-/**
  * Identifies the Stash item in the Source Control group's Commit split button menu.
  */
 const COMMIT_STASH: string = 'stash';
@@ -79,15 +69,18 @@ const COMMIT_STASH: string = 'stash';
  *
  * File saves the well's documents through the {@link WorkspaceDocumentCommands} seam — the well is
  * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. Edit
- * routes through the {@link EditorCommands} seam. View drives layout presets: the big button applies
+ * routes through the {@link EditorCommands} seam, and holds every document-level action — the
+ * clipboard and history pair, Find, and the tidying pair (Format and Code Cleanup), which act on the
+ * well's focused editor and so belong nowhere near the build. View drives layout presets: the big button applies
  * the DEFAULT preset (named on its face) and its menu lists every preset, while Save, Save As and
  * Manage write them. Run is the Tier-1 universal widget: a Start button that toggles to Stop while a
  * run is in flight, a run-configuration dropdown (sourced solely from the workspace's authored
  * `.studio` configurations — nothing is inferred), a Debug button that launches the selected
  * configuration under the {@link Debugger} seam, and a Configure button. Solution dispatches through
- * the {@link Builds} seam: Build (with Rebuild behind it) and Clean (with the document-level Format
- * and Code Cleanup behind it). Solution and Target gate themselves on the active provider's declared
- * {@link ProjectCapabilities}: unsupported actions are disabled, and Target is hidden entirely when
+ * the {@link Builds} seam: Build (with Rebuild behind it) and Clean. Solution and Target gate
+ * themselves on the active provider's declared {@link ProjectCapabilities}: an undeclared action is
+ * not rendered at all, the Solution group goes with the last of them (so an ecosystem with nothing to
+ * build — Python, a Node package with no scripts — shows no dead buttons), and Target is hidden when
  * the provider declares no build-configuration or target axis. Source Control is the workspace's
  * one-stop git group, dispatching through the {@link SourceControlCommands} and
  * {@link WorkspaceSourceControlCommands} seams.
@@ -255,6 +248,16 @@ export class DirectoryRibbon {
    */
   protected readonly canRebuild: Signal<boolean> = computed(
     (): boolean => this.capabilities()?.actions.includes('rebuild') ?? false,
+  );
+
+  /**
+   * Gets whether the Solution group has anything to show. A workspace whose ecosystem has no build
+   * step at all — Python, or a Node package whose manifest declares no build/clean scripts — would
+   * otherwise carry a group of permanently disabled buttons, so the group disappears with its last
+   * action instead.
+   */
+  protected readonly solutionGroupVisible: Signal<boolean> = computed(
+    (): boolean => this.canBuild() || this.canRebuild() || this.canClean(),
   );
 
   /**
@@ -492,17 +495,11 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Gets the Build split button's menu: Rebuild, disabled when the provider does not declare it.
+   * Gets the Build split button's menu: Rebuild. The button carries the menu only where the provider
+   * declares Rebuild, so the item is never a dead entry.
    */
   protected readonly buildMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
-    (): readonly RibbonMenuItem[] => [
-      {
-        id: BUILD_REBUILD,
-        label: 'Rebuild',
-        icon: Icon.REBUILD,
-        disabled: !this.canRebuild(),
-      },
-    ],
+    (): readonly RibbonMenuItem[] => [{ id: BUILD_REBUILD, label: 'Rebuild', icon: Icon.REBUILD }],
   );
 
   /**
@@ -511,25 +508,9 @@ export class DirectoryRibbon {
   protected readonly hasActiveEditor: Signal<boolean> = this.commands.hasActiveEditor;
 
   /**
-   * Gets the Clean split button's menu: the document-level tidying actions, which act on the well's
-   * focused editor rather than on the build, and so gate on there being one.
+   * Gets whether the well's focused editor supports Code Cleanup.
    */
-  protected readonly cleanMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
-    (): readonly RibbonMenuItem[] => [
-      {
-        id: CLEAN_FORMAT,
-        label: 'Format',
-        icon: Icon.FORMAT,
-        disabled: !this.commands.hasActiveEditor(),
-      },
-      {
-        id: CLEAN_CODE_CLEANUP,
-        label: 'Code Cleanup',
-        icon: Icon.CODE_CLEANUP,
-        disabled: !this.commands.canCodeCleanup(),
-      },
-    ],
-  );
+  protected readonly canCodeCleanup: Signal<boolean> = this.commands.canCodeCleanup;
 
   /**
    * Runs the active workspace's default build task.
@@ -563,15 +544,17 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Handles a choice from the Clean split button's menu.
-   * @param id The chosen item's identifier.
+   * Formats the focused editor's document.
    */
-  protected onCleanMenuItem(id: string): void {
-    if (id === CLEAN_FORMAT) {
-      this.commands.formatDocument();
-    } else if (id === CLEAN_CODE_CLEANUP) {
-      void this.commands.codeCleanup();
-    }
+  protected onFormatDocument(): void {
+    this.commands.formatDocument();
+  }
+
+  /**
+   * Runs Code Cleanup over the focused editor's document.
+   */
+  protected onCodeCleanup(): void {
+    void this.commands.codeCleanup();
   }
 
   /**
@@ -661,15 +644,19 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Sends a build action to the active workspace's runner.
+   * Sends a build action to the active workspace's runner. A declared action runs its ecosystem's own
+   * command, so what the button dispatches is the action the provider declared — npm's Build runs the
+   * `build` script it declared the action from, rather than whichever discovered task merely looked
+   * build-shaped. Build alone falls back to the discovered default build task, which is what carries
+   * ecosystems with no capability provider at all.
    * @param action The build action.
    * @param restart Whether a busy build may be stopped and replaced.
    */
   private dispatchBuildAction(action: 'build' | 'rebuild' | 'clean', restart: boolean): void {
-    if (action === 'build') {
-      this.builds.build({ restart });
-    } else {
+    if (this.capabilities()?.actions.includes(action) === true) {
       this.builds.runAction(action, { restart });
+    } else if (action === 'build') {
+      this.builds.build({ restart });
     }
   }
 

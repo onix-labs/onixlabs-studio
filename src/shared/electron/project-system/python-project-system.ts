@@ -14,8 +14,11 @@ import { ProjectSystem } from './project-system';
 /**
  * The Python project system's root-independent capabilities: an interpreted ecosystem with no compile
  * actions, no build-configuration axis, and no target axis — the definitive case where the ribbon's
- * gated controls simply disappear rather than grey out. Debugging is absent until a Python DAP adapter
- * (debugpy) is provisioned, at which point `debug` is declared.
+ * gated controls simply disappear rather than grey out, taking the whole Solution group with them.
+ * Deliberately empty, and not derived per root as Node's are: Python has no conventional build or
+ * clean step to run (packaging a distribution is a release action, not a build), so there is nothing
+ * for a Build button to dispatch. Debugging is absent until a Python DAP adapter (debugpy) is
+ * provisioned, at which point `debug` is declared.
  */
 const PYTHON_CAPABILITIES: ProjectCapabilities = {
   actions: [],

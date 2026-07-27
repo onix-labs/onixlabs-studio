@@ -17,8 +17,10 @@ export interface ProjectSystem {
   /**
    * Gets the root-independent capabilities this project system declares (its supported actions, build
    * configurations, target axis, and debug adapter). The provider stamps these onto every model it
-   * loads, so the ribbon gates its optional controls from data. Run configurations are not among them:
-   * a project system never infers what to run from a root — configurations are authored, not guessed.
+   * loads — narrowing the actions where the root itself decides which exist, as Node does from its
+   * manifest scripts — so the ribbon gates its optional controls from data. Run configurations are not
+   * among them: a project system never infers what to run from a root — configurations are authored,
+   * not guessed.
    */
   readonly capabilities: ProjectCapabilities;
 

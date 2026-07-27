@@ -2,6 +2,7 @@ import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  ProjectAction,
   ProjectCapabilities,
   ProjectEntry,
   ProjectItemNode,
@@ -15,9 +16,10 @@ import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
 
 /**
- * The Node project system's root-independent capabilities: an interpreted ecosystem with no compile
- * actions, no build-configuration axis, and no target axis — the definitive case where the ribbon's
- * gated controls simply disappear. Debugging is declared once a DAP adapter is provisioned.
+ * The Node project system's root-independent capabilities: an interpreted ecosystem with no
+ * build-configuration axis and no target axis, so the ribbon's Target group disappears. Actions are
+ * not fixed here — npm has no intrinsic build step, so each root declares the actions its own
+ * manifest scripts back (see {@link parseManifestActions}).
  */
 const NODE_CAPABILITIES: ProjectCapabilities = {
   actions: [],
@@ -25,6 +27,38 @@ const NODE_CAPABILITIES: ProjectCapabilities = {
   target: null,
   debug: { adapter: 'js-debug' },
 };
+
+/**
+ * The npm scripts that back a project action, by the conventional name each action runs. Only these
+ * exact names count: `npm run build` is what the ribbon's Build dispatches, so declaring the action
+ * from a differently-named script would light a button that runs something else (or nothing).
+ */
+const SCRIPT_ACTIONS: ReadonlyMap<string, ProjectAction> = new Map<string, ProjectAction>([
+  ['build', 'build'],
+  ['clean', 'clean'],
+  ['test', 'test'],
+]);
+
+/**
+ * Maps a manifest's scripts to the project actions they back, in {@link SCRIPT_ACTIONS} order so the
+ * declared list is stable regardless of the order the scripts were authored in. A manifest with no
+ * conventional scripts backs no actions at all, and the ribbon's Solution group disappears rather
+ * than offering buttons with nothing behind them.
+ * @param manifest The parsed manifest, or null when there is none.
+ * @returns Returns the backed actions.
+ */
+export function parseManifestActions(
+  manifest: Record<string, unknown> | null,
+): readonly ProjectAction[] {
+  const scripts: unknown = manifest?.['scripts'];
+  if (typeof scripts !== 'object' || scripts === null) {
+    return [];
+  }
+  const names: ReadonlySet<string> = new Set<string>(Object.keys(scripts));
+  return [...SCRIPT_ACTIONS]
+    .filter(([script]: [string, ProjectAction]): boolean => names.has(script))
+    .map(([, action]: [string, ProjectAction]): ProjectAction => action);
+}
 
 /**
  * The entry file launched under the debugger when the manifest names none: the conventional Node entry
@@ -72,7 +106,8 @@ export class NodeProjectSystem implements ProjectSystem {
   public readonly kind: string = 'node';
 
   /**
-   * Gets the root-independent capabilities this project system declares.
+   * Gets the capability baseline this project system declares. A loaded root narrows the actions to
+   * those its manifest scripts back.
    */
   public readonly capabilities: ProjectCapabilities = NODE_CAPABILITIES;
 
@@ -107,6 +142,7 @@ export class NodeProjectSystem implements ProjectSystem {
       return null;
     }
     const rootName: string = this.packageName(manifest, root);
+    const capabilities: ProjectCapabilities = this.capabilitiesFor(manifest);
     const workspaceDirs: readonly string[] = await this.expandWorkspaces(root, manifest);
     if (workspaceDirs.length === 0) {
       const tree: readonly ProjectNode[] = [
@@ -118,7 +154,7 @@ export class NodeProjectSystem implements ProjectSystem {
         solution: null,
         projects: this.flatten(tree),
         tree,
-        capabilities: this.capabilities,
+        capabilities,
       };
     }
     const projects: ProjectNode[] = [];
@@ -144,8 +180,19 @@ export class NodeProjectSystem implements ProjectSystem {
       solution: { name: rootName, path: manifestPath },
       projects: this.flatten(tree),
       tree,
-      capabilities: this.capabilities,
+      capabilities,
     };
+  }
+
+  /**
+   * Derives the capabilities in force for a root: the ecosystem baseline, with the actions its root
+   * manifest actually backs. A workspaces monorepo is driven by its root manifest's scripts, since
+   * that is the manifest the ribbon's Build terminal runs `npm` against.
+   * @param manifest The parsed root manifest.
+   * @returns Returns the root's capabilities.
+   */
+  private capabilitiesFor(manifest: Record<string, unknown>): ProjectCapabilities {
+    return { ...NODE_CAPABILITIES, actions: parseManifestActions(manifest) };
   }
 
   /**

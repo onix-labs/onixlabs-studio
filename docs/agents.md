@@ -205,11 +205,15 @@ here is a bug — its root is never set at the root injector, so `.studio` would
 
 - **`WorkspaceCapabilities`** — the active model's capabilities + provider kind. The Solution group
   gates Build/Clean/Rebuild on `actions`; the Target group's configuration/target selectors are driven
-  by `buildConfigurations`/`target` and hidden when absent. Capabilities are authoritative; a root with
-  no provider falls back to discovered tasks so Gradle/Make still build.
+  by `buildConfigurations`/`target` and hidden when absent. **An undeclared action is not rendered, not
+  greyed** — and the group goes with the last of them, so an ecosystem with no build step (Python) shows
+  no dead buttons. Actions may be **per root** where the root decides them: Node declares the actions
+  its manifest's conventional `build`/`clean`/`test` scripts back. Capabilities are authoritative; a
+  root with no provider falls back to discovered tasks so Gradle/Make still build.
 - **`Builds`** — dispatches to the active workspace's `BuildRunner`: `build()` (the first discovered
-  build task), `runConfiguration()` (a `.studio` run configuration compiled to a command), and
-  `runAction()` (Clean/Rebuild, compiled per ecosystem). Discovered tasks back the Solution group only
+  build task, the fallback for a root with no capability model), `runConfiguration()` (a `.studio` run
+  configuration compiled to a command), and `runAction()` (any declared action, compiled per
+  ecosystem — the path every declared Build/Clean/Rebuild takes). Discovered tasks back the Solution group only
   — they never reach the Run dropdown. **Runs are concurrent**: `activeRuns` lists every in-flight run,
   `cancel(runId)` stops one and `cancelAll()` stops the lot; the ribbon's Start becomes a Stop
   split-button whose menu stops a single run. Cancelling kills the task's whole **process tree**
@@ -438,9 +442,11 @@ there is flagged for every surface that shows it.
 **Editor commands reach well documents by document id.** `CodeDocumentPanel` registers an
 `EditorCommandHandler` with `EditorCommands` under its document id (activating and standing down with
 the well's active document, forgetting it on destroy) exactly as a standalone code tab registers under
-its tab id. This is what lets the ribbon's Edit group, its save actions, and Clean's Format / Code
-Cleanup act on the focused well document; without the registration they resolve no handler and are
-silent no-ops.
+its tab id. This is what lets the ribbon's Edit group — the clipboard and history pairs, Find, and the
+tidying pair (Format / Code Cleanup) — and its save actions act on the focused well document; without
+the registration they resolve no handler and are silent no-ops. The tidying pair lives in **Edit**, not
+behind Solution's Clean: it tidies a document, not a build, and Solution disappears entirely for an
+ecosystem with no build step.
 
 **Layout presets** (`shared/angular/services/layout-presets`) name _which panels exist and where they
 dock_. The persistence model is deliberately narrow — three things and nothing else:

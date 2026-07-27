@@ -12,6 +12,9 @@
     />
   </app-ribbon-strip-group>
 
+  <!-- Everything that acts on the well's focused document, the tidying pair included: they tidy a
+       document, not a build, so they live with the other document actions rather than behind the
+       Solution group's Clean button (which an ecosystem with no build step never renders). -->
   <app-ribbon-strip-group title="Edit">
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
@@ -22,6 +25,20 @@
       <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
       <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
       <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.FORMAT"
+        label="Format"
+        [disabled]="!hasActiveEditor()"
+        (action)="onFormatDocument()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CODE_CLEANUP"
+        label="Code Cleanup"
+        [disabled]="!canCodeCleanup()"
+        (action)="onCodeCleanup()"
+      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
@@ -125,28 +142,30 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <!-- Build actions gate on the Build terminal alone (never on runs, so a build can start while a
+  <!-- Every control here is gated on the provider declaring the action behind it: an ecosystem with
+       no build step shows no Solution group at all, rather than a row of permanently dead buttons.
+       Build actions gate on the Build terminal alone (never on runs, so a build can start while a
        run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
-       asks whether to stop the running build and start this action instead. Clean's menu carries the
-       document-level tidying actions, which act on the well's focused editor rather than the build. -->
-  <app-ribbon-strip-group title="Solution">
-    <app-ribbon-strip-menu-button
-      [icon]="Icon.BUILD"
-      label="Build"
-      [items]="buildMenuItems()"
-      [disabled]="!canBuild() && !canRebuild()"
-      (action)="onBuild()"
-      (selected)="onBuildMenuItem($event)"
-    />
-    <app-ribbon-strip-menu-button
-      [icon]="Icon.CLEAN"
-      label="Clean"
-      [items]="cleanMenuItems()"
-      [disabled]="!canClean() && !hasActiveEditor()"
-      (action)="onClean()"
-      (selected)="onCleanMenuItem($event)"
-    />
-  </app-ribbon-strip-group>
+       asks whether to stop the running build and start this action instead. -->
+  @if (solutionGroupVisible()) {
+    <app-ribbon-strip-group title="Solution">
+      @if (canRebuild()) {
+        <app-ribbon-strip-menu-button
+          [icon]="Icon.BUILD"
+          label="Build"
+          [items]="buildMenuItems()"
+          [disabled]="!canBuild()"
+          (action)="onBuild()"
+          (selected)="onBuildMenuItem($event)"
+        />
+      } @else if (canBuild()) {
+        <app-ribbon-strip-button [icon]="Icon.BUILD" label="Build" (action)="onBuild()" />
+      }
+      @if (canClean()) {
+        <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" (action)="onClean()" />
+      }
+    </app-ribbon-strip-group>
+  }
 
   @if (targetGroupVisible()) {
     <app-ribbon-strip-group title="Target">
