@@ -4,13 +4,13 @@
       @for (session of sessions(); track session.id) {
         @if (editingId() === session.id) {
           <input
+            #renameInput
             class="terminal-panel__rename"
             [value]="session.name"
             (blur)="commitRename(session.id, $event)"
             (keydown.enter)="commitRename(session.id, $event)"
             (keydown.escape)="cancelRename()"
             aria-label="Rename terminal"
-            autofocus
           />
         } @else {
           <button
