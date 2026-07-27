@@ -1,3 +1,38 @@
+<app-panel-toolbar>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [class.panel-toolbar__button--active]="inlineDiff()"
+    [attr.aria-pressed]="inlineDiff()"
+    [title]="inlineDiff() ? 'Diff layout: inline' : 'Diff layout: side by side'"
+    aria-label="Diff Layout"
+    (click)="toggleDiffLayout()"
+  >
+    <app-icon [icon]="Icon.GIT_DIFF" />
+  </button>
+  <span class="panel-toolbar__spacer"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button detail__discard-all"
+    title="Discard every uncommitted change in the working tree"
+    aria-label="Discard All"
+    [disabled]="repository.changeCount() === 0"
+    (click)="discardAll()"
+  >
+    <app-icon [icon]="Icon.TRASH" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Refresh"
+    aria-label="Refresh"
+    [disabled]="!repository.isBound()"
+    (click)="refresh()"
+  >
+    <app-icon [icon]="Icon.REFRESH" />
+  </button>
+</app-panel-toolbar>
+
 @if (repository.lastError(); as error) {
   <div class="detail__notice" role="alert">
     <span class="detail__notice-text">{{ error }}</span>

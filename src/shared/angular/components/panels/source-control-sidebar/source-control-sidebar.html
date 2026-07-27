@@ -1,15 +1,65 @@
-<button
-  type="button"
-  class="rail__working"
-  [class.rail__working--active]="repository.selectedNodeId() === workingNodeId"
-  (click)="selectWorking()"
->
-  <app-icon [icon]="Icon.PENCIL" />
-  <span class="rail__working-label">Uncommitted changes</span>
-  @if (repository.changeCount() > 0) {
-    <span class="rail__count">{{ repository.changeCount() }}</span>
-  }
-</button>
+<app-panel-toolbar>
+  <input
+    class="rail__filter"
+    type="search"
+    [value]="filter()"
+    placeholder="Filter"
+    aria-label="Filter the repository tree"
+    (input)="onFilterInput($event)"
+    (keydown.escape)="clearFilter()"
+  />
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="New Branch"
+    aria-label="New Branch"
+    [disabled]="!repository.isBound()"
+    (click)="openBranchDialog()"
+  >
+    <app-icon [icon]="Icon.PLUS" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Stash the working-tree changes"
+    aria-label="Stash"
+    [disabled]="repository.changeCount() === 0"
+    (click)="stash()"
+  >
+    <app-icon [icon]="Icon.STASH" />
+  </button>
+  <span class="panel-toolbar__spacer"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Fetch from all remotes"
+    aria-label="Fetch"
+    [disabled]="!repository.isBound()"
+    (click)="fetch()"
+  >
+    <app-icon [icon]="Icon.CLOUD" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Collapse All"
+    aria-label="Collapse All"
+    [disabled]="filter().trim().length > 0"
+    (click)="collapseAll()"
+  >
+    <app-icon [icon]="Icon.LIST" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    title="Refresh"
+    aria-label="Refresh"
+    [disabled]="!repository.isBound()"
+    (click)="refresh()"
+  >
+    <app-icon [icon]="Icon.REFRESH" />
+  </button>
+</app-panel-toolbar>
 
 <app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
   <ng-template let-row>
@@ -34,7 +84,30 @@
       @if (branch.behind > 0) {
         <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
       }
-      @if (!branch.current) {
+      @if (branch.current) {
+        <!-- Uncommitted changes belong to the branch they sit on, so the checked-out branch carries
+             them. Always shown (muted at zero) so the Commit panel's composer stays reachable from
+             the rail even when the tree is clean. -->
+        <button
+          type="button"
+          class="tree-row-action rail__changes"
+          [class.rail__changes--active]="workingSelected()"
+          [class.rail__changes--empty]="repository.changeCount() === 0"
+          [attr.aria-pressed]="workingSelected()"
+          [title]="
+            repository.changeCount() === 0
+              ? 'No uncommitted changes'
+              : repository.changeCount() + ' uncommitted change(s)'
+          "
+          aria-label="Show uncommitted changes"
+          (click)="selectWorking(); $event.stopPropagation()"
+        >
+          <app-icon [icon]="Icon.PENCIL" />
+          @if (repository.changeCount() > 0) {
+            <span class="rail__count">{{ repository.changeCount() }}</span>
+          }
+        </button>
+      } @else {
         <button
           type="button"
           class="tree-row-action rail__item-action"
@@ -46,8 +119,103 @@
       }
     }
 
+    @if (node.stash; as stash) {
+      <button
+        type="button"
+        class="tree-row-action rail__item-action"
+        title="Apply — restore these changes and keep the stash"
+        aria-label="Apply stash"
+        (click)="applyStash(stash); $event.stopPropagation()"
+      >
+        <app-icon [icon]="Icon.ARROW_DOWN" />
+      </button>
+      <button
+        type="button"
+        class="tree-row-action rail__item-action"
+        title="Pop — restore these changes and drop the stash"
+        aria-label="Pop stash"
+        (click)="popStash(stash); $event.stopPropagation()"
+      >
+        <app-icon [icon]="Icon.ARROW_UP" />
+      </button>
+      <button
+        type="button"
+        class="tree-row-action rail__item-action rail__item-action--danger"
+        title="Drop — delete this stash without restoring it"
+        aria-label="Drop stash"
+        (click)="requestDropStash(stash); $event.stopPropagation()"
+      >
+        <app-icon [icon]="Icon.TRASH" />
+      </button>
+    }
+
     @if (node.status; as status) {
       <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
     }
   </ng-template>
 </app-tree-view>
+
+<!-- Creates a branch at the current head. Checking out afterwards is the default, since creating a
+     branch is nearly always the first step of working on it. -->
+<app-modal
+  [open]="branchDialogOpen()"
+  [width]="26"
+  ariaLabel="New branch"
+  (dismiss)="cancelBranch()"
+>
+  <h2 class="rail__dialog-title">New branch</h2>
+  <input
+    class="rail__dialog-input"
+    type="text"
+    [value]="branchName()"
+    placeholder="Branch name"
+    aria-label="Branch name"
+    (input)="onBranchNameInput($event)"
+    (keydown.enter)="confirmBranch()"
+    (keydown.escape)="cancelBranch()"
+  />
+  @if (branchNameError(); as error) {
+    <p class="rail__dialog-error" role="alert">{{ error }}</p>
+  }
+  <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+       rule cannot see through the component boundary to verify this statically. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+  <label class="rail__dialog-check">
+    <app-checkbox [(checked)]="branchCheckout" />
+    <span>Check out after creating</span>
+  </label>
+  <div class="rail__dialog-actions">
+    <button type="button" class="rail__dialog-button" (click)="cancelBranch()">Cancel</button>
+    <button
+      type="button"
+      class="rail__dialog-button"
+      [disabled]="!canCreateBranch()"
+      (click)="confirmBranch()"
+    >
+      Create
+    </button>
+  </div>
+</app-modal>
+
+<!-- Asked before a stash is dropped: dropping discards the stashed work with no way back. -->
+<app-modal
+  [open]="pendingDrop() !== null"
+  [width]="26"
+  ariaLabel="Drop stash"
+  (dismiss)="cancelDropStash()"
+>
+  <h2 class="rail__dialog-title">Drop this stash?</h2>
+  <p class="rail__dialog-message">
+    “{{ pendingDrop()?.message }}” is deleted without being restored. This cannot be undone.
+  </p>
+  <div class="rail__dialog-actions">
+    <button type="button" class="rail__dialog-button" (click)="cancelDropStash()">Cancel</button>
+    <button
+      type="button"
+      class="rail__dialog-button rail__dialog-button--danger"
+      (click)="confirmDropStash()"
+    >
+      Drop
+    </button>
+  </div>
+</app-modal>

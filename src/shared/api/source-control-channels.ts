@@ -81,12 +81,27 @@ export enum SourceControlChannel {
   Stash = 'source-control:stash',
 
   /**
+   * Restores a stash onto the working tree, keeping it on the stack.
+   */
+  StashApply = 'source-control:stash-apply',
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack.
+   */
+  StashPop = 'source-control:stash-pop',
+
+  /**
+   * Deletes a stash without restoring it. Destructive; the caller confirms first.
+   */
+  StashDrop = 'source-control:stash-drop',
+
+  /**
    * Checks out an existing branch.
    */
   Checkout = 'source-control:checkout',
 
   /**
-   * Creates a branch at the current head and checks it out.
+   * Creates a branch at the current head, optionally checking it out.
    */
   CreateBranch = 'source-control:create-branch',
 
@@ -260,6 +275,30 @@ export interface SourceControlClient {
   stash(root: string): Promise<GitRunResult>;
 
   /**
+   * Restores a stash onto the working tree, keeping it on the stack.
+   * @param root The absolute repository root; must be an open root.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the raw command result.
+   */
+  stashApply(root: string, index: number): Promise<GitRunResult>;
+
+  /**
+   * Restores a stash onto the working tree and drops it from the stack.
+   * @param root The absolute repository root; must be an open root.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the raw command result.
+   */
+  stashPop(root: string, index: number): Promise<GitRunResult>;
+
+  /**
+   * Deletes a stash without restoring it. Destructive; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param index The stack index of the stash (0 is the most recent).
+   * @returns Returns the raw command result.
+   */
+  stashDrop(root: string, index: number): Promise<GitRunResult>;
+
+  /**
    * Checks out an existing branch.
    * @param root The absolute repository root; must be an open root.
    * @param branch The branch name to check out.
@@ -268,12 +307,14 @@ export interface SourceControlClient {
   checkout(root: string, branch: string): Promise<GitRunResult>;
 
   /**
-   * Creates a branch at the current head and checks it out.
+   * Creates a branch at the current head, optionally checking it out.
    * @param root The absolute repository root; must be an open root.
    * @param name The new branch name.
+   * @param checkout Whether to check the new branch out; when false the branch is created and the
+   * current one stays checked out.
    * @returns Returns the raw command result.
    */
-  createBranch(root: string, name: string): Promise<GitRunResult>;
+  createBranch(root: string, name: string, checkout: boolean): Promise<GitRunResult>;
 
   /**
    * Fetches all remotes, pruning deleted remote-tracking branches.

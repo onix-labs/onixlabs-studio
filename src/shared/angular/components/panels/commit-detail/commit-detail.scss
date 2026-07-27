@@ -7,6 +7,13 @@
   color: var(--body-foreground-color);
 }
 
+// The destructive tool-strip action reads in the error/coral tone on hover: it throws work away.
+.detail__discard-all:not(:disabled):hover,
+.detail__discard-all:not(:disabled):focus-visible {
+  background: color-mix(in srgb, var(--accent-coral) 22%, transparent);
+  color: var(--accent-coral);
+}
+
 .detail__header {
   flex: 0 0 auto;
   padding: 0.85rem;

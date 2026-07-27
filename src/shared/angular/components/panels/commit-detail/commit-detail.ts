@@ -14,6 +14,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -22,6 +23,7 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
@@ -59,10 +61,16 @@ type WorkingRowData =
  * added on commit), above a boxed commit-message editor with AI-assisted message generation and
  * Commit / Commit and Push actions. Selecting a file drives the repository's file selection, which
  * the Monaco diff surface follows.
+ *
+ * The panel owns its tool strip, per the ribbon-versus-panel rule: the diff-layout toggle (a view
+ * setting for the diffs this panel opens), Discard All, and Refresh live here rather than on the
+ * ribbon. Discard All deliberately acts on the WHOLE working tree, not the checked files — the
+ * checkboxes pick what to commit, and destroying only part of the user's changes because of a
+ * commit-scoped selection would be a trap — and it goes through the shared destructive confirmation.
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [AppIcon, Checkbox, TreeView],
+  imports: [AppIcon, Checkbox, PanelToolbar, TreeView],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -406,6 +414,61 @@ export class CommitDetail {
     if (confirmed) {
       void this.repository.discard(file);
     }
+  }
+
+  /**
+   * Gets the working-tree files the panel is showing, tracked first — what Discard All acts on.
+   */
+  protected readonly workingFiles: Signal<readonly GitFileChange[]> = computed(
+    (): readonly GitFileChange[] => [...this.trackedFiles(), ...this.untrackedFiles()],
+  );
+
+  /**
+   * Discards every uncommitted change in the working tree, after confirmation. Acts on the whole
+   * working tree rather than the checked files: the checkboxes pick what to COMMIT, and quietly
+   * destroying only some of the user's changes because of a commit-scoped selection would be a trap.
+   */
+  protected async discardAll(): Promise<void> {
+    const files: readonly GitFileChange[] = this.workingFiles();
+    if (files.length === 0) {
+      return;
+    }
+    const confirmed: boolean = await this.fileSystem.confirmDestructive({
+      title: 'Discard All Changes',
+      message: `Discard the changes to all ${files.length} file(s) in the working tree?`,
+      detail:
+        'Tracked files are restored to the last commit; untracked files are deleted. ' +
+        'This cannot be undone.',
+      confirmLabel: 'Discard All',
+    });
+    if (confirmed) {
+      void this.repository.discardFiles(files);
+    }
+  }
+
+  /**
+   * Holds the shared diff store backing the inline/side-by-side toggle.
+   */
+  private readonly diffs: Diffs = inject(Diffs);
+
+  /**
+   * Gets whether diffs currently render inline (unified) rather than side by side, so the tool strip
+   * can show the toggle's state.
+   */
+  protected readonly inlineDiff: Signal<boolean> = this.diffs.inlineDiff;
+
+  /**
+   * Toggles every open diff between inline and side-by-side rendering.
+   */
+  protected toggleDiffLayout(): void {
+    this.diffs.toggleInline();
+  }
+
+  /**
+   * Re-reads the repository state.
+   */
+  protected refresh(): void {
+    void this.repository.refresh();
   }
 
   /**

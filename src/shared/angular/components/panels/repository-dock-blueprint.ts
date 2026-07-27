@@ -33,6 +33,7 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.SOURCE_CONTROL,
       role: 'tool',
       component: SourceControlSidebar,
+      ownsToolStrip: true,
     },
     {
       id: 'history',
@@ -41,7 +42,14 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       role: 'tool',
       component: CommitGraph,
     },
-    { id: 'commit', title: 'Commit', icon: Icon.LIST_ALL, role: 'tool', component: CommitDetail },
+    {
+      id: 'commit',
+      title: 'Commit',
+      icon: Icon.LIST_ALL,
+      role: 'tool',
+      component: CommitDetail,
+      ownsToolStrip: true,
+    },
     {
       id: 'agent',
       title: 'Agent',

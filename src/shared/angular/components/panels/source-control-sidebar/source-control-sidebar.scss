@@ -1,8 +1,8 @@
-// The source-control view's left rail: a pinned uncommitted-changes entry above the repository tree.
-// The tree rows themselves are the shared TreeView look (see the global `_tree.scss`); this file styles
-// the pinned entry and the rail-specific bits projected into each row (section labels, branch deltas,
-// the hover checkout action, status badges). Colours come from the shipped dock/accent tokens so the
-// rail tracks the active theme and accent.
+// The source-control view's left rail: its own tool strip above the repository tree. The tree rows
+// themselves are the shared TreeView look (see the global `_tree.scss`); this file styles the strip's
+// filter field and the rail-specific bits projected into each row (section labels, branch deltas, the
+// changes badge, the hover row actions, status badges). Colours come from the shipped dock/accent
+// tokens so the rail tracks the active theme and accent.
 :host {
   display: flex;
   flex-direction: column;
@@ -13,49 +13,64 @@
   font-size: 0.8rem;
 }
 
-// The uncommitted-changes entry: full width with a bottom accent-border divider and a little more
-// height, pinned above the scrolling tree.
-.rail__working {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex: 0 0 auto;
-  inline-size: 100%;
-  padding: 0.6rem;
-  border: 0;
-  border-block-end: 0.0625rem solid var(--accent-color);
-  background: transparent;
+// The tool strip's filter field, sized to take the slack so the buttons keep their trailing places.
+.rail__filter {
+  flex: 1 1 auto;
+  min-inline-size: 3rem;
+  padding: 0.2rem 0.4rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
   color: inherit;
   font: inherit;
-  font-weight: 500;
-  text-align: start;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    background: var(--dock-title-background-color--focused);
-  }
+  font-size: 0.75rem;
 
   &:focus-visible {
-    background: var(--dock-title-background-color--focused);
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: -0.125rem;
+    outline-offset: 0.0625rem;
+  }
+}
+
+// The uncommitted-changes badge on the checked-out branch's row. Unlike the other row actions it is
+// always rendered rather than revealed on hover — it carries a count, and the working tree has to
+// stay reachable — so it opts out of the global `.tree-row-action` hover reveal.
+.rail__changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+  margin-inline-start: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: transparent;
+  color: var(--accent-color);
+  cursor: default;
+  opacity: 1;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
   }
 
+  // The current selection: the Commit panel is showing these changes.
   &--active {
     background: color-mix(in srgb, var(--accent-color) 22%, transparent);
     color: var(--accent-surface-foreground-color);
   }
-}
 
-.rail__working-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  // Nothing uncommitted: still reachable, but it recedes.
+  &--empty {
+    color: var(--form-muted-foreground-color);
+    opacity: 0.5;
+  }
 }
 
 .rail__count {
-  margin-inline-start: auto;
   min-inline-size: 1.25rem;
   padding: 0.05rem 0.35rem;
   border-radius: 999px;
@@ -113,6 +128,107 @@
     background: var(--accent-surface-background-color);
     color: var(--accent-surface-foreground-color);
     outline: none;
+  }
+
+  // A destructive row action (dropping a stash) reads in the error/coral tone on hover.
+  &--danger:hover,
+  &--danger:focus-visible {
+    background: color-mix(in srgb, var(--accent-coral) 22%, transparent);
+    color: var(--accent-coral);
+  }
+}
+
+// The rail's dialogs (new branch, drop stash), rendered in the app's default modal card; these
+// classes style only their content.
+.rail__dialog-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.rail__dialog-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.rail__dialog-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin-block: 0.75rem 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--form-control-background-color);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+}
+
+.rail__dialog-error {
+  margin: 0 0 0.5rem;
+  color: var(--accent-coral);
+  font-size: 0.78rem;
+}
+
+.rail__dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-end: 1.3rem;
+  font-size: 0.85rem;
+  color: var(--body-foreground-color);
+  cursor: default;
+}
+
+.rail__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.rail__dialog-button {
+  padding: 0.45rem 1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+    outline: none;
+  }
+}
+
+// The destructive primary action reads in the error/coral tone: it deletes the stashed work.
+.rail__dialog-button--danger {
+  color: var(--gray-100);
+  background: var(--accent-coral);
+  border-color: var(--accent-coral);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--accent-coral);
+    border-color: var(--accent-coral);
+    color: var(--gray-100);
+    filter: brightness(1.1);
   }
 }
 

@@ -1,58 +1,25 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
- * Defines the commands the source-control ribbon can invoke on the active repository view.
+ * Defines the repository commands the directory ribbon's Source Control group can invoke on the
+ * active workspace.
+ *
+ * Deliberately small. Everything that acts on something the user can see and select — checking out a
+ * branch, creating one, applying or dropping a stash, discarding a change, the diff layout — belongs
+ * on the Repository and Commit panels, which reach their own {@link
+ * import('../repository/repository').Repository} directly and need no seam. What is left here is the
+ * repo-global remainder: fetching, stashing the whole working tree, and the structural promotion.
  */
 export interface SourceControlCommandHandler {
-  /**
-   * Re-reads the repository state (a mock refresh in the scaffold).
-   */
-  refresh(): void;
-
   /**
    * Fetches from the remote without integrating.
    */
   fetch(): void;
 
   /**
-   * Pulls the current branch from its upstream.
-   */
-  pull(): void;
-
-  /**
-   * Pushes the current branch to its upstream.
-   */
-  push(): void;
-
-  /**
-   * Stages every unstaged change.
-   */
-  stageAll(): void;
-
-  /**
-   * Commits the staged changes.
-   */
-  commit(): void;
-
-  /**
    * Stashes the working-tree changes.
    */
   stash(): void;
-
-  /**
-   * Starts a new branch from the current head.
-   */
-  newBranch(): void;
-
-  /**
-   * Toggles the diff between side-by-side and inline rendering.
-   */
-  toggleInlineDiff(): void;
-
-  /**
-   * Opens the repository's root as a workspace (a new directory tab).
-   */
-  openAsWorkspace(): void;
 
   /**
    * Gets whether the view can promote its repository into a worktree container (an ordinary
@@ -107,13 +74,6 @@ export class SourceControlCommands {
   }
 
   /**
-   * Invokes the refresh command on the active repository.
-   */
-  public refresh(): void {
-    this.handler()?.refresh();
-  }
-
-  /**
    * Invokes the fetch command on the active repository.
    */
   public fetch(): void {
@@ -121,59 +81,10 @@ export class SourceControlCommands {
   }
 
   /**
-   * Invokes the pull command on the active repository.
-   */
-  public pull(): void {
-    this.handler()?.pull();
-  }
-
-  /**
-   * Invokes the push command on the active repository.
-   */
-  public push(): void {
-    this.handler()?.push();
-  }
-
-  /**
-   * Invokes the stage-all command on the active repository.
-   */
-  public stageAll(): void {
-    this.handler()?.stageAll();
-  }
-
-  /**
-   * Invokes the commit command on the active repository.
-   */
-  public commit(): void {
-    this.handler()?.commit();
-  }
-
-  /**
    * Invokes the stash command on the active repository.
    */
   public stash(): void {
     this.handler()?.stash();
-  }
-
-  /**
-   * Invokes the new-branch command on the active repository.
-   */
-  public newBranch(): void {
-    this.handler()?.newBranch();
-  }
-
-  /**
-   * Invokes the toggle-inline-diff command on the active repository.
-   */
-  public toggleInlineDiff(): void {
-    this.handler()?.toggleInlineDiff();
-  }
-
-  /**
-   * Invokes the open-as-workspace command on the active repository.
-   */
-  public openAsWorkspace(): void {
-    this.handler()?.openAsWorkspace();
   }
 
   /**

@@ -42,10 +42,16 @@ function createClient(bridge: Bridge): SourceControlClient {
     commit: (root: string, message: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Commit, root, message),
     stash: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Stash, root),
+    stashApply: (root: string, index: number): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.StashApply, root, index),
+    stashPop: (root: string, index: number): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.StashPop, root, index),
+    stashDrop: (root: string, index: number): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.StashDrop, root, index),
     checkout: (root: string, branch: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Checkout, root, branch),
-    createBranch: (root: string, name: string): Promise<GitRunResult> =>
-      bridge.invoke(SourceControlChannel.CreateBranch, root, name),
+    createBranch: (root: string, name: string, checkout: boolean): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.CreateBranch, root, name, checkout),
     fetch: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Fetch, root),
     pull: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Pull, root),
     push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>

@@ -489,6 +489,12 @@ export class CodeView implements OnDestroy {
       redo: (): void => pane.trigger('redo'),
       find: (): void => this.showFind(),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
+      codeCleanup: async (): Promise<void> => {
+        // Sequenced, not fired together: organising imports rewrites the very lines the formatter
+        // would otherwise lay out, so formatting has to see the tidied text.
+        await pane.runAction('editor.action.organizeImports');
+        await pane.runAction('editor.action.formatDocument');
+      },
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),
       getText: (): string => pane.getValue(),

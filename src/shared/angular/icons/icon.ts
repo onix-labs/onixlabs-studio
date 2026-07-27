@@ -190,6 +190,31 @@ export class Icon {
   public static readonly SAVE_AS: Icon = new Icon('ph-duotone ph-floppy-disk-back');
 
   /**
+   * Gets the save-all (save every unsaved document) icon.
+   */
+  public static readonly SAVE_ALL: Icon = new Icon('ph-duotone ph-copy-simple');
+
+  /**
+   * Gets the code-cleanup icon (organise imports, then format).
+   */
+  public static readonly CODE_CLEANUP: Icon = new Icon('ph-duotone ph-sparkle');
+
+  /**
+   * Gets the layout-preset icon, used by the ribbon's View group for the default layout.
+   */
+  public static readonly LAYOUT_PRESET: Icon = new Icon('ph-duotone ph-layout');
+
+  /**
+   * Gets the manage/settings-list icon, used for management dialogs.
+   */
+  public static readonly MANAGE: Icon = new Icon('ph-duotone ph-sliders-horizontal');
+
+  /**
+   * Gets the default-marker (star) icon.
+   */
+  public static readonly STAR: Icon = new Icon('ph-fill ph-star');
+
+  /**
    * Gets the export-to-PDF icon.
    */
   public static readonly EXPORT_PDF: Icon = new Icon('ph-duotone ph-file-pdf');

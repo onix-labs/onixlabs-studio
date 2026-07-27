@@ -158,15 +158,56 @@ describe('Documents', () => {
     expect(dirty[0].name).toBe(modifiedDocument.fileName());
   });
 
+  it('dirtyCount_tracksEditsAndMembership_soSurfacesGatingOnUnsavedWorkReDerive', () => {
+    expect(documents.dirtyCount()).toBe(0);
+
+    const first: Tab = tabs.open('code');
+    documents.ensure(first.id);
+    const second: Tab = tabs.open('code');
+    documents.ensure(second.id);
+    expect(documents.dirtyCount()).toBe(0);
+
+    documents.setContent(first.id, 'changed');
+    expect(documents.dirtyCount()).toBe(1);
+
+    documents.setContent(second.id, 'also changed');
+    expect(documents.dirtyCount()).toBe(2);
+
+    // Editing back to the saved text is no longer unsaved work.
+    documents.setContent(first.id, '');
+    expect(documents.dirtyCount()).toBe(1);
+
+    // A document leaving takes its unsaved work with it.
+    documents.remove(second.id);
+    expect(documents.dirtyCount()).toBe(0);
+  });
+
+  it('saveAll_whenNothingIsDirty_succeedsWithoutWritingAnything', async () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+
+    await expect(documents.saveAll()).resolves.toBe(true);
+  });
+
+  it('saveAll_whenADocumentHasNeverBeenSaved_reportsTheFailedSave', async () => {
+    // Outside Electron the save dialog resolves to null, so an untitled document cannot be written.
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setContent(tab.id, 'changed');
+
+    await expect(documents.saveAll()).resolves.toBe(false);
+    expect(documents.dirtyCount()).toBe(1);
+  });
+
   it('dirtyDocumentsFor_asAWorkspaceInstance_returnsItsWellDocsForTheOwningTab_andNoneForOthers', () => {
     // A per-workspace instance hosts every well document under its owning tab.
     documents.setOwningTab('workspace-tab');
     const wellId: string = documents.createWellDocument(SAMPLE_FILE);
     documents.setContent(wellId, 'changed');
 
-    expect(documents.dirtyDocumentsFor('workspace-tab').map((d: { id: string }): string => d.id)).toEqual(
-      [wellId],
-    );
+    expect(
+      documents.dirtyDocumentsFor('workspace-tab').map((d: { id: string }): string => d.id),
+    ).toEqual([wellId]);
     expect(documents.dirtyDocumentsFor('another-tab')).toEqual([]);
   });
 

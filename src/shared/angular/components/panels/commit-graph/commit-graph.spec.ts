@@ -125,6 +125,18 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public applyStash(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public popStash(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public dropStash(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public checkout(): Promise<MutationResult> {
     return Promise.resolve({ success: true });
   }

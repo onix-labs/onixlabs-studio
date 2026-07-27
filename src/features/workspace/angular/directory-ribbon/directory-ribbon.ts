@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
+import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
@@ -30,6 +31,8 @@ import {
   LayoutPresetInfo,
   LayoutPresets,
 } from '@shared/angular/services/layout-presets/layout-presets';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -46,17 +49,48 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 
 /**
- * Represents the contextual ribbon shown when a directory tab is active. The Edit group routes edit
- * commands through the {@link EditorCommands} seam; the Solution Build and Run groups dispatch through
- * the {@link Builds} seam to the active workspace's build runner. The Run group is the Tier-1 universal
- * widget: a Start button that toggles to Stop while a run is in flight, a run-configuration dropdown
- * (sourced solely from the workspace's authored `.studio` configurations — nothing is inferred), a Debug
- * button that launches the selected configuration under the {@link Debugger} seam, and a Configure
- * button that opens the run-configuration editor. The Solution group's
- * Build/Rebuild/Clean and the Target group's configuration and target selectors gate themselves on the
- * active provider's declared {@link ProjectCapabilities}: unsupported actions are disabled, and the
- * Target group is hidden entirely when the provider declares no build-configuration or target axis. The
- * Source-Control group remains static scaffolding.
+ * Identifies the Save All item in the File group's Save split button menu.
+ */
+const SAVE_ALL: string = 'save-all';
+
+/**
+ * Identifies the Rebuild item in the Solution group's Build split button menu.
+ */
+const BUILD_REBUILD: string = 'rebuild';
+
+/**
+ * Identifies the Format item in the Solution group's Clean split button menu.
+ */
+const CLEAN_FORMAT: string = 'format';
+
+/**
+ * Identifies the Code Cleanup item in the Solution group's Clean split button menu.
+ */
+const CLEAN_CODE_CLEANUP: string = 'code-cleanup';
+
+/**
+ * Identifies the Stash item in the Source Control group's Commit split button menu.
+ */
+const COMMIT_STASH: string = 'stash';
+
+/**
+ * Represents the contextual ribbon shown when a directory tab is active, in group order: File, Edit,
+ * View, Run, Solution, Target (when the provider declares one), and Source Control.
+ *
+ * File saves the well's documents through the {@link WorkspaceDocumentCommands} seam — the well is
+ * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. Edit
+ * routes through the {@link EditorCommands} seam. View drives layout presets: the big button applies
+ * the DEFAULT preset (named on its face) and its menu lists every preset, while Save, Save As and
+ * Manage write them. Run is the Tier-1 universal widget: a Start button that toggles to Stop while a
+ * run is in flight, a run-configuration dropdown (sourced solely from the workspace's authored
+ * `.studio` configurations — nothing is inferred), a Debug button that launches the selected
+ * configuration under the {@link Debugger} seam, and a Configure button. Solution dispatches through
+ * the {@link Builds} seam: Build (with Rebuild behind it) and Clean (with the document-level Format
+ * and Code Cleanup behind it). Solution and Target gate themselves on the active provider's declared
+ * {@link ProjectCapabilities}: unsupported actions are disabled, and Target is hidden entirely when
+ * the provider declares no build-configuration or target axis. Source Control is the workspace's
+ * one-stop git group, dispatching through the {@link SourceControlCommands} and
+ * {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
   selector: 'app-directory-ribbon',
@@ -69,6 +103,8 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
     RibbonStripMenuButton,
     RibbonStripField,
     RibbonStripRow,
+    AppIcon,
+    Checkbox,
     Dropdown,
     Modal,
   ],
@@ -92,6 +128,61 @@ export class DirectoryRibbon {
    * Holds the workspace find seam the Find command reveals the Search panel through.
    */
   private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
+
+  /**
+   * Holds the workspace document seam the File group's Save and Save All dispatch through.
+   */
+  private readonly workspaceDocuments: WorkspaceDocumentCommands =
+    inject(WorkspaceDocumentCommands);
+
+  /**
+   * Gets whether the well has a document the Save action can write.
+   */
+  protected readonly canSave: Signal<boolean> = this.workspaceDocuments.canSave;
+
+  /**
+   * Gets whether the well holds unsaved changes, enabling Save All.
+   */
+  protected readonly hasUnsavedChanges: Signal<boolean> = this.workspaceDocuments.hasUnsavedChanges;
+
+  /**
+   * Gets the Save split button's menu: Save All, disabled while nothing is unsaved.
+   */
+  protected readonly saveMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [
+      {
+        id: SAVE_ALL,
+        label: 'Save All',
+        icon: Icon.SAVE_ALL,
+        disabled: !this.hasUnsavedChanges(),
+      },
+    ],
+  );
+
+  /**
+   * Saves the well's active document.
+   */
+  protected onSave(): void {
+    this.workspaceDocuments.save();
+  }
+
+  /**
+   * Saves every document in the well with unsaved changes. Also bound to the workspace's Save
+   * accelerator.
+   */
+  protected onSaveAll(): void {
+    this.workspaceDocuments.saveAll();
+  }
+
+  /**
+   * Handles a choice from the Save split button's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onSaveMenuItem(id: string): void {
+    if (id === SAVE_ALL) {
+      this.onSaveAll();
+    }
+  }
 
   /**
    * Holds the build seam the Solution and Run groups dispatch through to the active workspace.
@@ -401,6 +492,46 @@ export class DirectoryRibbon {
   }
 
   /**
+   * Gets the Build split button's menu: Rebuild, disabled when the provider does not declare it.
+   */
+  protected readonly buildMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [
+      {
+        id: BUILD_REBUILD,
+        label: 'Rebuild',
+        icon: Icon.REBUILD,
+        disabled: !this.canRebuild(),
+      },
+    ],
+  );
+
+  /**
+   * Gets whether the well has a focused editor the document-level tidying actions can act on.
+   */
+  protected readonly hasActiveEditor: Signal<boolean> = this.commands.hasActiveEditor;
+
+  /**
+   * Gets the Clean split button's menu: the document-level tidying actions, which act on the well's
+   * focused editor rather than on the build, and so gate on there being one.
+   */
+  protected readonly cleanMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [
+      {
+        id: CLEAN_FORMAT,
+        label: 'Format',
+        icon: Icon.FORMAT,
+        disabled: !this.commands.hasActiveEditor(),
+      },
+      {
+        id: CLEAN_CODE_CLEANUP,
+        label: 'Code Cleanup',
+        icon: Icon.CODE_CLEANUP,
+        disabled: !this.commands.canCodeCleanup(),
+      },
+    ],
+  );
+
+  /**
    * Runs the active workspace's default build task.
    */
   protected onBuild(): void {
@@ -419,6 +550,28 @@ export class DirectoryRibbon {
    */
   protected onRebuild(): void {
     this.requestBuildAction('rebuild');
+  }
+
+  /**
+   * Handles a choice from the Build split button's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onBuildMenuItem(id: string): void {
+    if (id === BUILD_REBUILD) {
+      this.onRebuild();
+    }
+  }
+
+  /**
+   * Handles a choice from the Clean split button's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onCleanMenuItem(id: string): void {
+    if (id === CLEAN_FORMAT) {
+      this.commands.formatDocument();
+    } else if (id === CLEAN_CODE_CLEANUP) {
+      void this.commands.codeCleanup();
+    }
   }
 
   /**
@@ -618,17 +771,10 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Holds the repository command facade behind the Repository/Sync/Changes/Branch groups, served
-   * by the active workspace's registered handler.
+   * Holds the repository command facade behind the Source Control group, served by the active
+   * workspace's registered handler.
    */
   private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
-
-  /**
-   * Re-reads the repository state.
-   */
-  protected onRepoRefresh(): void {
-    this.repositoryCommands.refresh();
-  }
 
   /**
    * Fetches from the remote without integrating.
@@ -638,17 +784,22 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Stages every unstaged change.
+   * Gets the Commit split button's menu: setting the working tree aside instead of committing it.
+   * Staging is deliberately absent — a commit resets the index and stages exactly the files checked
+   * in the Commit panel, so staging beforehand cannot change what a commit contains.
    */
-  protected onStageAll(): void {
-    this.repositoryCommands.stageAll();
-  }
+  protected readonly commitMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [{ id: COMMIT_STASH, label: 'Stash', icon: Icon.STASH }],
+  );
 
   /**
-   * Starts branch creation (the branches rail hosts the controls).
+   * Handles a choice from the Commit split button's menu.
+   * @param id The chosen item's identifier.
    */
-  protected onNewBranch(): void {
-    this.repositoryCommands.newBranch();
+  protected onCommitMenuItem(id: string): void {
+    if (id === COMMIT_STASH) {
+      this.onStash();
+    }
   }
 
   /**
@@ -656,13 +807,6 @@ export class DirectoryRibbon {
    */
   protected onStash(): void {
     this.repositoryCommands.stash();
-  }
-
-  /**
-   * Toggles the diff layout between inline and side-by-side.
-   */
-  protected onToggleDiff(): void {
-    this.repositoryCommands.toggleInlineDiff();
   }
 
   /**
@@ -705,16 +849,39 @@ export class DirectoryRibbon {
   private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
 
   /**
-   * Gets the layout presets as dropdown options.
+   * Gets every layout preset, for the View split button's menu and the Manage dialog's list.
    */
-  protected readonly presetOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.layoutPresets
-        .presets()
-        .map(
-          (preset: LayoutPresetInfo): DropdownOption => ({ value: preset.id, label: preset.name }),
-        ),
+  protected readonly presets: Signal<readonly LayoutPresetInfo[]> = this.layoutPresets.presets;
+
+  /**
+   * Gets the View split button's menu: every preset, with the one currently showing marked. Choosing
+   * one applies it to this workspace; which preset is the DEFAULT is set in the Manage dialog (or
+   * when saving one), not by merely switching to it.
+   */
+  protected readonly presetMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] =>
+      this.presets().map(
+        (preset: LayoutPresetInfo): RibbonMenuItem => ({
+          id: preset.id,
+          label: preset.name,
+          active: preset.id === this.activePresetId(),
+        }),
+      ),
   );
+
+  /**
+   * Gets the default preset's display name, shown on the face of the View group's big button. A
+   * default always exists as long as any preset does, so the fallback covers only the moment before
+   * any view has registered its built-ins.
+   */
+  protected readonly defaultPresetName: Signal<string> = computed(
+    (): string => this.layoutPresets.defaultPreset()?.name ?? 'Layout',
+  );
+
+  /**
+   * Gets the default preset's identifier, so the Manage dialog can mark it.
+   */
+  protected readonly defaultPresetId: Signal<string | null> = this.layoutPresets.defaultId;
 
   /**
    * Gets the active preset's identifier, or the empty string while no workspace view is registered.
@@ -732,8 +899,8 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets a value indicating whether the active preset is a user preset, so Update, Rename, and
-   * Delete apply (built-ins are immutable — forked with Save as…).
+   * Gets a value indicating whether the active preset is a user preset, so Save (overwrite) applies
+   * to it (built-ins are immutable — forked with Save As).
    */
   protected readonly canModifyPreset: Signal<boolean> = this.layoutPresets.activeIsUserPreset;
 
@@ -751,36 +918,56 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Holds which preset name prompt is open, or null when none is.
+   * Holds whether the Save As dialog is open.
    */
-  protected readonly presetPrompt: WritableSignal<'save-as' | 'rename' | null> = signal<
-    'save-as' | 'rename' | null
-  >(null);
+  protected readonly saveAsOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the name being edited in the preset prompt.
+   * Holds the name being entered in the Save As dialog.
    */
-  protected readonly presetPromptName: WritableSignal<string> = signal<string>('');
+  protected readonly saveAsName: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds the preset prompt's name input, focused when the prompt opens (the `autofocus` attribute
+   * Holds whether the Save As dialog's Default box is ticked, making the saved preset the new
+   * app-wide default and replacing the previous one.
+   */
+  protected readonly saveAsDefault: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the Manage dialog is open.
+   */
+  protected readonly manageOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the Save As dialog's name input, focused when the dialog opens (the `autofocus` attribute
    * is unreliable on dynamically-inserted content and flagged for accessibility).
    */
   private readonly presetInput: Signal<ElementRef<HTMLInputElement> | undefined> =
     viewChild<ElementRef<HTMLInputElement>>('presetInput');
 
   /**
-   * Initializes the ribbon, focusing the preset prompt's name input whenever the prompt opens.
+   * Initializes the ribbon, focusing the Save As dialog's name input whenever it opens.
    */
   public constructor() {
     effect((): void => {
-      if (this.presetPrompt() !== null) {
+      if (this.saveAsOpen()) {
         const input: HTMLInputElement | undefined = this.presetInput()?.nativeElement;
         if (input !== undefined) {
           setTimeout((): void => input.focus(), 0);
         }
       }
     });
+  }
+
+  /**
+   * Applies the default layout preset — the View group's big button. Applying re-seeds the dock from
+   * the preset's saved definition, so this doubles as the way back from a session's layout tweaks.
+   */
+  protected onApplyDefaultPreset(): void {
+    const id: string | null = this.defaultPresetId();
+    if (id !== null) {
+      this.layoutPresets.select(id);
+    }
   }
 
   /**
@@ -792,14 +979,6 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Opens the Save as… prompt for a new preset named after the current layout.
-   */
-  protected onSavePresetAs(): void {
-    this.presetPromptName.set('');
-    this.presetPrompt.set('save-as');
-  }
-
-  /**
    * Writes the current layout into the active user preset.
    */
   protected onUpdatePreset(): void {
@@ -807,60 +986,79 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Opens the rename prompt for the active user preset.
+   * Opens the Save As dialog for a new preset capturing the current layout.
    */
-  protected onRenamePreset(): void {
-    const active: LayoutPresetInfo | undefined = this.layoutPresets
-      .presets()
-      .find((preset: LayoutPresetInfo): boolean => preset.id === this.activePresetId());
-    this.presetPromptName.set(active?.name ?? '');
-    this.presetPrompt.set('rename');
+  protected onSavePresetAs(): void {
+    this.saveAsName.set('');
+    this.saveAsDefault.set(false);
+    this.saveAsOpen.set(true);
   }
 
   /**
-   * Deletes the active user preset; its workspaces fall back to the default preset.
+   * Confirms the Save As dialog, saving the current layout as a new preset and — when the box is
+   * ticked — making it the default.
    */
-  protected onDeletePreset(): void {
-    this.layoutPresets.remove(this.activePresetId());
+  protected confirmSaveAs(): void {
+    const name: string = this.saveAsName().trim();
+    if (name.length === 0) {
+      return;
+    }
+    this.saveAsOpen.set(false);
+    this.layoutPresets.saveAs(name, this.saveAsDefault());
   }
 
   /**
-   * Re-applies the active preset's saved definition, discarding the session's layout tweaks.
+   * Dismisses the Save As dialog without saving.
+   */
+  protected cancelSaveAs(): void {
+    this.saveAsOpen.set(false);
+  }
+
+  /**
+   * Opens the Manage dialog, where presets are renamed, deleted, and marked as the default.
+   */
+  protected onManagePresets(): void {
+    this.manageOpen.set(true);
+  }
+
+  /**
+   * Closes the Manage dialog. Its edits apply as they are made, so there is nothing to confirm.
+   */
+  protected closeManage(): void {
+    this.manageOpen.set(false);
+  }
+
+  /**
+   * Makes a preset the default from the Manage dialog, replacing the previous one.
+   * @param id The preset identifier.
+   */
+  protected onSetDefaultPreset(id: string): void {
+    this.layoutPresets.setDefault(id);
+  }
+
+  /**
+   * Renames a user preset from the Manage dialog. An empty name is ignored by the store, so clearing
+   * the field leaves the preset named as it was.
+   * @param id The preset identifier.
+   * @param name The new display name.
+   */
+  protected onRenamePreset(id: string, name: string): void {
+    this.layoutPresets.rename(id, name);
+  }
+
+  /**
+   * Deletes a user preset from the Manage dialog; workspaces showing it fall back to the default.
+   * @param id The preset identifier.
+   */
+  protected onDeletePreset(id: string): void {
+    this.layoutPresets.remove(id);
+  }
+
+  /**
+   * Re-applies the showing preset's saved definition, discarding the session's layout tweaks. Offered
+   * from the Manage dialog, since the ribbon's own Reset button gave way to Manage.
    */
   protected onResetPreset(): void {
     this.layoutPresets.reset();
-  }
-
-  /**
-   * Records the prompt's name as it is edited.
-   * @param event The input event carrying the name.
-   */
-  protected onPresetPromptInput(event: Event): void {
-    this.presetPromptName.set((event.target as HTMLInputElement).value);
-  }
-
-  /**
-   * Confirms the open preset prompt: saving the current layout as a new preset, or renaming the
-   * active one.
-   */
-  protected confirmPresetPrompt(): void {
-    const name: string = this.presetPromptName().trim();
-    const mode: 'save-as' | 'rename' | null = this.presetPrompt();
-    this.presetPrompt.set(null);
-    if (name.length === 0 || mode === null) {
-      return;
-    }
-    if (mode === 'save-as') {
-      this.layoutPresets.saveAs(name);
-    } else {
-      this.layoutPresets.rename(this.activePresetId(), name);
-    }
-  }
-
-  /**
-   * Dismisses the preset prompt without applying it.
-   */
-  protected cancelPresetPrompt(): void {
-    this.presetPrompt.set(null);
   }
 }
