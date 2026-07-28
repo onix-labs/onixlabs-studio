@@ -8,7 +8,8 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden;
-  background: var(--modal-panel-background, var(--modal-panel-background-color));
+  // The window's own body carries the panel background (so the window paints correctly before this
+  // host renders at all); painting it again here would seam wherever the two boxes differ.
   color: var(--body-foreground-color);
 }
 
@@ -25,20 +26,24 @@
 }
 
 // A measured modal takes its natural height and the window shrinks to it; the wrapper must not
-// stretch, or every dialog would measure exactly the window it already has.
+// stretch, or every dialog would measure exactly the window it already has. It is the positioning
+// context for any decorative layer the content places behind itself.
 .modal-window-host__content {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
 }
 
-// A filling modal hosts a whole surface instead, and takes the room the window gives it.
+// A filling modal hosts a whole surface instead, and takes the room the window gives it. A lone
+// child IS that surface, so it stretches; content built from several parts keeps its own layout and
+// says for itself which part takes the slack.
 :host(.modal-window-host--fill) .modal-window-host__content {
   flex: 1 1 auto;
   min-block-size: 0;
 }
 
-:host(.modal-window-host--fill) .modal-window-host__content > * {
+:host(.modal-window-host--fill) .modal-window-host__content > :only-child {
   flex: 1;
   min-block-size: 0;
 }

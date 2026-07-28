@@ -34,21 +34,6 @@ import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-bac
 import { ModalWindow, ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 
 /**
- * Holds the custom properties a caller may theme its modal with, copied from the call site onto the
- * modal window's root so the panel there looks exactly as it did inline. They cannot inherit
- * naturally: the panel no longer lives inside the element that declared them.
- */
-const THEMED_PROPERTIES: readonly string[] = [
-  '--modal-panel-background',
-  '--modal-panel-background-color',
-  '--modal-panel-padding',
-  '--modal-panel-inline-size',
-  '--modal-backdrop-color',
-  '--modal-backdrop-blur',
-  '--modal-fade-duration',
-];
-
-/**
  * Holds the panel width, in rem, used when a caller states none.
  */
 const DEFAULT_WIDTH_REM: number = 28;
@@ -149,6 +134,21 @@ export class Modal implements OnDestroy {
    * inline fallback presentation; a modal window is closed through its own window controls.
    */
   public readonly showClose: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets whether the modal's window offers a close button, or undefined to follow
+   * {@link dismissable}. A blocking modal that must still be closable as a window — the welcome
+   * screen standing in for a hidden main window — states it explicitly.
+   */
+  public readonly closable: InputSignal<boolean | undefined> = input<boolean>();
+
+  /**
+   * Gets a value indicating whether the modal stands free of the window that raised it: its window
+   * has no parent and no backdrop is raised behind it. This is the welcome screen with no tabs open,
+   * where the main window is hidden — a child of a hidden window is not displayed at all on macOS,
+   * and there is nothing behind to dim.
+   */
+  public readonly freestanding: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets the accessible label announced for the dialog, which also titles its window.
@@ -298,8 +298,8 @@ export class Modal implements OnDestroy {
         width: this.requestedWidth(owner),
         height: this.requestedHeight(owner),
         resizable: this.expandable(),
-        closable: this.dismissable(),
-        parented: true,
+        closable: this.closable() ?? this.dismissable(),
+        parented: !this.freestanding(),
         position: null,
       },
       owner,
@@ -321,7 +321,7 @@ export class Modal implements OnDestroy {
    * @returns Returns the presentation's bookkeeping.
    */
   private mount(window: ModalWindow, content: TemplateRef<unknown>, owner: Window): PresentedModal {
-    this.copyThemedProperties(window.document);
+    this.copyThemedProperties(window.document.body);
 
     const host: ComponentRef<ModalWindowHost> = createComponent(ModalWindowHost, {
       environmentInjector: this.environmentInjector,
@@ -338,7 +338,8 @@ export class Modal implements OnDestroy {
     });
     this.applicationRef.attachView(host.hostView);
 
-    const lower: () => void = this.backdrop.raise();
+    // A freestanding modal has nothing behind it to dim: the window it was raised from is hidden.
+    const lower: () => void = this.freestanding() ? (): void => undefined : this.backdrop.raise();
 
     // Escape closes a dismissable modal from its own window; the raising window's handler cannot
     // see key presses delivered to another window.
@@ -372,8 +373,9 @@ export class Modal implements OnDestroy {
       if (this.presented?.window === window) {
         this.presented = null;
       }
-      // A window closed by its own chrome IS the dismissal; a window closed because the caller
-      // retired the modal has already had its state cleared, and re-emitting there would be noise.
+      // A window closed by its own chrome IS the dismissal — including for a blocking modal, whose
+      // window can only have been closed deliberately. A window closed because the caller retired
+      // the modal has already had its state cleared, and re-emitting there would be noise.
       if (this.open()) {
         this.dismiss.emit();
       }
@@ -433,7 +435,7 @@ export class Modal implements OnDestroy {
    * @returns Returns the height in CSS pixels.
    */
   private requestedHeight(owner: Window): number {
-    return Math.round(owner.innerHeight * (this.expandable() ? 0.7 : 0.35));
+    return Math.round(owner.innerHeight * (this.expandable() ? 0.8 : 0.35));
   }
 
   /**
@@ -459,17 +461,28 @@ export class Modal implements OnDestroy {
   }
 
   /**
-   * Copies the caller's modal theming onto the modal window's root. The properties are resolved from
-   * this element's computed style, so whatever the call site set — directly, or through a class —
-   * reaches the window, where the panel can no longer inherit it.
-   * @param target The modal window's document.
+   * Carries the call site's own theming onto the modal window's root, so the panel there looks
+   * exactly as it did inline. Content in a modal window cannot inherit it: the panel no longer lives
+   * inside the element that declared it.
+   *
+   * Only custom properties whose value at the call site DIFFERS from the document root's are
+   * carried, which is precisely the caller's own theming (the welcome screen's palette, a bespoke
+   * panel background). The app-wide tokens are left alone so the window resolves them live from the
+   * mirrored stylesheets, and a theme switch still reaches an open modal.
+   * They are written to the window's body rather than its root, whose `style` attribute is mirrored
+   * from the opener — anything written there would be wiped.
+   * @param target The modal window's body.
    */
-  private copyThemedProperties(target: Document): void {
+  private copyThemedProperties(target: HTMLElement): void {
     const style: CSSStyleDeclaration = getComputedStyle(this.element.nativeElement);
-    for (const property of THEMED_PROPERTIES) {
-      const value: string = style.getPropertyValue(property).trim();
-      if (value.length > 0) {
-        target.documentElement.style.setProperty(property, value);
+    const root: CSSStyleDeclaration = getComputedStyle(this.document.documentElement);
+    for (const property of Array.from(style)) {
+      if (!property.startsWith('--')) {
+        continue;
+      }
+      const value: string = style.getPropertyValue(property);
+      if (value !== root.getPropertyValue(property)) {
+        target.style.setProperty(property, value);
       }
     }
   }

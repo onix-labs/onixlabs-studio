@@ -24,6 +24,18 @@ export enum WindowChannel {
    * (renderer→main, send).
    */
   SetMovable = 'window:set-movable',
+
+  /**
+   * Shows the requesting window, which the shell does once it has something to show
+   * (renderer→main, send).
+   */
+  Show = 'window:show',
+
+  /**
+   * Hides the requesting window without closing it, which the shell does while the welcome screen
+   * stands in for it (renderer→main, send).
+   */
+  Hide = 'window:hide',
 }
 
 /**

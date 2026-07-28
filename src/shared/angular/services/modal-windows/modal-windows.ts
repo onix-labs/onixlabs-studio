@@ -1,5 +1,6 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-channels';
+import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 
 /**
@@ -179,7 +180,9 @@ export class ModalWindows implements OnDestroy {
     doc.title = request.title;
     this.styling.adopt(child);
     this.styling.appendStyles(doc, MODAL_STYLES);
-    doc.documentElement.style.setProperty(
+    // Set on the body, not the root: the root's `style` attribute is mirrored from the opener by
+    // the styling service, which would wipe anything written there.
+    doc.body.style.setProperty(
       '--modal-window-drag-height',
       `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
     );
@@ -194,26 +197,13 @@ export class ModalWindows implements OnDestroy {
     this.children.add(child);
 
     const closedListeners: (() => void)[] = [];
-    let notified: boolean = false;
-    const notifyClosed: () => void = (): void => {
-      if (notified) {
-        return;
-      }
-      notified = true;
+    watchChildWindowClosed(child, (): void => {
       this.children.delete(child);
       this.styling.release(child);
-      clearInterval(closePoll);
       for (const listener of closedListeners) {
         listener();
       }
-    };
-    child.addEventListener('pagehide', notifyClosed);
-    // Belt for edge paths where pagehide is not delivered (e.g. an OS-forced close).
-    const closePoll: ReturnType<typeof setInterval> = setInterval((): void => {
-      if (child.closed) {
-        notifyClosed();
-      }
-    }, 1000);
+    });
 
     return {
       contentHost,

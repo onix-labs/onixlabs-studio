@@ -15,6 +15,7 @@ import {
   RecentKind,
 } from '@shared/angular/services/recent-items/recent-items';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Studio } from '@shared/angular/services/studio/studio';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
@@ -22,6 +23,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
  * Describes a recent-items filter pill.
@@ -57,17 +59,18 @@ const ROW_ACTION_REMOVE: string = 'remove';
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.
  *
- * It renders full-bleed when no tabs are open, and as a dismissable modal over the existing content
- * when summoned from the title strip's new-tab button. Either way it presents the application
- * identity, the create/open actions, and the list of recent items — which can be filtered, searched,
- * pinned, re-opened, removed, or revealed in the file manager. The backdrop, dismissal, and animation
- * are provided by the reusable {@link Modal}; the welcome screen overrides its theming for a
- * purple-accented panel (a dark treatment and a clean light-mode variant) and projects a static
- * accent glow behind it.
+ * It is presented in its own window by the reusable {@link Modal}, in one of two roles. With no tabs
+ * open it IS the application: the main window is hidden, the welcome window stands free of it with
+ * no backdrop, and closing that window closes the application. Summoned from the title strip's
+ * new-tab button it is an ordinary modal over a blurred main window, dismissed back to the tabs
+ * behind it. Either way it presents the application identity, the create/open actions, and the list
+ * of recent items — which can be filtered, searched, pinned, re-opened, removed, or revealed in the
+ * file manager. The welcome screen overrides the modal's theming for a purple-accented panel (a dark
+ * treatment and a clean light-mode variant) and draws a static accent glow behind its content.
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon, Modal, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Modal, ModalContent, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,6 +108,12 @@ export class WelcomeScreen {
    * Holds the operating-system shell client, used to reveal an item in the file manager.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the window controls, used to close the application when the welcome window is closed while
+   * it is all there is.
+   */
+  private readonly studio: Studio = inject(Studio);
 
   /**
    * Gets a value indicating whether any recent items exist at all, regardless of the current filter
@@ -364,12 +373,16 @@ export class WelcomeScreen {
   }
 
   /**
-   * Closes the welcome screen when it is shown as a dismissable modal. Invoked by the modal's dismiss
-   * output, which only fires when dismissal is permitted; the guard keeps it safe regardless.
+   * Handles the welcome screen being dismissed. With tabs open it simply closes, returning to them.
+   * With none, the welcome window is all there is — dismissal can only have come from closing that
+   * window — so the application closes too, through the main window's own close (and therefore its
+   * quit-confirmation protocol).
    */
   protected close(): void {
     if (this.dismissable()) {
       this.welcomeModal.close();
+    } else {
+      this.studio.closeWindow();
     }
   }
 

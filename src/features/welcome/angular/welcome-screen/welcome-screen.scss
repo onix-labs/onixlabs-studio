@@ -116,8 +116,12 @@
 .welcome__glow {
   position: absolute;
   inset: 0;
+  z-index: 0;
   overflow: hidden;
   opacity: 0;
+  // Decorative only: it sits behind the content within the modal window, and must never take a
+  // click meant for an action beneath it.
+  pointer-events: none;
 }
 
 .welcome__glow--active {
@@ -162,6 +166,8 @@
 
 // Logo on the left, identity text beside it.
 .welcome__header {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 1.15rem;
@@ -197,6 +203,11 @@
 
 // The split: a fixed-width action column on the left, recent items filling the right.
 .welcome__body {
+  position: relative;
+  z-index: 1;
+  // The welcome screen fills its window, and the body is the part that takes the slack: the recent
+  // list scrolls within it rather than the window growing to hold every row.
+  flex: 1;
   display: grid;
   grid-template-columns: 21rem 1fr;
   gap: 1.25rem;

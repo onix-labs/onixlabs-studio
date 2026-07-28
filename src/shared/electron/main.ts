@@ -169,11 +169,22 @@ class Program {
       // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
       this.openPathsReady = false;
-      // A reloaded main window has lost the renderer state its pop-outs and modals rendered from
-      // (both share its JS context), so orphaned children are closed rather than left dead.
-      this.windows.closeAllSecondaryWindows();
+      // A RELOADED main window has lost the renderer state its pop-outs and modals rendered from
+      // (both share its JS context), so orphaned children are closed rather than left dead. The
+      // first load is not that: the shell may already have opened its welcome window by the time
+      // this fires, and closing it would take the application's only visible window with it.
+      if (this.mainLoaded) {
+        this.windows.closeAllSecondaryWindows();
+      }
+      this.mainLoaded = true;
     },
   });
+
+  /**
+   * Holds a value indicating whether the main window has finished loading at least once, so a
+   * genuine reload can be told from the first load.
+   */
+  private mainLoaded: boolean = false;
 
   /**
    * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the
@@ -529,6 +540,21 @@ class Program {
 
     ipcMain.on(WindowChannel.Close, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.close();
+    });
+
+    ipcMain.on(WindowChannel.Show, (event: IpcMainEvent): void => {
+      this.windows.claimMainPresence();
+      const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (targetWindow === null || targetWindow.isVisible()) {
+        return;
+      }
+      targetWindow.show();
+      targetWindow.focus();
+    });
+
+    ipcMain.on(WindowChannel.Hide, (event: IpcMainEvent): void => {
+      this.windows.claimMainPresence();
+      BrowserWindow.fromWebContents(event.sender)?.hide();
     });
 
     ipcMain.on(WindowChannel.SetMovable, (event: IpcMainEvent, movable: unknown): void => {

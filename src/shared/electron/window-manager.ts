@@ -105,6 +105,12 @@ export class WindowManager {
   private static readonly POPOUT_MIN_HEIGHT: number = 320;
 
   /**
+   * Holds how long (ms) after the main window is ready to wait for the renderer to show it before
+   * showing it regardless, so a renderer that never asks can never leave the app windowless.
+   */
+  private static readonly MAIN_SHOW_FALLBACK_MS: number = 4000;
+
+  /**
    * Holds the default modal-window width, used when the opener requested no size.
    */
   private static readonly MODAL_DEFAULT_WIDTH: number = 480;
@@ -134,6 +140,19 @@ export class WindowManager {
    * Holds the application-supplied options.
    */
   private readonly options: WindowManagerOptions;
+
+  /**
+   * Holds the pending safety-net timer that shows the main window when the renderer never speaks
+   * for it, or null once it has fired or been retired.
+   */
+  private mainShowFallback: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds a value indicating whether the renderer has spoken for the main window's presence. It is
+   * sticky because the renderer routinely speaks BEFORE the window is ready to show — a cold start
+   * decides to stay hidden within milliseconds — and the safety net must not arm afterwards.
+   */
+  private mainPresenceClaimed: boolean = false;
 
   /**
    * Holds the window the next modal window adopts as its parent, recorded when its options are
@@ -171,6 +190,19 @@ export class WindowManager {
       window.restore();
     }
     window.focus();
+  }
+
+  /**
+   * Retires the safety net that would otherwise show the main window: the renderer has spoken for
+   * the window's presence, so its decision — including a decision to stay hidden behind the welcome
+   * window — stands.
+   */
+  public claimMainPresence(): void {
+    this.mainPresenceClaimed = true;
+    if (this.mainShowFallback !== null) {
+      clearTimeout(this.mainShowFallback);
+      this.mainShowFallback = null;
+    }
   }
 
   /**
@@ -212,7 +244,22 @@ export class WindowManager {
     }
 
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('main', window);
-    window.once('ready-to-show', (): void => window.show());
+    // The main window is shown by the renderer, not by readiness: with no tabs open the shell puts
+    // the welcome screen in its own window and leaves this one hidden, so showing it here would
+    // flash an empty IDE first. The timer is the safety net — a renderer that never speaks for it (a
+    // failed boot, a broken bridge) must not leave the application with no window at all — and the
+    // first word from the renderer, show or hide, retires it.
+    window.once('ready-to-show', (): void => {
+      if (this.mainPresenceClaimed) {
+        return;
+      }
+      this.mainShowFallback = setTimeout((): void => {
+        this.mainShowFallback = null;
+        if (!window.isDestroyed() && !window.isVisible()) {
+          window.show();
+        }
+      }, WindowManager.MAIN_SHOW_FALLBACK_MS);
+    });
     // Page zoom is disabled (the application menu omits the zoom roles), but Chromium persists zoom
     // levels per-origin in the session, so a level set before zoom was disabled would silently apply
     // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.

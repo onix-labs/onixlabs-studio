@@ -1,5 +1,6 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import { AUX_PANEL_URL } from '@shared/api/window-channels';
+import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 
 /**
@@ -130,26 +131,13 @@ export class AuxiliaryWindows implements OnDestroy {
     this.children.add(child);
 
     const closedListeners: (() => void)[] = [];
-    let notified: boolean = false;
-    const notifyClosed: () => void = (): void => {
-      if (notified) {
-        return;
-      }
-      notified = true;
+    watchChildWindowClosed(child, (): void => {
       this.children.delete(child);
       this.styling.release(child);
-      clearInterval(closePoll);
       for (const listener of closedListeners) {
         listener();
       }
-    };
-    child.addEventListener('pagehide', notifyClosed);
-    // Belt for edge paths where pagehide is not delivered (e.g. an OS-forced close).
-    const closePoll: ReturnType<typeof setInterval> = setInterval((): void => {
-      if (child.closed) {
-        notifyClosed();
-      }
-    }, 1000);
+    });
 
     return {
       contentHost,

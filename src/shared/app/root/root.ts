@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
 import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/shortcuts-overlay';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
@@ -62,6 +63,12 @@ export class Root {
    * Holds the shortcuts-overlay visibility owner, toggled by the shell's global accelerator.
    */
   private readonly shortcutsOverlay: ShortcutsOverlay = inject(ShortcutsOverlay);
+
+  /**
+   * Holds the main window's presence, which hides the window while no tabs are open and the welcome
+   * screen stands in for it. Injected for its effect; the shell never calls it.
+   */
+  private readonly presence: ShellPresence = inject(ShellPresence);
 
   /**
    * Initializes the shell, registering the application-level accelerators that dispatch in every
