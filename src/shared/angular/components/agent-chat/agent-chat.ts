@@ -48,6 +48,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -355,7 +356,16 @@ interface ContextChip {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [AppIcon, Modal, MarkdownEditor, MarkdownPipe, NgTemplateOutlet, Radio, Dropdown],
+  imports: [
+    AppIcon,
+    Modal,
+    ModalContent,
+    MarkdownEditor,
+    MarkdownPipe,
+    NgTemplateOutlet,
+    Radio,
+    Dropdown,
+  ],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

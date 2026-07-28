@@ -21,6 +21,7 @@ import { AgentConversationList } from '@shared/angular/components/agent-conversa
 import { AgentToolStrip } from '@shared/angular/components/agent-tool-strip/agent-tool-strip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -38,7 +39,15 @@ import { MissionControlTiles } from '../mission-control-tiles';
  */
 @Component({
   selector: 'app-mission-control-agent-tile',
-  imports: [AgentToolStrip, AgentChat, AgentConversationList, AppIcon, Modal, NgTemplateOutlet],
+  imports: [
+    AgentToolStrip,
+    AgentChat,
+    AgentConversationList,
+    AppIcon,
+    Modal,
+    ModalContent,
+    NgTemplateOutlet,
+  ],
   templateUrl: './mission-control-agent-tile.html',
   styleUrl: './mission-control-agent-tile.scss',
   host: {

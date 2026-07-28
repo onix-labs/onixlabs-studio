@@ -680,58 +680,62 @@
     ariaLabel="Manage prompts"
     (dismiss)="closeManagePrompts()"
   >
-    <div class="agent__prompts">
-      <h2 class="agent__md-title">Reusable prompts</h2>
-      @if (libraryPrompts().length === 0) {
-        <p class="agent__prompts-empty">No prompts yet. Save one below and invoke it with /name.</p>
-      } @else {
-        <ul class="agent__prompts-list">
-          @for (prompt of libraryPrompts(); track prompt.id) {
-            <li class="agent__prompts-item">
-              <span class="agent__prompts-name">/{{ prompt.name }}</span>
-              <span class="agent__prompts-text" [title]="prompt.text">{{ prompt.text }}</span>
-              <button
-                type="button"
-                class="agent__queue-btn"
-                [attr.aria-label]="'Delete /' + prompt.name"
-                (click)="deletePrompt(prompt.id)"
-              >
-                <app-icon [icon]="Icon.CLOSE" />
-              </button>
-            </li>
-          }
-        </ul>
-      }
-      <input
-        class="agent__prompts-field"
-        type="text"
-        placeholder="Name (invoked as /name)"
-        aria-label="Prompt name"
-        [value]="newPromptName()"
-        (input)="newPromptName.set($any($event.target).value)"
-      />
-      <textarea
-        class="agent__prompts-field agent__prompts-area"
-        rows="4"
-        placeholder="Prompt text…"
-        aria-label="Prompt text"
-        [value]="newPromptText()"
-        (input)="newPromptText.set($any($event.target).value)"
-      ></textarea>
-      <div class="agent__md-actions">
-        <button type="button" class="agent__btn agent__btn--ghost" (click)="closeManagePrompts()">
-          Close
-        </button>
-        <button
-          type="button"
-          class="agent__btn"
-          [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
-          (click)="savePrompt()"
-        >
-          Save prompt
-        </button>
+    <ng-template appModalContent>
+      <div class="agent__prompts">
+        <h2 class="agent__md-title">Reusable prompts</h2>
+        @if (libraryPrompts().length === 0) {
+          <p class="agent__prompts-empty">
+            No prompts yet. Save one below and invoke it with /name.
+          </p>
+        } @else {
+          <ul class="agent__prompts-list">
+            @for (prompt of libraryPrompts(); track prompt.id) {
+              <li class="agent__prompts-item">
+                <span class="agent__prompts-name">/{{ prompt.name }}</span>
+                <span class="agent__prompts-text" [title]="prompt.text">{{ prompt.text }}</span>
+                <button
+                  type="button"
+                  class="agent__queue-btn"
+                  [attr.aria-label]="'Delete /' + prompt.name"
+                  (click)="deletePrompt(prompt.id)"
+                >
+                  <app-icon [icon]="Icon.CLOSE" />
+                </button>
+              </li>
+            }
+          </ul>
+        }
+        <input
+          class="agent__prompts-field"
+          type="text"
+          placeholder="Name (invoked as /name)"
+          aria-label="Prompt name"
+          [value]="newPromptName()"
+          (input)="newPromptName.set($any($event.target).value)"
+        />
+        <textarea
+          class="agent__prompts-field agent__prompts-area"
+          rows="4"
+          placeholder="Prompt text…"
+          aria-label="Prompt text"
+          [value]="newPromptText()"
+          (input)="newPromptText.set($any($event.target).value)"
+        ></textarea>
+        <div class="agent__md-actions">
+          <button type="button" class="agent__btn agent__btn--ghost" (click)="closeManagePrompts()">
+            Close
+          </button>
+          <button
+            type="button"
+            class="agent__btn"
+            [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
+            (click)="savePrompt()"
+          >
+            Save prompt
+          </button>
+        </div>
       </div>
-    </div>
+    </ng-template>
   </app-modal>
 
   <!-- The markdown composer: a modal Milkdown editor whose content is sent to the agent on submit.
@@ -744,30 +748,32 @@
     ariaLabel="Write in Markdown"
     (dismiss)="cancelMarkdown()"
   >
-    <div class="agent__md-modal">
-      <h2 class="agent__md-title">Write in Markdown</h2>
-      @if (markdownOpen()) {
-        <div class="agent__md-editor">
-          <app-markdown-editor
-            [content]="markdownSeed()"
-            [isActive]="true"
-            (contentChange)="onMarkdownChange($event)"
-          />
+    <ng-template appModalContent>
+      <div class="agent__md-modal">
+        <h2 class="agent__md-title">Write in Markdown</h2>
+        @if (markdownOpen()) {
+          <div class="agent__md-editor">
+            <app-markdown-editor
+              [content]="markdownSeed()"
+              [isActive]="true"
+              (contentChange)="onMarkdownChange($event)"
+            />
+          </div>
+        }
+        <div class="agent__md-actions">
+          <button type="button" class="agent__btn agent__btn--ghost" (click)="cancelMarkdown()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="agent__btn"
+            [disabled]="isRunning() || markdownValue().trim().length === 0"
+            (click)="submitMarkdown()"
+          >
+            Send to agent
+          </button>
         </div>
-      }
-      <div class="agent__md-actions">
-        <button type="button" class="agent__btn agent__btn--ghost" (click)="cancelMarkdown()">
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="agent__btn"
-          [disabled]="isRunning() || markdownValue().trim().length === 0"
-          (click)="submitMarkdown()"
-        >
-          Send to agent
-        </button>
       </div>
-    </div>
+    </ng-template>
   </app-modal>
 </div>

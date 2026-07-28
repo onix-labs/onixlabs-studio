@@ -201,6 +201,23 @@ describe('ConfigureDialogPanel', () => {
     expect(internals().selected()?.id).toBe('a');
   });
 
+  it('whenOpened_rendersTheDialogContent_andRetiresItOnClose', () => {
+    studio.runConfigurations.set([config({ id: 'a', name: 'A' })]);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.configure__title')).toBeNull();
+
+    dialog.open();
+    tick();
+
+    expect(host.querySelector('.configure__title')?.textContent).toContain('Run Configurations');
+    expect(host.textContent).toContain('A');
+
+    internals().onCancel();
+    tick();
+
+    expect(host.querySelector('.configure__title')).toBeNull();
+  });
+
   it('addsANewConfigurationBoundToTheActiveProviderKind', () => {
     capabilities.kind.set('node');
     dialog.open();

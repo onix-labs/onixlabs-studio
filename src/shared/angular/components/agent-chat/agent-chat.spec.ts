@@ -915,4 +915,20 @@ describe('AgentChat', () => {
 
     expect(dropdowns.length).toBe(0);
   });
+
+  it('markdownComposer_whenOpened_rendersItsEditorAndRetiresItOnCancel', () => {
+    const comp: { openMarkdown(): void; cancelMarkdown(): void } = component;
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__md-modal')).toBeNull();
+
+    comp.openMarkdown();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.agent__md-title')?.textContent).toContain('Write in Markdown');
+
+    comp.cancelMarkdown();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.agent__md-modal')).toBeNull();
+  });
 });

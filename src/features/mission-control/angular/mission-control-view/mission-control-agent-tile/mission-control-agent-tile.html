@@ -80,34 +80,36 @@
   [ariaLabel]="'Focus: ' + host.label()"
   (dismiss)="closeFocus()"
 >
-  @if (focusOpen()) {
-    <div class="tile__focus">
-      <header class="tile__focus-header">
-        <div class="tile__identity">
-          <div class="tile__title">
-            @if (tabIcon(); as icon) {
-              <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
-            }
-            <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
+  <ng-template appModalContent>
+    @if (focusOpen()) {
+      <div class="tile__focus">
+        <header class="tile__focus-header">
+          <div class="tile__identity">
+            <div class="tile__title">
+              @if (tabIcon(); as icon) {
+                <app-icon class="tile__icon" [icon]="icon" [size]="1.15" />
+              }
+              <span class="tile__focus-name" [title]="host.label()">{{ host.label() }}</span>
+            </div>
+            <span
+              class="tile__branch"
+              [class.tile__branch--none]="branch() === null"
+              [title]="branch() === null ? 'No repository' : 'On branch ' + branchLabel()"
+            >
+              {{ branchLabel() }}
+            </span>
           </div>
-          <span
-            class="tile__branch"
-            [class.tile__branch--none]="branch() === null"
-            [title]="branch() === null ? 'No repository' : 'On branch ' + branchLabel()"
-          >
-            {{ branchLabel() }}
-          </span>
+          <div class="tile__status" [class.tile__status--busy]="isRunning()">
+            <span class="tile__status-dot"></span>
+            <span class="tile__status-label">{{ statusLabel() }}</span>
+          </div>
+        </header>
+        <div class="tile__focus-body">
+          <ng-container [ngTemplateOutlet]="panelBody" />
         </div>
-        <div class="tile__status" [class.tile__status--busy]="isRunning()">
-          <span class="tile__status-dot"></span>
-          <span class="tile__status-label">{{ statusLabel() }}</span>
-        </div>
-      </header>
-      <div class="tile__focus-body">
-        <ng-container [ngTemplateOutlet]="panelBody" />
       </div>
-    </div>
-  }
+    }
+  </ng-template>
 </app-modal>
 
 <ng-template #panelBody>

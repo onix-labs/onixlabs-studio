@@ -15,6 +15,7 @@ import {
 import { gemoji } from 'gemoji';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
  * Pairs an emoji's Unicode character with its primary shortcode name.
@@ -187,7 +188,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
  */
 @Component({
   selector: 'app-markdown-emoji-modal',
-  imports: [Modal],
+  imports: [Modal, ModalContent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   styles: [
@@ -288,97 +289,99 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
   ],
   template: `
     <app-modal [open]="open()" [width]="32" ariaLabel="Insert Emoji" (dismiss)="cancel()">
-      <h2 class="insert-modal__title">Insert Emoji</h2>
+      <ng-template appModalContent>
+        <h2 class="insert-modal__title">Insert Emoji</h2>
 
-      <div class="insert-modal__field">
-        <label class="insert-modal__label" for="emoji-search">Search</label>
-        <input
-          #searchInput
-          id="emoji-search"
-          class="insert-modal__input"
-          type="text"
-          placeholder="smile, heart, rocket…"
-          [value]="query()"
-          (input)="query.set(searchInput.value)"
-        />
-      </div>
+        <div class="insert-modal__field">
+          <label class="insert-modal__label" for="emoji-search">Search</label>
+          <input
+            #searchInput
+            id="emoji-search"
+            class="insert-modal__input"
+            type="text"
+            placeholder="smile, heart, rocket…"
+            [value]="query()"
+            (input)="query.set(searchInput.value)"
+          />
+        </div>
 
-      @if (query().length === 0) {
-        <div class="emoji-tabs" role="tablist">
-          @for (tab of visibleTabs(); track tab.category) {
-            <button
-              type="button"
-              class="emoji-tab"
-              [class.emoji-tab--active]="effectiveActive() === tab.category"
-              [attr.title]="tab.category"
-              [attr.aria-label]="tab.category"
-              (click)="scrollTo(tab.category)"
-            >
-              {{ tab.glyph }}
-            </button>
+        @if (query().length === 0) {
+          <div class="emoji-tabs" role="tablist">
+            @for (tab of visibleTabs(); track tab.category) {
+              <button
+                type="button"
+                class="emoji-tab"
+                [class.emoji-tab--active]="effectiveActive() === tab.category"
+                [attr.title]="tab.category"
+                [attr.aria-label]="tab.category"
+                (click)="scrollTo(tab.category)"
+              >
+                {{ tab.glyph }}
+              </button>
+            }
+          </div>
+        }
+
+        <div class="emoji-scroll" (scroll)="onScroll()">
+          @if (query().length > 0) {
+            @if (searchResults().length > 0) {
+              <div class="emoji-grid">
+                @for (item of searchResults(); track item.emoji) {
+                  <button
+                    type="button"
+                    class="emoji-cell"
+                    [attr.title]="item.name"
+                    [attr.aria-label]="item.name"
+                    (click)="pick(item.emoji)"
+                  >
+                    {{ item.emoji }}
+                  </button>
+                }
+              </div>
+            } @else {
+              <p class="emoji-empty">No emoji match “{{ query() }}”.</p>
+            }
+          } @else {
+            @if (recentEntries().length > 0) {
+              <section data-category="Recent">
+                <h3 class="emoji-category-title">Recent</h3>
+                <div class="emoji-grid">
+                  @for (item of recentEntries(); track item.emoji) {
+                    <button
+                      type="button"
+                      class="emoji-cell"
+                      [attr.title]="item.name"
+                      [attr.aria-label]="item.name"
+                      (click)="pick(item.emoji)"
+                    >
+                      {{ item.emoji }}
+                    </button>
+                  }
+                </div>
+              </section>
+            }
+
+            @for (category of categories; track category.name) {
+              <section [attr.data-category]="category.name">
+                <h3 class="emoji-category-title">{{ category.name }}</h3>
+                <div class="emoji-grid">
+                  @for (item of category.emojis; track item.emoji) {
+                    <button
+                      type="button"
+                      class="emoji-cell"
+                      [attr.title]="item.name"
+                      [attr.aria-label]="item.name"
+                      (click)="pick(item.emoji)"
+                    >
+                      {{ item.emoji }}
+                    </button>
+                  }
+                </div>
+              </section>
+            }
           }
         </div>
-      }
-
-      <div class="emoji-scroll" (scroll)="onScroll()">
-        @if (query().length > 0) {
-          @if (searchResults().length > 0) {
-            <div class="emoji-grid">
-              @for (item of searchResults(); track item.emoji) {
-                <button
-                  type="button"
-                  class="emoji-cell"
-                  [attr.title]="item.name"
-                  [attr.aria-label]="item.name"
-                  (click)="pick(item.emoji)"
-                >
-                  {{ item.emoji }}
-                </button>
-              }
-            </div>
-          } @else {
-            <p class="emoji-empty">No emoji match “{{ query() }}”.</p>
-          }
-        } @else {
-          @if (recentEntries().length > 0) {
-            <section data-category="Recent">
-              <h3 class="emoji-category-title">Recent</h3>
-              <div class="emoji-grid">
-                @for (item of recentEntries(); track item.emoji) {
-                  <button
-                    type="button"
-                    class="emoji-cell"
-                    [attr.title]="item.name"
-                    [attr.aria-label]="item.name"
-                    (click)="pick(item.emoji)"
-                  >
-                    {{ item.emoji }}
-                  </button>
-                }
-              </div>
-            </section>
-          }
-
-          @for (category of categories; track category.name) {
-            <section [attr.data-category]="category.name">
-              <h3 class="emoji-category-title">{{ category.name }}</h3>
-              <div class="emoji-grid">
-                @for (item of category.emojis; track item.emoji) {
-                  <button
-                    type="button"
-                    class="emoji-cell"
-                    [attr.title]="item.name"
-                    [attr.aria-label]="item.name"
-                    (click)="pick(item.emoji)"
-                  >
-                    {{ item.emoji }}
-                  </button>
-                }
-              </div>
-            </section>
-          }
-        }
-      </div>
+      </ng-template>
     </app-modal>
   `,
 })

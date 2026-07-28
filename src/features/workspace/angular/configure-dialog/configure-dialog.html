@@ -1,189 +1,200 @@
 <app-modal [open]="isOpen()" [width]="52" ariaLabel="Run Configurations" (dismiss)="onCancel()">
-  <div class="configure">
-    <h2 class="configure__title">Run Configurations</h2>
+  <ng-template appModalContent>
+    <div class="configure">
+      <h2 class="configure__title">Run Configurations</h2>
 
-    <div class="configure__body">
-      <div class="configure__sidebar">
-        <div class="configure__toolbar">
-          <button type="button" class="configure__tool" title="New configuration" (click)="onNew()">
-            <app-icon [icon]="Icon.PLUS" />
-          </button>
-          <button
-            type="button"
-            class="configure__tool"
-            title="Duplicate configuration"
-            [disabled]="selected() === null"
-            (click)="onDuplicate()"
-          >
-            <app-icon [icon]="Icon.COPY" />
-          </button>
-          <button
-            type="button"
-            class="configure__tool"
-            title="Delete configuration"
-            [disabled]="selected() === null"
-            (click)="onDelete()"
-          >
-            <app-icon [icon]="Icon.TRASH" />
-          </button>
+      <div class="configure__body">
+        <div class="configure__sidebar">
+          <div class="configure__toolbar">
+            <button
+              type="button"
+              class="configure__tool"
+              title="New configuration"
+              (click)="onNew()"
+            >
+              <app-icon [icon]="Icon.PLUS" />
+            </button>
+            <button
+              type="button"
+              class="configure__tool"
+              title="Duplicate configuration"
+              [disabled]="selected() === null"
+              (click)="onDuplicate()"
+            >
+              <app-icon [icon]="Icon.COPY" />
+            </button>
+            <button
+              type="button"
+              class="configure__tool"
+              title="Delete configuration"
+              [disabled]="selected() === null"
+              (click)="onDelete()"
+            >
+              <app-icon [icon]="Icon.TRASH" />
+            </button>
+          </div>
+
+          <div class="configure__list">
+            @for (group of groups(); track group.kind) {
+              <div class="configure__group">
+                <span class="configure__group-label">{{ group.kind }}</span>
+                @for (configuration of group.configurations; track configuration.id) {
+                  <button
+                    type="button"
+                    class="configure__item"
+                    [class.configure__item--selected]="configuration.id === selected()?.id"
+                    (click)="select(configuration.id)"
+                  >
+                    {{ configuration.name }}
+                  </button>
+                }
+              </div>
+            } @empty {
+              <p class="configure__empty">No run configurations. Use + to add one.</p>
+            }
+          </div>
         </div>
 
-        <div class="configure__list">
-          @for (group of groups(); track group.kind) {
-            <div class="configure__group">
-              <span class="configure__group-label">{{ group.kind }}</span>
-              @for (configuration of group.configurations; track configuration.id) {
-                <button
-                  type="button"
-                  class="configure__item"
-                  [class.configure__item--selected]="configuration.id === selected()?.id"
-                  (click)="select(configuration.id)"
-                >
-                  {{ configuration.name }}
-                </button>
-              }
-            </div>
-          } @empty {
-            <p class="configure__empty">No run configurations. Use + to add one.</p>
+        <div class="configure__detail">
+          @if (selected(); as configuration) {
+            <app-setting-row label="Name">
+              <app-text-field [value]="configuration.name" (valueChange)="onName($event)" />
+            </app-setting-row>
+
+            @if (hasBuildConfigs()) {
+              <app-setting-row label="Configuration">
+                <app-dropdown
+                  [options]="buildConfigOptions()"
+                  [value]="configuration.buildConfiguration ?? ''"
+                  [fullWidth]="true"
+                  (valueChange)="onBuildConfiguration($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (hasTarget()) {
+              <app-setting-row [label]="targetLabel()">
+                <app-dropdown
+                  [options]="targetOptions()"
+                  [value]="configuration.target ?? ''"
+                  [fullWidth]="true"
+                  (valueChange)="onTarget($event)"
+                />
+              </app-setting-row>
+            }
+
+            <app-setting-row label="Program">
+              <app-text-field
+                [value]="configuration.program ?? ''"
+                placeholder="Resolved by the provider when empty"
+                (valueChange)="onProgram($event)"
+              />
+            </app-setting-row>
+
+            <app-setting-row label="Arguments">
+              <app-text-field [value]="argsText()" (valueChange)="onArgs($event)" />
+            </app-setting-row>
+
+            <app-setting-row label="Working directory">
+              <app-text-field
+                [value]="configuration.cwd ?? ''"
+                placeholder="Workspace root when empty"
+                (valueChange)="onCwd($event)"
+              />
+            </app-setting-row>
+
+            <app-setting-row label="Environment" description="One KEY=value per line">
+              <textarea
+                #env
+                class="configure__env"
+                rows="3"
+                [value]="envText()"
+                (change)="onEnv(env.value)"
+              ></textarea>
+            </app-setting-row>
+
+            <app-setting-row label="Debug" description="Run under the debugger">
+              <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
+            </app-setting-row>
+
+            <app-setting-row
+              label="New window"
+              description="Show this run's terminal in its own window"
+            >
+              <app-toggle
+                [checked]="isWindowPresentation()"
+                (checkedChange)="onPresentationChange($event)"
+              />
+            </app-setting-row>
+          } @else {
+            <p class="configure__empty">Select or create a configuration to edit.</p>
           }
         </div>
       </div>
 
-      <div class="configure__detail">
-        @if (selected(); as configuration) {
-          <app-setting-row label="Name">
-            <app-text-field [value]="configuration.name" (valueChange)="onName($event)" />
-          </app-setting-row>
+      <!-- Agent authoring: Auto assesses the project unattended; the prompt box asks for something
+           specific and leaves the agent to work out how. Both run in the workspace's own agent, so the
+           work is visible (and answerable) in its Agent panel and in Mission Control. -->
+      <div class="configure__agent">
+        <button
+          type="button"
+          class="configure__button configure__button--agent"
+          [disabled]="!canAsk() || authoring()"
+          [title]="
+            askUnavailableReason() ??
+            'Let the agent assess this project and set up its run configurations'
+          "
+          (click)="onAuto()"
+        >
+          <app-icon [icon]="Icon.AGENT" />
+          Auto-configure
+        </button>
+        <app-text-field
+          class="configure__request"
+          [value]="request()"
+          [disabled]="!canAsk() || authoring()"
+          placeholder="…or describe what you need to run, and the agent works out how"
+          (valueChange)="onRequestInput($event)"
+        />
+        <button
+          type="button"
+          class="configure__button"
+          [disabled]="!canAsk() || authoring() || request().trim().length === 0"
+          (click)="onAsk()"
+        >
+          Ask agent
+        </button>
+      </div>
 
-          @if (hasBuildConfigs()) {
-            <app-setting-row label="Configuration">
-              <app-dropdown
-                [options]="buildConfigOptions()"
-                [value]="configuration.buildConfiguration ?? ''"
-                [fullWidth]="true"
-                (valueChange)="onBuildConfiguration($event)"
-              />
-            </app-setting-row>
+      <!-- The agent's own questions and permission prompts, answered here because the dialog is modal
+           and its Agent panel is unreachable behind it. -->
+      @if (agentRequests().length > 0) {
+        <div class="configure__requests">
+          @for (entry of agentRequests(); track entry.key) {
+            <app-agent-request-card [entry]="entry" />
           }
+        </div>
+      }
 
-          @if (hasTarget()) {
-            <app-setting-row [label]="targetLabel()">
-              <app-dropdown
-                [options]="targetOptions()"
-                [value]="configuration.target ?? ''"
-                [fullWidth]="true"
-                (valueChange)="onTarget($event)"
-              />
-            </app-setting-row>
-          }
+      @if (authoring()) {
+        <p class="configure__status">
+          The agent is working — configurations appear here as it writes them. Watch its progress in
+          the Agent panel or Mission Control.
+        </p>
+      } @else if (askUnavailableReason(); as reason) {
+        <p class="configure__status configure__status--muted">{{ reason }}</p>
+      }
 
-          <app-setting-row label="Program">
-            <app-text-field
-              [value]="configuration.program ?? ''"
-              placeholder="Resolved by the provider when empty"
-              (valueChange)="onProgram($event)"
-            />
-          </app-setting-row>
-
-          <app-setting-row label="Arguments">
-            <app-text-field [value]="argsText()" (valueChange)="onArgs($event)" />
-          </app-setting-row>
-
-          <app-setting-row label="Working directory">
-            <app-text-field
-              [value]="configuration.cwd ?? ''"
-              placeholder="Workspace root when empty"
-              (valueChange)="onCwd($event)"
-            />
-          </app-setting-row>
-
-          <app-setting-row label="Environment" description="One KEY=value per line">
-            <textarea
-              #env
-              class="configure__env"
-              rows="3"
-              [value]="envText()"
-              (change)="onEnv(env.value)"
-            ></textarea>
-          </app-setting-row>
-
-          <app-setting-row label="Debug" description="Run under the debugger">
-            <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
-          </app-setting-row>
-
-          <app-setting-row
-            label="New window"
-            description="Show this run's terminal in its own window"
-          >
-            <app-toggle
-              [checked]="isWindowPresentation()"
-              (checkedChange)="onPresentationChange($event)"
-            />
-          </app-setting-row>
-        } @else {
-          <p class="configure__empty">Select or create a configuration to edit.</p>
-        }
+      <div class="configure__actions">
+        <button type="button" class="configure__button" (click)="onCancel()">Cancel</button>
+        <button
+          type="button"
+          class="configure__button configure__button--primary"
+          (click)="onSave()"
+        >
+          Save
+        </button>
       </div>
     </div>
-
-    <!-- Agent authoring: Auto assesses the project unattended; the prompt box asks for something
-         specific and leaves the agent to work out how. Both run in the workspace's own agent, so the
-         work is visible (and answerable) in its Agent panel and in Mission Control. -->
-    <div class="configure__agent">
-      <button
-        type="button"
-        class="configure__button configure__button--agent"
-        [disabled]="!canAsk() || authoring()"
-        [title]="
-          askUnavailableReason() ??
-          'Let the agent assess this project and set up its run configurations'
-        "
-        (click)="onAuto()"
-      >
-        <app-icon [icon]="Icon.AGENT" />
-        Auto-configure
-      </button>
-      <app-text-field
-        class="configure__request"
-        [value]="request()"
-        [disabled]="!canAsk() || authoring()"
-        placeholder="…or describe what you need to run, and the agent works out how"
-        (valueChange)="onRequestInput($event)"
-      />
-      <button
-        type="button"
-        class="configure__button"
-        [disabled]="!canAsk() || authoring() || request().trim().length === 0"
-        (click)="onAsk()"
-      >
-        Ask agent
-      </button>
-    </div>
-
-    <!-- The agent's own questions and permission prompts, answered here because the dialog is modal
-         and its Agent panel is unreachable behind it. -->
-    @if (agentRequests().length > 0) {
-      <div class="configure__requests">
-        @for (entry of agentRequests(); track entry.key) {
-          <app-agent-request-card [entry]="entry" />
-        }
-      </div>
-    }
-
-    @if (authoring()) {
-      <p class="configure__status">
-        The agent is working — configurations appear here as it writes them. Watch its progress in
-        the Agent panel or Mission Control.
-      </p>
-    } @else if (askUnavailableReason(); as reason) {
-      <p class="configure__status configure__status--muted">{{ reason }}</p>
-    }
-
-    <div class="configure__actions">
-      <button type="button" class="configure__button" (click)="onCancel()">Cancel</button>
-      <button type="button" class="configure__button configure__button--primary" (click)="onSave()">
-        Save
-      </button>
-    </div>
-  </div>
+  </ng-template>
 </app-modal>
