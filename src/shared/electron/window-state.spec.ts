@@ -1,5 +1,7 @@
 import {
+  parseFeatureFlag,
   parseRequestedPosition,
+  parseRequestedSize,
   parseStoredWindowState,
   restoreWindowRect,
   StoredWindowState,
@@ -151,5 +153,43 @@ describe('parseRequestedPosition', () => {
     expect(parseRequestedPosition('left=10')).toBeNull();
     expect(parseRequestedPosition('left=abc,top=20')).toBeNull();
     expect(parseRequestedPosition('left=Infinity,top=20')).toBeNull();
+  });
+});
+
+describe('parseRequestedSize', () => {
+  it('withWidthAndHeight_returnsTheRoundedSize', () => {
+    expect(parseRequestedSize('width=480.4,height=320.6')).toEqual({ width: 480, height: 321 });
+  });
+
+  it('withExtraFeatures_ignoresThem', () => {
+    expect(parseRequestedSize('left=10,top=20,width=480,height=320,resizable=0')).toEqual({
+      width: 480,
+      height: 320,
+    });
+  });
+
+  it('withAnIncompleteMalformedOrEmptySize_returnsNull', () => {
+    expect(parseRequestedSize('')).toBeNull();
+    expect(parseRequestedSize('width=480')).toBeNull();
+    expect(parseRequestedSize('width=abc,height=320')).toBeNull();
+    expect(parseRequestedSize('width=0,height=320')).toBeNull();
+    expect(parseRequestedSize('width=480,height=-20')).toBeNull();
+  });
+});
+
+describe('parseFeatureFlag', () => {
+  it('whenSet_readsTheFlag', () => {
+    expect(parseFeatureFlag('resizable=1', 'resizable', false)).toBe(true);
+    expect(parseFeatureFlag('closable=0', 'closable', true)).toBe(false);
+  });
+
+  it('withCasing_normalisesTheName', () => {
+    expect(parseFeatureFlag('Resizable=1', 'RESIZABLE', false)).toBe(true);
+  });
+
+  it('whenAbsentOrUnparsable_returnsTheFallback', () => {
+    expect(parseFeatureFlag('', 'resizable', true)).toBe(true);
+    expect(parseFeatureFlag('left=10,top=20', 'resizable', false)).toBe(false);
+    expect(parseFeatureFlag('resizable=yes', 'resizable', true)).toBe(true);
   });
 });

@@ -1,0 +1,44 @@
+// The host fills the modal window; the panel inside is the dialog card the in-document modal used
+// to centre on a backdrop, now flattened against the window edges. It keeps reading the same
+// `--modal-panel-*` properties, which the modal copies across from its call site, so a caller that
+// themed its modal (the welcome screen's accented panel) gets that treatment here too.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+  background: var(--modal-panel-background, var(--modal-panel-background-color));
+  color: var(--body-foreground-color);
+}
+
+// The leading padding clears the platform's window controls, which are inset over the content:
+// whichever is larger of the caller's panel padding and the window's drag strip.
+.modal-window-host__panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  padding: var(--modal-panel-padding, 1.5rem);
+  padding-block-start: max(var(--modal-panel-padding, 1.5rem), var(--modal-window-drag-height));
+  overflow: auto;
+}
+
+// A measured modal takes its natural height and the window shrinks to it; the wrapper must not
+// stretch, or every dialog would measure exactly the window it already has.
+.modal-window-host__content {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+// A filling modal hosts a whole surface instead, and takes the room the window gives it.
+:host(.modal-window-host--fill) .modal-window-host__content {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+:host(.modal-window-host--fill) .modal-window-host__content > * {
+  flex: 1;
+  min-block-size: 0;
+}

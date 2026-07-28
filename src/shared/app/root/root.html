@@ -20,6 +20,9 @@
 <!-- The run-configuration Configure dialog stays mounted; the directory ribbon toggles its state. -->
 <app-configure-dialog />
 
+<!-- The backdrop dims and blocks the main window while a modal window is open over it. -->
+<app-modal-backdrop />
+
 <!-- Toast notifications overlay the content cell's bottom-right corner, above the status strip.
      Main window only by design: pop-out windows share the renderer, so their actions raise
      through the same store and surface here. -->

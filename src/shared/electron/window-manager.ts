@@ -1,10 +1,13 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
 import {
+  parseFeatureFlag,
   parseRequestedPosition,
+  parseRequestedSize,
   restoreWindowRect,
   StoredWindowState,
   WindowRect,
 } from './window-state';
+import { MODAL_UNPARENTED_FEATURE } from '@shared/api/window-channels';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
 
@@ -102,6 +105,27 @@ export class WindowManager {
   private static readonly POPOUT_MIN_HEIGHT: number = 320;
 
   /**
+   * Holds the default modal-window width, used when the opener requested no size.
+   */
+  private static readonly MODAL_DEFAULT_WIDTH: number = 480;
+
+  /**
+   * Holds the default modal-window height, used when the opener requested no size.
+   */
+  private static readonly MODAL_DEFAULT_HEIGHT: number = 320;
+
+  /**
+   * Holds the minimum modal-window width. A modal hosts one dialog panel, so it may shrink to the
+   * size of a short confirmation.
+   */
+  private static readonly MODAL_MIN_WIDTH: number = 240;
+
+  /**
+   * Holds the minimum modal-window height.
+   */
+  private static readonly MODAL_MIN_HEIGHT: number = 120;
+
+  /**
    * Holds the registered windows.
    */
   private readonly registry: WindowRegistry<BrowserWindow> = new WindowRegistry<BrowserWindow>();
@@ -110,6 +134,13 @@ export class WindowManager {
    * Holds the application-supplied options.
    */
   private readonly options: WindowManagerOptions;
+
+  /**
+   * Holds the window the next modal window adopts as its parent, recorded when its options are
+   * built and consumed the moment it is created. Null when the pending modal asked to stand alone,
+   * or when none is pending.
+   */
+  private pendingModalParent: BrowserWindow | null = null;
 
   /**
    * Initializes a new instance of the {@link WindowManager} class.
@@ -260,6 +291,86 @@ export class WindowManager {
   }
 
   /**
+   * Builds the window options a modal window opens with: the size the opener measured against its
+   * content, the position it centred over the raising window, and dialog chrome — no minimize, no
+   * fullscreen, resizing only when the modal asked for it, and no close button for a blocking modal
+   * (one its content alone may dismiss). Both the size and the position are
+   * clamped against the current displays, so a modal raised near a screen edge (or one whose
+   * content is taller than the display) still opens fully on-screen. Modal bounds are never
+   * persisted: a modal opens sized to what it currently holds, every time.
+   * The window that raised the modal is remembered here rather than passed to
+   * {@link adoptModalWindow}, because the created-window event carries the resolved options, not
+   * the features string the parenting choice rides on. Creation follows this call synchronously, so
+   * the pending parent is always the one the next adoption consumes.
+   * @param features The raw features string of the window-open request.
+   * @param opener The window the modal was raised from, or null when it could not be resolved.
+   * @returns Returns the constructor options for the modal window.
+   */
+  public modalWindowOptions(
+    features: string,
+    opener: BrowserWindow | null,
+  ): Electron.BrowserWindowConstructorOptions {
+    const resizable: boolean = parseFeatureFlag(features, 'resizable', false);
+    this.pendingModalParent = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false)
+      ? null
+      : opener;
+    const size: { width: number; height: number } = parseRequestedSize(features) ?? {
+      width: WindowManager.MODAL_DEFAULT_WIDTH,
+      height: WindowManager.MODAL_DEFAULT_HEIGHT,
+    };
+    const requested: { x: number; y: number } | null = parseRequestedPosition(features);
+    const rect: WindowRect | null = restoreWindowRect(
+      {
+        bounds: {
+          x: requested?.x ?? 0,
+          y: requested?.y ?? 0,
+          width: size.width,
+          height: size.height,
+        },
+        maximized: false,
+      },
+      screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
+      WindowManager.MODAL_MIN_WIDTH,
+      WindowManager.MODAL_MIN_HEIGHT,
+    );
+    return {
+      backgroundColor: '#000000',
+      width: rect?.width ?? size.width,
+      height: rect?.height ?? size.height,
+      ...(rect !== null && requested !== null ? { x: rect.x, y: rect.y } : {}),
+      minWidth: WindowManager.MODAL_MIN_WIDTH,
+      minHeight: WindowManager.MODAL_MIN_HEIGHT,
+      resizable,
+      maximizable: resizable,
+      closable: parseFeatureFlag(features, 'closable', true),
+      minimizable: false,
+      fullscreenable: false,
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 14, y: 14 },
+    };
+  }
+
+  /**
+   * Adopts a modal window the renderer opened through the allowed window.open path: hardens its web
+   * contents, registers it as a modal, resets its zoom, and — unless the opener asked for a
+   * free-standing window — parents it to the window that raised it, so it always floats above that
+   * window and closes with it. A free-standing modal is the welcome screen's cold start, where the
+   * main window is hidden: on macOS a child of a hidden parent is not displayed at all.
+   * @param window The created modal window.
+   */
+  public adoptModalWindow(window: BrowserWindow): void {
+    const parent: BrowserWindow | null = this.pendingModalParent;
+    this.pendingModalParent = null;
+    const entry: RegisteredWindow<BrowserWindow> = this.registry.add('modal', window);
+    this.options.applySecurity(window.webContents);
+    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    window.on('closed', (): void => this.registry.remove(entry.id));
+    if (parent !== null && !parent.isDestroyed()) {
+      window.setParentWindow(parent);
+    }
+  }
+
+  /**
    * Restores the persisted rectangle for a window kind against the current displays.
    * @param kind The window kind to restore.
    * @returns Returns the rectangle, or null when none is usable.
@@ -277,12 +388,13 @@ export class WindowManager {
   }
 
   /**
-   * Closes every pop-out window. Called when the main window reloads: auxiliary windows share the
-   * main renderer's JS context, so a reload leaves them dead — they cannot outlive it.
+   * Closes every secondary window — pop-outs and modals alike. Called when the main window reloads:
+   * both kinds share the main renderer's JS context, so a reload leaves them dead — they cannot
+   * outlive it.
    */
-  public closeAllPopouts(): void {
+  public closeAllSecondaryWindows(): void {
     for (const entry of this.registry.all()) {
-      if (entry.kind === 'popout' && !entry.window.isDestroyed()) {
+      if (entry.kind !== 'main' && !entry.window.isDestroyed()) {
         entry.window.close();
       }
     }

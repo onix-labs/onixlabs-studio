@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
 import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/shortcuts-overlay';
 
@@ -26,7 +27,7 @@ interface ShortcutGroup {
  */
 @Component({
   selector: 'app-shortcuts-overlay',
-  imports: [Modal],
+  imports: [Modal, ModalContent],
   templateUrl: './shortcuts-overlay-panel.html',
   styleUrl: './shortcuts-overlay-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

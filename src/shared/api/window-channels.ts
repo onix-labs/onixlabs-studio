@@ -27,10 +27,26 @@ export enum WindowChannel {
 }
 
 /**
- * Names the exact URL an auxiliary panel window is opened with — the ONE `window.open` target the
- * security guards allow. An auxiliary window shares the opener's renderer process, so the opener
- * builds its DOM directly and a dock panel renders into it with the workspace's own services; the
- * sentinel fragment keeps the allow surgically narrow (#116: everything else is still denied and
- * routed to the system browser).
+ * Names the exact URL an auxiliary panel window is opened with — one of the two `window.open`
+ * targets the security guards allow. An auxiliary window shares the opener's renderer process, so
+ * the opener builds its DOM directly and a dock panel renders into it with the workspace's own
+ * services; the sentinel fragment keeps the allow surgically narrow (#116: everything else is still
+ * denied and routed to the system browser).
  */
 export const AUX_PANEL_URL: string = 'about:blank#studio-panel';
+
+/**
+ * Names the exact URL a modal window is opened with — the second allowed `window.open` target,
+ * distinct from {@link AUX_PANEL_URL} so the main process can give it dialog chrome and parent it to
+ * the window that raised it. A modal window is the same kind of same-renderer child: the opener
+ * builds its DOM and renders the dialog's content into it, with the modal's own window-scoped
+ * injector so overlays raised inside it land in ITS window.
+ */
+export const MODAL_WINDOW_URL: string = 'about:blank#studio-modal';
+
+/**
+ * Names the `window.open` feature that asks for a free-standing modal window — one with no parent.
+ * Set only by the welcome screen's cold start, where the main window is hidden and a child of a
+ * hidden parent would not be displayed at all on macOS.
+ */
+export const MODAL_UNPARENTED_FEATURE: string = 'studio-unparented';

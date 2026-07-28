@@ -1,9 +1,10 @@
 /**
  * Identifies what role a window plays. The main window hosts the full IDE and is the default target
- * for renderer-push events; pop-out windows host individual surfaces (a dock panel) and never gate
- * application lifecycle.
+ * for renderer-push events; pop-out windows host individual surfaces (a dock panel); modal windows
+ * host one dialog over the window that raised it. Neither secondary kind gates application
+ * lifecycle.
  */
-export type WindowKind = 'main' | 'popout';
+export type WindowKind = 'main' | 'popout' | 'modal';
 
 /**
  * Describes a window tracked by the registry.

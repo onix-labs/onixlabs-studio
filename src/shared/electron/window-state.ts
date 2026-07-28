@@ -139,6 +139,49 @@ export function restoreWindowRect(
  * @returns Returns the requested position, or null when the features carry no usable position.
  */
 export function parseRequestedPosition(features: string): { x: number; y: number } | null {
+  const entries: Map<string, number> = numericFeatures(features);
+  const x: number | undefined = entries.get('left');
+  const y: number | undefined = entries.get('top');
+  return x !== undefined && y !== undefined ? { x: Math.round(x), y: Math.round(y) } : null;
+}
+
+/**
+ * Parses the size requested by a `window.open` features string (`width=…,height=…`), as a modal
+ * window measured against its content passes it. Parsed defensively — the string is
+ * renderer-supplied — and only a complete, finite, positive pair is honoured.
+ * @param features The raw features string from the window-open request.
+ * @returns Returns the requested size, or null when the features carry no usable size.
+ */
+export function parseRequestedSize(features: string): { width: number; height: number } | null {
+  const entries: Map<string, number> = numericFeatures(features);
+  const width: number | undefined = entries.get('width');
+  const height: number | undefined = entries.get('height');
+  if (width === undefined || height === undefined || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+/**
+ * Reads a boolean flag from a `window.open` features string, where the flag is set by `name=1` and
+ * cleared by `name=0` (the DOM features convention). Anything else — an absent or unparsable flag —
+ * yields the supplied fallback, so a malformed string can never produce a surprising window.
+ * @param features The raw features string from the window-open request.
+ * @param name The flag name to read.
+ * @param fallback The value to use when the flag is absent or unparsable.
+ * @returns Returns the flag's value.
+ */
+export function parseFeatureFlag(features: string, name: string, fallback: boolean): boolean {
+  const value: number | undefined = numericFeatures(features).get(name.toLowerCase());
+  return value === undefined ? fallback : value !== 0;
+}
+
+/**
+ * Parses a features string into its finite numeric entries, keyed by lower-cased name.
+ * @param features The raw features string from the window-open request.
+ * @returns Returns the numeric entries the string carries.
+ */
+function numericFeatures(features: string): Map<string, number> {
   const entries: Map<string, number> = new Map<string, number>();
   for (const part of features.split(',')) {
     const [key, raw] = part.split('=');
@@ -147,9 +190,7 @@ export function parseRequestedPosition(features: string): { x: number; y: number
       entries.set(key.trim().toLowerCase(), value);
     }
   }
-  const x: number | undefined = entries.get('left');
-  const y: number | undefined = entries.get('top');
-  return x !== undefined && y !== undefined ? { x: Math.round(x), y: Math.round(y) } : null;
+  return entries;
 }
 
 /**

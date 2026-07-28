@@ -11,6 +11,7 @@ import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/shortcuts-overlay';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
+import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { ShortcutsOverlayPanel } from '@shared/angular/components/shortcuts-overlay/shortcuts-overlay-panel';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
@@ -30,6 +31,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     StatusStripContainer,
     TitleStripContainer,
     ContentHost,
+    ModalBackdropView,
     WelcomeScreen,
     ShortcutsOverlayPanel,
     ConfigureDialogPanel,
