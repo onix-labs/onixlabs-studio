@@ -4,21 +4,14 @@
      content below is never instantiated — the window's host renders the caller's template instead.
 
      The backdrop is a convenience click-to-dismiss surface; keyboard parity is provided by the
-     Escape handler on the host, and the panel within holds the real focusable controls. When marked
-     draggable the backdrop doubles as the window-drag region; the panel opts back out so it stays
-     interactive. -->
+     Escape handler on the host, and the panel within holds the real focusable controls. -->
 <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
 <section
   class="modal"
   [class.modal--visible]="inlineVisible()"
-  [class.modal--draggable]="draggableBackdrop()"
   [class.modal--expanded]="expanded()"
   (click)="onBackdrop($event)"
 >
-  <div class="modal__backdrop" aria-hidden="true">
-    <ng-content select="[modalBackdrop]" />
-  </div>
-
   <div
     class="modal__panel"
     role="dialog"
@@ -27,7 +20,7 @@
     [attr.aria-label]="ariaLabel()"
     [style.--modal-panel-inline-size]="panelInlineSize()"
   >
-    @if (expandable() || (dismissable() && showClose())) {
+    @if (expandable() || dismissable()) {
       <div class="modal__controls">
         @if (expandable()) {
           <button
@@ -39,7 +32,7 @@
             <app-icon [icon]="expanded() ? Icon.ARROWS_IN : Icon.ARROWS_OUT" />
           </button>
         }
-        @if (dismissable() && showClose()) {
+        @if (dismissable()) {
           <button
             type="button"
             class="modal__control"

@@ -1,6 +1,6 @@
-import { Locator } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { openTabFromWelcome } from './helpers';
+import { isModalWindow, modalWindow, openTabFromWelcome } from './helpers';
 
 /**
  * Gets whether the suite drives a macOS build, where the `Mod` modifier is ⌘ and chords render as
@@ -19,22 +19,26 @@ const MOD: string = IS_MAC ? 'Meta' : 'Control';
  * change taking effect immediately.
  */
 test.describe('keyboard shortcuts', () => {
-  test('shortcutsOverlay_togglesAndListsTheActiveViewBindings', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Code File', 'app-code-view');
+  test('shortcutsOverlay_togglesAndListsTheActiveViewBindings', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Code File', 'app-code-view');
 
     await page.keyboard.press(`${MOD}+/`);
-    const overlay: Locator = page.locator('app-shortcuts-overlay .modal--visible');
-    await expect(overlay).toBeVisible();
-    await expect(overlay).toContainText('Code Editor');
-    await expect(overlay).toContainText('Save the active document');
-    await expect(overlay).toContainText('Show keyboard shortcuts');
 
-    await page.keyboard.press('Escape');
-    await expect(overlay).toBeHidden();
+    // The cheat sheet is a modal, so it opens in its own window over the main one.
+    const overlay: Page = await modalWindow(app);
+    const sheet: Locator = overlay.locator('.shortcuts');
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText('Code Editor');
+    await expect(sheet).toContainText('Save the active document');
+    await expect(sheet).toContainText('Show keyboard shortcuts');
+
+    // Escape is handled in the overlay's own window, and closes it.
+    await overlay.keyboard.press('Escape');
+    await expect.poll((): number => app.windows().filter(isModalWindow).length).toBe(0);
   });
 
-  test('keyboardSettings_rebindsACommand_effectiveImmediately', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Markdown File', 'app-markdown-view');
+  test('keyboardSettings_rebindsACommand_effectiveImmediately', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.locator('app-settings-view')).toBeVisible();
 

@@ -165,26 +165,16 @@ class Program {
     indexHtml: Program.INDEX_HTML,
     applySecurity: (contents: WebContents): void => this.applyWebContentsSecurity(contents),
     onMainClose: (event: ElectronEvent): void => this.onWindowClose(event),
-    onMainDidFinishLoad: (): void => {
-      // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
+    onMainDidStartLoad: (): void => {
+      // A (re)loading page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
       this.openPathsReady = false;
-      // A RELOADED main window has lost the renderer state its pop-outs and modals rendered from
-      // (both share its JS context), so orphaned children are closed rather than left dead. The
-      // first load is not that: the shell may already have opened its welcome window by the time
-      // this fires, and closing it would take the application's only visible window with it.
-      if (this.mainLoaded) {
-        this.windows.closeAllSecondaryWindows();
-      }
-      this.mainLoaded = true;
+      // The outgoing renderer's pop-outs and modals rendered from state that is about to go away
+      // (both share its JS context), so they are closed rather than left dead. This runs at the
+      // START of the load, before the incoming renderer opens windows of its own.
+      this.windows.closeAllSecondaryWindows();
     },
   });
-
-  /**
-   * Holds a value indicating whether the main window has finished loading at least once, so a
-   * genuine reload can be told from the first load.
-   */
-  private mainLoaded: boolean = false;
 
   /**
    * Holds a value indicating whether quitting has been confirmed (the renderer approved, or the

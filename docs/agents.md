@@ -291,14 +291,16 @@ The client, session manager, adapter registry, and provisioner live in `shared/e
 Studio is one Angular application in one **main window**, plus secondary OS windows that are always
 **viewers over state owned elsewhere** — never second owners.
 
-- **`WindowManager` (main)** owns every `BrowserWindow`: a kind-aware registry (`main` | `popout`),
-  per-kind bounds persistence (`window-state.json`, off-screen bounds re-centred), and
+- **`WindowManager` (main)** owns every `BrowserWindow`: a kind-aware registry
+  (`main` | `popout` | `modal`, the last being §4.12's dialog windows), per-kind bounds persistence
+  (`window-state.json`, off-screen bounds re-centred; modals persist nothing), and
   `applyWebContentsSecurity` on every window it creates or adopts. Push-style IPC still targets the
   main window by default; invoke-style handlers reply to their caller and are window-agnostic.
 - **One pop-out mechanism, one chrome.** The dock group title bar offers pop-out (cards icon)
   through the per-view `PopoutPanels` seam, handled by `PanelPopout` for **every panel**: a
-  **same-renderer auxiliary window** — the one `window.open` target the security guards allow
-  (`AUX_PANEL_URL`); everything else is still denied (#116). The child shares the renderer process,
+  **same-renderer auxiliary window** — one of the two `window.open` targets the security guards
+  allow (`AUX_PANEL_URL`, the other being §4.12's `MODAL_WINDOW_URL`); everything else is still
+  denied (#116). The child shares the renderer process,
   so the panel component renders into the child's document **with the owning view's injector** and
   keeps its real services; `AuxiliaryWindows` mirrors stylesheets and theme attributes into open
   children. No per-panel data plumbing exists — do not add mirrors or per-window IPC routing for
@@ -316,7 +318,7 @@ Studio is one Angular application in one **main window**, plus secondary OS wind
   position it left; closing a panel _inside_ a window closes it exactly as the main dock would.
 - **Window-scoped CDK.** `PopoutDockHost` also provides `OverlayContainer`, the outside-click
   dispatcher, `ScrollDispatcher`, `DragDropRegistry`, and a fresh-measuring `ViewportRuler`
-  subclass. CDK resolves these through the triggering element's injector (`createOverlayRef` /
+  subclass (`windowScopedCdkProviders()`, shared with modal windows). CDK resolves these through the triggering element's injector (`createOverlayRef` /
   `createDragRef`), so menus and overlays opened from a popped panel render in ITS window (and
   close on outside clicks there), CDK tab drag-reorder tracks the child document, and positioning
   measures the child viewport. Main-window triggers keep resolving the root instances — never
@@ -463,6 +465,53 @@ Session layout is **ephemeral by ruling**: closing, moving, or resizing panels w
 every launch, preset switch, and reset re-applies the active preset's saved definition. Save As and
 Update are the only writes. The active view registers a `LayoutPresetSession` (exactly as it registers
 its build runner) through which the ribbon captures the current layout and re-seeds the dock.
+
+### 4.12 Modal windows
+
+**Every modal is a real window.** `app-modal` does not draw an overlay over the window that raised
+it; it opens a child `BrowserWindow` and renders its content there, with the raising window blurred
+and inert behind it (`ModalBackdrop` + `app-modal-backdrop`, refcounted so a modal over a modal
+keeps it up). It is the §4.8 pop-out mechanism with a different intent — the second (and last)
+`window.open` target the security guards allow, `MODAL_WINDOW_URL`; the main process gives it dialog
+chrome (`hiddenInset`, no minimize, resizing and closing only when the modal asks) and parents it to
+the opener. Modal bounds are never persisted: a modal opens sized to what it currently holds.
+
+- **Content is a marked template.** Callers write `<ng-template appModalContent>`, never plain
+  projection: the template is instantiated in the modal's window under `ModalWindowHost`, whose
+  providers scope the CDK layer (`windowScopedCdkProviders()`, shared with `PopoutDockHost`) and
+  `DOCUMENT` to that window. That is what makes a menu, an overlay, or a drag inside a modal happen
+  in ITS window. Bindings and handlers still act on the component that declared the template — the
+  content keeps the view's services, exactly as a popped-out panel does. The marker is required
+  because modal content routinely contains templates of its own (a CDK menu panel); an unmarked
+  query would seize one. `<ng-content>` inside the template works, which is how the markdown form
+  modal carries each caller's projected fields across.
+- **Sized by intent.** A dialog is _measured_: the window fits its content (capped at 90% of its
+  parent) and re-fits as the content changes. `expandable` makes it _filling_ instead: a
+  user-resizable window whose content takes the room it is given. The measured path needs a
+  non-stretching content wrapper, or the measurement is just the window's current height.
+- **Theming crosses the window boundary by copy.** Custom properties whose value at the call site
+  differs from the document root's are written onto the modal window's **body** — not its root,
+  whose `style` attribute `ChildWindowStyling` mirrors from the opener and would overwrite. App-wide
+  tokens are left to resolve live from the mirrored stylesheets, so a theme switch reaches an open
+  modal.
+- **The welcome screen is the special case.** With no tabs open it IS the application: `ShellPresence`
+  hides the main window, and the welcome modal is `freestanding` — no parent (a child of a hidden
+  window is not displayed at all on macOS) and no backdrop. Closing that window closes the
+  application through the main window's own quit protocol. The main window is shown by the renderer
+  (`WindowChannel.Show`/`Hide`), never on `ready-to-show`, so a cold start never flashes an empty
+  IDE; a main-process timer shows it anyway if the renderer never speaks for it, retired the moment
+  it does.
+- **Child-window lifetime has two traps**, both already sprung: `pagehide` fires when a child's
+  initial `about:blank` load commits, so a close is only believed once `window.closed` agrees
+  (`watchChildWindowClosed`, shared with pop-outs); and orphaned children are closed when the main
+  window STARTS a load, never after it finishes — the incoming renderer opens its welcome window
+  within milliseconds of booting, and cleaning up after that would take it with it.
+- **The inline overlay survives as a fallback** for environments with no window opener (unit tests,
+  headless runs), which is why `modal.html`/`modal.scss` still exist. It is not a supported
+  presentation: nothing may rely on modal content being in the raising window's DOM. E2E drives
+  modals through `modalWindow(app)` (`e2e/helpers.ts`), not through the main page.
+- **The tab-scoped document-conflict prompt is not a modal** and stays in-document by ruling: it
+  belongs to a tab's content area, not to the window.
 
 ---
 

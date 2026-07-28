@@ -7,8 +7,8 @@ import { openTabFromWelcome } from './helpers';
  * observing the document react — word count, caret position, and buffer content.
  */
 test.describe('editing', () => {
-  test('markdownEditor_typing_updatesTheWordCount', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Markdown File', 'app-markdown-view');
+  test('markdownEditor_typing_updatesTheWordCount', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
     const editor: Locator = page.locator('app-markdown-view .ProseMirror[contenteditable="true"]');
     await expect(editor).toBeVisible();
     await expect(page.locator('app-status-strip-container')).toContainText('0 words');
@@ -20,8 +20,8 @@ test.describe('editing', () => {
     await expect(editor).toContainText('hello brave new world');
   });
 
-  test('codeEditor_typing_updatesBufferAndCaretPosition', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Code File', 'app-code-view');
+  test('codeEditor_typing_updatesBufferAndCaretPosition', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Code File', 'app-code-view');
     const monaco: Locator = page.locator('app-code-view .monaco-editor');
     await expect(monaco).toBeVisible();
     await expect(page.locator('app-status-strip-container')).toContainText('Ln 1');

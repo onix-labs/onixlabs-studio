@@ -130,12 +130,6 @@ export class Modal implements OnDestroy {
   public readonly dismissable: InputSignal<boolean> = input<boolean>(true);
 
   /**
-   * Gets a value indicating whether the corner close button is rendered. It applies only to the
-   * inline fallback presentation; a modal window is closed through its own window controls.
-   */
-  public readonly showClose: InputSignal<boolean> = input<boolean>(true);
-
-  /**
    * Gets whether the modal's window offers a close button, or undefined to follow
    * {@link dismissable}. A blocking modal that must still be closable as a window — the welcome
    * screen standing in for a hidden main window — states it explicitly.
@@ -161,12 +155,6 @@ export class Modal implements OnDestroy {
    * the panel falls back to its themed default width.
    */
   public readonly width: InputSignal<number | undefined> = input<number>();
-
-  /**
-   * Gets a value indicating whether the backdrop acts as a window-drag region. It applies only to
-   * the inline fallback presentation; a modal window is moved by its own drag strip.
-   */
-  public readonly draggableBackdrop: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets a value indicating whether the modal may be resized. Content that benefits from more room

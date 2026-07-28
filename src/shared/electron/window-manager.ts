@@ -46,9 +46,12 @@ export interface WindowManagerOptions {
   readonly onMainClose: (event: ElectronEvent) => void;
 
   /**
-   * Handles the main window's page (re)load, so the program can reset per-load renderer state.
+   * Handles the main window STARTING a page (re)load, so the program can retire the state the
+   * outgoing renderer owned. It fires before the incoming page's scripts run, which matters: the
+   * fresh renderer opens its own windows (the welcome screen) within milliseconds of booting, and
+   * cleaning up after that would take them with it.
    */
-  readonly onMainDidFinishLoad: () => void;
+  readonly onMainDidStartLoad: () => void;
 }
 
 /**
@@ -263,10 +266,8 @@ export class WindowManager {
     // Page zoom is disabled (the application menu omits the zoom roles), but Chromium persists zoom
     // levels per-origin in the session, so a level set before zoom was disabled would silently apply
     // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
-    window.webContents.on('did-finish-load', (): void => {
-      window.webContents.setZoomLevel(0);
-      this.options.onMainDidFinishLoad();
-    });
+    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    window.webContents.on('did-start-loading', (): void => this.options.onMainDidStartLoad());
     // Bounds are saved on close as well as on the debounced move/resize, so the final arrangement
     // always wins — including on the quit path, where close follows the confirmed quit.
     window.on('close', (event: ElectronEvent): void => {

@@ -35,24 +35,8 @@
   }
 }
 
-// Only when explicitly requested is the backdrop a window-drag handle (the frameless cold-start
-// presentation, where there is no title strip to move the window by). The panel opts back out below.
-.modal--draggable.modal--visible {
-  -webkit-app-region: drag;
-}
-
-// The decorative layer projected behind the panel. Non-interactive so backdrop clicks still reach
-// the dismiss handler; isolated so any blend modes inside stay within the overlay.
-.modal__backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-// The centred card. Everything inside opts out of the drag region so the controls stay clickable. It
-// zooms and fades in on entry; its resting hidden state is the zoomed-down, transparent one.
+// The centred card. It zooms and fades in on entry; its resting hidden state is the zoomed-down,
+// transparent one.
 .modal__panel {
   position: relative;
   z-index: 1;
@@ -68,7 +52,6 @@
   border-radius: calc(var(--modal-panel-radius, 2rem) * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   box-shadow: var(--modal-panel-shadow, 0 1rem 3rem rgba(0, 0, 0, 0.4));
-  -webkit-app-region: no-drag;
 
   .modal--visible & {
     transition:
@@ -94,8 +77,7 @@
 }
 
 // The top-trailing cluster of panel controls (expand/restore, then close). Absolutely positioned so
-// it floats over the projected content; opted out of the window-drag region so its buttons stay
-// clickable even when the backdrop is draggable.
+// it floats over the projected content.
 .modal__controls {
   position: absolute;
   inset-block-start: 1rem;
@@ -103,13 +85,9 @@
   z-index: 1;
   display: flex;
   gap: 0.25rem;
-  -webkit-app-region: no-drag;
 }
 
 .modal__control {
-  // Absolutely-positioned ancestor doesn't reliably pass down the panel's no-drag, so restate it
-  // here or the buttons sit in the window-drag region and their clicks are swallowed.
-  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;

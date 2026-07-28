@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { ribbonButton } from './helpers';
+import { isModalWindow, modalWindow, ribbonButton } from './helpers';
 
 /**
  * Builds a minimal but well-formed x86-64 ELF executable: a 64-byte ELF header, one PT_LOAD program
@@ -93,7 +93,7 @@ function readDisasmListing(page: Page): Promise<string> {
  * grid end to end.
  */
 test.describe('binary editor', () => {
-  test('recentElf_opensDisassembledInTheBinaryEditor', async ({ page }) => {
+  test('recentElf_opensDisassembledInTheBinaryEditor', async ({ app, page }) => {
     // Seed the welcome screen's recent list, then reload so it is read at construction.
     await page.evaluate((fixturePath: string): void => {
       window.localStorage.setItem(
@@ -103,9 +103,12 @@ test.describe('binary editor', () => {
         ]),
       );
     }, FIXTURE_PATH);
+    // The reload closes the welcome window with the renderer that opened it; the fresh renderer
+    // opens a new one, which is where the recent item is clicked.
+    const stale: readonly Page[] = app.windows().filter(isModalWindow);
     await page.reload();
-
-    await page.locator('.welcome__recent-name', { hasText: 'sample-x64.elf' }).click();
+    const welcome: Page = await modalWindow(app, stale);
+    await welcome.locator('.welcome__recent-name', { hasText: 'sample-x64.elf' }).click();
     const view: Locator = page.locator('app-binary-view');
     await expect(view).toBeVisible();
 

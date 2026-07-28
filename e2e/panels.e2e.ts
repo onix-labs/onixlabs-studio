@@ -8,8 +8,8 @@ import { openTabFromWelcome, ribbonButton } from './helpers';
  * persistence is not asserted here.)
  */
 test.describe('panels', () => {
-  test('outlineToggle_showsAndHidesTheOutlinePanel', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Markdown File', 'app-markdown-view');
+  test('outlineToggle_showsAndHidesTheOutlinePanel', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
     const panelHeader: Locator = page
       .locator('app-markdown-view')
       .getByText('Outline', { exact: true });
