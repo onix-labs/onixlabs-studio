@@ -253,6 +253,11 @@ export class WindowManager {
 
     const window: BrowserWindow = new BrowserWindow({
       backgroundColor: '#000000',
+      // A click into an application window acts on what it lands on, rather than being spent
+      // bringing the window forward. It is what makes one click on a modal's backdrop dismiss the
+      // modal: the backdrop covers the whole window while one is open, so the click that reaches
+      // past the modal IS the click the backdrop answers.
+      acceptFirstMouse: true,
       width: restored?.width ?? WindowManager.DEFAULT_WIDTH,
       height: restored?.height ?? WindowManager.DEFAULT_HEIGHT,
       ...(restored !== null ? { x: restored.x, y: restored.y } : {}),
@@ -339,6 +344,7 @@ export class WindowManager {
     const rect: WindowRect | null = placed ?? restored;
     return {
       backgroundColor: '#000000',
+      acceptFirstMouse: true,
       width: rect?.width ?? width,
       height: rect?.height ?? height,
       ...(rect !== null ? { x: rect.x, y: rect.y } : {}),
@@ -423,6 +429,7 @@ export class WindowManager {
       // The modal paints this until its content renders; the opener passes the colour its panel
       // will land on, so a modal window never flashes black on the way in.
       backgroundColor: WindowManager.modalBackground(features),
+      acceptFirstMouse: true,
       width: rect?.width ?? size.width,
       height: rect?.height ?? size.height,
       ...(rect !== null && position !== null ? { x: rect.x, y: rect.y } : {}),

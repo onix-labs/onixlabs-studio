@@ -319,6 +319,17 @@ describe('Modal (window presentation)', () => {
     expect(windows.requests[0].width).toBe(1920);
   });
 
+  it('request_carriesTheColourTheModalsPanelWillLandOn', () => {
+    // The window paints this until its content arrives, so it opens on its own colour.
+    host
+      .querySelector<HTMLElement>('app-modal')!
+      .style.setProperty('--modal-panel-background-color', '#1e2124');
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].background).toBe('#1e2124');
+  });
+
   it('request_whenExpandable_asksForAResizableWindow', () => {
     component.expandable.set(true);
     component.open.set(true);

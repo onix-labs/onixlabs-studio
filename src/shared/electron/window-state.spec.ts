@@ -1,5 +1,6 @@
 import {
   parseFeatureFlag,
+  parseFeatureText,
   parseNamedSize,
   parseRequestedPosition,
   parseRequestedSize,
@@ -214,5 +215,21 @@ describe('parseNamedSize', () => {
     expect(parseNamedSize('width=480,height=320', 'min')).toBeNull();
     expect(parseNamedSize('minwidth=960', 'min')).toBeNull();
     expect(parseNamedSize('minwidth=0,minheight=600', 'min')).toBeNull();
+  });
+});
+
+describe('parseFeatureText', () => {
+  it('whenPresent_returnsTheValue', () => {
+    expect(parseFeatureText('width=480,bgcolor=1e2124,closable=1', 'bgcolor')).toBe('1e2124');
+  });
+
+  it('withCasingAndSpaces_normalisesTheName_andTrimsTheValue', () => {
+    expect(parseFeatureText(' BgColor = 1e2124 ', 'bgcolor')).toBe('1e2124');
+  });
+
+  it('whenAbsentOrValueless_returnsNull', () => {
+    expect(parseFeatureText('width=480', 'bgcolor')).toBeNull();
+    expect(parseFeatureText('bgcolor', 'bgcolor')).toBeNull();
+    expect(parseFeatureText('', 'bgcolor')).toBeNull();
   });
 });
