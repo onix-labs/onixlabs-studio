@@ -594,6 +594,11 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (this.hasGoProject(root)) {
       return this.goAction(action);
     }
+    // Last: a compiled ecosystem's root often also carries a package.json for its tooling, and the
+    // toolchain that compiles the sources owns the action.
+    if (this.hasNodeProject(root)) {
+      return this.nodeAction(action);
+    }
     return null;
   }
 
@@ -735,6 +740,36 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       default:
         return null;
     }
+  }
+
+  /**
+   * Compiles a capability action into an npm command, or null when npm has none for it. Each action
+   * runs the conventional script of the same name — the scripts the Node project system declares its
+   * actions from, so a declared action always has a script behind it. Rebuild is never declared: npm
+   * scripts have no incremental/from-clean distinction to honour.
+   * @param action The action.
+   * @returns Returns the command, or null.
+   */
+  private nodeAction(action: ProjectAction): string | null {
+    switch (action) {
+      case 'build':
+      case 'clean':
+      case 'test':
+        return `npm run ${action}`;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Determines whether the workspace root holds a Node package manifest.
+   * @param root The workspace root listing.
+   * @returns Returns true when a `package.json` is present.
+   */
+  private hasNodeProject(root: DirectoryListing): boolean {
+    return root.entries.some(
+      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === 'package.json',
+    );
   }
 
   /**

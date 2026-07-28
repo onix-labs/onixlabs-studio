@@ -36,6 +36,7 @@ interface RibbonInternals {
   canBuild(): boolean;
   canClean(): boolean;
   canRebuild(): boolean;
+  solutionGroupVisible(): boolean;
   targetGroupVisible(): boolean;
   buildConfigNames(): readonly string[];
   buildConfigValue(): string;
@@ -60,9 +61,9 @@ interface RibbonInternals {
   onSaveAll(): void;
   onSaveMenuItem(id: string): void;
   buildMenuItems(): readonly RibbonMenuItem[];
-  cleanMenuItems(): readonly RibbonMenuItem[];
   onBuildMenuItem(id: string): void;
-  onCleanMenuItem(id: string): void;
+  hasActiveEditor(): boolean;
+  canCodeCleanup(): boolean;
   commitMenuItems(): readonly RibbonMenuItem[];
   onCommitMenuItem(id: string): void;
   presets(): readonly LayoutPresetInfo[];
@@ -160,11 +161,20 @@ function dotnetCapabilities(): ProjectCapabilities {
 }
 
 /**
- * The Node-shaped capability descriptor: an interpreted ecosystem with no gated controls.
+ * The descriptor of an ecosystem with no build step at all (Python, or a Node package whose manifest
+ * backs no conventional script): no gated controls, and so no Solution group.
  * @returns Returns the capabilities.
  */
-function nodeCapabilities(): ProjectCapabilities {
+function actionlessCapabilities(): ProjectCapabilities {
   return { actions: [], buildConfigurations: [], target: null, debug: null };
+}
+
+/**
+ * The descriptor of a Node package whose manifest backs a `build` script alone.
+ * @returns Returns the capabilities.
+ */
+function nodeBuildOnlyCapabilities(): ProjectCapabilities {
+  return { actions: ['build'], buildConfigurations: [], target: null, debug: null };
 }
 
 /**
@@ -579,12 +589,26 @@ describe('DirectoryRibbon', () => {
     expect(internals().targetNames()).toEqual(['Any CPU', 'x64']);
   });
 
-  it('disablesTheGatedActionsAndHidesTheTargetGroupForNode', () => {
-    capabilities.capabilities.set(nodeCapabilities());
+  it('hidesTheSolutionAndTargetGroupsForAnEcosystemWithNoBuildStep', () => {
+    // Python, or a Node package whose manifest backs no build/clean script: nothing to show, so the
+    // group disappears rather than standing as a row of permanently disabled buttons.
+    capabilities.capabilities.set(actionlessCapabilities());
 
     expect(internals().canBuild()).toBe(false);
     expect(internals().canClean()).toBe(false);
     expect(internals().canRebuild()).toBe(false);
+    expect(internals().solutionGroupVisible()).toBe(false);
+    expect(internals().targetGroupVisible()).toBe(false);
+  });
+
+  it('showsTheSolutionGroupForAProviderDeclaringOnlySomeActions', () => {
+    // A Node package with a `build` script but no `clean`: Build shows, Clean does not.
+    capabilities.capabilities.set(nodeBuildOnlyCapabilities());
+
+    expect(internals().canBuild()).toBe(true);
+    expect(internals().canClean()).toBe(false);
+    expect(internals().canRebuild()).toBe(false);
+    expect(internals().solutionGroupVisible()).toBe(true);
     expect(internals().targetGroupVisible()).toBe(false);
   });
 
@@ -594,7 +618,13 @@ describe('DirectoryRibbon', () => {
 
     expect(internals().canBuild()).toBe(true);
     expect(internals().canClean()).toBe(false);
+    expect(internals().solutionGroupVisible()).toBe(true);
     expect(internals().targetGroupVisible()).toBe(false);
+
+    // ...and with no discovered task either, the group has nothing left to show.
+    builds.canBuild.set(false);
+
+    expect(internals().solutionGroupVisible()).toBe(false);
   });
 
   it('cleanAndRebuildDispatchThroughTheActionPath', () => {
@@ -644,6 +674,18 @@ describe('DirectoryRibbon', () => {
 
     internals().onBuild();
 
+    expect(builds.actionCalls).toEqual(['build']);
+    expect(builds.actionOptions).toEqual([{ restart: false }]);
+  });
+
+  it('build_withoutACapabilityModel_runsTheDiscoveredDefaultBuildTask', () => {
+    // A Gradle/Make ecosystem has no declared actions to compile a command from, so the discovered
+    // task is what Build runs.
+    builds.canBuild.set(true);
+
+    internals().onBuild();
+
+    expect(builds.actionCalls).toEqual([]);
     expect(builds.buildCalls).toEqual([{ restart: false }]);
   });
 
@@ -654,7 +696,7 @@ describe('DirectoryRibbon', () => {
 
     expect(internals().canBuild()).toBe(true);
     internals().onBuild();
-    expect(builds.buildCalls).toEqual([{ restart: false }]);
+    expect(builds.actionCalls).toEqual(['build']);
   });
 
   it('showsTheSelectedBuildConfigurationAndTargetByName', () => {
@@ -703,12 +745,12 @@ describe('DirectoryRibbon', () => {
   });
 
   describe('the Solution group', () => {
-    it('buildMenu_carriesRebuild_disabledWhenTheProviderDoesNotDeclareIt', () => {
-      capabilities.capabilities.set(null);
-      expect(internals().buildMenuItems()[0].disabled).toBe(true);
+    it('buildMenu_carriesRebuildAlone_neverAsADeadEntry', () => {
+      // The button carries the menu only where Rebuild is declared, so the item is always live.
+      const items: readonly RibbonMenuItem[] = internals().buildMenuItems();
 
-      capabilities.capabilities.set(dotnetCapabilities());
-      expect(internals().buildMenuItems()[0].disabled).toBe(false);
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['Rebuild']);
+      expect(items[0].disabled).toBeUndefined();
     });
 
     it('buildMenu_dispatchesRebuildThroughTheActionPath', () => {
@@ -718,16 +760,14 @@ describe('DirectoryRibbon', () => {
 
       expect(builds.actionCalls).toEqual(['rebuild']);
     });
+  });
 
-    it('cleanMenu_carriesTheDocumentLevelTidyingActions_disabledWithoutAFocusedEditor', () => {
-      const items: readonly RibbonMenuItem[] = internals().cleanMenuItems();
-
-      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual([
-        'Format',
-        'Code Cleanup',
-      ]);
-      // No editor is registered in this bare fixture, so both actions stay inert.
-      expect(items.every((item: RibbonMenuItem): boolean => item.disabled === true)).toBe(true);
+  describe('the Edit group', () => {
+    it('tidyingActions_areInertWithoutAFocusedEditor', () => {
+      // Format and Code Cleanup act on the well's focused document, not on the build — no editor is
+      // registered in this bare fixture, so both stay inert.
+      expect(internals().hasActiveEditor()).toBe(false);
+      expect(internals().canCodeCleanup()).toBe(false);
     });
   });
 

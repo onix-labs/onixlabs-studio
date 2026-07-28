@@ -575,12 +575,51 @@ describe('BuildRunner', () => {
     workspace.openListing({
       path: '/n',
       name: 'n',
-      entries: [{ name: 'package.json', path: '/n/package.json', type: 'file' }],
+      entries: [{ name: 'README.md', path: '/n/README.md', type: 'file' }],
     });
     const runner: BuildRunner = TestBed.inject(BuildRunner);
     await runner.refresh();
 
     runner.runAction('clean');
+
+    expect(sessions.launchCalls).toHaveLength(0);
+  });
+
+  /**
+   * Opens a Node package root and discovers its tasks.
+   * @returns Returns the build runner after discovery.
+   */
+  async function discoverNode(): Promise<BuildRunner> {
+    const workspace: Workspace = TestBed.inject(Workspace);
+    workspace.openListing({
+      path: '/n',
+      name: 'n',
+      entries: [{ name: 'package.json', path: '/n/package.json', type: 'file' }],
+    });
+    const runner: BuildRunner = TestBed.inject(BuildRunner);
+    await runner.refresh();
+    return runner;
+  }
+
+  it('runAction_node_runsTheConventionalScriptOfTheSameName', async () => {
+    // The scripts the Node project system declares its actions from, so a declared action always
+    // reaches the script it was declared from — never whichever task merely looked build-shaped.
+    const runner: BuildRunner = await discoverNode();
+
+    runner.runAction('build');
+    runner.runAction('clean', { restart: true });
+
+    expect(sessions.launchCalls.map((call: TerminalLaunchOptions): string => call.command)).toEqual(
+      ['npm run build', 'npm run clean'],
+    );
+    expect(sessions.launchCalls[0].cwd).toBe('/n');
+  });
+
+  it('runAction_node_hasNoRebuild', async () => {
+    // npm scripts have no incremental/from-clean distinction, so Rebuild is never declared or run.
+    const runner: BuildRunner = await discoverNode();
+
+    runner.runAction('rebuild');
 
     expect(sessions.launchCalls).toHaveLength(0);
   });
