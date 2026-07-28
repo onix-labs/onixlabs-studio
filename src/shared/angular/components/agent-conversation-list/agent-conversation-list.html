@@ -255,27 +255,29 @@
   ariaLabel="Rename conversation"
   (dismiss)="onCancelRename()"
 >
-  <h2 class="history__modal-title">Rename conversation</h2>
-  <input
-    class="history__modal-input"
-    type="text"
-    [value]="renameValue()"
-    (input)="renameValue.set($any($event.target).value)"
-    (keydown.enter)="onConfirmRename()"
-    placeholder="Conversation title"
-    aria-label="Conversation title"
-  />
-  <div class="history__modal-actions">
-    <button type="button" class="history__button" (click)="onCancelRename()">Cancel</button>
-    <button
-      type="button"
-      class="history__button history__button--primary"
-      [disabled]="renameValue().trim().length === 0"
-      (click)="onConfirmRename()"
-    >
-      Rename
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="history__modal-title">Rename conversation</h2>
+    <input
+      class="history__modal-input"
+      type="text"
+      [value]="renameValue()"
+      (input)="renameValue.set($any($event.target).value)"
+      (keydown.enter)="onConfirmRename()"
+      placeholder="Conversation title"
+      aria-label="Conversation title"
+    />
+    <div class="history__modal-actions">
+      <button type="button" class="history__button" (click)="onCancelRename()">Cancel</button>
+      <button
+        type="button"
+        class="history__button history__button--primary"
+        [disabled]="renameValue().trim().length === 0"
+        (click)="onConfirmRename()"
+      >
+        Rename
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Category editor modal. -->
@@ -286,31 +288,33 @@
   ariaLabel="Category"
   (dismiss)="onCancelCategory()"
 >
-  @if (categoryEditor(); as editor) {
-    <h2 class="history__modal-title">
-      {{ editor.id === null ? 'New category' : 'Rename category' }}
-    </h2>
-    <input
-      class="history__modal-input"
-      type="text"
-      [value]="editor.name"
-      (input)="onCategoryName($event)"
-      (keydown.enter)="onSaveCategory()"
-      placeholder="Category name"
-      aria-label="Category name"
-    />
-    <div class="history__modal-actions">
-      <button type="button" class="history__button" (click)="onCancelCategory()">Cancel</button>
-      <button
-        type="button"
-        class="history__button history__button--primary"
-        [disabled]="editor.name.trim().length === 0"
-        (click)="onSaveCategory()"
-      >
-        Save
-      </button>
-    </div>
-  }
+  <ng-template appModalContent>
+    @if (categoryEditor(); as editor) {
+      <h2 class="history__modal-title">
+        {{ editor.id === null ? 'New category' : 'Rename category' }}
+      </h2>
+      <input
+        class="history__modal-input"
+        type="text"
+        [value]="editor.name"
+        (input)="onCategoryName($event)"
+        (keydown.enter)="onSaveCategory()"
+        placeholder="Category name"
+        aria-label="Category name"
+      />
+      <div class="history__modal-actions">
+        <button type="button" class="history__button" (click)="onCancelCategory()">Cancel</button>
+        <button
+          type="button"
+          class="history__button history__button--primary"
+          [disabled]="editor.name.trim().length === 0"
+          (click)="onSaveCategory()"
+        >
+          Save
+        </button>
+      </div>
+    }
+  </ng-template>
 </app-modal>
 
 <!-- Manage categories modal. -->
@@ -321,42 +325,44 @@
   ariaLabel="Manage categories"
   (dismiss)="onCloseManage()"
 >
-  <h2 class="history__modal-title">Manage categories</h2>
-  <div class="history__manage-list">
-    @for (category of categories(); track category.id) {
-      <div class="history__manage-row">
-        <span class="history__manage-name">{{ category.name }}</span>
-        <button
-          type="button"
-          class="history__manage-action"
-          aria-label="Rename category"
-          (click)="onEditCategory(category)"
-        >
-          <app-icon [icon]="Icon.PENCIL" />
-        </button>
-        <button
-          type="button"
-          class="history__manage-action history__manage-action--danger"
-          aria-label="Delete category"
-          (click)="onDeleteCategory(category.id)"
-        >
-          <app-icon [icon]="Icon.TRASH" />
-        </button>
-      </div>
-    } @empty {
-      <p class="history__manage-empty">No categories yet.</p>
-    }
-  </div>
-  <div class="history__modal-actions">
-    <button type="button" class="history__button" (click)="onNewCategory()">New category</button>
-    <button
-      type="button"
-      class="history__button history__button--primary"
-      (click)="onCloseManage()"
-    >
-      Done
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="history__modal-title">Manage categories</h2>
+    <div class="history__manage-list">
+      @for (category of categories(); track category.id) {
+        <div class="history__manage-row">
+          <span class="history__manage-name">{{ category.name }}</span>
+          <button
+            type="button"
+            class="history__manage-action"
+            aria-label="Rename category"
+            (click)="onEditCategory(category)"
+          >
+            <app-icon [icon]="Icon.PENCIL" />
+          </button>
+          <button
+            type="button"
+            class="history__manage-action history__manage-action--danger"
+            aria-label="Delete category"
+            (click)="onDeleteCategory(category.id)"
+          >
+            <app-icon [icon]="Icon.TRASH" />
+          </button>
+        </div>
+      } @empty {
+        <p class="history__manage-empty">No categories yet.</p>
+      }
+    </div>
+    <div class="history__modal-actions">
+      <button type="button" class="history__button" (click)="onNewCategory()">New category</button>
+      <button
+        type="button"
+        class="history__button history__button--primary"
+        (click)="onCloseManage()"
+      >
+        Done
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Delete conversations confirmation modal. -->
@@ -367,19 +373,21 @@
   ariaLabel="Delete conversations"
   (dismiss)="onCancelDelete()"
 >
-  <h2 class="history__modal-title">Delete conversations?</h2>
-  <p class="history__modal-body">
-    {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
-    deleted. This cannot be undone.
-  </p>
-  <div class="history__modal-actions">
-    <button type="button" class="history__button" (click)="onCancelDelete()">Cancel</button>
-    <button
-      type="button"
-      class="history__button history__button--danger"
-      (click)="onConfirmDelete()"
-    >
-      Delete
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="history__modal-title">Delete conversations?</h2>
+    <p class="history__modal-body">
+      {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
+      deleted. This cannot be undone.
+    </p>
+    <div class="history__modal-actions">
+      <button type="button" class="history__button" (click)="onCancelDelete()">Cancel</button>
+      <button
+        type="button"
+        class="history__button history__button--danger"
+        (click)="onConfirmDelete()"
+      >
+        Delete
+      </button>
+    </div>
+  </ng-template>
 </app-modal>

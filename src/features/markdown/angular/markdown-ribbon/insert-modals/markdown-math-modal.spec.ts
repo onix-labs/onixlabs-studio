@@ -97,6 +97,9 @@ describe('MarkdownMathModal', () => {
     host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
     fixture.detectChanges();
 
+    component.open.set(true);
+    fixture.detectChanges();
+
     const radios: HTMLInputElement[] = Array.from(
       host.querySelectorAll<HTMLInputElement>('input[name="math-mode"]'),
     );

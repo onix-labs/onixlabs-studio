@@ -23,6 +23,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
 /**
@@ -133,6 +134,7 @@ type HistoryRowData =
     Checkbox,
     HighlightedText,
     Modal,
+    ModalContent,
     TreeView,
     CdkMenu,
     CdkMenuItem,

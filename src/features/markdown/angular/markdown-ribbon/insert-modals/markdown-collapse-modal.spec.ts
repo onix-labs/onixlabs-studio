@@ -77,6 +77,9 @@ describe('MarkdownCollapseModal', () => {
     host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
     fixture.detectChanges();
 
+    component.open.set(true);
+    fixture.detectChanges();
+
     expect(host.querySelector<HTMLInputElement>('#collapse-summary')!.value).toBe('');
     expect(host.querySelector<HTMLTextAreaElement>('#collapse-body')!.value).toBe('');
   });
@@ -95,6 +98,10 @@ describe('MarkdownCollapseModal', () => {
 
     expect(component.submitted).toBeNull();
     expect(component.open()).toBe(false);
+
+    component.open.set(true);
+    fixture.detectChanges();
+
     expect(host.querySelector<HTMLInputElement>('#collapse-summary')!.value).toBe('');
   });
 });

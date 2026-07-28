@@ -243,24 +243,27 @@
   ariaLabel="This configuration is still running"
   (dismiss)="cancelRunRestart()"
 >
-  <h2 class="directory-ribbon__confirm-title">
-    “{{ pendingRunConfiguration()?.name }}” is still running
-  </h2>
-  <p class="directory-ribbon__confirm-message">
-    Stop it and start it again? Its terminal keeps the session tab; the new run replaces the output.
-  </p>
-  <div class="directory-ribbon__confirm-actions">
-    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelRunRestart()">
-      Cancel
-    </button>
-    <button
-      type="button"
-      class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
-      (click)="confirmRunRestart()"
-    >
-      Stop &amp; Restart
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">
+      “{{ pendingRunConfiguration()?.name }}” is still running
+    </h2>
+    <p class="directory-ribbon__confirm-message">
+      Stop it and start it again? Its terminal keeps the session tab; the new run replaces the
+      output.
+    </p>
+    <div class="directory-ribbon__confirm-actions">
+      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelRunRestart()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
+        (click)="confirmRunRestart()"
+      >
+        Stop &amp; Restart
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Saves the current arrangement as a new layout preset. The Default box makes it the preset the
@@ -271,100 +274,104 @@
   ariaLabel="Save layout as preset"
   (dismiss)="cancelSaveAs()"
 >
-  <h2 class="directory-ribbon__confirm-title">Save layout as preset</h2>
-  <input
-    #presetInput
-    class="directory-ribbon__prompt-input"
-    type="text"
-    [value]="saveAsName()"
-    (input)="saveAsName.set($any($event.target).value)"
-    (keydown.enter)="confirmSaveAs()"
-    (keydown.escape)="cancelSaveAs()"
-    placeholder="Preset name"
-    aria-label="Preset name"
-  />
-  <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
-       rule cannot see through the component boundary to verify this statically. -->
-  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-  <label class="directory-ribbon__prompt-check">
-    <app-checkbox [(checked)]="saveAsDefault" />
-    <span>Make this the default view</span>
-  </label>
-  <div class="directory-ribbon__confirm-actions">
-    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelSaveAs()">
-      Cancel
-    </button>
-    <button
-      type="button"
-      class="directory-ribbon__confirm-button"
-      [disabled]="saveAsName().trim().length === 0"
-      (click)="confirmSaveAs()"
-    >
-      Save
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">Save layout as preset</h2>
+    <input
+      #presetInput
+      class="directory-ribbon__prompt-input"
+      type="text"
+      [value]="saveAsName()"
+      (input)="saveAsName.set($any($event.target).value)"
+      (keydown.enter)="confirmSaveAs()"
+      (keydown.escape)="cancelSaveAs()"
+      placeholder="Preset name"
+      aria-label="Preset name"
+    />
+    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+         rule cannot see through the component boundary to verify this statically. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="directory-ribbon__prompt-check">
+      <app-checkbox [(checked)]="saveAsDefault" />
+      <span>Make this the default view</span>
+    </label>
+    <div class="directory-ribbon__confirm-actions">
+      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelSaveAs()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="directory-ribbon__confirm-button"
+        [disabled]="saveAsName().trim().length === 0"
+        (click)="confirmSaveAs()"
+      >
+        Save
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Manages the layout presets: which one is the default, what the user's presets are called, and
      which of them to drop. Built-ins can be made the default but never renamed or deleted. Edits
      apply as they are made, so the dialog only closes. -->
 <app-modal [open]="manageOpen()" [width]="32" ariaLabel="Manage layouts" (dismiss)="closeManage()">
-  <h2 class="directory-ribbon__confirm-title">Manage layouts</h2>
-  <p class="directory-ribbon__confirm-message">
-    The default is the layout the View button applies, and the one a workspace opens with until it
-    is switched.
-  </p>
-  <ul class="directory-ribbon__preset-list">
-    @for (preset of presets(); track preset.id) {
-      <li class="directory-ribbon__preset-row">
-        <button
-          type="button"
-          class="directory-ribbon__preset-default"
-          [class.directory-ribbon__preset-default--on]="preset.id === defaultPresetId()"
-          [attr.aria-pressed]="preset.id === defaultPresetId()"
-          [attr.aria-label]="'Make ' + preset.name + ' the default'"
-          [title]="preset.id === defaultPresetId() ? 'Default layout' : 'Make default'"
-          (click)="onSetDefaultPreset(preset.id)"
-        >
-          <app-icon [icon]="Icon.STAR" [size]="0.875" />
-        </button>
-        @if (preset.builtIn) {
-          <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
-          <span class="directory-ribbon__preset-tag">Built-in</span>
-        } @else {
-          <input
-            class="directory-ribbon__preset-input"
-            type="text"
-            [value]="preset.name"
-            [attr.aria-label]="'Rename ' + preset.name"
-            (change)="onRenamePreset(preset.id, $any($event.target).value)"
-          />
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">Manage layouts</h2>
+    <p class="directory-ribbon__confirm-message">
+      The default is the layout the View button applies, and the one a workspace opens with until it
+      is switched.
+    </p>
+    <ul class="directory-ribbon__preset-list">
+      @for (preset of presets(); track preset.id) {
+        <li class="directory-ribbon__preset-row">
           <button
             type="button"
-            class="directory-ribbon__preset-delete"
-            [attr.aria-label]="'Delete ' + preset.name"
-            title="Delete"
-            (click)="onDeletePreset(preset.id)"
+            class="directory-ribbon__preset-default"
+            [class.directory-ribbon__preset-default--on]="preset.id === defaultPresetId()"
+            [attr.aria-pressed]="preset.id === defaultPresetId()"
+            [attr.aria-label]="'Make ' + preset.name + ' the default'"
+            [title]="preset.id === defaultPresetId() ? 'Default layout' : 'Make default'"
+            (click)="onSetDefaultPreset(preset.id)"
           >
-            <app-icon [icon]="Icon.TRASH" [size]="0.875" />
+            <app-icon [icon]="Icon.STAR" [size]="0.875" />
           </button>
-        }
-      </li>
-    }
-  </ul>
-  <div class="directory-ribbon__confirm-actions directory-ribbon__confirm-actions--split">
-    <button
-      type="button"
-      class="directory-ribbon__confirm-button"
-      title="Discard this session's layout tweaks and re-apply the showing preset"
-      (click)="onResetPreset()"
-    >
-      Reset Layout
-    </button>
-    <button type="button" class="directory-ribbon__confirm-button" (click)="closeManage()">
-      Done
-    </button>
-  </div>
+          @if (preset.builtIn) {
+            <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
+            <span class="directory-ribbon__preset-tag">Built-in</span>
+          } @else {
+            <input
+              class="directory-ribbon__preset-input"
+              type="text"
+              [value]="preset.name"
+              [attr.aria-label]="'Rename ' + preset.name"
+              (change)="onRenamePreset(preset.id, $any($event.target).value)"
+            />
+            <button
+              type="button"
+              class="directory-ribbon__preset-delete"
+              [attr.aria-label]="'Delete ' + preset.name"
+              title="Delete"
+              (click)="onDeletePreset(preset.id)"
+            >
+              <app-icon [icon]="Icon.TRASH" [size]="0.875" />
+            </button>
+          }
+        </li>
+      }
+    </ul>
+    <div class="directory-ribbon__confirm-actions directory-ribbon__confirm-actions--split">
+      <button
+        type="button"
+        class="directory-ribbon__confirm-button"
+        title="Discard this session's layout tweaks and re-apply the showing preset"
+        (click)="onResetPreset()"
+      >
+        Reset Layout
+      </button>
+      <button type="button" class="directory-ribbon__confirm-button" (click)="closeManage()">
+        Done
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Asked before a repository is promoted into a worktree container: promotion restructures the
@@ -375,21 +382,23 @@
   ariaLabel="Promote to worktree"
   (dismiss)="cancelPromote()"
 >
-  <h2 class="directory-ribbon__confirm-title">Promote to worktree?</h2>
-  <p class="directory-ribbon__confirm-message">
-    The folder becomes a worktree container: everything in it moves into a checkout directory, and
-    further checkouts of the same repository can then work in parallel — each on its own branch,
-    with its own terminals, agent, and debugger. The view reloads around the container; the path you
-    open stays the same.
-  </p>
-  <div class="directory-ribbon__confirm-actions">
-    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPromote()">
-      Cancel
-    </button>
-    <button type="button" class="directory-ribbon__confirm-button" (click)="confirmPromote()">
-      Promote
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">Promote to worktree?</h2>
+    <p class="directory-ribbon__confirm-message">
+      The folder becomes a worktree container: everything in it moves into a checkout directory, and
+      further checkouts of the same repository can then work in parallel — each on its own branch,
+      with its own terminals, agent, and debugger. The view reloads around the container; the path
+      you open stays the same.
+    </p>
+    <div class="directory-ribbon__confirm-actions">
+      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPromote()">
+        Cancel
+      </button>
+      <button type="button" class="directory-ribbon__confirm-button" (click)="confirmPromote()">
+        Promote
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Asked when a build action targets a busy Build terminal: the running build is only ever stopped
@@ -400,21 +409,23 @@
   ariaLabel="A build is already running"
   (dismiss)="cancelBuildRestart()"
 >
-  <h2 class="directory-ribbon__confirm-title">A build is already running</h2>
-  <p class="directory-ribbon__confirm-message">
-    Stop the running build and start this one instead? Its output stays in the Build terminal until
-    the new build replaces it.
-  </p>
-  <div class="directory-ribbon__confirm-actions">
-    <button type="button" class="directory-ribbon__confirm-button" (click)="cancelBuildRestart()">
-      Cancel
-    </button>
-    <button
-      type="button"
-      class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
-      (click)="confirmBuildRestart()"
-    >
-      Stop &amp; Restart
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">A build is already running</h2>
+    <p class="directory-ribbon__confirm-message">
+      Stop the running build and start this one instead? Its output stays in the Build terminal
+      until the new build replaces it.
+    </p>
+    <div class="directory-ribbon__confirm-actions">
+      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelBuildRestart()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
+        (click)="confirmBuildRestart()"
+      >
+        Stop &amp; Restart
+      </button>
+    </div>
+  </ng-template>
 </app-modal>

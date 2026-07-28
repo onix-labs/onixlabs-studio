@@ -211,4 +211,46 @@ describe('AgentConversationList', () => {
     expect(counts).toContain('2');
     expect(counts).toContain('1');
   });
+
+  it('manageCategories_opensTheModalWithEachCategoryAndItsActions', () => {
+    categories.set([{ id: 'cat1', name: 'Work', sortOrder: 0, createdAt: 0 }]);
+    fixture.detectChanges();
+
+    tool('Manage categories').click();
+    fixture.detectChanges();
+
+    const rows: HTMLElement[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.history__manage-row'),
+    );
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('Work');
+    expect(host.querySelector('.history__modal-title')?.textContent).toContain('Manage categories');
+  });
+
+  it('newCategory_opensTheEditorModalWithAnEmptyName', () => {
+    tool('New category').click();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.history__modal-title')?.textContent).toContain('New category');
+    expect(host.querySelector<HTMLInputElement>('.history__modal-input')!.value).toBe('');
+  });
+
+  it('delete_whenConfirmed_promptsWithTheCheckedCount', () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+    itemChecks()[0].click();
+    fixture.detectChanges();
+
+    tool('Delete').click();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.history__modal-title')?.textContent).toContain(
+      'Delete conversations?',
+    );
+    expect(host.querySelector('.history__modal-body')?.textContent).toContain('1 conversation');
+  });
+
+  it('modal_whenClosed_doesNotRenderItsContent', () => {
+    expect(host.querySelector('.history__modal-title')).toBeNull();
+  });
 });

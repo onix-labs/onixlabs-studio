@@ -481,6 +481,9 @@ describe('SourceControlSidebar', () => {
       expect(provider.calls).not.toContain('dropStash:0');
 
       internals().requestDropStash(stash);
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Drop this stash?');
+
       internals().confirmDropStash();
       await fixture.whenStable();
 
@@ -512,6 +515,20 @@ describe('SourceControlSidebar', () => {
       await fixture.whenStable();
 
       expect(provider.calls).toContain('createBranch:feature/quiet:false');
+    });
+
+    it('whenOpen_rendersItsFields_andClosingRetiresThem', () => {
+      internals().openBranchDialog();
+      fixture.detectChanges();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.rail__dialog-title')?.textContent).toContain('New branch');
+      expect(host.querySelector('.rail__dialog-input')).not.toBeNull();
+
+      internals().cancelBranch();
+      fixture.detectChanges();
+
+      expect(host.querySelector('.rail__dialog-title')).toBeNull();
     });
 
     it('rejectsADuplicateName_beforeTheCommandRuns', () => {

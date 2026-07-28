@@ -94,6 +94,10 @@ describe('MarkdownFootnoteModal', () => {
 
     expect(component.submitted).toBeNull();
     expect(component.open()).toBe(false);
+
+    component.open.set(true);
+    fixture.detectChanges();
+
     expect(host.querySelector<HTMLTextAreaElement>('#footnote-content')!.value).toBe('');
   });
 });

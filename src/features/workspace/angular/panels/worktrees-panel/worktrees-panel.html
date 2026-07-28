@@ -137,19 +137,23 @@
   ariaLabel="Remove worktree"
   (dismiss)="cancelRemove()"
 >
-  <h2 class="worktrees__confirm-title">Remove “{{ removeLabel() }}”?</h2>
-  <p class="worktrees__confirm-message">
-    Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
-    remain on the remote.
-  </p>
-  <div class="worktrees__confirm-actions">
-    <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">Cancel</button>
-    <button
-      type="button"
-      class="worktrees__confirm-button worktrees__confirm-button--danger"
-      (click)="confirmRemove()"
-    >
-      Remove
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="worktrees__confirm-title">Remove “{{ removeLabel() }}”?</h2>
+    <p class="worktrees__confirm-message">
+      Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
+      remain on the remote.
+    </p>
+    <div class="worktrees__confirm-actions">
+      <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="worktrees__confirm-button worktrees__confirm-button--danger"
+        (click)="confirmRemove()"
+      >
+        Remove
+      </button>
+    </div>
+  </ng-template>
 </app-modal>

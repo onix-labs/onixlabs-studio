@@ -872,6 +872,31 @@ describe('DirectoryRibbon', () => {
       expect(internals().saveAsOpen()).toBe(false);
     });
 
+    it('presetModals_renderTheirContentOnlyWhileOpen', () => {
+      const customId: string = saveAs('Custom', false);
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelector('.directory-ribbon__confirm-title')).toBeNull();
+
+      internals().onSavePresetAs();
+      fixture.detectChanges();
+      expect(host.querySelector('.directory-ribbon__confirm-title')?.textContent).toContain(
+        'Save layout as preset',
+      );
+
+      internals().cancelSaveAs();
+      internals().onManagePresets();
+      fixture.detectChanges();
+      const manage: string = host.textContent ?? '';
+      expect(manage).toContain('Manage layouts');
+      expect(manage).toContain('Coding');
+
+      internals().onDeletePreset(customId);
+      internals().closeManage();
+      fixture.detectChanges();
+      expect(host.querySelector('.directory-ribbon__confirm-title')).toBeNull();
+    });
+
     it('saveAs_withAnEmptyName_savesNothingAndStaysOpen', () => {
       internals().onSavePresetAs();
       internals().saveAsName.set('   ');
