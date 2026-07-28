@@ -323,6 +323,7 @@ export class Modal implements OnDestroy {
         closable: this.closable() ?? this.dismissable(),
         parented: !this.freestanding(),
         position: null,
+        background: this.openingBackground(),
         minimum: this.bound(this.minWidth(), this.minHeight()),
         maximum: this.bound(this.maxWidth(), this.maxHeight()),
       },
@@ -363,7 +364,11 @@ export class Modal implements OnDestroy {
     this.applicationRef.attachView(host.hostView);
 
     // A freestanding modal has nothing behind it to dim: the window it was raised from is hidden.
-    const lower: () => void = this.freestanding() ? (): void => undefined : this.backdrop.raise();
+    // Otherwise the window behind dims, and clicking it dismisses this modal exactly as clicking
+    // beside the panel used to.
+    const lower: () => void = this.freestanding()
+      ? (): void => undefined
+      : this.backdrop.raise((): void => this.requestDismiss());
 
     // Escape closes a dismissable modal from its own window; the raising window's handler cannot
     // see key presses delivered to another window.
@@ -508,6 +513,31 @@ export class Modal implements OnDestroy {
   }
 
   /**
+   * Reads the colour the modal's window should paint until its content renders: the panel colour
+   * this modal will land on, resolved from the call site so a themed modal opens on its own colour
+   * rather than flashing the platform default.
+   * @returns Returns the colour as a `#rrggbb` triplet, or null when none could be resolved.
+   */
+  private openingBackground(): string | null {
+    let style: CSSStyleDeclaration;
+    try {
+      style = getComputedStyle(this.element.nativeElement);
+    } catch {
+      // Resolving a computed style can fail outside a real browser engine (a test environment that
+      // cannot parse one of the application's stylesheets). The colour is a courtesy; a modal must
+      // never fail to open for want of it.
+      return null;
+    }
+    for (const property of ['--modal-panel-background-color', '--body-background-color']) {
+      const hex: string | null = toHexColour(style.getPropertyValue(property).trim());
+      if (hex !== null) {
+        return hex;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Builds a window size bound from a stated width and height in rem, when both are stated.
    * @param width The width in rem, if any.
    * @param height The height in rem, if any.
@@ -567,6 +597,27 @@ export class Modal implements OnDestroy {
     this.presented?.window.close();
     this.presented = null;
   }
+}
+
+/**
+ * Converts a CSS colour to a `#rrggbb` triplet, for the colours a window can be painted with. Only
+ * the forms a computed style yields — `rgb()`/`rgba()` and hex — are understood; anything else
+ * (a gradient, a colour function the platform would not take) yields null.
+ * @param value The computed colour value.
+ * @returns Returns the triplet, or null when the value is not a plain colour.
+ */
+function toHexColour(value: string): string | null {
+  const hex: RegExpExecArray | null = /^#([0-9a-f]{6})$/i.exec(value);
+  if (hex !== null) {
+    return `#${hex[1]}`;
+  }
+  const rgb: RegExpExecArray | null = /^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value);
+  if (rgb === null) {
+    return null;
+  }
+  return `#${[rgb[1], rgb[2], rgb[3]]
+    .map((part: string): string => Number(part).toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 /**

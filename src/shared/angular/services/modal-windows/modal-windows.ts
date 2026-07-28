@@ -55,9 +55,16 @@ export interface ModalWindowRequest {
   readonly parented: boolean;
 
   /**
-   * Gets the screen position of the window's top-left corner, or null to let the platform place it.
+   * Gets the screen position of the window's top-left corner, or null to centre the window.
    */
   readonly position: ModalWindowPosition | null;
+
+  /**
+   * Gets the colour the window paints while its content is on its way, as a `#rrggbb` triplet, or
+   * null to leave it to the platform. It is the colour the modal's panel will land on, so the
+   * window never flashes a colour its content does not have.
+   */
+  readonly background: string | null;
 }
 
 /**
@@ -252,7 +259,7 @@ export class ModalWindows implements OnDestroy {
    */
   private features(request: ModalWindowRequest, owner: Window): string {
     const position: ModalWindowPosition =
-      request.position ?? this.centredOver(owner, request.width, request.height);
+      request.position ?? this.centred(request, owner, request.width, request.height);
     return [
       `width=${Math.round(request.width)}`,
       `height=${Math.round(request.height)}`,
@@ -261,6 +268,7 @@ export class ModalWindows implements OnDestroy {
       `resizable=${request.resizable ? 1 : 0}`,
       `closable=${request.closable ? 1 : 0}`,
       `${MODAL_UNPARENTED_FEATURE}=${request.parented ? 0 : 1}`,
+      ...(request.background === null ? [] : [`bgcolor=${request.background.replace('#', '')}`]),
       ...(request.minimum === null
         ? []
         : [
@@ -297,6 +305,27 @@ export class ModalWindows implements OnDestroy {
   }
 
   /**
+   * Computes where a modal window opens: centred over the window it was raised from, or centred on
+   * the display when it stands free — a free-standing modal has no window behind it to be attached
+   * to, and its opener is hidden and may be anywhere.
+   * @param request The window the modal asks for.
+   * @param owner The window the modal is raised from.
+   * @param width The window width.
+   * @param height The window height.
+   * @returns Returns the position of the window's top-left corner.
+   */
+  private centred(
+    request: ModalWindowRequest,
+    owner: Window,
+    width: number,
+    height: number,
+  ): ModalWindowPosition {
+    return request.parented
+      ? this.centredOver(owner, width, height)
+      : this.centredOnScreen(owner, width, height);
+  }
+
+  /**
    * Computes the screen position that centres a window of the given size over another — horizontally
    * centred, and a little above centre vertically, where a dialog reads as attached to what raised
    * it rather than floating in the middle of the screen.
@@ -309,6 +338,25 @@ export class ModalWindows implements OnDestroy {
     return {
       x: owner.screenX + (owner.outerWidth - width) / 2,
       y: owner.screenY + Math.max(0, (owner.outerHeight - height) / 3),
+    };
+  }
+
+  /**
+   * Computes the screen position that centres a window of the given size on the display's usable
+   * area (excluding the menu bar and dock).
+   * @param owner The window whose display is used.
+   * @param width The window width.
+   * @param height The window height.
+   * @returns Returns the position of the centred window's top-left corner.
+   */
+  private centredOnScreen(owner: Window, width: number, height: number): ModalWindowPosition {
+    // availLeft/availTop are only in the (widely implemented) Window Management additions to
+    // Screen, so they are read defensively; a display whose usable area starts at the origin is
+    // the common case anyway.
+    const screen: Screen & { availLeft?: number; availTop?: number } = owner.screen;
+    return {
+      x: (screen.availLeft ?? 0) + (screen.availWidth - width) / 2,
+      y: (screen.availTop ?? 0) + (screen.availHeight - height) / 2,
     };
   }
 

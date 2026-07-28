@@ -535,11 +535,9 @@ class Program {
     ipcMain.on(WindowChannel.Show, (event: IpcMainEvent): void => {
       this.windows.claimMainPresence();
       const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
-      if (targetWindow === null || targetWindow.isVisible()) {
-        return;
+      if (targetWindow !== null) {
+        this.windows.showWindow(targetWindow);
       }
-      targetWindow.show();
-      targetWindow.focus();
     });
 
     ipcMain.on(WindowChannel.Hide, (event: IpcMainEvent): void => {

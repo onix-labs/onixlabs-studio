@@ -1,6 +1,7 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
 import {
   parseFeatureFlag,
+  parseFeatureText,
   parseNamedSize,
   parseRequestedPosition,
   parseRequestedSize,
@@ -159,6 +160,12 @@ export class WindowManager {
   private mainPresenceClaimed: boolean = false;
 
   /**
+   * Holds a value indicating whether the main window opens maximized, applied when it is first
+   * shown rather than when it is created.
+   */
+  private mainStartsMaximized: boolean = false;
+
+  /**
    * Holds the window the next modal window adopts as its parent, recorded when its options are
    * built and consumed the moment it is created. Null when the pending modal asked to stand alone,
    * or when none is pending.
@@ -210,6 +217,24 @@ export class WindowManager {
   }
 
   /**
+   * Shows a window, restoring the maximized state the main window was persisted with the first time
+   * it is shown. Hidden windows cannot be maximized without being revealed, so the restore waits
+   * for the moment there is something worth revealing.
+   * @param window The window to show.
+   */
+  public showWindow(window: BrowserWindow): void {
+    if (window.isDestroyed() || window.isVisible()) {
+      return;
+    }
+    if (window === this.main() && this.mainStartsMaximized) {
+      this.mainStartsMaximized = false;
+      window.maximize();
+    }
+    window.show();
+    window.focus();
+  }
+
+  /**
    * Creates the main application window — restoring its persisted bounds when they are still
    * reachable on the current displays — and loads the Angular application into it.
    * @returns Returns the created window.
@@ -243,9 +268,10 @@ export class WindowManager {
         sandbox: true,
       },
     });
-    if (stored?.maximized === true) {
-      window.maximize();
-    }
+    // Maximizing a window that has not been shown SHOWS it on macOS, which would flash an empty
+    // IDE window before the shell has decided whether to show it at all. The choice is remembered
+    // and applied at the moment the window is shown.
+    this.mainStartsMaximized = stored?.maximized === true;
 
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('main', window);
     // The main window is shown by the renderer, not by readiness: with no tabs open the shell puts
@@ -260,7 +286,7 @@ export class WindowManager {
       this.mainShowFallback = setTimeout((): void => {
         this.mainShowFallback = null;
         if (!window.isDestroyed() && !window.isVisible()) {
-          window.show();
+          this.showWindow(window);
         }
       }, WindowManager.MAIN_SHOW_FALLBACK_MS);
     });
@@ -394,7 +420,9 @@ export class WindowManager {
       minimum.height,
     );
     return {
-      backgroundColor: '#000000',
+      // The modal paints this until its content renders; the opener passes the colour its panel
+      // will land on, so a modal window never flashes black on the way in.
+      backgroundColor: WindowManager.modalBackground(features),
       width: rect?.width ?? size.width,
       height: rect?.height ?? size.height,
       ...(rect !== null && position !== null ? { x: rect.x, y: rect.y } : {}),
@@ -402,13 +430,25 @@ export class WindowManager {
       minHeight: minimum.height,
       ...(maximum === null ? {} : { maxWidth: maximum.width, maxHeight: maximum.height }),
       resizable,
-      maximizable: resizable,
+      // A modal that states a ceiling has nothing to maximize to.
+      maximizable: resizable && maximum === null,
       closable: parseFeatureFlag(features, 'closable', true),
       minimizable: false,
       fullscreenable: false,
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 14, y: 14 },
     };
+  }
+
+  /**
+   * Reads the background colour a modal window opens with from its features, falling back to black
+   * when the opener passed none or passed something that is not a plain `rrggbb` triplet.
+   * @param features The raw features string of the window-open request.
+   * @returns Returns the CSS colour to paint the window with.
+   */
+  private static modalBackground(features: string): string {
+    const value: string | null = parseFeatureText(features, 'bgcolor');
+    return value !== null && /^[0-9a-f]{6}$/i.test(value) ? `#${value}` : '#000000';
   }
 
   /**

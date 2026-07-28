@@ -335,6 +335,28 @@ describe('Modal (window presentation)', () => {
     expect(windows.requests[0].closable).toBe(false);
   });
 
+  it('backdropClick_whileOpen_dismissesTheModal', () => {
+    component.open.set(true);
+    fixture.detectChanges();
+
+    backdrop.requestDismiss();
+    fixture.detectChanges();
+
+    expect(component.dismissed).toBe(1);
+  });
+
+  it('backdropClick_whenNotDismissable_leavesTheModalOpen', () => {
+    component.dismissable.set(false);
+    component.open.set(true);
+    fixture.detectChanges();
+
+    backdrop.requestDismiss();
+    fixture.detectChanges();
+
+    expect(component.dismissed).toBe(0);
+    expect(windows.closed).toBe(0);
+  });
+
   it('open_whenClosedByTheCaller_closesTheWindowAndLowersTheBackdrop', () => {
     component.open.set(true);
     fixture.detectChanges();

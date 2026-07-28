@@ -499,13 +499,21 @@ the opener. Modal bounds are never persisted: a modal opens sized to what it cur
   whose `style` attribute `ChildWindowStyling` mirrors from the opener and would overwrite. App-wide
   tokens are left to resolve live from the mirrored stylesheets, so a theme switch reaches an open
   modal.
+- **Dismissal is the window's, plus the backdrop's.** A modal window closes on Escape (handled in
+  its own document), on its own close button, and on a click on the backdrop over the window behind
+  — the last belonging to the topmost modal alone, which is why `ModalBackdrop` stacks the open
+  modals rather than counting them. A modal that is not `dismissable` ignores all three.
 - **The welcome screen is the special case.** With no tabs open it IS the application: `ShellPresence`
   hides the main window, and the welcome modal is `freestanding` — no parent (a child of a hidden
-  window is not displayed at all on macOS) and no backdrop. Closing that window closes the
-  application through the main window's own quit protocol. The main window is shown by the renderer
-  (`WindowChannel.Show`/`Hide`), never on `ready-to-show`, so a cold start never flashes an empty
-  IDE; a main-process timer shows it anyway if the renderer never speaks for it, retired the moment
-  it does.
+  window is not displayed at all on macOS), no backdrop, and centred on the display rather than on
+  its hidden opener. Closing that window closes the application through the main window's own quit
+  protocol. The main window is shown by the renderer (`WindowChannel.Show`/`Hide`), never on
+  `ready-to-show`, so a cold start never flashes an empty IDE; a main-process timer shows it anyway
+  if the renderer never speaks for it, retired the moment it does. Two related traps: **maximizing a
+  window that has not been shown SHOWS it** on macOS, so a persisted maximized state is applied when
+  the window is first shown (`WindowManager.showWindow`), not when it is created; and a window paints
+  its `backgroundColor` until its content arrives, so a modal passes the colour its panel will land
+  on (`bgcolor` in the features) rather than flashing black.
 - **Child-window lifetime has two traps**, both already sprung: `pagehide` fires when a child's
   initial `about:blank` load commits, so a close is only believed once `window.closed` agrees
   (`watchChildWindowClosed`, shared with pop-outs); and orphaned children are closed when the main

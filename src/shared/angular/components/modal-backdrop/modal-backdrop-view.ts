@@ -7,7 +7,9 @@ import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-bac
  * because the panel lives in its own window.
  *
  * It also swallows input: while it is up, the window behind is inert (its title bar still moves the
- * window, which is what a user expects of a dialog's parent). Mounted once per window that can raise
+ * window, which is what a user expects of a dialog's parent). Clicking it dismisses the modal above
+ * — the same gesture as clicking beside a dialog when modals were drawn inside this window — which
+ * a modal that may not be dismissed that way simply ignores. Mounted once per window that can raise
  * modals — the shell mounts it for the main window, and the pop-out dock host for each pop-out —
  * and driven by whichever {@link ModalBackdrop} that window resolves.
  */
@@ -17,6 +19,7 @@ import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-bac
   template: '',
   host: {
     '[class.modal-backdrop--raised]': 'backdrop.raised()',
+    '(click)': 'backdrop.requestDismiss()',
     'aria-hidden': 'true',
   },
   styles: [

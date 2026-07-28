@@ -198,6 +198,26 @@ export function parseFeatureFlag(features: string, name: string, fallback: boole
 }
 
 /**
+ * Reads a text value from a `window.open` features string. Renderer-supplied, so the caller is
+ * expected to validate the shape of what it gets.
+ * @param features The raw features string from the window-open request.
+ * @param name The entry name to read.
+ * @returns Returns the value, or null when the features carry none.
+ */
+export function parseFeatureText(features: string, name: string): string | null {
+  for (const part of features.split(',')) {
+    const separator: number = part.indexOf('=');
+    if (separator === -1) {
+      continue;
+    }
+    if (part.slice(0, separator).trim().toLowerCase() === name.toLowerCase()) {
+      return part.slice(separator + 1).trim();
+    }
+  }
+  return null;
+}
+
+/**
  * Parses a features string into its finite numeric entries, keyed by lower-cased name.
  * @param features The raw features string from the window-open request.
  * @returns Returns the numeric entries the string carries.
