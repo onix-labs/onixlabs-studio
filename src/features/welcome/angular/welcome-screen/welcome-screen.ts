@@ -208,11 +208,11 @@ export class WelcomeScreen {
   );
 
   /**
-   * Gets a value indicating whether the ambient backdrop (the static accent glow) is shown. It appears
-   * only at a cold start or when no tabs are open — never when the welcome screen is summoned as a modal
-   * over existing content.
+   * Gets a value indicating whether the welcome screen is standing in for the application rather
+   * than being summoned over it: no tabs are open, so the main window is hidden and the welcome
+   * window stands free of it.
    */
-  protected readonly ambient: Signal<boolean> = computed(
+  protected readonly standsAlone: Signal<boolean> = computed(
     (): boolean => this.tabsService.tabs().length === 0,
   );
 

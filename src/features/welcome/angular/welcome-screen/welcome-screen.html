@@ -4,11 +4,10 @@
      static accent glow sits behind its content, shown only when it stands in for the application. -->
 <app-modal
   class="welcome-modal"
-  [class.welcome-modal--ambient]="ambient()"
   [open]="visible()"
   [dismissable]="dismissable()"
   [closable]="true"
-  [freestanding]="ambient()"
+  [freestanding]="standsAlone()"
   [expandable]="true"
   [width]="64"
   [height]="45"
@@ -20,9 +19,9 @@
   (dismiss)="close()"
 >
   <ng-template appModalContent>
-    <!-- A soft, static purple glow behind the content — shown only when the welcome screen stands in
-         for the application, never when it is summoned over open tabs. Purely decorative. -->
-    <div class="welcome__glow" [class.welcome__glow--active]="ambient()" aria-hidden="true">
+    <!-- A soft, static accent glow behind the content. Purely decorative, and shown in both of the
+         welcome screen's roles: it is the same window either way, so it looks the same either way. -->
+    <div class="welcome__glow" aria-hidden="true">
       <span class="welcome__glow-blob welcome__glow-blob--a"></span>
       <span class="welcome__glow-blob welcome__glow-blob--b"></span>
     </div>

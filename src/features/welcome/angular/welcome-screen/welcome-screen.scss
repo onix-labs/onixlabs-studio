@@ -43,13 +43,6 @@
   --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 55%, transparent);
 }
 
-// Cold-start scene: a near-opaque dark canvas so the static glow reads against it, with no content
-// behind to blur.
-.welcome-modal--ambient {
-  --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 98%, transparent);
-  --modal-backdrop-blur: 0;
-}
-
 // Light-mode variant (see resources/img.png): a clean, near-white card with dark text and thin gray
 // borders, not a dark hero. The accent only survives in the logo, the active filter pill, and a faint
 // corner glow on the canvas. Additive over the dark defaults above — :host-context outranks each base
@@ -76,10 +69,6 @@
   }
 
   // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only accent tint.
-  .welcome-modal--ambient {
-    --modal-backdrop-color: var(--gray-150);
-  }
-
   // Dial the corner blooms down to a faint tint on the light canvas.
   .welcome__glow-blob--a {
     background: radial-gradient(
@@ -121,14 +110,9 @@
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  opacity: 0;
   // Decorative only: it sits behind the content, and must never take a click meant for an action
   // beneath it.
   pointer-events: none;
-}
-
-.welcome__glow--active {
-  opacity: 1;
   transition: opacity 280ms ease;
 
   @starting-style {
