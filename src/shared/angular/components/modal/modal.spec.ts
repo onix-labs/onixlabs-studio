@@ -46,6 +46,10 @@ class TestHost {
       [dismissable]="dismissable()"
       [expandable]="expandable()"
       [width]="width()"
+      [minWidth]="minWidth()"
+      [maxWidth]="maxWidth()"
+      [minHeight]="minHeight()"
+      [maxHeight]="maxHeight()"
       ariaLabel="Windowed modal"
       (dismiss)="onDismiss()"
     >
@@ -60,6 +64,18 @@ class WindowedHost {
   public readonly dismissable: WritableSignal<boolean> = signal<boolean>(true);
   public readonly expandable: WritableSignal<boolean> = signal<boolean>(false);
   public readonly width: WritableSignal<number | undefined> = signal<number | undefined>(26);
+  public readonly minWidth: WritableSignal<number | undefined> = signal<number | undefined>(
+    undefined,
+  );
+  public readonly maxWidth: WritableSignal<number | undefined> = signal<number | undefined>(
+    undefined,
+  );
+  public readonly minHeight: WritableSignal<number | undefined> = signal<number | undefined>(
+    undefined,
+  );
+  public readonly maxHeight: WritableSignal<number | undefined> = signal<number | undefined>(
+    undefined,
+  );
   public dismissed: number = 0;
 
   public onDismiss(): void {
@@ -259,6 +275,48 @@ describe('Modal (window presentation)', () => {
     expect(request.resizable).toBe(false);
     expect(request.closable).toBe(true);
     expect(request.parented).toBe(true);
+  });
+
+  it('request_whenBoundsAreStated_carriesThemAsTheWindowsResizeLimits', () => {
+    component.minWidth.set(60);
+    component.minHeight.set(37.5);
+    component.maxWidth.set(64);
+    component.maxHeight.set(45);
+    component.open.set(true);
+    fixture.detectChanges();
+
+    const request: ModalWindowRequest = windows.requests[0];
+    expect(request.minimum).toEqual({ width: 960, height: 600 });
+    expect(request.maximum).toEqual({ width: 1024, height: 720 });
+  });
+
+  it('request_whenNoBoundsAreStated_leavesThemToTheWindowDefaults', () => {
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].minimum).toBeNull();
+    expect(windows.requests[0].maximum).toBeNull();
+  });
+
+  it('request_whenAMaximumIsStated_holdsTheOpeningWidthWithinIt', () => {
+    // Far wider than the maximum allows, and wider than the space available — the ceiling wins.
+    component.width.set(200);
+    component.maxWidth.set(40);
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].width).toBe(640);
+  });
+
+  it('request_whenAMinimumExceedsTheSpaceAvailable_theMinimumStillWins', () => {
+    // A modal that cannot fit is better oversized than unusable.
+    component.width.set(10);
+    component.minWidth.set(120);
+    component.minHeight.set(37.5);
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].width).toBe(1920);
   });
 
   it('request_whenExpandable_asksForAResizableWindow', () => {

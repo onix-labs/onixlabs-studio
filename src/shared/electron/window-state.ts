@@ -163,6 +163,27 @@ export function parseRequestedSize(features: string): { width: number; height: n
 }
 
 /**
+ * Reads a named size from a `window.open` features string (for example `minwidth=…,minheight=…`).
+ * Parsed defensively — the string is renderer-supplied — and only a complete, finite, positive pair
+ * is honoured.
+ * @param features The raw features string from the window-open request.
+ * @param prefix The name prefix the pair is keyed under (`min` or `max`).
+ * @returns Returns the size, or null when the features carry no usable pair.
+ */
+export function parseNamedSize(
+  features: string,
+  prefix: string,
+): { width: number; height: number } | null {
+  const entries: Map<string, number> = numericFeatures(features);
+  const width: number | undefined = entries.get(`${prefix}width`);
+  const height: number | undefined = entries.get(`${prefix}height`);
+  if (width === undefined || height === undefined || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+/**
  * Reads a boolean flag from a `window.open` features string, where the flag is set by `name=1` and
  * cleared by `name=0` (the DOM features convention). Anything else — an absent or unparsable flag —
  * yields the supplied fallback, so a malformed string can never produce a surprising window.

@@ -1,6 +1,7 @@
 import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
 import {
   parseFeatureFlag,
+  parseNamedSize,
   parseRequestedPosition,
   parseRequestedSize,
   restoreWindowRect,
@@ -362,32 +363,44 @@ export class WindowManager {
     this.pendingModalParent = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false)
       ? null
       : opener;
-    const size: { width: number; height: number } = parseRequestedSize(features) ?? {
+    // A modal may state its own resize bounds; otherwise it may shrink to the size of a short
+    // confirmation and has no ceiling but the display.
+    const minimum: { width: number; height: number } = parseNamedSize(features, 'min') ?? {
+      width: WindowManager.MODAL_MIN_WIDTH,
+      height: WindowManager.MODAL_MIN_HEIGHT,
+    };
+    const maximum: { width: number; height: number } | null = parseNamedSize(features, 'max');
+    const requested: { width: number; height: number } = parseRequestedSize(features) ?? {
       width: WindowManager.MODAL_DEFAULT_WIDTH,
       height: WindowManager.MODAL_DEFAULT_HEIGHT,
     };
-    const requested: { x: number; y: number } | null = parseRequestedPosition(features);
+    const size: { width: number; height: number } = {
+      width: Math.max(minimum.width, Math.min(requested.width, maximum?.width ?? Infinity)),
+      height: Math.max(minimum.height, Math.min(requested.height, maximum?.height ?? Infinity)),
+    };
+    const position: { x: number; y: number } | null = parseRequestedPosition(features);
     const rect: WindowRect | null = restoreWindowRect(
       {
         bounds: {
-          x: requested?.x ?? 0,
-          y: requested?.y ?? 0,
+          x: position?.x ?? 0,
+          y: position?.y ?? 0,
           width: size.width,
           height: size.height,
         },
         maximized: false,
       },
       screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
-      WindowManager.MODAL_MIN_WIDTH,
-      WindowManager.MODAL_MIN_HEIGHT,
+      minimum.width,
+      minimum.height,
     );
     return {
       backgroundColor: '#000000',
       width: rect?.width ?? size.width,
       height: rect?.height ?? size.height,
-      ...(rect !== null && requested !== null ? { x: rect.x, y: rect.y } : {}),
-      minWidth: WindowManager.MODAL_MIN_WIDTH,
-      minHeight: WindowManager.MODAL_MIN_HEIGHT,
+      ...(rect !== null && position !== null ? { x: rect.x, y: rect.y } : {}),
+      minWidth: minimum.width,
+      minHeight: minimum.height,
+      ...(maximum === null ? {} : { maxWidth: maximum.width, maxHeight: maximum.height }),
       resizable,
       maximizable: resizable,
       closable: parseFeatureFlag(features, 'closable', true),

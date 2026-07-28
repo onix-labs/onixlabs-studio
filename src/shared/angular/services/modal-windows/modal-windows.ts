@@ -26,6 +26,16 @@ export interface ModalWindowRequest {
   readonly height: number;
 
   /**
+   * Gets the smallest the user may make the window, in CSS pixels, or null for the modal default.
+   */
+  readonly minimum: ModalWindowSize | null;
+
+  /**
+   * Gets the largest the user may make the window, in CSS pixels, or null for no ceiling.
+   */
+  readonly maximum: ModalWindowSize | null;
+
+  /**
    * Gets a value indicating whether the user may resize the window. Dialogs sized to their content
    * do not; the ones holding an editor or a whole surface do.
    */
@@ -48,6 +58,21 @@ export interface ModalWindowRequest {
    * Gets the screen position of the window's top-left corner, or null to let the platform place it.
    */
   readonly position: ModalWindowPosition | null;
+}
+
+/**
+ * Describes a window size, in CSS pixels.
+ */
+export interface ModalWindowSize {
+  /**
+   * Gets the width.
+   */
+  readonly width: number;
+
+  /**
+   * Gets the height.
+   */
+  readonly height: number;
 }
 
 /**
@@ -236,6 +261,18 @@ export class ModalWindows implements OnDestroy {
       `resizable=${request.resizable ? 1 : 0}`,
       `closable=${request.closable ? 1 : 0}`,
       `${MODAL_UNPARENTED_FEATURE}=${request.parented ? 0 : 1}`,
+      ...(request.minimum === null
+        ? []
+        : [
+            `minwidth=${Math.round(request.minimum.width)}`,
+            `minheight=${Math.round(request.minimum.height)}`,
+          ]),
+      ...(request.maximum === null
+        ? []
+        : [
+            `maxwidth=${Math.round(request.maximum.width)}`,
+            `maxheight=${Math.round(request.maximum.height)}`,
+          ]),
     ].join(',');
   }
 

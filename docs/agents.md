@@ -485,10 +485,15 @@ the opener. Modal bounds are never persisted: a modal opens sized to what it cur
   because modal content routinely contains templates of its own (a CDK menu panel); an unmarked
   query would seize one. `<ng-content>` inside the template works, which is how the markdown form
   modal carries each caller's projected fields across.
-- **Sized by intent.** A dialog is _measured_: the window fits its content (capped at 90% of its
-  parent) and re-fits as the content changes. `expandable` makes it _filling_ instead: a
-  user-resizable window whose content takes the room it is given. The measured path needs a
-  non-stretching content wrapper, or the measurement is just the window's current height.
+- **Sized by intent.** A dialog is _measured_: the window fits its content and re-fits as the
+  content changes. `expandable` makes it _filling_ instead: a user-resizable window whose content
+  takes the room it is given, at `height` (or a share of what is available). The measured path needs
+  a non-stretching content wrapper, or the measurement is just the window's current height. Either
+  way the size is held within `minWidth`/`minHeight`/`maxWidth`/`maxHeight` (rem, and the window's
+  real resize limits) and within 90% of the space available — the window it is raised over, or the
+  display when it is free-standing, since a hidden opener may be far smaller than the modal standing
+  in for it. A stated minimum outranks the available space: a modal that cannot fit is better
+  oversized than unusable.
 - **Theming crosses the window boundary by copy.** Custom properties whose value at the call site
   differs from the document root's are written onto the modal window's **body** — not its root,
   whose `style` attribute `ChildWindowStyling` mirrors from the opener and would overwrite. App-wide

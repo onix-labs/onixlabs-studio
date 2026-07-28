@@ -114,13 +114,16 @@
 // A calm, static accent glow projected behind the panel. Shown (faded in) only in the ambient
 // cold-start scene; purely decorative.
 .welcome__glow {
-  position: absolute;
+  // Fixed, not absolute: the glow belongs to the WINDOW, and bleeds to all four edges. Positioned
+  // against the content it would be clipped to the panel's padded box, which reads as a rectangle
+  // of tint floating inside the window instead of a bloom across it.
+  position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   opacity: 0;
-  // Decorative only: it sits behind the content within the modal window, and must never take a
-  // click meant for an action beneath it.
+  // Decorative only: it sits behind the content, and must never take a click meant for an action
+  // beneath it.
   pointer-events: none;
 }
 

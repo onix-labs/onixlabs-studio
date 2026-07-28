@@ -31,7 +31,11 @@ import {
   ModalWindowHost,
 } from '@shared/angular/components/modal-window-host/modal-window-host';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
-import { ModalWindow, ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import {
+  ModalWindow,
+  ModalWindows,
+  ModalWindowSize,
+} from '@shared/angular/services/modal-windows/modal-windows';
 
 /**
  * Holds the panel width, in rem, used when a caller states none.
@@ -155,6 +159,36 @@ export class Modal implements OnDestroy {
    * the panel falls back to its themed default width.
    */
   public readonly width: InputSignal<number | undefined> = input<number>();
+
+  /**
+   * Gets the panel height in rem, for a modal that fills its window rather than being measured. When
+   * undefined a filling modal opens at a share of the space available to it.
+   */
+  public readonly height: InputSignal<number | undefined> = input<number>();
+
+  /**
+   * Gets the smallest width in rem the user may resize the modal's window to, or undefined for the
+   * modal default.
+   */
+  public readonly minWidth: InputSignal<number | undefined> = input<number>();
+
+  /**
+   * Gets the smallest height in rem the user may resize the modal's window to, or undefined for the
+   * modal default.
+   */
+  public readonly minHeight: InputSignal<number | undefined> = input<number>();
+
+  /**
+   * Gets the largest width in rem the modal's window may take, or undefined for no ceiling beyond
+   * the space available to it.
+   */
+  public readonly maxWidth: InputSignal<number | undefined> = input<number>();
+
+  /**
+   * Gets the largest height in rem the modal's window may take, or undefined for no ceiling beyond
+   * the space available to it.
+   */
+  public readonly maxHeight: InputSignal<number | undefined> = input<number>();
 
   /**
    * Gets a value indicating whether the modal may be resized. Content that benefits from more room
@@ -289,6 +323,8 @@ export class Modal implements OnDestroy {
         closable: this.closable() ?? this.dismissable(),
         parented: !this.freestanding(),
         position: null,
+        minimum: this.bound(this.minWidth(), this.minHeight()),
+        maximum: this.bound(this.maxWidth(), this.maxHeight()),
       },
       owner,
     );
@@ -343,7 +379,12 @@ export class Modal implements OnDestroy {
     const measure: () => void = (): void => {
       window.fit(
         this.requestedWidth(owner),
-        this.clamp(host.instance.measure(), owner.innerHeight),
+        this.clamp(
+          host.instance.measure(),
+          this.available(owner).height,
+          this.minHeight(),
+          this.maxHeight(),
+        ),
       );
     };
     const observer: ResizeObserver | null = this.expandable()
@@ -406,35 +447,78 @@ export class Modal implements OnDestroy {
   }
 
   /**
-   * Computes the width the modal window opens at: the caller's width in pixels, capped so a modal
-   * never opens wider than the window it was raised from.
+   * Computes the width the modal window opens at: the caller's width, held within its stated bounds
+   * and the space available to it.
    * @param owner The window the modal is raised from.
    * @returns Returns the width in CSS pixels.
    */
   private requestedWidth(owner: Window): number {
-    return this.clamp((this.width() ?? DEFAULT_WIDTH_REM) * this.rootFontSize(), owner.innerWidth);
+    const preferred: number = (this.width() ?? DEFAULT_WIDTH_REM) * this.rootFontSize();
+    return this.clamp(preferred, this.available(owner).width, this.minWidth(), this.maxWidth());
   }
 
   /**
-   * Computes the height the modal window opens at: the room a filling modal is given, or — for a
-   * measured one — a modest share of the raising window, which the first measurement corrects
-   * before the window is seen at that size.
+   * Computes the height the modal window opens at: the caller's height when it states one, the room
+   * a filling modal is given, or — for a measured one — a modest share of the space available,
+   * which the first measurement corrects before the window is seen at that size.
    * @param owner The window the modal is raised from.
    * @returns Returns the height in CSS pixels.
    */
   private requestedHeight(owner: Window): number {
-    return Math.round(owner.innerHeight * (this.expandable() ? 0.8 : 0.35));
+    const available: number = this.available(owner).height;
+    const stated: number | undefined = this.height();
+    const preferred: number =
+      stated === undefined
+        ? available * (this.expandable() ? 0.8 : 0.35)
+        : stated * this.rootFontSize();
+    return this.clamp(preferred, available, this.minHeight(), this.maxHeight());
   }
 
   /**
-   * Caps a measurement against the window the modal was raised from, leaving a modal always smaller
-   * than its parent. Content that exceeds the cap scrolls within the modal.
-   * @param value The measurement to cap.
-   * @param available The full extent of the raising window.
-   * @returns Returns the capped measurement.
+   * Gets the space a modal window may occupy. A parented modal is held within the window it was
+   * raised over; a free-standing one has no window behind it, so it is held within the display
+   * instead (its opener is hidden, and may be far smaller than the modal standing in for it).
+   * @param owner The window the modal is raised from.
+   * @returns Returns the available width and height in CSS pixels.
    */
-  private clamp(value: number, available: number): number {
-    return Math.round(Math.min(value, available * MAX_WINDOW_FRACTION));
+  private available(owner: Window): { width: number; height: number } {
+    return this.freestanding()
+      ? { width: owner.screen.availWidth, height: owner.screen.availHeight }
+      : { width: owner.innerWidth, height: owner.innerHeight };
+  }
+
+  /**
+   * Holds a measurement within the modal's stated bounds and the space available to it. A stated
+   * minimum wins over the available space: a modal that cannot fit is better oversized than
+   * unusable.
+   * @param value The measurement to hold.
+   * @param available The full extent available to the modal.
+   * @param minimum The stated minimum in rem, if any.
+   * @param maximum The stated maximum in rem, if any.
+   * @returns Returns the held measurement, in CSS pixels.
+   */
+  private clamp(value: number, available: number, minimum?: number, maximum?: number): number {
+    const rem: number = this.rootFontSize();
+    const ceiling: number = Math.min(
+      maximum === undefined ? Number.POSITIVE_INFINITY : maximum * rem,
+      available * MAX_WINDOW_FRACTION,
+    );
+    const floor: number = minimum === undefined ? 0 : minimum * rem;
+    return Math.round(Math.max(floor, Math.min(value, ceiling)));
+  }
+
+  /**
+   * Builds a window size bound from a stated width and height in rem, when both are stated.
+   * @param width The width in rem, if any.
+   * @param height The height in rem, if any.
+   * @returns Returns the bound in CSS pixels, or null when the modal states none.
+   */
+  private bound(width?: number, height?: number): ModalWindowSize | null {
+    if (width === undefined || height === undefined) {
+      return null;
+    }
+    const rem: number = this.rootFontSize();
+    return { width: width * rem, height: height * rem };
   }
 
   /**

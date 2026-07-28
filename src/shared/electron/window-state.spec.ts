@@ -1,5 +1,6 @@
 import {
   parseFeatureFlag,
+  parseNamedSize,
   parseRequestedPosition,
   parseRequestedSize,
   parseStoredWindowState,
@@ -191,5 +192,27 @@ describe('parseFeatureFlag', () => {
     expect(parseFeatureFlag('', 'resizable', true)).toBe(true);
     expect(parseFeatureFlag('left=10,top=20', 'resizable', false)).toBe(false);
     expect(parseFeatureFlag('resizable=yes', 'resizable', true)).toBe(true);
+  });
+});
+
+describe('parseNamedSize', () => {
+  it('withAPrefixedPair_returnsTheRoundedSize', () => {
+    expect(parseNamedSize('minwidth=960.4,minheight=600.6', 'min')).toEqual({
+      width: 960,
+      height: 601,
+    });
+  });
+
+  it('readsEachPrefixIndependently', () => {
+    const features: string = 'minwidth=960,minheight=600,maxwidth=1024,maxheight=720';
+
+    expect(parseNamedSize(features, 'min')).toEqual({ width: 960, height: 600 });
+    expect(parseNamedSize(features, 'max')).toEqual({ width: 1024, height: 720 });
+  });
+
+  it('whenAbsentIncompleteOrNonPositive_returnsNull', () => {
+    expect(parseNamedSize('width=480,height=320', 'min')).toBeNull();
+    expect(parseNamedSize('minwidth=960', 'min')).toBeNull();
+    expect(parseNamedSize('minwidth=0,minheight=600', 'min')).toBeNull();
   });
 });
