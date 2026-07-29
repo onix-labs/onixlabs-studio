@@ -924,7 +924,7 @@ describe('AgentChat', () => {
     comp.openMarkdown();
     fixture.detectChanges();
 
-    expect(host.querySelector('.agent__md-title')?.textContent).toContain('Write in Markdown');
+    expect(host.querySelector('.agent__md-title')?.textContent).toContain('Markdown Prompt Editor');
 
     comp.cancelMarkdown();
     fixture.detectChanges();

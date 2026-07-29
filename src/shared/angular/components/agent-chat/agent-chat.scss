@@ -514,6 +514,12 @@ $agent-node-size: 1.75rem;
 }
 
 .agent__btn {
+  // Laid out as a row so a button can carry a glyph beside its label, as the composer's Send does;
+  // centred, because these buttons are sized as a set rather than to their own text.
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   padding: 0.4rem 0.9rem;
   font: inherit;
   color: var(--gray-100);
@@ -1246,10 +1252,15 @@ $agent-node-size: 1.75rem;
   // window's document, where this component's host element is not.
 }
 
+// Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
+// a shrink-to-fit grid all take the width of the widest.
 .agent__md-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.5rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
 }
 
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation

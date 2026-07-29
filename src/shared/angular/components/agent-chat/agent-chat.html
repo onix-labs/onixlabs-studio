@@ -746,12 +746,12 @@
     [width]="50"
     [height]="37.5"
     [expandable]="true"
-    ariaLabel="Write in Markdown"
+    ariaLabel="Markdown Prompt Editor"
     (dismiss)="cancelMarkdown()"
   >
     <ng-template appModalContent>
       <div class="agent__md-modal">
-        <h2 class="agent__md-title">Write in Markdown</h2>
+        <h2 class="agent__md-title">Markdown Prompt Editor</h2>
         @if (markdownOpen()) {
           <div class="agent__md-editor">
             <app-markdown-editor
@@ -771,7 +771,8 @@
             [disabled]="isRunning() || markdownValue().trim().length === 0"
             (click)="submitMarkdown()"
           >
-            Send to agent
+            <app-icon [icon]="Icon.SEND" />
+            <span>Send</span>
           </button>
         </div>
       </div>
