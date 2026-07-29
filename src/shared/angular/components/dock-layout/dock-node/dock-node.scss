@@ -37,6 +37,13 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+// …except while it holds an EMPTY document well. There is no panel to frame — the well renders
+// nothing at all — so the cell is left unpainted and the dock container shows straight through it,
+// texture and all. It takes its surface back the moment a document opens in it.
+.dock-node__pane--leaf:has(.dock-tab-group--documents.dock-tab-group--empty) {
+  background: transparent;
+}
+
 // A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to
 // overlay the neighbouring panes, sitting above them and the splitters while it is open.
 .dock-node__pane--collapsed {
