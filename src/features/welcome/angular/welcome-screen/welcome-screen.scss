@@ -157,6 +157,7 @@
   z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 1.15rem;
   // The welcome window has no title bar, and its identity block is where a user reaches for one:
   // the whole header moves the window. Nothing in it is interactive, so nothing needs to opt out.
