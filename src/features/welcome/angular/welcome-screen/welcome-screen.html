@@ -189,33 +189,36 @@
         }
       </section>
     </div>
-  </ng-template>
-</app-modal>
 
-<!-- Confirmation shown over the welcome screen before clearing the recent-items history, since the
-     action cannot be undone. -->
-<app-modal
-  [open]="confirmingClear()"
-  [width]="24"
-  ariaLabel="Clear recent items"
-  (dismiss)="cancelClearRecent()"
->
-  <ng-template appModalContent>
-    <h2 class="welcome__confirm-title">Clear recent items</h2>
-    <p class="welcome__confirm-message">
-      Are you sure you want to clear all recent items? This cannot be undone.
-    </p>
-    <div class="welcome__confirm-actions">
-      <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="welcome__confirm-button welcome__confirm-button--danger"
-        (click)="clearRecent()"
-      >
-        Clear
-      </button>
-    </div>
+    <!-- Confirmation shown before clearing the recent-items history, since the action cannot be
+         undone. It is declared INSIDE the welcome screen's content so it is raised from the welcome
+         window: it parents to that window, dims it, and never reaches for the main window — which is
+         hidden while the welcome screen stands in for it. -->
+    <app-modal
+      class="welcome__confirm"
+      [open]="confirmingClear()"
+      [width]="24"
+      ariaLabel="Clear recent items"
+      (dismiss)="cancelClearRecent()"
+    >
+      <ng-template appModalContent>
+        <h2 class="welcome__confirm-title">Clear recent items</h2>
+        <p class="welcome__confirm-message">
+          Are you sure you want to clear all recent items? This cannot be undone.
+        </p>
+        <div class="welcome__confirm-actions">
+          <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="welcome__confirm-button welcome__confirm-button--accent"
+            (click)="clearRecent()"
+          >
+            Clear
+          </button>
+        </div>
+      </ng-template>
+    </app-modal>
   </ng-template>
 </app-modal>

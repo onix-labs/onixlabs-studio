@@ -170,6 +170,13 @@ const MODAL_STYLES: string = `
 const DRAG_STRIP_HEIGHT: number = 44;
 
 /**
+ * Holds the largest chrome, in CSS pixels, a modal window is believed to draw around its content in
+ * either direction. A measurement beyond this is not chrome but a window part-way through a resize,
+ * and is discarded.
+ */
+const MAX_FRAME: number = 200;
+
+/**
  * Opens modal windows: same-renderer children opened on the modal sentinel URL, which the main
  * process gives dialog chrome and parents to the window that raised them.
  *
@@ -190,6 +197,14 @@ export class ModalWindows implements OnDestroy {
    * Holds the open modal windows.
    */
   private readonly children: Set<Window> = new Set<Window>();
+
+  /**
+   * Holds the chrome each modal window draws around its content, measured once per window.
+   */
+  private readonly frames: WeakMap<Window, ModalWindowSize> = new WeakMap<
+    Window,
+    ModalWindowSize
+  >();
 
   /**
    * Opens a modal window.
@@ -297,11 +312,42 @@ export class ModalWindows implements OnDestroy {
     if (child.closed) {
       return;
     }
-    const outerWidth: number = Math.round(width + (child.outerWidth - child.innerWidth));
-    const outerHeight: number = Math.round(height + (child.outerHeight - child.innerHeight));
+    const frame: ModalWindowSize = this.frame(child);
+    const outerWidth: number = Math.round(width + frame.width);
+    const outerHeight: number = Math.round(height + frame.height);
     const position: ModalWindowPosition = this.centredOver(owner, outerWidth, outerHeight);
     child.resizeTo(outerWidth, outerHeight);
     child.moveTo(Math.round(position.x), Math.round(position.y));
+  }
+
+  /**
+   * Reads the chrome a modal window draws around its content, measuring it once and remembering it.
+   *
+   * It cannot be read afresh on every fit: a window part-way through a resize reports its new outer
+   * size against its old inner one, so the difference is not chrome at all — it can even be negative,
+   * and a modal refitted at that moment (the content observer firing on the frame its own resize
+   * lands) would shrink by it. The chrome does not change over a window's life, so the first sane
+   * reading stands; an unusable one is treated as none and re-read next time.
+   * @param child The modal window.
+   * @returns Returns the chrome width and height, in CSS pixels.
+   */
+  private frame(child: Window): ModalWindowSize {
+    const known: ModalWindowSize | undefined = this.frames.get(child);
+    if (known !== undefined) {
+      return known;
+    }
+    const measured: ModalWindowSize = {
+      width: child.outerWidth - child.innerWidth,
+      height: child.outerHeight - child.innerHeight,
+    };
+    const sane: boolean = [measured.width, measured.height].every(
+      (value: number): boolean => value >= 0 && value <= MAX_FRAME,
+    );
+    if (!sane) {
+      return { width: 0, height: 0 };
+    }
+    this.frames.set(child, measured);
+    return measured;
   }
 
   /**

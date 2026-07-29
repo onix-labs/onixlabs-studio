@@ -494,6 +494,19 @@ the opener. Modal bounds are never persisted: a modal opens sized to what it cur
   display when it is free-standing, since a hidden opener may be far smaller than the modal standing
   in for it. A stated minimum outranks the available space: a modal that cannot fit is better
   oversized than unusable.
+- **A modal raised from inside a modal is DECLARED inside it.** Nest the `<app-modal>` within the
+  outer modal's `appModalContent` template and it belongs to that window: it resolves the host's
+  `DOCUMENT` and `ModalBackdrop`, so it opens from that window, parents to it, and dims it. Declared
+  as a sibling it is instead raised from the window its component lives in — which for the welcome
+  screen is the HIDDEN main window, and attaching a child to a hidden window (or handing focus back
+  to it as the child closes) puts that window on screen. `adoptModalWindow` refuses a hidden parent
+  as a backstop, but the declaration is what makes the dialog dim the right window.
+- **Measuring a window is timing-sensitive, in two ways.** The host view is rendered synchronously
+  (`detectChanges`) before it is measured and observed: an unrendered host measures as nothing, which
+  would collapse the window to its minimum with no observer attached to correct it. And the window's
+  chrome is measured ONCE and remembered — a window part-way through a resize reports a fresh outer
+  size against a stale inner one, so the difference is not chrome at all (it can be negative), and a
+  refit landing on that frame would shrink the window inside its own content.
 - **Theming crosses the window boundary by copy.** Custom properties whose value at the call site
   differs from the document root's are written onto the modal window's **body** — not its root,
   whose `style` attribute `ChildWindowStyling` mirrors from the opener and would overwrite. App-wide

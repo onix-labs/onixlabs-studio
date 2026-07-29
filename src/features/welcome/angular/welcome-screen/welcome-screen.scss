@@ -632,8 +632,9 @@
   }
 }
 
-// The clear-recent-items confirmation. It is a separate modal rendered outside the welcome panel, so it
-// inherits the app's default (theme-aware) modal card rather than the welcome's bespoke dark treatment.
+// The clear-recent-items confirmation. It is declared inside the welcome screen's own content, so it
+// is raised from the welcome window and takes the welcome's panel treatment with it — the dialog
+// looks like it belongs to the window it opened over, in both themes.
 .welcome__confirm-title {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
@@ -676,16 +677,18 @@
   }
 }
 
-// The destructive primary action reads in the error/coral tone, since clearing cannot be undone.
-.welcome__confirm-button--danger {
+// The primary action reads in the app accent, as the rest of the welcome screen does; the warning
+// that clearing cannot be undone is carried by the message, not by an alarming button.
+.welcome__confirm-button--accent {
   color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
 
   &:hover,
   &:focus-visible {
     color: var(--gray-100);
-    background: var(--accent-coral);
-    border-color: var(--accent-coral);
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    filter: brightness(1.1);
   }
 }

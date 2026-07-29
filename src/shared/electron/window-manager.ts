@@ -464,6 +464,11 @@ export class WindowManager {
    * free-standing window — parents it to the window that raised it, so it always floats above that
    * window and closes with it. A free-standing modal is the welcome screen's cold start, where the
    * main window is hidden: on macOS a child of a hidden parent is not displayed at all.
+   *
+   * A HIDDEN opener is treated the same way, whatever the opener asked for. Attaching a child to a
+   * hidden window drags that window back on screen on macOS — and returning focus to it as the child
+   * closes shows it again — which is exactly what the main window must not do while the welcome
+   * screen stands in for it.
    * @param window The created modal window.
    */
   public adoptModalWindow(window: BrowserWindow): void {
@@ -473,7 +478,7 @@ export class WindowManager {
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.on('closed', (): void => this.registry.remove(entry.id));
-    if (parent !== null && !parent.isDestroyed()) {
+    if (parent !== null && !parent.isDestroyed() && parent.isVisible()) {
       window.setParentWindow(parent);
     }
   }

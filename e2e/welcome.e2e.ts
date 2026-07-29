@@ -147,6 +147,43 @@ test.describe('welcome & tabs', () => {
     await expect(backdrop).not.toHaveClass(/modal-backdrop--raised/);
   });
 
+  test('clearRecentItems_opensOverTheWelcomeWindow_sizedToItsContent', async ({ app, page }) => {
+    // Seed a recent item so the welcome screen offers its Clear action, then reload into a fresh
+    // welcome window holding it.
+    const first: Page = await modalWindow(app);
+    await page.evaluate((openedAt: number): void => {
+      localStorage.setItem(
+        'welcome.recentItems',
+        JSON.stringify([
+          { path: '/tmp/seeded.md', name: 'seeded.md', kind: 'markdown', openedAt, pinned: false },
+        ]),
+      );
+    }, Date.now());
+    await page.reload();
+    const welcome: Page = await modalWindow(app, [first]);
+    await expect(welcome.locator('.welcome__title')).toContainText('ONIXLabs Studio');
+
+    await welcome.locator('.welcome__clear').click();
+    const confirm: Page = await modalWindow(app, [first, welcome]);
+    await expect(confirm.locator('.welcome__confirm-title')).toBeVisible();
+
+    // The dialog is raised from the welcome window, so THAT window dims — the main one is hidden and
+    // must stay hidden, never dragged on screen by a dialog parenting to it.
+    await expect(welcome.locator('app-modal-backdrop')).toHaveClass(/modal-backdrop--raised/);
+    await expect.poll((): Promise<boolean> => mainWindowVisible(app, page)).toBe(false);
+
+    // And the window fits what it holds: its buttons are never scrolled out of reach.
+    await expect
+      .poll(
+        (): Promise<boolean> =>
+          confirm.evaluate((): boolean => {
+            const panel: Element | null = document.querySelector('.modal-window-host__panel');
+            return panel !== null && panel.scrollHeight <= window.innerHeight;
+          }),
+      )
+      .toBe(true);
+  });
+
   test('newMarkdownFile_opensAMarkdownTab_andShowsTheMainWindow', async ({ app, page }) => {
     const welcome: Page = await modalWindow(app);
     await welcome.getByText('New Markdown File').click();

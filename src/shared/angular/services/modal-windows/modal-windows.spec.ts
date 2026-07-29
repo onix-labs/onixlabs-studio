@@ -204,6 +204,38 @@ describe('ModalWindows', () => {
     expect(owner.child.moved.length).toBe(1);
   });
 
+  it('fit_whenTheWindowIsPartWayThroughAResize_keepsTheChromeItFirstMeasured', () => {
+    const modal: ModalWindow | null = open();
+    owner.child.outerHeight = 320;
+    owner.child.innerHeight = 300;
+    modal!.fit(500, 400);
+
+    // A resize lands on the outer size before the inner one catches up. Read afresh at that moment,
+    // the frame comes out NEGATIVE — and the window would be resized smaller than its content.
+    owner.child.outerHeight = 420;
+    modal!.fit(500, 400);
+
+    expect(owner.child.resized).toEqual([
+      { width: 500, height: 420 },
+      { width: 500, height: 420 },
+    ]);
+  });
+
+  it('fit_whenTheChromeReadsAsNonsense_assumesNone_andMeasuresAgainNextTime', () => {
+    const modal: ModalWindow | null = open();
+    owner.child.outerHeight = 100;
+    owner.child.innerHeight = 300;
+
+    modal!.fit(500, 400);
+    expect(owner.child.resized).toEqual([{ width: 500, height: 400 }]);
+
+    owner.child.outerHeight = 320;
+    owner.child.innerHeight = 300;
+    modal!.fit(500, 400);
+
+    expect(owner.child.resized[1]).toEqual({ width: 500, height: 420 });
+  });
+
   it('fit_whenTheWindowHasClosed_doesNothing', () => {
     const modal: ModalWindow | null = open();
     owner.child.closed = true;

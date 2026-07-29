@@ -362,6 +362,11 @@ export class Modal implements OnDestroy {
       hostElement: window.contentHost.appendChild(window.document.createElement('div')),
     });
     this.applicationRef.attachView(host.hostView);
+    // Render the host NOW rather than leaving it to the next scheduled pass: the content is measured
+    // and observed immediately below, and an unrendered host has no content at all — the window
+    // would shrink to its minimum and stay there, because the observer it is corrected by cannot be
+    // attached to an element that does not yet exist.
+    host.changeDetectorRef.detectChanges();
 
     // A freestanding modal has nothing behind it to dim: the window it was raised from is hidden.
     // Otherwise the window behind dims, and clicking it dismisses this modal exactly as clicking
@@ -382,14 +387,16 @@ export class Modal implements OnDestroy {
     // list that fills, resizes the window rather than scrolling inside a window sized for what it
     // once held. A filling modal is user-resizable, so it keeps whatever size the user gives it.
     const measure: () => void = (): void => {
+      const measured: number = host.instance.measure();
+      // A measurement of nothing is not a dialog that wants no height — it is one whose content has
+      // not been laid out yet. Sizing the window to it would collapse it to its minimum, so it is
+      // left at the size it opened with until there is something to measure.
+      if (measured <= 0) {
+        return;
+      }
       window.fit(
         this.requestedWidth(owner),
-        this.clamp(
-          host.instance.measure(),
-          this.available(owner).height,
-          this.minHeight(),
-          this.maxHeight(),
-        ),
+        this.clamp(measured, this.available(owner).height, this.minHeight(), this.maxHeight()),
       );
     };
     const observer: ResizeObserver | null = this.expandable()
