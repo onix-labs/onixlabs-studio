@@ -98,26 +98,6 @@
   border-radius: calc(0.625rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 }
-
-.settings__restart-action {
-  margin-inline-start: auto;
-  padding: 0.35rem 0.75rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--gray-100);
-  background: var(--accent-color);
-  border: none;
-  border-radius: calc(0.45rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
 .settings__section-title {
   margin: 0 0 1rem;
   font-size: 0.8rem;

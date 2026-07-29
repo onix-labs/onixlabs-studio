@@ -23,32 +23,6 @@
 
 .profiles__add,
 .profiles__delete {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.6rem;
-  font: inherit;
-  font-size: 0.8rem;
-  color: inherit;
-  background: transparent;
-  border: 0.0625rem solid var(--settings-button-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    border-color: var(--settings-button-border-color--hover);
-    background: var(--settings-button-background-color--hover);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
-.profiles__delete {
   margin-block-start: 0.5rem;
 }
 

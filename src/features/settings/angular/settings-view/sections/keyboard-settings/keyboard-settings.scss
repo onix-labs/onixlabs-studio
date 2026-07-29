@@ -71,22 +71,6 @@
       font-family: inherit;
     }
   }
-
-  &__reset {
-    padding: 2px 8px;
-    border: none;
-    border-radius: calc(4px * var(--border-radius-multiplier, 1));
-    background: transparent;
-    color: var(--form-muted-foreground-color);
-    font: inherit;
-    font-size: 11px;
-    cursor: pointer;
-
-    &:hover {
-      color: var(--body-foreground-color);
-    }
-  }
-
   &__message {
     margin: 0 0 6px;
     font-size: 11px;

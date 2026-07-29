@@ -16,20 +16,16 @@
           [value]="path"
           (valueChange)="update('allow', $index, $event)"
         />
-        <button
-          type="button"
-          class="write-paths__remove"
-          [attr.aria-label]="'Remove allowed path ' + path"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Remove allowed path ' + path"
           (click)="remove('allow', $index)"
-        >
-          <app-icon [icon]="Icon.CLOSE" />
-        </button>
+        />
       </div>
     }
-    <button type="button" class="write-paths__add" (click)="add('allow')">
-      <app-icon [icon]="Icon.PLUS" />
-      <span>Add allowed path</span>
-    </button>
+    <app-button [icon]="Icon.PLUS" label="Add allowed path" (click)="add('allow')" />
   </div>
 
   <div class="write-paths__group">
@@ -49,19 +45,15 @@
           [value]="path"
           (valueChange)="update('deny', $index, $event)"
         />
-        <button
-          type="button"
-          class="write-paths__remove"
-          [attr.aria-label]="'Remove denied path ' + path"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Remove denied path ' + path"
           (click)="remove('deny', $index)"
-        >
-          <app-icon [icon]="Icon.CLOSE" />
-        </button>
+        />
       </div>
     }
-    <button type="button" class="write-paths__add" (click)="add('deny')">
-      <app-icon [icon]="Icon.PLUS" />
-      <span>Add denied path</span>
-    </button>
+    <app-button [icon]="Icon.PLUS" label="Add denied path" (click)="add('deny')" />
   </div>
 </div>

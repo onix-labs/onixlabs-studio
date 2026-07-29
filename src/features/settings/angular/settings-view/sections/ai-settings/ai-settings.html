@@ -7,20 +7,14 @@
       </p>
     </div>
     <div class="ai-connections__actions">
-      <button type="button" class="ai-connections__restore-button" (click)="restoreDefaults()">
-        <app-icon [icon]="Icon.RESTART" />
-        <span>Restore defaults</span>
-      </button>
+      <app-button [icon]="Icon.RESTART" label="Restore defaults" (click)="restoreDefaults()" />
       <div class="ai-connections__add">
         <app-dropdown
           [options]="addKindOptions"
           [value]="selectedAddKind()"
           (valueChange)="onAddKindChange($event)"
         />
-        <button type="button" class="ai-connections__add-button" (click)="addConnection()">
-          <app-icon [icon]="Icon.PLUS" />
-          <span>Add</span>
-        </button>
+        <app-button [icon]="Icon.PLUS" label="Add" (click)="addConnection()" />
       </div>
     </div>
   </div>
@@ -59,24 +53,22 @@
             />
           </button>
           <div class="ai-connections__reorder">
-            <button
-              type="button"
-              class="ai-connections__move"
-              aria-label="Move up"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CARET_UP"
+              ariaLabel="Move up"
               [disabled]="index === 0"
               (click)="moveUp(connection.id)"
-            >
-              <app-icon [icon]="Icon.CARET_UP" />
-            </button>
-            <button
-              type="button"
-              class="ai-connections__move"
-              aria-label="Move down"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CARET_DOWN"
+              ariaLabel="Move down"
               [disabled]="index === count - 1"
               (click)="moveDown(connection.id)"
-            >
-              <app-icon [icon]="Icon.CARET_DOWN" />
-            </button>
+            />
           </div>
         </div>
         @if (isExpanded(connection.id)) {

@@ -76,8 +76,8 @@ describe('AiSettingsSection', () => {
     const before: number = settings.aiConnections().length;
 
     const add: HTMLButtonElement | undefined = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.ai-connections__add-button'),
-    )[0];
+      host.querySelectorAll<HTMLButtonElement>('button'),
+    ).find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Add');
     add?.click();
     fixture.detectChanges();
 

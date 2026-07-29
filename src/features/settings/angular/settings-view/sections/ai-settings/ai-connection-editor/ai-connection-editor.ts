@@ -12,6 +12,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -45,7 +46,7 @@ const AUTH_OPTIONS: readonly DropdownOption[] = [
  */
 @Component({
   selector: 'app-ai-connection-editor',
-  imports: [Dropdown, TextField, PasswordField, AppIcon],
+  imports: [Button, Dropdown, TextField, PasswordField, AppIcon],
   templateUrl: './ai-connection-editor.html',
   styleUrls: ['./ai-connection-editor.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

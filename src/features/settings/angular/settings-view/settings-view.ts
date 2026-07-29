@@ -20,6 +20,7 @@ import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Identifies a section in the settings navigation.
@@ -64,6 +65,7 @@ interface SettingsNavSection {
 @Component({
   selector: 'app-settings-view',
   imports: [
+    Button,
     EditorProfiles,
     AiSettingsSection,
     KeyboardSettingsSection,

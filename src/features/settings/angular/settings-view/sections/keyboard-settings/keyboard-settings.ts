@@ -8,6 +8,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Groups the section's rows under the view that owns them.
@@ -36,7 +37,7 @@ interface BindingGroup {
  */
 @Component({
   selector: 'app-keyboard-settings',
-  imports: [],
+  imports: [Button],
   templateUrl: './keyboard-settings.html',
   styleUrls: ['../section.scss', './keyboard-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

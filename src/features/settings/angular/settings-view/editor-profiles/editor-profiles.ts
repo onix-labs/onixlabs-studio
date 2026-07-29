@@ -15,6 +15,7 @@ import { findSection } from '@shared/angular/services/settings/settings-registry
 import { ChoiceOption, SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Represents the per-language editor profiles: an override editor whose rows are driven by the same
@@ -27,6 +28,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 @Component({
   selector: 'app-editor-profiles',
   imports: [
+    Button,
     SettingRow,
     Toggle,
     Checkbox,
