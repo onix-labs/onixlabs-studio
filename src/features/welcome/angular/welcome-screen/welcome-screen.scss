@@ -649,10 +649,16 @@
   color: var(--form-muted-foreground-color);
 }
 
+// Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
+// a shrink-to-fit grid all take the width of the widest, and the auto inline margin holds the row
+// where a right-aligned flex row used to sit.
 .welcome__confirm-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.6rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
 }
 
 .welcome__confirm-button {
