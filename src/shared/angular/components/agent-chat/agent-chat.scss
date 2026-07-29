@@ -1225,6 +1225,13 @@ $agent-node-size: 1.75rem;
   flex: 1 1 28rem;
   min-block-size: 0;
   overflow: hidden;
+  transition: border-color 150ms ease-in-out;
+
+  // The editor is a text field, and reads as one: its frame takes the accent while the caret is in
+  // it, exactly as the composer's does.
+  &:focus-within {
+    border-color: var(--accent-color);
+  }
 
   app-markdown-editor {
     flex: 1;
