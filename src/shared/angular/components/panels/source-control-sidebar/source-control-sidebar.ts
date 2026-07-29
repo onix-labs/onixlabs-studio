@@ -19,6 +19,7 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -187,7 +188,7 @@ interface SectionDef {
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
+  imports: [Button, AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

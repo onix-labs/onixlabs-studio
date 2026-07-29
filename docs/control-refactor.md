@@ -66,7 +66,9 @@ its own.
       `history__tool--icon`. Two classes deleted. Left raw: the Filters menu trigger, the row
       overflow trigger, and 10 CDK menu items (all structural)
 - [x] `agent-request-card` — 6 × `request__btn`, class deleted (small, since the card is compact)
-- [ ] `source-control-sidebar` — 4 × `rail__dialog-button`
+- [x] `source-control-sidebar` — 4 × `rail__dialog-button`, 5 × `panel-toolbar__button`, 4 ×
+      `rail__item-action`. Three classes deleted; the uncommitted-changes badge keeps its own markup
+      (a toggle carrying a count, not a button)
 - [ ] `configure-dialog` — 4 × `configure__button`
 - [ ] `ai-connection-editor` — 5 × `conn-editor__button`, 1 × `conn-editor__text-button`
 - [ ] `code-document` — 3 × `breakpoint-editor__button`
@@ -104,7 +106,8 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 - [ ] `markdown-reader-panel` — `ra-play`, `ra-skip` ×2
 - [ ] `markdown-review-panel` — `rv-refresh`
 - [ ] `commit-detail` — `detail__ai`, `detail__notice-dismiss`
-- [ ] `source-control-sidebar` / `commit-detail` — `tree-row-action` ×6
+- [ ] `commit-detail` — `tree-row-action` (the sidebar's are done; `.tree-row-action` stays as the
+      global hover-reveal, which is placement rather than chrome)
 - [ ] `welcome-screen` — 2 × `welcome__recent-action`
 - [ ] `status-strip-lsp-menu` — `lsp-status-menu__restart`
 - [ ] `status-strip-notifications-menu` — `notifications-menu__clear`, `__remove`

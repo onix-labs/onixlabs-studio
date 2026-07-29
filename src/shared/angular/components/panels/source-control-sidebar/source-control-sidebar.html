@@ -8,57 +8,47 @@
     (input)="onFilterInput($event)"
     (keydown.escape)="clearFilter()"
   />
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="New Branch"
-    aria-label="New Branch"
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS"
+    ariaLabel="New Branch"
+    tooltip="New Branch"
     [disabled]="!repository.isBound()"
     (click)="openBranchDialog()"
-  >
-    <app-icon [icon]="Icon.PLUS" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="Stash the working-tree changes"
-    aria-label="Stash"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.STASH"
+    ariaLabel="Stash"
+    tooltip="Stash the working-tree changes"
     [disabled]="repository.changeCount() === 0"
     (click)="stash()"
-  >
-    <app-icon [icon]="Icon.STASH" />
-  </button>
+  />
   <span class="panel-toolbar__spacer"></span>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="Fetch from all remotes"
-    aria-label="Fetch"
+  <app-button
+    variant="none"
+    [icon]="Icon.CLOUD"
+    ariaLabel="Fetch"
+    tooltip="Fetch from all remotes"
     [disabled]="!repository.isBound()"
     (click)="fetch()"
-  >
-    <app-icon [icon]="Icon.CLOUD" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="Collapse All"
-    aria-label="Collapse All"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.LIST"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
     [disabled]="filter().trim().length > 0"
     (click)="collapseAll()"
-  >
-    <app-icon [icon]="Icon.LIST" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="Refresh"
-    aria-label="Refresh"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.REFRESH"
+    ariaLabel="Refresh"
+    tooltip="Refresh"
     [disabled]="!repository.isBound()"
     (click)="refresh()"
-  >
-    <app-icon [icon]="Icon.REFRESH" />
-  </button>
+  />
 </app-panel-toolbar>
 
 <app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
@@ -108,45 +98,45 @@
           }
         </button>
       } @else {
-        <button
-          type="button"
-          class="tree-row-action rail__item-action"
-          aria-label="Check out branch"
+        <app-button
+          class="tree-row-action"
+          variant="none"
+          size="small"
+          [icon]="Icon.CHECK"
+          ariaLabel="Check out branch"
           (click)="checkout(branch); $event.stopPropagation()"
-        >
-          <app-icon [icon]="Icon.CHECK" />
-        </button>
+        />
       }
     }
 
     @if (node.stash; as stash) {
-      <button
-        type="button"
-        class="tree-row-action rail__item-action"
-        title="Apply — restore these changes and keep the stash"
-        aria-label="Apply stash"
+      <app-button
+        class="tree-row-action"
+        variant="none"
+        size="small"
+        [icon]="Icon.ARROW_DOWN"
+        ariaLabel="Apply stash"
+        tooltip="Apply — restore these changes and keep the stash"
         (click)="applyStash(stash); $event.stopPropagation()"
-      >
-        <app-icon [icon]="Icon.ARROW_DOWN" />
-      </button>
-      <button
-        type="button"
-        class="tree-row-action rail__item-action"
-        title="Pop — restore these changes and drop the stash"
-        aria-label="Pop stash"
+      />
+      <app-button
+        class="tree-row-action"
+        variant="none"
+        size="small"
+        [icon]="Icon.ARROW_UP"
+        ariaLabel="Pop stash"
+        tooltip="Pop — restore these changes and drop the stash"
         (click)="popStash(stash); $event.stopPropagation()"
-      >
-        <app-icon [icon]="Icon.ARROW_UP" />
-      </button>
-      <button
-        type="button"
-        class="tree-row-action rail__item-action rail__item-action--danger"
-        title="Drop — delete this stash without restoring it"
-        aria-label="Drop stash"
+      />
+      <app-button
+        class="tree-row-action"
+        variant="none"
+        size="small"
+        [icon]="Icon.TRASH"
+        ariaLabel="Drop stash"
+        tooltip="Drop — delete this stash without restoring it"
         (click)="requestDropStash(stash); $event.stopPropagation()"
-      >
-        <app-icon [icon]="Icon.TRASH" />
-      </button>
+      />
     }
 
     @if (node.status; as status) {
@@ -186,15 +176,13 @@
       <span>Check out after creating</span>
     </label>
     <div class="rail__dialog-actions">
-      <button type="button" class="rail__dialog-button" (click)="cancelBranch()">Cancel</button>
-      <button
-        type="button"
-        class="rail__dialog-button"
+      <app-button label="Cancel" (click)="cancelBranch()" />
+      <app-button
+        variant="solid"
+        label="Create"
         [disabled]="!canCreateBranch()"
         (click)="confirmBranch()"
-      >
-        Create
-      </button>
+      />
     </div>
   </ng-template>
 </app-modal>
@@ -212,14 +200,8 @@
       “{{ pendingDrop()?.message }}” is deleted without being restored. This cannot be undone.
     </p>
     <div class="rail__dialog-actions">
-      <button type="button" class="rail__dialog-button" (click)="cancelDropStash()">Cancel</button>
-      <button
-        type="button"
-        class="rail__dialog-button rail__dialog-button--danger"
-        (click)="confirmDropStash()"
-      >
-        Drop
-      </button>
+      <app-button label="Cancel" (click)="cancelDropStash()" />
+      <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
     </div>
   </ng-template>
 </app-modal>

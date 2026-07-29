@@ -106,38 +106,6 @@
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
 }
-
-// The hover-revealed checkout action on a non-current branch row. Reveal-on-hover lives in the global
-// tree styles (`.tree-row-action`); this is its visual treatment.
-.rail__item-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  margin-inline-start: 0.25rem;
-  border: 0;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  cursor: default;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-
-  // A destructive row action (dropping a stash) reads in the error/coral tone on hover.
-  &--danger:hover,
-  &--danger:focus-visible {
-    background: color-mix(in srgb, var(--accent-coral) 22%, transparent);
-    color: var(--accent-coral);
-  }
-}
-
 // The rail's dialogs (new branch, drop stash), rendered in the app's default modal card; these
 // classes style only their content.
 .rail__dialog-title {
@@ -194,44 +162,6 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
-
-.rail__dialog-button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
-// The destructive primary action reads in the error/coral tone: it deletes the stashed work.
-.rail__dialog-button--danger {
-  color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-coral);
-    border-color: var(--accent-coral);
-    color: var(--gray-100);
-    filter: brightness(1.1);
-  }
-}
-
 // A pull-request or action status badge, pushed to the trailing edge of the row.
 .rail__status {
   flex: 0 0 auto;

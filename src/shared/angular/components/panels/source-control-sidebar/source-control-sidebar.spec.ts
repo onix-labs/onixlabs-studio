@@ -312,7 +312,7 @@ describe('SourceControlSidebar', () => {
 
     expect(develop?.querySelector('.rail__changes')).toBeNull();
     // It carries the checkout action instead.
-    expect(develop?.querySelector('.rail__item-action')).not.toBeNull();
+    expect(develop?.querySelector('button[aria-label="Check out branch"]')).not.toBeNull();
   });
 
   it('changesBadge_staysReachableWhenTheTreeIsClean_butReadsAsEmpty', async () => {
@@ -332,7 +332,7 @@ describe('SourceControlSidebar', () => {
 
   it('checkout_whenBranchActionClicked_checksOutTheBranch', () => {
     const action: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__item-action',
+      'button[aria-label="Check out branch"]',
     );
 
     expect(action).not.toBeNull();
