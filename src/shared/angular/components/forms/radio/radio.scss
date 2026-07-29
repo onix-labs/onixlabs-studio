@@ -31,8 +31,10 @@
     transition: transform 150ms ease-in-out;
   }
 
+  // Pointing at a radio accents its border, as focusing one does: both say "this is the control you
+  // are about to act on", and a control should not answer them differently.
   &:hover:not(:disabled) {
-    border-color: var(--form-control-border-color--hover);
+    border-color: var(--accent-color);
   }
 
   &:checked {

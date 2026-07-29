@@ -35,6 +35,11 @@ export class Radio {
   public readonly name: InputSignal<string | undefined> = input<string>();
 
   /**
+   * Gets the accessible name of the radio, for one with no visible label beside it.
+   */
+  public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
    * Handles a change on the underlying radio, marking this control as selected.
    * @param event The DOM change event raised by the radio.
    */

@@ -55,39 +55,6 @@
     background: var(--dock-hover-background-color, transparent);
   }
 }
-
-// The default marker: a star that reads muted until it is the chosen one, so exactly one row in the
-// list is lit at a time.
-.directory-ribbon__preset-default {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  padding: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-  opacity: 0.35;
-  transition: var(--hover-transition);
-
-  &:hover,
-  &:focus-visible {
-    opacity: 0.7;
-    outline: none;
-  }
-}
-
-.directory-ribbon__preset-default--on {
-  color: var(--accent-surface-border-color);
-  opacity: 1;
-
-  &:hover,
-  &:focus-visible {
-    opacity: 1;
-  }
-}
-
 .directory-ribbon__preset-name {
   flex: 1 1 auto;
   font-size: 0.85rem;

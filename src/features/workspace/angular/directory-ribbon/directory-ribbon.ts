@@ -49,6 +49,7 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Radio } from '@shared/angular/components/forms/radio/radio';
 
 /**
  * Identifies the Save All item in the File group's Save split button menu.
@@ -90,6 +91,7 @@ const COMMIT_STASH: string = 'stash';
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
+    Radio,
     TextField,
     Button,
     RibbonStripOverflow,
