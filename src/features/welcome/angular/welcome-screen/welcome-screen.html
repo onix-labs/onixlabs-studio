@@ -118,21 +118,13 @@
           }
         </div>
 
-        <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
-          @for (filter of filters; track filter.id) {
-            <button
-              type="button"
-              class="welcome__filter"
-              [class.welcome__filter--active]="activeFilter() === filter.id"
-              role="tab"
-              [attr.aria-selected]="activeFilter() === filter.id"
-              (click)="activeFilter.set(filter.id)"
-            >
-              <app-icon [icon]="filter.icon" />
-              <span>{{ filter.label }}</span>
-            </button>
-          }
-        </div>
+        <app-button-group
+          class="welcome__filters"
+          ariaLabel="Filter recent items"
+          [options]="filterOptions"
+          [value]="activeFilter()"
+          (valueChange)="activeFilter.set($event)"
+        />
 
         @if (visibleItems().length > 0) {
           <ul class="welcome__recent-list">

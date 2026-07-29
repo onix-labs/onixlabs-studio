@@ -43,43 +43,22 @@
 
       <div class="ra-control">
         <span class="ra-control-label" id="ra-speed-label">Speed</span>
-        <div class="ra-segments" role="group" aria-labelledby="ra-speed-label">
-          @for (speed of speeds; track speed) {
-            <button
-              type="button"
-              class="ra-segment"
-              [class.active]="rate() === speed"
-              [attr.aria-pressed]="rate() === speed"
-              (click)="onSpeed(speed)"
-            >
-              {{ speedLabel(speed) }}
-            </button>
-          }
-        </div>
+        <app-button-group
+          ariaLabel="Speed"
+          [options]="speedOptions()"
+          [value]="String(rate())"
+          (valueChange)="onSpeed(Number($event))"
+        />
       </div>
 
       <div class="ra-control">
         <span class="ra-control-label" id="ra-highlight-label">Highlight</span>
-        <div class="ra-segments" role="group" aria-labelledby="ra-highlight-label">
-          <button
-            type="button"
-            class="ra-segment"
-            [class.active]="highlightMode() === 'word'"
-            [attr.aria-pressed]="highlightMode() === 'word'"
-            (click)="onHighlight('word')"
-          >
-            Word
-          </button>
-          <button
-            type="button"
-            class="ra-segment"
-            [class.active]="highlightMode() === 'sentence'"
-            [attr.aria-pressed]="highlightMode() === 'sentence'"
-            (click)="onHighlight('sentence')"
-          >
-            Sentence
-          </button>
-        </div>
+        <app-button-group
+          ariaLabel="Highlight"
+          [options]="highlightOptions"
+          [value]="highlightMode()"
+          (valueChange)="onHighlight($any($event))"
+        />
       </div>
 
       <div class="ra-control">

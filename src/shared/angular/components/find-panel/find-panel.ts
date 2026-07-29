@@ -22,6 +22,10 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { Button } from '@shared/angular/components/forms/button/button';
+import {
+  ButtonGroup,
+  ButtonGroupOption,
+} from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 
@@ -40,12 +44,20 @@ type FindMode = 'find' | 'replace';
  */
 @Component({
   selector: 'app-find-panel',
-  imports: [Button, TextField, Checkbox, AppIcon, PanelDragHandle],
+  imports: [ButtonGroup, Button, TextField, Checkbox, AppIcon, PanelDragHandle],
   templateUrl: './find-panel.html',
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FindPanel implements OnDestroy {
+  /**
+   * Gets the two find modes, offered as one segmented control.
+   */
+  protected readonly modeOptions: readonly ButtonGroupOption[] = [
+    { value: 'find', label: 'Find Only' },
+    { value: 'replace', label: 'Find and Replace' },
+  ];
+
   /**
    * Gets the adapter the panel drives, or null before the host binds one.
    */

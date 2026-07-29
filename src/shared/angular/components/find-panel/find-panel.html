@@ -13,28 +13,12 @@
   }
 
   @if (supportsReplace()) {
-    <div class="find-panel__segmented" role="tablist" aria-label="Find or replace">
-      <button
-        type="button"
-        role="tab"
-        class="find-panel__segment"
-        [class.is-active]="mode() === 'find'"
-        [attr.aria-selected]="mode() === 'find'"
-        (click)="setMode('find')"
-      >
-        Find Only
-      </button>
-      <button
-        type="button"
-        role="tab"
-        class="find-panel__segment"
-        [class.is-active]="mode() === 'replace'"
-        [attr.aria-selected]="mode() === 'replace'"
-        (click)="setMode('replace')"
-      >
-        Find and Replace
-      </button>
-    </div>
+    <app-button-group
+      ariaLabel="Find mode"
+      [options]="modeOptions"
+      [value]="mode()"
+      (valueChange)="setMode($any($event))"
+    />
   }
 
   <div class="find-panel__field" #findField>

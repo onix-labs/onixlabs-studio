@@ -141,13 +141,13 @@ describe('FindPanel', () => {
 
   it('title_andReplaceAffordances_followTheAdapterSupportsReplaceFlag', async () => {
     expect(host.querySelector('.find-panel__title')?.textContent).toContain('Find and Replace');
-    expect(host.querySelector('.find-panel__segmented')).not.toBeNull();
+    expect(host.querySelector('app-button-group')).not.toBeNull();
 
     fixture.componentRef.setInput('adapter', createAdapter(false));
     await fixture.whenStable();
 
     expect(host.querySelector('.find-panel__title')?.textContent?.trim()).toBe('Find');
-    expect(host.querySelector('.find-panel__segmented')).toBeNull();
+    expect(host.querySelector('app-button-group')).toBeNull();
   });
 
   it('replaceMode_showsTheReplaceControlsAndReplacesAllThroughTheAdapter', async () => {
@@ -156,7 +156,7 @@ describe('FindPanel', () => {
     await fixture.whenStable();
 
     const segments: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.find-panel__segment'),
+      host.querySelectorAll<HTMLButtonElement>('app-button-group .segmented__option'),
     );
     segments[1].click();
     await fixture.whenStable();

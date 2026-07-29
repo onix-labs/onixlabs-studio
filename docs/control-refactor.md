@@ -122,13 +122,16 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 
 `app-button-group` already exists (`segmented__option`). These are hand-rolled equivalents.
 
-- [ ] `dock-status-strip` — 8 × `dock-status-strip__segment`
-- [ ] `binary-inspector` — 4 × `inspector__seg-btn`
-- [ ] `find-panel` — 2 × `find-panel__segment`
-- [ ] `markdown-reader-panel` — 3 × `ra-segment`
-- [ ] `markdown-review-panel` — 2 × `rv-chip`
-- [ ] `mission-control-panel` — 2 × `panel__tab`
-- [ ] `welcome-screen` — `welcome__filter` (filter pills)
+- [ ] ~~`dock-status-strip`~~ — NOT a segmented control: eight status readouts (error counts, line
+      and column, word count), most without a click handler at all. Left as chrome.
+- [x] `binary-inspector` — endianness and signedness, two groups
+- [x] `find-panel` — the Find / Find-and-Replace mode picker
+- [x] `markdown-reader-panel` — playback speed and highlight granularity, two groups
+- [ ] `markdown-review-panel` — 2 × `rv-chip`. **Blocked**: each chip carries a kind-coloured dot
+      and a count badge, which `ButtonGroupOption` (value, label, icon) cannot express. Needs either a
+      `count` field and a colour-dot adornment on the atom, or a ruling that the chips lose them.
+- [ ] ~~`mission-control-panel`~~ — `role="tab"` tabs, not a picker. Structural, by the ruling.
+- [x] `welcome-screen` — the recent-items filter pills
 
 ## Phase 4 — text inputs and text areas
 

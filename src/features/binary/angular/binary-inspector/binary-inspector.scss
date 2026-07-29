@@ -83,32 +83,6 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-
-.inspector__seg {
-  display: inline-flex;
-  border: 1px solid var(--accent-surface-border-color);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.inspector__seg-btn {
-  padding: 0.2rem 0.55rem;
-  border: none;
-  background: transparent;
-  color: var(--body-foreground-color);
-  font: inherit;
-  cursor: default;
-}
-
-.inspector__seg-btn:not(:last-child) {
-  border-right: 1px solid var(--accent-surface-border-color);
-}
-
-.inspector__seg-btn--active {
-  background: var(--accent-surface-background-color);
-  color: var(--accent-surface-foreground-color);
-}
-
 .inspector__list {
   display: flex;
   flex-direction: column;

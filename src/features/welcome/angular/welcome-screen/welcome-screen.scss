@@ -90,11 +90,9 @@
     background: transparent;
   }
 
-  // Row and (inactive) filter-pill hovers lift via --wl-surface, which is transparent on the light
-  // card — so give them an explicit subtle-gray hover. The active filter pill keeps its accent fill.
-  .welcome__recent-row:hover,
-  .welcome__filter:not(.welcome__filter--active):hover,
-  .welcome__filter:not(.welcome__filter--active):focus-visible {
+  // Row hovers lift via --wl-surface, which is transparent on the light card — so give them an
+  // explicit subtle-gray hover.
+  .welcome__recent-row:hover {
     background: var(--gray-200);
   }
 }
@@ -373,53 +371,6 @@
   justify-content: space-between;
   gap: 0.3rem;
 }
-
-.welcome__filter {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.32rem 0.55rem;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-
-  i {
-    font-size: 0.9rem;
-  }
-
-  &:hover {
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-}
-
-.welcome__filter--active {
-  color: #fff;
-  background: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: #fff;
-    background: var(--accent-color);
-  }
-}
-
 .welcome__recent-list {
   display: flex;
   flex: 1 1 0;

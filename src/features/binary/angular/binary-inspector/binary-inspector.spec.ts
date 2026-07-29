@@ -98,7 +98,7 @@ describe('BinaryInspector', () => {
     const fixture: ComponentFixture<BinaryInspector> = await create(document);
     const buttons: HTMLButtonElement[] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-        '.inspector__seg-btn',
+        'app-button-group .segmented__option',
       ),
     );
 
@@ -116,7 +116,7 @@ describe('BinaryInspector', () => {
     expect(rowsOf(fixture).get('Byte')).toBe('-1');
     const buttons: HTMLButtonElement[] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-        '.inspector__seg-btn',
+        'app-button-group .segmented__option',
       ),
     );
 

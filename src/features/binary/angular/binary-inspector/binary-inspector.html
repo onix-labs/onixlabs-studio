@@ -15,43 +15,19 @@
 
   <div class="inspector__body">
     <div class="inspector__toggles">
-      <div class="inspector__seg" role="group" aria-label="Endianness">
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="littleEndian()"
-          (click)="setEndian(true)"
-        >
-          LE
-        </button>
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="!littleEndian()"
-          (click)="setEndian(false)"
-        >
-          BE
-        </button>
-      </div>
+      <app-button-group
+        ariaLabel="Endianness"
+        [options]="endianOptions"
+        [value]="littleEndian() ? 'le' : 'be'"
+        (valueChange)="setEndian($event === 'le')"
+      />
 
-      <div class="inspector__seg" role="group" aria-label="Signedness">
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="signed()"
-          (click)="setSigned(true)"
-        >
-          Signed
-        </button>
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="!signed()"
-          (click)="setSigned(false)"
-        >
-          Unsigned
-        </button>
-      </div>
+      <app-button-group
+        ariaLabel="Signedness"
+        [options]="signOptions"
+        [value]="signed() ? 'signed' : 'unsigned'"
+        (valueChange)="setSigned($event === 'signed')"
+      />
     </div>
 
     @if (rows().length > 0) {

@@ -26,37 +26,6 @@
   font-weight: 600;
   color: var(--body-foreground-color);
 }
-.find-panel__segmented {
-  display: flex;
-  gap: 0.15rem;
-  padding: 0.15rem;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: color-mix(in srgb, var(--body-foreground-color) 8%, transparent);
-}
-
-.find-panel__segment {
-  flex: 1;
-  padding: 0.25rem 0.5rem;
-  border: none;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  font: inherit;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &.is-active {
-    background: var(--accent-color);
-    color: var(--accent-contrast-color, #fff);
-  }
-
-  &:not(.is-active):hover {
-    color: var(--body-foreground-color);
-  }
-}
-
 .find-panel__field {
   display: flex;
   align-items: center;
