@@ -32,7 +32,6 @@
   // than the global modal default.
   --modal-backdrop-blur: var(--welcome-backdrop-blur);
   --modal-panel-inline-size: min(63rem, 100%);
-  --modal-panel-padding: 1rem;
   --modal-panel-radius: 2rem;
   --modal-panel-background:
     radial-gradient(130% 90% at 88% -12%, rgba(var(--accent-color-rgb), 0.16), transparent 55%),

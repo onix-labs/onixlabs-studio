@@ -130,10 +130,12 @@
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
   // Modal presentation knobs that are pure motion/geometry, not colour, so they stay constant across
-  // themes: the backdrop blur radius and the enter-fade duration. The backdrop *tint* is a theme
-  // token (--modal-backdrop-color) since it must track light/dark.
+  // themes: the backdrop blur radius, the enter-fade duration, and the padding inside a modal's
+  // panel. The backdrop *tint* is a theme token (--modal-backdrop-color) since it must track
+  // light/dark.
   --modal-backdrop-blur: 0.5rem;
   --modal-fade-duration: 200ms;
+  --modal-panel-padding: 1rem;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
   --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));
