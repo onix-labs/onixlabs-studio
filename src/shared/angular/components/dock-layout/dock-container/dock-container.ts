@@ -3,10 +3,12 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   Signal,
 } from '@angular/core';
+import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockNode as DockTreeNode, StackNode } from '../../../services/dock-layout/dock-node';
@@ -34,6 +36,11 @@ const BASE_INSET: string = '0.5rem';
   templateUrl: './dock-container.html',
   styleUrl: './dock-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // The chosen texture rides on the element itself rather than on the document root: the dock
+    // container also renders in pop-out windows, and an attribute on the host follows it there.
+    '[attr.data-texture]': 'texture()',
+  },
 })
 export class DockContainer {
   /**
@@ -59,9 +66,23 @@ export class DockContainer {
   ) as ElementRef<HTMLElement>;
 
   /**
+   * Holds the settings the background texture is chosen from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
+
+  /**
+   * Gets the background texture to paint behind the docked panes, or null when the user has chosen
+   * none — the attribute is then absent, and the texture layer resolves to nothing.
+   */
+  protected readonly texture: Signal<string | null> = computed((): string | null => {
+    const texture: WorkspaceTexture = this.settings.workspaceTexture();
+    return texture === 'none' ? null : texture;
+  });
 
   /**
    * Gets the uniform dock-area padding.

@@ -164,3 +164,4 @@ vite.config.ts.timestamp-*
 /test-results
 /playwright-report
 /e2e/out-tsc
+.studio/*.user.json

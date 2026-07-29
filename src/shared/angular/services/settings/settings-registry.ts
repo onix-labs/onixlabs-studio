@@ -15,6 +15,7 @@ import type {
   ModernUiFeatures,
   PrintMargin,
   RibbonAlignment,
+  WorkspaceTexture,
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
 import type { ColorSwatch, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
@@ -43,6 +44,7 @@ export type TileScrollMode = 'into-view' | 'absolute-left';
 export interface SettingsValues {
   readonly 'appearance.ribbonAlignment': RibbonAlignment;
   readonly 'appearance.modernUiFeatures': ModernUiFeatures;
+  readonly 'appearance.workspaceTexture': WorkspaceTexture;
 
   readonly 'application.undoStackSize': number;
   readonly 'application.printMargin': PrintMargin;
@@ -169,6 +171,30 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'auto',
+      },
+      {
+        key: 'appearance.workspaceTexture',
+        title: 'Workspace Texture',
+        description:
+          'A pattern tiled behind the workspace panes, painted in the accent colour. Patterns from Hero Patterns.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'texture', label: 'Texture' },
+            { value: 'hideout', label: 'Hideout' },
+            { value: 'tiny-checkers', label: 'Tiny Checkers' },
+            { value: 'bubbles', label: 'Bubbles' },
+            { value: 'diagonal-stripes', label: 'Diagonal Stripes' },
+            { value: 'houndstooth', label: 'Houndstooth' },
+            { value: 'rain', label: 'Rain' },
+            { value: 'circuit-board', label: 'Circuit Board' },
+            { value: 'diagonal-lines', label: 'Diagonal Lines' },
+            { value: 'polka-dots', label: 'Polka Dots' },
+            { value: 'signal', label: 'Signal' },
+          ],
+        },
+        default: 'none',
       },
       {
         key: 'display.hardwareAcceleration',

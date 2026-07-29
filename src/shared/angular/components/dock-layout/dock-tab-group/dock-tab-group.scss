@@ -236,10 +236,11 @@
   border: none;
 }
 
-// An empty document well is a blank space, not a framed cell: paint the dock container's own colour
-// over the leaf pane's lighter surface so it reads as part of the container until a document opens.
+// An empty document well is a blank space, not a framed cell: it stays transparent so the container
+// itself shows through — its colour AND any texture the user has chosen — until a document opens.
+// (Painting the container's colour here instead would cover the texture with a flat slab.)
 :host(.dock-tab-group--documents.dock-tab-group--empty) {
-  background: var(--dock-container-background-color);
+  background: transparent;
 }
 
 :host(.dock-tab-group--focused) {
