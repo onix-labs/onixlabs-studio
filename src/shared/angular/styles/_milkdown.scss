@@ -1032,6 +1032,26 @@ app-markdown-editor .milkdown {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Text caret in a child window
+// -----------------------------------------------------------------------------
+// An editor in a modal or pop-out window gets NO caret at all, and the fault is in
+// `prosemirror-virtual-cursor`: it reads the selection through the module-global
+// `window.getSelection()` — the OPENER's window — and bails (`if (!selection.rangeCount) return
+// null`) before drawing. In a child window the opener holds no selection, so the virtual cursor is
+// never created, while the plugin's own `virtual-cursor-enabled` class has already hidden the
+// native caret with `caret-color: transparent`. Missing caret, in both themes.
+//
+// Give the native caret back wherever the editor is not in the shell's own document, rather than
+// dropping Crepe's Cursor feature — which also supplies the drag drop-indicator and gap cursor. The
+// main window keeps the virtual cursor and its blink; a child window uses the platform's.
+.modal-window__content,
+.aux-window__content {
+  app-markdown-editor .milkdown .ProseMirror.virtual-cursor-enabled {
+    caret-color: var(--crepe-color-on-surface);
+  }
+}
+
 @keyframes crepe-virtual-cursor-blink {
   0% {
     opacity: 1;
