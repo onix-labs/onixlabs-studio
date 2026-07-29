@@ -164,17 +164,27 @@ export class FileManager {
   }
 
   /**
-   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
-   * back to the main application window.
+   * Resolves the window a dialog is parented to: the requesting window while it is alive AND ON
+   * SCREEN, then whichever window has focus, then the main application window.
+   *
+   * The visibility test matters at a cold start. The welcome screen renders in its own window, but
+   * its component lives in the main window's renderer — so the request arrives from the main window,
+   * which is hidden while the welcome screen stands in for it. Parenting a dialog there shows that
+   * empty window to carry the sheet, leaving the user looking at a blank frame with the welcome
+   * screen behind it. The focused window is the one the user actually clicked in.
    * @param sender The web contents that requested the dialog.
    * @returns Returns the owning window, or null when no window is available.
    */
   private dialogParent(sender: WebContents): BrowserWindow | null {
     const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
-    if (requester !== null && !requester.isDestroyed()) {
+    if (requester !== null && !requester.isDestroyed() && requester.isVisible()) {
       return requester;
     }
-    return this.windowGetter();
+    const focused: BrowserWindow | null = BrowserWindow.getFocusedWindow();
+    if (focused !== null && !focused.isDestroyed() && focused.isVisible()) {
+      return focused;
+    }
+    return requester !== null && !requester.isDestroyed() ? requester : this.windowGetter();
   }
 
   /**
