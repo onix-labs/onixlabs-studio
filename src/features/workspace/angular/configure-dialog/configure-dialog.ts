@@ -23,6 +23,7 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AgentRequestCard } from '@shared/angular/components/agent-request-card/agent-request-card';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent-requests';
 
 /**
@@ -58,6 +59,7 @@ interface ConfigurationGroup {
 @Component({
   selector: 'app-configure-dialog',
   imports: [
+    Button,
     Modal,
     ModalContent,
     AppIcon,

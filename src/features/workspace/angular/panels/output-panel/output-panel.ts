@@ -19,6 +19,7 @@ import { ITheme, Terminal } from '@xterm/xterm';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Output, OutputChannelInfo } from '@shared/angular/services/output/output';
@@ -40,7 +41,7 @@ const SELECTION_ALPHA: number = 0.3;
  */
 @Component({
   selector: 'app-output-panel',
-  imports: [AppIcon, Dropdown, PanelToolbar],
+  imports: [Button, AppIcon, Dropdown, PanelToolbar],
   templateUrl: './output-panel.html',
   styleUrl: './output-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

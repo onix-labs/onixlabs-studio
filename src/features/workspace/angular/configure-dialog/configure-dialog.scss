@@ -178,15 +178,6 @@
   flex: 1 1 auto;
   min-inline-size: 0;
 }
-
-// The agent button carries its glyph beside the label, so it reads as the agent's action rather than
-// another neutral dialog button.
-.configure__button--agent {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
 // A single line of status beneath the agent row: what the agent is doing, or why it cannot be asked.
 .configure__status {
   margin: 0;

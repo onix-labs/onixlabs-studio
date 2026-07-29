@@ -252,16 +252,8 @@
       output.
     </p>
     <div class="directory-ribbon__confirm-actions">
-      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelRunRestart()">
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
-        (click)="confirmRunRestart()"
-      >
-        Stop &amp; Restart
-      </button>
+      <app-button label="Cancel" (click)="cancelRunRestart()" />
+      <app-button variant="solid" label="Stop & Restart" (click)="confirmRunRestart()" />
     </div>
   </ng-template>
 </app-modal>
@@ -295,17 +287,13 @@
       <span>Make this the default view</span>
     </label>
     <div class="directory-ribbon__confirm-actions">
-      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelSaveAs()">
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="directory-ribbon__confirm-button"
+      <app-button label="Cancel" (click)="cancelSaveAs()" />
+      <app-button
+        variant="solid"
+        label="Save"
         [disabled]="saveAsName().trim().length === 0"
         (click)="confirmSaveAs()"
-      >
-        Save
-      </button>
+      />
     </div>
   </ng-template>
 </app-modal>
@@ -345,31 +333,25 @@
               [attr.aria-label]="'Rename ' + preset.name"
               (change)="onRenamePreset(preset.id, $any($event.target).value)"
             />
-            <button
-              type="button"
-              class="directory-ribbon__preset-delete"
-              [attr.aria-label]="'Delete ' + preset.name"
-              title="Delete"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.TRASH"
+              [ariaLabel]="'Delete ' + preset.name"
+              tooltip="Delete"
               (click)="onDeletePreset(preset.id)"
-            >
-              <app-icon [icon]="Icon.TRASH" [size]="0.875" />
-            </button>
+            />
           }
         </li>
       }
     </ul>
     <div class="directory-ribbon__confirm-actions directory-ribbon__confirm-actions--split">
-      <button
-        type="button"
-        class="directory-ribbon__confirm-button"
-        title="Discard this session's layout tweaks and re-apply the showing preset"
+      <app-button
+        label="Reset Layout"
+        tooltip="Discard this session's layout tweaks and re-apply the showing preset"
         (click)="onResetPreset()"
-      >
-        Reset Layout
-      </button>
-      <button type="button" class="directory-ribbon__confirm-button" (click)="closeManage()">
-        Done
-      </button>
+      />
+      <app-button variant="solid" label="Done" (click)="closeManage()" />
     </div>
   </ng-template>
 </app-modal>
@@ -391,12 +373,8 @@
       you open stays the same.
     </p>
     <div class="directory-ribbon__confirm-actions">
-      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelPromote()">
-        Cancel
-      </button>
-      <button type="button" class="directory-ribbon__confirm-button" (click)="confirmPromote()">
-        Promote
-      </button>
+      <app-button label="Cancel" (click)="cancelPromote()" />
+      <app-button variant="solid" label="Promote" (click)="confirmPromote()" />
     </div>
   </ng-template>
 </app-modal>
@@ -416,16 +394,8 @@
       until the new build replaces it.
     </p>
     <div class="directory-ribbon__confirm-actions">
-      <button type="button" class="directory-ribbon__confirm-button" (click)="cancelBuildRestart()">
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="directory-ribbon__confirm-button directory-ribbon__confirm-button--danger"
-        (click)="confirmBuildRestart()"
-      >
-        Stop &amp; Restart
-      </button>
+      <app-button label="Cancel" (click)="cancelBuildRestart()" />
+      <app-button variant="solid" label="Stop & Restart" (click)="confirmBuildRestart()" />
     </div>
   </ng-template>
 </app-modal>

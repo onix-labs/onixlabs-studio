@@ -37,9 +37,6 @@
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>
-    <button type="button" class="tree-open-btn" (click)="workspace.openFolder()">
-      <app-icon [icon]="Icon.FOLDER_OPEN" />
-      Open Folder…
-    </button>
+    <app-button [icon]="Icon.FOLDER_OPEN" label="Open Folder…" (click)="workspace.openFolder()" />
   </div>
 }

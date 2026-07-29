@@ -19,44 +19,6 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
-
-.directory-ribbon__confirm-button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
-// The destructive primary action reads in the error/coral tone: it kills the running build.
-.directory-ribbon__confirm-button--danger {
-  color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-coral);
-    border-color: var(--accent-coral);
-    color: var(--gray-100);
-    filter: brightness(1.1);
-  }
-}
-
 // The Save As dialog's Default box, sitting between the name field and the actions.
 .directory-ribbon__prompt-check {
   display: flex;
@@ -140,26 +102,6 @@
   letter-spacing: 0.03em;
   color: var(--form-muted-foreground-color);
 }
-
-.directory-ribbon__preset-delete {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  padding: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--accent-coral);
-    outline: none;
-  }
-}
-
 // The Manage dialog's inline rename field, sharing the prompt input's form-control tokens at a
 // row-sized scale.
 .directory-ribbon__preset-input {

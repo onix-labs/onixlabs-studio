@@ -25,6 +25,7 @@ import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoi
 import { DebugLocation, Debugger } from '@shared/angular/services/debug/debugger';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
 import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
 
@@ -70,7 +71,7 @@ const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
  */
 @Component({
   selector: 'app-code-document',
-  imports: [TextEditor, TextField, Toggle],
+  imports: [Button, TextEditor, TextField, Toggle],
   templateUrl: './code-document.html',
   styleUrl: './code-document.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

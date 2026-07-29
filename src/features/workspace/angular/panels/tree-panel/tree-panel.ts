@@ -21,6 +21,7 @@ import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/exp
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Renders the workspace directory tree as the body of the File Explorer dock panel, through the shared
@@ -30,7 +31,7 @@ import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-vie
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText],
+  imports: [Button, AppIcon, TreeView, ExplorerToolbar, HighlightedText],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

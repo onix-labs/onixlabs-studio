@@ -94,32 +94,6 @@
     opacity: 0.45;
   }
 }
-
-.worktrees__remove {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: none;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  cursor: pointer;
-  opacity: 0;
-
-  .worktrees__entry:hover & {
-    opacity: 1;
-  }
-
-  &:hover {
-    color: var(--accent-coral);
-  }
-
-  &:disabled {
-    cursor: default;
-    opacity: 0.4;
-  }
-}
-
 .worktrees__error {
   margin: 0;
   padding: 0.35rem 0.7rem;
@@ -133,52 +107,6 @@
   padding: 0.45rem;
   border-block-start: 0.0625rem solid var(--dock-border-color);
 }
-
-.worktrees__add {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.6rem;
-  font: inherit;
-  font-size: 0.8rem;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: var(--dock-hover-background-color, rgb(255 255 255 / 6%));
-  }
-
-  &:disabled {
-    cursor: default;
-    opacity: 0.55;
-  }
-}
-
-.worktrees__refresh {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.4rem 0.5rem;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: var(--dock-hover-background-color, rgb(255 255 255 / 6%));
-  }
-
-  &:disabled {
-    cursor: default;
-    opacity: 0.55;
-  }
-}
-
 .worktrees__confirm-title {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
@@ -198,34 +126,6 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
-
-.worktrees__confirm-button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--dock-hover-background-color, rgb(255 255 255 / 6%));
-    outline: none;
-  }
-}
-
-.worktrees__confirm-button--danger {
-  color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
-
-  &:hover,
-  &:focus-visible {
-    filter: brightness(1.1);
-  }
-}
-
 .worktrees__prompt-input {
   box-sizing: border-box;
   inline-size: 100%;

@@ -33,23 +33,9 @@
       <span class="breakpoint-editor__label">Enabled</span>
     </div>
     <div class="breakpoint-editor__actions">
-      <button
-        type="button"
-        class="breakpoint-editor__button breakpoint-editor__button--danger"
-        (click)="removeBreakpointEdit()"
-      >
-        Remove
-      </button>
-      <button
-        type="button"
-        class="breakpoint-editor__button breakpoint-editor__button--ghost"
-        (click)="closeBreakpointEdit()"
-      >
-        Cancel
-      </button>
-      <button type="button" class="breakpoint-editor__button" (click)="saveBreakpointEdit()">
-        Save
-      </button>
+      <app-button label="Remove" (click)="removeBreakpointEdit()" />
+      <app-button label="Cancel" (click)="closeBreakpointEdit()" />
+      <app-button variant="solid" label="Save" (click)="saveBreakpointEdit()" />
     </div>
   </div>
 }
