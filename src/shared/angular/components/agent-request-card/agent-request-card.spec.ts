@@ -43,6 +43,28 @@ function makeEntry(item: Partial<AgentItem>, responses: Responses): AgentRequest
   };
 }
 
+/**
+ * Gets the card's action buttons, in order. They are `app-button`s, so they are found by their role
+ * rather than by a class of their own.
+ * @param host The rendered card.
+ * @returns Returns the buttons.
+ */
+function actions(host: HTMLElement): HTMLButtonElement[] {
+  return Array.from(host.querySelectorAll<HTMLButtonElement>('.request__actions button'));
+}
+
+/**
+ * Gets the card's action button carrying the given label.
+ * @param host The rendered card.
+ * @param label The button's visible label.
+ * @returns Returns the button.
+ */
+function action(host: HTMLElement, label: string): HTMLButtonElement {
+  return actions(host).find(
+    (button: HTMLButtonElement): boolean => button.textContent?.trim() === label,
+  )!;
+}
+
 describe('AgentRequestCard', () => {
   let responses: Responses;
 
@@ -73,7 +95,7 @@ describe('AgentRequestCard', () => {
     expect(host.querySelector('.request__heading')?.textContent).toContain('Allow read_file?');
     expect(host.querySelector('.request__detail')?.textContent).toContain('src/app.ts');
 
-    host.querySelectorAll<HTMLButtonElement>('.request__btn')[0].click(); // Allow
+    action(host, 'Allow').click();
 
     expect(responses.permission).toEqual([{ item: entry.item, granted: true }]);
   });
@@ -87,7 +109,7 @@ describe('AgentRequestCard', () => {
 
     // Falls back to a generic tool name when none accompanies the request.
     expect(host.querySelector('.request__heading')?.textContent).toContain('Allow run_command?');
-    host.querySelector<HTMLButtonElement>('.request__btn--ghost')!.click(); // Deny
+    action(host, 'Deny').click();
 
     expect(responses.permission).toEqual([{ item: entry.item, granted: false }]);
   });
@@ -103,8 +125,8 @@ describe('AgentRequestCard', () => {
       'Apply an edit to README.md?',
     );
 
-    host.querySelectorAll<HTMLButtonElement>('.request__btn')[0].click(); // Yes
-    host.querySelector<HTMLButtonElement>('.request__btn--ghost')!.click(); // No
+    action(host, 'Yes').click();
+    action(host, 'No').click();
 
     expect(responses.edit).toEqual([
       { item: entry.item, choice: 'yes' },
@@ -127,10 +149,8 @@ describe('AgentRequestCard', () => {
     const host: HTMLElement = await render(entry);
 
     expect(host.querySelector('.request__heading')?.textContent).toContain('Which environment?');
-    // The choice buttons only; the trailing ghost button is the always-present Skip.
-    const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.request__btn:not(.request__btn--ghost)'),
-    );
+    // Every action but the trailing Skip, which is always present.
+    const buttons: HTMLButtonElement[] = actions(host).slice(0, -1);
     expect(buttons.map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
       'Staging',
       'Production',
@@ -148,7 +168,7 @@ describe('AgentRequestCard', () => {
     );
     const host: HTMLElement = await render(entry);
 
-    host.querySelector<HTMLButtonElement>('.request__btn--ghost')!.click(); // Skip
+    action(host, 'Skip').click();
 
     expect(responses.input).toEqual([{ item: entry.item, answer: null }]);
   });

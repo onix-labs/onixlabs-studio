@@ -65,7 +65,7 @@ its own.
 - [x] `agent-conversation-list` — 8 × `history__button`, 2 × `history__manage-action`, 4 ×
       `history__tool--icon`. Two classes deleted. Left raw: the Filters menu trigger, the row
       overflow trigger, and 10 CDK menu items (all structural)
-- [ ] `agent-request-card` — 6 × `request__btn`
+- [x] `agent-request-card` — 6 × `request__btn`, class deleted (small, since the card is compact)
 - [ ] `source-control-sidebar` — 4 × `rail__dialog-button`
 - [ ] `configure-dialog` — 4 × `configure__button`
 - [ ] `ai-connection-editor` — 5 × `conn-editor__button`, 1 × `conn-editor__text-button`
