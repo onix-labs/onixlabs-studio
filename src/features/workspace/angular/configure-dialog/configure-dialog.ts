@@ -15,7 +15,6 @@ import { ConfigureDialog } from '@shared/angular/services/configure-dialog/confi
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -64,7 +63,6 @@ interface ConfigurationGroup {
     Button,
     Modal,
     ModalContent,
-    AppIcon,
     Dropdown,
     SettingRow,
     TextField,

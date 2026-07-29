@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
 import {
@@ -57,7 +56,7 @@ const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_F
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [ButtonGroup, Button, ToolPanel, AppIcon, Dropdown],
+  imports: [ButtonGroup, Button, ToolPanel, Dropdown],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-reader-panel.html',
   styleUrl: './markdown-reader-panel.scss',

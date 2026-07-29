@@ -13,7 +13,6 @@ import {
 } from '@angular/core';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
@@ -31,7 +30,7 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [Button, Terminal, AppIcon, PanelDragHandle],
+  imports: [Button, Terminal, PanelDragHandle],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

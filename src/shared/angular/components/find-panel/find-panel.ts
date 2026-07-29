@@ -19,7 +19,6 @@ import {
 } from '@angular/core';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { Button } from '@shared/angular/components/forms/button/button';
 import {
@@ -44,7 +43,7 @@ type FindMode = 'find' | 'replace';
  */
 @Component({
   selector: 'app-find-panel',
-  imports: [ButtonGroup, Button, TextField, Checkbox, AppIcon, PanelDragHandle],
+  imports: [ButtonGroup, Button, TextField, Checkbox, PanelDragHandle],
   templateUrl: './find-panel.html',
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

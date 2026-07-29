@@ -30,7 +30,6 @@ import {
   LayoutPresetInfo,
   LayoutPresets,
 } from '@shared/angular/services/layout-presets/layout-presets';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -102,7 +101,6 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripMenuButton,
     RibbonStripField,
     RibbonStripRow,
-    AppIcon,
     Checkbox,
     Dropdown,
     Modal,

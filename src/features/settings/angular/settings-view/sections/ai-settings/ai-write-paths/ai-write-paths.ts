@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -19,7 +18,7 @@ type ListKind = 'allow' | 'deny';
  */
 @Component({
   selector: 'app-ai-write-paths',
-  imports: [Button, TextField, AppIcon],
+  imports: [Button, TextField],
   templateUrl: './ai-write-paths.html',
   styleUrl: './ai-write-paths.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

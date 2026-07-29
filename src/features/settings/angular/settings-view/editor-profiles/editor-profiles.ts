@@ -14,7 +14,6 @@ import {
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { ChoiceOption, SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
@@ -27,17 +26,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
  */
 @Component({
   selector: 'app-editor-profiles',
-  imports: [
-    Button,
-    SettingRow,
-    Toggle,
-    Checkbox,
-    Dropdown,
-    NumberField,
-    Accordion,
-    LanguageSelect,
-    AppIcon,
-  ],
+  imports: [Button, SettingRow, Toggle, Checkbox, Dropdown, NumberField, Accordion, LanguageSelect],
   templateUrl: './editor-profiles.html',
   styleUrls: ['../sections/section.scss', './editor-profiles.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
