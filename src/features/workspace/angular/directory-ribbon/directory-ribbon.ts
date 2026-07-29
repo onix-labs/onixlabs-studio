@@ -3,7 +3,6 @@ import {
   Component,
   computed,
   effect,
-  ElementRef,
   inject,
   Signal,
   signal,
@@ -49,6 +48,7 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
  * Identifies the Save All item in the File group's Save split button menu.
@@ -90,6 +90,7 @@ const COMMIT_STASH: string = 'stash';
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
+    TextField,
     Button,
     RibbonStripOverflow,
     RibbonStripGroup,
@@ -933,8 +934,7 @@ export class DirectoryRibbon {
    * Holds the Save As dialog's name input, focused when the dialog opens (the `autofocus` attribute
    * is unreliable on dynamically-inserted content and flagged for accessibility).
    */
-  private readonly presetInput: Signal<ElementRef<HTMLInputElement> | undefined> =
-    viewChild<ElementRef<HTMLInputElement>>('presetInput');
+  private readonly presetInput: Signal<TextField | undefined> = viewChild<TextField>('presetInput');
 
   /**
    * Initializes the ribbon, focusing the Save As dialog's name input whenever it opens.
@@ -942,9 +942,9 @@ export class DirectoryRibbon {
   public constructor() {
     effect((): void => {
       if (this.saveAsOpen()) {
-        const input: HTMLInputElement | undefined = this.presetInput()?.nativeElement;
-        if (input !== undefined) {
-          setTimeout((): void => input.focus(), 0);
+        const field: TextField | undefined = this.presetInput();
+        if (field !== undefined) {
+          setTimeout((): void => field.focus(), 0);
         }
       }
     });

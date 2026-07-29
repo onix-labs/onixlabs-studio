@@ -1,11 +1,11 @@
 <div class="explorer-toolbar">
-  <input
+  <app-text-field
     class="explorer-toolbar__search"
-    type="text"
-    [value]="query()"
-    (input)="onSearch($event)"
+    kind="search"
     [placeholder]="searchPlaceholder()"
-    [attr.aria-label]="searchPlaceholder()"
+    [ariaLabel]="searchPlaceholder()"
+    [value]="query()"
+    (valueChange)="onSearchValue($event)"
   />
   <div class="explorer-toolbar__actions">
     <app-button

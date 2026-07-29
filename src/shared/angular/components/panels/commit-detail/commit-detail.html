@@ -168,13 +168,14 @@
         (click)="generateMessage()"
       />
     </header>
-    <textarea
+    <app-textarea
       class="detail__message"
-      rows="4"
       placeholder="Commit message"
+      ariaLabel="Commit message"
+      [rows]="4"
       [value]="repository.commitMessage()"
-      (input)="onMessageInput($event)"
-    ></textarea>
+      (valueChange)="onMessageValue($event)"
+    />
     <div class="detail__composer-actions">
       <app-button
         variant="solid"

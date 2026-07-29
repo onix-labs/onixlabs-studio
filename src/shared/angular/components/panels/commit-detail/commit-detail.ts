@@ -26,6 +26,7 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -71,7 +72,7 @@ type WorkingRowData =
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [Button, AppIcon, Checkbox, PanelToolbar, TreeView],
+  imports: [Textarea, Button, AppIcon, Checkbox, PanelToolbar, TreeView],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -392,10 +393,10 @@ export class CommitDetail {
 
   /**
    * Updates the draft commit message as the user types.
-   * @param event The textarea input event.
+   * @param message The message typed into the composer.
    */
-  protected onMessageInput(event: Event): void {
-    this.repository.setCommitMessage((event.target as HTMLTextAreaElement).value);
+  protected onMessageValue(message: string): void {
+    this.repository.setCommitMessage(message);
   }
 
   /**

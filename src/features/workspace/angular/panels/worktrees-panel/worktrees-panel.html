@@ -99,26 +99,24 @@
       (valueChange)="onBranchPick($event)"
     />
     @if (branchPick() === NEW_BRANCH) {
-      <input
+      <app-text-field
         class="worktrees__prompt-input"
-        type="text"
-        [value]="addBranch()"
-        (input)="onBranchInput($event)"
-        (keydown.enter)="confirmAdd()"
-        (keydown.escape)="cancelAdd()"
         placeholder="New branch name"
-        aria-label="New branch name"
+        ariaLabel="New branch name"
+        [value]="addBranch()"
+        (valueChange)="addBranch.set($event)"
+        (enter)="confirmAdd()"
+        (escape)="cancelAdd()"
       />
     }
-    <input
+    <app-text-field
       class="worktrees__prompt-input"
-      type="text"
-      [value]="addAlias()"
-      (input)="onAliasInput($event)"
-      (keydown.enter)="confirmAdd()"
-      (keydown.escape)="cancelAdd()"
       placeholder="Alias (optional)"
-      aria-label="Alias"
+      ariaLabel="Alias"
+      [value]="addAlias()"
+      (valueChange)="addAlias.set($event)"
+      (enter)="confirmAdd()"
+      (escape)="cancelAdd()"
     />
     <div class="worktrees__confirm-actions">
       <app-button label="Cancel" (click)="cancelAdd()" />

@@ -104,13 +104,14 @@
             </app-setting-row>
 
             <app-setting-row label="Environment" description="One KEY=value per line">
-              <textarea
+              <app-textarea
                 #env
                 class="configure__env"
-                rows="3"
+                ariaLabel="Environment variables"
+                [rows]="3"
                 [value]="envText()"
-                (change)="onEnv(env.value)"
-              ></textarea>
+                (blurred)="onEnv(env.value())"
+              />
             </app-setting-row>
 
             <app-setting-row label="Debug" description="Run under the debugger">

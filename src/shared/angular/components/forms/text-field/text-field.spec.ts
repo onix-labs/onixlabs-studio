@@ -30,4 +30,30 @@ describe('TextField', () => {
 
     expect(component.value()).toBe('JetBrains Mono');
   });
+
+  it('enter_andEscape_areOfferedAsOutputs_ratherThanLeftToTheCaller', () => {
+    const control: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+      'input',
+    )!;
+    let committed: number = 0;
+    let abandoned: number = 0;
+    component.enter.subscribe((): void => void (committed += 1));
+    component.escape.subscribe((): void => void (abandoned += 1));
+
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(committed).toBe(1);
+    expect(abandoned).toBe(1);
+  });
+
+  it('search_wearsItsGlyph_andNamesItself', () => {
+    fixture.componentRef.setInput('kind', 'search');
+    fixture.componentRef.setInput('ariaLabel', 'Filter the tree');
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.text-field__glyph')).not.toBeNull();
+    expect(host.querySelector('input')?.getAttribute('aria-label')).toBe('Filter the tree');
+  });
 });

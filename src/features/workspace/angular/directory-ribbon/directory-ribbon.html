@@ -268,16 +268,15 @@
 >
   <ng-template appModalContent>
     <h2 class="directory-ribbon__confirm-title">Save layout as preset</h2>
-    <input
+    <app-text-field
       #presetInput
       class="directory-ribbon__prompt-input"
-      type="text"
-      [value]="saveAsName()"
-      (input)="saveAsName.set($any($event.target).value)"
-      (keydown.enter)="confirmSaveAs()"
-      (keydown.escape)="cancelSaveAs()"
       placeholder="Preset name"
-      aria-label="Preset name"
+      ariaLabel="Preset name"
+      [value]="saveAsName()"
+      (valueChange)="saveAsName.set($event)"
+      (enter)="confirmSaveAs()"
+      (escape)="cancelSaveAs()"
     />
     <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
          rule cannot see through the component boundary to verify this statically. -->
@@ -324,12 +323,13 @@
             <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
             <span class="directory-ribbon__preset-tag">Built-in</span>
           } @else {
-            <input
+            <app-text-field
+              #presetName
               class="directory-ribbon__preset-input"
-              type="text"
               [value]="preset.name"
-              [attr.aria-label]="'Rename ' + preset.name"
-              (change)="onRenamePreset(preset.id, $any($event.target).value)"
+              [ariaLabel]="'Rename ' + preset.name"
+              (blurred)="onRenamePreset(preset.id, presetName.value())"
+              (enter)="onRenamePreset(preset.id, presetName.value())"
             />
             <app-button
               variant="none"

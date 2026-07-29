@@ -184,7 +184,8 @@ describe('AgentConversationList', () => {
     summaries.set([SUMMARY, OTHER]);
     fixture.detectChanges();
 
-    const search: HTMLInputElement = host.querySelector<HTMLInputElement>('.history__search')!;
+    const search: HTMLInputElement =
+      host.querySelector<HTMLInputElement>('.history__search input')!;
     search.value = 'northern';
     search.dispatchEvent(new Event('input'));
     fixture.detectChanges();
@@ -232,7 +233,7 @@ describe('AgentConversationList', () => {
     fixture.detectChanges();
 
     expect(host.querySelector('.history__modal-title')?.textContent).toContain('New category');
-    expect(host.querySelector<HTMLInputElement>('.history__modal-input')!.value).toBe('');
+    expect(host.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
   });
 
   it('delete_whenConfirmed_promptsWithTheCheckedCount', () => {

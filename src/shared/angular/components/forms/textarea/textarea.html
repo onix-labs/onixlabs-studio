@@ -1,0 +1,13 @@
+<textarea
+  #control
+  class="textarea"
+  [rows]="rows()"
+  [value]="value()"
+  [placeholder]="placeholder()"
+  [disabled]="disabled()"
+  [attr.aria-label]="ariaLabel()"
+  (input)="onInput($event)"
+  (keydown)="keyDown.emit($event)"
+  (paste)="pasted.emit($event)"
+  (blur)="blurred.emit()"
+></textarea>

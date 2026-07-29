@@ -44,11 +44,12 @@ Nothing else can start until these exist.
       and wears the hover treatment while on.
 - [x] **`app-button` size axis** — `medium` (default) and `small`, for the dense chrome revealed on a
       hovered row or hung off a chip. Independent of variant: any variant can be either size.
-- [ ] **`app-textarea`** — multi-line sibling of `app-text-field`; `rows`, `placeholder`,
-      `readonly`, auto-grow where callers need it.
-- [ ] **`app-search-field`** — `app-text-field` with the leading glyph and clear affordance that four
-      call sites currently rebuild by hand. (Could be a `search` variant of `app-text-field`
-      instead — decide when writing it.)
+- [x] **`app-textarea`** — multi-line sibling of `app-text-field`: `rows`, `placeholder`,
+      `ariaLabel`, `disabled`, plus `keyDown`/`pasted` outputs and an `element()` accessor for a
+      caller that grows with its content.
+- [x] **`app-text-field` grows a `search` kind** rather than a separate atom — the leading glyph and
+      the search treatment, plus `ariaLabel`, `enter`/`escape`/`blurred` outputs and a `focus()`
+      method, which is what the call sites actually needed.
 - [ ] **`app-slider`** — one `<input type="range">` exists (the reader panel's scrubber). Lowest
       priority; fold in if a second appears.
 
@@ -135,18 +136,23 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 
 ## Phase 4 — text inputs and text areas
 
-- [ ] `agent-chat` — `agent__input` (textarea), `agent__prompts-field` (input + textarea)
-- [ ] `commit-detail` — `detail__message` (textarea)
-- [ ] `configure-dialog` — `configure__env` (textarea)
-- [ ] `agent-conversation-list` — `history__search`, `history__modal-input` ×2
-- [ ] `source-control-sidebar` — `rail__filter` (search), `rail__dialog-input`
-- [ ] `worktrees-panel` — 2 × `worktrees__prompt-input`
-- [ ] `directory-ribbon` — `__prompt-input`, `__preset-input`
-- [ ] `welcome-screen` — `welcome__searchbox-input`
-- [ ] `explorer-toolbar` — `explorer-toolbar__search`
-- [ ] `terminal-panel` — `terminal-panel__rename`
-- [ ] `title-strip-container` — `window-lock__input` (checkbox → `app-checkbox` or `app-toggle`)
-- [ ] `markdown-reader-panel` — `ra-scrubber` (range)
+- [ ] `agent-chat` — `agent__input` (the composer) and `agent__prompts-field`. **Deferred**: the
+      composer is wired to auto-grow, slash-command suggestions, image paste and a submit chord
+      through the element itself. `app-textarea` exposes what it needs (`keyDown`, `pasted`,
+      `element()`), so this is a careful conversion rather than a mechanical one.
+- [x] `commit-detail` — `detail__message`
+- [x] `configure-dialog` — `configure__env`
+- [x] `agent-conversation-list` — `history__search` (search kind), `history__modal-input` ×2
+- [x] `source-control-sidebar` — `rail__filter` (search kind), `rail__dialog-input`
+- [x] `worktrees-panel` — 2 × `worktrees__prompt-input`
+- [x] `directory-ribbon` — `__prompt-input` (focus now goes through the atom), `__preset-input`
+- [x] `welcome-screen` — `welcome__searchbox-input` (search kind, glyph included)
+- [x] `explorer-toolbar` — `explorer-toolbar__search` (search kind)
+- [x] `terminal-panel` — `terminal-panel__rename`
+- [ ] `title-strip-container` — `window-lock__input`. **Blocked**: it is a bespoke switch whose
+      sliding knob carries a lock glyph, drawn around the native checkbox. `app-toggle` draws its own
+      switch, so converting silently drops the glyph. Needs a ruling, or a knob-content slot.
+- [ ] `markdown-reader-panel` — `ra-scrubber` (range). Still the only slider; `app-slider` is unwritten.
 
 ---
 

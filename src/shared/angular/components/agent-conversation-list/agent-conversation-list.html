@@ -2,13 +2,13 @@
   <div class="history__toolbar">
     <div class="history__search-wrap">
       <app-icon class="history__search-icon" [icon]="Icon.SEARCH" />
-      <input
+      <app-text-field
         class="history__search"
-        type="text"
-        [value]="query()"
-        (input)="onSearch($event)"
+        kind="search"
         placeholder="Search conversations…"
-        aria-label="Search conversations"
+        ariaLabel="Search conversations"
+        [value]="query()"
+        (valueChange)="query.set($event)"
       />
     </div>
 
@@ -249,14 +249,13 @@
 >
   <ng-template appModalContent>
     <h2 class="history__modal-title">Rename conversation</h2>
-    <input
+    <app-text-field
       class="history__modal-input"
-      type="text"
-      [value]="renameValue()"
-      (input)="renameValue.set($any($event.target).value)"
-      (keydown.enter)="onConfirmRename()"
       placeholder="Conversation title"
-      aria-label="Conversation title"
+      ariaLabel="Conversation title"
+      [value]="renameValue()"
+      (valueChange)="renameValue.set($event)"
+      (enter)="onConfirmRename()"
     />
     <div class="history__modal-actions">
       <app-button label="Cancel" (click)="onCancelRename()" />
@@ -283,14 +282,13 @@
       <h2 class="history__modal-title">
         {{ editor.id === null ? 'New category' : 'Rename category' }}
       </h2>
-      <input
+      <app-text-field
         class="history__modal-input"
-        type="text"
-        [value]="editor.name"
-        (input)="onCategoryName($event)"
-        (keydown.enter)="onSaveCategory()"
         placeholder="Category name"
-        aria-label="Category name"
+        ariaLabel="Category name"
+        [value]="editor.name"
+        (valueChange)="onCategoryNameValue($event)"
+        (enter)="onSaveCategory()"
       />
       <div class="history__modal-actions">
         <app-button label="Cancel" (click)="onCancelCategory()" />

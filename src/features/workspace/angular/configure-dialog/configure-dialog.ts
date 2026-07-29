@@ -24,6 +24,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AgentRequestCard } from '@shared/angular/components/agent-request-card/agent-request-card';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent-requests';
 
 /**
@@ -59,6 +60,7 @@ interface ConfigurationGroup {
 @Component({
   selector: 'app-configure-dialog',
   imports: [
+    Textarea,
     Button,
     Modal,
     ModalContent,

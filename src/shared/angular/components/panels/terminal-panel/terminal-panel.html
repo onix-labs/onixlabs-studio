@@ -3,14 +3,14 @@
     <app-panel-toolbar class="terminal-panel__tabs" role="tablist">
       @for (session of sessions(); track session.id) {
         @if (editingId() === session.id) {
-          <input
-            #renameInput
+          <app-text-field
+            #renameField
             class="terminal-panel__rename"
+            ariaLabel="Rename terminal"
             [value]="session.name"
-            (blur)="commitRename(session.id, $event)"
-            (keydown.enter)="commitRename(session.id, $event)"
-            (keydown.escape)="cancelRename()"
-            aria-label="Rename terminal"
+            (blurred)="commitRenameValue(session.id, renameField.value())"
+            (enter)="commitRenameValue(session.id, renameField.value())"
+            (escape)="cancelRename()"
           />
         } @else {
           <button

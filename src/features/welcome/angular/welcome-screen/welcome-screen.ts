@@ -25,6 +25,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import {
   ButtonGroup,
   ButtonGroupOption,
@@ -75,7 +76,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [ButtonGroup, AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
+  imports: [TextField, ButtonGroup, AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

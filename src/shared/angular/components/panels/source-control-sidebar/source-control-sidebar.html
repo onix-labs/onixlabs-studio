@@ -1,12 +1,12 @@
 <app-panel-toolbar>
-  <input
+  <app-text-field
     class="rail__filter"
-    type="search"
-    [value]="filter()"
+    kind="search"
     placeholder="Filter"
-    aria-label="Filter the repository tree"
-    (input)="onFilterInput($event)"
-    (keydown.escape)="clearFilter()"
+    ariaLabel="Filter the repository tree"
+    [value]="filter()"
+    (valueChange)="onFilterValue($event)"
+    (escape)="clearFilter()"
   />
   <app-button
     variant="none"
@@ -155,15 +155,14 @@
 >
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">New branch</h2>
-    <input
+    <app-text-field
       class="rail__dialog-input"
-      type="text"
-      [value]="branchName()"
       placeholder="Branch name"
-      aria-label="Branch name"
-      (input)="onBranchNameInput($event)"
-      (keydown.enter)="confirmBranch()"
-      (keydown.escape)="cancelBranch()"
+      ariaLabel="Branch name"
+      [value]="branchName()"
+      (valueChange)="onBranchNameValue($event)"
+      (enter)="confirmBranch()"
+      (escape)="cancelBranch()"
     />
     @if (branchNameError(); as error) {
       <p class="rail__dialog-error" role="alert">{{ error }}</p>

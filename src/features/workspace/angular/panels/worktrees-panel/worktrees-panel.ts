@@ -13,6 +13,7 @@ import { ListRow, ListView } from '@shared/angular/components/list-view/list-vie
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   WorktreeCheckoutInfo,
@@ -31,7 +32,7 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
  */
 @Component({
   selector: 'app-worktrees-panel',
-  imports: [Button, AppIcon, Dropdown, ListView, Modal, ModalContent],
+  imports: [TextField, Button, AppIcon, Dropdown, ListView, Modal, ModalContent],
   templateUrl: './worktrees-panel.html',
   styleUrl: './worktrees-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

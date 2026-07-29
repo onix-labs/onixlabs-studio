@@ -439,12 +439,13 @@ describe('CommitDetail', () => {
     expect(host.querySelector('.detail__notice')).toBeNull();
   });
 
-  it('onMessageInput_whenTheUserTypes_forwardsTheDraftMessage', () => {
+  it('messageComposer_whenTheUserTypes_forwardsTheDraftMessage', () => {
     repository.isWorkingSelected.set(true);
     fixture.detectChanges();
 
-    const textarea: HTMLTextAreaElement =
-      host.querySelector<HTMLTextAreaElement>('.detail__message')!;
+    const textarea: HTMLTextAreaElement = host.querySelector<HTMLTextAreaElement>(
+      '.detail__message textarea',
+    )!;
     textarea.value = 'wip: draft message';
     textarea.dispatchEvent(new Event('input'));
 

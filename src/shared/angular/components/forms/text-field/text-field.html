@@ -1,8 +1,18 @@
+<!-- A search field wears its glyph inside the box, so the two are one control rather than an icon
+     parked beside an input. -->
+@if (kind() === 'search') {
+  <app-icon class="text-field__glyph" [icon]="searchIcon" aria-hidden="true" />
+}
 <input
-  type="text"
+  #control
   class="text-field"
+  [type]="kind() === 'search' ? 'search' : 'text'"
   [value]="value()"
   [placeholder]="placeholder()"
   [disabled]="disabled()"
+  [attr.aria-label]="ariaLabel()"
   (input)="onInput($event)"
+  (keydown.enter)="enter.emit()"
+  (keydown.escape)="escape.emit()"
+  (blur)="blurred.emit()"
 />
