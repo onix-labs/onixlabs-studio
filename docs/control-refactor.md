@@ -132,7 +132,7 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
       and a count badge, which `ButtonGroupOption` (value, label, icon) cannot express. Needs either a
       `count` field and a colour-dot adornment on the atom, or a ruling that the chips lose them.
 - [ ] ~~`mission-control-panel`~~ — `role="tab"` tabs, not a picker. Structural, by the ruling.
-- [x] `welcome-screen` — the recent-items filter pills
+- [ ] ~~`welcome-screen`~~ — the filter pills are **deliberately bespoke**; see the exception below
 
 ## Phase 4 — text inputs and text areas
 
@@ -146,7 +146,7 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 - [x] `source-control-sidebar` — `rail__filter` (search kind), `rail__dialog-input`
 - [x] `worktrees-panel` — 2 × `worktrees__prompt-input`
 - [x] `directory-ribbon` — `__prompt-input` (focus now goes through the atom), `__preset-input`
-- [x] `welcome-screen` — `welcome__searchbox-input` (search kind, glyph included)
+- [ ] ~~`welcome-screen`~~ — the search box is **deliberately bespoke**; see the exception below
 - [x] `explorer-toolbar` — `explorer-toolbar__search` (search kind)
 - [x] `terminal-panel` — `terminal-panel__rename`
 - [ ] `title-strip-container` — `window-lock__input`. **Blocked**: it is a bespoke switch whose
@@ -178,6 +178,15 @@ tokens:
 `agent__suggest-item` · `find-panel__result` · `settings__nav-item` · `tile__name` ·
 `*-menu__trigger` (LSP, notifications, tab menu) · `configure__item` · `tree-open-btn` ·
 `rv-card-head` · `keyboard__chord` (the chord-capture field — arguably an input)
+
+## The one sanctioned exception: the welcome screen
+
+Its **search box**, **Clear pill** and **filter pills** stay hand-rolled. The welcome screen is the
+application's one bespoke surface, drawn to its own palette (`--wl-*`) and geometry; the shared
+controls would either look wrong there or have to be overridden from the call site, which is the
+drift the atoms exist to prevent. Reverted knowingly (2026-07-29) and commented at both the markup
+and the stylesheet, so a later reader does not "fix" it. Its confirm-dialog buttons and its pin
+control DO use the atoms — only these three are excepted, and nothing else may follow.
 
 ## Rulings (2026-07-29)
 

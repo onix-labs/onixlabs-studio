@@ -25,11 +25,6 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import {
-  ButtonGroup,
-  ButtonGroupOption,
-} from '@shared/angular/components/forms/button-group/button-group';
 
 /**
  * Describes a recent-items filter pill.
@@ -76,7 +71,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [TextField, ButtonGroup, AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -136,18 +131,6 @@ export class WelcomeScreen {
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
   ];
-
-  /**
-   * Gets the same filters as segmented-control options. Declared after the filters themselves, since
-   * it is derived from them.
-   */
-  protected readonly filterOptions: readonly ButtonGroupOption[] = this.filters.map(
-    (filter: RecentFilter): ButtonGroupOption => ({
-      value: filter.id,
-      label: filter.label,
-      icon: filter.icon,
-    }),
-  );
 
   /**
    * Gets the actions shown in each row's overflow menu.

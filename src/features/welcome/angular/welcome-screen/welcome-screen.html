@@ -94,34 +94,49 @@
       <section class="welcome__recent" aria-label="Recent items">
         <div class="welcome__recent-head">
           <h2 class="welcome__recent-title">Recent Items</h2>
-          <app-text-field
-            class="welcome__searchbox"
-            kind="search"
-            placeholder="Search"
-            ariaLabel="Search recent items"
-            [value]="query()"
-            (valueChange)="query.set($event)"
-            (escape)="query.set('')"
-          />
-          @if (hasRecent()) {
-            <app-button
-              class="welcome__clear"
-              variant="none"
-              size="small"
-              [icon]="Icon.TRASH"
-              label="Clear"
-              (click)="requestClearRecent()"
+          <!-- DELIBERATELY OUTSIDE THE ATOM SYSTEM. The welcome screen is the application's one
+               bespoke surface: its search box and Clear pill are drawn to its own palette
+               (`--wl-*`) and pill geometry, not the app's form chrome. Using `app-text-field` and
+               `app-button` here would either look wrong or force the call site to override the
+               atoms, which is the drift those atoms exist to prevent. Nothing else may follow this
+               example. -->
+          <div class="welcome__searchbox">
+            <input
+              type="text"
+              class="welcome__searchbox-input"
+              placeholder="Search"
+              aria-label="Search recent items"
+              [value]="query()"
+              (input)="onSearchInput($event)"
+              (keydown.escape)="query.set('')"
             />
+            <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
+          </div>
+          @if (hasRecent()) {
+            <button type="button" class="welcome__clear" (click)="requestClearRecent()">
+              <app-icon [icon]="Icon.TRASH" />
+              <span>Clear</span>
+            </button>
           }
         </div>
 
-        <app-button-group
-          class="welcome__filters"
-          ariaLabel="Filter recent items"
-          [options]="filterOptions"
-          [value]="activeFilter()"
-          (valueChange)="activeFilter.set($event)"
-        />
+        <!-- Bespoke by design, as above: these pills carry the welcome palette's accent fill and
+             its own rounding, not the shared segmented track. -->
+        <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
+          @for (filter of filters; track filter.id) {
+            <button
+              type="button"
+              class="welcome__filter"
+              [class.welcome__filter--active]="activeFilter() === filter.id"
+              role="tab"
+              [attr.aria-selected]="activeFilter() === filter.id"
+              (click)="activeFilter.set(filter.id)"
+            >
+              <app-icon [icon]="filter.icon" />
+              <span>{{ filter.label }}</span>
+            </button>
+          }
+        </div>
 
         @if (visibleItems().length > 0) {
           <ul class="welcome__recent-list">
