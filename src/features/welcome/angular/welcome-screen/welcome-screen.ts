@@ -97,9 +97,6 @@ export class WelcomeScreen {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Holds the opener that opens a git repository into a source-control tab.
-   */
-  /**
    * Holds the recent-items registry surfaced in the right-hand panel.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -129,7 +126,6 @@ export class WelcomeScreen {
   protected readonly filters: readonly RecentFilter[] = [
     { id: 'all', label: 'Everything', icon: Icon.GRID_DOTS, kind: null },
     { id: 'directories', label: 'Workspaces', icon: Icon.FOLDER, kind: 'directory' },
-    { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL, kind: 'repository' },
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
@@ -237,8 +233,6 @@ export class WelcomeScreen {
     switch (kind) {
       case 'directory':
         return Icon.DIRECTORY;
-      case 'repository':
-        return Icon.SOURCE_CONTROL;
       case 'markdown':
         return Icon.MARKDOWN;
       case 'code':
@@ -394,10 +388,8 @@ export class WelcomeScreen {
   private reopen(item: RecentItem): Promise<boolean> {
     switch (item.kind) {
       case 'directory':
-        return this.fileOpener.reopenDirectory(item.path);
-      case 'repository':
-        // A retired repository recent opens as an ordinary folder (ruling 3 of #351): the unified
-        // workspace view carries the Git preset, so nothing is lost.
+        // Repository recents were folded into this on load (ruling 3 of #351): the unified workspace
+        // view carries the Git preset, so a repository is just a directory Git happens to know.
         return this.fileOpener.reopenDirectory(item.path);
       case 'markdown':
       case 'code':

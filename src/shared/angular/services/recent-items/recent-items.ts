@@ -5,7 +5,7 @@ import { SettingsStore } from '@shared/angular/services/settings-store/settings-
  * Names the kinds of thing that can appear in the recent-items list. Each maps to how the item is
  * re-opened and which icon and filter it belongs to.
  */
-export type RecentKind = 'directory' | 'repository' | 'markdown' | 'code' | 'binary';
+export type RecentKind = 'directory' | 'markdown' | 'code' | 'binary';
 
 /**
  * Maps every {@link RecentKind} to a marker, so the compiler proves the runtime validation set below
@@ -14,7 +14,6 @@ export type RecentKind = 'directory' | 'repository' | 'markdown' | 'code' | 'bin
  */
 const ALL_RECENT_KINDS: Readonly<Record<RecentKind, true>> = {
   directory: true,
-  repository: true,
   markdown: true,
   code: true,
   binary: true,
@@ -24,6 +23,13 @@ const ALL_RECENT_KINDS: Readonly<Record<RecentKind, true>> = {
  * Holds the recognised recent-item kinds, used to reject malformed persisted entries on load.
  */
 const RECENT_KINDS: ReadonlySet<string> = new Set<string>(Object.keys(ALL_RECENT_KINDS));
+
+/**
+ * Maps the kinds that no longer exist onto the ones that replaced them, so entries written by an
+ * older Studio survive the change rather than being dropped as unrecognised. Repositories were
+ * retired with the unified workspace: a directory is a directory, whether or not Git knows about it.
+ */
+const RETIRED_RECENT_KINDS: Readonly<Record<string, RecentKind>> = { repository: 'directory' };
 
 /**
  * The storage key the recent-items list is persisted under.
@@ -201,7 +207,13 @@ function restoreRecentItems(raw: unknown): readonly RecentItem[] {
     if (typeof record['name'] !== 'string') {
       continue;
     }
-    if (typeof record['kind'] !== 'string' || !RECENT_KINDS.has(record['kind'])) {
+    if (typeof record['kind'] !== 'string') {
+      continue;
+    }
+    const kind: RecentKind | undefined = RECENT_KINDS.has(record['kind'])
+      ? (record['kind'] as RecentKind)
+      : RETIRED_RECENT_KINDS[record['kind']];
+    if (kind === undefined) {
       continue;
     }
     if (typeof record['openedAt'] !== 'number') {
@@ -210,7 +222,7 @@ function restoreRecentItems(raw: unknown): readonly RecentItem[] {
     result.push({
       path: record['path'],
       name: record['name'],
-      kind: record['kind'] as RecentKind,
+      kind,
       openedAt: record['openedAt'],
       pinned: record['pinned'] === true,
     });
