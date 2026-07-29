@@ -1020,6 +1020,16 @@ app-markdown-editor .milkdown {
     z-index: 1;
     border-color: var(--crepe-color-on-surface);
   }
+
+  // Drive the vendor's own colour variable too, not just the border it paints with. The cursor is
+  // drawn by `prosemirror-virtual-cursor`, whose stylesheet defaults
+  // `--prosemirror-virtual-cursor-color` to RED on `.ProseMirror-focused` and paints each edge from
+  // it. Overriding only `border-color` leaves that default in place for any edge the vendor styles
+  // through a longhand this rule does not reach (the left/right cursor variants set
+  // `border-bottom`/`border-right`), so the variable is set at the source instead.
+  .ProseMirror-focused {
+    --prosemirror-virtual-cursor-color: var(--crepe-color-on-surface);
+  }
 }
 
 @keyframes crepe-virtual-cursor-blink {
