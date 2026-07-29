@@ -35,13 +35,13 @@ describe('AgentConversationList', () => {
   };
 
   /**
-   * Gets the toolbar tool button whose accessible label contains the given text (the icon-only buttons
-   * carry their label on aria-label rather than as text).
+   * Gets the toolbar button whose accessible label contains the given text. The toolbar's buttons are
+   * icon-only `app-button`s, which carry their label on aria-label rather than as text.
    * @param label The aria-label text to match.
    * @returns Returns the button.
    */
   function tool(label: string): HTMLButtonElement {
-    return Array.from(host.querySelectorAll<HTMLButtonElement>('.history__tool')).find(
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.history__toolbar button')).find(
       (button: HTMLButtonElement): boolean =>
         (button.getAttribute('aria-label') ?? '').includes(label),
     )!;

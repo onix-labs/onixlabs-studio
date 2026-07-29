@@ -62,7 +62,9 @@ its own.
       `agent__queue-btn`, `agent__attachment-remove`, `agent__image-remove`, `agent__md`, 4 ×
       `agent__send`. Eight hand-rolled classes deleted. Left raw: `agent__action-more` (an inline
       link, see below) and `agent__suggest-item` (a listbox option)
-- [ ] `agent-conversation-list` — 8 × `history__button`
+- [x] `agent-conversation-list` — 8 × `history__button`, 2 × `history__manage-action`, 4 ×
+      `history__tool--icon`. Two classes deleted. Left raw: the Filters menu trigger, the row
+      overflow trigger, and 10 CDK menu items (all structural)
 - [ ] `agent-request-card` — 6 × `request__btn`
 - [ ] `source-control-sidebar` — 4 × `rail__dialog-button`
 - [ ] `configure-dialog` — 4 × `configure__button`
@@ -90,7 +92,7 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 - [ ] `find-panel` — `find-panel__button` ×5, `find-panel__icon-button`
 - [ ] `debug-panel` — 6 × `debug-toolbar__button`, `debug-watch__remove`
 - [x] `agent-chat` — done with Phase 1 above
-- [ ] `agent-conversation-list` — `history__tool` ×5, `history__overflow`, `history__manage-action` ×2
+- [x] `agent-conversation-list` — done with Phase 1 above (the two menu triggers stay)
 - [ ] `configure-dialog` — 3 × `configure__tool`
 - [ ] `worktrees-panel` — `worktrees__remove`, `worktrees__refresh`
 - [ ] `directory-ribbon` — `__preset-default`, `__preset-delete`

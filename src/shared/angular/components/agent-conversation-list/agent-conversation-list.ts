@@ -20,6 +20,7 @@ import { AgentCategories } from '@shared/angular/services/agent-categories/agent
 import { agentTypeFromContextKind } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -130,6 +131,7 @@ type HistoryRowData =
 @Component({
   selector: 'app-agent-conversation-list',
   imports: [
+    Button,
     AppIcon,
     Checkbox,
     HighlightedText,

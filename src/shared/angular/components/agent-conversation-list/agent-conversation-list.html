@@ -23,47 +23,39 @@
       <app-icon [icon]="Icon.CARET_DOWN" />
     </button>
 
-    <button
-      type="button"
-      class="history__tool history__tool--icon"
+    <app-button
+      variant="none"
+      [icon]="Icon.SELECT_ALL"
       [disabled]="matching().length === 0"
+      [ariaLabel]="allSelected() ? 'Deselect all' : 'Select all'"
+      [tooltip]="allSelected() ? 'Deselect all' : 'Select all'"
       (click)="onToggleSelectAll()"
-      [attr.aria-label]="allSelected() ? 'Deselect all' : 'Select all'"
-      [title]="allSelected() ? 'Deselect all' : 'Select all'"
-    >
-      <app-icon [icon]="Icon.SELECT_ALL" />
-    </button>
+    />
 
-    <button
-      type="button"
-      class="history__tool history__tool--icon"
+    <app-button
+      variant="none"
+      [icon]="Icon.TRASH"
       [disabled]="!hasChecked()"
+      [ariaLabel]="'Delete ' + checkedCount() + ' conversation(s)'"
+      [tooltip]="'Delete' + (checkedCount() > 0 ? ' (' + checkedCount() + ')' : '')"
       (click)="onRequestDelete()"
-      [attr.aria-label]="'Delete ' + checkedCount() + ' conversation(s)'"
-      [title]="'Delete' + (checkedCount() > 0 ? ' (' + checkedCount() + ')' : '')"
-    >
-      <app-icon [icon]="Icon.TRASH" />
-    </button>
+    />
 
-    <button
-      type="button"
-      class="history__tool history__tool--icon"
+    <app-button
+      variant="none"
+      [icon]="Icon.PLUS"
+      ariaLabel="New category"
+      tooltip="New category"
       (click)="onNewCategory()"
-      aria-label="New category"
-      title="New category"
-    >
-      <app-icon [icon]="Icon.PLUS" />
-    </button>
+    />
 
-    <button
-      type="button"
-      class="history__tool history__tool--icon"
+    <app-button
+      variant="none"
+      [icon]="Icon.SETTINGS"
+      ariaLabel="Manage categories"
+      tooltip="Manage categories"
       (click)="onManage()"
-      aria-label="Manage categories"
-      title="Manage categories"
-    >
-      <app-icon [icon]="Icon.SETTINGS" />
-    </button>
+    />
   </div>
 
   @if (isEmpty() && rows().length <= 1) {
@@ -267,15 +259,13 @@
       aria-label="Conversation title"
     />
     <div class="history__modal-actions">
-      <button type="button" class="history__button" (click)="onCancelRename()">Cancel</button>
-      <button
-        type="button"
-        class="history__button history__button--primary"
+      <app-button label="Cancel" (click)="onCancelRename()" />
+      <app-button
+        variant="solid"
+        label="Rename"
         [disabled]="renameValue().trim().length === 0"
         (click)="onConfirmRename()"
-      >
-        Rename
-      </button>
+      />
     </div>
   </ng-template>
 </app-modal>
@@ -303,15 +293,13 @@
         aria-label="Category name"
       />
       <div class="history__modal-actions">
-        <button type="button" class="history__button" (click)="onCancelCategory()">Cancel</button>
-        <button
-          type="button"
-          class="history__button history__button--primary"
+        <app-button label="Cancel" (click)="onCancelCategory()" />
+        <app-button
+          variant="solid"
+          label="Save"
           [disabled]="editor.name.trim().length === 0"
           (click)="onSaveCategory()"
-        >
-          Save
-        </button>
+        />
       </div>
     }
   </ng-template>
@@ -331,36 +319,28 @@
       @for (category of categories(); track category.id) {
         <div class="history__manage-row">
           <span class="history__manage-name">{{ category.name }}</span>
-          <button
-            type="button"
-            class="history__manage-action"
-            aria-label="Rename category"
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.PENCIL"
+            ariaLabel="Rename category"
             (click)="onEditCategory(category)"
-          >
-            <app-icon [icon]="Icon.PENCIL" />
-          </button>
-          <button
-            type="button"
-            class="history__manage-action history__manage-action--danger"
-            aria-label="Delete category"
+          />
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.TRASH"
+            ariaLabel="Delete category"
             (click)="onDeleteCategory(category.id)"
-          >
-            <app-icon [icon]="Icon.TRASH" />
-          </button>
+          />
         </div>
       } @empty {
         <p class="history__manage-empty">No categories yet.</p>
       }
     </div>
     <div class="history__modal-actions">
-      <button type="button" class="history__button" (click)="onNewCategory()">New category</button>
-      <button
-        type="button"
-        class="history__button history__button--primary"
-        (click)="onCloseManage()"
-      >
-        Done
-      </button>
+      <app-button label="New category" (click)="onNewCategory()" />
+      <app-button variant="solid" label="Done" (click)="onCloseManage()" />
     </div>
   </ng-template>
 </app-modal>
@@ -380,14 +360,8 @@
       deleted. This cannot be undone.
     </p>
     <div class="history__modal-actions">
-      <button type="button" class="history__button" (click)="onCancelDelete()">Cancel</button>
-      <button
-        type="button"
-        class="history__button history__button--danger"
-        (click)="onConfirmDelete()"
-      >
-        Delete
-      </button>
+      <app-button label="Cancel" (click)="onCancelDelete()" />
+      <app-button variant="solid" label="Delete" (click)="onConfirmDelete()" />
     </div>
   </ng-template>
 </app-modal>
