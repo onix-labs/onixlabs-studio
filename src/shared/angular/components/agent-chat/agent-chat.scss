@@ -1240,22 +1240,10 @@ $agent-node-size: 1.75rem;
     padding: 0.75rem 1rem;
   }
 
-  // In dark mode the modal panel is `--gray-900`, the very fill the shared editor uses, so the editor
-  // blends into the modal with no visible edge. Drop the editor a step darker (to the `--gray-950`
-  // primitive) so it reads as a distinct sunken well against the panel — the contrast the standalone
-  // markdown tab gets for free from its lighter (`--gray-800`) surrounding chrome. Override both the
-  // Crepe document fill (`.milkdown`) and the scroll container behind it, each outside this
-  // component's encapsulation, via ::ng-deep. Light mode already contrasts (editor `--gray-100` vs
-  // panel `--gray-150`), so this is scoped to dark.
-  :host-context([data-theme-mode='dark']) & {
-    ::ng-deep .milkdown {
-      --crepe-color-background: var(--gray-950) !important;
-    }
-
-    ::ng-deep .editor-scroll {
-      background: var(--gray-950);
-    }
-  }
+  // The dark-mode fill that separates the editor from the modal panel lives in the global
+  // `_milkdown.scss`, keyed on `[data-theme-mode='dark'] .agent__md-editor`. It cannot live here: a
+  // `:host-context()` rule needs an `[_nghost]` ancestor, and this frame renders in the modal
+  // window's document, where this component's host element is not.
 }
 
 .agent__md-actions {

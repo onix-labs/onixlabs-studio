@@ -120,6 +120,26 @@ app-markdown-editor .milkdown {
   @include milkdown-base-styles;
 }
 
+// The agent composer's markdown modal, in dark only. The modal panel is `--gray-900` — the very fill
+// the editor uses — so the editor blends into the panel with only its border to separate them. Drop
+// it a step to `--gray-950` so it reads as a sunken well, the contrast the standalone markdown tab
+// gets for free from its lighter surrounding chrome. Light mode already contrasts (editor
+// `--gray-100` against the panel's `--gray-150`), so it is left alone.
+//
+// This lives here, and not in `agent-chat.scss` where the frame is styled, because it cannot work
+// there: `:host-context()` compiles to a selector requiring an `[_nghost]` ANCESTOR, and modal
+// content renders in the modal window's document, outside the declaring component's host element
+// entirely. Global rules carry no encapsulation attributes, so they reach both documents.
+[data-theme-mode='dark'] .agent__md-editor {
+  .milkdown {
+    --crepe-color-background: var(--gray-950) !important;
+  }
+
+  .editor-scroll {
+    background: var(--gray-950);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // ProseMirror editor styles
 // -----------------------------------------------------------------------------
