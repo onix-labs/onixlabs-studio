@@ -175,7 +175,7 @@ export class Keybindings {
 
   /**
    * Gets the accelerators available right now — the active view's bindings followed by the shell's
-   * global ones — resolved to their effective chords. This is the shortcuts overlay's model.
+   * global ones — resolved to their effective chords, so user overrides are reflected.
    */
   public readonly activeBindings: Signal<readonly ResolvedBinding[]> = computed(
     (): readonly ResolvedBinding[] => {

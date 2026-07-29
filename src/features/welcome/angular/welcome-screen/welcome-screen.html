@@ -1,213 +1,224 @@
-<!-- The welcome screen is a themed modal. It renders full-bleed (and draggable, so the frameless
-     window can still be moved) at a cold start, and as a dismissable modal that blurs the content
-     behind it when summoned from the title strip's new-tab button. A calm, static accent glow is
-     projected behind the panel and shown only at a cold start. -->
+<!-- The welcome screen is a themed modal in its own window. With no tabs open it stands free — the
+     main window is hidden behind nothing at all — and closing it quits; summoned from the title
+     strip's new-tab button it is an ordinary dismissable modal over a blurred main window. A calm,
+     static accent glow sits behind its content, shown only when it stands in for the application. -->
 <app-modal
   class="welcome-modal"
-  [class.welcome-modal--ambient]="ambient()"
   [open]="visible()"
   [dismissable]="dismissable()"
-  [draggableBackdrop]="ambient()"
+  [closable]="true"
+  [freestanding]="standsAlone()"
+  [expandable]="true"
+  [width]="64"
+  [height]="45"
+  [minWidth]="60"
+  [minHeight]="37.5"
+  [maxWidth]="64"
+  [maxHeight]="45"
   ariaLabel="ONIXLabs Studio"
   (dismiss)="close()"
 >
-  <!-- A soft, static purple glow behind the panel — an ambient backdrop shown only at a cold start,
-       never when the welcome screen is summoned as a modal over content. Purely decorative. -->
-  <div
-    modalBackdrop
-    class="welcome__glow"
-    [class.welcome__glow--active]="ambient()"
-    aria-hidden="true"
-  >
-    <span class="welcome__glow-blob welcome__glow-blob--a"></span>
-    <span class="welcome__glow-blob welcome__glow-blob--b"></span>
-  </div>
-
-  <header class="welcome__header">
-    <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
-    <div class="welcome__intro">
-      <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
-      <p class="welcome__instruction">Create or open something to get started</p>
-    </div>
-  </header>
-
-  <div class="welcome__body">
-    <div class="welcome__actions">
-      <button type="button" class="welcome__action" (click)="openFiles()">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_DIRECTORY" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">Open Directory or File</span>
-          <span class="welcome__action-hint">Browse the file system</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
-
-      <button type="button" class="welcome__action" (click)="newProject()">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_PROJECT" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Project</span>
-          <span class="welcome__action-hint">Create a new project workspace</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
-
-      <button type="button" class="welcome__action" (click)="create('code')">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_CODE" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Code File</span>
-          <span class="welcome__action-hint">Plain text or source code</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
-
-      <button type="button" class="welcome__action" (click)="create('markdown')">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_MARKDOWN" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Markdown File</span>
-          <span class="welcome__action-hint">A formatted document</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
-
-      <button type="button" class="welcome__action" (click)="create('terminal')">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_TERMINAL" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Terminal</span>
-          <span class="welcome__action-hint">A command-line session</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
-
-      <button type="button" class="welcome__action" (click)="create('agent')">
-        <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_AGENT" /></span>
-        <span class="welcome__action-text">
-          <span class="welcome__action-label">New Agent</span>
-          <span class="welcome__action-hint">An AI assistant session</span>
-        </span>
-        <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
-      </button>
+  <ng-template appModalContent>
+    <!-- A soft, static accent glow behind the content. Purely decorative, and shown in both of the
+         welcome screen's roles: it is the same window either way, so it looks the same either way. -->
+    <div class="welcome__glow" aria-hidden="true">
+      <span class="welcome__glow-blob welcome__glow-blob--a"></span>
+      <span class="welcome__glow-blob welcome__glow-blob--b"></span>
     </div>
 
-    <section class="welcome__recent" aria-label="Recent items">
-      <div class="welcome__recent-head">
-        <h2 class="welcome__recent-title">Recent Items</h2>
-        <div class="welcome__searchbox">
-          <input
-            type="text"
-            class="welcome__searchbox-input"
-            placeholder="Search"
-            aria-label="Search recent items"
-            [value]="query()"
-            (input)="onSearchInput($event)"
-            (keydown.escape)="query.set('')"
-          />
-          <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
-        </div>
-        @if (hasRecent()) {
-          <button type="button" class="welcome__clear" (click)="requestClearRecent()">
-            <app-icon [icon]="Icon.TRASH" />
-            <span>Clear</span>
-          </button>
-        }
+    <header class="welcome__header">
+      <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
+      <div class="welcome__intro">
+        <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
+        <p class="welcome__instruction">Create or open something to get started</p>
+      </div>
+    </header>
+
+    <div class="welcome__body">
+      <div class="welcome__actions">
+        <button type="button" class="welcome__action" (click)="openFiles()">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_DIRECTORY" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">Open Directory or File</span>
+            <span class="welcome__action-hint">Browse the file system</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
+
+        <button type="button" class="welcome__action" (click)="newProject()">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_PROJECT" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Project</span>
+            <span class="welcome__action-hint">Create a new project workspace</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('code')">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_CODE" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Code File</span>
+            <span class="welcome__action-hint">Plain text or source code</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('markdown')">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_MARKDOWN" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Markdown File</span>
+            <span class="welcome__action-hint">A formatted document</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('terminal')">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_TERMINAL" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Terminal</span>
+            <span class="welcome__action-hint">A command-line session</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
+
+        <button type="button" class="welcome__action" (click)="create('agent')">
+          <span class="welcome__action-icon"><app-icon [icon]="Icon.WELCOME_AGENT" /></span>
+          <span class="welcome__action-text">
+            <span class="welcome__action-label">New Agent</span>
+            <span class="welcome__action-hint">An AI assistant session</span>
+          </span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.CARET_RIGHT" />
+        </button>
       </div>
 
-      <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
-        @for (filter of filters; track filter.id) {
+      <section class="welcome__recent" aria-label="Recent items">
+        <div class="welcome__recent-head">
+          <h2 class="welcome__recent-title">Recent Items</h2>
+          <div class="welcome__searchbox">
+            <input
+              type="text"
+              class="welcome__searchbox-input"
+              placeholder="Search"
+              aria-label="Search recent items"
+              [value]="query()"
+              (input)="onSearchInput($event)"
+              (keydown.escape)="query.set('')"
+            />
+            <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
+          </div>
+          @if (hasRecent()) {
+            <button type="button" class="welcome__clear" (click)="requestClearRecent()">
+              <app-icon [icon]="Icon.TRASH" />
+              <span>Clear</span>
+            </button>
+          }
+        </div>
+
+        <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
+          @for (filter of filters; track filter.id) {
+            <button
+              type="button"
+              class="welcome__filter"
+              [class.welcome__filter--active]="activeFilter() === filter.id"
+              role="tab"
+              [attr.aria-selected]="activeFilter() === filter.id"
+              (click)="activeFilter.set(filter.id)"
+            >
+              <app-icon [icon]="filter.icon" />
+              <span>{{ filter.label }}</span>
+            </button>
+          }
+        </div>
+
+        @if (visibleItems().length > 0) {
+          <ul class="welcome__recent-list">
+            @for (item of visibleItems(); track item.path) {
+              <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
+                <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
+                  <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
+                  <span class="welcome__recent-text">
+                    <span class="welcome__recent-name">{{ display(item.name) }}</span>
+                    <span class="welcome__recent-detail">{{ display(item.path) }}</span>
+                  </span>
+                </button>
+                <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
+                <button
+                  type="button"
+                  class="welcome__recent-action"
+                  [class.welcome__recent-action--on]="item.pinned"
+                  [attr.aria-pressed]="item.pinned"
+                  [attr.aria-label]="item.pinned ? 'Unpin item' : 'Pin item'"
+                  (click)="togglePin(item)"
+                >
+                  <app-icon
+                    [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
+                    [rotation]="item.pinned ? -45 : 0"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="welcome__recent-action"
+                  aria-label="More actions"
+                  [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
+                  [cdkMenuPosition]="rowMenu.position()"
+                >
+                  <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
+                </button>
+                <app-menu
+                  #rowMenu
+                  placement="down-end"
+                  [items]="rowMenuItems"
+                  (selected)="onRowAction(item, $event)"
+                />
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="welcome__recent-empty">
+            <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
+            @if (hasRecent()) {
+              <p class="welcome__recent-empty-title">No matching items</p>
+              <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
+            } @else {
+              <p class="welcome__recent-empty-title">No recent items yet</p>
+              <p class="welcome__recent-empty-hint">
+                Files and folders you open will show up here.
+              </p>
+            }
+          </div>
+        }
+      </section>
+    </div>
+
+    <!-- Confirmation shown before clearing the recent-items history, since the action cannot be
+         undone. It is declared INSIDE the welcome screen's content so it is raised from the welcome
+         window: it parents to that window, dims it, and never reaches for the main window — which is
+         hidden while the welcome screen stands in for it. -->
+    <app-modal
+      class="welcome__confirm"
+      [open]="confirmingClear()"
+      [width]="24"
+      ariaLabel="Clear recent items"
+      (dismiss)="cancelClearRecent()"
+    >
+      <ng-template appModalContent>
+        <h2 class="welcome__confirm-title">Clear recent items</h2>
+        <p class="welcome__confirm-message">
+          Are you sure you want to clear all recent items? This cannot be undone.
+        </p>
+        <div class="welcome__confirm-actions">
+          <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
+            Cancel
+          </button>
           <button
             type="button"
-            class="welcome__filter"
-            [class.welcome__filter--active]="activeFilter() === filter.id"
-            role="tab"
-            [attr.aria-selected]="activeFilter() === filter.id"
-            (click)="activeFilter.set(filter.id)"
+            class="welcome__confirm-button welcome__confirm-button--accent"
+            (click)="clearRecent()"
           >
-            <app-icon [icon]="filter.icon" />
-            <span>{{ filter.label }}</span>
+            Clear
           </button>
-        }
-      </div>
-
-      @if (visibleItems().length > 0) {
-        <ul class="welcome__recent-list">
-          @for (item of visibleItems(); track item.path) {
-            <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
-              <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
-                <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
-                <span class="welcome__recent-text">
-                  <span class="welcome__recent-name">{{ display(item.name) }}</span>
-                  <span class="welcome__recent-detail">{{ display(item.path) }}</span>
-                </span>
-              </button>
-              <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-              <button
-                type="button"
-                class="welcome__recent-action"
-                [class.welcome__recent-action--on]="item.pinned"
-                [attr.aria-pressed]="item.pinned"
-                [attr.aria-label]="item.pinned ? 'Unpin item' : 'Pin item'"
-                (click)="togglePin(item)"
-              >
-                <app-icon
-                  [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
-                  [rotation]="item.pinned ? -45 : 0"
-                />
-              </button>
-              <button
-                type="button"
-                class="welcome__recent-action"
-                aria-label="More actions"
-                [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                [cdkMenuPosition]="rowMenu.position()"
-              >
-                <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-              </button>
-              <app-menu
-                #rowMenu
-                placement="down-end"
-                [items]="rowMenuItems"
-                (selected)="onRowAction(item, $event)"
-              />
-            </li>
-          }
-        </ul>
-      } @else {
-        <div class="welcome__recent-empty">
-          <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
-          @if (hasRecent()) {
-            <p class="welcome__recent-empty-title">No matching items</p>
-            <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
-          } @else {
-            <p class="welcome__recent-empty-title">No recent items yet</p>
-            <p class="welcome__recent-empty-hint">Files and folders you open will show up here.</p>
-          }
         </div>
-      }
-    </section>
-  </div>
-</app-modal>
-
-<!-- Confirmation shown over the welcome screen before clearing the recent-items history, since the
-     action cannot be undone. -->
-<app-modal
-  [open]="confirmingClear()"
-  [width]="24"
-  ariaLabel="Clear recent items"
-  (dismiss)="cancelClearRecent()"
->
-  <h2 class="welcome__confirm-title">Clear recent items</h2>
-  <p class="welcome__confirm-message">
-    Are you sure you want to clear all recent items? This cannot be undone.
-  </p>
-  <div class="welcome__confirm-actions">
-    <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
-      Cancel
-    </button>
-    <button
-      type="button"
-      class="welcome__confirm-button welcome__confirm-button--danger"
-      (click)="clearRecent()"
-    >
-      Clear
-    </button>
-  </div>
+      </ng-template>
+    </app-modal>
+  </ng-template>
 </app-modal>

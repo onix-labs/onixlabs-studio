@@ -11,6 +11,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   WorktreeCheckoutInfo,
@@ -29,7 +30,7 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
  */
 @Component({
   selector: 'app-worktrees-panel',
-  imports: [AppIcon, Dropdown, ListView, Modal],
+  imports: [AppIcon, Dropdown, ListView, Modal, ModalContent],
   templateUrl: './worktrees-panel.html',
   styleUrl: './worktrees-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

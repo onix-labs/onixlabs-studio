@@ -15,6 +15,7 @@ import {
   RecentKind,
 } from '@shared/angular/services/recent-items/recent-items';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Studio } from '@shared/angular/services/studio/studio';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
@@ -22,6 +23,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
  * Describes a recent-items filter pill.
@@ -57,17 +59,18 @@ const ROW_ACTION_REMOVE: string = 'remove';
 /**
  * Represents the welcome screen: the entry surface that gets the user from a cold start into a tab.
  *
- * It renders full-bleed when no tabs are open, and as a dismissable modal over the existing content
- * when summoned from the title strip's new-tab button. Either way it presents the application
- * identity, the create/open actions, and the list of recent items — which can be filtered, searched,
- * pinned, re-opened, removed, or revealed in the file manager. The backdrop, dismissal, and animation
- * are provided by the reusable {@link Modal}; the welcome screen overrides its theming for a
- * purple-accented panel (a dark treatment and a clean light-mode variant) and projects a static
- * accent glow behind it.
+ * It is presented in its own window by the reusable {@link Modal}, in one of two roles. With no tabs
+ * open it IS the application: the main window is hidden, the welcome window stands free of it with
+ * no backdrop, and closing that window closes the application. Summoned from the title strip's
+ * new-tab button it is an ordinary modal over a blurred main window, dismissed back to the tabs
+ * behind it. Either way it presents the application identity, the create/open actions, and the list
+ * of recent items — which can be filtered, searched, pinned, re-opened, removed, or revealed in the
+ * file manager. The welcome screen overrides the modal's theming for a purple-accented panel (a dark
+ * treatment and a clean light-mode variant) and draws a static accent glow behind its content.
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon, Modal, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Modal, ModalContent, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,9 +97,6 @@ export class WelcomeScreen {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Holds the opener that opens a git repository into a source-control tab.
-   */
-  /**
    * Holds the recent-items registry surfaced in the right-hand panel.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -105,6 +105,12 @@ export class WelcomeScreen {
    * Holds the operating-system shell client, used to reveal an item in the file manager.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the window controls, used to close the application when the welcome window is closed while
+   * it is all there is.
+   */
+  private readonly studio: Studio = inject(Studio);
 
   /**
    * Gets a value indicating whether any recent items exist at all, regardless of the current filter
@@ -120,7 +126,6 @@ export class WelcomeScreen {
   protected readonly filters: readonly RecentFilter[] = [
     { id: 'all', label: 'Everything', icon: Icon.GRID_DOTS, kind: null },
     { id: 'directories', label: 'Workspaces', icon: Icon.FOLDER, kind: 'directory' },
-    { id: 'repositories', label: 'Repositories', icon: Icon.SOURCE_CONTROL, kind: 'repository' },
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
@@ -199,11 +204,11 @@ export class WelcomeScreen {
   );
 
   /**
-   * Gets a value indicating whether the ambient backdrop (the static accent glow) is shown. It appears
-   * only at a cold start or when no tabs are open — never when the welcome screen is summoned as a modal
-   * over existing content.
+   * Gets a value indicating whether the welcome screen is standing in for the application rather
+   * than being summoned over it: no tabs are open, so the main window is hidden and the welcome
+   * window stands free of it.
    */
-  protected readonly ambient: Signal<boolean> = computed(
+  protected readonly standsAlone: Signal<boolean> = computed(
     (): boolean => this.tabsService.tabs().length === 0,
   );
 
@@ -228,8 +233,6 @@ export class WelcomeScreen {
     switch (kind) {
       case 'directory':
         return Icon.DIRECTORY;
-      case 'repository':
-        return Icon.SOURCE_CONTROL;
       case 'markdown':
         return Icon.MARKDOWN;
       case 'code':
@@ -364,12 +367,16 @@ export class WelcomeScreen {
   }
 
   /**
-   * Closes the welcome screen when it is shown as a dismissable modal. Invoked by the modal's dismiss
-   * output, which only fires when dismissal is permitted; the guard keeps it safe regardless.
+   * Handles the welcome screen being dismissed. With tabs open it simply closes, returning to them.
+   * With none, the welcome window is all there is — dismissal can only have come from closing that
+   * window — so the application closes too, through the main window's own close (and therefore its
+   * quit-confirmation protocol).
    */
   protected close(): void {
     if (this.dismissable()) {
       this.welcomeModal.close();
+    } else {
+      this.studio.closeWindow();
     }
   }
 
@@ -381,10 +388,8 @@ export class WelcomeScreen {
   private reopen(item: RecentItem): Promise<boolean> {
     switch (item.kind) {
       case 'directory':
-        return this.fileOpener.reopenDirectory(item.path);
-      case 'repository':
-        // A retired repository recent opens as an ordinary folder (ruling 3 of #351): the unified
-        // workspace view carries the Git preset, so nothing is lost.
+        // Repository recents were folded into this on load (ruling 3 of #351): the unified workspace
+        // view carries the Git preset, so a repository is just a directory Git happens to know.
         return this.fileOpener.reopenDirectory(item.path);
       case 'markdown':
       case 'code':

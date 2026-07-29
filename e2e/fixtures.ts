@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { isModalWindow } from './helpers';
 import {
   _electron as electron,
   ElectronApplication,
@@ -82,7 +83,16 @@ export const test: TestType<
     { app }: { app: ElectronApplication },
     use: (page: Page) => Promise<void>,
   ): Promise<void> => {
-    const page: Page = await app.firstWindow();
+    // The application opens more than one window: the main window, plus the welcome screen's own
+    // window (and any modal). The main window is the one loading the shell itself — it is created
+    // first, but is hidden while no tabs are open, so tests must resolve it by identity rather
+    // than by being first or by being visible.
+    let page: Page = await app.firstWindow();
+    while (isModalWindow(page)) {
+      page = await app.waitForEvent('window', {
+        predicate: (window: Page): boolean => !isModalWindow(window),
+      });
+    }
     await page.waitForLoadState('domcontentloaded');
     await use(page);
   },

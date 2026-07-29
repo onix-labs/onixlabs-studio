@@ -7,16 +7,20 @@ import {
   OutputEmitterRef,
 } from '@angular/core';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
  * Represents the shared chrome for the markdown Insert group's field modals. It wraps the reusable
  * {@link Modal} panel with the heading, the projected field content, and the Cancel / primary action
  * buttons, so each insert modal supplies only its own fields and validity — the open/dismiss wiring,
  * the title, and the action row live here in one place.
+ *
+ * The chrome is declared as the modal's content template, so all of it — including each caller's
+ * projected fields — renders in the modal's own window.
  */
 @Component({
   selector: 'app-form-modal',
-  imports: [Modal],
+  imports: [Modal, ModalContent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -26,23 +30,25 @@ import { Modal } from '@shared/angular/components/modal/modal';
       [ariaLabel]="heading()"
       (dismiss)="cancelled.emit()"
     >
-      <h2 class="insert-modal__title">{{ heading() }}</h2>
+      <ng-template appModalContent>
+        <h2 class="insert-modal__title">{{ heading() }}</h2>
 
-      <ng-content />
+        <ng-content />
 
-      <div class="insert-modal__actions">
-        <button type="button" class="insert-modal__button" (click)="cancelled.emit()">
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="insert-modal__button insert-modal__button--primary"
-          [disabled]="!canSubmit()"
-          (click)="confirmed.emit()"
-        >
-          {{ submitLabel() }}
-        </button>
-      </div>
+        <div class="insert-modal__actions">
+          <button type="button" class="insert-modal__button" (click)="cancelled.emit()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="insert-modal__button insert-modal__button--primary"
+            [disabled]="!canSubmit()"
+            (click)="confirmed.emit()"
+          >
+            {{ submitLabel() }}
+          </button>
+        </div>
+      </ng-template>
     </app-modal>
   `,
 })

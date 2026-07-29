@@ -51,6 +51,23 @@ export class Studio {
   }
 
   /**
+   * Shows the application window. The main window starts hidden and is only shown once the shell
+   * has something to show, so a cold start goes straight to the welcome window with no empty IDE
+   * window behind it.
+   */
+  public showWindow(): void {
+    this.bridge?.send(WindowChannel.Show);
+  }
+
+  /**
+   * Hides the application window without closing it, leaving the application running behind whatever
+   * window stands in for it.
+   */
+  public hideWindow(): void {
+    this.bridge?.send(WindowChannel.Hide);
+  }
+
+  /**
    * Sets whether the application window may be moved by dragging its draggable regions.
    * @param movable True to allow the window to be moved; false to lock it in place.
    */

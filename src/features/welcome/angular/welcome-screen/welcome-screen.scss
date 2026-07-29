@@ -43,13 +43,6 @@
   --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 55%, transparent);
 }
 
-// Cold-start scene: a near-opaque dark canvas so the static glow reads against it, with no content
-// behind to blur.
-.welcome-modal--ambient {
-  --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 98%, transparent);
-  --modal-backdrop-blur: 0;
-}
-
 // Light-mode variant (see resources/img.png): a clean, near-white card with dark text and thin gray
 // borders, not a dark hero. The accent only survives in the logo, the active filter pill, and a faint
 // corner glow on the canvas. Additive over the dark defaults above — :host-context outranks each base
@@ -76,10 +69,6 @@
   }
 
   // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only accent tint.
-  .welcome-modal--ambient {
-    --modal-backdrop-color: var(--gray-150);
-  }
-
   // Dial the corner blooms down to a faint tint on the light canvas.
   .welcome__glow-blob--a {
     background: radial-gradient(
@@ -114,14 +103,16 @@
 // A calm, static accent glow projected behind the panel. Shown (faded in) only in the ambient
 // cold-start scene; purely decorative.
 .welcome__glow {
-  position: absolute;
+  // Fixed, not absolute: the glow belongs to the WINDOW, and bleeds to all four edges. Positioned
+  // against the content it would be clipped to the panel's padded box, which reads as a rectangle
+  // of tint floating inside the window instead of a bloom across it.
+  position: fixed;
   inset: 0;
+  z-index: 0;
   overflow: hidden;
-  opacity: 0;
-}
-
-.welcome__glow--active {
-  opacity: 1;
+  // Decorative only: it sits behind the content, and must never take a click meant for an action
+  // beneath it.
+  pointer-events: none;
   transition: opacity 280ms ease;
 
   @starting-style {
@@ -162,9 +153,16 @@
 
 // Logo on the left, identity text beside it.
 .welcome__header {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 1.15rem;
+  // The welcome window has no title bar, and its identity block is where a user reaches for one:
+  // the whole header moves the window. Nothing in it is interactive, so nothing needs to opt out.
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 .welcome__logo {
@@ -197,10 +195,15 @@
 
 // The split: a fixed-width action column on the left, recent items filling the right.
 .welcome__body {
+  position: relative;
+  z-index: 1;
+  // The welcome screen fills its window, and the body is the part that takes the slack: the recent
+  // list scrolls within it rather than the window growing to hold every row.
+  flex: 1;
   display: grid;
   grid-template-columns: 21rem 1fr;
   gap: 1.25rem;
-  margin-block-start: 1.75rem;
+  margin-block-start: 1rem;
   min-block-size: 0;
 }
 
@@ -630,8 +633,9 @@
   }
 }
 
-// The clear-recent-items confirmation. It is a separate modal rendered outside the welcome panel, so it
-// inherits the app's default (theme-aware) modal card rather than the welcome's bespoke dark treatment.
+// The clear-recent-items confirmation. It is declared inside the welcome screen's own content, so it
+// is raised from the welcome window and takes the welcome's panel treatment with it — the dialog
+// looks like it belongs to the window it opened over, in both themes.
 .welcome__confirm-title {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
@@ -646,10 +650,16 @@
   color: var(--form-muted-foreground-color);
 }
 
+// Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
+// a shrink-to-fit grid all take the width of the widest, and the auto inline margin holds the row
+// where a right-aligned flex row used to sit.
 .welcome__confirm-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.6rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
 }
 
 .welcome__confirm-button {
@@ -674,16 +684,18 @@
   }
 }
 
-// The destructive primary action reads in the error/coral tone, since clearing cannot be undone.
-.welcome__confirm-button--danger {
+// The primary action reads in the app accent, as the rest of the welcome screen does; the warning
+// that clearing cannot be undone is carried by the message, not by an alarming button.
+.welcome__confirm-button--accent {
   color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
 
   &:hover,
   &:focus-visible {
     color: var(--gray-100);
-    background: var(--accent-coral);
-    border-color: var(--accent-coral);
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    filter: brightness(1.1);
   }
 }

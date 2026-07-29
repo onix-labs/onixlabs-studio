@@ -14,27 +14,12 @@ const IS_MAC: boolean = process.platform === 'darwin';
 const MOD: string = IS_MAC ? 'Meta' : 'Control';
 
 /**
- * Keyboard discoverability and customisation flows: the global cheat-sheet overlay reflects the
- * active view's effective bindings, and the Settings Keyboard section rebinds a command with the
- * change taking effect immediately.
+ * Keyboard customisation: the Settings Keyboard section rebinds a command, with the change taking
+ * effect immediately.
  */
 test.describe('keyboard shortcuts', () => {
-  test('shortcutsOverlay_togglesAndListsTheActiveViewBindings', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Code File', 'app-code-view');
-
-    await page.keyboard.press(`${MOD}+/`);
-    const overlay: Locator = page.locator('app-shortcuts-overlay .modal--visible');
-    await expect(overlay).toBeVisible();
-    await expect(overlay).toContainText('Code Editor');
-    await expect(overlay).toContainText('Save the active document');
-    await expect(overlay).toContainText('Show keyboard shortcuts');
-
-    await page.keyboard.press('Escape');
-    await expect(overlay).toBeHidden();
-  });
-
-  test('keyboardSettings_rebindsACommand_effectiveImmediately', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Markdown File', 'app-markdown-view');
+  test('keyboardSettings_rebindsACommand_effectiveImmediately', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.locator('app-settings-view')).toBeVisible();
 

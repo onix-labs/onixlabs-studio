@@ -82,52 +82,54 @@
 <!-- Names the new checkout: a branch from the picker (branches other checkouts hold are excluded)
      or a brand-new branch, plus an optional alias. -->
 <app-modal [open]="addOpen()" [width]="26" ariaLabel="New worktree" (dismiss)="cancelAdd()">
-  <h2 class="worktrees__confirm-title">New worktree</h2>
-  <p class="worktrees__confirm-message">
-    Clones the repository into a new checkout on the chosen branch. Branches already checked out by
-    another worktree are not offered.
-  </p>
-  <app-dropdown
-    class="worktrees__prompt-dropdown"
-    [options]="branchOptions()"
-    [value]="branchPick()"
-    [fullWidth]="true"
-    ariaLabel="Branch"
-    (valueChange)="onBranchPick($event)"
-  />
-  @if (branchPick() === NEW_BRANCH) {
+  <ng-template appModalContent>
+    <h2 class="worktrees__confirm-title">New worktree</h2>
+    <p class="worktrees__confirm-message">
+      Clones the repository into a new checkout on the chosen branch. Branches already checked out
+      by another worktree are not offered.
+    </p>
+    <app-dropdown
+      class="worktrees__prompt-dropdown"
+      [options]="branchOptions()"
+      [value]="branchPick()"
+      [fullWidth]="true"
+      ariaLabel="Branch"
+      (valueChange)="onBranchPick($event)"
+    />
+    @if (branchPick() === NEW_BRANCH) {
+      <input
+        class="worktrees__prompt-input"
+        type="text"
+        [value]="addBranch()"
+        (input)="onBranchInput($event)"
+        (keydown.enter)="confirmAdd()"
+        (keydown.escape)="cancelAdd()"
+        placeholder="New branch name"
+        aria-label="New branch name"
+      />
+    }
     <input
       class="worktrees__prompt-input"
       type="text"
-      [value]="addBranch()"
-      (input)="onBranchInput($event)"
+      [value]="addAlias()"
+      (input)="onAliasInput($event)"
       (keydown.enter)="confirmAdd()"
       (keydown.escape)="cancelAdd()"
-      placeholder="New branch name"
-      aria-label="New branch name"
+      placeholder="Alias (optional)"
+      aria-label="Alias"
     />
-  }
-  <input
-    class="worktrees__prompt-input"
-    type="text"
-    [value]="addAlias()"
-    (input)="onAliasInput($event)"
-    (keydown.enter)="confirmAdd()"
-    (keydown.escape)="cancelAdd()"
-    placeholder="Alias (optional)"
-    aria-label="Alias"
-  />
-  <div class="worktrees__confirm-actions">
-    <button type="button" class="worktrees__confirm-button" (click)="cancelAdd()">Cancel</button>
-    <button
-      type="button"
-      class="worktrees__confirm-button"
-      [disabled]="!canCreate()"
-      (click)="confirmAdd()"
-    >
-      Create
-    </button>
-  </div>
+    <div class="worktrees__confirm-actions">
+      <button type="button" class="worktrees__confirm-button" (click)="cancelAdd()">Cancel</button>
+      <button
+        type="button"
+        class="worktrees__confirm-button"
+        [disabled]="!canCreate()"
+        (click)="confirmAdd()"
+      >
+        Create
+      </button>
+    </div>
+  </ng-template>
 </app-modal>
 
 <!-- Asked before a checkout is removed: removal is always explicit, never silent. -->
@@ -137,19 +139,23 @@
   ariaLabel="Remove worktree"
   (dismiss)="cancelRemove()"
 >
-  <h2 class="worktrees__confirm-title">Remove “{{ removeLabel() }}”?</h2>
-  <p class="worktrees__confirm-message">
-    Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
-    remain on the remote.
-  </p>
-  <div class="worktrees__confirm-actions">
-    <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">Cancel</button>
-    <button
-      type="button"
-      class="worktrees__confirm-button worktrees__confirm-button--danger"
-      (click)="confirmRemove()"
-    >
-      Remove
-    </button>
-  </div>
+  <ng-template appModalContent>
+    <h2 class="worktrees__confirm-title">Remove “{{ removeLabel() }}”?</h2>
+    <p class="worktrees__confirm-message">
+      Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
+      remain on the remote.
+    </p>
+    <div class="worktrees__confirm-actions">
+      <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="worktrees__confirm-button worktrees__confirm-button--danger"
+        (click)="confirmRemove()"
+      >
+        Remove
+      </button>
+    </div>
+  </ng-template>
 </app-modal>

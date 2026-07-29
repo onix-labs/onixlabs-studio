@@ -32,6 +32,13 @@ const TEST_BLUEPRINT: DockBlueprint = {
 };
 
 describe('Dock blueprint', () => {
+  // The dock persists its layout under its blueprint key, and restores it on construction. Any
+  // layout left behind — by an earlier case here, or by another spec sharing this environment —
+  // would be restored instead of the blueprint's, so each case starts from a clean store.
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   describe('when a blueprint is provided', () => {
     beforeEach(() => {
       TestBed.configureTestingModule({

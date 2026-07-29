@@ -17,6 +17,7 @@ import { RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -56,7 +57,16 @@ interface ConfigurationGroup {
  */
 @Component({
   selector: 'app-configure-dialog',
-  imports: [Modal, AppIcon, Dropdown, SettingRow, TextField, Toggle, AgentRequestCard],
+  imports: [
+    Modal,
+    ModalContent,
+    AppIcon,
+    Dropdown,
+    SettingRow,
+    TextField,
+    Toggle,
+    AgentRequestCard,
+  ],
   templateUrl: './configure-dialog.html',
   styleUrl: './configure-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

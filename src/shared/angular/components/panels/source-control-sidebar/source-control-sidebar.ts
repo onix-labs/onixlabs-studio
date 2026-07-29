@@ -21,6 +21,7 @@ import {
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 
@@ -186,7 +187,7 @@ interface SectionDef {
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [AppIcon, Checkbox, Modal, PanelToolbar, TreeView],
+  imports: [AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

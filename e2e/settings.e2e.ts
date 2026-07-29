@@ -7,8 +7,8 @@ import { openTabFromWelcome } from './helpers';
  * lives in the title strip, which appears once the first tab is open.
  */
 test.describe('settings', () => {
-  test('settingsGear_opensTheSettingsTab_andDisablesItself', async ({ page }) => {
-    await openTabFromWelcome(page, 'New Markdown File', 'app-markdown-view');
+  test('settingsGear_opensTheSettingsTab_andDisablesItself', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
     const gear: Locator = page.getByRole('button', { name: 'Settings', exact: true });
     await expect(gear).toBeEnabled();
 

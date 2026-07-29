@@ -127,6 +127,10 @@ describe('MarkdownImageModal', () => {
 
     expect(component.submitted).toBeNull();
     expect(component.open()).toBe(false);
+
+    component.open.set(true);
+    fixture.detectChanges();
+
     expect(host.querySelector<HTMLInputElement>('#image-url')!.value).toBe('');
   });
 });

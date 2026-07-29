@@ -1,14 +1,9 @@
 import { DOCUMENT } from '@angular/common';
-import {
-  OverlayContainer,
-  OverlayKeyboardDispatcher,
-  OverlayOutsideClickDispatcher,
-} from '@angular/cdk/overlay';
-import { ScrollDispatcher, ViewportRuler } from '@angular/cdk/scrolling';
-import { DragDropRegistry } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, inject, InjectionToken } from '@angular/core';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
-import { PopoutViewportRuler } from '@shared/angular/components/popout-dock-host/popout-viewport-ruler';
+import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
+import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
+import { windowScopedCdkProviders } from '@shared/angular/services/window-scope/window-scope';
 import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
@@ -54,12 +49,13 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
  *
  * The window's dock is ephemeral: its blueprint carries no persistence key, so arrangements live
  * and die with the window. Its {@link PopoutPanels} instance is fresh and handler-less, so the
- * group chrome's own pop-out button is disabled inside a window that already is one.
+ * group chrome's own pop-out button is disabled inside a window that already is one. Its
+ * {@link ModalBackdrop} is its own too, so a modal raised from a panel here dims THIS window.
  */
 @Component({
   selector: 'app-popout-dock-host',
-  imports: [DockContainer],
-  template: '<app-dock-container />',
+  imports: [DockContainer, ModalBackdropView],
+  template: '<app-dock-container /><app-modal-backdrop />',
   styleUrl: './popout-dock-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
@@ -71,18 +67,10 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
     DockDrag,
     DockReveal,
     PopoutPanels,
-    // The CDK layers below are window-scoped so overlays and drags triggered anywhere in this
-    // subtree operate in the pop-out's document, not the opener's: CDK resolves them through the
-    // triggering element's injector (createOverlayRef/createDragRef), which walks up to here. The
-    // overlay container lands in this window's body, outside-click closing listens on this
-    // window's body, drag move/up tracking binds to this document (tab reordering), scrollables
-    // register against this window, and positioning measures this window's viewport.
-    OverlayContainer,
-    OverlayOutsideClickDispatcher,
-    OverlayKeyboardDispatcher,
-    ScrollDispatcher,
-    DragDropRegistry,
-    { provide: ViewportRuler, useClass: PopoutViewportRuler },
+    // The CDK layer is window-scoped so overlays and drags triggered anywhere in this subtree
+    // operate in the pop-out's document, not the opener's.
+    ...windowScopedCdkProviders(),
+    ModalBackdrop,
     {
       provide: DOCUMENT,
       useFactory: (): Document => inject(POPOUT_DOCK_CONFIG).document,

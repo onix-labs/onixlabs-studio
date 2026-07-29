@@ -1,5 +1,9 @@
 import {
+  parseFeatureFlag,
+  parseFeatureText,
+  parseNamedSize,
   parseRequestedPosition,
+  parseRequestedSize,
   parseStoredWindowState,
   restoreWindowRect,
   StoredWindowState,
@@ -151,5 +155,81 @@ describe('parseRequestedPosition', () => {
     expect(parseRequestedPosition('left=10')).toBeNull();
     expect(parseRequestedPosition('left=abc,top=20')).toBeNull();
     expect(parseRequestedPosition('left=Infinity,top=20')).toBeNull();
+  });
+});
+
+describe('parseRequestedSize', () => {
+  it('withWidthAndHeight_returnsTheRoundedSize', () => {
+    expect(parseRequestedSize('width=480.4,height=320.6')).toEqual({ width: 480, height: 321 });
+  });
+
+  it('withExtraFeatures_ignoresThem', () => {
+    expect(parseRequestedSize('left=10,top=20,width=480,height=320,resizable=0')).toEqual({
+      width: 480,
+      height: 320,
+    });
+  });
+
+  it('withAnIncompleteMalformedOrEmptySize_returnsNull', () => {
+    expect(parseRequestedSize('')).toBeNull();
+    expect(parseRequestedSize('width=480')).toBeNull();
+    expect(parseRequestedSize('width=abc,height=320')).toBeNull();
+    expect(parseRequestedSize('width=0,height=320')).toBeNull();
+    expect(parseRequestedSize('width=480,height=-20')).toBeNull();
+  });
+});
+
+describe('parseFeatureFlag', () => {
+  it('whenSet_readsTheFlag', () => {
+    expect(parseFeatureFlag('resizable=1', 'resizable', false)).toBe(true);
+    expect(parseFeatureFlag('closable=0', 'closable', true)).toBe(false);
+  });
+
+  it('withCasing_normalisesTheName', () => {
+    expect(parseFeatureFlag('Resizable=1', 'RESIZABLE', false)).toBe(true);
+  });
+
+  it('whenAbsentOrUnparsable_returnsTheFallback', () => {
+    expect(parseFeatureFlag('', 'resizable', true)).toBe(true);
+    expect(parseFeatureFlag('left=10,top=20', 'resizable', false)).toBe(false);
+    expect(parseFeatureFlag('resizable=yes', 'resizable', true)).toBe(true);
+  });
+});
+
+describe('parseNamedSize', () => {
+  it('withAPrefixedPair_returnsTheRoundedSize', () => {
+    expect(parseNamedSize('minwidth=960.4,minheight=600.6', 'min')).toEqual({
+      width: 960,
+      height: 601,
+    });
+  });
+
+  it('readsEachPrefixIndependently', () => {
+    const features: string = 'minwidth=960,minheight=600,maxwidth=1024,maxheight=720';
+
+    expect(parseNamedSize(features, 'min')).toEqual({ width: 960, height: 600 });
+    expect(parseNamedSize(features, 'max')).toEqual({ width: 1024, height: 720 });
+  });
+
+  it('whenAbsentIncompleteOrNonPositive_returnsNull', () => {
+    expect(parseNamedSize('width=480,height=320', 'min')).toBeNull();
+    expect(parseNamedSize('minwidth=960', 'min')).toBeNull();
+    expect(parseNamedSize('minwidth=0,minheight=600', 'min')).toBeNull();
+  });
+});
+
+describe('parseFeatureText', () => {
+  it('whenPresent_returnsTheValue', () => {
+    expect(parseFeatureText('width=480,bgcolor=1e2124,closable=1', 'bgcolor')).toBe('1e2124');
+  });
+
+  it('withCasingAndSpaces_normalisesTheName_andTrimsTheValue', () => {
+    expect(parseFeatureText(' BgColor = 1e2124 ', 'bgcolor')).toBe('1e2124');
+  });
+
+  it('whenAbsentOrValueless_returnsNull', () => {
+    expect(parseFeatureText('width=480', 'bgcolor')).toBeNull();
+    expect(parseFeatureText('bgcolor', 'bgcolor')).toBeNull();
+    expect(parseFeatureText('', 'bgcolor')).toBeNull();
   });
 });

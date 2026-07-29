@@ -17,7 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
-import { AUX_PANEL_URL, WindowChannel } from '@shared/api/window-channels';
+import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
@@ -165,13 +165,14 @@ class Program {
     indexHtml: Program.INDEX_HTML,
     applySecurity: (contents: WebContents): void => this.applyWebContentsSecurity(contents),
     onMainClose: (event: ElectronEvent): void => this.onWindowClose(event),
-    onMainDidFinishLoad: (): void => {
-      // A (re)loaded page has no listeners yet: OS-open paths queue again until the fresh renderer
+    onMainDidStartLoad: (): void => {
+      // A (re)loading page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
       this.openPathsReady = false;
-      // A reloaded main window has lost the renderer state its pop-outs rendered from (auxiliary
-      // windows share its JS context), so orphaned pop-outs are closed rather than left dead.
-      this.windows.closeAllPopouts();
+      // The outgoing renderer's pop-outs and modals rendered from state that is about to go away
+      // (both share its JS context), so they are closed rather than left dead. This runs at the
+      // START of the load, before the incoming renderer opens windows of its own.
+      this.windows.closeAllSecondaryWindows();
     },
   });
 
@@ -531,6 +532,19 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
 
+    ipcMain.on(WindowChannel.Show, (event: IpcMainEvent): void => {
+      this.windows.claimMainPresence();
+      const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (targetWindow !== null) {
+        this.windows.showWindow(targetWindow);
+      }
+    });
+
+    ipcMain.on(WindowChannel.Hide, (event: IpcMainEvent): void => {
+      this.windows.claimMainPresence();
+      BrowserWindow.fromWebContents(event.sender)?.hide();
+    });
+
     ipcMain.on(WindowChannel.SetMovable, (event: IpcMainEvent, movable: unknown): void => {
       if (typeof movable !== 'boolean') {
         return;
@@ -633,23 +647,40 @@ class Program {
     });
 
     contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
-      // The one allowed window.open target: an auxiliary panel window (a same-renderer child the
-      // opener scripts directly — a dock panel popping out with its services intact). The child
-      // carries no navigable content of its own, inherits this window's hardened webPreferences,
-      // and is adopted below (guards, registry, bounds). Everything else stays denied (#116).
+      // The two allowed window.open targets, both same-renderer children the opener scripts
+      // directly: an auxiliary panel window (a dock panel popping out with its services intact) and
+      // a modal window (one dialog over the window that raised it). Neither carries navigable
+      // content of its own, both inherit this window's hardened webPreferences, and both are
+      // adopted below (guards, registry, bounds). Everything else stays denied (#116).
       if (details.url === AUX_PANEL_URL) {
         return {
           action: 'allow',
           overrideBrowserWindowOptions: this.windows.auxiliaryWindowOptions(details.features),
         };
       }
+      if (details.url === MODAL_WINDOW_URL) {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: this.windows.modalWindowOptions(
+            details.features,
+            BrowserWindow.fromWebContents(contents),
+          ),
+        };
+      }
       void this.openExternalUrl(details.url);
       return { action: 'deny' };
     });
 
-    contents.on('did-create-window', (window: BrowserWindow): void => {
-      this.windows.adoptAuxiliaryWindow(window);
-    });
+    contents.on(
+      'did-create-window',
+      (window: BrowserWindow, details: Electron.DidCreateWindowDetails): void => {
+        if (details.url === MODAL_WINDOW_URL) {
+          this.windows.adoptModalWindow(window);
+        } else {
+          this.windows.adoptAuxiliaryWindow(window);
+        }
+      },
+    );
   }
 
   /**

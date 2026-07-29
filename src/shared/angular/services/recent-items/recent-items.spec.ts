@@ -141,7 +141,7 @@ describe('RecentItems', () => {
   it('restore_keepsEveryDeclaredKind', () => {
     // The validation set previously missed 'binary', silently dropping persisted binary recents on
     // every restart; every kind the type declares must round-trip through storage.
-    const kinds: readonly string[] = ['directory', 'repository', 'markdown', 'code', 'binary'];
+    const kinds: readonly string[] = ['directory', 'markdown', 'code', 'binary'];
     localStorage.setItem(
       KEY,
       JSON.stringify(
@@ -159,5 +159,18 @@ describe('RecentItems', () => {
         .items()
         .map((item) => item.kind),
     ).toEqual(kinds);
+  });
+
+  it('restore_whenAnEntryCarriesARetiredKind_keepsItAsTheKindThatReplacedIt', () => {
+    // Repositories were folded into workspaces; an entry written before that must survive as a
+    // directory rather than being dropped as an unrecognised kind.
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([{ path: '/repo', name: 'repo', kind: 'repository', openedAt: 1 }]),
+    );
+
+    expect(service().items()).toEqual([
+      { path: '/repo', name: 'repo', kind: 'directory', openedAt: 1, pinned: false },
+    ]);
   });
 });

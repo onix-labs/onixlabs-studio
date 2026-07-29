@@ -8,7 +8,6 @@ import {
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
-import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
@@ -35,12 +34,6 @@ export const config: ApplicationConfig = {
     // initializers') reach the main-process logger. No-op outside Electron.
     provideAppInitializer((): void => {
       inject(ConsoleForwarder);
-    }),
-    // Catalogue the shell's application-level accelerators (features contribute their own from
-    // their provide<F>Feature() providers); the root registers the matching handlers.
-    provideKeybindingCatalogue({
-      view: 'Application',
-      bindings: [{ id: 'app.shortcuts', description: 'Show keyboard shortcuts', chord: 'Mod+/' }],
     }),
     // Instantiate the Theme service at start-up so the persisted mode and accent are applied to the
     // document before the first view renders.

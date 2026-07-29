@@ -26,10 +26,9 @@ describe('WelcomeScreen', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('coldStart_whenNoTabs_isVisibleWithAmbientGlow', () => {
+  it('coldStart_whenNoTabs_isVisibleWithItsGlow', () => {
     expect(host.querySelector('.modal--visible')).not.toBeNull();
-    expect(host.querySelector('.welcome-modal--ambient')).not.toBeNull();
-    expect(host.querySelector('.welcome__glow--active')).not.toBeNull();
+    expect(host.querySelector('.welcome__glow')).not.toBeNull();
     expect(host.querySelectorAll('.welcome__glow-blob').length).toBe(2);
   });
 
@@ -40,12 +39,14 @@ describe('WelcomeScreen', () => {
     expect(host.querySelector('.modal--visible')).toBeNull();
   });
 
-  it('withTabs_whenModalOpen_isVisibleButNotAmbient', () => {
+  it('withTabs_whenModalOpen_isVisibleAndLooksTheSame', () => {
     tabs.open('terminal');
     modal.open();
     fixture.detectChanges();
 
+    // Summoned over tabs it is the same window with the same treatment; only its role differs.
     expect(host.querySelector('.modal--visible')).not.toBeNull();
-    expect(host.querySelector('.welcome-modal--ambient')).toBeNull();
+    expect(host.querySelector('.welcome__glow')).not.toBeNull();
+    expect(host.querySelectorAll('.welcome__glow-blob').length).toBe(2);
   });
 });
