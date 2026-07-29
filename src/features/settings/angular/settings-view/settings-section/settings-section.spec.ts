@@ -75,9 +75,9 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentDropdown', async () => {
-    // Accent, theme, ribbon alignment, modern UI features, hardware acceleration.
+    // Accent, theme, ribbon alignment, modern UI features, workspace texture, hardware acceleration.
     const element: HTMLElement = await render('appearance');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(6);
     // The accent picker is a dropdown with a colour chip per swatch (plus the selected chip in its
     // face), so the section carries at least one option per accent colour.
     expect(element.querySelectorAll('.dropdown__chip').length).toBe(ACCENT_COLORS.length + 1);

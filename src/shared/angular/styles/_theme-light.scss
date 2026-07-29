@@ -98,6 +98,12 @@
   // be retuned without moving the app root.
   --dock-container-background-color: var(--gray-500);
 
+  // The ink an optional background texture is painted in, and how strongly. The pattern is a mask,
+  // so this is the only colour it has: the accent, which keeps a texture the user's own colour. The
+  // light backdrop is already close to the panes, so the pattern is carried a little further.
+  --dock-container-texture-color: var(--accent-color);
+  --dock-container-texture-opacity: 0.14;
+
   --dock-background-color: var(--gray-400);
   --dock-border-color: var(--gray-550);
 
