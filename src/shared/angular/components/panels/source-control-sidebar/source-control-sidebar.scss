@@ -12,24 +12,10 @@
   color: var(--body-foreground-color);
   font-size: 0.8rem;
 }
-
-// The tool strip's filter field, sized to take the slack so the buttons keep their trailing places.
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .rail__filter {
   flex: 1 1 auto;
   min-inline-size: 3rem;
-  padding: 0.2rem 0.4rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-  color: inherit;
-  font: inherit;
-  font-size: 0.75rem;
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
 }
 
 // The uncommitted-changes badge on the checked-out branch's row. Unlike the other row actions it is
@@ -121,24 +107,10 @@
   line-height: 1.5;
   color: var(--form-muted-foreground-color);
 }
-
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .rail__dialog-input {
-  box-sizing: border-box;
   inline-size: 100%;
   margin-block: 0.75rem 0.5rem;
-  padding: 0.4rem 0.6rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
 }
 
 .rail__dialog-error {

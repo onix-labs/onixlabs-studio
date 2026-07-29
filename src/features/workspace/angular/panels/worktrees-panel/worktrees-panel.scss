@@ -126,16 +126,10 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .worktrees__prompt-input {
-  box-sizing: border-box;
   inline-size: 100%;
   margin-block: 0 0.75rem;
-  padding: 0.4rem 0.6rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: var(--form-control-background-color, transparent);
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
 }
 
 .worktrees__prompt-dropdown {

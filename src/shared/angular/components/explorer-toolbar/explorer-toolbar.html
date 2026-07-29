@@ -24,16 +24,15 @@
       tooltip="Collapse All"
       (click)="collapseAll.emit()"
     />
-    <button
-      type="button"
-      class="explorer-toolbar__button"
-      title="More Actions"
-      aria-label="More Actions"
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.DOTS_THREE"
+      ariaLabel="More Actions"
+      tooltip="More Actions"
       [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
       [cdkMenuPosition]="moreMenu.position()"
-    >
-      <app-icon [icon]="Icon.DOTS_THREE" />
-    </button>
+    />
   </div>
 </div>
 

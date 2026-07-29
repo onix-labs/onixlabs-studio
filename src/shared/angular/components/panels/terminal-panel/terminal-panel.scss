@@ -43,23 +43,10 @@
     background: var(--accent-surface-background-color);
   }
 }
-
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .terminal-panel__rename {
   align-self: center;
   inline-size: 8rem;
-  padding: 0.15rem 0.4rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-  color: inherit;
-  font: inherit;
-  font-size: 0.75rem;
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
 }
 
 .terminal-panel__bodies {

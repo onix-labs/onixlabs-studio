@@ -154,27 +154,9 @@
   display: flex;
   gap: 0.5rem;
 }
-
-// Borderless inside the composer box, like the agent chat's input: the box itself carries the
-// border and shows focus via :focus-within.
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .detail__message {
   inline-size: 100%;
-  resize: vertical;
-  padding: 0;
-  font: inherit;
-  font-size: 0.8rem;
-  line-height: 1.55;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0;
-
-  &::placeholder {
-    color: var(--form-muted-foreground-color);
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
 }
 
 .detail__commit-button {
