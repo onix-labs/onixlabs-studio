@@ -47,6 +47,7 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
@@ -357,6 +358,7 @@ interface ContextChip {
 @Component({
   selector: 'app-agent-chat',
   imports: [
+    Button,
     AppIcon,
     Modal,
     ModalContent,

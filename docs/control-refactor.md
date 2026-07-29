@@ -39,6 +39,8 @@ Nothing else can start until these exist.
       padding, radius, corner shape, gap, hover and disabled state for all three variants.
       **Icon-only is derived, not declared**: a glyph with no label is square, so shape and content
       cannot disagree. Measured from the clear-recent-items pair.
+- [x] **`app-button` size axis** — `medium` (default) and `small`, for the dense chrome revealed on a
+      hovered row or hung off a chip. Independent of variant: any variant can be either size.
 - [ ] **`app-textarea`** — multi-line sibling of `app-text-field`; `rows`, `placeholder`,
       `readonly`, auto-grow where callers need it.
 - [ ] **`app-search-field`** — `app-text-field` with the leading glyph and clear affordance that four
@@ -56,7 +58,10 @@ its own.
       from it, and both hand-rolled classes are gone)
 - [ ] `worktrees-panel` — 4 × `worktrees__confirm-button`
 - [ ] `directory-ribbon` — 10 × `directory-ribbon__confirm-button`
-- [ ] `agent-chat` — 12 × `agent__btn` (already accent-filled and ghost; the ghost becomes Outline)
+- [x] `agent-chat` — **whole component done**: 12 × `agent__btn`, 4 × `agent__copy`, 4 ×
+      `agent__queue-btn`, `agent__attachment-remove`, `agent__image-remove`, `agent__md`, 4 ×
+      `agent__send`. Eight hand-rolled classes deleted. Left raw: `agent__action-more` (an inline
+      link, see below) and `agent__suggest-item` (a listbox option)
 - [ ] `agent-conversation-list` — 8 × `history__button`
 - [ ] `agent-request-card` — 6 × `request__btn`
 - [ ] `source-control-sidebar` — 4 × `rail__dialog-button`
@@ -84,8 +89,7 @@ Mostly icon-only chrome that already behaves like the None variant, but each reb
 - [ ] `explorer-toolbar` — 3
 - [ ] `find-panel` — `find-panel__button` ×5, `find-panel__icon-button`
 - [ ] `debug-panel` — 6 × `debug-toolbar__button`, `debug-watch__remove`
-- [ ] `agent-chat` — `agent__copy` ×4, `agent__queue-btn` ×4, `agent__action-more` ×2,
-      `agent__attachment-remove`, `agent__image-remove`, `agent__md`, `agent__send` ×4
+- [x] `agent-chat` — done with Phase 1 above
 - [ ] `agent-conversation-list` — `history__tool` ×5, `history__overflow`, `history__manage-action` ×2
 - [ ] `configure-dialog` — 3 × `configure__tool`
 - [ ] `worktrees-panel` — `worktrees__remove`, `worktrees__refresh`
@@ -172,6 +176,13 @@ tokens:
    buttons — **but repeated markup becomes its own component**, so the six welcome cards become one
    component rather than six copies. The threshold is repetition or sharing: a row that appears once
    inside a component is already componentised, and wrapping it again buys nothing.
+
+## Still needed — an inline link
+
+`agent__action-more` ("… 14 more lines") and its kin are inline text links, not buttons: no padding,
+no box, accent text underlined on hover. `app-button variant="none"` would put a padded box around
+them. They want an `app-link` atom (or a `link` variant), which does not exist yet — flagged rather
+than forced.
 
 ## Phase 5 — repeated markup that should be its own component
 

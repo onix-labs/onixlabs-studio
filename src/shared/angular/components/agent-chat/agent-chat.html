@@ -35,25 +35,23 @@
                 [innerHTML]="row.item!.text | markdown"
               ></div>
               <span class="agent__msg-actions">
-                <button
-                  type="button"
-                  class="agent__copy"
-                  aria-label="Copy message"
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
+                  [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
+                  ariaLabel="Copy message"
                   (click)="copy(row.item!)"
-                >
-                  <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
-                  <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
-                </button>
+                />
                 @if (!isRunning()) {
-                  <button
-                    type="button"
-                    class="agent__copy"
-                    aria-label="Edit and resend"
+                  <app-button
+                    variant="none"
+                    size="small"
+                    [icon]="Icon.PENCIL"
+                    label="Edit"
+                    ariaLabel="Edit and resend"
                     (click)="beginEdit(row.item!)"
-                  >
-                    <app-icon [icon]="Icon.PENCIL" />
-                    <span>Edit</span>
-                  </button>
+                  />
                 }
               </span>
             </div>
@@ -100,22 +98,14 @@
                 </span>
                 <div class="agent__ask-actions">
                   @if (row.item!.inputChoices?.length) {
-                    <button
-                      type="button"
-                      class="agent__btn"
+                    <app-button
+                      variant="solid"
+                      label="Answer"
                       [disabled]="selectedChoice() === null"
                       (click)="confirmChoice(row.item!)"
-                    >
-                      Answer
-                    </button>
+                    />
                   }
-                  <button
-                    type="button"
-                    class="agent__btn agent__btn--ghost"
-                    (click)="skipInput(row.item!)"
-                  >
-                    Skip
-                  </button>
+                  <app-button label="Skip" (click)="skipInput(row.item!)" />
                 </div>
               </div>
             } @else if (row.item!.inputState === 'answered') {
@@ -146,19 +136,13 @@
                 }}
               </span>
               <div class="agent__ask-actions agent__ask-actions--stack">
-                <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes')">
-                  Yes
-                </button>
-                <button type="button" class="agent__btn" (click)="decide(row.item!, 'yes-auto')">
-                  Yes, and automatically accept edits
-                </button>
-                <button
-                  type="button"
-                  class="agent__btn agent__btn--ghost"
-                  (click)="decide(row.item!, 'no')"
-                >
-                  No
-                </button>
+                <app-button variant="solid" label="Yes" (click)="decide(row.item!, 'yes')" />
+                <app-button
+                  variant="solid"
+                  label="Yes, and automatically accept edits"
+                  (click)="decide(row.item!, 'yes-auto')"
+                />
+                <app-button label="No" (click)="decide(row.item!, 'no')" />
               </div>
             } @else {
               <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>
@@ -192,14 +176,12 @@
                 @if (row.item!.errorRetried) {
                   <span class="agent__ask-state">Retried</span>
                 } @else {
-                  <button
-                    type="button"
-                    class="agent__btn"
+                  <app-button
+                    variant="solid"
+                    label="Retry"
                     [disabled]="isRunning()"
                     (click)="retry(row.item!)"
-                  >
-                    Retry
-                  </button>
+                  />
                 }
               </div>
             }
@@ -222,16 +204,8 @@
                   ariaLabel="Remember this decision"
                   (valueChange)="setRemember(row.item!.id, $event)"
                 />
-                <button type="button" class="agent__btn" (click)="respond(row.item!, true)">
-                  Allow
-                </button>
-                <button
-                  type="button"
-                  class="agent__btn agent__btn--ghost"
-                  (click)="respond(row.item!, false)"
-                >
-                  Deny
-                </button>
+                <app-button variant="solid" label="Allow" (click)="respond(row.item!, true)" />
+                <app-button label="Deny" (click)="respond(row.item!, false)" />
               </div>
             } @else {
               <span class="agent__permission-state">
@@ -266,25 +240,23 @@
                     [innerHTML]="row.item!.text | markdown"
                   ></div>
                   <span class="agent__msg-actions">
-                    <button
-                      type="button"
-                      class="agent__copy"
-                      aria-label="Copy response"
+                    <app-button
+                      variant="none"
+                      size="small"
+                      [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
+                      [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
+                      ariaLabel="Copy response"
                       (click)="copy(row.item!)"
-                    >
-                      <app-icon [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY" />
-                      <span>{{ copiedId() === row.item!.id ? 'Copied' : 'Copy' }}</span>
-                    </button>
+                    />
                     @if (retryTarget()?.assistantId === row.item!.id) {
-                      <button
-                        type="button"
-                        class="agent__copy"
-                        aria-label="Retry this turn"
+                      <app-button
+                        variant="none"
+                        size="small"
+                        [icon]="Icon.REFRESH"
+                        label="Retry"
+                        ariaLabel="Retry this turn"
                         (click)="retryLast()"
-                      >
-                        <app-icon [icon]="Icon.REFRESH" />
-                        <span>Retry</span>
-                      </button>
+                      />
                     }
                   </span>
                 }
@@ -483,14 +455,13 @@
               aria-hidden="true"
             />
             <span class="agent__attachment-name" [title]="chip.path">{{ chip.name }}</span>
-            <button
-              type="button"
-              class="agent__attachment-remove"
-              [attr.aria-label]="'Remove ' + chip.name"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove ' + chip.name"
               (click)="removeContext(chip.path)"
-            >
-              <app-icon [icon]="Icon.CLOSE" />
-            </button>
+            />
           </li>
         }
       </ul>
@@ -502,14 +473,14 @@
         @for (image of pendingImages(); track $index) {
           <li class="agent__image-chip">
             <img class="agent__image-thumb" [src]="imageSrc(image)" [alt]="image.name ?? 'image'" />
-            <button
-              type="button"
+            <app-button
               class="agent__image-remove"
-              [attr.aria-label]="'Remove ' + (image.name ?? 'image')"
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove ' + (image.name ?? 'image')"
               (click)="removeImage($index)"
-            >
-              <app-icon [icon]="Icon.CLOSE" />
-            </button>
+            />
           </li>
         }
       </ul>
@@ -526,24 +497,22 @@
           <li class="agent__queue-item">
             <app-icon class="agent__queue-icon" [icon]="Icon.RECENT" aria-hidden="true" />
             <span class="agent__queue-text" [title]="entry.text">{{ entry.text }}</span>
-            <button
-              type="button"
-              class="agent__queue-btn"
-              aria-label="Edit queued message"
-              title="Edit"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.PENCIL"
+              ariaLabel="Edit queued message"
+              tooltip="Edit"
               (click)="editQueued(entry)"
-            >
-              <app-icon [icon]="Icon.PENCIL" />
-            </button>
-            <button
-              type="button"
-              class="agent__queue-btn"
-              aria-label="Remove queued message"
-              title="Remove"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              ariaLabel="Remove queued message"
+              tooltip="Remove"
               (click)="removeQueued(entry.id)"
-            >
-              <app-icon [icon]="Icon.CLOSE" />
-            </button>
+            />
           </li>
         }
       </ul>
@@ -558,15 +527,14 @@
           Editing an earlier message — sending rewinds the conversation to it. The original line is
           kept in History.
         </span>
-        <button
-          type="button"
-          class="agent__queue-btn"
-          aria-label="Cancel edit"
-          title="Cancel"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          ariaLabel="Cancel edit"
+          tooltip="Cancel"
           (click)="cancelEdit()"
-        >
-          <app-icon [icon]="Icon.CLOSE" />
-        </button>
+        />
       </div>
     }
 
@@ -618,56 +586,39 @@
       </p>
 
       <div class="agent__composer-actions">
-        <button
-          type="button"
-          class="agent__md"
-          aria-label="Write in Markdown"
-          title="Write in Markdown"
+        <app-button
+          variant="none"
+          [icon]="Icon.MARKDOWN_FILL"
+          label="Edit"
+          ariaLabel="Write in Markdown"
+          tooltip="Write in Markdown"
           (click)="openMarkdown()"
-        >
-          <app-icon [icon]="Icon.MARKDOWN_FILL" />
-          <span class="agent__md-label">Edit</span>
-        </button>
+        />
 
         @if (isRunning()) {
           @if (pendingInput()) {
-            <button
+            <app-button
               type="submit"
-              class="agent__send"
-              aria-label="Answer"
+              variant="solid"
+              [icon]="Icon.SEND"
+              label="Answer"
               [disabled]="draft().trim().length === 0"
-            >
-              <app-icon [icon]="Icon.SEND" />
-              <span class="agent__send-label">Answer</span>
-            </button>
+            />
           } @else if (draft().trim().length > 0) {
             <!-- Sending mid-run steers the run where the provider supports it, and queues the
                  message for after the run otherwise. The button only appears once there is a draft,
                  so Stop stands alone while nothing is being written. -->
-            <button type="submit" class="agent__send" aria-label="Send">
-              <app-icon [icon]="Icon.SEND" />
-              <span class="agent__send-label">Send</span>
-            </button>
+            <app-button type="submit" variant="solid" [icon]="Icon.SEND" label="Send" />
           }
-          <button
-            type="button"
-            class="agent__send agent__send--stop"
-            aria-label="Stop"
-            (click)="stop()"
-          >
-            <app-icon [icon]="Icon.STOP" />
-            <span class="agent__send-label">Stop</span>
-          </button>
+          <app-button [icon]="Icon.STOP" label="Stop" (click)="stop()" />
         } @else {
-          <button
+          <app-button
             type="submit"
-            class="agent__send"
-            [attr.aria-label]="editing() ? 'Resend' : 'Send'"
+            variant="solid"
+            [icon]="Icon.SEND"
+            [label]="editing() ? 'Resend' : 'Send'"
             [disabled]="draft().trim().length === 0"
-          >
-            <app-icon [icon]="Icon.SEND" />
-            <span class="agent__send-label">{{ editing() ? 'Resend' : 'Send' }}</span>
-          </button>
+          />
         }
       </div>
     </div>
@@ -693,14 +644,13 @@
               <li class="agent__prompts-item">
                 <span class="agent__prompts-name">/{{ prompt.name }}</span>
                 <span class="agent__prompts-text" [title]="prompt.text">{{ prompt.text }}</span>
-                <button
-                  type="button"
-                  class="agent__queue-btn"
-                  [attr.aria-label]="'Delete /' + prompt.name"
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.CLOSE"
+                  [ariaLabel]="'Delete /' + prompt.name"
                   (click)="deletePrompt(prompt.id)"
-                >
-                  <app-icon [icon]="Icon.CLOSE" />
-                </button>
+                />
               </li>
             }
           </ul>
@@ -722,17 +672,13 @@
           (input)="newPromptText.set($any($event.target).value)"
         ></textarea>
         <div class="agent__md-actions">
-          <button type="button" class="agent__btn agent__btn--ghost" (click)="closeManagePrompts()">
-            Close
-          </button>
-          <button
-            type="button"
-            class="agent__btn"
+          <app-button label="Close" (click)="closeManagePrompts()" />
+          <app-button
+            variant="solid"
+            label="Save prompt"
             [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
             (click)="savePrompt()"
-          >
-            Save prompt
-          </button>
+          />
         </div>
       </div>
     </ng-template>
@@ -762,18 +708,14 @@
           </div>
         }
         <div class="agent__md-actions">
-          <button type="button" class="agent__btn agent__btn--ghost" (click)="cancelMarkdown()">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="agent__btn"
+          <app-button label="Cancel" (click)="cancelMarkdown()" />
+          <app-button
+            variant="solid"
+            [icon]="Icon.SEND"
+            label="Send"
             [disabled]="isRunning() || markdownValue().trim().length === 0"
             (click)="submitMarkdown()"
-          >
-            <app-icon [icon]="Icon.SEND" />
-            <span>Send</span>
-          </button>
+          />
         </div>
       </div>
     </ng-template>

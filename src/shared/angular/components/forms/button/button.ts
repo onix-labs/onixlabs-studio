@@ -24,6 +24,16 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 export type ButtonVariant = 'solid' | 'outline' | 'none';
 
 /**
+ * Names how large a button is drawn. Size is a separate axis from {@link ButtonVariant}: any variant
+ * can be either size.
+ *
+ * - `medium` — the standard button, sized for a dialog's action row.
+ * - `small` — dense chrome: the quiet affordances revealed on a hovered row, and the remove controls
+ *   on a chip. Big enough to hit, small enough not to dominate what it acts on.
+ */
+export type ButtonSize = 'medium' | 'small';
+
+/**
  * Represents the application's button: THE button, used everywhere a button is used.
  *
  * Nothing else may hand-roll one, and no call site may restyle one — a caller chooses a
@@ -44,6 +54,7 @@ export type ButtonVariant = 'solid' | 'outline' | 'none';
     '[class.button--solid]': "variant() === 'solid'",
     '[class.button--outline]': "variant() === 'outline'",
     '[class.button--none]': "variant() === 'none'",
+    '[class.button--small]': "size() === 'small'",
     '[class.button--icon-only]': 'isIconOnly()',
   },
 })
@@ -53,6 +64,12 @@ export class Button {
    * affirmative action of a pair, or for a button living in a strip.
    */
   public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('outline');
+
+  /**
+   * Gets how large the button is drawn. Dense chrome — a row's hover affordances, a chip's remove
+   * control — states `small`; everything else is the standard size.
+   */
+  public readonly size: InputSignal<ButtonSize> = input<ButtonSize>('medium');
 
   /**
    * Gets the button's visible text. Omitted for an icon-only button, which must then carry an

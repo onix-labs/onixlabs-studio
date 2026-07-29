@@ -41,6 +41,19 @@
   block-size: 1.75rem;
 }
 
+// Dense chrome: quiet enough to sit on a hovered row or a chip without dominating what it acts on.
+:host(.button--small) .button {
+  gap: 0.3rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+:host(.button--small.button--icon-only) .button {
+  padding: 0;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
 // Solid: the affirmative action, filled with the accent at rest and lifted on hover.
 :host(.button--solid) .button {
   color: var(--gray-100);

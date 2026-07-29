@@ -20,6 +20,20 @@ import { Search } from '@shared/angular/services/search/search';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentChat } from './agent-chat';
 
+/**
+ * Finds a composer button by its visible label. The composer's buttons are `app-button`s, which
+ * carry their text in a label span rather than in a class of their own.
+ * @param host The component's host element.
+ * @param label The button's visible label.
+ * @returns Returns the button, or null when it is not shown.
+ */
+function composerButton(host: HTMLElement, label: string): HTMLElement | null {
+  const buttons: HTMLElement[] = [...host.querySelectorAll<HTMLElement>('.agent__composer button')];
+  return (
+    buttons.find((button: HTMLElement): boolean => button.textContent?.trim() === label) ?? null
+  );
+}
+
 describe('AgentChat', () => {
   let component: AgentChat;
   let fixture: ComponentFixture<AgentChat>;
@@ -457,7 +471,7 @@ describe('AgentChat', () => {
     fixture.detectChanges();
 
     (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('.agent__attachment-remove')!
+      .querySelector<HTMLButtonElement>('button[aria-label="Remove main.ts"]')!
       .click();
 
     expect(removed).toEqual(['/repo/src/main.ts']);
@@ -593,7 +607,7 @@ describe('AgentChat', () => {
     expect(diagnostics).toContain('overloaded');
     expect(diagnostics).toContain('Failed tool — Bash: command not found');
 
-    card!.querySelector<HTMLButtonElement>('.agent__btn')!.click();
+    card!.querySelector<HTMLButtonElement>('app-button button')!.click();
     expect(retried).toEqual(['item-1']);
   });
 
@@ -610,7 +624,7 @@ describe('AgentChat', () => {
     fixture.detectChanges();
 
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.agent__error .agent__btn')).toBeNull();
+    expect(host.querySelector('.agent__error app-button')).toBeNull();
     expect(host.querySelector('.agent__error .agent__ask-state')?.textContent?.trim()).toBe(
       'Retried',
     );
@@ -644,14 +658,14 @@ describe('AgentChat', () => {
 
     // No draft: Stop stands alone.
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.agent__send[aria-label="Send"]')).toBeNull();
-    expect(host.querySelector('.agent__send--stop')).not.toBeNull();
+    expect(composerButton(host, 'Send')).toBeNull();
+    expect(composerButton(host, 'Stop')).not.toBeNull();
 
     // Typing reveals Send (for steering or queueing) beside Stop.
     component.onInput('a follow-up');
     fixture.detectChanges();
-    expect(host.querySelector('.agent__send[aria-label="Send"]')).not.toBeNull();
-    expect(host.querySelector('.agent__send--stop')).not.toBeNull();
+    expect(composerButton(host, 'Send')).not.toBeNull();
+    expect(composerButton(host, 'Stop')).not.toBeNull();
   });
 
   it('editAndResend_whenSendingInEditMode_rewindsTheConversationWithTheNewText', () => {
