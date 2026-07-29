@@ -9,11 +9,9 @@ import {
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
-import { ShortcutsOverlay } from '@shared/angular/services/shortcuts-overlay/shortcuts-overlay';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
-import { ShortcutsOverlayPanel } from '@shared/angular/components/shortcuts-overlay/shortcuts-overlay-panel';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
@@ -34,7 +32,6 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ContentHost,
     ModalBackdropView,
     WelcomeScreen,
-    ShortcutsOverlayPanel,
     ConfigureDialogPanel,
     ToastHost,
   ],
@@ -60,25 +57,10 @@ export class Root {
   private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
-   * Holds the shortcuts-overlay visibility owner, toggled by the shell's global accelerator.
-   */
-  private readonly shortcutsOverlay: ShortcutsOverlay = inject(ShortcutsOverlay);
-
-  /**
    * Holds the main window's presence, which hides the window while no tabs are open and the welcome
    * screen stands in for it. Injected for its effect; the shell never calls it.
    */
   private readonly presence: ShellPresence = inject(ShellPresence);
-
-  /**
-   * Initializes the shell, registering the application-level accelerators that dispatch in every
-   * context after the active view has had first refusal.
-   */
-  public constructor() {
-    this.keybindings.registerGlobal([
-      { id: 'app.shortcuts', command: (): void => this.shortcutsOverlay.toggle() },
-    ]);
-  }
 
   /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content
