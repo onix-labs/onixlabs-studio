@@ -71,6 +71,14 @@
   border-color: var(--dock-border-color);
 }
 
+// A toggle that is on wears the hover treatment permanently, so "engaged" and "pointed at" read as
+// the same state — which is what they are, one just persists.
+:host(.button--pressed) .button {
+  color: var(--accent-surface-foreground-color);
+  background: var(--accent-surface-background-color);
+  border-color: var(--accent-surface-border-color);
+}
+
 // None: no chrome at rest, for buttons that sit in a row (tool strips, ribbon strips, panel
 // toolbars) where borders at rest would read as a wall of boxes. Hovers exactly as an outlined one,
 // so the two are the same button with a different resting state.

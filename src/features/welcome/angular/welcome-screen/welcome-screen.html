@@ -107,10 +107,14 @@
             <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
           </div>
           @if (hasRecent()) {
-            <button type="button" class="welcome__clear" (click)="requestClearRecent()">
-              <app-icon [icon]="Icon.TRASH" />
-              <span>Clear</span>
-            </button>
+            <app-button
+              class="welcome__clear"
+              variant="none"
+              size="small"
+              [icon]="Icon.TRASH"
+              label="Clear"
+              (click)="requestClearRecent()"
+            />
           }
         </div>
 
@@ -142,22 +146,17 @@
                   </span>
                 </button>
                 <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-                <button
-                  type="button"
-                  class="welcome__recent-action"
-                  [class.welcome__recent-action--on]="item.pinned"
-                  [attr.aria-pressed]="item.pinned"
-                  [attr.aria-label]="item.pinned ? 'Unpin item' : 'Pin item'"
+                <app-button
+                  [pressed]="item.pinned"
+                  [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
+                  [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
+                  variant="none"
+                  size="small"
                   (click)="togglePin(item)"
-                >
-                  <app-icon
-                    [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
-                    [rotation]="item.pinned ? -45 : 0"
-                  />
-                </button>
+                />
                 <button
                   type="button"
-                  class="welcome__recent-action"
+                  class="welcome__recent-menu"
                   aria-label="More actions"
                   [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
                   [cdkMenuPosition]="rowMenu.position()"

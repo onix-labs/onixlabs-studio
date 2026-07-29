@@ -14,35 +14,6 @@
 
 .ra-skip,
 .ra-play {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid transparent;
-  border-radius: 50%;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    color: var(--accent-surface-foreground-color);
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
-.ra-skip {
-  inline-size: 2rem;
-  block-size: 2rem;
-  font-size: 0.9rem;
-}
-
-.ra-play {
   inline-size: 2.75rem;
   block-size: 2.75rem;
   font-size: 1.25rem;

@@ -3,6 +3,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { severityIcon } from '@shared/angular/icons/severity-icon';
 import {
@@ -20,7 +21,7 @@ import {
  */
 @Component({
   selector: 'app-status-strip-notifications-menu',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu],
   templateUrl: './status-strip-notifications-menu.html',
   styleUrl: './status-strip-notifications-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

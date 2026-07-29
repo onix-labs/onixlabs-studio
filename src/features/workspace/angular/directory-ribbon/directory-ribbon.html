@@ -311,17 +311,15 @@
     <ul class="directory-ribbon__preset-list">
       @for (preset of presets(); track preset.id) {
         <li class="directory-ribbon__preset-row">
-          <button
-            type="button"
-            class="directory-ribbon__preset-default"
-            [class.directory-ribbon__preset-default--on]="preset.id === defaultPresetId()"
-            [attr.aria-pressed]="preset.id === defaultPresetId()"
-            [attr.aria-label]="'Make ' + preset.name + ' the default'"
-            [title]="preset.id === defaultPresetId() ? 'Default layout' : 'Make default'"
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.STAR"
+            [pressed]="preset.id === defaultPresetId()"
+            [ariaLabel]="'Make ' + preset.name + ' the default'"
+            [tooltip]="preset.id === defaultPresetId() ? 'Default layout' : 'Make default'"
             (click)="onSetDefaultPreset(preset.id)"
-          >
-            <app-icon [icon]="Icon.STAR" [size]="0.875" />
-          </button>
+          />
           @if (preset.builtIn) {
             <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
             <span class="directory-ribbon__preset-tag">Built-in</span>

@@ -116,7 +116,7 @@ describe('FindPanel', () => {
     await fixture.whenStable();
 
     const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.find-panel__nav .find-panel__button'),
+      host.querySelectorAll<HTMLButtonElement>('.find-panel__nav button'),
     );
     expect(buttons[0].disabled).toBe(true);
     expect(buttons[1].disabled).toBe(false);
@@ -165,7 +165,7 @@ describe('FindPanel', () => {
     await fixture.whenStable();
 
     const actions: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.find-panel__replace-actions .find-panel__button'),
+      host.querySelectorAll<HTMLButtonElement>('.find-panel__replace-actions button'),
     );
     expect(actions.length).toBe(3);
     actions[1].click();
@@ -179,7 +179,7 @@ describe('FindPanel', () => {
     component.closed.subscribe((): void => void (closed += 1));
     await fixture.whenStable();
 
-    host.querySelector<HTMLButtonElement>('.find-panel__icon-button')?.click();
+    host.querySelector<HTMLButtonElement>('button[aria-label="Close find"]')?.click();
 
     expect(clearCalls).toBe(1);
     expect(closed).toBe(1);

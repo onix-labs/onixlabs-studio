@@ -1,14 +1,13 @@
 <header class="panel__header">
   <h2 class="panel__title">Mission Control</h2>
-  <button
-    type="button"
-    class="panel__gear"
-    title="Open Mission Control settings"
-    aria-label="Open Mission Control settings"
+  <app-button
+    variant="none"
+    size="small"
+    [icon]="Icon.SETTINGS"
+    ariaLabel="Open Mission Control settings"
+    tooltip="Open Mission Control settings"
     (click)="onOpenSettings()"
-  >
-    <app-icon [icon]="Icon.SETTINGS" />
-  </button>
+  />
 </header>
 
 <nav class="panel__tabs" role="tablist">
@@ -106,10 +105,7 @@
     <section class="panel__group">
       <div class="panel__rules-head">
         <span class="panel__group-label">Permissions</span>
-        <button type="button" class="panel__add" disabled title="Coming soon">
-          <app-icon [icon]="Icon.PLUS" />
-          Add rule
-        </button>
+        <app-button [icon]="Icon.PLUS" label="Add rule" [disabled]="true" tooltip="Coming soon" />
       </div>
 
       @for (rule of rules; track rule.title) {

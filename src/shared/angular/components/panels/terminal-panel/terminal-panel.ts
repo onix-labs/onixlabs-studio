@@ -19,6 +19,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Button } from '@shared/angular/components/forms/button/button';
 import {
   TerminalSession,
   TerminalSessions,
@@ -38,7 +39,7 @@ import {
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [Terminal, AppIcon, PanelToolbar, PanelStatus],
+  imports: [Button, Terminal, AppIcon, PanelToolbar, PanelStatus],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

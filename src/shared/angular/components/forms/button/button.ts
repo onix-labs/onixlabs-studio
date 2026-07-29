@@ -56,6 +56,7 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--none]': "variant() === 'none'",
     '[class.button--small]': "size() === 'small'",
     '[class.button--icon-only]': 'isIconOnly()',
+    '[class.button--pressed]': 'pressed() === true',
   },
 })
 export class Button {
@@ -97,6 +98,14 @@ export class Button {
    * Gets a value indicating whether the button is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether a TOGGLE button is currently on, or undefined for an ordinary button that does not
+   * hold a state. A toggle announces itself with `aria-pressed` and, while on, wears the same accent
+   * surface it takes on hover — so a filter or layout switch reads as engaged rather than as merely
+   * pointed at.
+   */
+  public readonly pressed: InputSignal<boolean | undefined> = input<boolean>();
 
   /**
    * Gets the native button type. Buttons inside a form default to submitting it, which is almost

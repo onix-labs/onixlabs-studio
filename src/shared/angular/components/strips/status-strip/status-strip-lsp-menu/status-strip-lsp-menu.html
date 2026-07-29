@@ -21,16 +21,15 @@
           <span class="lsp-status-menu__item-name">{{ server.name }}</span>
           <span class="lsp-status-menu__item-status">{{ statusText(server) }}</span>
         </span>
-        <button
-          type="button"
-          class="lsp-status-menu__restart"
-          title="Restart"
-          aria-label="Restart language server"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.RESTART"
+          ariaLabel="Restart language server"
+          tooltip="Restart"
           [disabled]="server.state === 'starting'"
           (click)="restart(server)"
-        >
-          <app-icon [icon]="Icon.RESTART" />
-        </button>
+        />
       </div>
     }
   </div>

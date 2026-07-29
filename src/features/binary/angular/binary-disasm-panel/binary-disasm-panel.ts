@@ -18,6 +18,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { ASM_LANGUAGE_ID } from '@shared/angular/services/monaco/monaco-asm-language';
@@ -66,7 +67,7 @@ interface DisasmContent {
  */
 @Component({
   selector: 'app-binary-disasm-panel',
-  imports: [AppIcon, PanelDragHandle, TextEditor],
+  imports: [Button, AppIcon, PanelDragHandle, TextEditor],
   templateUrl: './binary-disasm-panel.html',
   styleUrl: './binary-disasm-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

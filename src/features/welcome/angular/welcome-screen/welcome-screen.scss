@@ -365,42 +365,6 @@
   font-size: 1rem;
   color: var(--wl-faint);
 }
-
-// A pill beside the search field that clears the whole recent-items history (after confirmation).
-// Mirrors the search box's pill shape and surface so the header row reads as one control cluster.
-.welcome__clear {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.85rem;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-
-  i {
-    font-size: 0.9rem;
-  }
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--accent-color);
-    background: rgba(var(--accent-color-rgb), 0.12);
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-  }
-}
-
 // The filter pills sit on their own row beneath the title and search field, spread to fill the width.
 .welcome__filters {
   display: flex;
@@ -556,7 +520,7 @@
   color: var(--wl-faint);
 }
 
-.welcome__recent-action {
+.welcome__recent-menu {
   display: grid;
   flex: none;
   place-items: center;
@@ -578,16 +542,6 @@
     outline: none;
     color: var(--wl-text);
     background: var(--wl-surface-hover);
-  }
-}
-
-// A pinned item's pin control stays lit in the accent colour.
-.welcome__recent-action--on {
-  color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--accent-color);
   }
 }
 

@@ -35,14 +35,13 @@
           </button>
         }
       }
-      <button
-        class="panel-toolbar__button"
+      <app-button
+        variant="none"
+        [icon]="Icon.PLUS"
+        ariaLabel="New Terminal"
+        tooltip="New Terminal"
         (click)="create()"
-        aria-label="New Terminal"
-        title="New Terminal"
-      >
-        <app-icon [icon]="Icon.PLUS" />
-      </button>
+      />
     </app-panel-toolbar>
     <div class="terminal-panel__bodies">
       <!-- Panes re-key on the session's generation: a relaunch-in-place replaces the PTY and its

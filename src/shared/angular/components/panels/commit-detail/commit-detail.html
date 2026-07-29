@@ -1,49 +1,41 @@
 <app-panel-toolbar>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [class.panel-toolbar__button--active]="inlineDiff()"
-    [attr.aria-pressed]="inlineDiff()"
-    [title]="inlineDiff() ? 'Diff layout: inline' : 'Diff layout: side by side'"
-    aria-label="Diff Layout"
+  <app-button
+    variant="none"
+    [icon]="Icon.GIT_DIFF"
+    [pressed]="inlineDiff()"
+    ariaLabel="Diff Layout"
+    [tooltip]="inlineDiff() ? 'Diff layout: inline' : 'Diff layout: side by side'"
     (click)="toggleDiffLayout()"
-  >
-    <app-icon [icon]="Icon.GIT_DIFF" />
-  </button>
+  />
   <span class="panel-toolbar__spacer"></span>
-  <button
-    type="button"
-    class="panel-toolbar__button detail__discard-all"
-    title="Discard every uncommitted change in the working tree"
-    aria-label="Discard All"
+  <app-button
+    variant="none"
+    [icon]="Icon.TRASH"
+    ariaLabel="Discard All"
+    tooltip="Discard every uncommitted change in the working tree"
     [disabled]="repository.changeCount() === 0"
     (click)="discardAll()"
-  >
-    <app-icon [icon]="Icon.TRASH" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    title="Refresh"
-    aria-label="Refresh"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.REFRESH"
+    ariaLabel="Refresh"
+    tooltip="Refresh"
     [disabled]="!repository.isBound()"
     (click)="refresh()"
-  >
-    <app-icon [icon]="Icon.REFRESH" />
-  </button>
+  />
 </app-panel-toolbar>
 
 @if (repository.lastError(); as error) {
   <div class="detail__notice" role="alert">
     <span class="detail__notice-text">{{ error }}</span>
-    <button
-      type="button"
-      class="detail__notice-dismiss"
-      aria-label="Dismiss error"
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.CLOSE"
+      ariaLabel="Dismiss error"
       (click)="dismissError()"
-    >
-      <app-icon [icon]="Icon.CLOSE" />
-    </button>
+    />
   </div>
 }
 
@@ -146,14 +138,14 @@
               <span class="detail__file-dir">{{ dir }}</span>
             }
           </span>
-          <button
-            type="button"
-            class="tree-row-action detail__file-action detail__file-action--danger"
-            aria-label="Discard changes"
+          <app-button
+            class="tree-row-action"
+            variant="none"
+            size="small"
+            [icon]="Icon.TRASH"
+            ariaLabel="Discard changes"
             (click)="$event.stopPropagation(); discard(entry.file)"
-          >
-            <app-icon [icon]="Icon.TRASH" />
-          </button>
+          />
         }
       </ng-template>
     </app-tree-view>
@@ -166,16 +158,15 @@
   <div class="detail__composer">
     <header class="detail__composer-header">
       <span class="detail__composer-title">Commit Message</span>
-      <button
-        type="button"
-        class="detail__ai"
-        aria-label="Generate commit message"
-        title="Generate a commit message from the checked changes"
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.SPARKLE"
+        ariaLabel="Generate commit message"
+        tooltip="Generate a commit message from the checked changes"
         [disabled]="!canGenerate()"
         (click)="generateMessage()"
-      >
-        <app-icon [icon]="Icon.SPARKLE" />
-      </button>
+      />
     </header>
     <textarea
       class="detail__message"
@@ -185,24 +176,19 @@
       (input)="onMessageInput($event)"
     ></textarea>
     <div class="detail__composer-actions">
-      <button
-        type="button"
-        class="detail__commit-button"
+      <app-button
+        variant="solid"
+        [icon]="Icon.GIT_COMMIT"
+        label="Commit"
         [disabled]="!canCommit()"
         (click)="commit()"
-      >
-        <app-icon [icon]="Icon.GIT_COMMIT" />
-        Commit
-      </button>
-      <button
-        type="button"
-        class="detail__commit-button detail__commit-button--secondary"
+      />
+      <app-button
+        [icon]="Icon.ARROW_UP"
+        label="Commit and Push"
         [disabled]="!canCommit()"
         (click)="commitAndPush()"
-      >
-        <app-icon [icon]="Icon.ARROW_UP" />
-        Commit and Push
-      </button>
+      />
     </div>
   </div>
 } @else {

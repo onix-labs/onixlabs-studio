@@ -84,4 +84,24 @@ describe('Button', () => {
 
     expect(host.querySelector('button')?.getAttribute('title')).toBe('Remove item');
   });
+
+  it('pressed_whenStated_announcesTheToggleState_andWearsItsOnTreatment', () => {
+    render({ icon: Icon.TRASH, ariaLabel: 'Filter', pressed: true });
+
+    expect(host.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+    expect(host.classList.contains('button--pressed')).toBe(true);
+  });
+
+  it('pressed_whenUnstated_leavesTheButtonWithoutAToggleState', () => {
+    // An ordinary button is not a toggle, and must not claim to be one.
+    render({ label: 'Save' });
+
+    expect(host.querySelector('button')?.hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('size_whenSmall_marksTheHost_soTheStylesheetTightensIt', () => {
+    render({ label: 'Copy', size: 'small' });
+
+    expect(host.classList.contains('button--small')).toBe(true);
+  });
 });

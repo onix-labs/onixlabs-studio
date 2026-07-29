@@ -2,14 +2,13 @@
   @if (showHeader()) {
     <div class="find-panel__header" [appPanelDragHandle]="title()">
       <span class="find-panel__title">{{ title() }}</span>
-      <button
-        type="button"
-        class="find-panel__icon-button"
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="closeIcon"
+        ariaLabel="Close find"
         (click)="dismiss()"
-        aria-label="Close find"
-      >
-        <app-icon [icon]="closeIcon" />
-      </button>
+      />
     </div>
   }
 
@@ -83,43 +82,48 @@
 
   <div class="find-panel__actions">
     <div class="find-panel__nav">
-      <button
-        type="button"
-        class="find-panel__button"
-        (click)="previous()"
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="previousIcon"
+        label="Previous"
         [disabled]="!canPrevious()"
-      >
-        <app-icon [icon]="previousIcon" />
-        Previous
-      </button>
-      <button type="button" class="find-panel__button" (click)="next()" [disabled]="!canNext()">
-        Next
-        <app-icon [icon]="nextIcon" />
-      </button>
+        (click)="previous()"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="nextIcon"
+        label="Next"
+        [disabled]="!canNext()"
+        (click)="next()"
+      />
       <span class="find-panel__count">{{ matchLabel() }}</span>
     </div>
 
     @if (mode() === 'replace') {
       <div class="find-panel__replace-actions">
-        <button
-          type="button"
-          class="find-panel__button"
-          (click)="replaceOne()"
+        <app-button
+          variant="none"
+          size="small"
+          label="Replace"
           [disabled]="!canReplace()"
-        >
-          Replace
-        </button>
-        <button
-          type="button"
-          class="find-panel__button"
-          (click)="replaceEvery()"
+          (click)="replaceOne()"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          label="Replace All"
           [disabled]="!canReplaceAll()"
-        >
-          Replace All
-        </button>
-        <button type="button" class="find-panel__button" (click)="undo()" [disabled]="!canUndo()">
-          Undo
-        </button>
+          (click)="replaceEvery()"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          label="Undo"
+          [disabled]="!canUndo()"
+          (click)="undo()"
+        />
       </div>
     }
   </div>

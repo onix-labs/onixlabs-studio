@@ -25,6 +25,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -70,7 +71,7 @@ type WorkingRowData =
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [AppIcon, Checkbox, PanelToolbar, TreeView],
+  imports: [Button, AppIcon, Checkbox, PanelToolbar, TreeView],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

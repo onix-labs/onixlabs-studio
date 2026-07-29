@@ -3,9 +3,14 @@
     <app-icon class="binary-agent__icon" [icon]="Icon.AGENT" />
     <span class="binary-agent__title">Agent</span>
     <span class="binary-agent__spacer"></span>
-    <button type="button" aria-label="Close agent" title="Close agent" (click)="onClose()">
-      <app-icon [icon]="Icon.CLOSE" />
-    </button>
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.CLOSE"
+      ariaLabel="Close agent"
+      tooltip="Close agent"
+      (click)="onClose()"
+    />
   </div>
   <div class="binary-agent__body">
     @if (tabId()) {

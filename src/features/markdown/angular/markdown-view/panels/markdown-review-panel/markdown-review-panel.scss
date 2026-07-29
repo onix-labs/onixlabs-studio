@@ -71,35 +71,6 @@
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
 }
-
-.rv-refresh {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  font-size: 0.85rem;
-  color: var(--welcome-muted-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    color: var(--accent-surface-foreground-color);
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
 // Issue cards.
 .rv-list {
   margin: 0;
@@ -171,88 +142,6 @@
   align-items: center;
   gap: 0.35rem;
 }
-
-.rv-suggestion {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  block-size: 1.5rem;
-  padding-inline: 0.5rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &.primary {
-    color: var(--accent-color);
-    font-weight: 600;
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-  }
-
-  &:hover {
-    border-color: var(--accent-surface-border-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
-.rv-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  block-size: 1.5rem;
-  padding-inline: 0.5rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--welcome-muted-foreground-color);
-  background: transparent;
-  border: 0.0625rem dashed var(--dock-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    color: var(--body-foreground-color);
-    border-color: var(--accent-surface-border-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
-}
-
-.rv-ignore {
-  margin-inline-start: auto;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--welcome-muted-foreground-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover {
-    color: var(--body-foreground-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-    border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  }
-}
-
 .rv-empty {
   margin: 0;
   font-size: 0.85rem;

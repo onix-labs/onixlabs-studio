@@ -8,24 +8,22 @@
     [attr.aria-label]="searchPlaceholder()"
   />
   <div class="explorer-toolbar__actions">
-    <button
-      type="button"
-      class="explorer-toolbar__button"
-      title="Expand All"
-      aria-label="Expand All"
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.PLUS_SQUARE"
+      ariaLabel="Expand All"
+      tooltip="Expand All"
       (click)="expandAll.emit()"
-    >
-      <app-icon [icon]="Icon.PLUS_SQUARE" />
-    </button>
-    <button
-      type="button"
-      class="explorer-toolbar__button"
-      title="Collapse All"
-      aria-label="Collapse All"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.MINUS_SQUARE"
+      ariaLabel="Collapse All"
+      tooltip="Collapse All"
       (click)="collapseAll.emit()"
-    >
-      <app-icon [icon]="Icon.MINUS_SQUARE" />
-    </button>
+    />
     <button
       type="button"
       class="explorer-toolbar__button"

@@ -20,21 +20,23 @@
         @if (toast.actions.length > 0) {
           <div class="toast__actions">
             @for (action of toast.actions; track action.label) {
-              <button type="button" class="toast__action" (click)="onAction(toast, action)">
-                {{ action.label }}
-              </button>
+              <app-button
+                variant="none"
+                size="small"
+                [label]="action.label"
+                (click)="onAction(toast, action)"
+              />
             }
           </div>
         }
       </div>
-      <button
-        type="button"
-        class="toast__close"
-        [attr.aria-label]="'Dismiss: ' + toast.title"
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.CLOSE"
+        [ariaLabel]="'Dismiss: ' + toast.title"
         (click)="onDismiss(toast)"
-      >
-        <app-icon [icon]="Icon.CLOSE" [size]="1.1" />
-      </button>
+      />
     </article>
   }
 </div>

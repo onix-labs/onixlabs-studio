@@ -9,6 +9,7 @@ import {
 } from '@features/markdown/angular/markdown-review/review-types';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * A filter chip descriptor.
@@ -41,7 +42,7 @@ const KIND_CHIPS: readonly FilterChip[] = [
  */
 @Component({
   selector: 'app-markdown-review-panel',
-  imports: [ToolPanel, AppIcon],
+  imports: [Button, ToolPanel, AppIcon],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-review-panel.html',
   styleUrl: './markdown-review-panel.scss',

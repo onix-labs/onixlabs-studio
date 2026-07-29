@@ -34,19 +34,23 @@
   </div>
   <div class="tile__actions">
     @if (isRunning()) {
-      <button type="button" class="tile__action" title="Stop" aria-label="Stop" (click)="onStop()">
-        <app-icon [icon]="Icon.PAUSE" />
-      </button>
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.PAUSE"
+        ariaLabel="Stop"
+        tooltip="Stop"
+        (click)="onStop()"
+      />
     }
-    <button
-      type="button"
-      class="tile__action"
-      title="Focus"
-      aria-label="Focus"
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.FRAME_CORNERS"
+      ariaLabel="Focus"
+      tooltip="Focus"
       (click)="openFocus()"
-    >
-      <app-icon [icon]="Icon.FRAME_CORNERS" />
-    </button>
+    />
   </div>
 </header>
 

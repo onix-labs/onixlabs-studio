@@ -18,6 +18,7 @@ import { PanelArrangements } from '@shared/angular/components/panel-layout/panel
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Holds the prefix used to derive a code tab's run-terminal identifier from its tab id.
@@ -30,7 +31,7 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [Terminal, AppIcon, PanelDragHandle],
+  imports: [Button, Terminal, AppIcon, PanelDragHandle],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

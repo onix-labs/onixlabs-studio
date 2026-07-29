@@ -15,6 +15,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { BinaryDocuments } from '../../binary-document/binary-document';
 import { BinaryPanels } from '../../binary-panels/binary-panels';
 
@@ -26,7 +27,7 @@ import { BinaryPanels } from '../../binary-panels/binary-panels';
  */
 @Component({
   selector: 'app-binary-agent-panel',
-  imports: [AgentConversationPanel, AppIcon, PanelDragHandle],
+  imports: [Button, AgentConversationPanel, AppIcon, PanelDragHandle],
   // The conversation is provided here, not by the shared conversation panel: the side-panel system
   // keeps this host mounted while hidden, so the conversation (and an in-flight run) spans hide/show.
   providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],

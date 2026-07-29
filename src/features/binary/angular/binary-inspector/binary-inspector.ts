@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry } from '../binary-document/binary-document';
 import { inspectBytes, InspectorRow } from './binary-inspector-values';
@@ -29,7 +30,7 @@ const INSPECT_WIDTH: number = 8;
  */
 @Component({
   selector: 'app-binary-inspector',
-  imports: [AppIcon, PanelDragHandle],
+  imports: [Button, AppIcon, PanelDragHandle],
   templateUrl: './binary-inspector.html',
   styleUrl: './binary-inspector.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -63,61 +63,52 @@
             <div class="title-strip-tab-menu__request-actions">
               @switch (entry.item.kind) {
                 @case ('permission') {
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn"
+                  <app-button
+                    variant="solid"
+                    size="small"
+                    label="Allow"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onPermission(entry, true); $event.stopPropagation()"
-                  >
-                    Allow
-                  </button>
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  />
+                  <app-button
+                    size="small"
+                    label="Deny"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onPermission(entry, false); $event.stopPropagation()"
-                  >
-                    Deny
-                  </button>
+                  />
                 }
                 @case ('edit-decision') {
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn"
+                  <app-button
+                    variant="solid"
+                    size="small"
+                    label="Yes"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
-                  >
-                    Yes
-                  </button>
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  />
+                  <app-button
+                    size="small"
+                    label="No"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
-                  >
-                    No
-                  </button>
+                  />
                 }
                 @default {
                   @for (choice of entry.item.inputChoices ?? []; track choice.label) {
-                    <button
-                      type="button"
-                      class="title-strip-tab-menu__request-btn"
-                      [title]="choice.description ?? ''"
+                    <app-button
+                      variant="solid"
+                      size="small"
+                      [label]="choice.label"
+                      [tooltip]="choice.description ?? ''"
                       (pointerdown)="$event.preventDefault()"
                       (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
-                    >
-                      {{ choice.label }}
-                    </button>
+                    />
                   }
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                  <app-button
+                    size="small"
+                    label="Skip"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onAnswer(entry, null); $event.stopPropagation()"
-                  >
-                    Skip
-                  </button>
+                  />
                 }
               }
             </div>
@@ -142,61 +133,52 @@
           <div class="title-strip-tab-menu__request-actions">
             @switch (entry.item.kind) {
               @case ('permission') {
-                <button
-                  type="button"
-                  class="title-strip-tab-menu__request-btn"
+                <app-button
+                  variant="solid"
+                  size="small"
+                  label="Allow"
                   (pointerdown)="$event.preventDefault()"
                   (click)="onPermission(entry, true); $event.stopPropagation()"
-                >
-                  Allow
-                </button>
-                <button
-                  type="button"
-                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                />
+                <app-button
+                  size="small"
+                  label="Deny"
                   (pointerdown)="$event.preventDefault()"
                   (click)="onPermission(entry, false); $event.stopPropagation()"
-                >
-                  Deny
-                </button>
+                />
               }
               @case ('edit-decision') {
-                <button
-                  type="button"
-                  class="title-strip-tab-menu__request-btn"
+                <app-button
+                  variant="solid"
+                  size="small"
+                  label="Yes"
                   (pointerdown)="$event.preventDefault()"
                   (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
-                >
-                  Yes
-                </button>
-                <button
-                  type="button"
-                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                />
+                <app-button
+                  size="small"
+                  label="No"
                   (pointerdown)="$event.preventDefault()"
                   (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
-                >
-                  No
-                </button>
+                />
               }
               @default {
                 @for (choice of entry.item.inputChoices ?? []; track choice.label) {
-                  <button
-                    type="button"
-                    class="title-strip-tab-menu__request-btn"
-                    [title]="choice.description ?? ''"
+                  <app-button
+                    variant="solid"
+                    size="small"
+                    [label]="choice.label"
+                    [tooltip]="choice.description ?? ''"
                     (pointerdown)="$event.preventDefault()"
                     (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
-                  >
-                    {{ choice.label }}
-                  </button>
+                  />
                 }
-                <button
-                  type="button"
-                  class="title-strip-tab-menu__request-btn title-strip-tab-menu__request-btn--ghost"
+                <app-button
+                  size="small"
+                  label="Skip"
                   (pointerdown)="$event.preventDefault()"
                   (click)="onAnswer(entry, null); $event.stopPropagation()"
-                >
-                  Skip
-                </button>
+                />
               }
             }
           </div>

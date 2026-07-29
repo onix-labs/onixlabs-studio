@@ -10,6 +10,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * The shared explorer tool strip rendered at the top of the Solution Explorer and File Explorer panel
@@ -19,7 +20,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
  */
 @Component({
   selector: 'app-explorer-toolbar',
-  imports: [AppIcon, CdkMenuTrigger, Menu],
+  imports: [Button, AppIcon, CdkMenuTrigger, Menu],
   templateUrl: './explorer-toolbar.html',
   styleUrl: './explorer-toolbar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -20,6 +20,7 @@ import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Pairs a category heading with the open tabs that fall under it, for the grouped tab menu.
@@ -60,7 +61,7 @@ const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string 
  */
 @Component({
   selector: 'app-title-strip-tab-menu',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
   templateUrl: './title-strip-tab-menu.html',
   styleUrl: './title-strip-tab-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

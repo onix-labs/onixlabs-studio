@@ -39,6 +39,9 @@ Nothing else can start until these exist.
       padding, radius, corner shape, gap, hover and disabled state for all three variants.
       **Icon-only is derived, not declared**: a glyph with no label is square, so shape and content
       cannot disagree. Measured from the clear-recent-items pair.
+- [x] **`app-button` pressed state** — `pressed`, for toggle buttons (the diff-layout switch, the
+      problems severity filter, the default-preset star, a pinned recent item). Sets `aria-pressed`
+      and wears the hover treatment while on.
 - [x] **`app-button` size axis** — `medium` (default) and `small`, for the dense chrome revealed on a
       hovered row or hung off a chip. Independent of variant: any variant can be either size.
 - [ ] **`app-textarea`** — multi-line sibling of `app-text-field`; `rows`, `placeholder`,
@@ -56,8 +59,8 @@ its own.
 
 - [x] `welcome-screen` — 2 × `welcome__confirm-button` (**the reference pair**; the atom was measured
       from it, and both hand-rolled classes are gone)
-- [ ] `worktrees-panel` — 4 × `worktrees__confirm-button`
-- [ ] `directory-ribbon` — 10 × `directory-ribbon__confirm-button`
+- [x] `worktrees-panel` — 4 × `worktrees__confirm-button`
+- [x] `directory-ribbon` — 10 × `directory-ribbon__confirm-button`
 - [x] `agent-chat` — **whole component done**: 12 × `agent__btn`, 4 × `agent__copy`, 4 ×
       `agent__queue-btn`, `agent__attachment-remove`, `agent__image-remove`, `agent__md`, 4 ×
       `agent__send`. Eight hand-rolled classes deleted. Left raw: `agent__action-more` (an inline
@@ -69,50 +72,50 @@ its own.
 - [x] `source-control-sidebar` — 4 × `rail__dialog-button`, 5 × `panel-toolbar__button`, 4 ×
       `rail__item-action`. Three classes deleted; the uncommitted-changes badge keeps its own markup
       (a toggle carrying a count, not a button)
-- [ ] `configure-dialog` — 4 × `configure__button`
-- [ ] `ai-connection-editor` — 5 × `conn-editor__button`, 1 × `conn-editor__text-button`
-- [ ] `code-document` — 3 × `breakpoint-editor__button`
-- [ ] `commit-detail` — 2 × `detail__commit-button`
-- [ ] `title-strip-tab-menu` — 12 × `title-strip-tab-menu__request-btn`
-- [ ] `toast-host` — 1 × `toast__action`
-- [ ] `settings-view` — 1 × `settings__restart-action`
-- [ ] `mission-control-panel` — 1 × `panel__add`
-- [ ] `editor-profiles` — `profiles__add`, `profiles__delete`
-- [ ] `ai-settings` — `ai-connections__add-button`, `__restore-button`, `__toggle`
-- [ ] `ai-write-paths` — 2 × `write-paths__add`
-- [ ] `worktrees-panel` — `worktrees__add`
-- [ ] `markdown-review-panel` — `rv-suggestion`, `rv-ghost`, `rv-ignore`
-- [ ] `keyboard-settings` — `keyboard__reset`
+- [x] `configure-dialog` — 4 × `configure__button`
+- [x] `ai-connection-editor` — 5 × `conn-editor__button`, 1 × `conn-editor__text-button`
+- [x] `code-document` — 3 × `breakpoint-editor__button`
+- [x] `commit-detail` — 2 × `detail__commit-button`
+- [x] `title-strip-tab-menu` — 12 × `title-strip-tab-menu__request-btn`
+- [x] `toast-host` — 1 × `toast__action`
+- [x] `settings-view` — 1 × `settings__restart-action`
+- [x] `mission-control-panel` — 1 × `panel__add`
+- [x] `editor-profiles` — `profiles__add`, `profiles__delete`
+- [x] `ai-settings` — `ai-connections__add-button`, `__restore-button`, `__toggle`
+- [x] `ai-write-paths` — 2 × `write-paths__add`
+- [x] `worktrees-panel` — `worktrees__add`
+- [x] `markdown-review-panel` — `rv-suggestion`, `rv-ghost`, `rv-ignore`
+- [x] `keyboard-settings` — `keyboard__reset`
 
 ## Phase 2 — icon and tool buttons (the None variant)
 
 Mostly icon-only chrome that already behaves like the None variant, but each rebuilds the hover.
 
-- [ ] `panel-toolbar__button` (shared class used by output, problems, terminal, commit-detail,
+- [x] `panel-toolbar__button` (shared class used by output, problems, terminal, commit-detail,
       source-control — 12 uses; check whether it should become the atom or wrap it)
-- [ ] `explorer-toolbar` — 3
-- [ ] `find-panel` — `find-panel__button` ×5, `find-panel__icon-button`
-- [ ] `debug-panel` — 6 × `debug-toolbar__button`, `debug-watch__remove`
+- [x] `explorer-toolbar` — 3
+- [x] `find-panel` — `find-panel__button` ×5, `find-panel__icon-button`
+- [x] `debug-panel` — 6 × `debug-toolbar__button`, `debug-watch__remove`
 - [x] `agent-chat` — done with Phase 1 above
 - [x] `agent-conversation-list` — done with Phase 1 above (the two menu triggers stay)
-- [ ] `configure-dialog` — 3 × `configure__tool`
-- [ ] `worktrees-panel` — `worktrees__remove`, `worktrees__refresh`
-- [ ] `directory-ribbon` — `__preset-default`, `__preset-delete`
-- [ ] `ai-connection-editor` — 2 × `conn-editor__icon-button`
-- [ ] `ai-settings` — 2 × `ai-connections__move`
-- [ ] `ai-write-paths` — 2 × `write-paths__remove`
-- [ ] `mission-control-agent-tile` — 2 × `tile__action`
-- [ ] `mission-control-panel` — `panel__gear`
-- [ ] `markdown-reader-panel` — `ra-play`, `ra-skip` ×2
-- [ ] `markdown-review-panel` — `rv-refresh`
-- [ ] `commit-detail` — `detail__ai`, `detail__notice-dismiss`
-- [ ] `commit-detail` — `tree-row-action` (the sidebar's are done; `.tree-row-action` stays as the
+- [x] `configure-dialog` — 3 × `configure__tool`
+- [x] `worktrees-panel` — `worktrees__remove`, `worktrees__refresh`
+- [x] `directory-ribbon` — `__preset-default`, `__preset-delete`
+- [x] `ai-connection-editor` — 2 × `conn-editor__icon-button`
+- [x] `ai-settings` — 2 × `ai-connections__move`
+- [x] `ai-write-paths` — 2 × `write-paths__remove`
+- [x] `mission-control-agent-tile` — 2 × `tile__action`
+- [x] `mission-control-panel` — `panel__gear`
+- [x] `markdown-reader-panel` — `ra-play`, `ra-skip` ×2
+- [x] `markdown-review-panel` — `rv-refresh`
+- [x] `commit-detail` — `detail__ai`, `detail__notice-dismiss`
+- [x] `commit-detail` — `tree-row-action` (the sidebar's are done; `.tree-row-action` stays as the
       global hover-reveal, which is placement rather than chrome)
-- [ ] `welcome-screen` — 2 × `welcome__recent-action`
-- [ ] `status-strip-lsp-menu` — `lsp-status-menu__restart`
-- [ ] `status-strip-notifications-menu` — `notifications-menu__clear`, `__remove`
-- [ ] `terminal-panel`, `code-terminal-panel` — 5 unclassed icon buttons
-- [ ] `binary-disasm-panel`, `binary-agent-panel`, `code-agent-panel`, `terminal-agent-panel`,
+- [x] `welcome-screen` — 2 × `welcome__recent-action`
+- [x] `status-strip-lsp-menu` — `lsp-status-menu__restart`
+- [x] `status-strip-notifications-menu` — `notifications-menu__clear`, `__remove`
+- [x] `terminal-panel`, `code-terminal-panel` — 5 unclassed icon buttons
+- [x] `binary-disasm-panel`, `binary-agent-panel`, `code-agent-panel`, `terminal-agent-panel`,
       `problems-panel` — 1 unclassed icon button each
 
 ## Phase 3 — segmented controls
