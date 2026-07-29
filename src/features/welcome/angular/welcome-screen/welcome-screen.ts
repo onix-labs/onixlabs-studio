@@ -21,6 +21,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -70,7 +71,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon, Modal, ModalContent, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

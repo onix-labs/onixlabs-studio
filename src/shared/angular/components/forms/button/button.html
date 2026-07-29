@@ -1,0 +1,18 @@
+<!-- Content is projected after the label so a caller can add an adornment (a count, a chevron) to a
+     labelled button. A button whose whole content is projected should still state its label, since
+     that is what decides whether it is padded for text. -->
+<button
+  class="button"
+  [type]="type()"
+  [disabled]="disabled()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.title]="tooltip()"
+>
+  @if (icon(); as glyph) {
+    <app-icon class="button__icon" [icon]="glyph" />
+  }
+  @if (label(); as text) {
+    <span class="button__label">{{ text }}</span>
+  }
+  <ng-content />
+</button>

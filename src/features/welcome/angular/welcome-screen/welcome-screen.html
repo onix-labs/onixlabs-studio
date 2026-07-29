@@ -207,16 +207,8 @@
           Are you sure you want to clear all recent items? This cannot be undone.
         </p>
         <div class="welcome__confirm-actions">
-          <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="welcome__confirm-button welcome__confirm-button--accent"
-            (click)="clearRecent()"
-          >
-            Clear
-          </button>
+          <app-button label="Cancel" (click)="cancelClearRecent()" />
+          <app-button variant="solid" label="Clear" (click)="clearRecent()" />
         </div>
       </ng-template>
     </app-modal>

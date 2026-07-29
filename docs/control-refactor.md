@@ -34,10 +34,11 @@ The Clear-recent-items pair is the reference for padding, spacing and radius as 
 
 Nothing else can start until these exist.
 
-- [ ] **`app-button`** — `variant` (`solid` | `outline` | `none`), `icon`, `label`, `disabled`,
-      `type`, `iconOnly` (square, for tool buttons), `danger`? (see open questions). Owns padding,
-      radius, corner-shape, focus ring, disabled opacity, and the hover treatment for all three
-      variants.
+- [x] **`app-button`** — `variant` (`solid` | `outline` | `none`, default outline), `label`, `icon`,
+      `ariaLabel`, `tooltip`, `disabled`, `type`, plus content projection for adornments. Owns
+      padding, radius, corner shape, gap, hover and disabled state for all three variants.
+      **Icon-only is derived, not declared**: a glyph with no label is square, so shape and content
+      cannot disagree. Measured from the clear-recent-items pair.
 - [ ] **`app-textarea`** — multi-line sibling of `app-text-field`; `rows`, `placeholder`,
       `readonly`, auto-grow where callers need it.
 - [ ] **`app-search-field`** — `app-text-field` with the leading glyph and clear affordance that four
@@ -51,8 +52,8 @@ Nothing else can start until these exist.
 The worst divergence, and the reason this document exists. Each line is one component, testable on
 its own.
 
-- [ ] `welcome-screen` — 2 × `welcome__confirm-button` (**the reference pair**; convert first and
-      make the atom match it exactly)
+- [x] `welcome-screen` — 2 × `welcome__confirm-button` (**the reference pair**; the atom was measured
+      from it, and both hand-rolled classes are gone)
 - [ ] `worktrees-panel` — 4 × `worktrees__confirm-button`
 - [ ] `directory-ribbon` — 10 × `directory-ribbon__confirm-button`
 - [ ] `agent-chat` — 12 × `agent__btn` (already accent-filled and ghost; the ghost becomes Outline)
@@ -157,13 +158,24 @@ tokens:
 `*-menu__trigger` (LSP, notifications, tab menu) · `configure__item` · `tree-open-btn` ·
 `rv-card-head` · `keyboard__chord` (the chord-capture field — arguably an input)
 
-## Open questions
+## Rulings (2026-07-29)
 
-1. **Destructive actions.** Several confirmations use a coral "danger" fill today (remove worktree,
-   drop stash, delete conversations). You had the welcome screen's Clear switched from coral to
-   accent. Does that mean **no danger variant at all**, or a fourth variant that the rest keep?
-2. **Icon-only sizing.** Tool buttons are square and tightly padded; dialog buttons are not. One atom
-   with an `iconOnly` input, or two atoms?
-3. **`panel-toolbar__button`** is already a shared class used across six panels. Does it become
-   `app-button variant="none"`, or stay as the panel-toolbar's own thing?
-4. **Structural set above** — leave as-is, or convert those too?
+1. **Destructive actions use the accent like everything else, for now.** No danger variant. Meaning —
+   danger, warning, success — is a separate plan, and will arrive as a `tone` axis alongside the
+   existing variants. The variants above are deliberately about SHAPE only, so adding tones later is
+   additive rather than a rework.
+2. **One atom, and icon-only is derived rather than declared.** A flag would be a second source of
+   truth that can contradict the content; the button is square when it has a glyph and no label.
+3. **`panel-toolbar__button` becomes `app-button variant="none"`.** It was a shared class the call
+   sites hand-wrote, not a component.
+4. **The structural set stays out of `app-button`** — a tab, a list row and a menu trigger are not
+   buttons — **but repeated markup becomes its own component**, so the six welcome cards become one
+   component rather than six copies. The threshold is repetition or sharing: a row that appears once
+   inside a component is already componentised, and wrapping it again buys nothing.
+
+## Phase 5 — repeated markup that should be its own component
+
+- [ ] `welcome__action` — the six welcome cards (icon, label, hint, chevron), one component
+- [ ] `title-strip-tab-menu__request-btn` — 12 copies of the same request row
+- [ ] `tree-row-action` — 6 copies across the source-control sidebar and commit detail
+- [ ] Audit the rest of the structural set for repetition once the phases above are done

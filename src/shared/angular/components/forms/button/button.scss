@@ -1,0 +1,72 @@
+// The host is the layout box a caller positions; the button inside fills it, so a call site can
+// stretch a button (a grid track, flex: 1) without reaching into its styling.
+:host {
+  display: inline-flex;
+}
+
+// Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
+// padding, radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
+.button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  font: inherit;
+  color: var(--body-foreground-color);
+  background: transparent;
+  // Present in every variant, transparent where it is not drawn: a border that appears on hover
+  // would otherwise shift the button by its own width.
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+// A glyph with no label is a square, sized to the strip chrome it usually sits in rather than to a
+// line of text.
+:host(.button--icon-only) .button {
+  gap: 0;
+  padding: 0;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+}
+
+// Solid: the affirmative action, filled with the accent at rest and lifted on hover.
+:host(.button--solid) .button {
+  color: var(--gray-100);
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    filter: brightness(1.1);
+  }
+}
+
+// Outline: neutral until pointed at, then the accent surface — the counterpart to a solid button.
+:host(.button--outline) .button {
+  border-color: var(--dock-border-color);
+}
+
+// None: no chrome at rest, for buttons that sit in a row (tool strips, ribbon strips, panel
+// toolbars) where borders at rest would read as a wall of boxes. Hovers exactly as an outlined one,
+// so the two are the same button with a different resting state.
+:host(.button--outline) .button,
+:host(.button--none) .button {
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: var(--accent-surface-foreground-color);
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+  }
+}
