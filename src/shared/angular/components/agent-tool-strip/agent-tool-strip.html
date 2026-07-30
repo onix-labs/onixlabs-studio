@@ -1,23 +1,26 @@
 <div class="strip">
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.PLUS"
-    label="New chat"
-    [iconOnly]="true"
-    (action)="conversation.newChat()"
+    ariaLabel="New chat"
+    tooltip="New chat"
+    (click)="conversation.newChat()"
   />
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.STOP"
-    label="Stop"
-    [iconOnly]="true"
+    ariaLabel="Stop"
+    tooltip="Stop"
     [disabled]="!conversation.isRunning()"
-    (action)="conversation.stop()"
+    (click)="conversation.stop()"
   />
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.COMPACT"
-    label="Compact conversation"
-    [iconOnly]="true"
+    ariaLabel="Compact conversation"
+    tooltip="Compact conversation"
     [disabled]="conversation.isRunning() || !conversation.hasMessages()"
-    (action)="conversation.compact()"
+    (click)="conversation.compact()"
   />
 
   <app-dropdown
@@ -37,32 +40,35 @@
     (valueChange)="onModel($event)"
   />
 
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.ATTACH"
-    label="Attach file"
-    [iconOnly]="true"
-    (action)="conversation.attachFile()"
+    ariaLabel="Attach file"
+    tooltip="Attach file"
+    (click)="conversation.attachFile()"
   />
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.FOLDER_PLUS"
-    label="Add folder"
-    [iconOnly]="true"
-    (action)="conversation.attachFolder()"
+    ariaLabel="Add folder"
+    tooltip="Add folder"
+    (click)="conversation.attachFolder()"
   />
-  <app-ribbon-strip-button-small
+  <app-button
+    variant="none"
     [icon]="Icon.SELECTION"
-    label="Attach selection"
-    [iconOnly]="true"
-    (action)="conversation.attachSelection()"
+    ariaLabel="Attach selection"
+    tooltip="Attach selection"
+    (click)="conversation.attachSelection()"
   />
 
-  <app-ribbon-strip-button-small
+  <app-button
     class="strip__history"
+    variant="none"
     [icon]="Icon.RECENT"
-    label="Conversation history"
-    [iconOnly]="true"
-    [toggle]="true"
+    ariaLabel="Conversation history"
+    tooltip="Conversation history"
     [pressed]="historyPressed()"
-    (action)="onHistoryToggle()"
+    (click)="onHistoryToggle()"
   />
 </div>

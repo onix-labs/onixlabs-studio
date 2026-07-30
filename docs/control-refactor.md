@@ -217,10 +217,36 @@ than forced.
 - [ ] `tree-row-action` — 6 copies across the source-control sidebar and commit detail
 - [ ] Audit the rest of the structural set for repetition once the phases above are done
 
+### Done — one control height (2026-07-30)
+
+Reported from two zoomed screenshots: in a tool strip the dropdown, the text field and the button
+were all slightly different heights. Measured, they were **25px / 27px / 28px / 34px**.
+
+The cause is that only the icon-only button ever STATED a height. Every other control was
+padding + whatever line box its content happened to make — a 0.8rem input's, a caret glyph's, an
+inherited 1rem label's — so four controls that each looked reasonable alone could not line up.
+
+- [x] `--control-height: 1.75rem` and `--control-height-small: 1.25rem` in `_variables.scss`. Any
+      control that fills a strip sets `block-size` from it and keeps only its inline padding.
+- [x] Applied to `app-button` (both shapes), `app-text-field`, `app-dropdown`, `app-number-field`,
+      `app-password-field`.
+- [x] Icon-only buttons take their width from `aspect-ratio: 1` rather than a second declared size,
+      so square-ness cannot disagree with height at either scale.
+- [x] The agent tool strip's seven buttons were `app-ribbon-strip-button-small` — a RIBBON control,
+      sized for a ribbon lane (`min-block-size: 1.25rem`, three to a lane), which is why it could
+      never match the dropdown beside it. Now `app-button variant="none"`. That control is back to
+      being used only by the six ribbons.
+- **A labelled `medium` button is now 28px rather than ~34px**, since its height no longer comes from
+  the label's line box. This is the intended consequence — it is the same control as the icon button
+  beside it — but it does make dialog action rows shorter. Revisit if a dialog reads cramped.
+- **Not changed**: `app-button-group` (a track wrapping options, ~37px), `app-textarea` (multi-line),
+  `app-checkbox`/`app-radio` (glyph-sized, aligned to text rather than to a strip),
+  `app-language-select` (a list box). None of these sit in a strip beside a field today.
+
 ### Done — dock panel title controls (2026-07-30)
 
 - [x] The dock's own panel controls (Auto Hide, Float, Open in New Window, Close) are `app-button
-    variant="none" size="small"` — the same button a tool panel's header wears. They had been a
+  variant="none" size="small"` — the same button a tool panel's header wears. They had been a
       fourth hand-rolled variant: 1.125rem square, a `--dock-title-*--focused` hover, and in the
       floating panel a hardcoded `rgb(255 255 255 / 25%)`.
 - [x] The same row in `dock-floating-layer` (Dock, Close) and the collapsed peek flyout

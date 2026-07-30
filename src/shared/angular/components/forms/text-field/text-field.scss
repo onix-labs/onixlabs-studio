@@ -8,7 +8,10 @@
 
 .text-field {
   inline-size: 100%;
-  padding: 0.3rem 0.45rem;
+  // Height is stated from the shared control height so the field matches the buttons and dropdowns
+  // beside it in a strip, rather than ending up wherever its own line box lands.
+  block-size: var(--control-height);
+  padding: 0 0.45rem;
   font: inherit;
   font-size: 0.8rem;
   color: inherit;

@@ -129,6 +129,17 @@
 
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
+  // The height of a single-line control — button, text field, dropdown, segmented control — so a row
+  // of mixed controls lines up. This has to be STATED, not inferred: padding plus content leaves each
+  // control's height at the mercy of its own line box (a 0.8rem input's, a caret glyph's, an inherited
+  // 1rem label's), which is exactly how they drifted 25px/27px/28px/34px apart while every one of them
+  // looked reasonable on its own. Any control that fills a strip sets `block-size` from this.
+  //
+  // The small scale is for dense chrome that deliberately sits below the line: a panel header's close
+  // button, a chip's remove control, the controls revealed on a hovered row.
+  --control-height: 1.75rem;
+  --control-height-small: 1.25rem;
+
   // Modal presentation knobs that are pure motion/geometry, not colour, so they stay constant across
   // themes: the backdrop blur radius, the enter-fade duration, and the padding inside a modal's
   // panel. The backdrop *tint* is a theme token (--modal-backdrop-color) since it must track

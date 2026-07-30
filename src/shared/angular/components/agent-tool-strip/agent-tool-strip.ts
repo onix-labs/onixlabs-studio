@@ -14,7 +14,7 @@ import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Icon } from '@shared/angular/icons/icon';
-import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 /**
@@ -28,7 +28,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
  */
 @Component({
   selector: 'app-agent-tool-strip',
-  imports: [RibbonStripButtonSmall, Dropdown],
+  imports: [Dropdown, Button],
   templateUrl: './agent-tool-strip.html',
   styleUrl: './agent-tool-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

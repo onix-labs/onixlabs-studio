@@ -12,7 +12,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.45rem 1rem;
+  // Height is stated, not left to the label's line box, so a button matches the field or dropdown
+  // beside it. Only the inline padding is the button's own.
+  block-size: var(--control-height);
+  padding: 0 1rem;
   font: inherit;
   color: var(--body-foreground-color);
   background: transparent;
@@ -32,26 +35,28 @@
   }
 }
 
-// A glyph with no label is a square, sized to the strip chrome it usually sits in rather than to a
-// line of text.
+// A glyph with no label is a square: the height comes from the shared control height, and the width
+// follows it through the aspect ratio rather than being declared a second time — so the two cannot
+// disagree, whichever size the button is.
 :host(.button--icon-only) .button {
+  // Not flexible: a square takes its width from its height through the ratio, and a flex-basis of 0
+  // would leave that width depending on the host it is trying to size.
+  flex: none;
   gap: 0;
   padding: 0;
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
+  aspect-ratio: 1;
 }
 
 // Dense chrome: quiet enough to sit on a hovered row or a chip without dominating what it acts on.
 :host(.button--small) .button {
   gap: 0.3rem;
-  padding: 0.15rem 0.4rem;
+  block-size: var(--control-height-small);
+  padding: 0 0.4rem;
   font-size: 0.75rem;
 }
 
 :host(.button--small.button--icon-only) .button {
   padding: 0;
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
 }
 
 // Solid: the affirmative action, filled with the accent at rest and lifted on hover.

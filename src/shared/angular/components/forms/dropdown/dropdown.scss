@@ -18,7 +18,10 @@
   justify-content: space-between;
   gap: 0.5rem;
   min-inline-size: 9rem;
-  padding: 0.3rem 0.45rem;
+  // Height is stated from the shared control height: the caret's own line box would otherwise decide
+  // it, leaving the dropdown a pixel or two off every field and button in the same strip.
+  block-size: var(--control-height);
+  padding: 0 0.45rem;
   font: inherit;
   font-size: 0.8rem;
   color: inherit;
