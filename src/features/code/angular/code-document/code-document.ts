@@ -193,6 +193,12 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Emits whether the editor holds a selection whenever that changes, so the owning leaf can report
+   * it against the tab it registered.
+   */
+  public readonly selectionChange: OutputEmitterRef<boolean> = output<boolean>();
+
+  /**
    * Holds the document id captured at initialisation, so teardown releases exactly the document that
    * was resolved without re-reading the required {@link documentId} input during destruction.
    */
@@ -427,5 +433,13 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    */
   protected onEolChange(eol: TextEditorEol): void {
     this.eolChange.emit(eol);
+  }
+
+  /**
+   * Re-emits whether the pane holds a selection to the owning leaf.
+   * @param selected Whether the editor holds a non-empty selection.
+   */
+  protected onSelectionChange(selected: boolean): void {
+    this.selectionChange.emit(selected);
   }
 }

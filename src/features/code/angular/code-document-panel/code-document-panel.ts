@@ -330,6 +330,15 @@ export class CodeDocumentPanel {
   }
 
   /**
+   * Reports whether this document's editor holds a selection, so controls acting on one (the agent's
+   * Attach Selection) can offer themselves only when there is something to attach.
+   * @param selected Whether the editor holds a non-empty selection.
+   */
+  protected onSelectionChange(selected: boolean): void {
+    this.editorCommands.setSelectionState(this.documentId(), selected);
+  }
+
+  /**
    * Records the end-of-line sequence reported by the editor core, for the well status strip.
    * @param eol The end-of-line sequence.
    */

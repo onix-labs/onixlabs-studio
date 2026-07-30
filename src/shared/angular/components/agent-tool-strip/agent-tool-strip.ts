@@ -13,6 +13,7 @@ import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -53,6 +54,12 @@ export class AgentToolStrip {
    * Holds the global engine, the source of the provider option list.
    */
   private readonly engine: AgentEngine = inject(AgentEngine);
+
+  /**
+   * Gets whether there is an editor selection to attach, so the Attach Selection control offers
+   * itself only when it would do something.
+   */
+  protected readonly hasSelection: Signal<boolean> = inject(EditorCommands).hasSelection;
 
   /**
    * Gets the provider options offered by the Provider field.

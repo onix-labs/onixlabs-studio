@@ -10,6 +10,7 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { AgentRibbon } from './agent-ribbon';
 
 /**
@@ -64,6 +65,7 @@ describe('AgentRibbon', () => {
   let attachedSelections: number;
   let clearedContexts: number;
   let contextRefs: WritableSignal<readonly AgentContextRef[]>;
+  let hasSelection: WritableSignal<boolean>;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -114,6 +116,7 @@ describe('AgentRibbon', () => {
     attachedSelections = 0;
     clearedContexts = 0;
     contextRefs = signal<readonly AgentContextRef[]>([]);
+    hasSelection = signal<boolean>(false);
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
     };
@@ -141,11 +144,14 @@ describe('AgentRibbon', () => {
       clearContext: (): void => void (clearedContexts += 1),
     };
 
+    const editorsStub: Partial<EditorCommands> = { hasSelection };
+
     await TestBed.configureTestingModule({
       imports: [AgentRibbon],
       providers: [
         { provide: AgentEngine, useValue: engineStub },
         { provide: AgentSessions, useValue: sessionsStub },
+        { provide: EditorCommands, useValue: editorsStub },
       ],
     }).compileComponents();
 
@@ -263,10 +269,18 @@ describe('AgentRibbon', () => {
     expect(attachedFolders).toBe(1);
   });
 
-  it('attachSelection_whenClicked_attachesTheEditorSelection', () => {
+  it('attachSelection_whenAnEditorHoldsOne_attachesTheEditorSelection', () => {
+    hasSelection.set(true);
+    fixture.detectChanges();
+
     button('Selection').click();
 
     expect(attachedSelections).toBe(1);
+  });
+
+  it('attachSelection_whenNothingIsSelected_isDisabled', () => {
+    // Nothing to attach, so the control does not offer itself rather than silently doing nothing.
+    expect(button('Selection').disabled).toBe(true);
   });
 
   it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {

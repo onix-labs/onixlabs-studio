@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -49,6 +50,12 @@ export class AgentRibbon {
    * Holds the active agent tab's session the Session group drives.
    */
   private readonly sessions: AgentSessions = inject(AgentSessions);
+
+  /**
+   * Gets whether there is an editor selection to attach, so the Selection button offers itself only
+   * when it would do something.
+   */
+  protected readonly hasSelection: Signal<boolean> = inject(EditorCommands).hasSelection;
 
   /**
    * Gets a value indicating whether the active tab's run is in flight.

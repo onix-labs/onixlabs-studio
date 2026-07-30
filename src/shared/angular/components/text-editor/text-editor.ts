@@ -136,6 +136,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   public readonly cursorChange: OutputEmitterRef<TextEditorCursor> = output<TextEditorCursor>();
 
   /**
+   * Emits whether the editor holds a non-empty selection whenever that changes, and once when the
+   * editor is created. Reported rather than pulled so a control acting on the selection can offer
+   * itself only when there is one.
+   */
+  public readonly selectionChange: OutputEmitterRef<boolean> = output<boolean>();
+
+  /**
    * Emits the model's end-of-line sequence when it changes, and once when the editor is created.
    */
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
@@ -524,6 +531,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       seed === null ? { line: 1, column: 1 } : { line: seed.lineNumber, column: seed.column },
     );
     this.eolChange.emit(this.readEol());
+    this.selectionChange.emit(false);
 
     this.editor.onDidChangeModelContent((): void => {
       // The end-of-line sequence can change with content (for example a "Change EOL" edit).
@@ -540,6 +548,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         this.cursorChange.emit({ line: event.position.lineNumber, column: event.position.column });
       },
     );
+
+    // Only whether there IS a selection is reported, not what it holds: the text is pulled on demand
+    // by whoever acts on it, and a selection can be large enough that carrying it on every keystroke
+    // would be waste. Whitespace alone does not count, matching what an attach would actually take.
+    this.editor.onDidChangeCursorSelection((): void => {
+      this.selectionChange.emit(this.getSelectionText().trim().length > 0);
+    });
 
     this.editorReady.set(true);
     this.ready.emit();

@@ -59,6 +59,7 @@
     [icon]="Icon.SELECTION"
     ariaLabel="Attach selection"
     tooltip="Attach selection"
+    [disabled]="!hasSelection()"
     (click)="conversation.attachSelection()"
   />
 
