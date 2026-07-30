@@ -26,16 +26,32 @@
     <div class="dock-collapsed-strip__flyout-title">
       <span class="dock-collapsed-strip__flyout-title-text">{{ activePanel()?.title }}</span>
       <span class="dock-collapsed-strip__flyout-title-buttons">
-        <button type="button" title="Dock" aria-label="Dock" (click)="dock()">
-          <app-icon [icon]="collapseIcon()" [rotation]="collapseRotation()" />
-        </button>
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="collapseIcon()"
+          [iconRotation]="collapseRotation()"
+          ariaLabel="Dock"
+          tooltip="Dock"
+          (click)="dock()"
+        />
         @if (activePanel(); as active) {
-          <button type="button" title="Float" aria-label="Float" (click)="float(active.id)">
-            <app-icon [icon]="Icon.FLOAT" />
-          </button>
-          <button type="button" title="Close" aria-label="Close" (click)="close(active.id)">
-            <app-icon [icon]="Icon.CLOSE" />
-          </button>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.FLOAT"
+            ariaLabel="Float"
+            tooltip="Float"
+            (click)="float(active.id)"
+          />
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            ariaLabel="Close"
+            tooltip="Close"
+            (click)="close(active.id)"
+          />
         }
       </span>
     </div>

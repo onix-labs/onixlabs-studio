@@ -173,7 +173,7 @@ triggers rather than controls. My instinct is to leave them, and instead have th
 tokens:
 
 `title-strip-tab` · `dock-tab-group` tabs and close · `dock-collapsed-strip__tab` ·
-`dock-floating-layer` chrome · `window-controls__button` · `welcome__action` (the six big cards) ·
+`window-controls__button` · `welcome__action` (the six big cards) ·
 `welcome__recent-open` (recent row) · `commit-graph__row` · `markdown-outline-panel__item` ·
 `agent__suggest-item` · `find-panel__result` · `settings__nav-item` · `tile__name` ·
 `*-menu__trigger` (LSP, notifications, tab menu) · `configure__item` · `tree-open-btn` ·
@@ -216,6 +216,19 @@ than forced.
 - [ ] `title-strip-tab-menu__request-btn` — 12 copies of the same request row
 - [ ] `tree-row-action` — 6 copies across the source-control sidebar and commit detail
 - [ ] Audit the rest of the structural set for repetition once the phases above are done
+
+### Done — dock panel title controls (2026-07-30)
+
+- [x] The dock's own panel controls (Auto Hide, Float, Open in New Window, Close) are `app-button
+    variant="none" size="small"` — the same button a tool panel's header wears. They had been a
+      fourth hand-rolled variant: 1.125rem square, a `--dock-title-*--focused` hover, and in the
+      floating panel a hardcoded `rgb(255 255 255 / 25%)`.
+- [x] The same row in `dock-floating-layer` (Dock, Close) and the collapsed peek flyout
+      (Dock, Float, Close) — three copies of one bar, now one control at three call sites.
+- The atom gained `iconRotation`, for the auto-hide arrow that points at the edge it collapses
+  towards. Rotation is a property of the glyph, and the button owns its glyph.
+- The dock title bar is 2px taller as a result, which lands it exactly on the tool panel header's
+  height — the two now agree rather than nearly agreeing.
 
 ### Done — docked panel chrome (2026-07-30)
 

@@ -10,6 +10,7 @@ import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
@@ -55,7 +56,7 @@ interface ResolvedFloat {
  */
 @Component({
   selector: 'app-dock-floating-layer',
-  imports: [DockPanelOutlet, AppIcon],
+  imports: [DockPanelOutlet, AppIcon, Button],
   templateUrl: './dock-floating-layer.html',
   styleUrl: './dock-floating-layer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

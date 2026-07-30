@@ -10,7 +10,7 @@
   [attr.title]="tooltip()"
 >
   @if (icon(); as glyph) {
-    <app-icon class="button__icon" [icon]="glyph" />
+    <app-icon class="button__icon" [icon]="glyph" [rotation]="iconRotation()" />
   }
   @if (label(); as text) {
     <span class="button__label">{{ text }}</span>

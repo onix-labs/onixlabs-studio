@@ -19,6 +19,7 @@ import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
@@ -48,7 +49,7 @@ const MINIMUM_FLYOUT_SIZE: number = 180;
  */
 @Component({
   selector: 'app-dock-collapsed-strip',
-  imports: [AppIcon, DockPanelOutlet],
+  imports: [AppIcon, DockPanelOutlet, Button],
   templateUrl: './dock-collapsed-strip.html',
   styleUrl: './dock-collapsed-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

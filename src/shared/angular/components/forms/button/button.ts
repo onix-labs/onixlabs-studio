@@ -84,6 +84,13 @@ export class Button {
   public readonly icon: InputSignal<Icon | undefined> = input<Icon>();
 
   /**
+   * Gets the clockwise rotation of the {@link icon} in degrees, for a glyph whose meaning depends on
+   * which way it points (the dock's auto-hide arrow, which faces the edge it collapses towards). The
+   * button owns its glyph, so a caller states the rotation here rather than reaching into the icon.
+   */
+  public readonly iconRotation: InputSignal<number> = input<number>(0);
+
+  /**
    * Gets the accessible name, for a button whose label is a glyph. When absent the visible label
    * names the button, as it should.
    */

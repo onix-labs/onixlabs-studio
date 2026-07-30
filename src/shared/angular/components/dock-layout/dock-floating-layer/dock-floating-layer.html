@@ -12,24 +12,24 @@
       <app-icon class="dock-float__icon" [icon]="item.panel.icon" />
       <span class="dock-float__title-text">{{ item.panel.title }}</span>
       <span class="dock-float__title-buttons">
-        <button
-          type="button"
-          title="Dock"
-          aria-label="Dock"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.DOCK"
+          ariaLabel="Dock"
+          tooltip="Dock"
           (click)="dockBack(item.window.panelId)"
           (mousedown)="$event.stopPropagation()"
-        >
-          <app-icon [icon]="Icon.DOCK" />
-        </button>
-        <button
-          type="button"
-          title="Close"
-          aria-label="Close"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          ariaLabel="Close"
+          tooltip="Close"
           (click)="close(item.window.panelId)"
           (mousedown)="$event.stopPropagation()"
-        >
-          <app-icon [icon]="Icon.CLOSE" />
-        </button>
+        />
       </span>
     </div>
     <div class="dock-float__body">
