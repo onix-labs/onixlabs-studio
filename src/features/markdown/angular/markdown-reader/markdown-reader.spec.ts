@@ -75,6 +75,36 @@ describe('Reader', () => {
     reader.setSpeechEngine(synthesis as unknown as SpeechSynthesis, fakeUtterance);
   });
 
+  it('construction_neverTouchesTheSpeechSynthesisGlobal', () => {
+    // Reading the global binds the renderer to the browser process's SpeechSynthesis interface, which
+    // makes that process enumerate the system's voices — over a second on macOS, freezing every
+    // window. The reader is constructed whenever a markdown document opens, so it must not pay that
+    // for a feature the document may never use.
+    const original: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'speechSynthesis',
+    );
+    let reads: number = 0;
+    Object.defineProperty(globalThis, 'speechSynthesis', {
+      configurable: true,
+      get: (): undefined => {
+        reads += 1;
+        return undefined;
+      },
+    });
+    try {
+      TestBed.resetTestingModule();
+      TestBed.inject(Reader);
+      expect(reads).toBe(0);
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { speechSynthesis?: unknown }).speechSynthesis;
+      } else {
+        Object.defineProperty(globalThis, 'speechSynthesis', original);
+      }
+    }
+  });
+
   it('canRead_whenNoDocument_isFalse', () => {
     expect(reader.canRead()).toBe(false);
   });

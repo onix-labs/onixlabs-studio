@@ -171,6 +171,16 @@ export class MarkdownReaderPanel {
   );
 
   /**
+   * Initializes a new instance of the {@link MarkdownReaderPanel} class, enumerating the platform
+   * voices now that a surface exists to offer them. The reader deliberately does not do this when it
+   * is constructed: the first enumeration blocks the browser process for over a second on macOS, and
+   * that cost belongs to opening the reader, not to opening a markdown document.
+   */
+  public constructor() {
+    this.reader.ensureVoicesLoaded();
+  }
+
+  /**
    * Gets the selectable playback speeds.
    */
   protected readonly speeds: readonly number[] = SPEEDS;
