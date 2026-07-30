@@ -536,12 +536,46 @@ export class Modal implements OnDestroy {
       return null;
     }
     for (const property of ['--modal-panel-background-color', '--body-background-color']) {
-      const hex: string | null = toHexColour(style.getPropertyValue(property).trim());
+      const value: string = style.getPropertyValue(property).trim();
+      const hex: string | null =
+        toHexColour(value) ?? toHexColour(this.resolveColour(value) ?? '');
       if (hex !== null) {
         return hex;
       }
     }
     return null;
+  }
+
+  /**
+   * Resolves a colour the theme states as a function rather than a literal — `color-mix()`, and any
+   * other form the engine only works out at used-value time — by letting the engine paint it on a
+   * probe and reading back what it landed on.
+   *
+   * A custom property's computed value is its token stream with `var()` substituted, nothing more:
+   * `color-mix(in srgb, #212529, #343a40)` stays written out, so reading the token alone cannot say
+   * what colour a panel takes.
+   * @param value The colour as the theme states it.
+   * @returns Returns the resolved `rgb()` colour, or null when the value is not a colour at all.
+   */
+  private resolveColour(value: string): string | null {
+    if (value === '') {
+      return null;
+    }
+    const probe: HTMLSpanElement = document.createElement('span');
+    probe.style.display = 'none';
+    // The probe is parented to the modal so it inherits the same custom properties, for a value that
+    // is itself stated in terms of others.
+    this.element.nativeElement.appendChild(probe);
+    try {
+      probe.style.backgroundColor = value;
+      // A value the engine would not take as a colour (a gradient, say) leaves the declaration
+      // unset, and the computed background falls back to the transparent initial.
+      return probe.style.backgroundColor === '' ? null : getComputedStyle(probe).backgroundColor;
+    } catch {
+      return null;
+    } finally {
+      probe.remove();
+    }
   }
 
   /**
@@ -607,9 +641,10 @@ export class Modal implements OnDestroy {
 }
 
 /**
- * Converts a CSS colour to a `#rrggbb` triplet, for the colours a window can be painted with. Only
- * the forms a computed style yields — `rgb()`/`rgba()` and hex — are understood; anything else
- * (a gradient, a colour function the platform would not take) yields null.
+ * Converts a CSS colour to a `#rrggbb` triplet, for the colours a window can be painted with. The
+ * forms a computed style yields are understood — hex, `rgb()`/`rgba()`, and the `color(srgb ...)`
+ * an engine hands back for a colour it worked out itself (what a `color-mix()` resolves to) —
+ * and anything else (a gradient, a colour function the platform would not take) yields null.
  * @param value The computed colour value.
  * @returns Returns the triplet, or null when the value is not a plain colour.
  */
@@ -619,11 +654,31 @@ function toHexColour(value: string): string | null {
     return `#${hex[1]}`;
   }
   const rgb: RegExpExecArray | null = /^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value);
-  if (rgb === null) {
-    return null;
+  if (rgb !== null) {
+    return toTriplet([rgb[1], rgb[2], rgb[3]].map(Number));
   }
-  return `#${[rgb[1], rgb[2], rgb[3]]
-    .map((part: string): string => Number(part).toString(16).padStart(2, '0'))
+  // `color(srgb r g b)` states its channels as fractions of full scale rather than as bytes.
+  const srgb: RegExpExecArray | null =
+    /^color\(\s*srgb\s+([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i.exec(value);
+  if (srgb !== null) {
+    return toTriplet([srgb[1], srgb[2], srgb[3]].map((part: string): number => Number(part) * 255));
+  }
+  return null;
+}
+
+/**
+ * Renders three 0–255 channels as a `#rrggbb` triplet, clamping and rounding what a fractional
+ * colour space yields.
+ * @param channels The red, green and blue channels.
+ * @returns Returns the triplet.
+ */
+function toTriplet(channels: readonly number[]): string {
+  return `#${channels
+    .map((channel: number): string =>
+      Math.round(Math.min(255, Math.max(0, channel)))
+        .toString(16)
+        .padStart(2, '0'),
+    )
     .join('')}`;
 }
 

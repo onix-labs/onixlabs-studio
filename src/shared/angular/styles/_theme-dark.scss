@@ -75,8 +75,11 @@
   // Scrim tint behind any modal panel; heavier on the dark theme to lift the panel off the backdrop.
   --modal-backdrop-color: rgba(0, 0, 0, 0.55);
 
-  // Modal panel surface (preserves the prior --body-background-color default).
-  --modal-panel-background-color: var(--gray-900);
+  // Modal panel surface: a half-step lighter than the fields a dialog holds, which sit at
+  // --form-control-background-color (--gray-900), so a text box or dropdown reads as recessed into
+  // the card rather than merging with it. The light theme states the same relationship the other way
+  // round — its card is the half-step DARKER than its near-white fields.
+  --modal-panel-background-color: var(--gray-850);
 
   --welcome-border-color: var(--gray-700);
   --welcome-muted-foreground-color: var(--gray-400);
