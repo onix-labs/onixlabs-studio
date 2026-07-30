@@ -935,24 +935,25 @@ export class Icon {
   public static readonly CARET_RIGHT_FILL: Icon = new Icon('ph-fill ph-caret-right');
 
   /**
-   * Gets the bold plus-square glyph used to expand every node in a tree.
+   * Gets the plus-square glyph used to expand every node in a tree.
    */
-  public static readonly PLUS_SQUARE: Icon = new Icon('ph-bold ph-plus-square');
+  public static readonly PLUS_SQUARE: Icon = new Icon('ph ph-plus-square');
 
   /**
-   * Gets the bold minus-square glyph used to collapse every node in a tree.
+   * Gets the minus-square glyph used to collapse every node in a tree.
    */
-  public static readonly MINUS_SQUARE: Icon = new Icon('ph-bold ph-minus-square');
+  public static readonly MINUS_SQUARE: Icon = new Icon('ph ph-minus-square');
 
   /**
-   * Gets the bold three-dots glyph used to open an overflow menu of further actions.
+   * Gets the three-dots glyph used to open an overflow menu of further actions.
    */
-  public static readonly DOTS_THREE: Icon = new Icon('ph-bold ph-dots-three');
+  public static readonly DOTS_THREE: Icon = new Icon('ph ph-dots-three');
 
   /**
-   * Gets the bold vertical three-dots glyph used for a row's overflow menu.
+   * Gets the vertical three-dots glyph used for a row's overflow menu. Regular weight, as its
+   * horizontal counterpart is: the same glyph turned on its side must not read as a heavier one.
    */
-  public static readonly DOTS_THREE_VERTICAL: Icon = new Icon('ph-bold ph-dots-three-vertical');
+  public static readonly DOTS_THREE_VERTICAL: Icon = new Icon('ph ph-dots-three-vertical');
 
   /**
    * Initialises a new instance of the {@link Icon} class.
