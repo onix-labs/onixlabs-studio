@@ -3,6 +3,8 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
@@ -21,6 +23,7 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 
 /**
  * The Worktrees panel: the container tab's overview and switcher. One row per checkout — labelled by
@@ -42,6 +45,12 @@ export class WorktreesPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the dock panel descriptor this body renders. Set by the dock outlet, which binds it on every
+   * projected panel component; unused here because the dock chrome renders the title.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
 
   /**
    * Gets the synthetic row id of the inert Orchestrator entry.
