@@ -1,9 +1,28 @@
-<app-modal [open]="isOpen()" [width]="52" ariaLabel="Run Configurations" (dismiss)="onCancel()">
+<app-modal
+  [open]="isOpen()"
+  [width]="58"
+  [height]="34"
+  [expandable]="true"
+  ariaLabel="Run Configurations"
+  (dismiss)="onCancel()"
+>
   <ng-template appModalContent>
     <div class="configure">
-      <h2 class="configure__title">Run Configurations</h2>
+      <!-- Title and Auto-configure share the header line: the dialog says what it is, and the one
+           action that authors configurations rather than editing them sits opposite. -->
+      <header class="configure__header">
+        <h2 class="configure__title">Run Configurations</h2>
+        <app-button
+          [icon]="Icon.AGENT"
+          label="Auto-configure"
+          tooltip="Let the agent set up this project's run configurations"
+          (click)="onAutoConfigure()"
+        />
+      </header>
 
       <div class="configure__body">
+        <!-- The list panel owns its own controls: New, Duplicate and Delete sit inside its border,
+             above the tree they act on, rather than floating over the dialog. -->
         <div class="configure__sidebar">
           <div class="configure__toolbar">
             <app-button
@@ -35,21 +54,21 @@
           </div>
 
           <div class="configure__list">
-            @for (group of groups(); track group.kind) {
-              <div class="configure__group">
-                <span class="configure__group-label">{{ group.kind }}</span>
-                @for (configuration of group.configurations; track configuration.id) {
-                  <button
-                    type="button"
-                    class="configure__item"
-                    [class.configure__item--selected]="configuration.id === selected()?.id"
-                    (click)="select(configuration.id)"
-                  >
-                    {{ configuration.name }}
-                  </button>
-                }
-              </div>
-            } @empty {
+            @if (rows().length > 0) {
+              <app-tree-view
+                [rows]="rows()"
+                [selectedId]="selectedRowId()"
+                (rowClick)="onRowClick($event)"
+              >
+                <!-- The shared tree classes, so a group row reads as a heading exactly as a root row
+                     does in the Solution Explorer: semibold, no colour lift. -->
+                <ng-template let-row>
+                  <span class="tree-name" [class.bold]="asRow(row).isGroup">{{
+                    asRow(row).label
+                  }}</span>
+                </ng-template>
+              </app-tree-view>
+            } @else {
               <p class="configure__empty">No run configurations. Use + to add one.</p>
             }
           </div>
@@ -95,7 +114,7 @@
               <app-text-field [value]="argsText()" (valueChange)="onArgs($event)" />
             </app-setting-row>
 
-            <app-setting-row label="Working directory">
+            <app-setting-row label="Working Directory">
               <app-text-field
                 [value]="configuration.cwd ?? ''"
                 placeholder="Workspace root when empty"
@@ -119,7 +138,7 @@
             </app-setting-row>
 
             <app-setting-row
-              label="New window"
+              label="New Window"
               description="Show this run's terminal in its own window"
             >
               <app-toggle
@@ -133,57 +152,30 @@
         </div>
       </div>
 
-      <!-- Agent authoring: Auto assesses the project unattended; the prompt box asks for something
-           specific and leaves the agent to work out how. Both run in the workspace's own agent, so the
-           work is visible (and answerable) in its Agent panel and in Mission Control. -->
-      <div class="configure__agent">
-        <app-button
-          [icon]="Icon.AGENT"
-          label="Auto-configure"
-          [disabled]="!canAsk() || authoring()"
-          [tooltip]="
-            askUnavailableReason() ??
-            'Let the agent assess this project and set up its run configurations'
-          "
-          (click)="onAuto()"
-        />
-        <app-text-field
-          class="configure__request"
-          [value]="request()"
-          [disabled]="!canAsk() || authoring()"
-          placeholder="…or describe what you need to run, and the agent works out how"
-          (valueChange)="onRequestInput($event)"
-        />
-        <app-button
-          label="Ask agent"
-          [disabled]="!canAsk() || authoring() || request().trim().length === 0"
-          (click)="onAsk()"
-        />
-      </div>
-
-      <!-- The agent's own questions and permission prompts, answered here because the dialog is modal
-           and its Agent panel is unreachable behind it. -->
-      @if (agentRequests().length > 0) {
-        <div class="configure__requests">
-          @for (entry of agentRequests(); track entry.key) {
-            <app-agent-request-card [entry]="entry" />
-          }
-        </div>
-      }
-
-      @if (authoring()) {
-        <p class="configure__status">
-          The agent is working — configurations appear here as it writes them. Watch its progress in
-          the Agent panel or Mission Control.
-        </p>
-      } @else if (askUnavailableReason(); as reason) {
-        <p class="configure__status configure__status--muted">{{ reason }}</p>
-      }
-
       <div class="configure__actions">
         <app-button label="Cancel" (click)="onCancel()" />
         <app-button variant="solid" label="Save" (click)="onSave()" />
       </div>
     </div>
+
+    <!-- Declared INSIDE this dialog's content so it is raised from the Run Configurations window: it
+         parents to that window and dims it, rather than reaching past it to the main window. Its
+         content is still to be designed. -->
+    <app-modal
+      [open]="autoConfigureOpen()"
+      [width]="34"
+      [height]="22"
+      ariaLabel="Auto-configure run configurations"
+      (dismiss)="onAutoConfigureClose()"
+    >
+      <ng-template appModalContent>
+        <div class="configure-auto">
+          <h2 class="configure__title">Auto-configure</h2>
+          <div class="configure__actions">
+            <app-button label="Close" (click)="onAutoConfigureClose()" />
+          </div>
+        </div>
+      </ng-template>
+    </app-modal>
   </ng-template>
 </app-modal>
