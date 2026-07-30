@@ -1,18 +1,10 @@
-<div class="inspector">
-  <div class="inspector__bar" appPanelDragHandle="Inspector">
-    <app-icon class="inspector__icon" [icon]="Icon.SEARCH" />
-    <span class="inspector__title">Inspector</span>
-    <span class="inspector__spacer"></span>
-    <app-button
-      variant="none"
-      size="small"
-      [icon]="Icon.CLOSE"
-      ariaLabel="Close inspector"
-      tooltip="Close inspector"
-      (click)="onClose()"
-    />
-  </div>
-
+<app-tool-panel
+  title="Inspector"
+  [icon]="Icon.SEARCH"
+  closeLabel="Close inspector"
+  [flush]="true"
+  (closed)="onClose()"
+>
   <div class="inspector__body">
     <div class="inspector__toggles">
       <app-button-group
@@ -43,4 +35,4 @@
       <p class="inspector__empty">Select a byte to inspect its value.</p>
     }
   </div>
-</div>
+</app-tool-panel>

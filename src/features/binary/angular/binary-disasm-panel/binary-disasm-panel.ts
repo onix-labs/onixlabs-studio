@@ -15,10 +15,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { ASM_LANGUAGE_ID } from '@shared/angular/services/monaco/monaco-asm-language';
@@ -67,7 +65,7 @@ interface DisasmContent {
  */
 @Component({
   selector: 'app-binary-disasm-panel',
-  imports: [Button, AppIcon, PanelDragHandle, TextEditor],
+  imports: [ToolPanel, TextEditor],
   templateUrl: './binary-disasm-panel.html',
   styleUrl: './binary-disasm-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

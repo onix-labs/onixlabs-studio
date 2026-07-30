@@ -41,7 +41,7 @@ describe('BinaryAgentPanel', () => {
   it('render_showsTheAgentTitleBarOverTheSharedConversationPanel', async () => {
     const fixture: ComponentFixture<BinaryAgentPanel> = await create('tab-1');
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.binary-agent__title')?.textContent).toContain('Agent');
+    expect(host.querySelector('.tool-panel__title')?.textContent).toContain('Agent');
     expect(host.querySelector('app-agent-conversation-panel')).not.toBeNull();
   });
 
@@ -64,7 +64,7 @@ describe('BinaryAgentPanel', () => {
     const fixture: ComponentFixture<BinaryAgentPanel> = await create('tab-1');
 
     (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('.binary-agent__bar button')
+      .querySelector<HTMLButtonElement>('.tool-panel__header button')
       ?.click();
 
     expect(panels.isVisible('tab-1', 'agent')).toBe(false);

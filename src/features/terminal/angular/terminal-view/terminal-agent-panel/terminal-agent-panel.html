@@ -1,20 +1,11 @@
-<div class="terminal-agent">
-  <div class="terminal-agent__bar" appPanelDragHandle="Agent">
-    <app-icon class="terminal-agent__icon" [icon]="Icon.AGENT" />
-    <span class="terminal-agent__title">Agent</span>
-    <span class="terminal-agent__spacer"></span>
-    <app-button
-      variant="none"
-      size="small"
-      [icon]="Icon.CLOSE"
-      ariaLabel="Close agent"
-      tooltip="Close agent"
-      (click)="onClose()"
-    />
-  </div>
-  <div class="terminal-agent__body">
-    @if (tabId()) {
-      <app-agent-conversation-panel [tabId]="tabId()" [isActive]="isActive()" surface="terminal" />
-    }
-  </div>
-</div>
+<app-tool-panel
+  title="Agent"
+  [icon]="Icon.AGENT"
+  closeLabel="Close agent"
+  [flush]="true"
+  (closed)="onClose()"
+>
+  @if (tabId()) {
+    <app-agent-conversation-panel [tabId]="tabId()" [isActive]="isActive()" surface="terminal" />
+  }
+</app-tool-panel>

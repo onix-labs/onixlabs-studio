@@ -1,133 +1,129 @@
-<div class="find-panel">
-  @if (showHeader()) {
-    <div class="find-panel__header" [appPanelDragHandle]="title()">
-      <span class="find-panel__title">{{ title() }}</span>
-      <app-button
-        variant="none"
-        size="small"
-        [icon]="closeIcon"
-        ariaLabel="Close find"
-        (click)="dismiss()"
+<app-tool-panel
+  [title]="title()"
+  [icon]="Icon.SEARCH"
+  [header]="showHeader()"
+  closeLabel="Close find"
+  [flush]="true"
+  (closed)="dismiss()"
+>
+  <div class="find-panel">
+    @if (supportsReplace()) {
+      <app-button-group
+        ariaLabel="Find mode"
+        [options]="modeOptions"
+        [value]="mode()"
+        (valueChange)="setMode($any($event))"
       />
-    </div>
-  }
+    }
 
-  @if (supportsReplace()) {
-    <app-button-group
-      ariaLabel="Find mode"
-      [options]="modeOptions"
-      [value]="mode()"
-      (valueChange)="setMode($any($event))"
-    />
-  }
-
-  <div class="find-panel__field" #findField>
-    <app-text-field
-      class="find-panel__input"
-      placeholder="Find"
-      [(value)]="findText"
-      (keydown.enter)="next()"
-      (keydown.shift.enter)="previous()"
-      (keydown.escape)="dismiss()"
-    />
-  </div>
-
-  @if (mode() === 'replace') {
-    <div class="find-panel__field">
+    <div class="find-panel__field" #findField>
       <app-text-field
         class="find-panel__input"
-        placeholder="Replace"
-        [(value)]="replaceText"
-        (keydown.enter)="replaceOne()"
+        placeholder="Find"
+        [(value)]="findText"
+        (keydown.enter)="next()"
+        (keydown.shift.enter)="previous()"
         (keydown.escape)="dismiss()"
       />
     </div>
-  }
-
-  <div class="find-panel__options">
-    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
-         rule cannot see through the component boundary to verify this statically. -->
-    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-    <label class="find-panel__option">
-      <app-checkbox [(checked)]="caseSensitive" />
-      <span>Match Case</span>
-    </label>
-    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-    <label class="find-panel__option">
-      <app-checkbox [(checked)]="wholeWord" />
-      <span>Match Whole Word</span>
-    </label>
-    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-    <label class="find-panel__option">
-      <app-checkbox [(checked)]="regexp" />
-      <span>Match Regex</span>
-    </label>
-  </div>
-
-  <div class="find-panel__actions">
-    <div class="find-panel__nav">
-      <app-button
-        variant="none"
-        size="small"
-        [icon]="previousIcon"
-        label="Previous"
-        [disabled]="!canPrevious()"
-        (click)="previous()"
-      />
-      <app-button
-        variant="none"
-        size="small"
-        [icon]="nextIcon"
-        label="Next"
-        [disabled]="!canNext()"
-        (click)="next()"
-      />
-      <span class="find-panel__count">{{ matchLabel() }}</span>
-    </div>
 
     @if (mode() === 'replace') {
-      <div class="find-panel__replace-actions">
-        <app-button
-          variant="none"
-          size="small"
-          label="Replace"
-          [disabled]="!canReplace()"
-          (click)="replaceOne()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          label="Replace All"
-          [disabled]="!canReplaceAll()"
-          (click)="replaceEvery()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          label="Undo"
-          [disabled]="!canUndo()"
-          (click)="undo()"
+      <div class="find-panel__field">
+        <app-text-field
+          class="find-panel__input"
+          placeholder="Replace"
+          [(value)]="replaceText"
+          (keydown.enter)="replaceOne()"
+          (keydown.escape)="dismiss()"
         />
       </div>
     }
-  </div>
 
-  <div class="find-panel__results">
-    @for (item of matches(); track $index) {
-      <button
-        type="button"
-        class="find-panel__result"
-        [class.is-active]="$index === activeIndex()"
-        (click)="select($index)"
-        [title]="positionLabel(item)"
-      >
-        <span class="find-panel__result-pos">{{ positionLabel(item) }}</span>
-        <span class="find-panel__result-preview"
-          ><span class="find-panel__result-before">{{ item.before }}</span
-          ><span class="find-panel__result-match">{{ item.text }}</span
-          ><span class="find-panel__result-after">{{ item.after }}</span></span
+    <div class="find-panel__options">
+      <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+         rule cannot see through the component boundary to verify this statically. -->
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="find-panel__option">
+        <app-checkbox [(checked)]="caseSensitive" />
+        <span>Match Case</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="find-panel__option">
+        <app-checkbox [(checked)]="wholeWord" />
+        <span>Match Whole Word</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="find-panel__option">
+        <app-checkbox [(checked)]="regexp" />
+        <span>Match Regex</span>
+      </label>
+    </div>
+
+    <div class="find-panel__actions">
+      <div class="find-panel__nav">
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="previousIcon"
+          label="Previous"
+          [disabled]="!canPrevious()"
+          (click)="previous()"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="nextIcon"
+          label="Next"
+          [disabled]="!canNext()"
+          (click)="next()"
+        />
+        <span class="find-panel__count">{{ matchLabel() }}</span>
+      </div>
+
+      @if (mode() === 'replace') {
+        <div class="find-panel__replace-actions">
+          <app-button
+            variant="none"
+            size="small"
+            label="Replace"
+            [disabled]="!canReplace()"
+            (click)="replaceOne()"
+          />
+          <app-button
+            variant="none"
+            size="small"
+            label="Replace All"
+            [disabled]="!canReplaceAll()"
+            (click)="replaceEvery()"
+          />
+          <app-button
+            variant="none"
+            size="small"
+            label="Undo"
+            [disabled]="!canUndo()"
+            (click)="undo()"
+          />
+        </div>
+      }
+    </div>
+
+    <div class="find-panel__results">
+      @for (item of matches(); track $index) {
+        <button
+          type="button"
+          class="find-panel__result"
+          [class.is-active]="$index === activeIndex()"
+          (click)="select($index)"
+          [title]="positionLabel(item)"
         >
-      </button>
-    }
+          <span class="find-panel__result-pos">{{ positionLabel(item) }}</span>
+          <span class="find-panel__result-preview"
+            ><span class="find-panel__result-before">{{ item.before }}</span
+            ><span class="find-panel__result-match">{{ item.text }}</span
+            ><span class="find-panel__result-after">{{ item.after }}</span></span
+          >
+        </button>
+      }
+    </div>
   </div>
-</div>
+</app-tool-panel>

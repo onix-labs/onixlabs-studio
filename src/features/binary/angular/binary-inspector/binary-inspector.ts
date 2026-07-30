@@ -11,9 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import {
   ButtonGroup,
   ButtonGroupOption,
@@ -34,7 +32,7 @@ const INSPECT_WIDTH: number = 8;
  */
 @Component({
   selector: 'app-binary-inspector',
-  imports: [ButtonGroup, Button, AppIcon, PanelDragHandle],
+  imports: [ToolPanel, ButtonGroup],
   templateUrl: './binary-inspector.html',
   styleUrl: './binary-inspector.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

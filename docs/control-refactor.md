@@ -216,3 +216,19 @@ than forced.
 - [ ] `title-strip-tab-menu__request-btn` — 12 copies of the same request row
 - [ ] `tree-row-action` — 6 copies across the source-control sidebar and commit detail
 - [ ] Audit the rest of the structural set for repetition once the phases above are done
+
+### Done — docked panel chrome (2026-07-30)
+
+- [x] `ToolPanel` is now the only chrome for a dockable panel in the editor views. Six hand-rolled
+      title bars (`code-agent__bar`, `terminal-agent__bar`, `binary-agent__bar`, `disasm__bar`,
+      `inspector__bar`, `code-terminal__bar`, `find-panel__header`) were byte-for-byte copies that had
+      already drifted from the shared component: `ToolPanel` drew an UPPERCASE 600-weight title and a
+      1.5rem close button, the copies a titlecase 500-weight title and a 1.25rem `app-button`.
+      `ToolPanel` took the copies' appearance and grew the extension points they needed —
+      `icon` (now optional), `dragTitle`, `header`, `closable`, `closeLabel`, and a `panelActions`
+      content slot for panels with extra header controls.
+- Each copy also carried a `button { … }` block styling its close button. That CSS was **dead**: it
+  targets the atom's internal `<button>`, which view encapsulation puts out of the parent's reach. The
+  hover and focus treatment it appeared to provide came from `app-button` all along.
+- **A panel's appearance is not a call-site decision.** Extra header controls go in `panelActions`;
+  a body that manages its own padding sets `[flush]="true"`. Neither is a reason for a new bar.

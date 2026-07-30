@@ -14,10 +14,8 @@ import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversa
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * Represents the docked agent panel for a code tab: this tab's title bar over the shared
@@ -27,7 +25,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
  */
 @Component({
   selector: 'app-code-agent-panel',
-  imports: [Button, AgentConversationPanel, AppIcon, PanelDragHandle],
+  imports: [ToolPanel, AgentConversationPanel],
   // The conversation is provided here, not by the shared conversation panel: the side-panel system
   // keeps this host mounted while hidden, so the conversation (and an in-flight run) spans hide/show.
   providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
