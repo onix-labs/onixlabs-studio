@@ -94,6 +94,12 @@
       <section class="welcome__recent" aria-label="Recent items">
         <div class="welcome__recent-head">
           <h2 class="welcome__recent-title">Recent Items</h2>
+          <!-- DELIBERATELY OUTSIDE THE ATOM SYSTEM. The welcome screen is the application's one
+               bespoke surface: its search box and Clear pill are drawn to its own palette
+               (`--wl-*`) and pill geometry, not the app's form chrome. Using `app-text-field` and
+               `app-button` here would either look wrong or force the call site to override the
+               atoms, which is the drift those atoms exist to prevent. Nothing else may follow this
+               example. -->
           <div class="welcome__searchbox">
             <input
               type="text"
@@ -114,6 +120,8 @@
           }
         </div>
 
+        <!-- Bespoke by design, as above: these pills carry the welcome palette's accent fill and
+             its own rounding, not the shared segmented track. -->
         <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
           @for (filter of filters; track filter.id) {
             <button
@@ -142,22 +150,17 @@
                   </span>
                 </button>
                 <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-                <button
-                  type="button"
-                  class="welcome__recent-action"
-                  [class.welcome__recent-action--on]="item.pinned"
-                  [attr.aria-pressed]="item.pinned"
-                  [attr.aria-label]="item.pinned ? 'Unpin item' : 'Pin item'"
+                <app-button
+                  [pressed]="item.pinned"
+                  [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
+                  [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
+                  variant="none"
+                  size="small"
                   (click)="togglePin(item)"
-                >
-                  <app-icon
-                    [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
-                    [rotation]="item.pinned ? -45 : 0"
-                  />
-                </button>
+                />
                 <button
                   type="button"
-                  class="welcome__recent-action"
+                  class="welcome__recent-menu"
                   aria-label="More actions"
                   [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
                   [cdkMenuPosition]="rowMenu.position()"
@@ -207,16 +210,8 @@
           Are you sure you want to clear all recent items? This cannot be undone.
         </p>
         <div class="welcome__confirm-actions">
-          <button type="button" class="welcome__confirm-button" (click)="cancelClearRecent()">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="welcome__confirm-button welcome__confirm-button--accent"
-            (click)="clearRecent()"
-          >
-            Clear
-          </button>
+          <app-button label="Cancel" (click)="cancelClearRecent()" />
+          <app-button variant="solid" label="Clear" (click)="clearRecent()" />
         </div>
       </ng-template>
     </app-modal>

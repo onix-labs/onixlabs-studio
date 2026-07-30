@@ -330,6 +330,33 @@ describe('Modal (window presentation)', () => {
     expect(windows.requests[0].background).toBe('#1e2124');
   });
 
+  it('request_whenTheColourIsStatedInFractionalChannels_carriesItAsATriplet', () => {
+    // What the engine hands back for a colour it worked out itself: the dark theme's panel surface
+    // is a color-mix, and it resolves to this rather than to an rgb().
+    host
+      .querySelector<HTMLElement>('app-modal')!
+      .style.setProperty(
+        '--modal-panel-background-color',
+        'color(srgb 0.166667 0.186275 0.205882)',
+      );
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].background).toBe('#2b3034');
+  });
+
+  it('request_whenThePanelColourCannotBeResolved_fallsBackToTheBodyRatherThanNothing', () => {
+    // The dark theme states the panel surface as a color-mix, which only a real engine works out;
+    // whatever the panel colour turns out to be, a modal must still open on SOME colour.
+    const element: HTMLElement = host.querySelector<HTMLElement>('app-modal')!;
+    element.style.setProperty('--modal-panel-background-color', 'linear-gradient(red, blue)');
+    element.style.setProperty('--body-background-color', '#212529');
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].background).toBe('#212529');
+  });
+
   it('request_whenExpandable_asksForAResizableWindow', () => {
     component.expandable.set(true);
     component.open.set(true);

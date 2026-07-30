@@ -6,6 +6,7 @@ import { LspServer, LspServerState, LspStatus } from '@shared/angular/services/l
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * Summarises the language servers of the active workspace for the status strip's trigger button.
@@ -36,7 +37,7 @@ interface LspSummary {
  */
 @Component({
   selector: 'app-status-strip-lsp-menu',
-  imports: [AppIcon, CdkMenuTrigger, CdkMenu],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu],
   templateUrl: './status-strip-lsp-menu.html',
   styleUrl: './status-strip-lsp-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

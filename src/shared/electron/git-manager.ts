@@ -3,12 +3,12 @@ import { readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   BrowserWindow,
-  dialog,
   ipcMain,
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
   WebContents,
 } from 'electron';
+import { showOpenDialog } from './dialog-parent';
 import { GitRunResult, RepositoryInfo, SourceControlChannel } from '../api/source-control-channels';
 
 /**
@@ -210,31 +210,13 @@ export class GitManager {
   }
 
   /**
-   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
-   * back to the main application window.
-   * @param sender The web contents that requested the dialog.
-   * @returns Returns the owning window, or null when no window is available.
-   */
-  private dialogParent(sender: WebContents): BrowserWindow | null {
-    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
-    if (requester !== null && !requester.isDestroyed()) {
-      return requester;
-    }
-    return this.windowGetter();
-  }
-
-  /**
    * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root,
    * opening it for subsequent operations.
    * @param sender The web contents that requested the dialog.
    * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
    */
   private async openRepository(sender: WebContents): Promise<RepositoryInfo | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openDirectory'],
       title: 'Open Repository',
     });

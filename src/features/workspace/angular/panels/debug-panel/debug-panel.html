@@ -1,67 +1,55 @@
 <div class="debug-toolbar">
   @if (paused()) {
-    <button
-      type="button"
-      class="debug-toolbar__button"
-      title="Continue"
-      aria-label="Continue"
+    <app-button
+      variant="none"
+      [icon]="Icon.PLAY"
+      ariaLabel="Continue"
+      tooltip="Continue"
       (click)="onContinue()"
-    >
-      <app-icon [icon]="Icon.PLAY" />
-    </button>
+    />
   } @else {
-    <button
-      type="button"
-      class="debug-toolbar__button"
-      title="Pause"
-      aria-label="Pause"
+    <app-button
+      variant="none"
+      [icon]="Icon.PAUSE"
+      ariaLabel="Pause"
+      tooltip="Pause"
       [disabled]="!active()"
       (click)="onPause()"
-    >
-      <app-icon [icon]="Icon.PAUSE" />
-    </button>
+    />
   }
-  <button
-    type="button"
-    class="debug-toolbar__button"
-    title="Step Over"
-    aria-label="Step Over"
+  <app-button
+    variant="none"
+    [icon]="Icon.STEP_OVER"
+    ariaLabel="Step Over"
+    tooltip="Step Over"
     [disabled]="!paused()"
     (click)="onStepOver()"
-  >
-    <app-icon [icon]="Icon.STEP_OVER" />
-  </button>
-  <button
-    type="button"
-    class="debug-toolbar__button"
-    title="Step Into"
-    aria-label="Step Into"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.STEP_INTO"
+    ariaLabel="Step Into"
+    tooltip="Step Into"
     [disabled]="!paused()"
     (click)="onStepInto()"
-  >
-    <app-icon [icon]="Icon.STEP_INTO" />
-  </button>
-  <button
-    type="button"
-    class="debug-toolbar__button"
-    title="Step Out"
-    aria-label="Step Out"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.STEP_OUT"
+    ariaLabel="Step Out"
+    tooltip="Step Out"
     [disabled]="!paused()"
     (click)="onStepOut()"
-  >
-    <app-icon [icon]="Icon.STEP_OUT" />
-  </button>
+  />
   <span class="debug-toolbar__spacer"></span>
-  <button
-    type="button"
-    class="debug-toolbar__button debug-toolbar__button--stop"
-    title="Stop"
-    aria-label="Stop"
+  <app-button
+    variant="none"
+    [icon]="Icon.STOP"
+    ariaLabel="Stop"
+    tooltip="Stop"
     [disabled]="!active()"
     (click)="onStop()"
-  >
-    <app-icon [icon]="Icon.STOP" />
-  </button>
+  />
 </div>
 
 <div class="debug-body">
@@ -128,15 +116,14 @@
           >
             {{ watchResult(expression)?.result ?? '—' }}
           </span>
-          <button
-            type="button"
-            class="debug-watch__remove"
-            title="Remove"
-            aria-label="Remove watch"
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            ariaLabel="Remove watch"
+            tooltip="Remove"
             (click)="removeWatch(expression)"
-          >
-            <app-icon [icon]="Icon.CLOSE" />
-          </button>
+          />
         </li>
       } @empty {
         <li class="debug-empty">No watches.</li>

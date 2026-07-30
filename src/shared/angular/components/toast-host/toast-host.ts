@@ -7,6 +7,7 @@ import {
   Signal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { severityIcon } from '@shared/angular/icons/severity-icon';
 import {
@@ -51,7 +52,7 @@ interface ToastTimer {
  */
 @Component({
   selector: 'app-toast-host',
-  imports: [AppIcon],
+  imports: [Button, AppIcon],
   templateUrl: './toast-host.html',
   styleUrl: './toast-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

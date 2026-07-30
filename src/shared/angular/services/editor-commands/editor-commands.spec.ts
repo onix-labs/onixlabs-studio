@@ -93,6 +93,40 @@ describe('EditorCommands', () => {
     });
   });
 
+  it('hasSelection_tracksTheEditorReadActiveSelectionWouldReadFrom_acrossDeactivation', () => {
+    expect(commands.hasSelection()).toBe(false);
+
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+    expect(commands.hasSelection()).toBe(false);
+
+    commands.setSelectionState('tab-1', true);
+    expect(commands.hasSelection()).toBe(true);
+
+    // Focus moves to the agent panel, which is exactly when the question gets asked: the editor is
+    // no longer active but is still the one an attach would read from.
+    commands.deactivate('tab-1');
+    expect(commands.hasSelection()).toBe(true);
+
+    commands.setSelectionState('tab-1', false);
+    expect(commands.hasSelection()).toBe(false);
+  });
+
+  it('hasSelection_whenAnotherTabHoldsTheSelection_staysFalse', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+    commands.setSelectionState('tab-2', true);
+
+    expect(commands.hasSelection()).toBe(false);
+  });
+
+  it('hasSelection_whenTheEditorIsForgotten_dropsItsSelection', () => {
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+    commands.setSelectionState('tab-1', true);
+
+    commands.forget('tab-1');
+
+    expect(commands.hasSelection()).toBe(false);
+  });
+
   it('readActiveSelection_whenNothingIsSelectedOrNoEditor_returnsNull', () => {
     expect(commands.readActiveSelection()).toBeNull();
 

@@ -1,13 +1,11 @@
-<div class="disasm">
-  <div class="disasm__bar" appPanelDragHandle="Disassembly">
-    <app-icon class="disasm__icon" [icon]="Icon.CODE" />
-    <span class="disasm__title">Assembly</span>
-    <span class="disasm__spacer"></span>
-    <button type="button" aria-label="Close assembly" title="Close assembly" (click)="onClose()">
-      <app-icon [icon]="Icon.CLOSE" />
-    </button>
-  </div>
-
+<app-tool-panel
+  title="Assembly"
+  dragTitle="Disassembly"
+  [icon]="Icon.CODE"
+  closeLabel="Close assembly"
+  [flush]="true"
+  (closed)="onClose()"
+>
   <div class="disasm__body">
     <div class="disasm__editor">
       <app-text-editor
@@ -22,4 +20,4 @@
       <p class="disasm__empty">No native disassembly for this format.</p>
     }
   </div>
-</div>
+</app-tool-panel>

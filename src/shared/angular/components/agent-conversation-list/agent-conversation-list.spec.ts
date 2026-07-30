@@ -35,13 +35,13 @@ describe('AgentConversationList', () => {
   };
 
   /**
-   * Gets the toolbar tool button whose accessible label contains the given text (the icon-only buttons
-   * carry their label on aria-label rather than as text).
+   * Gets the toolbar button whose accessible label contains the given text. The toolbar's buttons are
+   * icon-only `app-button`s, which carry their label on aria-label rather than as text.
    * @param label The aria-label text to match.
    * @returns Returns the button.
    */
   function tool(label: string): HTMLButtonElement {
-    return Array.from(host.querySelectorAll<HTMLButtonElement>('.history__tool')).find(
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.history__toolbar button')).find(
       (button: HTMLButtonElement): boolean =>
         (button.getAttribute('aria-label') ?? '').includes(label),
     )!;
@@ -184,7 +184,8 @@ describe('AgentConversationList', () => {
     summaries.set([SUMMARY, OTHER]);
     fixture.detectChanges();
 
-    const search: HTMLInputElement = host.querySelector<HTMLInputElement>('.history__search')!;
+    const search: HTMLInputElement =
+      host.querySelector<HTMLInputElement>('.history__search input')!;
     search.value = 'northern';
     search.dispatchEvent(new Event('input'));
     fixture.detectChanges();
@@ -232,7 +233,7 @@ describe('AgentConversationList', () => {
     fixture.detectChanges();
 
     expect(host.querySelector('.history__modal-title')?.textContent).toContain('New category');
-    expect(host.querySelector<HTMLInputElement>('.history__modal-input')!.value).toBe('');
+    expect(host.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
   });
 
   it('delete_whenConfirmed_promptsWithTheCheckedCount', () => {

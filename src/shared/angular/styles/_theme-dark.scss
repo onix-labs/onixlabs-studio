@@ -75,8 +75,11 @@
   // Scrim tint behind any modal panel; heavier on the dark theme to lift the panel off the backdrop.
   --modal-backdrop-color: rgba(0, 0, 0, 0.55);
 
-  // Modal panel surface (preserves the prior --body-background-color default).
-  --modal-panel-background-color: var(--gray-900);
+  // Modal panel surface: a half-step lighter than the fields a dialog holds, which sit at
+  // --form-control-background-color (--gray-900), so a text box or dropdown reads as recessed into
+  // the card rather than merging with it. The light theme states the same relationship the other way
+  // round — its card is the half-step DARKER than its near-white fields.
+  --modal-panel-background-color: var(--gray-850);
 
   --welcome-border-color: var(--gray-700);
   --welcome-muted-foreground-color: var(--gray-400);
@@ -96,6 +99,12 @@
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.
   --dock-container-background-color: var(--gray-900);
+
+  // The ink an optional background texture is painted in: the container's own surface taken one step
+  // down the gray scale, so a pattern reads as a shading of the backdrop rather than as a colour
+  // laid over it. The pattern is a mask, so this is the only colour it has.
+  --dock-container-texture-color: var(--gray-950);
+  --dock-container-texture-opacity: 1;
 
   --dock-background-color: var(--gray-800);
   --dock-border-color: var(--gray-700);

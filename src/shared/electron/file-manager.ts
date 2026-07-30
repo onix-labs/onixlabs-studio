@@ -1,6 +1,5 @@
 import {
   BrowserWindow,
-  dialog,
   ipcMain,
   IpcMainInvokeEvent,
   MessageBoxReturnValue,
@@ -8,6 +7,7 @@ import {
   SaveDialogReturnValue,
   WebContents,
 } from 'electron';
+import { showMessageBox, showOpenDialog, showSaveDialog } from './dialog-parent';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -164,30 +164,12 @@ export class FileManager {
   }
 
   /**
-   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
-   * back to the main application window.
-   * @param sender The web contents that requested the dialog.
-   * @returns Returns the owning window, or null when no window is available.
-   */
-  private dialogParent(sender: WebContents): BrowserWindow | null {
-    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
-    if (requester !== null && !requester.isDestroyed()) {
-      return requester;
-    }
-    return this.windowGetter();
-  }
-
-  /**
    * Shows an open-file dialog and reads the chosen file.
    * @param sender The web contents that requested the dialog.
    * @returns Returns the chosen file's info, or null when cancelled or unreadable.
    */
   private async openDialog(sender: WebContents): Promise<FileInfo | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile'],
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
@@ -207,11 +189,7 @@ export class FileManager {
    * @returns Returns the chosen image's absolute path, or null when cancelled.
    */
   private async pickImage(sender: WebContents): Promise<string | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile'],
       filters: [
         { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'] },
@@ -232,11 +210,7 @@ export class FileManager {
    * @returns Returns the chosen path, or null when cancelled.
    */
   private async pickPath(sender: WebContents, kind: 'file' | 'folder'): Promise<string | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: [kind === 'folder' ? 'openDirectory' : 'openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) {
@@ -252,11 +226,7 @@ export class FileManager {
    * @returns Returns the chosen path, or null when cancelled.
    */
   private async saveDialog(sender: WebContents, defaultPath?: string): Promise<string | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: SaveDialogReturnValue = await dialog.showSaveDialog(window, {
+    const result: SaveDialogReturnValue = await showSaveDialog(sender, this.windowGetter, {
       defaultPath,
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
@@ -275,11 +245,7 @@ export class FileManager {
    * @returns Returns the user's choice.
    */
   private async confirmSave(sender: WebContents, fileName: string): Promise<SaveDialogChoice> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return 'cancel';
-    }
-    const result: MessageBoxReturnValue = await dialog.showMessageBox(window, {
+    const result: MessageBoxReturnValue = await showMessageBox(sender, this.windowGetter, {
       type: 'question',
       buttons: ['Save', "Don't Save", 'Cancel'],
       defaultId: SAVE_BUTTON_INDEX,
@@ -314,11 +280,7 @@ export class FileManager {
     ) {
       return false;
     }
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return false;
-    }
-    const result: MessageBoxReturnValue = await dialog.showMessageBox(window, {
+    const result: MessageBoxReturnValue = await showMessageBox(sender, this.windowGetter, {
       type: 'warning',
       buttons: [candidate.confirmLabel, 'Cancel'],
       defaultId: 1,

@@ -7,8 +7,8 @@ import { WorkspaceCapabilities } from '@shared/angular/services/workspace/worksp
 import { ProjectCapabilities } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { RunConfigurationAgent } from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
-import { ConfigureDialogPanel } from './configure-dialog';
+import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import { ConfigurationRow, ConfigureDialogPanel } from './configure-dialog';
 
 /**
  * A group of configurations in the dialog list.
@@ -30,7 +30,13 @@ interface DialogInternals {
   argsText(): string;
   envText(): string;
   isDebug(): boolean;
-  select(id: string): void;
+  rows(): readonly TreeRow[];
+  selectedRowId(): string | null;
+  asRow(row: TreeRow): ConfigurationRow;
+  onRowClick(row: TreeRow): void;
+  autoConfigureOpen(): boolean;
+  onAutoConfigure(): void;
+  onAutoConfigureClose(): void;
   onNew(): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -40,40 +46,6 @@ interface DialogInternals {
   onModeChange(debug: boolean): void;
   onSave(): void;
   onCancel(): void;
-  onAuto(): void;
-  onAsk(): void;
-  onRequestInput(value: string): void;
-  authoring(): boolean;
-  canAsk(): boolean;
-  askUnavailableReason(): string | null;
-}
-
-/**
- * A controllable fake of the seam that dispatches authoring to the workspace's agent.
- */
-class FakeRunConfigurationAgent {
-  public readonly canDispatch: WritableSignal<boolean> = signal<boolean>(true);
-  public readonly pendingRequests: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>(
-    [],
-  );
-  public readonly unavailableReason: WritableSignal<string | null> = signal<string | null>(null);
-  public readonly busy: WritableSignal<boolean> = signal<boolean>(false);
-  public readonly autoCalls: number[] = [];
-  public readonly requests: string[] = [];
-  public accept: boolean = true;
-
-  public dispatchAuto(): boolean {
-    this.autoCalls.push(1);
-    return this.accept;
-  }
-
-  public dispatchRequest(request: string): boolean {
-    if (request.trim().length === 0) {
-      return false;
-    }
-    this.requests.push(request);
-    return this.accept;
-  }
 }
 
 /**
@@ -151,7 +123,6 @@ describe('ConfigureDialogPanel', () => {
   let dialog: FakeDialog;
   let studio: FakeStudio;
   let capabilities: FakeCapabilities;
-  let agent: FakeRunConfigurationAgent;
 
   /**
    * Reveals the protected surface under test.
@@ -172,14 +143,12 @@ describe('ConfigureDialogPanel', () => {
     dialog = new FakeDialog();
     studio = new FakeStudio();
     capabilities = new FakeCapabilities();
-    agent = new FakeRunConfigurationAgent();
     await TestBed.configureTestingModule({
       imports: [ConfigureDialogPanel],
       providers: [
         { provide: ConfigureDialog, useValue: dialog },
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: capabilities },
-        { provide: RunConfigurationAgent, useValue: agent },
       ],
     }).compileComponents();
 
@@ -319,6 +288,81 @@ describe('ConfigureDialogPanel', () => {
     expect(internals().selected()?.env).toEqual({ X: '2', Y: '3' });
   });
 
+  it('tree_groupsConfigurationsUnderTheirProviderKind_withAFriendlyLabel', () => {
+    studio.runConfigurations.set([
+      config({ id: 'a', name: 'Start app', providerKind: 'node' }),
+      config({ id: 'b', name: 'API', providerKind: 'dotnet' }),
+      config({ id: 'c', name: 'Run tests', providerKind: 'node' }),
+    ]);
+    dialog.open();
+    tick();
+
+    const shape: string[] = internals()
+      .rows()
+      .map((row: TreeRow): string => `${row.depth}:${internals().asRow(row).label}`);
+    // The stored kinds are identifiers (`node`, `dotnet`); the tree reads as headings.
+    expect(shape).toEqual(['0:Node', '1:Start app', '1:Run tests', '0:.NET', '1:API']);
+  });
+
+  it('tree_anUnmappedProviderKind_stillReadsAsAHeading', () => {
+    studio.runConfigurations.set([config({ id: 'a', name: 'A', providerKind: 'elixir' })]);
+    dialog.open();
+    tick();
+
+    expect(internals().asRow(internals().rows()[0]).label).toBe('Elixir');
+  });
+
+  it('tree_clickingAGroupCollapsesIt_hidingOnlyItsOwnConfigurations', () => {
+    studio.runConfigurations.set([
+      config({ id: 'a', name: 'Start app', providerKind: 'node' }),
+      config({ id: 'b', name: 'API', providerKind: 'dotnet' }),
+    ]);
+    dialog.open();
+    tick();
+
+    internals().onRowClick(internals().rows()[0]);
+
+    const shape: string[] = internals()
+      .rows()
+      .map((row: TreeRow): string => `${row.depth}:${internals().asRow(row).label}`);
+    expect(shape).toEqual(['0:Node', '0:.NET', '1:API']);
+    expect(internals().rows()[0].expanded).toBe(false);
+
+    // And clicking it again brings its configurations back.
+    internals().onRowClick(internals().rows()[0]);
+    expect(internals().rows()).toHaveLength(4);
+  });
+
+  it('tree_selectingAConfigurationRow_marksItSelectedInTheTreesOwnIdSpace', () => {
+    studio.runConfigurations.set([config({ id: 'a', name: 'A', providerKind: 'node' })]);
+    dialog.open();
+    tick();
+
+    internals().onRowClick(internals().rows()[1]);
+
+    expect(internals().selected()?.id).toBe('a');
+    // Groups and configurations share the tree's flat id space, so the row id is not the bare id.
+    expect(internals().selectedRowId()).toBe('config:a');
+  });
+
+  it('autoConfigure_opensAndClosesItsOwnModal_andClosesWithTheDialog', () => {
+    dialog.open();
+    tick();
+    expect(internals().autoConfigureOpen()).toBe(false);
+
+    internals().onAutoConfigure();
+    expect(internals().autoConfigureOpen()).toBe(true);
+
+    internals().onAutoConfigureClose();
+    expect(internals().autoConfigureOpen()).toBe(false);
+
+    // It is raised from this dialog's window, so it cannot outlive it.
+    internals().onAutoConfigure();
+    dialog.close();
+    tick();
+    expect(internals().autoConfigureOpen()).toBe(false);
+  });
+
   it('togglesRunAndDebugMode', () => {
     studio.runConfigurations.set([config({ id: 'a', name: 'A' })]);
     dialog.open();
@@ -331,12 +375,11 @@ describe('ConfigureDialogPanel', () => {
   });
 });
 
-describe('ConfigureDialogPanel agent authoring', () => {
+describe('ConfigureDialogPanel external writes', () => {
   let component: ConfigureDialogPanel;
   let fixture: ComponentFixture<ConfigureDialogPanel>;
   let dialog: FakeDialog;
   let studio: FakeStudio;
-  let agent: FakeRunConfigurationAgent;
 
   /**
    * Reveals the protected surface under test.
@@ -353,17 +396,26 @@ describe('ConfigureDialogPanel agent authoring', () => {
     TestBed.inject(ApplicationRef).tick();
   }
 
+  /**
+   * Selects a configuration through the tree, as a click on its row would.
+   * @param id The configuration id.
+   */
+  function select(id: string): void {
+    const row: TreeRow | undefined = internals()
+      .rows()
+      .find((candidate: TreeRow): boolean => internals().asRow(candidate).configuration?.id === id);
+    internals().onRowClick(row!);
+  }
+
   beforeEach(async () => {
     dialog = new FakeDialog();
     studio = new FakeStudio();
-    agent = new FakeRunConfigurationAgent();
     await TestBed.configureTestingModule({
       imports: [ConfigureDialogPanel],
       providers: [
         { provide: ConfigureDialog, useValue: dialog },
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: new FakeCapabilities() },
-        { provide: RunConfigurationAgent, useValue: agent },
       ],
     }).compileComponents();
 
@@ -374,33 +426,12 @@ describe('ConfigureDialogPanel agent authoring', () => {
     tick();
   });
 
-  it('autoDispatchesToTheWorkspacesAgent', () => {
-    internals().onAuto();
-
-    expect(agent.autoCalls).toHaveLength(1);
-  });
-
-  it('askDispatchesTheTypedRequest_andClearsTheBox', () => {
-    internals().onRequestInput('run the three scripts in ./scripts in parallel');
-    internals().onAsk();
-
-    expect(agent.requests).toEqual(['run the three scripts in ./scripts in parallel']);
-  });
-
-  it('askWithABlankRequest_dispatchesNothing', () => {
-    internals().onRequestInput('   ');
-    internals().onAsk();
-
-    expect(agent.requests).toEqual([]);
-  });
-
-  it('whileTheAgentAuthors_theListFillsInAsItWrites_keepingTheSelection', () => {
+  it('whenConfigurationsAreWrittenWhileOpen_theListFillsIn_keepingTheSelection', () => {
     studio.runConfigurations.set([config({ id: 'a', name: 'A' }), config({ id: 'b', name: 'B' })]);
     tick();
-    internals().select('b');
-    internals().onAuto();
+    select('b');
 
-    // The agent writes straight to `.studio`; each write lands in the list without a reopen.
+    // A write straight to `.studio` (the agent authoring, say) lands in the list without a reopen.
     studio.runConfigurations.set([
       config({ id: 'a', name: 'A' }),
       config({ id: 'b', name: 'B' }),
@@ -420,37 +451,11 @@ describe('ConfigureDialogPanel agent authoring', () => {
   it('whenTheSelectedConfigurationIsRemovedExternally_theSelectionFallsBack', () => {
     studio.runConfigurations.set([config({ id: 'a', name: 'A' }), config({ id: 'b', name: 'B' })]);
     tick();
-    internals().select('b');
+    select('b');
 
     studio.runConfigurations.set([config({ id: 'a', name: 'A' })]);
     tick();
 
     expect(internals().selected()?.id).toBe('a');
-  });
-
-  it('authoring_isTrueOnlyWhileADelegatedRunIsInFlight', () => {
-    expect(internals().authoring()).toBe(false);
-
-    // The workspace agent running for some other reason is not this dialog's business.
-    agent.busy.set(true);
-    tick();
-    expect(internals().authoring()).toBe(false);
-
-    internals().onAuto();
-    tick();
-    expect(internals().authoring()).toBe(true);
-
-    agent.busy.set(false);
-    tick();
-    expect(internals().authoring()).toBe(false);
-  });
-
-  it('whenTheAgentCannotBeAsked_theDialogExplainsWhy', () => {
-    agent.canDispatch.set(false);
-    agent.unavailableReason.set('Open a workspace folder first.');
-    tick();
-
-    expect(internals().canAsk()).toBe(false);
-    expect(internals().askUnavailableReason()).toBe('Open a workspace folder first.');
   });
 });

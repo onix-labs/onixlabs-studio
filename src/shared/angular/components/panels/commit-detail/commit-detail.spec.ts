@@ -166,6 +166,20 @@ const PANEL: DockPanel = {
   component: CommitDetail,
 };
 
+/**
+ * Gets a button by its accessible name. The panel's buttons are `app-button`s, so they are found by
+ * what they are called rather than by a class of their own.
+ * @param host The rendered panel.
+ * @param name The visible label or aria-label.
+ * @returns Returns the button.
+ */
+function namedButton(host: HTMLElement, name: string): HTMLButtonElement {
+  return Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
+    (button: HTMLButtonElement): boolean =>
+      button.textContent?.trim() === name || button.getAttribute('aria-label') === name,
+  )!;
+}
+
 describe('CommitDetail', () => {
   let fixture: ComponentFixture<CommitDetail>;
   let repository: StubRepository;
@@ -265,8 +279,7 @@ describe('CommitDetail', () => {
     repository.unstaged.set([makeFile('b.ts', 'modified'), makeFile('new.ts', 'added', true)]);
     fixture.detectChanges();
 
-    const button: HTMLButtonElement =
-      host.querySelector<HTMLButtonElement>('.detail__commit-button')!;
+    const button: HTMLButtonElement = namedButton(host, 'Commit');
     expect(button.disabled).toBe(true);
 
     repository.commitMessage.set('feat: add a thing');
@@ -283,7 +296,7 @@ describe('CommitDetail', () => {
     repository.commitMessage.set('feat: push it');
     fixture.detectChanges();
 
-    host.querySelector<HTMLButtonElement>('.detail__commit-button--secondary')!.click();
+    namedButton(host, 'Commit and Push').click();
 
     expect(repository.calls).toContain('commitAndPushFiles:b.ts');
   });
@@ -310,7 +323,7 @@ describe('CommitDetail', () => {
     );
     expect(fileChecks.every((check: HTMLInputElement): boolean => check.checked)).toBe(true);
 
-    host.querySelector<HTMLButtonElement>('.detail__commit-button')!.click();
+    namedButton(host, 'Commit').click();
     expect(repository.calls).toContain('commitFiles:new1.ts,new2.ts');
   });
 
@@ -369,7 +382,7 @@ describe('CommitDetail', () => {
     repository.unstaged.set([makeFile('b.ts', 'modified')]);
     fixture.detectChanges();
 
-    const button: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.detail__ai')!;
+    const button: HTMLButtonElement = namedButton(host, 'Generate commit message');
     expect(button.disabled).toBe(false);
     button.click();
     await fixture.whenStable();
@@ -387,7 +400,7 @@ describe('CommitDetail', () => {
     repository.unstaged.set([makeFile('b.ts', 'modified')]);
     fixture.detectChanges();
 
-    expect(host.querySelector<HTMLButtonElement>('.detail__ai')!.disabled).toBe(true);
+    expect(namedButton(host, 'Generate commit message').disabled).toBe(true);
   });
 
   it('discard_whenConfirmed_delegatesToTheRepository', async () => {
@@ -426,12 +439,13 @@ describe('CommitDetail', () => {
     expect(host.querySelector('.detail__notice')).toBeNull();
   });
 
-  it('onMessageInput_whenTheUserTypes_forwardsTheDraftMessage', () => {
+  it('messageComposer_whenTheUserTypes_forwardsTheDraftMessage', () => {
     repository.isWorkingSelected.set(true);
     fixture.detectChanges();
 
-    const textarea: HTMLTextAreaElement =
-      host.querySelector<HTMLTextAreaElement>('.detail__message')!;
+    const textarea: HTMLTextAreaElement = host.querySelector<HTMLTextAreaElement>(
+      '.detail__message textarea',
+    )!;
     textarea.value = 'wip: draft message';
     textarea.dispatchEvent(new Event('input'));
 

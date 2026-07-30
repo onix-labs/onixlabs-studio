@@ -24,6 +24,11 @@ export class Toggle {
   public readonly checked: ModelSignal<boolean> = model<boolean>(false);
 
   /**
+   * Gets the accessible name of the toggle, for one with no visible label beside it.
+   */
+  public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
    * Gets a value indicating whether the toggle is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);

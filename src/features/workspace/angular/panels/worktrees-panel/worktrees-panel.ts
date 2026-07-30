@@ -3,6 +3,8 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
@@ -12,6 +14,8 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   WorktreeCheckoutInfo,
@@ -19,6 +23,7 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 
 /**
  * The Worktrees panel: the container tab's overview and switcher. One row per checkout — labelled by
@@ -30,7 +35,7 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
  */
 @Component({
   selector: 'app-worktrees-panel',
-  imports: [AppIcon, Dropdown, ListView, Modal, ModalContent],
+  imports: [TextField, Button, AppIcon, Dropdown, ListView, Modal, ModalContent],
   templateUrl: './worktrees-panel.html',
   styleUrl: './worktrees-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,6 +45,12 @@ export class WorktreesPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the dock panel descriptor this body renders. Set by the dock outlet, which binds it on every
+   * projected panel component; unused here because the dock chrome renders the title.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
 
   /**
    * Gets the synthetic row id of the inert Orchestrator entry.

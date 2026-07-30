@@ -1,11 +1,11 @@
 import {
   BrowserWindow,
-  dialog,
   ipcMain,
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
   WebContents,
 } from 'electron';
+import { showOpenDialog } from './dialog-parent';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
@@ -233,30 +233,12 @@ export class WorkspaceManager {
   }
 
   /**
-   * Resolves the window a dialog is parented to: the requesting window while it is alive, falling
-   * back to the main application window.
-   * @param sender The web contents that requested the dialog.
-   * @returns Returns the owning window, or null when no window is available.
-   */
-  private dialogParent(sender: WebContents): BrowserWindow | null {
-    const requester: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
-    if (requester !== null && !requester.isDestroyed()) {
-      return requester;
-    }
-    return this.windowGetter();
-  }
-
-  /**
    * Shows an open-folder dialog and, when a folder is chosen, sets it as the workspace root.
    * @param sender The web contents that requested the dialog.
    * @returns Returns the root directory listing, or null when the dialog was cancelled or unreadable.
    */
   private async openFolder(sender: WebContents): Promise<DirectoryListing | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) {
@@ -281,11 +263,7 @@ export class WorkspaceManager {
    * @returns Returns the selection, or null when the dialog was cancelled or unreadable.
    */
   private async open(sender: WebContents): Promise<OpenSelection | null> {
-    const window: BrowserWindow | null = this.dialogParent(sender);
-    if (window === null) {
-      return null;
-    }
-    const result: OpenDialogReturnValue = await dialog.showOpenDialog(window, {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile', 'openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) {

@@ -7,13 +7,6 @@
   color: var(--body-foreground-color);
 }
 
-// The destructive tool-strip action reads in the error/coral tone on hover: it throws work away.
-.detail__discard-all:not(:disabled):hover,
-.detail__discard-all:not(:disabled):focus-visible {
-  background: color-mix(in srgb, var(--accent-coral) 22%, transparent);
-  color: var(--accent-coral);
-}
-
 .detail__header {
   flex: 0 0 auto;
   padding: 0.85rem;
@@ -98,30 +91,6 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
 }
-
-.detail__file-action {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.6rem;
-  block-size: 1.6rem;
-  margin-inline-end: 0.25rem;
-  background: transparent;
-  border: 0;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  color: var(--form-muted-foreground-color);
-  cursor: default;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
 // Group header rows (Tracked Files / Untracked Files): chevron, tri-state checkbox, name, count.
 .detail__group-check {
   flex: 0 0 auto;
@@ -181,64 +150,13 @@
   text-transform: uppercase;
   color: var(--form-muted-foreground-color);
 }
-
-.detail__ai {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  color: var(--accent-color);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:not(:disabled):hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    outline: none;
-  }
-
-  &:disabled {
-    color: var(--form-muted-foreground-color);
-    opacity: 0.5;
-  }
-}
-
 .detail__composer-actions {
   display: flex;
   gap: 0.5rem;
-
-  .detail__commit-button {
-    flex: 1 1 0;
-  }
 }
-
-// Borderless inside the composer box, like the agent chat's input: the box itself carries the
-// border and shows focus via :focus-within.
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .detail__message {
   inline-size: 100%;
-  resize: vertical;
-  padding: 0;
-  font: inherit;
-  font-size: 0.8rem;
-  line-height: 1.55;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0;
-
-  &::placeholder {
-    color: var(--form-muted-foreground-color);
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
 }
 
 .detail__commit-button {
@@ -359,21 +277,4 @@
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: anywhere;
-}
-
-.detail__notice-dismiss {
-  flex: none;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--body-foreground-color);
-  }
-}
-
-.detail__file-action--danger:hover {
-  color: #e5484d;
 }

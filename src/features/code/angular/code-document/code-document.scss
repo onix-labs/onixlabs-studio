@@ -83,32 +83,3 @@ app-text-editor {
   gap: 0.4rem;
   margin-block-start: 0.25rem;
 }
-
-.breakpoint-editor__button {
-  padding: 0.3rem 0.6rem;
-  font: inherit;
-  font-size: 0.78rem;
-  color: inherit;
-  background: transparent;
-  border: 0.0625rem solid var(--gray-400);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-
-  &:hover {
-    border-color: var(--accent-color);
-  }
-
-  &--ghost {
-    color: var(--gray-600);
-  }
-
-  &--danger:hover {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
-  }
-}
-
-:host-context([data-theme-mode='dark']) .breakpoint-editor__button {
-  border-color: var(--gray-600);
-}

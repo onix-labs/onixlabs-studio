@@ -29,6 +29,7 @@ import { DockState } from '../../../services/dock-layout/dock-state';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
@@ -57,6 +58,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     CdkMenuTrigger,
     Menu,
     AppIcon,
+    Button,
   ],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',

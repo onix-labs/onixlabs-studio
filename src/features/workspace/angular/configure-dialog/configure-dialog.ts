@@ -10,24 +10,24 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
-import { RunConfigurationAgent } from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { RunConfiguration } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
-import { AgentRequestCard } from '@shared/angular/components/agent-request-card/agent-request-card';
-import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent-requests';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { runConfigurationKindLabel } from './run-configuration-kinds';
 
 /**
- * A group of run configurations sharing a provider kind, shown as a labelled section in the dialog's
- * list.
+ * A group of run configurations sharing a provider kind, shown as a collapsible parent row in the
+ * dialog's tree.
  */
 interface ConfigurationGroup {
   /**
@@ -42,30 +42,60 @@ interface ConfigurationGroup {
 }
 
 /**
+ * The payload a Configure-dialog tree row carries, read by the projected row template. A row is
+ * either a provider-kind group or one configuration beneath it.
+ */
+export interface ConfigurationRow {
+  /**
+   * Gets the label the row shows.
+   */
+  readonly label: string;
+
+  /**
+   * Gets a value indicating whether the row is a provider-kind group rather than a configuration.
+   */
+  readonly isGroup: boolean;
+
+  /**
+   * Gets the configuration the row stands for, or null for a group row.
+   */
+  readonly configuration: RunConfiguration | null;
+}
+
+/**
+ * Prefixes distinguishing the two row kinds in the tree's flat id space, which has to be unique
+ * across both: a group keyed by its provider kind, a configuration by its own id.
+ */
+const GROUP_PREFIX: string = 'group:';
+const CONFIGURATION_PREFIX: string = 'config:';
+
+/**
  * The run-configuration Configure dialog: a master-detail editor over the active workspace's `.studio`
- * run configurations. The list (grouped by provider kind) offers create, duplicate, and delete; the
- * detail form edits the selected configuration's name, build configuration and target (shown only when
- * the provider declares them), program, arguments, working directory, environment variables, and
- * whether it runs or debugs. Edits are made against a draft copy taken when the dialog opens, so Cancel
- * discards them and Save writes the whole set back to `workspace.json` through {@link StudioConfig}.
+ * run configurations. The tree on the left groups them by provider kind and carries its own New,
+ * Duplicate and Delete controls; the form on the right edits the selected configuration's name, build
+ * configuration and target (shown only when the provider declares them), program, arguments, working
+ * directory, environment variables, and whether it runs or debugs. Edits are made against a draft copy
+ * taken when the dialog opens, so Cancel discards them and Save writes the whole set back to
+ * `workspace.json` through {@link StudioConfig}.
  *
- * The dialog is also where configurations are **authored by the agent**: Auto asks the workspace's own
- * agent to assess the project and write what is worth running, while the prompt box asks for something
- * specific ("run these three scripts in parallel") and leaves the agent to work out how. The agent
- * writes through its run-configuration tools, so its work lands in `workspace.json` directly; while it
- * is authoring, the draft follows what it writes, and the list fills in as the agent goes.
+ * Auto-configure — where the workspace's own agent is asked to author configurations — opens as its own
+ * modal raised from this one, so it parents to this window rather than reaching past it to the main
+ * window. Its content is still to be designed; the agent seam it will drive
+ * ({@link import('@features/workspace/angular/run-configuration-agent/run-configuration-agent').RunConfigurationAgent})
+ * is untouched and unwired in the meantime.
  */
 @Component({
   selector: 'app-configure-dialog',
   imports: [
+    Textarea,
+    Button,
     Modal,
     ModalContent,
-    AppIcon,
     Dropdown,
     SettingRow,
     TextField,
     Toggle,
-    AgentRequestCard,
+    TreeView,
   ],
   templateUrl: './configure-dialog.html',
   styleUrl: './configure-dialog.scss',
@@ -107,52 +137,18 @@ export class ConfigureDialogPanel {
   private readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the seam that dispatches authoring work to the active workspace's agent.
+   * Holds whether the Auto-configure modal is open. It is raised from inside this dialog's own content
+   * so it parents to this window and dims it, rather than reaching past it to the main window.
    */
-  private readonly agent: RunConfigurationAgent = inject(RunConfigurationAgent);
+  protected readonly autoConfigureOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds what the user typed into the prompt box.
+   * Holds the provider kinds whose groups are collapsed. Collapsed rather than expanded is tracked so
+   * a group the agent adds while the dialog is open arrives open, showing what landed.
    */
-  protected readonly request: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds whether the agent has been asked to author configurations since the dialog opened. While it
-   * is set, the draft follows what the agent writes: the user delegated the authoring, so the persisted
-   * set — not the snapshot taken when the dialog opened — is the truth to show.
-   */
-  private readonly delegated: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets whether run configurations can be authored by the agent from here.
-   */
-  protected readonly canAsk: Signal<boolean> = this.agent.canDispatch;
-
-  /**
-   * Gets why the agent cannot be asked, or null when it can.
-   */
-  protected readonly askUnavailableReason: Signal<string | null> = this.agent.unavailableReason;
-
-  /**
-   * Gets whether the workspace's agent is working, so the dialog can say so while it authors.
-   */
-  protected readonly agentBusy: Signal<boolean> = this.agent.busy;
-
-  /**
-   * Gets the dispatched agent's pending questions and permission prompts, rendered inline: the dialog
-   * is modal, so an unanswered prompt behind it would stall the run with no way to answer.
-   */
-  protected readonly agentRequests: Signal<readonly AgentRequestEntry[]> = computed(
-    (): readonly AgentRequestEntry[] => (this.delegated() ? this.agent.pendingRequests() : []),
-  );
-
-  /**
-   * Gets whether the dialog is showing the agent's work in progress: it was asked from here and the
-   * agent is still running.
-   */
-  protected readonly authoring: Signal<boolean> = computed(
-    (): boolean => this.delegated() && this.agentBusy(),
-  );
+  private readonly collapsedKinds: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
 
   /**
    * Gets whether the dialog is open.
@@ -178,6 +174,55 @@ export class ConfigureDialogPanel {
       );
     },
   );
+
+  /**
+   * Gets the tree's flattened rows: each provider-kind group followed by its configurations, with a
+   * collapsed group contributing its own row and none beneath it.
+   */
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const collapsed: ReadonlySet<string> = this.collapsedKinds();
+    const rows: TreeRow[] = [];
+    for (const group of this.groups()) {
+      const expanded: boolean = !collapsed.has(group.kind);
+      rows.push({
+        id: `${GROUP_PREFIX}${group.kind}`,
+        depth: 0,
+        expandable: true,
+        expanded,
+        data: {
+          label: runConfigurationKindLabel(group.kind),
+          isGroup: true,
+          configuration: null,
+        } satisfies ConfigurationRow,
+      });
+      if (!expanded) {
+        continue;
+      }
+      for (const configuration of group.configurations) {
+        rows.push({
+          id: `${CONFIGURATION_PREFIX}${configuration.id}`,
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: {
+            label: configuration.name,
+            isGroup: false,
+            configuration,
+          } satisfies ConfigurationRow,
+        });
+      }
+    }
+    return rows;
+  });
+
+  /**
+   * Gets the tree's selected row id, which is the selected configuration's row rather than its bare
+   * id — the tree's id space spans groups and configurations alike.
+   */
+  protected readonly selectedRowId: Signal<string | null> = computed((): string | null => {
+    const id: string | null = this.selectedId();
+    return id === null ? null : `${CONFIGURATION_PREFIX}${id}`;
+  });
 
   /**
    * Gets the selected configuration, or null when none is selected.
@@ -278,8 +323,7 @@ export class ConfigureDialogPanel {
     // configuration the user is reading does not jump under them as new ones land.
     effect((): void => {
       if (!this.dialog.isOpen()) {
-        this.delegated.set(false);
-        this.request.set('');
+        this.autoConfigureOpen.set(false);
         return;
       }
       const configurations: RunConfiguration[] = this.studio
@@ -297,38 +341,46 @@ export class ConfigureDialogPanel {
   }
 
   /**
-   * Asks the workspace's agent to assess the project and author its run configurations, unattended.
+   * Opens the Auto-configure modal, where the agent will be asked to author configurations.
    */
-  protected onAuto(): void {
-    if (this.agent.dispatchAuto()) {
-      this.delegated.set(true);
+  protected onAutoConfigure(): void {
+    this.autoConfigureOpen.set(true);
+  }
+
+  /**
+   * Closes the Auto-configure modal.
+   */
+  protected onAutoConfigureClose(): void {
+    this.autoConfigureOpen.set(false);
+  }
+
+  /**
+   * Narrows a tree row's payload for the projected row template, which receives the row untyped.
+   * @param row The tree row.
+   * @returns Returns the row's Configure-dialog payload.
+   */
+  protected asRow(row: TreeRow): ConfigurationRow {
+    return row.data as ConfigurationRow;
+  }
+
+  /**
+   * Handles a click on a tree row: a group row toggles, a configuration row is selected for editing.
+   * @param row The clicked row.
+   */
+  protected onRowClick(row: TreeRow): void {
+    const data: ConfigurationRow = row.data as ConfigurationRow;
+    if (!data.isGroup) {
+      this.selectedId.set(data.configuration?.id ?? null);
+      return;
     }
-  }
-
-  /**
-   * Asks the workspace's agent for something specific, described by the user in the prompt box.
-   */
-  protected onAsk(): void {
-    if (this.agent.dispatchRequest(this.request())) {
-      this.delegated.set(true);
-      this.request.set('');
-    }
-  }
-
-  /**
-   * Records what the user types into the prompt box.
-   * @param value The typed request.
-   */
-  protected onRequestInput(value: string): void {
-    this.request.set(value);
-  }
-
-  /**
-   * Selects a configuration for editing.
-   * @param id The configuration id.
-   */
-  protected select(id: string): void {
-    this.selectedId.set(id);
+    const kind: string = row.id.slice(GROUP_PREFIX.length);
+    this.collapsedKinds.update((kinds: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(kinds);
+      if (!next.delete(kind)) {
+        next.add(kind);
+      }
+      return next;
+    });
   }
 
   /**

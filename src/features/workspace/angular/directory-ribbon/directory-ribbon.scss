@@ -19,44 +19,6 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
-
-.directory-ribbon__confirm-button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
-// The destructive primary action reads in the error/coral tone: it kills the running build.
-.directory-ribbon__confirm-button--danger {
-  color: var(--gray-100);
-  background: var(--accent-coral);
-  border-color: var(--accent-coral);
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-coral);
-    border-color: var(--accent-coral);
-    color: var(--gray-100);
-    filter: brightness(1.1);
-  }
-}
-
 // The Save As dialog's Default box, sitting between the name field and the actions.
 .directory-ribbon__prompt-check {
   display: flex;
@@ -93,39 +55,6 @@
     background: var(--dock-hover-background-color, transparent);
   }
 }
-
-// The default marker: a star that reads muted until it is the chosen one, so exactly one row in the
-// list is lit at a time.
-.directory-ribbon__preset-default {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  padding: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-  opacity: 0.35;
-  transition: var(--hover-transition);
-
-  &:hover,
-  &:focus-visible {
-    opacity: 0.7;
-    outline: none;
-  }
-}
-
-.directory-ribbon__preset-default--on {
-  color: var(--accent-surface-border-color);
-  opacity: 1;
-
-  &:hover,
-  &:focus-visible {
-    opacity: 1;
-  }
-}
-
 .directory-ribbon__preset-name {
   flex: 1 1 auto;
   font-size: 0.85rem;
@@ -140,45 +69,10 @@
   letter-spacing: 0.03em;
   color: var(--form-muted-foreground-color);
 }
-
-.directory-ribbon__preset-delete {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  padding: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--accent-coral);
-    outline: none;
-  }
-}
-
-// The Manage dialog's inline rename field, sharing the prompt input's form-control tokens at a
-// row-sized scale.
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .directory-ribbon__preset-input {
-  box-sizing: border-box;
   flex: 1 1 auto;
   min-inline-size: 0;
-  padding: 0.3rem 0.5rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
 }
 
 // The Manage dialog's leading action sits away from Done, since it acts on the layout rather than on
@@ -186,24 +80,8 @@
 .directory-ribbon__confirm-actions--split {
   justify-content: space-between;
 }
-
-// The preset prompt's name input follows the shared form-control tokens (matching the terminal
-// panel's inline rename field).
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .directory-ribbon__prompt-input {
-  box-sizing: border-box;
   inline-size: 100%;
   margin-block: 0.75rem 1rem;
-  padding: 0.4rem 0.6rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0.0625rem;
-  }
 }

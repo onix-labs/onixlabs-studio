@@ -1,4 +1,5 @@
 :host {
+  position: relative;
   display: inline-flex;
   // Default width lives on the host so a consumer can stretch the field (for example flex: 1) and the
   // control fills it, rather than staying pinned to the intrinsic width.
@@ -7,7 +8,10 @@
 
 .text-field {
   inline-size: 100%;
-  padding: 0.3rem 0.45rem;
+  // Height is stated from the shared control height so the field matches the buttons and dropdowns
+  // beside it in a strip, rather than ending up wherever its own line box lands.
+  block-size: var(--control-height);
+  padding: 0 0.45rem;
   font: inherit;
   font-size: 0.8rem;
   color: inherit;
@@ -31,4 +35,25 @@
     opacity: 0.4;
     cursor: default;
   }
+}
+
+// A search field's glyph sits inside the box at the leading edge, with the text inset past it.
+.text-field__glyph {
+  position: absolute;
+  inset-inline-start: 0.45rem;
+  inset-block-start: 50%;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+:host(.text-field--search) .text-field {
+  padding-inline-start: 1.6rem;
+}
+
+// The platform's own clear affordance is suppressed: the field is controlled, and its caller decides
+// what clearing means (Escape, or a filter reset).
+.text-field::-webkit-search-cancel-button {
+  display: none;
 }

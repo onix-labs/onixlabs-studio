@@ -62,9 +62,7 @@
     @if (restartRequired()) {
       <div class="settings__restart" role="status">
         <span>Some settings require a restart to take effect.</span>
-        <button type="button" class="settings__restart-action" (click)="relaunch()">
-          Relaunch now
-        </button>
+        <app-button variant="solid" label="Relaunch now" (click)="relaunch()" />
       </div>
     }
   </div>

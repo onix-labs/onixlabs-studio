@@ -98,6 +98,12 @@
   // be retuned without moving the app root.
   --dock-container-background-color: var(--gray-500);
 
+  // The ink an optional background texture is painted in: the container's own surface taken one step
+  // down the gray scale, so a pattern reads as a shading of the backdrop rather than as a colour
+  // laid over it. The pattern is a mask, so this is the only colour it has.
+  --dock-container-texture-color: var(--gray-550);
+  --dock-container-texture-opacity: 1;
+
   --dock-background-color: var(--gray-400);
   --dock-border-color: var(--gray-550);
 

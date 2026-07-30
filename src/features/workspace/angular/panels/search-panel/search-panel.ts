@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { WorkspaceSearchAdapter } from '@features/workspace/angular/find/workspace-search-adapter';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 
 /**
  * Hosts the shared find panel as a workspace dock tool panel, wiring it to a
@@ -20,6 +21,12 @@ import { Search } from '@shared/angular/services/search/search';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SearchPanel {
+  /**
+   * Gets the dock panel descriptor this body renders. Set by the dock outlet, which binds it on every
+   * projected panel component; unused here because the dock chrome renders the title.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
+
   /**
    * Holds the search client that runs the query in the main process.
    */

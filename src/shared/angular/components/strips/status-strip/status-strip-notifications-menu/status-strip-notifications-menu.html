@@ -21,14 +21,13 @@
       @if (history().length > 0) {
         <!-- A plain button rather than a cdkMenuItem so clearing keeps the flyout open on its
              empty state; the stopPropagation keeps the click from reaching the menu. -->
-        <button
-          type="button"
-          class="notifications-menu__clear"
+        <app-button
+          variant="none"
+          size="small"
+          label="Clear all"
           (pointerdown)="$event.preventDefault()"
           (click)="clearAll(); $event.stopPropagation()"
-        >
-          Clear all
-        </button>
+        />
       }
     </div>
     @if (history().length === 0) {
@@ -45,16 +44,15 @@
           <span class="notifications-menu__item-time">{{ relativeTime(entry.timestamp) }}</span>
         </span>
         <!-- Plain button (not a cdkMenuItem) so several entries can be removed in a row. -->
-        <button
-          type="button"
-          class="notifications-menu__remove"
-          title="Remove"
-          [attr.aria-label]="'Remove: ' + entry.title"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Remove: ' + entry.title"
+          tooltip="Remove"
           (pointerdown)="$event.preventDefault()"
           (click)="remove(entry); $event.stopPropagation()"
-        >
-          <app-icon [icon]="Icon.CLOSE" />
-        </button>
+        />
       </div>
     }
   </div>

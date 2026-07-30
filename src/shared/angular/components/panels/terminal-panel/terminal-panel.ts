@@ -19,6 +19,8 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import {
   TerminalSession,
   TerminalSessions,
@@ -38,7 +40,7 @@ import {
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [Terminal, AppIcon, PanelToolbar, PanelStatus],
+  imports: [TextField, Button, Terminal, AppIcon, PanelToolbar, PanelStatus],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -165,11 +167,11 @@ export class TerminalPanel {
    * @param id The session identifier.
    * @param event The input event carrying the new name.
    */
-  protected commitRename(id: string, event: Event): void {
+  protected commitRenameValue(id: string, name: string): void {
     if (this.editingId() !== id) {
       return;
     }
-    this.terminals.rename(id, (event.target as HTMLInputElement).value);
+    this.terminals.rename(id, name);
     this.editingId.set(null);
   }
 

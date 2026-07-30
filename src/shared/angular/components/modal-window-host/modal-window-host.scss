@@ -20,8 +20,8 @@
   flex: 1;
   flex-direction: column;
   min-block-size: 0;
-  padding: var(--modal-panel-padding, 1.5rem);
-  padding-block-start: max(var(--modal-panel-padding, 1.5rem), var(--modal-window-drag-height));
+  padding: var(--modal-panel-padding, 1rem);
+  padding-block-start: max(var(--modal-panel-padding, 1rem), var(--modal-window-drag-height));
   overflow: auto;
 }
 

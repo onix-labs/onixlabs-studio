@@ -35,7 +35,7 @@ describe('ToolPanel', () => {
     });
 
     (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('.tool-panel__close')!
+      .querySelector<HTMLButtonElement>('.tool-panel__header button')!
       .click();
 
     expect(emitted).toBe(true);

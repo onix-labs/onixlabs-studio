@@ -19,9 +19,13 @@ import {
 } from '@angular/core';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { Button } from '@shared/angular/components/forms/button/button';
+import {
+  ButtonGroup,
+  ButtonGroupOption,
+} from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 
 /**
@@ -39,12 +43,25 @@ type FindMode = 'find' | 'replace';
  */
 @Component({
   selector: 'app-find-panel',
-  imports: [TextField, Checkbox, AppIcon, PanelDragHandle],
+  imports: [ToolPanel, ButtonGroup, Button, TextField, Checkbox],
   templateUrl: './find-panel.html',
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FindPanel implements OnDestroy {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the two find modes, offered as one segmented control.
+   */
+  protected readonly modeOptions: readonly ButtonGroupOption[] = [
+    { value: 'find', label: 'Find Only' },
+    { value: 'replace', label: 'Find and Replace' },
+  ];
+
   /**
    * Gets the adapter the panel drives, or null before the host binds one.
    */
@@ -91,11 +108,6 @@ export class FindPanel implements OnDestroy {
    * Holds the requested view; forced to find when the surface does not support replace.
    */
   private readonly requestedMode: WritableSignal<FindMode> = signal<FindMode>('find');
-
-  /**
-   * Gets the close-button icon.
-   */
-  protected readonly closeIcon: Icon = Icon.CLOSE;
 
   /**
    * Gets the previous-match icon.

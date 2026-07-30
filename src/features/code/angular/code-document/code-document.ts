@@ -25,6 +25,7 @@ import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoi
 import { DebugLocation, Debugger } from '@shared/angular/services/debug/debugger';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
 import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
 
@@ -70,7 +71,7 @@ const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
  */
 @Component({
   selector: 'app-code-document',
-  imports: [TextEditor, TextField, Toggle],
+  imports: [Button, TextEditor, TextField, Toggle],
   templateUrl: './code-document.html',
   styleUrl: './code-document.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -190,6 +191,12 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * Emits the model's end-of-line sequence whenever it changes, so the owning leaf can reflect it.
    */
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
+
+  /**
+   * Emits whether the editor holds a selection whenever that changes, so the owning leaf can report
+   * it against the tab it registered.
+   */
+  public readonly selectionChange: OutputEmitterRef<boolean> = output<boolean>();
 
   /**
    * Holds the document id captured at initialisation, so teardown releases exactly the document that
@@ -426,5 +433,13 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    */
   protected onEolChange(eol: TextEditorEol): void {
     this.eolChange.emit(eol);
+  }
+
+  /**
+   * Re-emits whether the pane holds a selection to the owning leaf.
+   * @param selected Whether the editor holds a non-empty selection.
+   */
+  protected onSelectionChange(selected: boolean): void {
+    this.selectionChange.emit(selected);
   }
 }

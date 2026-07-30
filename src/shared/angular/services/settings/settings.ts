@@ -74,6 +74,25 @@ export type RibbonAlignment = 'left' | 'center' | 'right';
 export type ModernUiFeatures = 'auto' | 'on' | 'off';
 
 /**
+ * Identifies the optional background texture tiled behind the workspace's docked panes. `none` is a
+ * plain backdrop; every other value names a pattern in the texture catalogue
+ * (`styles/_textures.scss`), which paints it in the theme's own colour.
+ */
+export type WorkspaceTexture =
+  | 'none'
+  | 'texture'
+  | 'hideout'
+  | 'tiny-checkers'
+  | 'bubbles'
+  | 'diagonal-stripes'
+  | 'houndstooth'
+  | 'rain'
+  | 'circuit-board'
+  | 'diagonal-lines'
+  | 'polka-dots'
+  | 'signal';
+
+/**
  * Identifies how the File Explorer's "Expand All" behaves: `loaded-only` expands every directory whose
  * contents are already loaded; `entire-tree` reads and expands the whole tree from disk.
  */
@@ -228,6 +247,11 @@ export interface AppearanceSettings {
    * used, or whether the choice follows the GPU-derived recommendation.
    */
   readonly modernUiFeatures: ModernUiFeatures;
+
+  /**
+   * Gets the background texture tiled behind the workspace's docked panes.
+   */
+  readonly workspaceTexture: WorkspaceTexture;
 }
 
 /**
@@ -428,6 +452,7 @@ export class Settings {
     (): AppearanceSettings => ({
       ribbonAlignment: this.read('appearance.ribbonAlignment'),
       modernUiFeatures: this.read('appearance.modernUiFeatures'),
+      workspaceTexture: this.read('appearance.workspaceTexture'),
     }),
   );
 
@@ -444,6 +469,13 @@ export class Settings {
    */
   public readonly modernUiFeatures: Signal<ModernUiFeatures> = this.value(
     'appearance.modernUiFeatures',
+  );
+
+  /**
+   * Gets the background texture tiled behind the workspace's docked panes.
+   */
+  public readonly workspaceTexture: Signal<WorkspaceTexture> = this.value(
+    'appearance.workspaceTexture',
   );
 
   /**
@@ -743,6 +775,14 @@ export class Settings {
    */
   public setModernUiFeatures(value: ModernUiFeatures): void {
     this.set('appearance.modernUiFeatures', value);
+  }
+
+  /**
+   * Sets the background texture tiled behind the workspace's docked panes.
+   * @param value The texture to apply.
+   */
+  public setWorkspaceTexture(value: WorkspaceTexture): void {
+    this.set('appearance.workspaceTexture', value);
   }
 
   /**

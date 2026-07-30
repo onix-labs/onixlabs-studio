@@ -41,32 +41,14 @@
     font-size: 0.8rem;
   }
 
+  // Layout only: `app-button` owns how each control is drawn, as it does in a tool panel's header.
   &-buttons {
     display: flex;
     gap: 0.125rem;
     // Sit above the edge resize handles so the title buttons stay clickable at the top corners.
     position: relative;
     z-index: 2;
-
-    button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      block-size: 1.125rem;
-      inline-size: 1.125rem;
-      font-size: 0.875rem;
-      color: inherit;
-      background: transparent;
-      border: none;
-      border-radius: calc(0.25rem * var(--border-radius-multiplier));
-      corner-shape: var(--app-corner-shape, squircle);
-      cursor: default;
-      transition: var(--hover-transition);
-
-      &:hover {
-        background: rgb(255 255 255 / 25%);
-      }
-    }
+    font-weight: 400;
   }
 }
 

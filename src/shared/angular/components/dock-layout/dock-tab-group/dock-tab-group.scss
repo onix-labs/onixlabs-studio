@@ -40,39 +40,12 @@
     font-size: 0.8rem;
   }
 
+  // Layout only: `app-button` owns how each control is drawn, exactly as it does in a tool panel's
+  // header. The title bar's own weight would otherwise be inherited by the glyphs.
   &-buttons {
     display: flex;
     gap: 0.125rem;
-
-    button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      block-size: 1.125rem;
-      inline-size: 1.125rem;
-      font-size: 0.875rem;
-      color: inherit;
-      background: transparent;
-      border: none;
-      border-radius: calc(0.25rem * var(--border-radius-multiplier));
-      corner-shape: var(--app-corner-shape, squircle);
-      cursor: default;
-      transition: var(--hover-transition);
-
-      &:hover {
-        background: var(--dock-title-background-color--focused);
-        color: var(--dock-title-foreground-color--focused);
-      }
-
-      &:disabled {
-        opacity: 0.35;
-
-        &:hover {
-          background: transparent;
-          color: inherit;
-        }
-      }
-    }
+    font-weight: 400;
   }
 }
 
@@ -236,10 +209,11 @@
   border: none;
 }
 
-// An empty document well is a blank space, not a framed cell: paint the dock container's own colour
-// over the leaf pane's lighter surface so it reads as part of the container until a document opens.
+// An empty document well is a blank space, not a framed cell: it stays transparent so the container
+// itself shows through — its colour AND any texture the user has chosen — until a document opens.
+// (Painting the container's colour here instead would cover the texture with a flat slab.)
 :host(.dock-tab-group--documents.dock-tab-group--empty) {
-  background: var(--dock-container-background-color);
+  background: transparent;
 }
 
 :host(.dock-tab-group--focused) {

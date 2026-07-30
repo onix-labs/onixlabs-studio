@@ -108,14 +108,35 @@ export class Reader {
   private readonly zone: NgZone = inject(NgZone);
 
   /**
-   * Holds the platform speech controller, or null when unavailable.
+   * Holds the platform speech controller once resolved, or null when unavailable. Resolved lazily by
+   * {@link speech} — see {@link synthesisResolved}.
    */
-  private synthesis: SpeechSynthesis | null = platformSynthesis();
+  private synthesis: SpeechSynthesis | null = null;
+
+  /**
+   * Holds whether the platform speech controller has been resolved yet.
+   *
+   * Reading the `speechSynthesis` global is not free: it binds the renderer to the browser process's
+   * SpeechSynthesis interface, and THAT is what makes the browser process enumerate the system's
+   * text-to-speech voices — over a second on macOS, during which every window is frozen, since they
+   * all share that process. Merely holding a reference was enough to pay it, so the reference itself
+   * is deferred until something actually intends to speak.
+   */
+  private synthesisResolved: boolean = false;
 
   /**
    * Holds the factory used to build speech utterances.
    */
   private utteranceFactory: UtteranceFactory = platformUtterance;
+
+  /**
+   * Holds whether the platform voices have been enumerated yet. Enumeration is deferred because
+   * `getVoices()` is answered by the browser process, and on macOS its FIRST call blocks that process
+   * for over a second while the system enumerates its text-to-speech voices. Doing that when the
+   * reader is constructed froze the whole application — every window, since they share that process —
+   * the first time a markdown document was opened, whether or not anything was ever read aloud.
+   */
+  private voicesLoaded: boolean = false;
 
   /**
    * Holds a generation counter that invalidates callbacks from cancelled utterances.
@@ -271,10 +292,8 @@ export class Reader {
    * Loads the available voices and keeps the in-document highlight in sync with the spoken word.
    */
   public constructor() {
-    this.loadVoices();
-    if (this.synthesis !== null) {
-      this.synthesis.onvoiceschanged = (): void => this.zone.run((): void => this.loadVoices());
-    }
+    // The speech controller is NOT touched here — see `synthesisResolved`. Opening a markdown
+    // document must cost nothing for a feature most documents never use.
     effect((): void => {
       const session: ReadSession | null = this.sessionState();
       if (session === null) {
@@ -324,12 +343,13 @@ export class Reader {
    * Starts, or resumes, playback from the current word.
    */
   public play(): void {
-    if (this.synthesis === null || !this.canRead()) {
+    const synth: SpeechSynthesis | null = this.speech();
+    if (synth === null || !this.canRead()) {
       return;
     }
     this.engagedState.set(true);
-    if (this.synthesis.paused && this.synthesis.speaking) {
-      this.synthesis.resume();
+    if (synth.paused && synth.speaking) {
+      synth.resume();
       this.playingState.set(true);
       return;
     }
@@ -341,8 +361,8 @@ export class Reader {
    * Pauses playback, leaving the current position intact.
    */
   public pause(): void {
-    if (this.synthesis?.speaking === true) {
-      this.synthesis.pause();
+    if (this.speech()?.speaking === true) {
+      this.speech()?.pause();
     }
     this.playingState.set(false);
   }
@@ -365,7 +385,7 @@ export class Reader {
     this.generation += ONE;
     this.playingState.set(false);
     this.engagedState.set(false);
-    this.synthesis?.cancel();
+    this.speech()?.cancel();
     this.currentWordState.set(ZERO);
   }
 
@@ -455,6 +475,7 @@ export class Reader {
    */
   public setSpeechEngine(synthesis: SpeechSynthesis | null, factory: UtteranceFactory): void {
     this.synthesis = synthesis;
+    this.synthesisResolved = true;
     this.utteranceFactory = factory;
     this.loadVoices();
   }
@@ -490,7 +511,8 @@ export class Reader {
    * @param wordIndex The word to begin speaking from.
    */
   private speakFrom(wordIndex: number): void {
-    const synth: SpeechSynthesis | null = this.synthesis;
+    this.ensureVoicesLoaded();
+    const synth: SpeechSynthesis | null = this.speech();
     const doc: ReadDocument = this.document();
     if (synth === null || wordIndex < ZERO || wordIndex >= doc.totalWords) {
       return;
@@ -575,24 +597,59 @@ export class Reader {
    */
   private resolveVoice(): SpeechSynthesisVoice | null {
     const uri: string | null = this.selectedVoiceState();
-    if (this.synthesis === null || uri === null) {
+    if (this.speech() === null || uri === null) {
       return null;
     }
     return (
-      this.synthesis
+      this.speech()!
         .getVoices()
         .find((voice: SpeechSynthesisVoice): boolean => voice.voiceURI === uri) ?? null
     );
   }
 
   /**
+   * Resolves the platform speech controller, binding to it on first use and wiring the voice-list
+   * change notification at the same moment.
+   * @returns Returns the controller, or null when the platform offers none.
+   */
+  private speech(): SpeechSynthesis | null {
+    if (this.synthesisResolved) {
+      return this.synthesis;
+    }
+    this.synthesisResolved = true;
+    this.synthesis = platformSynthesis();
+    if (this.synthesis !== null) {
+      this.synthesis.onvoiceschanged = (): void => {
+        if (this.voicesLoaded) {
+          this.zone.run((): void => this.loadVoices());
+        }
+      };
+    }
+    return this.synthesis;
+  }
+
+  /**
+   * Enumerates the platform voices, once, on behalf of something that is about to need them — the
+   * reader panel showing its voice picker, or a read starting. Kept off the markdown editor's own
+   * creation path, where the cost is paid by every user who never reads a document aloud.
+   */
+  public ensureVoicesLoaded(): void {
+    if (this.voicesLoaded) {
+      return;
+    }
+    this.voicesLoaded = true;
+    this.loadVoices();
+  }
+
+  /**
    * Loads the platform voices into the voices signal, selecting a default.
    */
   private loadVoices(): void {
-    if (this.synthesis === null) {
+    const synth: SpeechSynthesis | null = this.speech();
+    if (synth === null) {
       return;
     }
-    const voices: SpeechSynthesisVoice[] = this.synthesis
+    const voices: SpeechSynthesisVoice[] = synth
       .getVoices()
       .filter((voice: SpeechSynthesisVoice): boolean =>
         voice.name.toLowerCase().includes(ENHANCED_VOICE),

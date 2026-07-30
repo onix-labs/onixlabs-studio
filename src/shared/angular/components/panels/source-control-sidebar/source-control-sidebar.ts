@@ -19,11 +19,13 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
  * Identifies the outcome of a build/check on a pull request or a CI/CD action: in progress, passed, or
@@ -187,7 +189,7 @@ interface SectionDef {
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
+  imports: [TextField, Button, AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -325,8 +327,8 @@ export class SourceControlSidebar {
    * Records the filter text as it is typed.
    * @param event The input event carrying the text.
    */
-  protected onFilterInput(event: Event): void {
-    this.filter.set((event.target as HTMLInputElement).value);
+  protected onFilterValue(value: string): void {
+    this.filter.set(value);
   }
 
   /**
@@ -564,8 +566,8 @@ export class SourceControlSidebar {
    * Records the branch name as it is typed.
    * @param event The input event carrying the name.
    */
-  protected onBranchNameInput(event: Event): void {
-    this.branchName.set((event.target as HTMLInputElement).value);
+  protected onBranchNameValue(value: string): void {
+    this.branchName.set(value);
   }
 
   /**

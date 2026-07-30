@@ -11,8 +11,11 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import {
+  ButtonGroup,
+  ButtonGroupOption,
+} from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry } from '../binary-document/binary-document';
 import { inspectBytes, InspectorRow } from './binary-inspector-values';
@@ -29,12 +32,28 @@ const INSPECT_WIDTH: number = 8;
  */
 @Component({
   selector: 'app-binary-inspector',
-  imports: [AppIcon, PanelDragHandle],
+  imports: [ToolPanel, ButtonGroup],
   templateUrl: './binary-inspector.html',
   styleUrl: './binary-inspector.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BinaryInspector {
+  /**
+   * Gets the byte-order options.
+   */
+  protected readonly endianOptions: readonly ButtonGroupOption[] = [
+    { value: 'le', label: 'LE' },
+    { value: 'be', label: 'BE' },
+  ];
+
+  /**
+   * Gets the signedness options.
+   */
+  protected readonly signOptions: readonly ButtonGroupOption[] = [
+    { value: 'signed', label: 'Signed' },
+    { value: 'unsigned', label: 'Unsigned' },
+  ];
+
   /**
    * Gets the icon set, exposed for the template.
    */

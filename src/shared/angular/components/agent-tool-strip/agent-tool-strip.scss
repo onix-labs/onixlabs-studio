@@ -10,12 +10,12 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.3rem 0.4rem;
+  padding: 0.5rem;
   min-inline-size: 0;
 }
 
 // The action buttons hold their size; only the fields give way.
-app-ribbon-strip-button-small {
+app-button {
   flex: 0 0 auto;
 }
 

@@ -1,208 +1,110 @@
+// The dialog fills its window: the header and actions take their own height and the body — the tree
+// beside the form — takes everything left, so a long list scrolls in place rather than growing the
+// window past the screen.
 .configure {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0.75rem;
+  block-size: 100%;
+  min-block-size: 0;
   min-inline-size: 0;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
 
   &__title {
     margin: 0;
-    font-size: 15px;
+    font-size: 1.05rem;
     font-weight: 600;
+    color: var(--body-foreground-color);
   }
 
   &__body {
+    flex: 1;
     display: grid;
-    grid-template-columns: 13rem 1fr;
-    gap: 16px;
-    min-block-size: 360px;
-  }
-
-  &__sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    grid-template-columns: 15rem 1fr;
+    gap: 1rem;
     min-block-size: 0;
   }
 
+  // The list panel is one boxed surface holding its own controls and the tree beneath them.
+  &__sidebar {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow: hidden;
+    border: 0.0625rem solid var(--settings-border-color);
+    border-radius: calc(0.75rem * var(--border-radius-multiplier, 1));
+    corner-shape: var(--app-corner-shape, squircle);
+    background: var(--settings-nav-background-color);
+  }
+
+  // Inside the panel, above the tree it acts on. No rule beneath it: the controls sit on the panel's
+  // own surface, and a divider would cut the panel in two rather than reading as its header.
   &__toolbar {
     display: flex;
-    gap: 4px;
+    flex: none;
+    gap: 0.25rem;
+    padding: 0.35rem;
   }
 
   &__list {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px;
-    overflow-y: auto;
-    border: 0.0625rem solid var(--settings-border-color);
-    border-radius: calc(0.75rem * var(--border-radius-multiplier, 1));
-    background: var(--settings-nav-background-color);
+    min-block-size: 0;
+    padding-block: 0.25rem;
+    overflow: auto;
   }
 
-  &__tool {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 26px;
-    block-size: 26px;
-    padding: 0;
-    border: 1px solid var(--form-control-border-color);
-    border-radius: calc(4px * var(--border-radius-multiplier, 1));
-    background: var(--form-control-background-color);
-    color: var(--body-foreground-color);
-    cursor: pointer;
-    transition: var(--hover-transition);
-
-    &:hover:not(:disabled) {
-      border-color: var(--accent-color);
-    }
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
-  }
-
-  &__group {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  &__group-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--form-muted-foreground-color);
-    padding-block: 4px;
-  }
-
-  &__item {
-    text-align: start;
-    padding: 5px 8px;
-    border: 0;
-    border-radius: calc(0.5rem * var(--border-radius-multiplier, 1));
-    background: transparent;
-    color: var(--body-foreground-color);
-    cursor: pointer;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    transition: var(--hover-transition);
-
-    &:hover {
-      background: var(--settings-control-background-color);
-    }
-
-    &--selected {
-      background: var(--accent-color);
-      color: var(--accent-foreground-color, #fff);
-    }
-  }
-
+  // The form scrolls independently of the tree, so neither can push the other's content out of reach.
   &__detail {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
+    min-block-size: 0;
     min-inline-size: 0;
+    overflow-y: auto;
   }
 
   &__empty {
     margin: 0;
-    padding: 16px 0;
+    padding: 1rem;
     color: var(--form-muted-foreground-color);
-    font-size: 13px;
+    font-size: 0.8rem;
   }
 
+  // Layout only: how the control is DRAWN belongs to the atom, and a border here would box it twice.
   &__env {
     inline-size: 100%;
-    resize: vertical;
-    padding: 6px 8px;
-    border: 1px solid var(--form-control-border-color);
-    border-radius: calc(4px * var(--border-radius-multiplier, 1));
-    background: var(--form-control-background-color);
-    color: var(--body-foreground-color);
-    font-family: var(--font-mono, monospace);
-    font-size: 12px;
-
-    &:focus {
-      outline: none;
-      border-color: var(--accent-color);
-    }
   }
 
+  // Cancel and Save take one width between them rather than each sizing to its own label, so the pair
+  // reads as a matched set instead of two buttons of incidental widths.
   &__actions {
     display: flex;
+    flex: none;
     justify-content: flex-end;
-    gap: 8px;
-    padding-block-start: 4px;
-  }
+    gap: 0.6rem;
 
-  &__button {
-    padding: 6px 16px;
-    border: 1px solid var(--form-control-border-color);
-    border-radius: calc(4px * var(--border-radius-multiplier, 1));
-    background: var(--form-control-background-color);
-    color: var(--body-foreground-color);
-    cursor: pointer;
-    transition: var(--hover-transition);
-
-    &:hover {
-      border-color: var(--accent-color);
-    }
-
-    &--primary {
-      border-color: var(--accent-color);
-      background: var(--accent-color);
-      color: #fff;
+    app-button {
+      min-inline-size: 5.5rem;
     }
   }
 }
 
-// The agent-authoring row beneath the editor: Auto-configure, a prompt box, and Ask agent. It reads as
-// one band above the dialog's Cancel/Save actions, separated from the editor by the same hairline the
-// rest of the dialog uses.
-.configure__agent {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-block-start: 0.75rem;
-  border-block-start: 0.0625rem solid var(--dock-border-color);
-}
-
-// The prompt box takes the row's spare width; the two buttons keep their content width.
-.configure__request {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-// The agent button carries its glyph beside the label, so it reads as the agent's action rather than
-// another neutral dialog button.
-.configure__button--agent {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-// A single line of status beneath the agent row: what the agent is doing, or why it cannot be asked.
-.configure__status {
-  margin: 0;
-  padding-block-start: 0.4rem;
-  font-size: 0.8rem;
-  color: var(--accent-color);
-
-  &--muted {
-    color: var(--gray-500);
-  }
-}
-
-// The agent's pending requests, stacked beneath the agent row while it works.
-.configure__requests {
+// The Auto-configure modal's own content, laid out like the dialog that raised it: its body is still
+// to be designed, so for now it is a title and the one action that closes it.
+.configure-auto {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding-block-start: 0.5rem;
+  gap: 0.75rem;
+  block-size: 100%;
+  min-block-size: 0;
+
+  .configure__actions {
+    margin-block-start: auto;
+  }
 }

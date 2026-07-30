@@ -11,9 +11,9 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { DebugState } from '@shared/angular/services/debug/debugger';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Documents } from '@shared/angular/services/documents/documents';
@@ -53,7 +53,7 @@ type VariableRowData =
  */
 @Component({
   selector: 'app-debug-panel',
-  imports: [AppIcon, TextField, TreeView],
+  imports: [Button, TextField, TreeView],
   templateUrl: './debug-panel.html',
   styleUrl: './debug-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

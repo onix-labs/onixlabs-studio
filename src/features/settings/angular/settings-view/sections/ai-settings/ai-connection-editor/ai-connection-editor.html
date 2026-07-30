@@ -57,22 +57,17 @@
           placeholder="API key"
           (valueChange)="onApiKeyInput($event)"
         />
-        <button
-          type="button"
-          class="conn-editor__button"
+        <app-button
+          variant="solid"
+          label="Save"
           [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
           (click)="saveKey()"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          class="conn-editor__button conn-editor__button--ghost"
+        />
+        <app-button
+          label="Clear"
           [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
           (click)="clearKey()"
-        >
-          Clear
-        </button>
+        />
       </div>
     </div>
   } @else {
@@ -83,14 +78,12 @@
   <div class="conn-editor__models">
     <div class="conn-editor__models-head">
       <span class="conn-editor__label">Models</span>
-      <button
-        type="button"
-        class="conn-editor__button"
+      <app-button
+        [icon]="Icon.REFRESH"
+        [label]="discovering() ? 'Refreshing…' : 'Refresh'"
         [disabled]="!isAvailable || discovering()"
         (click)="refresh()"
-      >
-        {{ discovering() ? 'Refreshing…' : '↻ Refresh' }}
-      </button>
+      />
     </div>
 
     @if (discoverDetail(); as detail) {
@@ -105,26 +98,26 @@
           <li class="conn-editor__model" [class.conn-editor__model--hidden]="model.hidden">
             <span class="conn-editor__model-id">{{ model.label }}</span>
             <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
-            <button
-              type="button"
-              class="conn-editor__icon-button"
-              [class.conn-editor__icon-button--on]="model.pinned"
-              [attr.aria-label]="model.pinned ? 'Unpin model' : 'Pin model'"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="model.pinned ? Icon.PIN_FILLED : Icon.PIN"
+              [ariaLabel]="model.pinned ? 'Unpin model' : 'Pin model'"
               (click)="togglePin(model.id)"
-            >
-              <app-icon [icon]="model.pinned ? Icon.PIN_FILLED : Icon.PIN" />
-            </button>
-            <button type="button" class="conn-editor__text-button" (click)="toggleHide(model.id)">
-              {{ model.hidden ? 'Show' : 'Hide' }}
-            </button>
-            <button
-              type="button"
-              class="conn-editor__icon-button"
-              aria-label="Remove model"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [label]="model.hidden ? 'Show' : 'Hide'"
+              (click)="toggleHide(model.id)"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.TRASH"
+              ariaLabel="Remove model"
               (click)="removeModel(model.id)"
-            >
-              <app-icon [icon]="Icon.TRASH" />
-            </button>
+            />
           </li>
         }
       </ul>
@@ -136,14 +129,12 @@
         placeholder="Add a model id (e.g. gpt-4o)"
         (valueChange)="onNewModelInput($event)"
       />
-      <button
-        type="button"
-        class="conn-editor__button"
+      <app-button
+        variant="solid"
+        label="Add"
         [disabled]="newModelDraft().trim().length === 0"
         (click)="addModel()"
-      >
-        Add
-      </button>
+      />
     </div>
 
     @if (connection().models.length > 0) {
@@ -159,12 +150,6 @@
   </div>
 
   <div class="conn-editor__footer">
-    <button
-      type="button"
-      class="conn-editor__button conn-editor__button--danger"
-      (click)="removeConnection()"
-    >
-      Remove connection
-    </button>
+    <app-button label="Remove connection" (click)="removeConnection()" />
   </div>
 </div>

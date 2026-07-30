@@ -120,6 +120,26 @@ app-markdown-editor .milkdown {
   @include milkdown-base-styles;
 }
 
+// The agent composer's markdown modal, in dark only. The modal panel is `--gray-900` — the very fill
+// the editor uses — so the editor blends into the panel with only its border to separate them. Drop
+// it a step to `--gray-950` so it reads as a sunken well, the contrast the standalone markdown tab
+// gets for free from its lighter surrounding chrome. Light mode already contrasts (editor
+// `--gray-100` against the panel's `--gray-150`), so it is left alone.
+//
+// This lives here, and not in `agent-chat.scss` where the frame is styled, because it cannot work
+// there: `:host-context()` compiles to a selector requiring an `[_nghost]` ANCESTOR, and modal
+// content renders in the modal window's document, outside the declaring component's host element
+// entirely. Global rules carry no encapsulation attributes, so they reach both documents.
+[data-theme-mode='dark'] .agent__md-editor {
+  .milkdown {
+    --crepe-color-background: var(--gray-950) !important;
+  }
+
+  .editor-scroll {
+    background: var(--gray-950);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // ProseMirror editor styles
 // -----------------------------------------------------------------------------
@@ -999,6 +1019,36 @@ app-markdown-editor .milkdown {
   .prosemirror-virtual-cursor {
     z-index: 1;
     border-color: var(--crepe-color-on-surface);
+  }
+
+  // Drive the vendor's own colour variable too, not just the border it paints with. The cursor is
+  // drawn by `prosemirror-virtual-cursor`, whose stylesheet defaults
+  // `--prosemirror-virtual-cursor-color` to RED on `.ProseMirror-focused` and paints each edge from
+  // it. Overriding only `border-color` leaves that default in place for any edge the vendor styles
+  // through a longhand this rule does not reach (the left/right cursor variants set
+  // `border-bottom`/`border-right`), so the variable is set at the source instead.
+  .ProseMirror-focused {
+    --prosemirror-virtual-cursor-color: var(--crepe-color-on-surface);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Text caret in a child window
+// -----------------------------------------------------------------------------
+// An editor in a modal or pop-out window gets NO caret at all, and the fault is in
+// `prosemirror-virtual-cursor`: it reads the selection through the module-global
+// `window.getSelection()` — the OPENER's window — and bails (`if (!selection.rangeCount) return
+// null`) before drawing. In a child window the opener holds no selection, so the virtual cursor is
+// never created, while the plugin's own `virtual-cursor-enabled` class has already hidden the
+// native caret with `caret-color: transparent`. Missing caret, in both themes.
+//
+// Give the native caret back wherever the editor is not in the shell's own document, rather than
+// dropping Crepe's Cursor feature — which also supplies the drag drop-indicator and gap cursor. The
+// main window keeps the virtual cursor and its blink; a child window uses the platform's.
+.modal-window__content,
+.aux-window__content {
+  app-markdown-editor .milkdown .ProseMirror.virtual-cursor-enabled {
+    caret-color: var(--crepe-color-on-surface);
   }
 }
 

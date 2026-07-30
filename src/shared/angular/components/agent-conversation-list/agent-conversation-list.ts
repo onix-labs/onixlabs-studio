@@ -20,11 +20,13 @@ import { AgentCategories } from '@shared/angular/services/agent-categories/agent
 import { agentTypeFromContextKind } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
  * The identifier of the always-present All Conversations root node.
@@ -130,6 +132,8 @@ type HistoryRowData =
 @Component({
   selector: 'app-agent-conversation-list',
   imports: [
+    TextField,
+    Button,
     AppIcon,
     Checkbox,
     HighlightedText,
@@ -832,8 +836,7 @@ export class AgentConversationList {
    * Sets the edited category's name.
    * @param event The input event.
    */
-  protected onCategoryName(event: Event): void {
-    const value: string = (event.target as HTMLInputElement).value;
+  protected onCategoryNameValue(value: string): void {
     this.categoryEditor.update((editor) => (editor === null ? null : { ...editor, name: value }));
   }
 

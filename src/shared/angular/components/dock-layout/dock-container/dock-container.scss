@@ -1,9 +1,35 @@
 :host {
   position: relative;
+  // A stacking context of its own, so the texture layer below can sit at a negative depth: above
+  // this element's own background, beneath everything docked inside it.
+  isolation: isolate;
   display: block;
   block-size: 100%;
   inline-size: 100%;
   background: var(--dock-container-background-color);
+}
+
+// The optional background texture, tiled behind the docked panes. The pattern arrives as
+// `--dock-texture-image` from the global texture catalogue (`_textures.scss`) when the user has
+// chosen one, and is applied as a MASK over a flat fill: the SVG contributes only its shape, and the
+// theme supplies the colour, so a texture follows the accent and the palette rather than shipping a
+// colour of its own. Without a chosen texture the mask resolves to nothing and the layer is not
+// painted at all.
+:host::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  // Beneath the docked panes without touching them: a negative depth inside this element's own
+  // stacking context paints over its background and under its content, so nothing above needs a
+  // z-index of its own (the floating layer in particular must keep its positioning as it is).
+  z-index: -1;
+  background-color: var(--dock-container-texture-color);
+  mask-image: var(--dock-texture-image, none);
+  mask-repeat: repeat;
+  -webkit-mask-image: var(--dock-texture-image, none);
+  -webkit-mask-repeat: repeat;
+  opacity: var(--dock-container-texture-opacity, 0.1);
+  pointer-events: none;
 }
 
 .dock-container {

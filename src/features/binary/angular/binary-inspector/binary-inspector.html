@@ -1,52 +1,25 @@
-<div class="inspector">
-  <div class="inspector__bar" appPanelDragHandle="Inspector">
-    <app-icon class="inspector__icon" [icon]="Icon.SEARCH" />
-    <span class="inspector__title">Inspector</span>
-    <span class="inspector__spacer"></span>
-    <button type="button" aria-label="Close inspector" title="Close inspector" (click)="onClose()">
-      <app-icon [icon]="Icon.CLOSE" />
-    </button>
-  </div>
-
+<app-tool-panel
+  title="Inspector"
+  [icon]="Icon.SEARCH"
+  closeLabel="Close inspector"
+  [flush]="true"
+  (closed)="onClose()"
+>
   <div class="inspector__body">
     <div class="inspector__toggles">
-      <div class="inspector__seg" role="group" aria-label="Endianness">
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="littleEndian()"
-          (click)="setEndian(true)"
-        >
-          LE
-        </button>
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="!littleEndian()"
-          (click)="setEndian(false)"
-        >
-          BE
-        </button>
-      </div>
+      <app-button-group
+        ariaLabel="Endianness"
+        [options]="endianOptions"
+        [value]="littleEndian() ? 'le' : 'be'"
+        (valueChange)="setEndian($event === 'le')"
+      />
 
-      <div class="inspector__seg" role="group" aria-label="Signedness">
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="signed()"
-          (click)="setSigned(true)"
-        >
-          Signed
-        </button>
-        <button
-          type="button"
-          class="inspector__seg-btn"
-          [class.inspector__seg-btn--active]="!signed()"
-          (click)="setSigned(false)"
-        >
-          Unsigned
-        </button>
-      </div>
+      <app-button-group
+        ariaLabel="Signedness"
+        [options]="signOptions"
+        [value]="signed() ? 'signed' : 'unsigned'"
+        (valueChange)="setSigned($event === 'signed')"
+      />
     </div>
 
     @if (rows().length > 0) {
@@ -62,4 +35,4 @@
       <p class="inspector__empty">Select a byte to inspect its value.</p>
     }
   </div>
-</div>
+</app-tool-panel>

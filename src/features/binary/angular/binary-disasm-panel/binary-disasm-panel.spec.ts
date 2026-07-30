@@ -75,7 +75,7 @@ describe('BinaryDisasmPanel', () => {
       fakeDocument({ kind: 'pe', architecture: 'x64', managed: false }),
     );
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.disasm__title')?.textContent).toContain('Assembly');
+    expect(host.querySelector('.tool-panel__title')?.textContent).toContain('Assembly');
     expect(host.querySelector('app-text-editor')).not.toBeNull();
   });
 
@@ -140,7 +140,7 @@ describe('BinaryDisasmPanel', () => {
     });
 
     (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('.disasm__bar button')
+      .querySelector<HTMLButtonElement>('.tool-panel__header button')
       ?.click();
 
     expect(closed).toBe(1);

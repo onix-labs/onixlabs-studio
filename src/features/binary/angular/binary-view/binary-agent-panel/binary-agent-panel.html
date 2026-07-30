@@ -1,20 +1,16 @@
-<div class="binary-agent">
-  <div class="binary-agent__bar" appPanelDragHandle="Agent">
-    <app-icon class="binary-agent__icon" [icon]="Icon.AGENT" />
-    <span class="binary-agent__title">Agent</span>
-    <span class="binary-agent__spacer"></span>
-    <button type="button" aria-label="Close agent" title="Close agent" (click)="onClose()">
-      <app-icon [icon]="Icon.CLOSE" />
-    </button>
-  </div>
-  <div class="binary-agent__body">
-    @if (tabId()) {
-      <app-agent-conversation-panel
-        [tabId]="tabId()"
-        [isActive]="isActive()"
-        surface="binary"
-        [context]="fileContext()"
-      />
-    }
-  </div>
-</div>
+<app-tool-panel
+  title="Agent"
+  [icon]="Icon.AGENT"
+  closeLabel="Close agent"
+  [flush]="true"
+  (closed)="onClose()"
+>
+  @if (tabId()) {
+    <app-agent-conversation-panel
+      [tabId]="tabId()"
+      [isActive]="isActive()"
+      surface="binary"
+      [context]="fileContext()"
+    />
+  }
+</app-tool-panel>

@@ -1,79 +1,12 @@
 :host {
-  // The bar and body stay transparent so the panel container's shared surface shows through and the
-  // whole panel reads as one piece with every other docked panel. Only the bar's muted foreground is
-  // set here.
-  --code-agent-bar-foreground: var(--gray-700);
-
   display: block;
   inline-size: 100%;
   block-size: 100%;
 }
 
-:host-context([data-theme-mode='dark']) {
-  --code-agent-bar-foreground: var(--gray-400);
-}
-
-.code-agent {
-  display: flex;
-  flex-direction: column;
+// Sizing only: the shared tool-panel chrome owns how this panel is drawn. Do not set `display` here —
+// styling the child by tag outweighs its own `:host { display: flex }` (higher specificity), which
+// would collapse the panel's flex column and let the chat overflow the tool strip.
+app-agent-conversation-panel {
   block-size: 100%;
-}
-
-.code-agent__bar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
-  color: var(--code-agent-bar-foreground);
-
-  button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    block-size: 1.5rem;
-    inline-size: 1.5rem;
-    font-size: 0.9rem;
-    color: inherit;
-    background: transparent;
-    border: 0.0625rem solid transparent;
-    border-radius: calc(0.375rem * var(--border-radius-multiplier));
-    corner-shape: var(--app-corner-shape, squircle);
-    transition: var(--hover-transition);
-
-    &:hover {
-      color: var(--accent-surface-foreground-color);
-      background: var(--accent-surface-background-color);
-      border-color: var(--accent-surface-border-color);
-    }
-
-    &:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: -0.125rem;
-    }
-  }
-}
-
-.code-agent__icon {
-  font-size: 1rem;
-}
-
-.code-agent__title {
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.code-agent__spacer {
-  flex: 1 1 auto;
-}
-
-.code-agent__body {
-  flex: 1 1 auto;
-  min-block-size: 0;
-
-  // Do not set `display` here: styling the child by tag outweighs its own `:host { display: flex }`
-  // (higher specificity), which would collapse the panel's flex column and let the chat overflow the
-  // tool strip. Sizing only.
-  app-agent-conversation-panel {
-    block-size: 100%;
-  }
 }

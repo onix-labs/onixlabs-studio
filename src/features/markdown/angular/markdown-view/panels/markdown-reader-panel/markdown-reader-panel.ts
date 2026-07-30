@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
 import {
@@ -9,6 +8,11 @@ import {
 } from '@features/markdown/angular/markdown-reader/reader-types';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Button } from '@shared/angular/components/forms/button/button';
+import {
+  ButtonGroup,
+  ButtonGroupOption,
+} from '@shared/angular/components/forms/button-group/button-group';
 
 /**
  * Upper bound of the scrubber range input, giving sub-percent seek granularity.
@@ -52,12 +56,40 @@ const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_F
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [ToolPanel, AppIcon, Dropdown],
+  imports: [ButtonGroup, Button, ToolPanel, Dropdown],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-reader-panel.html',
   styleUrl: './markdown-reader-panel.scss',
 })
 export class MarkdownReaderPanel {
+  /**
+   * Gets the `String` and `Number` globals. The segmented control exchanges string values, while the
+   * playback rate is a number, so the template converts between them.
+   */
+  protected readonly String: (value: unknown) => string = String;
+  protected readonly Number: (value: unknown) => number = Number;
+
+  /**
+   * Gets the playback speeds as segmented-control options.
+   */
+  protected readonly speedOptions: Signal<readonly ButtonGroupOption[]> = computed(
+    (): readonly ButtonGroupOption[] =>
+      this.speeds.map(
+        (speed: number): ButtonGroupOption => ({
+          value: String(speed),
+          label: this.speedLabel(speed),
+        }),
+      ),
+  );
+
+  /**
+   * Gets the highlight granularities as segmented-control options.
+   */
+  protected readonly highlightOptions: readonly ButtonGroupOption[] = [
+    { value: 'word', label: 'Word' },
+    { value: 'sentence', label: 'Sentence' },
+  ];
+
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -137,6 +169,16 @@ export class MarkdownReaderPanel {
   protected readonly selectedVoiceUri: Signal<string> = computed(
     (): string => this.selectedVoice()?.uri ?? '',
   );
+
+  /**
+   * Initializes a new instance of the {@link MarkdownReaderPanel} class, enumerating the platform
+   * voices now that a surface exists to offer them. The reader deliberately does not do this when it
+   * is constructed: the first enumeration blocks the browser process for over a second on macOS, and
+   * that cost belongs to opening the reader, not to opening a markdown document.
+   */
+  public constructor() {
+    this.reader.ensureVoicesLoaded();
+  }
 
   /**
    * Gets the selectable playback speeds.

@@ -1,10 +1,12 @@
 <div class="profiles">
   <div class="profiles__header">
     <h3 class="profiles__title">Language profiles</h3>
-    <button type="button" class="profiles__add" (click)="addProfile()">
-      <app-icon [icon]="Icon.PLUS" />
-      <span>Add profile</span>
-    </button>
+    <app-button
+      class="profiles__add"
+      [icon]="Icon.PLUS"
+      label="Add profile"
+      (click)="addProfile()"
+    />
   </div>
 
   @for (profile of profiles(); track profile.id) {
@@ -59,10 +61,12 @@
         </div>
       }
 
-      <button type="button" class="profiles__delete" (click)="deleteProfile(profile.id)">
-        <app-icon [icon]="Icon.TRASH" />
-        <span>Delete profile</span>
-      </button>
+      <app-button
+        class="profiles__delete"
+        [icon]="Icon.TRASH"
+        label="Delete profile"
+        (click)="deleteProfile(profile.id)"
+      />
     </app-accordion>
   }
 </div>

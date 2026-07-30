@@ -32,7 +32,6 @@
   // than the global modal default.
   --modal-backdrop-blur: var(--welcome-backdrop-blur);
   --modal-panel-inline-size: min(63rem, 100%);
-  --modal-panel-padding: 1rem;
   --modal-panel-radius: 2rem;
   --modal-panel-background:
     radial-gradient(130% 90% at 88% -12%, rgba(var(--accent-color-rgb), 0.16), transparent 55%),
@@ -366,6 +365,55 @@
   font-size: 1rem;
   color: var(--wl-faint);
 }
+// ── Bespoke controls ──────────────────────────────────────────────────────────────────────────
+// The search box, the Clear pill and the filter pills below are DELIBERATELY not `app-text-field`,
+// `app-button` and `app-button-group`. The welcome screen is the application's one bespoke surface,
+// drawn to its own palette (`--wl-*`) and geometry; the shared controls would either look wrong here
+// or have to be overridden from this stylesheet, which is precisely the drift they exist to prevent.
+// Everywhere else in the application, the atoms are the only way a control is drawn.
+
+// The search field fills the remaining width, with a trailing magnifier.
+.welcome__searchbox {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  padding-inline: 0.75rem;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  transition: border-color 120ms ease;
+
+  &:focus-within {
+    border-color: rgba(var(--accent-color-rgb), 0.6);
+  }
+}
+
+.welcome__searchbox-input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding-block: 0.45rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--wl-text);
+  background: transparent;
+  border: none;
+
+  &::placeholder {
+    color: var(--wl-faint);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.welcome__searchbox-icon {
+  flex: none;
+  font-size: 1rem;
+  color: var(--wl-faint);
+}
 
 // A pill beside the search field that clears the whole recent-items history (after confirmation).
 // Mirrors the search box's pill shape and surface so the header row reads as one control cluster.
@@ -557,7 +605,7 @@
   color: var(--wl-faint);
 }
 
-.welcome__recent-action {
+.welcome__recent-menu {
   display: grid;
   flex: none;
   place-items: center;
@@ -579,16 +627,6 @@
     outline: none;
     color: var(--wl-text);
     background: var(--wl-surface-hover);
-  }
-}
-
-// A pinned item's pin control stays lit in the accent colour.
-.welcome__recent-action--on {
-  color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--accent-color);
   }
 }
 
@@ -660,42 +698,4 @@
   gap: 0.6rem;
   inline-size: fit-content;
   margin-inline-start: auto;
-}
-
-.welcome__confirm-button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-}
-
-// The primary action reads in the app accent, as the rest of the welcome screen does; the warning
-// that clearing cannot be undone is carried by the message, not by an alarming button.
-.welcome__confirm-button--accent {
-  color: var(--gray-100);
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--gray-100);
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-    filter: brightness(1.1);
-  }
 }

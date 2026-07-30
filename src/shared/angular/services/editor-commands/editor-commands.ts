@@ -114,7 +114,17 @@ export class EditorCommands {
    * Holds the id of the most recently active editor, retained across deactivation so the agent (when
    * not scoped to a specific tab) can act on the last code editor the user worked in.
    */
-  private lastActiveId: string | null = null;
+  private readonly lastActiveId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the tabs whose editors currently hold a non-empty selection. Editors report this as their
+   * selection changes, since a selection lives in the editor rather than in any state this service
+   * could derive: {@link readActiveSelection} pulls the text on demand, which cannot drive a control's
+   * enabled state.
+   */
+  private readonly selectedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
 
   /**
    * Gets a value indicating whether a code editor is currently active.
@@ -124,6 +134,16 @@ export class EditorCommands {
   );
 
   /**
+   * Gets a value indicating whether the editor {@link readActiveSelection} would read from holds a
+   * selection — the active editor, or the last one worked in when focus has moved away (to the agent
+   * panel raising this very question).
+   */
+  public readonly hasSelection: Signal<boolean> = computed((): boolean => {
+    const id: string | null = this.activeId() ?? this.lastActiveId();
+    return id !== null && this.selectedIds().has(id);
+  });
+
+  /**
    * Registers an editor's command handler under its tab id, marking it the active editor.
    * @param id The owning tab identifier.
    * @param handler The handler to register.
@@ -131,7 +151,28 @@ export class EditorCommands {
   public register(id: string, handler: EditorCommandHandler): void {
     this.handlers.set(id, handler);
     this.activeId.set(id);
-    this.lastActiveId = id;
+    this.lastActiveId.set(id);
+  }
+
+  /**
+   * Records whether a tab's editor holds a selection, so controls that act on one can offer
+   * themselves only when there is something to act on.
+   * @param id The owning tab identifier.
+   * @param selected Whether the editor holds a non-empty selection.
+   */
+  public setSelectionState(id: string, selected: boolean): void {
+    this.selectedIds.update((ids: ReadonlySet<string>): ReadonlySet<string> => {
+      if (ids.has(id) === selected) {
+        return ids;
+      }
+      const next: Set<string> = new Set<string>(ids);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
   }
 
   /**
@@ -155,9 +196,10 @@ export class EditorCommands {
     if (this.activeId() === id) {
       this.activeId.set(null);
     }
-    if (this.lastActiveId === id) {
-      this.lastActiveId = null;
+    if (this.lastActiveId() === id) {
+      this.lastActiveId.set(null);
     }
+    this.setSelectionState(id, false);
   }
 
   /**
@@ -255,7 +297,7 @@ export class EditorCommands {
    * @returns Returns the target handler, or null when none is available.
    */
   private fallbackTarget(): EditorCommandHandler | null {
-    const id: string | null = this.activeId() ?? this.lastActiveId;
+    const id: string | null = this.activeId() ?? this.lastActiveId();
     return id === null ? null : (this.handlers.get(id) ?? null);
   }
 
@@ -266,7 +308,7 @@ export class EditorCommands {
    * nothing is selected.
    */
   public readActiveSelection(): { tabId: string; text: string } | null {
-    const id: string | null = this.activeId() ?? this.lastActiveId;
+    const id: string | null = this.activeId() ?? this.lastActiveId();
     if (id === null) {
       return null;
     }

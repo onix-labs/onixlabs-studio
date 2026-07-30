@@ -27,7 +27,7 @@ describe('ExplorerToolbar', () => {
     fixture.detectChanges();
 
     const input: HTMLInputElement = host.querySelector<HTMLInputElement>(
-      '.explorer-toolbar__search',
+      '.explorer-toolbar__search input',
     )!;
     expect(input.value).toBe('main');
     expect(input.placeholder).toBe('Search files');
@@ -40,7 +40,7 @@ describe('ExplorerToolbar', () => {
     component.queryChange.subscribe((value: string): void => void emitted.push(value));
 
     const input: HTMLInputElement = host.querySelector<HTMLInputElement>(
-      '.explorer-toolbar__search',
+      '.explorer-toolbar__search input',
     )!;
     input.value = 'readme';
     input.dispatchEvent(new Event('input'));

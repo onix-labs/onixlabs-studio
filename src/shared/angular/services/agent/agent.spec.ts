@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import type {
+  AgentContextRef,
   AiEffort,
   AiEvent,
   AiImageRef,
@@ -47,6 +48,7 @@ describe('Agent', () => {
     resumeSessionAt: string | null;
     forkSession: boolean;
     images: readonly AiImageRef[];
+    contextPaths: readonly AgentContextRef[];
     runTimeoutMs: number;
     effort: AiEffort | undefined;
   }[];
@@ -108,6 +110,7 @@ describe('Agent', () => {
           resumeSessionAt: options.resumeSessionAt ?? null,
           forkSession: options.forkSession ?? false,
           images: options.images ?? [],
+          contextPaths: options.contextPaths ?? [],
           runTimeoutMs: options.runTimeoutMs ?? 0,
           effort: options.effort,
         });
@@ -824,6 +827,33 @@ describe('Agent', () => {
 
     expect(notifications.toasts().length).toBe(0);
     expect(notifications.history().length).toBe(0);
+  });
+
+  it('send_consumesTheAttachedContext_soItRidesTheMessageRatherThanEveryLaterOne', () => {
+    agent.attachContext({ path: '/repo/a.ts', kind: 'file' });
+    agent.attachContext({ path: 'a.ts — selection #1 (2 lines)', kind: 'selection', content: 'x' });
+
+    agent.send('first');
+
+    expect(runCalls[0].contextPaths).toHaveLength(2);
+    // The composer is clean again, so the next message does not silently resend the same context.
+    expect(agent.contextPaths()).toEqual([]);
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    agent.send('second');
+    expect(runCalls[1].contextPaths).toEqual([]);
+  });
+
+  it('retry_afterTheTurnConsumedItsContext_stillResendsThatContext', () => {
+    // The turn took the attachments when it started, so a retry has to carry what the item kept —
+    // otherwise the re-run is stripped of the very files the failed turn was given.
+    agent.attachContext({ path: '/repo/a.ts', kind: 'file' });
+    agent.send('do the thing');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+
+    agent.retry(lastItem()!);
+
+    expect(runCalls[1].contextPaths).toEqual([{ path: '/repo/a.ts', kind: 'file' }]);
   });
 
   it('retry_whenClicked_reRunsTheFailedTurnWithoutDuplicatingTheUserMessage', () => {

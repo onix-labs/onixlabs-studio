@@ -41,16 +41,15 @@
           }
           <span class="worktrees__meta">{{ statusOf(row.id) }}</span>
           @if (canRemove()) {
-            <button
-              type="button"
-              class="worktrees__remove"
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.TRASH"
               [disabled]="busy()"
-              aria-label="Remove worktree"
-              title="Remove worktree"
+              ariaLabel="Remove worktree"
+              tooltip="Remove worktree"
               (click)="onRemove(row.id, $event)"
-            >
-              <app-icon [icon]="Icon.TRASH" [size]="0.85" />
-            </button>
+            />
           }
         </div>
       }
@@ -62,20 +61,23 @@
   }
 
   <div class="worktrees__actions">
-    <button type="button" class="worktrees__add" [disabled]="busy()" (click)="onAdd()">
-      <app-icon [icon]="Icon.PLUS" [size]="0.85" />
-      {{ session.busy() === 'add' ? 'Cloning…' : 'New Worktree' }}
-    </button>
-    <button
-      type="button"
-      class="worktrees__refresh"
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.PLUS"
+      [label]="session.busy() === 'add' ? 'Cloning…' : 'New Worktree'"
       [disabled]="busy()"
-      aria-label="Refresh worktrees"
-      title="Refresh"
+      (click)="onAdd()"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.REFRESH"
+      [disabled]="busy()"
+      ariaLabel="Refresh worktrees"
+      tooltip="Refresh"
       (click)="onRefresh()"
-    >
-      <app-icon [icon]="Icon.REFRESH" [size]="0.85" />
-    </button>
+    />
   </div>
 </div>
 
@@ -97,37 +99,28 @@
       (valueChange)="onBranchPick($event)"
     />
     @if (branchPick() === NEW_BRANCH) {
-      <input
+      <app-text-field
         class="worktrees__prompt-input"
-        type="text"
-        [value]="addBranch()"
-        (input)="onBranchInput($event)"
-        (keydown.enter)="confirmAdd()"
-        (keydown.escape)="cancelAdd()"
         placeholder="New branch name"
-        aria-label="New branch name"
+        ariaLabel="New branch name"
+        [value]="addBranch()"
+        (valueChange)="addBranch.set($event)"
+        (enter)="confirmAdd()"
+        (escape)="cancelAdd()"
       />
     }
-    <input
+    <app-text-field
       class="worktrees__prompt-input"
-      type="text"
-      [value]="addAlias()"
-      (input)="onAliasInput($event)"
-      (keydown.enter)="confirmAdd()"
-      (keydown.escape)="cancelAdd()"
       placeholder="Alias (optional)"
-      aria-label="Alias"
+      ariaLabel="Alias"
+      [value]="addAlias()"
+      (valueChange)="addAlias.set($event)"
+      (enter)="confirmAdd()"
+      (escape)="cancelAdd()"
     />
     <div class="worktrees__confirm-actions">
-      <button type="button" class="worktrees__confirm-button" (click)="cancelAdd()">Cancel</button>
-      <button
-        type="button"
-        class="worktrees__confirm-button"
-        [disabled]="!canCreate()"
-        (click)="confirmAdd()"
-      >
-        Create
-      </button>
+      <app-button label="Cancel" (click)="cancelAdd()" />
+      <app-button variant="solid" label="Create" [disabled]="!canCreate()" (click)="confirmAdd()" />
     </div>
   </ng-template>
 </app-modal>
@@ -146,16 +139,8 @@
       remain on the remote.
     </p>
     <div class="worktrees__confirm-actions">
-      <button type="button" class="worktrees__confirm-button" (click)="cancelRemove()">
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="worktrees__confirm-button worktrees__confirm-button--danger"
-        (click)="confirmRemove()"
-      >
-        Remove
-      </button>
+      <app-button label="Cancel" (click)="cancelRemove()" />
+      <app-button variant="solid" label="Remove" (click)="confirmRemove()" />
     </div>
   </ng-template>
 </app-modal>

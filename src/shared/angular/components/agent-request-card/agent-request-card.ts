@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent-requests';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * A single pending agent request rendered as a card: a heading describing what is being asked, an
@@ -10,6 +11,7 @@ import { AgentRequestEntry } from '@shared/angular/services/agent-requests/agent
  */
 @Component({
   selector: 'app-agent-request-card',
+  imports: [Button],
   templateUrl: './agent-request-card.html',
   styleUrl: './agent-request-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

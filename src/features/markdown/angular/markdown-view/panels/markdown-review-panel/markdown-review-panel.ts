@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Review, ReviewFilter } from '@features/markdown/angular/markdown-review/markdown-review';
 import {
   ReviewCounts,
@@ -9,6 +8,7 @@ import {
 } from '@features/markdown/angular/markdown-review/review-types';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
  * A filter chip descriptor.
@@ -41,7 +41,7 @@ const KIND_CHIPS: readonly FilterChip[] = [
  */
 @Component({
   selector: 'app-markdown-review-panel',
-  imports: [ToolPanel, AppIcon],
+  imports: [Button, ToolPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-review-panel.html',
   styleUrl: './markdown-review-panel.scss',

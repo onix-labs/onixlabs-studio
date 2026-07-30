@@ -19,6 +19,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Icon } from '@shared/angular/icons/icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -105,7 +106,7 @@ interface RulePreview {
  */
 @Component({
   selector: 'app-mission-control-panel',
-  imports: [AppIcon, AgentRequestCard, Dropdown, ListView],
+  imports: [Button, AppIcon, AgentRequestCard, Dropdown, ListView],
   templateUrl: './mission-control-panel.html',
   styleUrl: './mission-control-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

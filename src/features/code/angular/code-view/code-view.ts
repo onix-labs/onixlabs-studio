@@ -424,6 +424,15 @@ export class CodeView implements OnDestroy {
   }
 
   /**
+   * Reports whether this tab's editor holds a selection, so controls acting on one (the agent's
+   * Attach Selection) can offer themselves only when there is something to attach.
+   * @param selected Whether the editor holds a non-empty selection.
+   */
+  protected onSelectionChange(selected: boolean): void {
+    this.editorCommands.setSelectionState(this.tabId(), selected);
+  }
+
+  /**
    * Records the end-of-line sequence reported by the pane, for the status strip.
    * @param eol The end-of-line sequence.
    */

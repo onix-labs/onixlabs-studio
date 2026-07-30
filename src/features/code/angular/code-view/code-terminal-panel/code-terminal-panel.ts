@@ -13,11 +13,11 @@ import {
 } from '@angular/core';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
-import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * Holds the prefix used to derive a code tab's run-terminal identifier from its tab id.
@@ -30,7 +30,7 @@ const RUN_TERMINAL_PREFIX: string = 'run-';
  */
 @Component({
   selector: 'app-code-terminal-panel',
-  imports: [Terminal, AppIcon, PanelDragHandle],
+  imports: [ToolPanel, Button, Terminal],
   templateUrl: './code-terminal-panel.html',
   styleUrl: './code-terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

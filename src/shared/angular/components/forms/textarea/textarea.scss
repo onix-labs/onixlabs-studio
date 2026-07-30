@@ -1,0 +1,35 @@
+:host {
+  display: flex;
+  // The field fills whatever box its caller gives it, so a composer can stretch one without
+  // reaching into its styling.
+  inline-size: 100%;
+}
+
+// The same chrome the single-line field wears, so the two never drift apart.
+.textarea {
+  inline-size: 100%;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  resize: vertical;
+  transition: border-color 150ms ease-in-out;
+
+  &:hover {
+    border-color: var(--form-control-border-color--hover);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

@@ -5,31 +5,24 @@
 <div class="request__actions">
   @switch (entry().item.kind) {
     @case ('permission') {
-      <button type="button" class="request__btn" (click)="onPermission(true)">Allow</button>
-      <button type="button" class="request__btn request__btn--ghost" (click)="onPermission(false)">
-        Deny
-      </button>
+      <app-button variant="solid" size="small" label="Allow" (click)="onPermission(true)" />
+      <app-button size="small" label="Deny" (click)="onPermission(false)" />
     }
     @case ('edit-decision') {
-      <button type="button" class="request__btn" (click)="onEditDecision('yes')">Yes</button>
-      <button type="button" class="request__btn request__btn--ghost" (click)="onEditDecision('no')">
-        No
-      </button>
+      <app-button variant="solid" size="small" label="Yes" (click)="onEditDecision('yes')" />
+      <app-button size="small" label="No" (click)="onEditDecision('no')" />
     }
     @default {
       @for (choice of entry().item.inputChoices ?? []; track choice.label) {
-        <button
-          type="button"
-          class="request__btn"
-          [title]="choice.description ?? ''"
+        <app-button
+          variant="solid"
+          size="small"
+          [label]="choice.label"
+          [tooltip]="choice.description ?? ''"
           (click)="onAnswer(choice.label)"
-        >
-          {{ choice.label }}
-        </button>
+        />
       }
-      <button type="button" class="request__btn request__btn--ghost" (click)="onAnswer(null)">
-        Skip
-      </button>
+      <app-button size="small" label="Skip" (click)="onAnswer(null)" />
     }
   }
 </div>

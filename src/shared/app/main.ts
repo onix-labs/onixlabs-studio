@@ -1,5 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { config } from './config';
+import { warmIconFonts } from './icon-fonts';
 import { Root } from './root/root';
 
 /**
@@ -40,6 +41,10 @@ if (shouldReduceEffects()) {
   root.setAttribute('data-corners', 'round');
   root.setAttribute('data-reduced-gpu', 'true');
 }
+
+// Started before bootstrap so the six icon weights download alongside it, rather than being fetched
+// the first time a glyph is painted — which is when the first tab opens. See `icon-fonts.ts`.
+warmIconFonts();
 
 bootstrapApplication(Root, config).catch((error: unknown): void => {
   console.error(error);

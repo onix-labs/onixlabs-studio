@@ -2,45 +2,49 @@
   @if (!isDocuments()) {
     <div class="dock-tab-group__title" (mousedown)="startDrag($event)">
       <span class="dock-tab-group__title-text">{{ activePanel()?.title }}</span>
+      <!-- The same button a tool panel's header wears, so the dock's own controls and a panel's own
+           controls are one control at two call sites. `mousedown` is stopped on each so pressing one
+           does not start the title bar's drag. -->
       <span class="dock-tab-group__title-buttons">
-        <button
-          type="button"
-          title="Auto Hide"
-          aria-label="Auto Hide"
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="collapseIcon()"
+          [iconRotation]="collapseRotation()"
+          ariaLabel="Auto Hide"
+          tooltip="Auto Hide"
           (mousedown)="$event.stopPropagation()"
           (click)="requestPin()"
-        >
-          <app-icon [icon]="collapseIcon()" [rotation]="collapseRotation()" />
-        </button>
-        <button
-          type="button"
-          title="Float"
-          aria-label="Float"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.FLOAT"
+          ariaLabel="Float"
+          tooltip="Float"
           (mousedown)="$event.stopPropagation()"
           (click)="requestFloat()"
-        >
-          <app-icon [icon]="Icon.FLOAT" />
-        </button>
-        <button
-          type="button"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.POP_OUT"
+          ariaLabel="Open in New Window"
+          [tooltip]="popOutTitle()"
           [disabled]="!canPopOutActive()"
-          [title]="popOutTitle()"
-          aria-label="Open in New Window"
           (mousedown)="$event.stopPropagation()"
           (click)="popOutActive()"
-        >
-          <app-icon [icon]="Icon.POP_OUT" />
-        </button>
+        />
         @if (activePanel(); as panel) {
-          <button
-            type="button"
-            title="Close"
-            aria-label="Close"
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            ariaLabel="Close"
+            tooltip="Close"
             (mousedown)="$event.stopPropagation()"
             (click)="close(panel.id)"
-          >
-            <app-icon [icon]="Icon.CLOSE" />
-          </button>
+          />
         }
       </span>
     </div>

@@ -8,14 +8,14 @@
 
         <span class="keyboard__controls">
           @if (binding.overridden) {
-            <button
-              type="button"
+            <app-button
               class="keyboard__reset"
-              [attr.aria-label]="'Reset ' + binding.description + ' to its default shortcut'"
+              variant="none"
+              size="small"
+              label="Reset"
+              [ariaLabel]="'Reset ' + binding.description + ' to its default shortcut'"
               (click)="reset(binding.id)"
-            >
-              Reset
-            </button>
+            />
           }
           <button
             type="button"

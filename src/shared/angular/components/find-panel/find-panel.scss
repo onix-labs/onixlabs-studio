@@ -16,75 +16,6 @@
   font-size: 0.82rem;
 }
 
-.find-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.find-panel__title {
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-// Icon buttons (nav, close) mirror the shared panel/ribbon icon button: a transparent-when-idle border
-// that fills with the accent surface on hover.
-.find-panel__icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  inline-size: 1.6rem;
-  block-size: 1.6rem;
-  padding: 0;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover:not(:disabled) {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-  }
-}
-
-.find-panel__segmented {
-  display: flex;
-  gap: 0.15rem;
-  padding: 0.15rem;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: color-mix(in srgb, var(--body-foreground-color) 8%, transparent);
-}
-
-.find-panel__segment {
-  flex: 1;
-  padding: 0.25rem 0.5rem;
-  border: none;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--form-muted-foreground-color);
-  font: inherit;
-  cursor: default;
-  transition: var(--hover-transition);
-
-  &.is-active {
-    background: var(--accent-color);
-    color: var(--accent-contrast-color, #fff);
-  }
-
-  &:not(.is-active):hover {
-    color: var(--body-foreground-color);
-  }
-}
-
 .find-panel__field {
   display: flex;
   align-items: center;
@@ -134,38 +65,6 @@
   flex-wrap: wrap;
   gap: 0.35rem;
 }
-
-// Labelled action buttons (Replace, Replace All) keep a resting border like the app's other labelled
-// buttons, and take the full accent-surface fill + border + foreground on hover.
-.find-panel__button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  flex: none;
-  padding: 0.22rem 0.55rem;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--body-foreground-color);
-  font: inherit;
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover:not(:disabled) {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-}
-
 .find-panel__results {
   display: flex;
   flex: 1;

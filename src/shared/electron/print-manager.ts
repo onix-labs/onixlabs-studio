@@ -1,11 +1,5 @@
-import {
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  IpcMainInvokeEvent,
-  SaveDialogReturnValue,
-  shell,
-} from 'electron';
+import { BrowserWindow, ipcMain, IpcMainInvokeEvent, SaveDialogReturnValue, shell } from 'electron';
+import { showSaveDialog } from './dialog-parent';
 import * as fs from 'node:fs/promises';
 import { ExportPdfRequest, ExportPdfResult, PrintChannel } from '@shared/api/print-channels';
 
@@ -43,7 +37,10 @@ export class PrintManager {
 
     const defaultFileName: string = this.resolveFileName(request);
 
-    const result: SaveDialogReturnValue = await dialog.showSaveDialog(window, {
+    // The requesting window supplies the CONTENT, but it is not necessarily the right sheet parent:
+    // a document printed from a child window is requested by the renderer that owns it, which may be
+    // off screen. See `resolveDialogParent`.
+    const result: SaveDialogReturnValue = await showSaveDialog(event.sender, undefined, {
       defaultPath: defaultFileName,
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });

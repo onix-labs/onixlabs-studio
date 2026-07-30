@@ -24,9 +24,13 @@
           </button>
         }
       </div>
-      <button type="button" class="rv-refresh" aria-label="Re-check document" (click)="onRefresh()">
-        <app-icon [icon]="Icon.REFRESH" />
-      </button>
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.REFRESH"
+        ariaLabel="Re-check document"
+        (click)="onRefresh()"
+      />
     </div>
 
     @if (issues().length > 0) {
@@ -49,25 +53,23 @@
 
             <div class="rv-actions">
               @for (suggestion of issue.suggestions; track suggestion; let first = $first) {
-                <button
-                  type="button"
-                  class="rv-suggestion"
-                  [class.primary]="first"
+                <app-button
+                  [variant]="first ? 'solid' : 'outline'"
+                  size="small"
+                  [icon]="first ? Icon.CHECK : undefined"
+                  [label]="suggestion"
                   (click)="onApply(issue, suggestion)"
-                >
-                  @if (first) {
-                    <app-icon [icon]="Icon.CHECK" />
-                  }
-                  {{ suggestion }}
-                </button>
+                />
               }
               @if (canAddToDictionary(issue)) {
-                <button type="button" class="rv-ghost" (click)="onDictionary(issue)">
-                  <app-icon [icon]="Icon.DICTIONARY" />
-                  Dictionary
-                </button>
+                <app-button
+                  size="small"
+                  [icon]="Icon.DICTIONARY"
+                  label="Dictionary"
+                  (click)="onDictionary(issue)"
+                />
               }
-              <button type="button" class="rv-ignore" (click)="onIgnore(issue)">Ignore</button>
+              <app-button variant="none" size="small" label="Ignore" (click)="onIgnore(issue)" />
             </div>
           </li>
         }
