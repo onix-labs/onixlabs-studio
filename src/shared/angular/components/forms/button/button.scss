@@ -5,7 +5,7 @@
 }
 
 // Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
-// padding, radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
+// radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
 .button {
   display: inline-flex;
   flex: 1;
@@ -15,7 +15,7 @@
   // Height is stated, not left to the label's line box, so a button matches the field or dropdown
   // beside it. Only the inline padding is the button's own.
   block-size: var(--control-height);
-  padding: 0 1rem;
+  padding: 0 0.5rem;
   font: inherit;
   color: var(--body-foreground-color);
   background: transparent;
