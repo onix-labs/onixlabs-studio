@@ -2,13 +2,16 @@
 // the frame (matching the Solution Explorer toolbar). A fixed block-size — not min — keeps every
 // panel's strip the exact same height regardless of the controls it hosts (buttons, dropdowns), so the
 // three workspace panels line up with each other and with the canonical Solution Explorer toolbar.
+//
+// The height is the padding either side of a full-height control (--control-height), so the two stay
+// in step: a control that grew inside a fixed strip would be clipped by it.
 :host {
   box-sizing: border-box;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  block-size: 2.3125rem;
-  padding: 0 0.5rem;
+  block-size: calc(var(--control-height) + 1rem);
+  padding: 0.5rem;
   user-select: none;
 }
