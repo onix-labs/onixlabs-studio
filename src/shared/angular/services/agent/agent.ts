@@ -245,6 +245,12 @@ export interface AgentItem {
   readonly errorImages?: readonly AiImageRef[];
 
   /**
+   * Gets the context the failed turn carried, so its retry resends it. Held on the item because the
+   * turn consumed the conversation's attachments when it started.
+   */
+  readonly errorContext?: readonly AgentContextRef[];
+
+  /**
    * Gets a value indicating whether the error item's turn has been retried (the retry affordance is
    * spent).
    */
@@ -517,6 +523,13 @@ export class Agent {
    * Holds the images of the most recently started turn, so an error item's retry resends them.
    */
   private lastImages: readonly AiImageRef[] = [];
+
+  /**
+   * Holds the attached context of the most recently started turn, so an error item's retry resends it.
+   * A turn consumes what was attached, so without this a retry would run stripped of the very files
+   * and selections the failed turn was given.
+   */
+  private lastContext: readonly AgentContextRef[] = [];
 
   /**
    * Holds the owning tab of the most recently started turn, the fallback for dispatching a queued
@@ -941,15 +954,20 @@ export class Agent {
    * @param owningTabId The owning tab (as for {@link send}).
    * @param surface The run surface (as for {@link send}).
    * @param images The images attached to the turn.
+   * @param context The context the turn carries; defaults to what is currently attached, which the
+   * turn then consumes. Stated only when re-running a turn that already took its own.
    */
   private startRun(
     prompt: string,
     owningTabId?: string,
     surface?: AgentSurface,
     images: readonly AiImageRef[] = [],
+    context?: readonly AgentContextRef[],
   ): void {
+    const attached: readonly AgentContextRef[] = context ?? this.contextPathsState();
     this.lastPrompt = prompt;
     this.lastImages = images;
+    this.lastContext = attached;
     this.lastOwningTabId = owningTabId;
     this.lastSurface = surface;
     const forkAt: string | null = this.forkAt;
@@ -971,11 +989,14 @@ export class Agent {
       surface,
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
-      contextPaths: this.contextPathsState(),
+      contextPaths: attached,
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
       ...(images.length === 0 ? {} : { images }),
     });
+    // The attachments belong to the message that carried them: the turn takes them, and the composer
+    // starts clean rather than silently resending them on every later turn.
+    this.contextPathsState.set([]);
   }
 
   /**
@@ -1443,6 +1464,7 @@ export class Agent {
       ...(toolContext === undefined ? {} : { errorToolContext: toolContext }),
       ...(this.lastPrompt === null ? {} : { errorPrompt: this.lastPrompt }),
       ...(this.lastImages.length === 0 ? {} : { errorImages: this.lastImages }),
+      ...(this.lastContext.length === 0 ? {} : { errorContext: this.lastContext }),
     });
   }
 
@@ -1479,7 +1501,7 @@ export class Agent {
       return;
     }
     this.update(item.id, (existing: AgentItem): AgentItem => ({ ...existing, errorRetried: true }));
-    this.startRun(prompt, owningTabId, surface, item.errorImages ?? []);
+    this.startRun(prompt, owningTabId, surface, item.errorImages ?? [], item.errorContext ?? []);
   }
 
   /**
