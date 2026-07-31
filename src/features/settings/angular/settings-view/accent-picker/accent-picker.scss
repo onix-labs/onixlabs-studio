@@ -1,0 +1,29 @@
+:host {
+  display: block;
+}
+
+.accent-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-end;
+  inline-size: 16rem;
+}
+
+.accent-picker__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  inline-size: 100%;
+}
+
+.accent-picker__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.accent-picker__field-label {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}

@@ -20,7 +20,7 @@ import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
-import { AccentColor, Theme } from '@shared/angular/services/theme/theme';
+import { Theme } from '@shared/angular/services/theme/theme';
 import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
 
 /**
@@ -751,15 +751,14 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const read: (name: string) => string = (name: string): string =>
       styles.getPropertyValue(name).trim();
     const dark: boolean = this.themeService.resolvedMode() === 'dark';
-    const accent: AccentColor = this.themeService.accent();
     const light: string = read('--gray-100');
     const ink: string = read('--gray-900');
     return {
       background: dark ? ink : light,
       foreground: dark ? light : ink,
-      cursor: read(`--accent-${accent}`),
+      cursor: this.themeService.accentHex(),
       cursorAccent: dark ? ink : light,
-      selectionBackground: `rgba(${read(`--accent-${accent}-rgb`)}, ${SELECTION_ALPHA})`,
+      selectionBackground: `rgba(${this.themeService.accentRgb()}, ${SELECTION_ALPHA})`,
     };
   }
 

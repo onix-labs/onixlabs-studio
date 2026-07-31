@@ -39,12 +39,7 @@
       (valueChange)="onChange($event)"
     />
   }
-  @case ('color') {
-    <app-dropdown
-      [options]="colorOptions()"
-      [value]="currentString()"
-      [disabled]="disabled()"
-      (valueChange)="onChange($event)"
-    />
+  @case ('accent') {
+    <app-accent-picker [value]="$any(current())" (valueChange)="onChange($event)" />
   }
 }

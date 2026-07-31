@@ -3,7 +3,7 @@ import type { ImageSourcePolicy } from '@shared/api/security-channels';
 import { Display } from '@shared/angular/services/display/display';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Security } from '@shared/angular/services/security/security';
-import { AccentColor, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
+import { Accent, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsKey } from '@shared/angular/services/settings/settings-registry';
 import { SettingOwner } from '@shared/angular/services/settings/settings-schema';
@@ -106,7 +106,7 @@ export class SettingBindings {
     if (key === 'appearance.accent') {
       return {
         value: theme.accent,
-        set: (value: unknown): void => theme.setAccent(value as AccentColor),
+        set: (value: unknown): void => theme.setAccent(value as Accent),
       };
     }
     return {

@@ -11,7 +11,7 @@ import {
   TerminalSession,
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
-import { AccentColor, ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
+import { Accent, ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { TerminalPanel } from './terminal-panel';
 
 /**
@@ -51,7 +51,9 @@ describe('TerminalPanel', () => {
           provide: Theme,
           useValue: {
             resolvedMode: signal<ResolvedThemeMode>('dark'),
-            accent: signal<AccentColor>('blue'),
+            accent: signal<Accent>({ kind: 'preset', id: 'blue' }),
+            accentHex: signal<string>('#0D6EFD'),
+            accentRgb: signal<string>('13, 110, 253'),
           },
         },
       ],

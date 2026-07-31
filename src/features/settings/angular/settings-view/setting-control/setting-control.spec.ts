@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { SettingControl } from './setting-control';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
+import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
 
 describe('SettingControl', () => {
   let fixture: ComponentFixture<SettingControl>;
@@ -44,10 +44,13 @@ describe('SettingControl', () => {
     expect(element.querySelectorAll('option').length).toBe(3);
   });
 
-  it('render_whenColorControl_rendersADropdownWithAColourChipPerSwatch', async () => {
+  it('render_whenAccentControl_rendersTheAccentPickerWithADropdownPerPresetPlusCustom', async () => {
     const element: HTMLElement = await render('appearance.accent');
-    expect(element.querySelector('app-dropdown')).toBeTruthy();
-    expect(element.querySelectorAll('option').length).toBe(ACCENT_COLORS.length);
+    expect(element.querySelector('app-accent-picker')).toBeTruthy();
+    // An option per preset, plus the trailing Custom entry.
+    expect(element.querySelectorAll('app-accent-picker option').length).toBe(
+      ACCENT_PRESETS.length + 1,
+    );
     expect(element.querySelectorAll('.dropdown__chip').length).toBeGreaterThan(0);
   });
 

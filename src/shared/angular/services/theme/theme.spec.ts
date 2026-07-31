@@ -40,16 +40,50 @@ describe('Theme', () => {
     expect(TestBed.inject(Theme).mode()).toBe('dark');
   });
 
-  it('setAccent_whenCalled_appliesTheAccentVariableAndPersists', () => {
+  it('setAccent_whenAPresetChosen_appliesItsHexAndPersistsTheChoice', () => {
     const service: Theme = TestBed.inject(Theme);
 
-    service.setAccent('green');
+    service.setAccent({ kind: 'preset', id: 'green' });
     TestBed.inject(ApplicationRef).tick();
 
-    expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe(
-      'var(--accent-green)',
+    expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#6FBA82');
+    expect(localStorage.getItem('theme.accent')).toBe(
+      JSON.stringify({ kind: 'preset', id: 'green' }),
     );
-    expect(localStorage.getItem('theme.accent')).toBe(JSON.stringify('green'));
+  });
+
+  it('setAccent_whenCustomChosen_appliesAResolvedHexAndRgbAndPersists', () => {
+    const service: Theme = TestBed.inject(Theme);
+
+    service.setAccent({ kind: 'custom', hue: 210, saturation: 80 });
+    TestBed.inject(ApplicationRef).tick();
+
+    const root: HTMLElement = document.documentElement;
+    expect(root.style.getPropertyValue('--accent-color')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(root.style.getPropertyValue('--accent-color-rgb')).toMatch(/^\d+, \d+, \d+$/);
+    expect(localStorage.getItem('theme.accent')).toBe(
+      JSON.stringify({ kind: 'custom', hue: 210, saturation: 80 }),
+    );
+  });
+
+  it('setAccent_whenCustomSaturationBelowFloor_clampsAwayFromGrey', () => {
+    const service: Theme = TestBed.inject(Theme);
+
+    service.setAccent({ kind: 'custom', hue: 120, saturation: 0 });
+
+    expect(service.accent()).toEqual({ kind: 'custom', hue: 120, saturation: 12 });
+  });
+
+  it('accent_whenLegacyNameStringWasPersisted_migratesToTheMatchingPreset', () => {
+    localStorage.setItem('theme.accent', JSON.stringify('green'));
+
+    expect(TestBed.inject(Theme).accent()).toEqual({ kind: 'preset', id: 'green' });
+  });
+
+  it('accent_whenLegacyNameNoLongerAPreset_fallsBackToTheDefault', () => {
+    localStorage.setItem('theme.accent', JSON.stringify('magenta'));
+
+    expect(TestBed.inject(Theme).accent()).toEqual({ kind: 'preset', id: 'blue' });
   });
 
   it('externalChange_fromAnotherWindow_appliesTheStoredModeAndAccentLive', () => {
@@ -58,15 +92,13 @@ describe('Theme', () => {
     // Another window wrote the store, then the browser notified this one.
     localStorage.setItem('theme.mode', JSON.stringify('dark'));
     globalThis.dispatchEvent(new StorageEvent('storage', { key: 'theme.mode' }));
-    localStorage.setItem('theme.accent', JSON.stringify('green'));
+    localStorage.setItem('theme.accent', JSON.stringify({ kind: 'preset', id: 'green' }));
     globalThis.dispatchEvent(new StorageEvent('storage', { key: 'theme.accent' }));
     TestBed.inject(ApplicationRef).tick();
 
     expect(service.mode()).toBe('dark');
-    expect(service.accent()).toBe('green');
+    expect(service.accent()).toEqual({ kind: 'preset', id: 'green' });
     expect(document.documentElement.dataset['themeMode']).toBe('dark');
-    expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe(
-      'var(--accent-green)',
-    );
+    expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#6FBA82');
   });
 });

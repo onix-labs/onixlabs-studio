@@ -7,8 +7,9 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
+import { AccentPicker } from '@features/settings/angular/settings-view/accent-picker/accent-picker';
 import { ButtonGroup } from '@shared/angular/components/forms/button-group/button-group';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
@@ -17,7 +18,6 @@ import { SettingOptions } from '@features/settings/angular/setting-options';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import {
   ChoiceOption,
-  ColorSwatch,
   ControlDef,
   SettingDef,
 } from '@shared/angular/services/settings/settings-schema';
@@ -32,7 +32,7 @@ import {
  */
 @Component({
   selector: 'app-setting-control',
-  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup],
+  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup, AccentPicker],
   templateUrl: './setting-control.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -115,31 +115,6 @@ export class SettingControl {
       }
       return this.settingOptions.resolve(this.key()) ?? control.options;
     },
-  );
-
-  /**
-   * Gets the swatches offered by a colour control, or an empty list for other controls.
-   */
-  protected readonly swatches: Signal<readonly ColorSwatch[]> = computed(
-    (): readonly ColorSwatch[] => {
-      const control: ControlDef | undefined = this.control();
-      return control?.kind === 'color' ? control.swatches : [];
-    },
-  );
-
-  /**
-   * Gets the colour swatches projected onto dropdown options, so a colour setting renders through the
-   * shared dropdown with a colour chip beside each label.
-   */
-  protected readonly colorOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.swatches().map(
-        (swatch: ColorSwatch): DropdownOption => ({
-          value: swatch.value,
-          label: swatch.label,
-          color: swatch.color,
-        }),
-      ),
   );
 
   /**

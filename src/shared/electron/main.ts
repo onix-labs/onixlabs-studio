@@ -452,14 +452,19 @@ class Program {
     MediaProtocol.registerScheme();
 
     // File-type associations route through a single instance: a second launch (double-clicking a
-    // file while the app runs on Windows/Linux) forwards its arguments here and exits.
-    if (!app.requestSingleInstanceLock()) {
-      app.quit();
-      return;
+    // file while the app runs on Windows/Linux) forwards its arguments here and exits. The lock is
+    // enforced in production only; in development (ELECTRON_START_URL set) it is skipped so
+    // `npm run electron:serve` can open a second window alongside an already-running Studio instead
+    // of silently quitting on the lock.
+    if (Program.START_URL === undefined) {
+      if (!app.requestSingleInstanceLock()) {
+        app.quit();
+        return;
+      }
+      app.on('second-instance', (_event: ElectronEvent, argv: string[]): void =>
+        this.onSecondInstance(argv),
+      );
     }
-    app.on('second-instance', (_event: ElectronEvent, argv: string[]): void =>
-      this.onSecondInstance(argv),
-    );
     // macOS delivers OS-opened files as open-file events (never argv). Registered before the app is
     // ready so a double-click that launches the app is captured and queued for the renderer.
     app.on('open-file', (event: ElectronEvent, filePath: string): void => {
