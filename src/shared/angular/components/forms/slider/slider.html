@@ -1,0 +1,12 @@
+<input
+  type="range"
+  class="slider"
+  [style.--slider-track]="trackBackground()"
+  [min]="min()"
+  [max]="max()"
+  [step]="step()"
+  [value]="value()"
+  [disabled]="disabled()"
+  [attr.aria-label]="ariaLabel()"
+  (input)="onInput($event)"
+/>

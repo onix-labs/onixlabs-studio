@@ -52,24 +52,24 @@ describe('SettingsView', () => {
     expect(theme.mode()).toBe('dark');
   });
 
-  it('selectAccent_whenAnAccentPicked_setsThatAccentOnTheTheme', () => {
+  it('selectAccent_whenAPresetPicked_setsThatAccentOnTheTheme', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const select: HTMLSelectElement | null = dropdownWithOption(element, 'green');
+    const accent: HTMLSelectElement | null = dropdownWithOption(element, 'green');
 
-    select!.value = 'green';
-    select!.dispatchEvent(new Event('change'));
+    accent!.value = 'green';
+    accent!.dispatchEvent(new Event('change'));
 
-    expect(theme.accent()).toBe('green');
+    expect(theme.accent()).toEqual({ kind: 'preset', id: 'green' });
   });
 
   it('render_whenAccentIsSelected_reflectsItInTheAccentDropdown', async () => {
-    theme.setAccent('pink');
+    theme.setAccent({ kind: 'preset', id: 'pink' });
     fixture.detectChanges();
     await fixture.whenStable();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const select: HTMLSelectElement | null = dropdownWithOption(element, 'pink');
+    const accent: HTMLSelectElement | null = dropdownWithOption(element, 'pink');
 
-    expect(select?.value).toBe('pink');
+    expect(accent?.value).toBe('pink');
   });
 });

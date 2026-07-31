@@ -1,0 +1,47 @@
+:host {
+  display: block;
+  inline-size: 100%;
+}
+
+.slider {
+  appearance: none;
+  inline-size: 100%;
+  block-size: 0.95rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+
+  // The track paints a caller-supplied gradient (the hue spectrum, the saturation ramp) through the
+  // --slider-track custom property, falling back to the neutral form track colour when none is given.
+  &::-webkit-slider-runnable-track {
+    block-size: 0.5rem;
+    border-radius: 999px;
+    background: var(--slider-track, var(--form-track-color));
+  }
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    inline-size: 0.95rem;
+    block-size: 0.95rem;
+    // Centre the thumb on the 0.5rem track: (0.5rem − 0.95rem) / 2.
+    margin-block-start: -0.225rem;
+    border-radius: 50%;
+    background: var(--form-knob-color);
+    border: 0.125rem solid var(--form-control-border-color);
+    box-shadow: 0 0 0 0.0625rem rgba(0, 0, 0, 0.25);
+  }
+
+  &:focus-visible {
+    outline: none;
+
+    &::-webkit-slider-thumb {
+      border-color: var(--accent-color);
+    }
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}

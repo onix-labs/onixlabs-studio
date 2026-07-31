@@ -1,5 +1,3 @@
-import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
-import type { AccentColor } from '@shared/angular/services/theme/theme';
 import type { AiConnection, AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
@@ -18,7 +16,7 @@ import type {
   WorkspaceTexture,
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
-import type { ColorSwatch, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import type { SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
 
 /**
  * Maps a connection id to the model the user last selected for it, so switching connections restores
@@ -118,17 +116,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'appearance.accent',
         owner: 'theme',
         title: 'Accent',
-        description: 'The colour used for highlights and focus.',
-        control: {
-          kind: 'color',
-          swatches: ACCENT_COLORS.map(
-            (color: AccentColor): ColorSwatch => ({
-              value: color,
-              color: `var(--accent-${color})`,
-              label: `${color.charAt(0).toUpperCase()}${color.slice(1)}`,
-            }),
-          ),
-        },
+        description:
+          'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
+        control: { kind: 'accent' },
       },
       {
         key: 'appearance.themeMode',

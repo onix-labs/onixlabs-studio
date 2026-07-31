@@ -23,33 +23,13 @@ export interface ChoiceOption {
 }
 
 /**
- * Defines a selectable swatch in a colour control. The {@link value} is the semantic value persisted
- * and read by consumers; {@link color} is the CSS colour the swatch displays.
- */
-export interface ColorSwatch {
-  /**
-   * Gets the value applied when the swatch is selected.
-   */
-  readonly value: string;
-
-  /**
-   * Gets the CSS colour the swatch displays (for example a custom-property reference).
-   */
-  readonly color: string;
-
-  /**
-   * Gets the accessible label for the swatch.
-   */
-  readonly label: string;
-}
-
-/**
  * Describes the control used to render and edit a setting. The {@link ControlDef.kind} discriminates
  * the shape: each kind carries only the metadata that kind needs.
  *
- * `custom` is the escape hatch for structurally complex settings (per-language editor profiles, the
- * per-provider AI model map) that the generic renderer cannot model; those are rendered by the named
- * bespoke component instead.
+ * `accent` is the bespoke accent picker (preset swatches plus custom hue/saturation), rendered inline
+ * by the generic renderer. `custom` is the escape hatch for structurally complex settings
+ * (per-language editor profiles, the per-provider AI model map) that the generic renderer cannot
+ * model; those are rendered by the named bespoke component instead.
  */
 export type ControlDef =
   | { readonly kind: 'toggle' }
@@ -72,7 +52,7 @@ export type ControlDef =
       readonly valueType?: 'string' | 'number';
     }
   | { readonly kind: 'buttonGroup'; readonly options: readonly ChoiceOption[] }
-  | { readonly kind: 'color'; readonly swatches: readonly ColorSwatch[] }
+  | { readonly kind: 'accent' }
   | { readonly kind: 'custom'; readonly component: string };
 
 /**

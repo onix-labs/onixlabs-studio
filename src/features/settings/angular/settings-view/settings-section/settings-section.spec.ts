@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { findSection } from '@shared/angular/services/settings/settings-registry';
-import { ACCENT_COLORS } from '@shared/angular/services/theme/theme';
+import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
 import { SettingsSection } from './settings-section';
 
 describe('SettingsSection', () => {
@@ -74,13 +74,13 @@ describe('SettingsSection', () => {
     );
   });
 
-  it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentDropdown', async () => {
+  it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
     // Accent, theme, ribbon alignment, modern UI features, workspace texture, hardware acceleration.
     const element: HTMLElement = await render('appearance');
     expect(element.querySelectorAll('app-setting-row').length).toBe(6);
-    // The accent picker is a dropdown with a colour chip per swatch (plus the selected chip in its
-    // face), so the section carries at least one option per accent colour.
-    expect(element.querySelectorAll('.dropdown__chip').length).toBe(ACCENT_COLORS.length + 1);
+    // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
+    expect(element.querySelector('app-accent-picker')).toBeTruthy();
+    expect(element.querySelectorAll('app-accent-picker option').length).toBe(ACCENT_PRESETS.length + 1);
     expect(element.querySelector('app-toggle')).toBeTruthy();
   });
 

@@ -9,6 +9,15 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { SettingsStore } from '../settings-store/settings-store';
+import {
+  clampSaturation,
+  CUSTOM_LIGHTNESS,
+  hexToRgb,
+  hslToRgb,
+  normaliseHue,
+  rgbToHex,
+  rgbToTriplet,
+} from './accent-color';
 
 /**
  * Identifies the theme mode the user can choose. `system` follows the operating system preference.
@@ -21,51 +30,83 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedThemeMode = 'light' | 'dark';
 
 /**
- * Identifies an accent colour from the palette.
+ * Describes a named accent preset: a curated colour offered as a one-click choice in the accent
+ * picker, alongside the custom hue/saturation controls.
  */
-export type AccentColor =
-  | 'orange'
-  | 'yellow'
-  | 'coral'
-  | 'tangerine'
-  | 'red'
-  | 'pink'
-  | 'magenta'
-  | 'purple'
-  | 'violet'
-  | 'indigo'
-  | 'blue'
-  | 'azure'
-  | 'cyan'
-  | 'mint'
-  | 'teal'
-  | 'sky'
-  | 'green'
-  | 'emerald';
+export interface AccentPreset {
+  /**
+   * Gets the stable identifier persisted when the preset is chosen.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the label shown for the preset.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the exact hex colour the preset applies.
+   */
+  readonly hex: string;
+}
 
 /**
- * Lists the accent colours in palette order, for rendering pickers.
+ * Lists the accent presets in picker order. These are curated exact colours; the custom option lets a
+ * user pick any hue and saturation instead (see {@link CustomAccent}).
  */
-export const ACCENT_COLORS: readonly AccentColor[] = [
-  'orange',
-  'yellow',
-  'coral',
-  'tangerine',
-  'red',
-  'pink',
-  'magenta',
-  'purple',
-  'violet',
-  'indigo',
-  'blue',
-  'azure',
-  'cyan',
-  'mint',
-  'teal',
-  'sky',
-  'green',
-  'emerald',
+export const ACCENT_PRESETS: readonly AccentPreset[] = [
+  { id: 'yellow', label: 'Yellow', hex: '#F79533' },
+  { id: 'orange', label: 'Orange', hex: '#F37055' },
+  { id: 'red', label: 'Red', hex: '#DC3545' },
+  { id: 'pink', label: 'Pink', hex: '#EF4E7B' },
+  { id: 'purple', label: 'Purple', hex: '#7252AA' },
+  { id: 'blue', label: 'Blue', hex: '#0D6EFD' },
+  { id: 'cyan', label: 'Cyan', hex: '#1098AD' },
+  { id: 'teal', label: 'Teal', hex: '#07B39B' },
+  { id: 'green', label: 'Green', hex: '#6FBA82' },
 ];
+
+/**
+ * Selects one of the curated {@link ACCENT_PRESETS} by its identifier.
+ */
+export interface PresetAccent {
+  /**
+   * Gets the discriminator identifying a preset accent.
+   */
+  readonly kind: 'preset';
+
+  /**
+   * Gets the identifier of the chosen preset.
+   */
+  readonly id: string;
+}
+
+/**
+ * Selects a freely chosen accent by hue and saturation. Lightness is fixed (see
+ * {@link CUSTOM_LIGHTNESS}) so the colour stays legible in both themes.
+ */
+export interface CustomAccent {
+  /**
+   * Gets the discriminator identifying a custom accent.
+   */
+  readonly kind: 'custom';
+
+  /**
+   * Gets the hue in degrees (0–360).
+   */
+  readonly hue: number;
+
+  /**
+   * Gets the saturation as a percentage, clamped away from grey (see
+   * {@link import('./accent-color').MIN_SATURATION}).
+   */
+  readonly saturation: number;
+}
+
+/**
+ * Represents the chosen accent: either a curated preset or a custom hue/saturation.
+ */
+export type Accent = PresetAccent | CustomAccent;
 
 /**
  * Holds the settings key under which the theme mode is persisted.
@@ -73,7 +114,7 @@ export const ACCENT_COLORS: readonly AccentColor[] = [
 const MODE_KEY: string = 'theme.mode';
 
 /**
- * Holds the settings key under which the accent colour is persisted.
+ * Holds the settings key under which the accent choice is persisted.
  */
 const ACCENT_KEY: string = 'theme.accent';
 
@@ -83,18 +124,87 @@ const ACCENT_KEY: string = 'theme.accent';
 const DEFAULT_MODE: ThemeMode = 'system';
 
 /**
- * Holds the accent colour applied when no preference has been persisted.
+ * Holds the accent applied when no preference has been persisted (or a persisted value cannot be
+ * understood).
  */
-const DEFAULT_ACCENT: AccentColor = 'blue';
+const DEFAULT_ACCENT: Accent = { kind: 'preset', id: 'blue' };
+
+/**
+ * Coerces an arbitrary persisted value into a valid {@link Accent}, falling back to the default when
+ * it cannot be understood. This also migrates the legacy format, where the accent was persisted as a
+ * bare colour-name string (for example `"green"`): a name matching a current preset is kept, and any
+ * other legacy name falls back to the default.
+ * @param value The persisted value.
+ * @returns Returns a valid accent.
+ */
+export function normaliseAccent(value: unknown): Accent {
+  if (typeof value === 'string') {
+    return isPresetId(value) ? { kind: 'preset', id: value } : DEFAULT_ACCENT;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return DEFAULT_ACCENT;
+  }
+  const candidate: Record<string, unknown> = value as Record<string, unknown>;
+  if (
+    candidate['kind'] === 'preset' &&
+    typeof candidate['id'] === 'string' &&
+    isPresetId(candidate['id'])
+  ) {
+    return { kind: 'preset', id: candidate['id'] };
+  }
+  if (
+    candidate['kind'] === 'custom' &&
+    typeof candidate['hue'] === 'number' &&
+    typeof candidate['saturation'] === 'number'
+  ) {
+    return {
+      kind: 'custom',
+      hue: normaliseHue(candidate['hue']),
+      saturation: clampSaturation(candidate['saturation']),
+    };
+  }
+  return DEFAULT_ACCENT;
+}
+
+/**
+ * Determines whether an identifier names a current accent preset.
+ * @param id The candidate identifier.
+ * @returns Returns true when a preset with the identifier exists.
+ */
+function isPresetId(id: string): boolean {
+  return ACCENT_PRESETS.some((preset: AccentPreset): boolean => preset.id === id);
+}
+
+/**
+ * Resolves an accent to the concrete hex colour and bare RGB triplet the document consumes. A preset
+ * resolves to its exact hex; a custom accent is built from its hue and saturation at the fixed
+ * lightness.
+ * @param accent The chosen accent.
+ * @returns Returns the hex colour and `r, g, b` triplet.
+ */
+export function resolveAccent(accent: Accent): { readonly hex: string; readonly rgb: string } {
+  if (accent.kind === 'preset') {
+    const preset: AccentPreset =
+      ACCENT_PRESETS.find((entry: AccentPreset): boolean => entry.id === accent.id) ??
+      ACCENT_PRESETS[0];
+    return { hex: preset.hex, rgb: rgbToTriplet(hexToRgb(preset.hex)) };
+  }
+  const rgb: { r: number; g: number; b: number } = hslToRgb({
+    hue: accent.hue,
+    saturation: clampSaturation(accent.saturation),
+    lightness: CUSTOM_LIGHTNESS,
+  });
+  return { hex: rgbToHex(rgb), rgb: rgbToTriplet(rgb) };
+}
 
 /**
  * Represents the source of truth for the application's theme mode and accent colour.
  *
  * Choices are restored from the {@link SettingsStore} on construction, exposed as signals, and
  * applied to the document root by an effect: the resolved light/dark mode drives the
- * `data-theme-mode` attribute that the SCSS theme switches on, and the accent is projected onto the
- * `--accent-color` custom properties. `system` mode is resolved through `matchMedia` and tracks live
- * operating-system changes.
+ * `data-theme-mode` attribute that the SCSS theme switches on, and the accent is resolved to a hex
+ * colour and RGB triplet projected onto the `--accent-color` custom properties. `system` mode is
+ * resolved through `matchMedia` and tracks live operating-system changes.
  */
 @Service()
 export class Theme {
@@ -116,10 +226,10 @@ export class Theme {
   );
 
   /**
-   * Holds the chosen accent colour.
+   * Holds the chosen accent.
    */
-  private readonly accentSignal: WritableSignal<AccentColor> = signal<AccentColor>(
-    this.settings.get<AccentColor>(ACCENT_KEY, DEFAULT_ACCENT),
+  private readonly accentSignal: WritableSignal<Accent> = signal<Accent>(
+    normaliseAccent(this.settings.get<unknown>(ACCENT_KEY, DEFAULT_ACCENT)),
   );
 
   /**
@@ -135,9 +245,25 @@ export class Theme {
   public readonly mode: Signal<ThemeMode> = this.modeSignal.asReadonly();
 
   /**
-   * Gets the chosen accent colour.
+   * Gets the chosen accent.
    */
-  public readonly accent: Signal<AccentColor> = this.accentSignal.asReadonly();
+  public readonly accent: Signal<Accent> = this.accentSignal.asReadonly();
+
+  /**
+   * Gets the resolved hex colour of the chosen accent, for consumers that need the concrete colour
+   * rather than the `--accent-color` custom property (for example the terminal's canvas theme).
+   */
+  public readonly accentHex: Signal<string> = computed(
+    (): string => resolveAccent(this.accentSignal()).hex,
+  );
+
+  /**
+   * Gets the resolved bare `r, g, b` triplet of the chosen accent, for `rgba(...)` overlays outside
+   * the DOM (for example the terminal's selection colour).
+   */
+  public readonly accentRgb: Signal<string> = computed(
+    (): string => resolveAccent(this.accentSignal()).rgb,
+  );
 
   /**
    * Gets the effective theme mode actually applied to the document, resolving `system` against the
@@ -166,14 +292,14 @@ export class Theme {
       this.modeSignal.set(this.settings.get<ThemeMode>(MODE_KEY, DEFAULT_MODE));
     });
     this.settings.onExternalChange(ACCENT_KEY, (): void => {
-      this.accentSignal.set(this.settings.get<AccentColor>(ACCENT_KEY, DEFAULT_ACCENT));
+      this.accentSignal.set(normaliseAccent(this.settings.get<unknown>(ACCENT_KEY, DEFAULT_ACCENT)));
     });
 
     effect((): void => {
       const root: HTMLElement = this.document.documentElement;
       root.dataset['themeMode'] = this.resolvedMode();
-      root.style.setProperty('--accent-color', `var(--accent-${this.accentSignal()})`);
-      root.style.setProperty('--accent-color-rgb', `var(--accent-${this.accentSignal()}-rgb)`);
+      root.style.setProperty('--accent-color', this.accentHex());
+      root.style.setProperty('--accent-color-rgb', this.accentRgb());
     });
   }
 
@@ -187,12 +313,13 @@ export class Theme {
   }
 
   /**
-   * Sets and persists the accent colour.
-   * @param accent The accent colour to apply.
+   * Sets and persists the accent.
+   * @param accent The accent to apply.
    */
-  public setAccent(accent: AccentColor): void {
-    this.accentSignal.set(accent);
-    this.settings.set<AccentColor>(ACCENT_KEY, accent);
+  public setAccent(accent: Accent): void {
+    const normalised: Accent = normaliseAccent(accent);
+    this.accentSignal.set(normalised);
+    this.settings.set<Accent>(ACCENT_KEY, normalised);
   }
 
   /**

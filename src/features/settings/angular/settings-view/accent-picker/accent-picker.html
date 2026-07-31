@@ -1,0 +1,37 @@
+<div class="accent-picker">
+  <app-dropdown
+    [options]="options()"
+    [value]="selectedValue()"
+    ariaLabel="Accent colour"
+    (valueChange)="onSelect($event)"
+  />
+
+  @if (isCustom()) {
+    <div class="accent-picker__custom">
+      <div class="accent-picker__field">
+        <span class="accent-picker__field-label">Hue</span>
+        <app-slider
+          [min]="0"
+          [max]="360"
+          [step]="1"
+          [value]="hue()"
+          [trackBackground]="hueTrack"
+          ariaLabel="Hue"
+          (valueChange)="onHue($event)"
+        />
+      </div>
+      <div class="accent-picker__field">
+        <span class="accent-picker__field-label">Saturation</span>
+        <app-slider
+          [min]="minSaturation"
+          [max]="maxSaturation"
+          [step]="1"
+          [value]="saturation()"
+          [trackBackground]="saturationTrack()"
+          ariaLabel="Saturation"
+          (valueChange)="onSaturation($event)"
+        />
+      </div>
+    </div>
+  }
+</div>
