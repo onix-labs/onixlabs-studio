@@ -56,6 +56,8 @@ describe('AgentChat', () => {
   let providers: WritableSignal<readonly AiProviderInfo[]>;
   let discoveredCommands: WritableSignal<readonly AiSlashCommand[]>;
   let pendingContextTokens: WritableSignal<number>;
+  let contextTokens: WritableSignal<number>;
+  let contextWindow: WritableSignal<number>;
   let compacted: number;
   let clearedChats: number;
   let modeChanges: AgentMode[];
@@ -97,13 +99,15 @@ describe('AgentChat', () => {
     running = signal<boolean>(false);
     awaiting = signal<boolean>(false);
     pendingContextTokens = signal<number>(0);
+    contextTokens = signal<number>(0);
+    contextWindow = signal<number>(0);
     const agentStub: Partial<Agent> = {
       items,
       isRunning: running,
       awaitingDecision: awaiting,
       pendingInput,
-      contextTokens: signal<number>(0),
-      contextWindow: signal<number>(0),
+      contextTokens,
+      contextWindow,
       costUsd: signal<number>(0),
       pendingContextTokens,
       contextPaths,
@@ -454,6 +458,27 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__attachment-name')?.textContent?.trim()).toBe(
       'main.ts — selection #1 (12 lines)',
     );
+  });
+
+  it('contextMeter_whenTheWindowIsKnown_showsUsageWithPercent', () => {
+    contextTokens.set(750_100);
+    contextWindow.set(1_000_000);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__context-label')?.textContent?.trim()).toBe('750.1k (75%)');
+    expect(host.querySelector<HTMLElement>('.agent__meter-fill')?.getAttribute('style')).toContain(
+      '75%',
+    );
+  });
+
+  it('contextMeter_whenTheWindowIsUnknown_showsUsageWithoutPercent', () => {
+    contextTokens.set(12_300);
+    contextWindow.set(0);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__context-label')?.textContent?.trim()).toBe('12.3k');
   });
 
   it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {

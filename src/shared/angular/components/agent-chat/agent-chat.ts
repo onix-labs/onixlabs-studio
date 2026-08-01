@@ -550,12 +550,14 @@ export class AgentChat implements OnInit {
   );
 
   /**
-   * Gets the compact context-token figure for the composer meter (for example, `12.3k`), prefixed
-   * with `≈` while it includes an attached-context estimate.
+   * Gets the compact context-token readout for the composer meter (for example, `12.3k (34%)`): the
+   * used-token figure, prefixed with `≈` while it includes an attached-context estimate, followed by
+   * the percentage of the model's context window it fills when that window is known.
    */
   protected readonly contextLabel: Signal<string> = computed((): string => {
     const label: string = formatTokens(this.meterTokens());
-    return this.agent.pendingContextTokens() > 0 ? `≈${label}` : label;
+    const used: string = this.agent.pendingContextTokens() > 0 ? `≈${label}` : label;
+    return this.agent.contextWindow() > 0 ? `${used} (${this.contextPercent()}%)` : used;
   });
 
   /**
