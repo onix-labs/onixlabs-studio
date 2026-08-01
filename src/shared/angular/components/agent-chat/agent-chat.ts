@@ -569,13 +569,14 @@ export class AgentChat implements OnInit {
   });
 
   /**
-   * Gets the meter's fill level, driving its colour so a near-full context is a visible cue to
-   * compact: `ok` below 75%, `warn` from 75%, `high` from 90%.
+   * Gets the meter's fill level, driving its colour across three even bands as the window fills — a
+   * visible cue to compact: `ok` (success) at 0–33%, `warn` (warning) at 34–66%, `high` (error) at
+   * 67–100%.
    */
   protected readonly contextLevel: Signal<'ok' | 'warn' | 'high'> = computed(
     (): 'ok' | 'warn' | 'high' => {
       const percent: number = this.contextPercent();
-      return percent >= 90 ? 'high' : percent >= 75 ? 'warn' : 'ok';
+      return percent >= 67 ? 'high' : percent >= 34 ? 'warn' : 'ok';
     },
   );
 
