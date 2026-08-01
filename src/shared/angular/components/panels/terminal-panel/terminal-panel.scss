@@ -59,10 +59,19 @@
 .terminal-panel__body {
   position: absolute;
   inset: 0;
+  // Clip the terminal to the bodies box so its content ends exactly at the status strip below, rather
+  // than bleeding underneath it.
+  overflow: hidden;
 
   &--hidden {
     display: none;
   }
+}
+
+// The shared status strip is seamless (transparent) by default, but in the terminal it sits beneath
+// dark terminal content; give it a solid panel-surface fill so the terminal never reads through it.
+app-panel-status {
+  background: var(--dock-tab-background-color--active);
 }
 
 app-terminal {
