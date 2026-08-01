@@ -115,7 +115,7 @@
 
 .rail__dialog-error {
   margin: 0 0 0.5rem;
-  color: var(--accent-coral);
+  color: var(--error-color);
   font-size: 0.78rem;
 }
 
@@ -141,13 +141,14 @@
   padding-inline-start: 0.35rem;
 
   &--succeeded {
-    color: var(--accent-green);
+    color: var(--success-color);
   }
 
   &--failed {
-    color: var(--accent-pink);
+    color: var(--error-color);
   }
 
+  // Running/active stays on the accent for now (a "happening now" cue, not a state colour).
   &--running {
     color: var(--accent-orange);
   }

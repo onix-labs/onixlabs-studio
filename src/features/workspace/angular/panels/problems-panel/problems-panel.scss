@@ -7,11 +7,11 @@
   min-block-size: 0;
   color: var(--dock-tab-foreground-color);
 
-  // Status colours borrowed from the accent palette (no dedicated tokens yet).
-  --problem-error: var(--accent-coral);
-  --problem-warning: var(--accent-orange);
-  --problem-info: var(--accent-cyan);
-  --problem-hint: var(--accent-teal);
+  // Severity colours from the semantic state palette; hint (least severe) shares the info colour.
+  --problem-error: var(--error-color);
+  --problem-warning: var(--warning-color);
+  --problem-info: var(--info-color);
+  --problem-hint: var(--info-color);
 }
 
 // The error/warning tallies sit at the trailing end of the tool-strip.
@@ -126,7 +126,7 @@
 
   i {
     font-size: 1.5rem;
-    color: var(--accent-green);
+    color: var(--success-color);
   }
 
   p {

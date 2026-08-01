@@ -127,6 +127,14 @@
   --accent-surface-border-color: rgba(var(--accent-color-rgb), 0.6);
   --accent-surface-foreground-color: var(--accent-color);
 
+  // Semantic state colours: a fixed set used ONLY to convey state (success, warning, error/danger,
+  // info), deliberately independent of the accent palette so state never shifts with the user's chosen
+  // accent. Single values shared by both themes for now — tuned per-theme later if contrast needs it.
+  --success-color: #198754;
+  --warning-color: #fd7e14;
+  --error-color: #dc3545;
+  --info-color: #0dcaec;
+
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 
   // The height of a single-line control — button, text field, dropdown, segmented control — so a row
