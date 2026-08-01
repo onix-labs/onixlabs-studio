@@ -241,13 +241,6 @@ export class MissionControlAgentTile {
   }
 
   /**
-   * Stops the host's running agent.
-   */
-  protected onStop(): void {
-    this.agent.stop();
-  }
-
-  /**
    * Opens the focus modal, presenting this tile's agent panel large and centred.
    */
   protected openFocus(): void {
