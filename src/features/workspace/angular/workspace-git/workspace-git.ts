@@ -1,11 +1,18 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
 import { ParsedStatus } from '@shared/angular/services/source-control/git-output';
 import { SourceControlProvider } from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+
+/**
+ * How long, in milliseconds, external on-disk changes are debounced before the workspace git status
+ * refreshes, so a burst (a checkout, a build) refreshes once rather than per file.
+ */
+const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 
 /**
  * Normalises a filesystem path for use as a status-map key: forward slashes and no trailing slash, so
@@ -43,6 +50,22 @@ export class WorkspaceGit {
    * Holds the provider factory used to read the resolved repository.
    */
   private readonly providers: SourceControlProviders = inject(SourceControlProviders);
+
+  /**
+   * Holds the directory watcher used to keep the status (and branch) current when the working tree or
+   * `.git/HEAD` change on disk — for example an agent creating or switching a branch.
+   */
+  private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
+   */
+  private watchDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the pending debounced external-refresh timer, or null when none is scheduled.
+   */
+  private externalRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the provider bound to the resolved repository root, or null when the folder is not a
@@ -190,6 +213,12 @@ export class WorkspaceGit {
       this.boundRoot = info.root;
       this.provider = this.providers.create(info.root);
       this.boundSignal.set(true);
+      // Watch the repository so an on-disk branch switch or working-tree change (e.g. an agent
+      // creating and working from a new branch) refreshes the status and branch live, without needing
+      // the tab to be re-activated — which is what Mission Control's per-column branch reads.
+      this.watchDisposer = this.directoryWatch.watch(info.root, (): void =>
+        this.scheduleExternalRefresh(),
+      );
     } else {
       // Same root resolved again (the resolve incremented the main-process count); balance it.
       void this.api?.closeRepository(info.root);
@@ -198,9 +227,31 @@ export class WorkspaceGit {
   }
 
   /**
+   * Schedules a coalesced refresh in response to external on-disk changes, so a burst of changes (a
+   * checkout, a build) refreshes once rather than per file. The app's own git reads never re-enter
+   * here: the main process runs them with optional index writes disabled, so a refresh leaves the
+   * repository untouched on disk.
+   */
+  private scheduleExternalRefresh(): void {
+    if (this.externalRefreshTimer !== null) {
+      return;
+    }
+    this.externalRefreshTimer = setTimeout((): void => {
+      this.externalRefreshTimer = null;
+      void this.refresh();
+    }, EXTERNAL_REFRESH_DEBOUNCE_MS);
+  }
+
+  /**
    * Releases the bound repository in the main process and clears all status.
    */
   private release(): void {
+    this.watchDisposer?.();
+    this.watchDisposer = null;
+    if (this.externalRefreshTimer !== null) {
+      clearTimeout(this.externalRefreshTimer);
+      this.externalRefreshTimer = null;
+    }
     if (this.boundRoot !== null) {
       void this.api?.closeRepository(this.boundRoot);
       this.boundRoot = null;

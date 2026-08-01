@@ -1,7 +1,9 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ParsedStatus } from '@shared/angular/services/source-control/git-output';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
@@ -58,11 +60,32 @@ describe('WorkspaceGit', () => {
   let resolved: RepositoryInfo | null;
   let closed: string[];
   let status: ParsedStatus;
+  let watched: string[];
+  let fireWatch: () => void;
 
   beforeEach(() => {
     root = signal<DirectoryListing | null>(null);
     resolved = { root: '/repo', name: 'repo' };
     closed = [];
+    watched = [];
+    const handlers: ((event: DirectoryChangeEvent) => void)[] = [];
+    fireWatch = (): void => {
+      for (const handler of handlers) {
+        handler({} as DirectoryChangeEvent);
+      }
+    };
+    const directoryWatch: Pick<DirectoryWatch, 'watch'> = {
+      watch: (rootPath: string, onChange: (event: DirectoryChangeEvent) => void): (() => void) => {
+        watched.push(rootPath);
+        handlers.push(onChange);
+        return (): void => {
+          const index: number = handlers.indexOf(onChange);
+          if (index >= 0) {
+            handlers.splice(index, 1);
+          }
+        };
+      },
+    };
     status = {
       branch: 'main',
       upstream: 'origin/main',
@@ -92,6 +115,7 @@ describe('WorkspaceGit', () => {
           provide: SourceControlProviders,
           useValue: { create: (): SourceControlProvider => provider as SourceControlProvider },
         },
+        { provide: DirectoryWatch, useValue: directoryWatch },
       ],
     });
     git = TestBed.inject(WorkspaceGit);
@@ -180,5 +204,37 @@ describe('WorkspaceGit', () => {
     expect(git.branch()).toBe('develop');
     expect(git.statusFor('/repo/src/app/main.ts')).toBeNull();
     expect(git.hasChanges('/repo/src')).toBe(false);
+  });
+
+  it('watch_whenTheRepositoryChangesOnDisk_refreshesBranchWithoutReactivation', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    expect(watched).toContain('/repo');
+    expect(git.branch()).toBe('main');
+
+    // An agent creates and switches to a new branch on disk; the directory watcher fires.
+    status = { ...status, branch: 'feature/x' };
+    fireWatch();
+    await new Promise((resolve: (value: void) => void): void => {
+      setTimeout(resolve, 600);
+    });
+    await settle();
+
+    expect(git.branch()).toBe('feature/x');
+  });
+
+  it('watch_afterRelease_stopsRefreshing', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    git.dispose();
+
+    status = { ...status, branch: 'feature/x' };
+    fireWatch();
+    await new Promise((resolve: (value: void) => void): void => {
+      setTimeout(resolve, 600);
+    });
+    await settle();
+
+    expect(git.branch()).toBeNull();
   });
 });
