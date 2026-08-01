@@ -713,18 +713,18 @@ $agent-node-size: 1.75rem;
 
 // As the window fills, the meter and label shift to warning then critical colours — the cue to compact.
 .agent__context--warn {
-  color: var(--accent-orange);
+  color: var(--warning-color);
 
   .agent__meter-fill {
-    background: var(--accent-orange);
+    background: var(--warning-color);
   }
 }
 
 .agent__context--high {
-  color: var(--accent-coral);
+  color: var(--error-color);
 
   .agent__meter-fill {
-    background: var(--accent-coral);
+    background: var(--error-color);
   }
 }
 
