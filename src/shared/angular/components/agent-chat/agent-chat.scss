@@ -679,6 +679,8 @@ $agent-node-size: 1.75rem;
   align-items: center;
   gap: 0.35rem;
   min-inline-size: 0;
+  // Low band (0–33%): plenty of headroom, shown in the success colour. Warn/high override below.
+  color: var(--success-color);
 }
 
 .agent__meter {
@@ -699,7 +701,7 @@ $agent-node-size: 1.75rem;
   display: block;
   block-size: 100%;
   min-inline-size: 0.2rem;
-  background: var(--accent-color);
+  background: var(--success-color);
   border-radius: inherit;
   transition: inline-size 0.2s ease;
 }
@@ -711,7 +713,8 @@ $agent-node-size: 1.75rem;
   text-overflow: ellipsis;
 }
 
-// As the window fills, the meter and label shift to warning then critical colours — the cue to compact.
+// As the window fills, the meter and label move up the state bands — success → warning → error — as a
+// cue to compact (thresholds in AgentChat.contextLevel).
 .agent__context--warn {
   color: var(--warning-color);
 

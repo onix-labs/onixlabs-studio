@@ -481,6 +481,50 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__context-label')?.textContent?.trim()).toBe('12.3k');
   });
 
+  it('contextMeter_colourBands_followTheThirds', () => {
+    contextWindow.set(1_000_000);
+    const context: () => HTMLElement = (): HTMLElement =>
+      (fixture.nativeElement as HTMLElement).querySelector('.agent__context')!;
+
+    contextTokens.set(200_000); // 20% — plenty of headroom, success band.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--warn')).toBe(false);
+    expect(context().classList.contains('agent__context--high')).toBe(false);
+
+    contextTokens.set(500_000); // 50% — warning band.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--warn')).toBe(true);
+    expect(context().classList.contains('agent__context--high')).toBe(false);
+
+    contextTokens.set(800_000); // 80% — error band.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--high')).toBe(true);
+  });
+
+  it('contextMeter_colourBands_switchAtTheThirdsBoundaries', () => {
+    contextWindow.set(100);
+    const context: () => HTMLElement = (): HTMLElement =>
+      (fixture.nativeElement as HTMLElement).querySelector('.agent__context')!;
+
+    contextTokens.set(33); // still success at 33%.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--warn')).toBe(false);
+    expect(context().classList.contains('agent__context--high')).toBe(false);
+
+    contextTokens.set(34); // crosses into warning at 34%.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--warn')).toBe(true);
+
+    contextTokens.set(66); // still warning at 66%.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--warn')).toBe(true);
+    expect(context().classList.contains('agent__context--high')).toBe(false);
+
+    contextTokens.set(67); // crosses into error at 67%.
+    fixture.detectChanges();
+    expect(context().classList.contains('agent__context--high')).toBe(true);
+  });
+
   it('attachments_whenContextAttached_rendersAChipWithItsBasename', () => {
     contextPaths.set([{ path: '/repo/src/main.ts', kind: 'file' }]);
     fixture.detectChanges();
