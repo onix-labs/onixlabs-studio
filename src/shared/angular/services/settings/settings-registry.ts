@@ -1,4 +1,9 @@
-import type { AiConnection, AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
+import type {
+  AiConnection,
+  AiPermissionPosture,
+  AiToolPolicy,
+  ClaudeExecutableMode,
+} from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
   BraceStyle,
@@ -92,6 +97,8 @@ export interface SettingsValues {
   readonly 'ai.runTimeoutMinutes': number;
   readonly 'ai.agentSessionLifetime': number;
   readonly 'ai.agentShell': string;
+  readonly 'ai.claudeExecutable': ClaudeExecutableMode;
+  readonly 'ai.claudeExecutablePath': string;
 
   readonly 'missionControl.showPermissionsAtTop': boolean;
   readonly 'missionControl.tileScrollMode': TileScrollMode;
@@ -754,6 +761,31 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
           'installed shell, or use the default login shell.',
         control: { kind: 'custom', component: 'ai-agent-shell' },
+        default: '',
+      },
+      {
+        key: 'ai.claudeExecutable',
+        title: 'Claude CLI',
+        description:
+          'Which Claude Code CLI the Claude (local login) agent uses, for both running turns and ' +
+          'discovering models. Bundled ships with Studio and is tested against it. System uses the ' +
+          'claude on your PATH — it may be newer and self-updates, but is not version-matched to ' +
+          'Studio (advanced). Custom uses a specific path.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'bundled', label: 'Bundled (recommended)' },
+            { value: 'system', label: 'System (claude on PATH)' },
+            { value: 'custom', label: 'Custom path' },
+          ],
+        },
+        default: 'bundled',
+      },
+      {
+        key: 'ai.claudeExecutablePath',
+        title: 'Claude CLI path',
+        description: 'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
+        control: { kind: 'text', placeholder: '/usr/local/bin/claude' },
         default: '',
       },
     ],

@@ -3,6 +3,7 @@ import type {
   CanUseTool,
   HookJSONOutput,
   McpSdkServerConfigWithInstance,
+  ModelInfo,
   Options,
   PermissionResult,
   PostToolUseHookInput,
@@ -39,6 +40,7 @@ import {
   type AiInputChoice,
   type AiModelInfo,
   type AiPermissionPosture,
+  type ClaudeExecutableChoice,
   type AiProviderId,
   type AiToolPolicy,
 } from '@shared/api/ai-types';
@@ -50,7 +52,8 @@ import type {
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
-import { resolveBundledClaudeExecutable } from './claude-executable';
+import { resolveClaudeExecutable } from './claude-executable';
+import type { ClaudeSdkModel } from './claude-model-discovery';
 import {
   applyCapturedEnvironment,
   captureShellEnvironmentCached,
@@ -974,7 +977,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       // budget so the model paces its tool use and wraps up before the limit. Frozen at open — a
       // per-turn cap change lands with the session-lifetime work (P4).
       ...(openContext.tokenCap > 0 ? { taskBudget: { total: openContext.tokenCap } } : {}),
-      ...this.executableOption(),
+      ...this.executableOption(openContext.claudeExecutable),
       ...(this.runEnv(openContext) ?? {}),
     };
 
@@ -1073,9 +1076,57 @@ export class ClaudeAgentProvider implements AgentProvider {
    * empty object so the SDK resolves the binary itself.
    * @returns Returns `{ pathToClaudeCodeExecutable }` when packaged and the binary is present, else `{}`.
    */
-  private executableOption(): { pathToClaudeCodeExecutable: string } | Record<string, never> {
-    const executable: string | undefined = resolveBundledClaudeExecutable();
+  private executableOption(
+    choice: ClaudeExecutableChoice | undefined,
+  ): { pathToClaudeCodeExecutable: string } | Record<string, never> {
+    const executable: string | undefined = resolveClaudeExecutable(choice);
     return executable === undefined ? {} : { pathToClaudeCodeExecutable: executable };
+  }
+
+  /**
+   * Lists the models the Claude Agent SDK reports for the current login, over a short-lived query's
+   * control channel — no turn is sent and no API key is needed, so this works for the local-login
+   * connection that has no key to drive the HTTP `/v1/models` discovery. The query factory is injected
+   * for testing; production imports the SDK's `query`.
+   * @param executable The Claude CLI to spawn (bundled by default).
+   * @param createQuery Creates the SDK query (defaults to the real SDK).
+   * @returns Returns the models the SDK supports.
+   */
+  public async listSupportedModels(
+    executable: ClaudeExecutableChoice | undefined,
+    createQuery: ClaudeQueryFactory = defaultClaudeQueryFactory,
+  ): Promise<readonly ClaudeSdkModel[]> {
+    const options: Options = { ...this.executableOption(executable) };
+    let release: () => void = (): void => undefined;
+    // The SDK's streaming-input mode keeps the session open until the prompt generator completes; it
+    // yields nothing (discovery sends no turn) and returns once discovery is done.
+    const released: Promise<void> = new Promise<void>((resolve: () => void): void => {
+      release = resolve;
+    });
+    async function* keepOpen(): AsyncGenerator<SDKUserMessage> {
+      await released;
+      // Discovery sends no turn; complete without yielding once discovery finishes.
+      yield* [];
+    }
+    const sdkQuery: Query = await createQuery(keepOpen(), options);
+    try {
+      const models: readonly ModelInfo[] = await sdkQuery.supportedModels();
+      return models.map(
+        (model: ModelInfo): ClaudeSdkModel => ({
+          value: model.value,
+          displayName: model.displayName,
+          resolvedModel: (model as { readonly resolvedModel?: string }).resolvedModel,
+          description: model.description,
+        }),
+      );
+    } finally {
+      release();
+      try {
+        await sdkQuery.interrupt();
+      } catch {
+        // Best-effort teardown of the short-lived discovery query.
+      }
+    }
   }
 
   /**
@@ -1361,6 +1412,30 @@ export class ClaudeAgentProvider implements AgentProvider {
 function userMessageOf(value: string): SDKUserMessage {
   return { type: 'user', message: { role: 'user', content: value }, parent_tool_use_id: null };
 }
+
+/**
+ * Creates a Claude Agent SDK query. Injected so model discovery (and runs) can be tested without
+ * spawning the harness.
+ */
+type ClaudeQueryFactory = (
+  prompt: AsyncGenerator<SDKUserMessage>,
+  options: Options,
+) => Promise<Query>;
+
+/**
+ * The production query factory: dynamically imports the SDK's `query` so the heavy SDK loads only when
+ * a run or discovery actually needs it.
+ * @param prompt The streaming-input prompt generator.
+ * @param options The query options.
+ * @returns Returns the SDK query.
+ */
+const defaultClaudeQueryFactory: ClaudeQueryFactory = async (
+  prompt: AsyncGenerator<SDKUserMessage>,
+  options: Options,
+): Promise<Query> => {
+  const { query } = await import('@anthropic-ai/claude-agent-sdk');
+  return query({ prompt, options });
+};
 
 /**
  * The provider capabilities a {@link ClaudeAgentSession} borrows: building the run options, translating

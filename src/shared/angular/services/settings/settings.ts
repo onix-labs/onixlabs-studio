@@ -1,5 +1,10 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AiConnection, AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
+import type {
+  AiConnection,
+  AiPermissionPosture,
+  AiToolPolicy,
+  ClaudeExecutableMode,
+} from '@shared/api/ai-types';
 import {
   AiConnectionModels,
   SETTINGS_BY_KEY,
@@ -645,6 +650,17 @@ export class Settings {
    * the empty string to inherit the default login shell's environment.
    */
   public readonly aiAgentShell: Signal<string> = this.value('ai.agentShell');
+
+  /**
+   * Gets which Claude Code CLI the Claude agent spawns (bundled, system, or a custom path).
+   */
+  public readonly aiClaudeExecutable: Signal<ClaudeExecutableMode> =
+    this.value('ai.claudeExecutable');
+
+  /**
+   * Gets the absolute path to the Claude CLI used when {@link aiClaudeExecutable} is `custom`.
+   */
+  public readonly aiClaudeExecutablePath: Signal<string> = this.value('ai.claudeExecutablePath');
 
   /**
    * Gets whether Mission Control floats agents awaiting a permission request to the top of its agent

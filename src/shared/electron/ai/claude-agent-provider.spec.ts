@@ -8,6 +8,7 @@ import type {
 import type { AiEvent, AiModelInfo } from '@shared/api/ai-types';
 import type { AgentAuth, AgentRunContext } from './agent-provider';
 import { ClaudeAgentProvider, ClaudeAgentSession, type SessionDeps } from './claude-agent-provider';
+import type { ClaudeSdkModel } from './claude-model-discovery';
 
 // The real `buildRunOptions` (exercised below) dynamically imports the node-only Agent SDK for its tool
 // builders, which the test runner cannot load; stub them to trivial factories. Only the SDK is mocked —
@@ -756,5 +757,71 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     expect('effort' in withMinimal.options).toBe(false);
     const withNull: { options: Options } = await build(gateCtx({ effort: null }));
     expect('effort' in withNull.options).toBe(false);
+  });
+});
+
+describe('ClaudeAgentProvider.listSupportedModels', () => {
+  let provider: ClaudeAgentProvider;
+
+  beforeEach(() => {
+    provider = new ClaudeAgentProvider([], 'default');
+    // The bundled-executable lookup reads Electron's `app`, undefined under the test runner; stub the
+    // provider's own resolver so discovery never touches it (mirrors the buildRunOptions tests above).
+    vi.spyOn(
+      provider as unknown as { executableOption(): Record<string, never> },
+      'executableOption',
+    ).mockReturnValue({});
+  });
+
+  /**
+   * Builds a fake SDK query exposing only what discovery uses — `supportedModels` and `interrupt` —
+   * and records whether it was torn down.
+   * @param models The models the fake reports.
+   * @returns Returns the fake query and a teardown flag.
+   */
+  function fakeQuery(models: readonly unknown[]): { query: Query; interrupted: () => boolean } {
+    let interrupted: boolean = false;
+    const query: Query = {
+      supportedModels: (): Promise<readonly unknown[]> => Promise.resolve(models),
+      interrupt: (): Promise<void> => {
+        interrupted = true;
+        return Promise.resolve();
+      },
+    } as unknown as Query;
+    return { query, interrupted: (): boolean => interrupted };
+  }
+
+  it('listSupportedModels_mapsSdkModelsAndTearsDownTheQuery', async () => {
+    const fake: { query: Query; interrupted: () => boolean } = fakeQuery([
+      { value: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5', description: '' },
+      { value: 'opus[1m]', displayName: 'Opus (1M)', resolvedModel: 'claude-opus-5[1m]', description: '' },
+    ]);
+
+    const models: readonly ClaudeSdkModel[] = await provider.listSupportedModels(
+      undefined,
+      (): Promise<Query> => Promise.resolve(fake.query),
+    );
+
+    expect(models).toEqual([
+      { value: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5', description: '' },
+      { value: 'opus[1m]', displayName: 'Opus (1M)', resolvedModel: 'claude-opus-5[1m]', description: '' },
+    ]);
+    expect(fake.interrupted()).toBe(true);
+  });
+
+  it('listSupportedModels_tearsDownEvenWhenSupportedModelsRejects', async () => {
+    let interrupted: boolean = false;
+    const query: Query = {
+      supportedModels: (): Promise<readonly unknown[]> => Promise.reject(new Error('boom')),
+      interrupt: (): Promise<void> => {
+        interrupted = true;
+        return Promise.resolve();
+      },
+    } as unknown as Query;
+
+    await expect(
+      provider.listSupportedModels(undefined, (): Promise<Query> => Promise.resolve(query)),
+    ).rejects.toThrow('boom');
+    expect(interrupted).toBe(true);
   });
 });

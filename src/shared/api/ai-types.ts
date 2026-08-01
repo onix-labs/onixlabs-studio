@@ -36,8 +36,15 @@ export type {
   AiConnectionAuthRequest,
   AiSetConnectionKeyRequest,
 } from './ai/ai-auth-types';
-export type { AiEffort, AiProviderId, AiModelInfo, AiProviderInfo } from './ai/ai-provider-types';
-export { AI_EFFORT_LEVELS } from './ai/ai-provider-types';
+export type {
+  AiEffort,
+  AiProviderId,
+  AiModelInfo,
+  AiProviderInfo,
+  ClaudeExecutableChoice,
+  ClaudeExecutableMode,
+} from './ai/ai-provider-types';
+export { AI_EFFORT_LEVELS, DEFAULT_CLAUDE_EXECUTABLE } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
 export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {

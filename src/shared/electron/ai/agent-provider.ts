@@ -9,6 +9,7 @@ import type {
   AiModelInfo,
   AiPermissionPosture,
   AiToolPolicy,
+  ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import type { AuditGrantSource } from './agent-audit-log';
 
@@ -148,6 +149,12 @@ export interface AgentRunContext {
    * interactive default.
    */
   readonly agentShell: string | null;
+
+  /**
+   * Gets which Claude Code CLI the harness spawns for this run. Only the Claude local-login provider
+   * reads it; other providers do not spawn a CLI.
+   */
+  readonly claudeExecutable: ClaudeExecutableChoice;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the in-app editor tools act on that

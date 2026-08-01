@@ -2,7 +2,7 @@
 // and the Angular front-end can import it.
 
 import { AgentSurface } from './ai-tool-surface';
-import { AiEffort, AiProviderId } from './ai-provider-types';
+import { AiEffort, AiProviderId, ClaudeExecutableChoice } from './ai-provider-types';
 
 /**
  * Identifies how much the agent may do without asking the user first.
@@ -153,6 +153,12 @@ export interface AiRunRequest {
    * inherited environment.
    */
   readonly agentShell?: string;
+
+  /**
+   * Gets which Claude Code CLI the harness spawns (Claude local-login provider only); absent means the
+   * bundled CLI.
+   */
+  readonly claudeExecutable?: ClaudeExecutableChoice;
 
   /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0 for no limit. The
