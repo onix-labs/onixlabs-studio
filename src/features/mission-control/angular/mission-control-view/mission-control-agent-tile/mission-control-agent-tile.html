@@ -33,16 +33,6 @@
     <span class="tile__status-label">{{ statusLabel() }}</span>
   </div>
   <div class="tile__actions">
-    @if (isRunning()) {
-      <app-button
-        variant="none"
-        size="small"
-        [icon]="Icon.PAUSE"
-        ariaLabel="Stop"
-        tooltip="Stop"
-        (click)="onStop()"
-      />
-    }
     <app-button
       variant="none"
       size="small"
