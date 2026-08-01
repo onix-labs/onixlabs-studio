@@ -61,6 +61,12 @@ export type ImageSizing = 'fixed' | 'sizable';
 export type ImageAlignment = 'left' | 'center' | 'right';
 
 /**
+ * Identifies what the markdown editor's Select All (Cmd/Ctrl+A) chord selects: the current block, or
+ * the whole document. The secondary chord (Cmd/Ctrl+Shift+A) always selects the other one.
+ */
+export type SelectAllScope = 'block' | 'document';
+
+/**
  * Identifies the page margin applied when printing or exporting a document: `narrow` is the tightest,
  * `regular` doubles it, and `wide` doubles it again.
  */
@@ -292,6 +298,11 @@ export interface MarkdownEditorSettings {
    * Gets the horizontal alignment applied to images.
    */
   readonly imageAlignment: ImageAlignment;
+
+  /**
+   * Gets what the Select All chord selects first (the other is on the Shift chord).
+   */
+  readonly selectAllScope: SelectAllScope;
 }
 
 /**
@@ -544,6 +555,7 @@ export class Settings {
       marginSize: this.read('markdownEditor.marginSize'),
       imageSizing: this.read('markdownEditor.imageSizing'),
       imageAlignment: this.read('markdownEditor.imageAlignment'),
+      selectAllScope: this.read('markdownEditor.selectAllScope'),
     }),
   );
 

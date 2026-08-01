@@ -45,6 +45,7 @@ import {
   MarginSize,
   Settings,
 } from '@shared/angular/services/settings/settings';
+import { selectAllTargetsDocument } from './select-all-scope';
 
 /**
  * Minimum number of rows for the HTML image editor textarea.
@@ -629,18 +630,15 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Handles the Select All chord (Cmd/Ctrl+A) progressively: the first press selects the current
-   * block's content; a second press, when the block is already fully selected, selects the whole
-   * document. Runs in the capture phase and stops the event so it pre-empts ProseMirror's own Mod-a
-   * binding (which always selects the whole document).
+   * Handles the Select All chords. Cmd/Ctrl+A selects the scope chosen in settings — the current
+   * block or the whole document — and the Shift chord (Cmd/Ctrl+Shift+A) selects the other one. Runs
+   * in the capture phase and stops the event so it pre-empts ProseMirror's own Mod-a binding (which
+   * always selects the whole document).
    * @param event The keydown event.
    */
   private handleSelectAll(event: KeyboardEvent): void {
     const isSelectAllChord: boolean =
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'a';
+      (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a';
     const view: EditorView | null = this.editorView;
     if (!isSelectAllChord || view === null) {
       return;
@@ -651,13 +649,15 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
 
+    // The setting picks what the plain chord selects; the Shift chord selects the other scope.
+    const wholeDocument: boolean = selectAllTargetsDocument(
+      this.settings.markdownEditor().selectAllScope,
+      event.shiftKey,
+    );
     const selection: Selection = view.state.selection;
-    const blockStart: number = selection.$from.start();
-    const blockEnd: number = selection.$from.end();
-    const coversBlock: boolean = selection.from <= blockStart && selection.to >= blockEnd;
-    const next: Selection = coversBlock
+    const next: Selection = wholeDocument
       ? new AllSelection(view.state.doc)
-      : TextSelection.create(view.state.doc, blockStart, blockEnd);
+      : TextSelection.create(view.state.doc, selection.$from.start(), selection.$from.end());
     view.dispatch(view.state.tr.setSelection(next));
   }
 

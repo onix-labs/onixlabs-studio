@@ -18,6 +18,7 @@ import type {
   ModernUiFeatures,
   PrintMargin,
   RibbonAlignment,
+  SelectAllScope,
   WorkspaceTexture,
 } from './settings';
 import { isSettingsOwned } from './settings-schema';
@@ -81,6 +82,7 @@ export interface SettingsValues {
   readonly 'markdownEditor.marginSize': MarginSize;
   readonly 'markdownEditor.imageSizing': ImageSizing;
   readonly 'markdownEditor.imageAlignment': ImageAlignment;
+  readonly 'markdownEditor.selectAllScope': SelectAllScope;
 
   readonly 'terminal.defaultShell': string;
 
@@ -598,6 +600,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'left',
+      },
+      {
+        key: 'markdownEditor.selectAllScope',
+        title: 'Select all (Cmd/Ctrl+A)',
+        description:
+          'What Select All selects first. The Shift chord (Cmd/Ctrl+Shift+A) selects the other one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'block', label: 'Current block' },
+            { value: 'document', label: 'Whole document' },
+          ],
+        },
+        default: 'block',
       },
     ],
   },
