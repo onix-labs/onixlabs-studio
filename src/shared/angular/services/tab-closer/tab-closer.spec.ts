@@ -1,11 +1,33 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
+import type { Agent } from '@shared/angular/services/agent/agent';
+import type { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { UNSAVED_WORK, UnsavedDocument } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { TabCloser } from './tab-closer';
+
+/**
+ * Builds a fake agent host bound to a tab, with a controllable running state and a recorded stop.
+ * @param tabId The owning tab id.
+ * @param isRunning Whether the host's agent reports as running.
+ * @param stop Records a stop call.
+ * @returns Returns the host registration.
+ */
+function fakeHost(tabId: string, isRunning: boolean, stop: () => void): Omit<AgentHost, 'id'> {
+  return {
+    tabId,
+    label: signal('Workspace'),
+    surface: 'editor',
+    agent: { isRunning: (): boolean => isRunning, stop } as unknown as Agent,
+    conversation: {} as unknown as AgentConversation,
+    isActive: signal(false),
+  };
+}
 
 describe('TabCloser', () => {
   let closer: TabCloser;
@@ -122,6 +144,47 @@ describe('TabCloser', () => {
     await closer.close(tab.id);
 
     expect(wellSaves).toEqual(['well-a', 'well-b']);
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
+  });
+
+  it('close_whenAgentRunningAndConfirmed_stopsTheAgentAndCloses', async () => {
+    const confirm: ReturnType<typeof vi.spyOn> = vi
+      .spyOn(TestBed.inject(FileSystem), 'confirmDestructive')
+      .mockResolvedValue(true);
+    const tab: Tab = tabs.open('directory');
+    let stopped: boolean = false;
+    TestBed.inject(AgentHosts).register(fakeHost(tab.id, true, (): void => void (stopped = true)));
+
+    await closer.close(tab.id);
+
+    expect(confirm).toHaveBeenCalled();
+    expect(stopped).toBe(true);
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
+  });
+
+  it('close_whenAgentRunningAndCancelled_keepsTheTabAndLeavesTheAgent', async () => {
+    vi.spyOn(TestBed.inject(FileSystem), 'confirmDestructive').mockResolvedValue(false);
+    const tab: Tab = tabs.open('directory');
+    let stopped: boolean = false;
+    TestBed.inject(AgentHosts).register(fakeHost(tab.id, true, (): void => void (stopped = true)));
+
+    await closer.close(tab.id);
+
+    expect(stopped).toBe(false);
+    expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(true);
+  });
+
+  it('close_whenAgentIdle_closesWithoutConfirming', async () => {
+    const confirm: ReturnType<typeof vi.spyOn> = vi.spyOn(
+      TestBed.inject(FileSystem),
+      'confirmDestructive',
+    );
+    const tab: Tab = tabs.open('directory');
+    TestBed.inject(AgentHosts).register(fakeHost(tab.id, false, (): void => undefined));
+
+    await closer.close(tab.id);
+
+    expect(confirm).not.toHaveBeenCalled();
     expect(tabs.tabs().some((open: Tab): boolean => open.id === tab.id)).toBe(false);
   });
 });
