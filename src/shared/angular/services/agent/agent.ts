@@ -983,6 +983,10 @@ export class Agent {
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
       tokenCap: this.settings.aiTokenCap(),
       agentShell: this.settings.aiAgentShell(),
+      claudeExecutable: {
+        mode: this.settings.aiClaudeExecutable(),
+        path: this.settings.aiClaudeExecutablePath(),
+      },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
       owningTabId,

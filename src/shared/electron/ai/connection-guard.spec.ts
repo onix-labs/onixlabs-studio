@@ -1,5 +1,5 @@
-import type { AiConnection } from '@shared/api/ai-types';
-import { isConnection, sanitizeConnections } from './connection-guard';
+import type { AiConnection, ClaudeExecutableChoice } from '@shared/api/ai-types';
+import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 
 /**
  * A well-formed connection used as the baseline for the guard tests.
@@ -56,6 +56,35 @@ describe('connection-guard', () => {
         'openai-1',
         'ollama-1',
       ]);
+    });
+  });
+
+  describe('sanitizeClaudeExecutable', () => {
+    it('sanitizeClaudeExecutable_whenAbsentOrMalformed_defaultsToBundled', () => {
+      expect(sanitizeClaudeExecutable(undefined)).toEqual({ mode: 'bundled', path: '' });
+      expect(sanitizeClaudeExecutable('system')).toEqual({ mode: 'bundled', path: '' });
+    });
+
+    it('sanitizeClaudeExecutable_whenValidMode_isKept', () => {
+      const choice: ClaudeExecutableChoice = sanitizeClaudeExecutable({
+        mode: 'custom',
+        path: '/opt/claude',
+      });
+      expect(choice).toEqual({ mode: 'custom', path: '/opt/claude' });
+    });
+
+    it('sanitizeClaudeExecutable_whenUnknownMode_fallsBackToBundledButKeepsPath', () => {
+      expect(sanitizeClaudeExecutable({ mode: 'nope', path: '/x' })).toEqual({
+        mode: 'bundled',
+        path: '/x',
+      });
+    });
+
+    it('sanitizeClaudeExecutable_whenPathMistyped_dropsIt', () => {
+      expect(sanitizeClaudeExecutable({ mode: 'system', path: 42 })).toEqual({
+        mode: 'system',
+        path: '',
+      });
     });
   });
 });

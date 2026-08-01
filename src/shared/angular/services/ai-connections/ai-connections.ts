@@ -248,6 +248,10 @@ export class AiConnections {
   public async discover(connection: AiConnection): Promise<AiDiscoverModelsResult | null> {
     const result: AiDiscoverModelsResult | undefined = await this.ai.client?.discoverModels({
       connection,
+      claudeExecutable: {
+        mode: this.settings.aiClaudeExecutable(),
+        path: this.settings.aiClaudeExecutablePath(),
+      },
     });
     if (result === undefined) {
       return null;

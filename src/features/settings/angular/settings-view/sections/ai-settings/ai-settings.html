@@ -123,3 +123,17 @@
     (valueChange)="onAgentShellChange($event)"
   />
 </app-setting-row>
+
+<app-setting-row
+  label="Claude CLI"
+  description="Which Claude Code CLI the Claude (local login) agent uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
+>
+  <app-setting-control key="ai.claudeExecutable" />
+</app-setting-row>
+
+<app-setting-row
+  label="Claude CLI path"
+  description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
+>
+  <app-setting-control key="ai.claudeExecutablePath" />
+</app-setting-row>

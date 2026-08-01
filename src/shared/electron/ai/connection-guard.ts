@@ -2,7 +2,14 @@
 // process builds providers — including endpoints and headers — from these connections, so an untrusted
 // value is narrowed to the fields the providers and the run path read before it is trusted.
 
+import type { ClaudeExecutableChoice, ClaudeExecutableMode } from '@shared/api/ai-types';
+import { DEFAULT_CLAUDE_EXECUTABLE } from '@shared/api/ai-types';
 import type { AiConnection } from '@shared/api/ai-types';
+
+/**
+ * The recognised Claude CLI modes; an untrusted value outside this set falls back to the bundled CLI.
+ */
+const CLAUDE_EXECUTABLE_MODES: readonly ClaudeExecutableMode[] = ['bundled', 'system', 'custom'];
 
 /**
  * Determines whether a value is a well-formed connection (it carries the fields the providers and the
@@ -39,4 +46,25 @@ export function sanitizeConnections(value: unknown): readonly AiConnection[] {
     return [];
   }
   return value.filter((entry: unknown): entry is AiConnection => isConnection(entry));
+}
+
+/**
+ * Coerces an untrusted value from the renderer into a Claude CLI choice, defaulting to the bundled CLI
+ * when the value is absent or malformed. An unknown mode falls back to bundled; the custom path is kept
+ * only as a string.
+ * @param value The untrusted value.
+ * @returns Returns a well-formed choice.
+ */
+export function sanitizeClaudeExecutable(value: unknown): ClaudeExecutableChoice {
+  if (typeof value !== 'object' || value === null) {
+    return DEFAULT_CLAUDE_EXECUTABLE;
+  }
+  const candidate: Record<string, unknown> = value as Record<string, unknown>;
+  const mode: ClaudeExecutableMode = CLAUDE_EXECUTABLE_MODES.includes(
+    candidate['mode'] as ClaudeExecutableMode,
+  )
+    ? (candidate['mode'] as ClaudeExecutableMode)
+    : 'bundled';
+  const path: string = typeof candidate['path'] === 'string' ? candidate['path'] : '';
+  return { mode, path };
 }

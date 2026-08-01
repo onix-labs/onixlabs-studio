@@ -52,7 +52,8 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenShown_rendersARowPerGlobalControl', () => {
-    expect(host.querySelectorAll('app-setting-row').length).toBe(5);
+    // Permission posture, token cap, run timeout, session lifetime, agent shell, Claude CLI, CLI path.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(7);
   });
 
   it('render_whenShown_rendersAnItemPerSeedConnection', () => {

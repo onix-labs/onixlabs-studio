@@ -21,6 +21,7 @@ import type {
   AiToolPolicy,
   AiRunState,
   AiSteerRequest,
+  ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import { SEED_CONNECTIONS } from '@shared/api/ai-types';
 
@@ -39,9 +40,10 @@ import type {
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import { AiSdkAdapter } from './ai-sdk-adapter';
-import { isConnection, sanitizeConnections } from './connection-guard';
+import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
+import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
 import { CodexAgentProvider } from './codex-agent-provider';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
@@ -421,7 +423,7 @@ export class AiManager {
       AiChannel.DiscoverModels,
       (_event: IpcMainInvokeEvent, request: unknown): Promise<AiDiscoverModelsResult> =>
         this.isDiscoverModelsRequest(request)
-          ? this.discoverModels(request.connection)
+          ? this.discoverModels(request.connection, request.claudeExecutable)
           : Promise.resolve({
               ok: false,
               models: [],
@@ -518,12 +520,28 @@ export class AiManager {
   }
 
   /**
-   * Discovers a connection's models from its `/models` endpoint, resolving the connection's credential
-   * by id, and returns the merged list (or the existing list unchanged when discovery cannot run).
+   * Discovers a connection's models and returns the merged list (or the existing list unchanged when
+   * discovery cannot run). A local-login Claude connection has no API key, so it discovers through the
+   * Claude Agent SDK (which reports the account's models over its control channel); every other
+   * connection queries its `/models` endpoint with its resolved credential.
    * @param connection The connection to discover models for.
    * @returns Returns the discovery result.
    */
-  private discoverModels(connection: AiConnection): Promise<AiDiscoverModelsResult> {
+  private discoverModels(
+    connection: AiConnection,
+    executable: unknown,
+  ): Promise<AiDiscoverModelsResult> {
+    if (connection.auth === 'claude-login') {
+      const choice: ClaudeExecutableChoice = sanitizeClaudeExecutable(executable);
+      const provider: ClaudeAgentProvider = new ClaudeAgentProvider(
+        connection.models,
+        connection.defaultModelId,
+      );
+      return runClaudeDiscovery(
+        connection,
+        (): Promise<readonly ClaudeSdkModel[]> => provider.listSupportedModels(choice),
+      );
+    }
     const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
     return runDiscovery(connection, apiKey, process.env, this.httpFetch);
   }
@@ -590,6 +608,7 @@ export class AiManager {
         ? request.effort
         : null;
     const agentShell: string | null = sanitizeAgentShell(request.agentShell);
+    const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(request.claudeExecutable);
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );
@@ -622,6 +641,7 @@ export class AiManager {
       deniedWritePaths,
       tokenCap,
       agentShell,
+      claudeExecutable,
       owningTabId: request.owningTabId ?? null,
       surface: request.surface ?? 'editor',
       mode,

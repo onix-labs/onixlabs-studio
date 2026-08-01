@@ -16,6 +16,36 @@ export type AiProviderId = string;
 export type AiEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
+ * Which Claude Code CLI the agent harness spawns. `bundled` uses the CLI shipped with Studio (tested
+ * against the bundled Agent SDK); `system` uses the `claude` on the user's PATH (which may be newer
+ * and self-updating, but is not version-matched to the SDK); `custom` uses an explicit path. Only the
+ * Claude local-login harness reads this — API-based connections do not spawn a CLI.
+ */
+export type ClaudeExecutableMode = 'bundled' | 'system' | 'custom';
+
+/**
+ * The user's Claude CLI choice: the mode and, for {@link ClaudeExecutableMode.custom}, the absolute
+ * path to the executable (ignored for other modes).
+ */
+export interface ClaudeExecutableChoice {
+  /**
+   * Gets which CLI to spawn.
+   */
+  readonly mode: ClaudeExecutableMode;
+
+  /**
+   * Gets the absolute path used when the mode is `custom` (empty otherwise).
+   */
+  readonly path: string;
+}
+
+/**
+ * The default Claude CLI choice: the bundled CLI (backward-compatible with builds that predate the
+ * setting).
+ */
+export const DEFAULT_CLAUDE_EXECUTABLE: ClaudeExecutableChoice = { mode: 'bundled', path: '' };
+
+/**
  * The reasoning-effort levels in ascending order, for clamping and UI ordering.
  */
 export const AI_EFFORT_LEVELS: readonly AiEffort[] = [

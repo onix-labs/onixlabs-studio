@@ -15,6 +15,7 @@ import type {
   AiProviderId,
   AiProviderInfo,
   AiToolPolicy,
+  ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 
@@ -78,6 +79,11 @@ export interface AiRunOptions {
    * startup).
    */
   readonly agentShell?: string;
+
+  /**
+   * Gets which Claude Code CLI the Claude agent spawns (bundled by default).
+   */
+  readonly claudeExecutable?: ClaudeExecutableChoice;
 
   /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0/omitted for none.
@@ -222,6 +228,9 @@ export class AiRuntime {
       deniedWritePaths: options.deniedWritePaths ?? [],
       tokenCap: options.tokenCap ?? 0,
       agentShell: options.agentShell ?? '',
+      ...(options.claudeExecutable === undefined
+        ? {}
+        : { claudeExecutable: options.claudeExecutable }),
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
       ...(options.effort === undefined ? {} : { effort: options.effort }),

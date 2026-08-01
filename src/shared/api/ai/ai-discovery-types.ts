@@ -2,7 +2,7 @@
 // the Angular front-end can import it.
 
 import type { AiConnection } from './ai-connection-types';
-import type { AiModelInfo } from './ai-provider-types';
+import type { AiModelInfo, ClaudeExecutableChoice } from './ai-provider-types';
 
 /**
  * Requests discovering the models a connection offers by querying its `/models` endpoint. The whole
@@ -14,6 +14,12 @@ export interface AiDiscoverModelsRequest {
    * Gets the connection to discover models for.
    */
   readonly connection: AiConnection;
+
+  /**
+   * Gets which Claude Code CLI to query for a local-login Claude connection (bundled by default). It
+   * must match what runs use, so the models discovered are the ones the run harness can actually run.
+   */
+  readonly claudeExecutable?: ClaudeExecutableChoice;
 }
 
 /**
