@@ -696,55 +696,84 @@ describe('LspClient', () => {
     expect(status.stateOf('/root::typescript')).toBe('starting');
   });
 
-  it('crashLoop_threeExitsInAWindow_stopsTheAutomaticRestart', async () => {
-    const client: LspClient = build();
-    const status: LspStatus = TestBed.inject(LspStatus);
-    const base: { documentId: string; path: string; languageId: string; content: string } = {
-      documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
-      content: '',
-    };
-    for (let crash: number = 0; crash < 3; crash += 1) {
+  it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
       client.syncDocument(base);
       await flush();
+      expect(lsp.starts).toHaveLength(1);
       lsp.exit('/root::typescript');
+
+      // Within the first crash's backoff no automatic respawn happens — a crashing server must not
+      // be revived on the next keystroke.
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(1);
+
+      // Each crash doubles the wait; past each backoff one more attempt is allowed, until the
+      // CUMULATIVE cap stops the restarts for good — a server crashing once a minute never slips
+      // through a rolling window.
+      for (let crash: number = 1; crash < 5; crash += 1) {
+        now += 5_000 * 2 ** (crash - 1) + 1;
+        client.syncDocument(base);
+        await flush();
+        expect(lsp.starts).toHaveLength(crash + 1);
+        lsp.exit('/root::typescript');
+      }
+      now += 600_000;
+      client.syncDocument(base);
+      await flush();
+      expect(lsp.starts).toHaveLength(5);
+      expect(status.stateOf('/root::typescript')).toBe('unavailable');
+      const server: LspServer | undefined = status
+        .servers()
+        .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+      expect(server?.detail).toContain('crashed repeatedly');
+    } finally {
+      vi.restoreAllMocks();
     }
-    expect(lsp.starts).toHaveLength(3);
-
-    client.syncDocument(base);
-    await flush();
-
-    expect(lsp.starts).toHaveLength(3);
-    expect(status.stateOf('/root::typescript')).toBe('unavailable');
-    const server: LspServer | undefined = status
-      .servers()
-      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
-    expect(server?.detail).toContain('crashed repeatedly');
   });
 
   it('crashLoop_manualRestart_clearsTheBreakerAndStartsAfresh', async () => {
-    const client: LspClient = build();
-    const base: { documentId: string; path: string; languageId: string; content: string } = {
-      documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
-      content: '',
-    };
-    for (let crash: number = 0; crash < 3; crash += 1) {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      for (let crash: number = 0; crash < 5; crash += 1) {
+        client.syncDocument(base);
+        await flush();
+        lsp.exit('/root::typescript');
+        now += 5_000 * 2 ** crash + 1;
+      }
       client.syncDocument(base);
       await flush();
-      lsp.exit('/root::typescript');
+      expect(lsp.starts).toHaveLength(5);
+
+      await client.restart('/root::typescript');
+      await flush();
+
+      expect(lsp.starts).toHaveLength(6);
+      expect(lsp.notificationsTo('didOpen').length).toBeGreaterThanOrEqual(6);
+    } finally {
+      vi.restoreAllMocks();
     }
-    client.syncDocument(base);
-    await flush();
-    expect(lsp.starts).toHaveLength(3);
-
-    await client.restart('/root::typescript');
-    await flush();
-
-    expect(lsp.starts).toHaveLength(4);
-    expect(lsp.notificationsTo('didOpen').length).toBeGreaterThanOrEqual(4);
   });
 
   it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {
