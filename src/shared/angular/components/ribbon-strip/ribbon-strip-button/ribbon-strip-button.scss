@@ -52,32 +52,28 @@
   }
 }
 
-// Tone: repoints the surface onto a state colour and tints the glyph and label at rest, so a
-// destructive command reads red before it is hovered while keeping the exact shape of its neighbours.
-// Only the four state tones carry a class; the accent tone is the default and adds none.
+// Tone: repoints the hover/toggle surface onto a state colour while the glyph and label rest neutral,
+// so a destructive command sits as quietly as its neighbours until hovered, then reads red. Only the
+// four state tones carry a class; the accent tone is the default and adds none.
 .ribbon-button--tone-success {
-  color: var(--success-color);
   --ribbon-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
   --ribbon-tone-surface-border: rgba(var(--success-color-rgb), 0.6);
   --ribbon-tone-surface-foreground: var(--success-color);
 }
 
 .ribbon-button--tone-warning {
-  color: var(--warning-color);
   --ribbon-tone-surface-background: rgba(var(--warning-color-rgb), 0.15);
   --ribbon-tone-surface-border: rgba(var(--warning-color-rgb), 0.6);
   --ribbon-tone-surface-foreground: var(--warning-color);
 }
 
 .ribbon-button--tone-danger {
-  color: var(--danger-color);
   --ribbon-tone-surface-background: rgba(var(--danger-color-rgb), 0.15);
   --ribbon-tone-surface-border: rgba(var(--danger-color-rgb), 0.6);
   --ribbon-tone-surface-foreground: var(--danger-color);
 }
 
 .ribbon-button--tone-info {
-  color: var(--info-color);
   --ribbon-tone-surface-background: rgba(var(--info-color-rgb), 0.15);
   --ribbon-tone-surface-border: rgba(var(--info-color-rgb), 0.6);
   --ribbon-tone-surface-foreground: var(--info-color);

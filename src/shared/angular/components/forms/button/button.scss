@@ -71,13 +71,13 @@
 // Tone: repoints the local tone variables off the accent onto a state colour. Only the four state
 // tones carry a class (the accent tone is the default and adds none), so these never touch an
 // ordinary button. Each builds the same tinted-fill / brighter-border surface the accent does, from
-// the state colour's RGB triplet.
+// the state colour's RGB triplet. The outline border is left neutral (--dock-border-color) so a
+// toned outline rests like any other and only takes its tone on hover.
 :host(.button--tone-success) .button {
   --btn-tone-color: var(--success-color);
   --btn-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
   --btn-tone-surface-border: rgba(var(--success-color-rgb), 0.6);
   --btn-tone-surface-foreground: var(--success-color);
-  --btn-outline-border-color: rgba(var(--success-color-rgb), 0.6);
 }
 
 :host(.button--tone-warning) .button {
@@ -85,7 +85,6 @@
   --btn-tone-surface-background: rgba(var(--warning-color-rgb), 0.15);
   --btn-tone-surface-border: rgba(var(--warning-color-rgb), 0.6);
   --btn-tone-surface-foreground: var(--warning-color);
-  --btn-outline-border-color: rgba(var(--warning-color-rgb), 0.6);
 }
 
 :host(.button--tone-danger) .button {
@@ -93,7 +92,6 @@
   --btn-tone-surface-background: rgba(var(--danger-color-rgb), 0.15);
   --btn-tone-surface-border: rgba(var(--danger-color-rgb), 0.6);
   --btn-tone-surface-foreground: var(--danger-color);
-  --btn-outline-border-color: rgba(var(--danger-color-rgb), 0.6);
 }
 
 :host(.button--tone-info) .button {
@@ -101,18 +99,12 @@
   --btn-tone-surface-background: rgba(var(--info-color-rgb), 0.15);
   --btn-tone-surface-border: rgba(var(--info-color-rgb), 0.6);
   --btn-tone-surface-foreground: var(--info-color);
-  --btn-outline-border-color: rgba(var(--info-color-rgb), 0.6);
 }
 
-// A toned button tints its resting glyph (and any label) so its meaning reads before it is hovered.
-// Placed ahead of the variant rules so a solid button below can still override the text to sit on its
-// fill. The accent tone adds no class, so this leaves every ordinary button untouched.
-:host(.button--tone-success) .button,
-:host(.button--tone-warning) .button,
-:host(.button--tone-danger) .button,
-:host(.button--tone-info) .button {
-  color: var(--btn-tone-surface-foreground);
-}
+// A toned button reads neutral at rest — same glyph, border and fill as any untoned button — and only
+// takes its tone on hover (below) or while a solid/pressed button wears it as a fill. Meaning is
+// carried by the coloured hover, not by a tinted resting glyph, so a Stop in a strip sits as quietly
+// as its neighbours until pointed at.
 
 // Solid: the affirmative action, filled with the tone at rest and lifted on hover.
 :host(.button--solid) .button {
