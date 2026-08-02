@@ -2,6 +2,7 @@ import type { AiConnection, AiDiscoverModelsResult, AiModelInfo } from '@shared/
 import {
   type ClaudeSdkModel,
   claudeContextWindow,
+  contextWindowFromDescription,
   formatClaudeLabel,
   mapClaudeModel,
   mergeClaudeModels,
@@ -49,6 +50,22 @@ describe('parseBracketedContextWindow', () => {
   });
 });
 
+describe('contextWindowFromDescription', () => {
+  it('contextWindowFromDescription_readsASizeNextToTheWordContext', () => {
+    expect(contextWindowFromDescription('Opus 4.8 with 1M context · Best for everyday tasks')).toBe(
+      1_000_000,
+    );
+    expect(contextWindowFromDescription('200K context window')).toBe(200_000);
+    expect(contextWindowFromDescription('Sonnet · context window of 1M')).toBe(1_000_000);
+  });
+
+  it('contextWindowFromDescription_ignoresAVersionNumberWithNoUnit', () => {
+    // "4.8" is a version, not a window: without an m/k unit it must not be mistaken for one.
+    expect(contextWindowFromDescription('Sonnet 4.6 · Efficient for routine tasks')).toBeNull();
+    expect(contextWindowFromDescription(undefined)).toBeNull();
+  });
+});
+
 describe('claudeContextWindow', () => {
   it('claudeContextWindow_whenAliasHasSuffix_usesIt', () => {
     expect(claudeContextWindow({ value: 'opus[1m]', displayName: 'Opus' })).toBe(1_000_000);
@@ -57,6 +74,19 @@ describe('claudeContextWindow', () => {
   it('claudeContextWindow_whenResolvedHasSuffix_usesIt', () => {
     expect(
       claudeContextWindow({ value: 'default', resolvedModel: 'claude-opus-5[1m]', displayName: 'x' }),
+    ).toBe(1_000_000);
+  });
+
+  it('claudeContextWindow_fromTheBundledCliDescription_readsTheStatedWindow', () => {
+    // The SDK-bundled CLI's real shape: a bare alias with no bracket and no resolved id, whose window
+    // is named only in the description. Without reading it, Opus 4.8 collapsed to the 32k default and
+    // showed as full at a fraction of its 1M capacity.
+    expect(
+      claudeContextWindow({
+        value: 'opus',
+        displayName: 'Opus',
+        description: 'Opus 4.8 with 1M context · Best for everyday tasks',
+      }),
     ).toBe(1_000_000);
   });
 

@@ -53,8 +53,33 @@ export function parseBracketedContextWindow(id: string): number | null {
 }
 
 /**
- * Resolves a model's context window: the bracketed hint on its alias or resolved id when present,
- * otherwise the heuristic from the resolved (or alias) id.
+ * Parses a context window stated in a model's description — `Opus 4.8 with 1M context`, `200K context
+ * window`, `context window of 1M` — into a token count, or null when the description names none. This
+ * is the reliable source for the SDK-bundled CLI, whose aliases carry no bracketed hint and no resolved
+ * id but whose description always names the window.
+ * @param description The model description.
+ * @returns Returns the token count, or null.
+ */
+export function contextWindowFromDescription(description: string | undefined): number | null {
+  if (description === undefined) {
+    return null;
+  }
+  // A size token (`1M`, `200k`) sitting next to the word "context" (either order): "1M context" or
+  // "context window of 1M". The size must carry an m/k unit, so a bare version number ("4.8") never
+  // matches.
+  const match: RegExpExecArray | null =
+    /(\d+(?:\.\d+)?)\s*([mk])\b[^.]{0,20}?\bcontext\b/i.exec(description) ??
+    /\bcontext\b[^.]{0,20}?(\d+(?:\.\d+)?)\s*([mk])\b/i.exec(description);
+  if (match === null) {
+    return null;
+  }
+  const size: number = Number(match[1]);
+  return Math.round(match[2].toLowerCase() === 'm' ? size * 1_000_000 : size * 1_000);
+}
+
+/**
+ * Resolves a model's context window: the bracketed hint on its alias or resolved id when present, then
+ * the window its description names, otherwise the heuristic from the resolved (or alias) id.
  * @param model The SDK model.
  * @returns Returns the context window in tokens.
  */
@@ -67,6 +92,10 @@ export function claudeContextWindow(model: ClaudeSdkModel): number {
   const fromResolved: number | null = parseBracketedContextWindow(resolved);
   if (fromResolved !== null) {
     return fromResolved;
+  }
+  const fromDescription: number | null = contextWindowFromDescription(model.description);
+  if (fromDescription !== null) {
+    return fromDescription;
   }
   return resolveContextWindow(resolved);
 }

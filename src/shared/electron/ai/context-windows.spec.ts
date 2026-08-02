@@ -24,6 +24,15 @@ describe('resolveContextWindow', () => {
     expect(resolveContextWindow('llama-3.3-70b')).toBe(128_000);
   });
 
+  it('treatsBareClaudeFamilyAliasesAsClaude_notTheDefault', () => {
+    // The SDK's bare aliases carry no `claude-` prefix; without family recognition they would fall to
+    // the 32k default and a 1M-window model would read as full at a fraction of its capacity.
+    expect(resolveContextWindow('opus')).toBe(200_000);
+    expect(resolveContextWindow('sonnet')).toBe(200_000);
+    expect(resolveContextWindow('haiku')).toBe(200_000);
+    expect(resolveContextWindow('default')).toBe(200_000);
+  });
+
   it('fallsBackToTheDefaultForUnknownIds', () => {
     expect(resolveContextWindow('some-unknown-model')).toBe(DEFAULT_CONTEXT_WINDOW);
   });

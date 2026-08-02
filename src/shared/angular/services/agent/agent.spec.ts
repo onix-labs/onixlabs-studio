@@ -1258,4 +1258,50 @@ describe('Agent', () => {
     // The summary replaced the transcript, so the meter refills from the next real turn.
     expect(agent.items()).toHaveLength(1);
   });
+
+  it('compact_startsAFreshSessionSeededWithTheSummary_soTheNextTurnDoesNotRefillToFull', () => {
+    agent.send('hi');
+    const firstSession: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'session', sessionId: 'sess-full' });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 500_000,
+      outputTokens: 5000,
+      costUsd: 0.5,
+    });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.compact();
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'The gist of it.' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    // The old held-open session is closed and the resume id cleared, so the next turn opens fresh
+    // rather than resuming the full-context session.
+    expect(closeSessionCalls).toContain(firstSession);
+
+    agent.send('carry on');
+    const next: (typeof runCalls)[number] = runCalls[runCalls.length - 1];
+    expect(next.resumeSessionId).toBeNull();
+    // The fresh turn carries the summary as its opening context, so the model keeps the memory.
+    expect(next.prompt).toContain('The gist of it.');
+    expect(next.prompt).toContain('carry on');
+  });
+
+  it('compact_seedsOnlyTheImmediateNextTurn_notEveryLaterTurn', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.compact();
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'The gist.' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.send('first after compaction');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    agent.send('second after compaction');
+
+    const last: (typeof runCalls)[number] = runCalls[runCalls.length - 1];
+    expect(last.prompt).toBe('second after compaction');
+    expect(last.prompt).not.toContain('The gist.');
+  });
 });

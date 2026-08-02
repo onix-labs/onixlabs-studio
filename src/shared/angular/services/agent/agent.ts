@@ -624,6 +624,15 @@ export class Agent {
   private compactionText: string = '';
 
   /**
+   * Holds a compaction summary waiting to seed the next turn's fresh session, or null when none is
+   * pending. A compaction starts a new provider session (so the context genuinely shrinks rather than
+   * the old session refilling the meter on the next turn), which loses the model's memory; this carries
+   * the summary into that new session as the next turn's opening context. Consumed once, by the first
+   * run after the compaction.
+   */
+  private pendingContextSeed: string | null = null;
+
+  /**
    * Holds the tokens the conversation currently occupies in the context window: the latest turn's
    * input (the whole re-sent conversation) plus its output. Zero for a fresh conversation and after a
    * compaction, refilling on the next turn.
@@ -995,8 +1004,17 @@ export class Agent {
     this.lastSurface = surface;
     const forkAt: string | null = this.forkAt;
     this.forkAt = null;
+    // A compaction just before this turn left a summary to seed the new session it started; fold it in
+    // ahead of the prompt so the fresh session opens with the memory the summary distils, then consume
+    // it so later turns (which resume this session) are not re-seeded.
+    const seed: string | null = this.pendingContextSeed;
+    this.pendingContextSeed = null;
+    const runPrompt: string =
+      seed === null
+        ? prompt
+        : `Summary of the conversation so far, for context:\n\n${seed}\n\n---\n\n${prompt}`;
     this.busy.set(true);
-    this.activeRequestId = this.runtime.run(this.provider(), prompt, {
+    this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
@@ -1117,6 +1135,9 @@ export class Agent {
   private resetAgentSession(): void {
     this.runtime.closeSession(this.agentSessionId);
     this.agentSessionId = crypto.randomUUID();
+    // A fresh session carries no compaction seed of its own; drop any that a prior compaction left
+    // unconsumed so it never leaks into an unrelated conversation (New chat, restore, fork).
+    this.pendingContextSeed = null;
   }
 
   /**
@@ -1568,9 +1589,15 @@ export class Agent {
           text: `**Conversation summary**\n\n${summary}`,
         },
       ]);
-      // The transcript is now just the compact summary; the context readout drops to zero and refills
-      // from the next turn's reported usage.
+      // Start a genuinely fresh provider session from the summary, rather than leaving the old one to
+      // refill the meter on the next turn: end the held-open session and clear the resume id so the
+      // next turn opens a new one, and seed that turn with the summary so the model keeps the memory
+      // the summary distils. The context readout drops to zero now and refills — small — from the next
+      // turn's reported usage.
+      this.resetAgentSession();
+      this.sessionIdState.set(null);
       this.contextTokensState.set(0);
+      this.pendingContextSeed = summary;
     }
   }
 

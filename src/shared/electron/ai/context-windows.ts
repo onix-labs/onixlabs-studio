@@ -67,7 +67,11 @@ export function resolveContextWindow(id: string): number {
   if (key.startsWith('gpt-4')) {
     return 128_000;
   }
-  if (key.startsWith('claude')) {
+  // Claude, including the SDK's bare family aliases (`opus`, `sonnet`, `haiku`) and the `default`
+  // alias, which carry no `claude-` prefix — without this they would fall to the 32k default and a
+  // 1M-window model would read as full at a fraction of its capacity. A conservative family floor; the
+  // exact window comes from the model's bracketed hint or its description where either is present.
+  if (key.startsWith('claude') || /^(opus|sonnet|haiku|default)\b/.test(key)) {
     return 200_000;
   }
   return DEFAULT_CONTEXT_WINDOW;
