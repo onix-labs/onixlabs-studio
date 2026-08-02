@@ -1,7 +1,8 @@
-import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, ipcMain, IpcMainInvokeEvent, WebContents } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DirectoryChangeEvent, FileChannel } from '@shared/api/file-channels';
+import { shouldForwardTreeEvent } from './directory-watch-filter';
 
 /**
  * Specifies how long, in milliseconds, changes under a root are coalesced before notifying. The timer
@@ -13,12 +14,14 @@ const COALESCE_MS: number = 200;
 /**
  * Specifies the maximum number of distinct changed directories reported per notification. A burst
  * touching more directories than this collapses into an overflow notification, telling subscribers to
- * refresh everything they have loaded instead of receiving an unbounded path list.
+ * refresh everything they have loaded instead of receiving an unbounded path list. Build-output and
+ * dependency churn never counts toward this cap (it is dropped before coalescing), so an overflow
+ * means a genuinely tree-wide change such as a large checkout.
  */
-const MAX_DIRECTORIES: number = 128;
+const MAX_DIRECTORIES: number = 512;
 
 /**
- * Tracks a watched root: its native recursive watcher and its subscriber reference count.
+ * Tracks a watched root: its native recursive watcher and the renderer subscriptions holding it open.
  */
 interface WatchedRoot {
   /**
@@ -27,9 +30,11 @@ interface WatchedRoot {
   readonly watcher: fs.FSWatcher;
 
   /**
-   * Gets or sets the number of renderer subscriptions holding this watch open.
+   * Gets the number of subscriptions holding this watch open, keyed by the id of the renderer
+   * (webContents) that registered them, so a crashed or reloaded renderer's holds can be released
+   * without affecting other renderers.
    */
-  count: number;
+  readonly holders: Map<number, number>;
 }
 
 /**
@@ -78,6 +83,12 @@ export class DirectoryWatcher {
   private readonly pending: Map<string, PendingChanges> = new Map<string, PendingChanges>();
 
   /**
+   * Holds the ids of the renderers whose destruction is already being observed, so each renderer gets
+   * one destroyed-listener regardless of how many roots it watches.
+   */
+  private readonly trackedSenders: Set<number> = new Set<number>();
+
+  /**
    * Initializes a new instance of the {@link DirectoryWatcher} class.
    * @param windowGetter A function that returns the window change notifications are sent to.
    */
@@ -91,17 +102,17 @@ export class DirectoryWatcher {
   public register(): void {
     ipcMain.handle(
       FileChannel.WatchDirectory,
-      (_event: IpcMainInvokeEvent, root: unknown): void => {
+      (event: IpcMainInvokeEvent, root: unknown): void => {
         if (typeof root === 'string') {
-          this.watch(root);
+          this.watch(root, event.sender);
         }
       },
     );
     ipcMain.handle(
       FileChannel.UnwatchDirectory,
-      (_event: IpcMainInvokeEvent, root: unknown): void => {
+      (event: IpcMainInvokeEvent, root: unknown): void => {
         if (typeof root === 'string') {
-          this.unwatch(root);
+          this.unwatch(root, event.sender.id);
         }
       },
     );
@@ -119,16 +130,25 @@ export class DirectoryWatcher {
       clearTimeout(changes.timer);
     }
     this.pending.clear();
+    this.trackedSenders.clear();
   }
 
   /**
-   * Begins watching a directory tree (reference-counted), opening a recursive watcher if needed.
+   * Begins watching a directory tree (reference-counted per renderer), opening a recursive watcher if
+   * needed. The subscribing renderer's destruction is observed so a crashed or reloaded renderer
+   * releases its holds — otherwise its watches would leak for the rest of the session, since the
+   * fresh renderer knows nothing of its predecessor's subscriptions.
    * @param root The absolute directory path to watch.
+   * @param sender The renderer registering the subscription.
    */
-  private watch(root: string): void {
+  private watch(root: string, sender: WebContents): void {
+    if (!this.trackedSenders.has(sender.id)) {
+      this.trackedSenders.add(sender.id);
+      sender.once('destroyed', (): void => this.dropSender(sender.id));
+    }
     const existing: WatchedRoot | undefined = this.roots.get(root);
     if (existing !== undefined) {
-      existing.count += 1;
+      existing.holders.set(sender.id, (existing.holders.get(sender.id) ?? 0) + 1);
       return;
     }
     try {
@@ -145,25 +165,56 @@ export class DirectoryWatcher {
         this.roots.delete(root);
         this.recordOverflow(root);
       });
-      this.roots.set(root, { watcher, count: 1 });
+      this.roots.set(root, { watcher, holders: new Map<number, number>([[sender.id, 1]]) });
     } catch {
       // The root may not exist or be unwatchable; treat as a no-op.
     }
   }
 
   /**
-   * Stops watching a directory tree (reference-counted), closing the watcher when unused.
+   * Stops watching a directory tree (reference-counted per renderer), closing the watcher when no
+   * renderer holds it any longer.
    * @param root The absolute directory path to stop watching.
+   * @param senderId The id of the renderer releasing the subscription.
    */
-  private unwatch(root: string): void {
+  private unwatch(root: string, senderId: number): void {
     const existing: WatchedRoot | undefined = this.roots.get(root);
     if (existing === undefined) {
       return;
     }
-    existing.count -= 1;
-    if (existing.count > 0) {
+    const count: number | undefined = existing.holders.get(senderId);
+    if (count === undefined) {
       return;
     }
+    if (count > 1) {
+      existing.holders.set(senderId, count - 1);
+      return;
+    }
+    existing.holders.delete(senderId);
+    if (existing.holders.size === 0) {
+      this.close(root, existing);
+    }
+  }
+
+  /**
+   * Releases every hold a destroyed renderer had, closing the watchers only it was keeping open.
+   * @param senderId The id of the destroyed renderer.
+   */
+  private dropSender(senderId: number): void {
+    this.trackedSenders.delete(senderId);
+    for (const [root, existing] of [...this.roots]) {
+      if (existing.holders.delete(senderId) && existing.holders.size === 0) {
+        this.close(root, existing);
+      }
+    }
+  }
+
+  /**
+   * Closes a root's watcher and discards its pending changes.
+   * @param root The watched root to close.
+   * @param existing The root's watch entry.
+   */
+  private close(root: string, existing: WatchedRoot): void {
     existing.watcher.close();
     this.roots.delete(root);
     const changes: PendingChanges | undefined = this.pending.get(root);
@@ -175,13 +226,18 @@ export class DirectoryWatcher {
 
   /**
    * Handles a native recursive event, recording the changed entry's parent directory (whose listing
-   * is what changed) into the root's coalescing window.
+   * is what changed) into the root's coalescing window. Churn from build outputs, dependency caches,
+   * and git's internal bookkeeping is dropped here, before it can open a coalescing window or count
+   * toward the overflow cap — a build must not become a refresh storm for every subscriber.
    * @param root The watched root the event occurred under.
    * @param filename The changed entry's path relative to the root, or null when withheld.
    */
   private onEvent(root: string, filename: string | Buffer | null): void {
     if (typeof filename !== 'string' || filename.length === 0) {
       this.recordOverflow(root);
+      return;
+    }
+    if (!shouldForwardTreeEvent(filename)) {
       return;
     }
     const changes: PendingChanges = this.ensurePending(root);

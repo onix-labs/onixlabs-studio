@@ -430,13 +430,16 @@ export class SolutionModel {
 
   /**
    * Handles a burst of external on-disk changes under the root, scheduling a debounced reload. Bursts
-   * confined to the repository's `.git` directory are ignored: they change no project structure, and
-   * every git operation would otherwise re-evaluate the solution.
+   * confined to the repository's `.git` directory or the workspace's `.studio` folder are ignored:
+   * they change no project structure, and every git operation or settings write would otherwise
+   * re-evaluate the solution. An overflow burst always reloads — the watcher drops build-output and
+   * dependency churn before it can overflow, so an overflow means a genuinely tree-wide change (a
+   * large checkout) that may well have changed project structure.
    * @param root The workspace root the changes occurred under.
    * @param event The change burst.
    */
   private onTreeChanged(root: string, event: DirectoryChangeEvent): void {
-    if (!event.overflow && event.directories.every(this.isGitInternal.bind(this, root))) {
+    if (!event.overflow && event.directories.every(this.isReloadExempt.bind(this, root))) {
       return;
     }
     this.cancelReload();
@@ -457,16 +460,19 @@ export class SolutionModel {
   }
 
   /**
-   * Determines whether a directory lies within the root's `.git` directory.
+   * Determines whether a directory's changes are exempt from triggering a solution reload: the
+   * repository's `.git` directory and the workspace's `.studio` folder hold no project structure.
    * @param root The workspace root.
    * @param directory The absolute directory path to test.
-   * @returns Returns true when the directory is the `.git` directory or inside it.
+   * @returns Returns true when the directory is an exempt folder or inside one.
    */
-  private isGitInternal(root: string, directory: string): boolean {
+  private isReloadExempt(root: string, directory: string): boolean {
     const normalizedRoot: string = root.replaceAll('\\', '/');
     const normalized: string = directory.replaceAll('\\', '/');
-    const gitDirectory: string = `${normalizedRoot}/.git`;
-    return normalized === gitDirectory || normalized.startsWith(`${gitDirectory}/`);
+    return ['.git', '.studio'].some((exempt: string): boolean => {
+      const exemptDirectory: string = `${normalizedRoot}/${exempt}`;
+      return normalized === exemptDirectory || normalized.startsWith(`${exemptDirectory}/`);
+    });
   }
 
   /**

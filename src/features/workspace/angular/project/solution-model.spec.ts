@@ -1,9 +1,11 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
@@ -16,11 +18,13 @@ class FakeProject implements Bridge {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
+  public modelLoads: number = 0;
   public deferItems: boolean = false;
   private resolvers: (() => void)[] = [];
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     if (channel === (ProjectChannel.ModelLoad as string)) {
+      this.modelLoads += 1;
       return Promise.resolve(this.model as T);
     }
     if (channel === (ProjectChannel.ItemsLoad as string)) {
@@ -131,16 +135,40 @@ function flush(): Promise<void> {
 describe('SolutionModel', () => {
   let project: FakeProject;
   let root: WritableSignal<DirectoryListing | null>;
+  let treeChanged: ((event: DirectoryChangeEvent) => void) | null;
 
   /**
-   * Builds the service under test with the fakes wired in.
+   * Builds the service under test with the fakes wired in, capturing the tree-change callback the
+   * service registers with the directory watch.
    * @returns Returns the service.
    */
   function build(): SolutionModel {
     TestBed.configureTestingModule({
-      providers: [SolutionModel, { provide: Workspace, useValue: { root } }],
+      providers: [
+        SolutionModel,
+        { provide: Workspace, useValue: { root } },
+        {
+          provide: DirectoryWatch,
+          useValue: {
+            watch: (_root: string, onChange: (event: DirectoryChangeEvent) => void): (() => void) => {
+              treeChanged = onChange;
+              return (): void => undefined;
+            },
+          },
+        },
+      ],
     });
     return TestBed.inject(SolutionModel);
+  }
+
+  /**
+   * Waits long enough for the service's reload debounce to have fired.
+   * @returns Returns a promise that resolves once the debounce window has passed.
+   */
+  function waitForReloadDebounce(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 350);
+    });
   }
 
   /**
@@ -185,6 +213,7 @@ describe('SolutionModel', () => {
   beforeEach(() => {
     project = new FakeProject();
     root = signal<DirectoryListing | null>(null);
+    treeChanged = null;
     (window as unknown as { bridge: Bridge }).bridge = project;
   });
 
@@ -389,5 +418,52 @@ describe('SolutionModel', () => {
     model.select('file:/root/A/g.cs');
 
     expect(model.selectedKey()).toBe('file:/root/A/g.cs');
+  });
+
+  it('treeChange_touchingSourceDirectories_reloadsTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    void model;
+  });
+
+  it('treeChange_confinedToGitAndStudioFolders_doesNotReloadTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    // Git bookkeeping and settings persistence change no project structure: neither a commit nor a
+    // dock-layout write may re-evaluate the solution.
+    treeChanged!({
+      root: '/root',
+      directories: ['/root/.git', '/root/.git/refs/heads', '/root/.studio'],
+      overflow: false,
+    });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen);
+    void model;
+  });
+
+  it('treeChange_overflowing_reloadsTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    // An overflow means a genuinely tree-wide change (the watcher drops build churn at the source),
+    // so the structure may well have changed.
+    treeChanged!({ root: '/root', directories: [], overflow: true });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    void model;
   });
 });
