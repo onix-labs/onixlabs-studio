@@ -30,7 +30,7 @@
 
 @if (filtered().length > 0) {
   <ul class="problems-list" role="list">
-    @for (diagnostic of filtered(); track trackBy($index, diagnostic)) {
+    @for (diagnostic of visible(); track trackBy($index, diagnostic)) {
       <li>
         <button
           type="button"
@@ -48,6 +48,9 @@
           </span>
         </button>
       </li>
+    }
+    @if (overflowCount() > 0) {
+      <li class="problems-overflow">…and {{ overflowCount() }} more — narrow the filters to see them.</li>
     }
   </ul>
 } @else if (diagnostics.all().length > 0) {

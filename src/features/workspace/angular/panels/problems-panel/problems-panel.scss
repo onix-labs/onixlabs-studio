@@ -134,3 +134,10 @@
     font-size: 0.8rem;
   }
 }
+
+// The truncation note shown when more problems match the filters than the list renders.
+.problems-overflow {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+}

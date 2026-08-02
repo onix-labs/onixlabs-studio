@@ -7,7 +7,12 @@
     (collapseAll)="collapseAll()"
   />
 
-  <app-tree-view [rows]="rows()" [selectedId]="selectedKey()" (rowClick)="onRowClick($event)">
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="selectedKey()"
+    [virtual]="true"
+    (rowClick)="onRowClick($event)"
+  >
     <ng-template let-row>
       @let r = rowOf(row);
       <app-icon

@@ -7,11 +7,19 @@ import {
   InputSignal,
   NgZone,
   OnDestroy,
+  OnInit,
   signal,
   Signal,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
@@ -116,11 +124,15 @@ const ROOT_DEPTH: number = 0;
     MarkdownReaderPanel,
     FindPanel,
   ],
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
+  // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
+  // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
+  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MarkdownView implements OnDestroy {
+export class MarkdownView implements OnInit, OnDestroy {
   /**
    * Holds the settings service supplying the markdown editor preferences.
    */
@@ -234,6 +246,21 @@ export class MarkdownView implements OnDestroy {
   }
 
   /**
+   * Gets whether the agent panel is mounted (has been opened at least once for this tab).
+   * @returns Returns true when the panel should have DOM, shown or hidden.
+   */
+  protected agentMounted(): boolean {
+    return this.agentEverOpened();
+  }
+
+  /**
+   * Finalises the agent-host registration once the required tab-id input is readable.
+   */
+  public ngOnInit(): void {
+    this.agentHost.register(this.tabId());
+  }
+
+  /**
    * Holds the find adapter the shared find panel drives, bound to this view's ProseMirror editor.
    */
   protected readonly findAdapter: MarkdownFindAdapter = new MarkdownFindAdapter(
@@ -252,6 +279,22 @@ export class MarkdownView implements OnDestroy {
    * so their editor state is preserved, but they do not own the ribbon command handler.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
+   * life, service-only — the docked agent panel mounts lazily on first show, so registration cannot
+   * be left to its chat. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'editor',
+  });
+
+  /**
+   * Holds whether the agent panel has ever been opened for this tab, latching the panel mounted so
+   * closing it hides rather than destroys it (the open-state registry tracks only what is open now).
+   */
+  private readonly agentEverOpened: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the editor's scroll container, captured once here and shared with the outline scroll-spy and
@@ -274,6 +317,14 @@ export class MarkdownView implements OnDestroy {
    * review/read sessions as the view's active state changes.
    */
   public constructor() {
+    // Latch the agent panel mounted the first time it opens, so a later close hides it (keeping the
+    // conversation panel alive) instead of destroying it.
+    effect((): void => {
+      if (this.panels.openFor(this.tabId()).has('agent')) {
+        this.agentEverOpened.set(true);
+      }
+    });
+
     effect((): void => {
       const active: boolean = this.isActive();
       if (!this.paneReady()) {

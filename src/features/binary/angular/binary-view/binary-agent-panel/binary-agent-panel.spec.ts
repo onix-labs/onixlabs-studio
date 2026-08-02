@@ -1,5 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { BinaryDocumentEntry, BinaryDocuments } from '../../binary-document/binary-document';
 import { BinaryPanels } from '../../binary-panels/binary-panels';
 import { BinaryAgentPanel } from './binary-agent-panel';
@@ -21,7 +24,14 @@ describe('BinaryAgentPanel', () => {
     };
     await TestBed.configureTestingModule({
       imports: [BinaryAgentPanel],
-      providers: [{ provide: BinaryDocuments, useValue: documentsStub }],
+      // The agent and conversation are provided by the owning BinaryView in the app; the spec's
+      // TestBed stands in for that injector.
+      providers: [
+        Agent,
+        AgentConversation,
+        { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+        { provide: BinaryDocuments, useValue: documentsStub },
+      ],
     }).compileComponents();
     panels = TestBed.inject(BinaryPanels);
   });
