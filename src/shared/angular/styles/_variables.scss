@@ -130,10 +130,19 @@
   // Semantic state colours: a fixed set used ONLY to convey state (success, warning, error/danger,
   // info), deliberately independent of the accent palette so state never shifts with the user's chosen
   // accent. Single values shared by both themes for now — tuned per-theme later if contrast needs it.
+  // Each is exposed both as a hex primitive and as a bare RGB triplet, so — like the accent — it can
+  // drive a solid fill as well as the translucent surface (tinted fill + brighter border) that a toned
+  // button adopts. `--danger-color` names the same red as `--error-color`; both spellings are kept so
+  // "error" (a state) and "danger" (a button tone) each read naturally at their call sites.
   --success-color: #198754;
+  --success-color-rgb: 25, 135, 84;
   --warning-color: #fd7e14;
+  --warning-color-rgb: 253, 126, 20;
   --error-color: #dc3545;
+  --danger-color: var(--error-color);
+  --danger-color-rgb: 220, 53, 69;
   --info-color: #0dcaec;
+  --info-color-rgb: 13, 202, 236;
 
   --hover-transition: background-color 150ms ease-in-out, color 150ms ease-in-out;
 

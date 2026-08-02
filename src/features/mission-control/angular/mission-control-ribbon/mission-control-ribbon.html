@@ -3,6 +3,7 @@
     <app-ribbon-strip-button
       [icon]="Icon.STOP"
       label="Stop All"
+      tone="danger"
       [disabled]="runningCount() === 0"
       (action)="onStopAll()"
     />

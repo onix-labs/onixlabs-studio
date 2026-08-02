@@ -10,9 +10,9 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
- * Names how a button is drawn. This is its SHAPE, not its meaning: every variant is accented, and
- * the tones that carry meaning (danger, warning, success) are a separate axis still to come — adding
- * them must not disturb these.
+ * Names how a button is drawn. This is its SHAPE, not its meaning: the meaning a button carries lives
+ * on the separate {@link ButtonTone} axis, so any variant can wear any tone without the two disturbing
+ * each other.
  *
  * - `solid` — filled with the accent. The affirmative action of a pair, and never more than one in a
  *   group.
@@ -22,6 +22,18 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
  *   where a row of buttons would otherwise read as a wall of boxes.
  */
 export type ButtonVariant = 'solid' | 'outline' | 'none';
+
+/**
+ * Names the MEANING a button carries, the axis {@link ButtonVariant} deliberately leaves out. Tone
+ * colours the button — the accent by default, or one of the fixed state colours — without touching its
+ * shape, so any {@link ButtonVariant} can wear any tone: a `solid` `danger` is a filled red button, a
+ * `none` `danger` a quiet one whose glyph simply reads red.
+ *
+ * - `accent` — the active accent. The default, and what every button was before tones existed.
+ * - `success` / `warning` / `danger` / `info` — the semantic state colours, for an action whose
+ *   meaning (a destructive Stop, a confirming Save) should read before it is hovered.
+ */
+export type ButtonTone = 'accent' | 'success' | 'warning' | 'danger' | 'info';
 
 /**
  * Names how large a button is drawn. Size is a separate axis from {@link ButtonVariant}: any variant
@@ -54,6 +66,10 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--solid]': "variant() === 'solid'",
     '[class.button--outline]': "variant() === 'outline'",
     '[class.button--none]': "variant() === 'none'",
+    '[class.button--tone-success]': "tone() === 'success'",
+    '[class.button--tone-warning]': "tone() === 'warning'",
+    '[class.button--tone-danger]': "tone() === 'danger'",
+    '[class.button--tone-info]': "tone() === 'info'",
     '[class.button--small]': "size() === 'small'",
     '[class.button--icon-only]': 'isIconOnly()',
     '[class.button--pressed]': 'pressed() === true',
@@ -65,6 +81,13 @@ export class Button {
    * affirmative action of a pair, or for a button living in a strip.
    */
   public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('outline');
+
+  /**
+   * Gets the meaning the button carries, which colours it. Defaults to the accent, so an ordinary
+   * button is unchanged; a caller states a state tone for an action whose meaning should read at a
+   * glance (a destructive `danger`, a confirming `success`).
+   */
+  public readonly tone: InputSignal<ButtonTone> = input<ButtonTone>('accent');
 
   /**
    * Gets how large the button is drawn. Dense chrome — a row's hover affordances, a chip's remove

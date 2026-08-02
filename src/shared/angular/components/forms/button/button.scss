@@ -7,6 +7,15 @@
 // Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
 // radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
 .button {
+  // The button's colour, resolved through a local set of tone variables so shape and meaning stay
+  // separate axes: every coloured surface below reads these, and a tone class (below) is the only
+  // thing that repoints them off the accent. Left untouched, a button is accented exactly as before.
+  --btn-tone-color: var(--accent-color);
+  --btn-tone-surface-background: var(--accent-surface-background-color);
+  --btn-tone-surface-border: var(--accent-surface-border-color);
+  --btn-tone-surface-foreground: var(--accent-surface-foreground-color);
+  --btn-outline-border-color: var(--dock-border-color);
+
   display: inline-flex;
   flex: 1;
   align-items: center;
@@ -59,11 +68,57 @@
   padding: 0;
 }
 
-// Solid: the affirmative action, filled with the accent at rest and lifted on hover.
+// Tone: repoints the local tone variables off the accent onto a state colour. Only the four state
+// tones carry a class (the accent tone is the default and adds none), so these never touch an
+// ordinary button. Each builds the same tinted-fill / brighter-border surface the accent does, from
+// the state colour's RGB triplet.
+:host(.button--tone-success) .button {
+  --btn-tone-color: var(--success-color);
+  --btn-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
+  --btn-tone-surface-border: rgba(var(--success-color-rgb), 0.6);
+  --btn-tone-surface-foreground: var(--success-color);
+  --btn-outline-border-color: rgba(var(--success-color-rgb), 0.6);
+}
+
+:host(.button--tone-warning) .button {
+  --btn-tone-color: var(--warning-color);
+  --btn-tone-surface-background: rgba(var(--warning-color-rgb), 0.15);
+  --btn-tone-surface-border: rgba(var(--warning-color-rgb), 0.6);
+  --btn-tone-surface-foreground: var(--warning-color);
+  --btn-outline-border-color: rgba(var(--warning-color-rgb), 0.6);
+}
+
+:host(.button--tone-danger) .button {
+  --btn-tone-color: var(--danger-color);
+  --btn-tone-surface-background: rgba(var(--danger-color-rgb), 0.15);
+  --btn-tone-surface-border: rgba(var(--danger-color-rgb), 0.6);
+  --btn-tone-surface-foreground: var(--danger-color);
+  --btn-outline-border-color: rgba(var(--danger-color-rgb), 0.6);
+}
+
+:host(.button--tone-info) .button {
+  --btn-tone-color: var(--info-color);
+  --btn-tone-surface-background: rgba(var(--info-color-rgb), 0.15);
+  --btn-tone-surface-border: rgba(var(--info-color-rgb), 0.6);
+  --btn-tone-surface-foreground: var(--info-color);
+  --btn-outline-border-color: rgba(var(--info-color-rgb), 0.6);
+}
+
+// A toned button tints its resting glyph (and any label) so its meaning reads before it is hovered.
+// Placed ahead of the variant rules so a solid button below can still override the text to sit on its
+// fill. The accent tone adds no class, so this leaves every ordinary button untouched.
+:host(.button--tone-success) .button,
+:host(.button--tone-warning) .button,
+:host(.button--tone-danger) .button,
+:host(.button--tone-info) .button {
+  color: var(--btn-tone-surface-foreground);
+}
+
+// Solid: the affirmative action, filled with the tone at rest and lifted on hover.
 :host(.button--solid) .button {
   color: var(--gray-100);
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--btn-tone-color);
+  border-color: var(--btn-tone-color);
 
   &:hover:not(:disabled),
   &:focus-visible:not(:disabled) {
@@ -71,17 +126,18 @@
   }
 }
 
-// Outline: neutral until pointed at, then the accent surface — the counterpart to a solid button.
+// Outline: neutral until pointed at, then the tone surface — the counterpart to a solid button. A
+// toned outline carries the tone's border at rest too.
 :host(.button--outline) .button {
-  border-color: var(--dock-border-color);
+  border-color: var(--btn-outline-border-color);
 }
 
 // A toggle that is on wears the hover treatment permanently, so "engaged" and "pointed at" read as
 // the same state — which is what they are, one just persists.
 :host(.button--pressed) .button {
-  color: var(--accent-surface-foreground-color);
-  background: var(--accent-surface-background-color);
-  border-color: var(--accent-surface-border-color);
+  color: var(--btn-tone-surface-foreground);
+  background: var(--btn-tone-surface-background);
+  border-color: var(--btn-tone-surface-border);
 }
 
 // None: no chrome at rest, for buttons that sit in a row (tool strips, ribbon strips, panel
@@ -91,8 +147,8 @@
 :host(.button--none) .button {
   &:hover:not(:disabled),
   &:focus-visible:not(:disabled) {
-    color: var(--accent-surface-foreground-color);
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
+    color: var(--btn-tone-surface-foreground);
+    background: var(--btn-tone-surface-background);
+    border-color: var(--btn-tone-surface-border);
   }
 }

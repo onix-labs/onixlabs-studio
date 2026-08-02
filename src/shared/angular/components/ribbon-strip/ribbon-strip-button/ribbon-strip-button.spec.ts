@@ -43,4 +43,22 @@ describe('RibbonStripButton', () => {
     const button: HTMLButtonElement | null = element.querySelector<HTMLButtonElement>('button');
     expect(button?.disabled).toBe(true);
   });
+
+  it('tone_whenUnstated_isAccent_soTheButtonCarriesNoToneClass', () => {
+    const button: HTMLButtonElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('button');
+
+    expect(button?.className).not.toContain('ribbon-button--tone');
+  });
+
+  it('tone_whenStated_marksTheButton_soTheStylesheetColoursIt', () => {
+    fixture.componentRef.setInput('tone', 'danger');
+    fixture.detectChanges();
+
+    const button: HTMLButtonElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('button');
+    expect(button?.classList.contains('ribbon-button--tone-danger')).toBe(true);
+  });
 });

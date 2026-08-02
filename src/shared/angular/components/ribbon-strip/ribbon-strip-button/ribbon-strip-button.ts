@@ -7,6 +7,7 @@ import {
   OutputEmitterRef,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -34,6 +35,14 @@ export class RibbonStripButton {
    * Gets a value indicating whether the button is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the meaning the button carries, which colours it. Defaults to the accent, matching every
+   * other ribbon button; a caller states a state tone (a destructive `danger`) for a command whose
+   * meaning should read at a glance. It colours the glyph and label without changing the button's
+   * shape, so a toned ribbon button is styled exactly like its neighbours.
+   */
+  public readonly tone: InputSignal<ButtonTone> = input<ButtonTone>('accent');
 
   /**
    * Gets a value indicating whether only the icon is shown. The label is kept as the button's

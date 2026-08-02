@@ -104,4 +104,29 @@ describe('Button', () => {
 
     expect(host.classList.contains('button--small')).toBe(true);
   });
+
+  it('tone_whenUnstated_isAccent_soAnOrdinaryButtonCarriesNoToneClass', () => {
+    render({ label: 'Save' });
+
+    expect(host.classList.contains('button--tone-success')).toBe(false);
+    expect(host.classList.contains('button--tone-warning')).toBe(false);
+    expect(host.classList.contains('button--tone-danger')).toBe(false);
+    expect(host.classList.contains('button--tone-info')).toBe(false);
+  });
+
+  it('tone_whenStated_marksTheHost_soTheStylesheetColoursIt', () => {
+    render({ label: 'Stop', tone: 'danger' });
+    expect(host.classList.contains('button--tone-danger')).toBe(true);
+
+    render({ label: 'Save', tone: 'success' });
+    expect(host.classList.contains('button--tone-success')).toBe(true);
+    expect(host.classList.contains('button--tone-danger')).toBe(false);
+  });
+
+  it('tone_isIndependentOfVariant_soAnyShapeCanCarryAnyTone', () => {
+    render({ label: 'Stop', variant: 'solid', tone: 'danger' });
+
+    expect(host.classList.contains('button--solid')).toBe(true);
+    expect(host.classList.contains('button--tone-danger')).toBe(true);
+  });
 });
