@@ -182,6 +182,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private ignoreNextChange: boolean = false;
 
   /**
+   * Holds the last content string this editor itself emitted, so its own edit echoed back through
+   * the bound content is recognised by identity — without materialising and comparing the whole
+   * document on every keystroke (multi-megabyte files paid several full scans per key).
+   */
+  private lastEmittedContent: string | null = null;
+
+  /**
    * Initialises the pane, wiring effects for live settings/theme, external content updates, language
    * changes, and activation.
    */
@@ -229,17 +236,25 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     });
 
     // External content: replace the editor text when the bound content differs, without echoing it
-    // back through contentChange.
+    // back through contentChange. The editor's own edit coming back around is recognised by string
+    // identity first — the store passes the emitted string through unchanged — so the common
+    // per-keystroke case skips the full-document read and compare entirely.
     effect((): void => {
       const content: string = this.content();
       const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
       if (!this.editorReady() || editor === null) {
         return;
       }
+      if (content === this.lastEmittedContent) {
+        return;
+      }
       if (editor.getValue() !== content) {
         this.ignoreNextChange = true;
         editor.setValue(content);
       }
+      // The editor now holds this exact content, whichever branch ran; remembering it keeps the
+      // echo-skip above truthful after an external update.
+      this.lastEmittedContent = content;
     });
 
     // Language: retarget the model's language when the bound language changes.
@@ -540,7 +555,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         this.ignoreNextChange = false;
         return;
       }
-      this.contentChange.emit(this.editor?.getValue() ?? '');
+      const value: string = this.editor?.getValue() ?? '';
+      this.lastEmittedContent = value;
+      this.contentChange.emit(value);
     });
 
     this.editor.onDidChangeCursorPosition(

@@ -40,6 +40,11 @@ const BACKGROUND_LOAD_CONCURRENCY: number = 1;
 const RELOAD_DEBOUNCE_MS: number = 300;
 
 /**
+ * How long, in milliseconds, search-query keystrokes are debounced before the tree filter runs.
+ */
+const QUERY_DEBOUNCE_MS: number = 150;
+
+/**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
  * loading state already resolved so the view renders it directly.
  */
@@ -119,6 +124,11 @@ export class SolutionModel {
    * Holds the pending debounced reload timer, or null when none is scheduled.
    */
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the pending debounced search-query timer, or null when none is scheduled.
+   */
+  private queryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the changed directories accumulated for the pending debounced reload, or null when the
@@ -305,11 +315,19 @@ export class SolutionModel {
   }
 
   /**
-   * Sets the search query that filters the tree, or clears it when empty.
+   * Sets the search query that filters the tree, or clears it when empty. Debounced: filtering
+   * force-expands every matching branch and rebuilds the whole row list, so it must not run per
+   * keystroke of a fast typist on a large solution.
    * @param value The query text.
    */
   public setQuery(value: string): void {
-    this.searchQuery.set(value);
+    if (this.queryTimer !== null) {
+      clearTimeout(this.queryTimer);
+    }
+    this.queryTimer = setTimeout((): void => {
+      this.queryTimer = null;
+      this.searchQuery.set(value);
+    }, QUERY_DEBOUNCE_MS);
   }
 
   /**
@@ -534,6 +552,10 @@ export class SolutionModel {
       this.reloadTimer = null;
     }
     this.pendingChangedDirs = undefined;
+    if (this.queryTimer !== null) {
+      clearTimeout(this.queryTimer);
+      this.queryTimer = null;
+    }
   }
 
   /**
