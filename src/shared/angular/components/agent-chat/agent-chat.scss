@@ -534,58 +534,31 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// The expanded lane body: the sub-agent's own activity, inset behind a sub-rail line and set in
-// prose type (the mono of ordinary tool details is reset; the tech line keeps its own mono).
+// The expanded lane body: the sub-agent's own activity, inset behind an accent sub-rail line that
+// ties it back to the sub-agent's header. The mono of ordinary tool details is reset so the nested
+// rail carries the parent transcript's own type; the tech line keeps its own mono.
 .agent__lane-body {
   gap: 0.45rem;
-  margin-inline-start: 0.55rem;
-  padding-inline-start: 0.75rem;
+  margin-block-start: 0.5rem;
+  margin-inline-start: 0.6rem;
+  padding-inline-start: 0.85rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border-inline-start: 0.0625rem solid var(--agent-view-border-color);
+  border-inline-start: 0.125rem solid color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
 
-.agent__lane-tool {
+// The nested sub-agent rail: the sub-agent's own timeline, rendered through the same row markup as
+// the parent so it looks identical, only nested. Rows sit flush (their connectors join into one
+// line); the trailing padding-block-end each row carries handles the spacing.
+.agent__lane-rail {
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.82rem;
+  flex-direction: column;
+  min-inline-size: 0;
 
-  app-icon {
-    flex: 0 0 auto;
-    font-size: 0.85rem;
-    color: var(--form-muted-foreground-color);
+  // The last nested row's trailing space is redundant inside the inset body.
+  .agent__row:last-child {
+    padding-block-end: 0;
   }
-
-  // A live tool's spinner reads as activity.
-  .agent__spin {
-    color: var(--accent-color);
-  }
-}
-
-.agent__lane-tool--error {
-  color: var(--warning-color);
-
-  app-icon {
-    color: var(--warning-color);
-  }
-}
-
-.agent__lane-tool-detail {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.agent__lane-text {
-  max-inline-size: 100%;
-  padding: 0.45rem 0.6rem;
-  font-size: 0.85rem;
-  background: var(--agent-view-surface-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
 }
 
 .agent__working {
@@ -1182,7 +1155,6 @@ $agent-node-size: 1.75rem;
 .agent__edit-banner,
 .agent__image-thumb,
 .agent__bubble-image,
-.agent__lane-text,
 .agent__suggest,
 .agent__suggest-item,
 .agent__prompts-item,

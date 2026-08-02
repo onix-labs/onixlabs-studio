@@ -621,6 +621,56 @@ describe('AgentChat', () => {
     expect(payloads[1].textContent).toContain('no such directory');
   });
 
+  it('subAgent_rendersItsActivityAsANestedTimeline_notAFlatList', () => {
+    items.set([
+      {
+        id: 'task-1',
+        kind: 'tool',
+        text: '',
+        toolId: 'task-1',
+        toolName: 'Task',
+        toolDetail: 'Explore the repo',
+        toolState: 'ok',
+        agentType: 'Explore',
+      },
+      { id: 'kid-1', kind: 'assistant', text: 'Looked around.', parentToolId: 'task-1' },
+      {
+        id: 'kid-2',
+        kind: 'tool',
+        text: '',
+        toolId: 'k2',
+        toolName: 'Grep',
+        toolDetail: 'foo',
+        toolState: 'ok',
+        toolInput: '{ "pattern": "foo" }',
+        parentToolId: 'task-1',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const lane: HTMLElement | null = host.querySelector('.agent__lane');
+    expect(lane).not.toBeNull();
+    expect(
+      lane!.querySelector('.agent__lane-summary .agent__action-label')?.textContent?.trim(),
+    ).toBe('Explore');
+
+    // The sub-agent's activity renders through the SAME rail markup as the parent: proper timeline
+    // rows, an assistant bubble, and an expandable tool action — not the old flat one-liners.
+    const nestedRows: NodeListOf<Element> = lane!.querySelectorAll('.agent__lane-rail .agent__row');
+    expect(nestedRows.length).toBe(2);
+    expect(lane!.querySelector('.agent__lane-rail .agent__bubble')?.textContent).toContain(
+      'Looked around.',
+    );
+    const nestedTool: HTMLElement | null = lane!.querySelector('.agent__lane-rail .agent__action');
+    expect(nestedTool?.tagName.toLowerCase()).toBe('details');
+    expect(nestedTool?.querySelector('.agent__action-payload')?.textContent).toContain('"pattern"');
+
+    // The flattened lane styling is gone entirely.
+    expect(host.querySelector('.agent__lane-tool')).toBeNull();
+    expect(host.querySelector('.agent__lane-text')).toBeNull();
+  });
+
   it('payloads_whenLong_clipBehindShowAllUntilRevealed', () => {
     const long: string = 'x'.repeat(2_000);
     items.set([
