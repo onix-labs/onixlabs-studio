@@ -26,10 +26,12 @@ export type SolutionRowKind = 'solution' | 'folder' | 'project' | 'item-folder' 
 const ROOT_KEY: string = 'solution-root';
 
 /**
- * How many projects' contents are evaluated at once when a solution opens, bounding the number of
- * concurrent `dotnet` evaluations.
+ * How many projects' contents are evaluated at once by the background sweep. Deliberately 1: each
+ * evaluation is a full MSBuild process, and the sweep runs while the language server is loading the
+ * same solution — a wider sweep saturated the machine on large solutions. Expanding or revealing a
+ * project jumps the queue and fetches immediately, so the trickle costs the user nothing.
  */
-const LOAD_CONCURRENCY: number = 4;
+const BACKGROUND_LOAD_CONCURRENCY: number = 1;
 
 /**
  * How long, in milliseconds, external on-disk changes are debounced before the model reloads, so a
@@ -87,11 +89,13 @@ export interface SolutionRow {
 /**
  * Holds and drives this tab's Solution Explorer. When a .NET workspace opens, it fetches the logical
  * project model for the root and shows the full structure — solution folders and projects — straight
- * away, while eagerly evaluating every project's contents up front so expansion never waits. Each
- * project carries its own loading spinner, shown until that project's contents have loaded. Exposes the
- * model's presence (which the directory view uses to show or hide the panel) and a flattened row list
- * the panel renders. Provided per directory tab. Outside Electron the bridge is absent and the model
- * stays null.
+ * away, while a low-priority background sweep evaluates project contents one at a time (so search and
+ * expand-all eventually cover everything without saturating the machine at open). Expanding or
+ * revealing a project jumps the queue and fetches its contents immediately; a project carries a
+ * spinner while its fetch is in flight. External change bursts reload only the projects whose
+ * directories actually changed. Exposes the model's presence (which the directory view uses to show
+ * or hide the panel) and a flattened row list the panel renders. Provided per directory tab. Outside
+ * Electron the bridge is absent and the model stays null.
  */
 @Service()
 export class SolutionModel {
@@ -115,6 +119,30 @@ export class SolutionModel {
    * Holds the pending debounced reload timer, or null when none is scheduled.
    */
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the changed directories accumulated for the pending debounced reload, or null when the
+   * whole tree must be treated as changed (an overflow burst), or undefined when no reload is
+   * pending. Drives the targeted reload: only projects whose directories appear here re-evaluate.
+   */
+  private pendingChangedDirs: Set<string> | null | undefined = undefined;
+
+  /**
+   * Holds the background evaluation queue for the current load generation: the paths of the projects
+   * whose contents have not been fetched yet, drained one at a time.
+   */
+  private queue: string[] = [];
+
+  /**
+   * Holds the number of fetches currently running from the background queue.
+   */
+  private activeWorkers: number = 0;
+
+  /**
+   * Holds the paths of the projects whose contents fetch is currently in flight (from the queue or a
+   * priority request), so the same project is never fetched twice concurrently.
+   */
+  private readonly inFlight: Set<string> = new Set<string>();
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -256,7 +284,8 @@ export class SolutionModel {
   }
 
   /**
-   * Toggles a row's expansion. Contents are already loaded, so expansion never fetches.
+   * Toggles a row's expansion. Expanding a project whose contents have not arrived yet requests them
+   * ahead of the background sweep; its children appear (under its spinner) when they do.
    * @param row The row to toggle.
    */
   public toggle(row: SolutionRow): void {
@@ -268,6 +297,9 @@ export class SolutionModel {
       next.delete(row.key);
     } else {
       next.add(row.key);
+      if (row.kind === 'project' && row.path !== null) {
+        this.requestItems(row.path);
+      }
     }
     this.expandedKeys.set(next);
   }
@@ -303,6 +335,9 @@ export class SolutionModel {
     }
     const chain: readonly string[] | null = this.keysToFile(model, path);
     if (chain === null) {
+      // The file may belong to a project whose contents have not arrived yet: request them ahead of
+      // the background sweep so a later reveal (the next activation, the next document switch) lands.
+      this.warmOwningProject(model, path);
       return false;
     }
     this.expandedKeys.update((current: ReadonlySet<string>): ReadonlySet<string> => {
@@ -385,6 +420,28 @@ export class SolutionModel {
   }
 
   /**
+   * Requests the contents of the project a file lies within (by deepest directory prefix) when they
+   * are not loaded yet, so features that need the file's tree position can find it shortly.
+   * @param model The model to search.
+   * @param path The absolute file path.
+   */
+  private warmOwningProject(model: ProjectModel, path: string): void {
+    const normalized: string = path.replaceAll('\\', '/');
+    let owner: string | null = null;
+    let ownerDirectory: string = '';
+    for (const project of model.projects) {
+      const directory: string = project.path.replaceAll('\\', '/').replace(/\/[^/]*$/, '');
+      if (normalized.startsWith(`${directory}/`) && directory.length > ownerDirectory.length) {
+        owner = project.path;
+        ownerDirectory = directory;
+      }
+    }
+    if (owner !== null) {
+      this.requestItems(owner);
+    }
+  }
+
+  /**
    * Expands every node in the tree, so the whole structure is revealed.
    */
   public expandAll(): void {
@@ -424,39 +481,59 @@ export class SolutionModel {
     }
     this.reset(model);
     if (model !== null) {
-      void this.loadAllContents(model, generation);
+      this.scheduleContents(
+        model.projects.map((project: ProjectEntry): string => project.path),
+        generation,
+      );
     }
   }
 
   /**
-   * Handles a burst of external on-disk changes under the root, scheduling a debounced reload. Bursts
-   * confined to the repository's `.git` directory or the workspace's `.studio` folder are ignored:
-   * they change no project structure, and every git operation or settings write would otherwise
-   * re-evaluate the solution. An overflow burst always reloads — the watcher drops build-output and
-   * dependency churn before it can overflow, so an overflow means a genuinely tree-wide change (a
-   * large checkout) that may well have changed project structure.
+   * Handles a burst of external on-disk changes under the root, accumulating the changed directories
+   * and scheduling a debounced, targeted reload. Bursts confined to the repository's `.git` directory
+   * or the workspace's `.studio` folder are ignored: they change no project structure, and every git
+   * operation or settings write would otherwise re-evaluate the solution. An overflow burst reloads
+   * everything — the watcher drops build-output and dependency churn before it can overflow, so an
+   * overflow means a genuinely tree-wide change (a large checkout) that may well have changed project
+   * structure.
    * @param root The workspace root the changes occurred under.
    * @param event The change burst.
    */
   private onTreeChanged(root: string, event: DirectoryChangeEvent): void {
-    if (!event.overflow && event.directories.every(this.isReloadExempt.bind(this, root))) {
+    const relevant: string[] = event.directories.filter(
+      (directory: string): boolean => !this.isReloadExempt(root, directory),
+    );
+    if (!event.overflow && relevant.length === 0) {
       return;
     }
-    this.cancelReload();
+    if (event.overflow) {
+      this.pendingChangedDirs = null;
+    } else if (this.pendingChangedDirs !== null) {
+      this.pendingChangedDirs ??= new Set<string>();
+      for (const directory of relevant) {
+        this.pendingChangedDirs.add(directory);
+      }
+    }
+    if (this.reloadTimer !== null) {
+      clearTimeout(this.reloadTimer);
+    }
     this.reloadTimer = setTimeout((): void => {
       this.reloadTimer = null;
-      void this.reload(root);
+      const changed: ReadonlySet<string> | null = this.pendingChangedDirs ?? null;
+      this.pendingChangedDirs = undefined;
+      void this.reload(root, changed);
     }, RELOAD_DEBOUNCE_MS);
   }
 
   /**
-   * Cancels any pending debounced reload.
+   * Cancels any pending debounced reload and discards its accumulated changes.
    */
   private cancelReload(): void {
     if (this.reloadTimer !== null) {
       clearTimeout(this.reloadTimer);
       this.reloadTimer = null;
     }
+    this.pendingChangedDirs = undefined;
   }
 
   /**
@@ -479,11 +556,14 @@ export class SolutionModel {
    * Reloads the model for the current root after its contents changed on disk, preserving the
    * expansion state (unlike {@link refresh}, which resets it for a newly-opened root). Projects whose
    * contents were already loaded keep showing them until their fresh contents arrive, so the tree does
-   * not flash back to spinners on every external change. A stale response is discarded.
+   * not flash back to spinners on every external change — and only the projects whose directories
+   * actually changed re-evaluate; the rest keep their cached contents untouched. A stale response is
+   * discarded.
    * @param root The workspace root to reload.
+   * @param changed The changed directories driving the reload, or null to treat everything as changed.
    * @returns Returns a promise that resolves once the model has been reloaded.
    */
-  private async reload(root: string): Promise<void> {
+  private async reload(root: string, changed: ReadonlySet<string> | null): Promise<void> {
     const generation: number = ++this.generation;
     if (this.bridge === undefined) {
       return;
@@ -502,23 +582,49 @@ export class SolutionModel {
       this.expandedKeys.set(new Set<string>());
       return;
     }
-    // Spinners only for projects the cache knows nothing about; known projects keep their previous
-    // contents visible until the fresh contents replace them below.
+    // Drop cached contents of projects that left the model, keep the rest visible while any fresh
+    // contents arrive, and re-evaluate only what the burst could have affected: a project is skipped
+    // when its contents are cached and none of the changed directories lie inside it.
     const cache: ReadonlyMap<string, ProjectItems> = this.itemsByProject();
-    const loading: Set<string> = new Set<string>();
+    const kept: Map<string, ProjectItems> = new Map<string, ProjectItems>();
+    const stale: string[] = [];
     for (const project of model.projects) {
-      if (!cache.has(project.path)) {
-        loading.add(project.path);
+      const items: ProjectItems | undefined = cache.get(project.path);
+      if (items !== undefined) {
+        kept.set(project.path, items);
+      }
+      if (items === undefined || changed === null || this.projectTouched(project.path, changed)) {
+        stale.push(project.path);
       }
     }
-    this.loadingProjects.set(loading);
-    void this.loadAllContents(model, generation);
+    if (kept.size !== cache.size) {
+      this.itemsByProject.set(kept);
+    }
+    this.scheduleContents(stale, generation);
   }
 
   /**
-   * Replaces the model and resets the tree state, collapsing everything but the solution root, and
-   * marking every project as loading so each carries its own spinner until its contents arrive. The
-   * tree stays collapsed to the root; the user expands the projects and folders they want.
+   * Determines whether any changed directory lies within a project's directory, so the project's
+   * items (which live beneath it, links aside) may have changed.
+   * @param projectPath The absolute project-file path.
+   * @param changed The changed directories.
+   * @returns Returns true when the project is touched by the burst.
+   */
+  private projectTouched(projectPath: string, changed: ReadonlySet<string>): boolean {
+    const directory: string = projectPath.replaceAll('\\', '/').replace(/\/[^/]*$/, '');
+    for (const candidate of changed) {
+      const normalized: string = candidate.replaceAll('\\', '/');
+      if (normalized === directory || normalized.startsWith(`${directory}/`)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Replaces the model and resets the tree state, collapsing everything but the solution root. A
+   * project carries a spinner only while its contents fetch is actually in flight, not while it waits
+   * in the background queue.
    * @param model The new model, or null to clear.
    */
   private reset(model: ProjectModel | null): void {
@@ -526,67 +632,99 @@ export class SolutionModel {
     this.itemsByProject.set(new Map<string, ProjectItems>());
     this.searchQuery.set('');
     this.selectedKeySignal.set(null);
-    // Start collapsed to just the solution root; every project shows its own spinner while it loads.
-    const loading: Set<string> = new Set<string>();
-    const expanded: Set<string> = new Set<string>();
-    if (model !== null) {
-      for (const project of model.projects) {
-        loading.add(project.path);
-      }
-      expanded.add(ROOT_KEY);
-    }
-    this.loadingProjects.set(loading);
-    this.expandedKeys.set(expanded);
-  }
-
-  /**
-   * Eagerly evaluates every project's contents, a bounded number at a time, populating the cache and
-   * clearing each project's spinner as it completes — whether or not it yielded contents, so a spinner
-   * never spins forever. Applies nothing once superseded.
-   * @param model The model whose projects are loaded.
-   * @param generation The load generation this work belongs to.
-   * @returns Returns a promise that resolves once loading completes.
-   */
-  private async loadAllContents(model: ProjectModel, generation: number): Promise<void> {
-    const queue: ProjectEntry[] = [...model.projects];
-    const worker: () => Promise<void> = async (): Promise<void> => {
-      for (
-        let next: ProjectEntry | undefined = queue.shift();
-        next !== undefined;
-        next = queue.shift()
-      ) {
-        const items: ProjectItems | null =
-          (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, next.path)) ??
-          null;
-        if (generation !== this.generation) {
-          return;
-        }
-        if (items !== null) {
-          const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
-            this.itemsByProject(),
-          );
-          cache.set(items.projectPath, items);
-          this.itemsByProject.set(cache);
-        }
-        this.clearLoading(next.path);
-      }
-    };
-    await Promise.all(
-      Array.from(
-        { length: Math.min(LOAD_CONCURRENCY, queue.length) },
-        (): Promise<void> => worker(),
-      ),
+    this.loadingProjects.set(new Set<string>());
+    this.expandedKeys.set(
+      model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>(),
     );
   }
 
   /**
-   * Clears a project's loading state, removing its spinner.
-   * @param path The path of the project that finished loading.
+   * Replaces the background evaluation queue with the given project paths and starts draining it, a
+   * bounded number of fetches at a time. The queue belongs to the given load generation; a newer
+   * refresh or reload replaces it wholesale.
+   * @param paths The paths of the projects whose contents need (re-)evaluating.
+   * @param generation The load generation this work belongs to.
    */
-  private clearLoading(path: string): void {
-    const loading: Set<string> = new Set<string>(this.loadingProjects());
-    loading.delete(path);
-    this.loadingProjects.set(loading);
+  private scheduleContents(paths: readonly string[], generation: number): void {
+    this.queue = paths.filter((path: string): boolean => !this.inFlight.has(path));
+    this.pump(generation);
+  }
+
+  /**
+   * Drains the background queue up to the concurrency bound, fetching one project's contents per
+   * worker and re-pumping as each completes. Stops when the generation is superseded.
+   * @param generation The load generation the queue belongs to.
+   */
+  private pump(generation: number): void {
+    while (
+      this.activeWorkers < BACKGROUND_LOAD_CONCURRENCY &&
+      this.queue.length > 0 &&
+      generation === this.generation
+    ) {
+      const next: string = this.queue.shift()!;
+      if (this.inFlight.has(next)) {
+        continue;
+      }
+      this.activeWorkers += 1;
+      void this.fetchItems(next, generation).finally((): void => {
+        this.activeWorkers -= 1;
+        this.pump(generation);
+      });
+    }
+  }
+
+  /**
+   * Requests a project's contents ahead of the background sweep: called when the user expands or
+   * reveals a project whose contents have not arrived yet, so their intent is never queued behind the
+   * trickle. Already-loaded and already-fetching projects are left alone.
+   * @param path The absolute project-file path.
+   */
+  private requestItems(path: string): void {
+    if (this.itemsByProject().has(path) || this.inFlight.has(path)) {
+      return;
+    }
+    this.queue = this.queue.filter((queued: string): boolean => queued !== path);
+    void this.fetchItems(path, this.generation);
+  }
+
+  /**
+   * Fetches one project's contents, marking it loading while the fetch is in flight and applying the
+   * result unless the load generation has been superseded. The spinner clears whether or not the
+   * evaluation yielded contents, so it never spins forever.
+   * @param path The absolute project-file path.
+   * @param generation The load generation this fetch belongs to.
+   * @returns Returns a promise that resolves once the fetch has settled.
+   */
+  private async fetchItems(path: string, generation: number): Promise<void> {
+    this.inFlight.add(path);
+    this.setLoading(path, true);
+    const items: ProjectItems | null =
+      (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
+    this.inFlight.delete(path);
+    if (generation !== this.generation) {
+      return;
+    }
+    if (items !== null) {
+      const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
+      cache.set(items.projectPath, items);
+      this.itemsByProject.set(cache);
+    }
+    this.setLoading(path, false);
+  }
+
+  /**
+   * Sets or clears a project's loading state, showing or removing its spinner.
+   * @param path The project path.
+   * @param loading Whether the project's contents fetch is in flight.
+   */
+  private setLoading(path: string, loading: boolean): void {
+    const next: Set<string> = new Set<string>(this.loadingProjects());
+    if (loading) {
+      next.add(path);
+    } else {
+      next.delete(path);
+    }
+    this.loadingProjects.set(next);
   }
 
   /**
@@ -648,10 +786,9 @@ export class SolutionModel {
         const key: string = `project:${node.path}`;
         const expanded: boolean = this.expandedKeys().has(key);
         const loading: boolean = this.loadingProjects().has(node.path);
-        // A loading project hides its caret and cannot be expanded until its contents arrive.
-        rows.push(
-          this.row(key, depth, node.name, 'project', !loading, expanded, loading, node.path),
-        );
+        // A project is always expandable: expanding one whose contents have not arrived requests
+        // them ahead of the background sweep, and its children appear when they do.
+        rows.push(this.row(key, depth, node.name, 'project', true, expanded, loading, node.path));
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {
           this.appendItems(items.tree, depth + 1, key, rows);
@@ -766,7 +903,7 @@ export class SolutionModel {
           this.appendItemsFiltered(items.tree, depth + 1, key, childRows, query);
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
-            this.row(key, depth, node.name, 'project', !loading, childMatched, loading, node.path),
+            this.row(key, depth, node.name, 'project', true, childMatched, loading, node.path),
           );
           rows.push(...childRows);
           matched = true;

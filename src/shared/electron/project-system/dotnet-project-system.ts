@@ -44,7 +44,12 @@ const DOTNET_CAPABILITIES: ProjectCapabilities = {
 const execFileAsync: (
   file: string,
   args: readonly string[],
-  options: { maxBuffer: number },
+  options: {
+    maxBuffer: number;
+    timeout?: number;
+    killSignal?: NodeJS.Signals;
+    env?: NodeJS.ProcessEnv;
+  },
 ) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
 
 /**
@@ -52,6 +57,34 @@ const execFileAsync: (
  * truncated.
  */
 const ITEM_QUERY_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * How long, in milliseconds, an evaluation-only `dotnet` query (properties, items, target path) may
+ * run before it is killed. Evaluation takes seconds even on heavyweight projects; a query still
+ * running after this long is wedged, and without a bound it would hold CPU with no cancel path.
+ */
+const EVALUATION_TIMEOUT_MS: number = 60_000;
+
+/**
+ * How long, in milliseconds, a real compilation (resolving a debug target) may run before it is
+ * killed. Generous, since a cold build of a large project legitimately takes minutes.
+ */
+const BUILD_TIMEOUT_MS: number = 600_000;
+
+/**
+ * How long, in milliseconds, a `dotnet --version` probe may run before the candidate is rejected.
+ */
+const PROBE_TIMEOUT_MS: number = 10_000;
+
+/**
+ * The environment `dotnet` children run with: MSBuild worker-node reuse and the persistent MSBuild
+ * server are disabled, so an invocation leaves no background processes behind — reused worker nodes
+ * live ~15 minutes by design and survive the application, which is how a force-killed session kept
+ * stalling the machine afterwards.
+ */
+function dotnetEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_USE_MSBUILD_SERVER: '0' };
+}
 
 /**
  * The MSBuild item types whose members are shown as a project's files.
@@ -113,6 +146,16 @@ export class DotnetProjectSystem implements ProjectSystem {
   private dotnetProbe: Promise<string | null> | null = null;
 
   /**
+   * Holds the in-flight item evaluations, keyed by project path, so concurrent requests for the same
+   * project (several views over one root, overlapping reloads) share one `dotnet` invocation instead
+   * of stacking duplicates.
+   */
+  private readonly inFlightItems: Map<string, Promise<ProjectItems | null>> = new Map<
+    string,
+    Promise<ProjectItems | null>
+  >();
+
+  /**
    * Determines whether this provider owns a project file (a .NET project by extension).
    * @param projectPath The absolute project-file path.
    * @returns Returns true when the file is a .NET project.
@@ -172,24 +215,51 @@ export class DotnetProjectSystem implements ProjectSystem {
 
   /**
    * Loads a project's logical contents by evaluating its MSBuild file items (Compile, Content, None,
-   * EmbeddedResource), honouring linked files. A multi-targeted project is evaluated against one of its
-   * frameworks, since its items live in the per-framework inner build.
+   * EmbeddedResource), honouring linked files. Concurrent requests for the same project share one
+   * evaluation.
    * @param projectPath The absolute path of the project file.
    * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
    */
-  public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  public loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+    const existing: Promise<ProjectItems | null> | undefined = this.inFlightItems.get(projectPath);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const load: Promise<ProjectItems | null> = this.evaluateProjectItems(projectPath).finally(
+      (): void => {
+        this.inFlightItems.delete(projectPath);
+      },
+    );
+    this.inFlightItems.set(projectPath, load);
+    return load;
+  }
+
+  /**
+   * Evaluates a project's items and frameworks in a single `dotnet` invocation. A multi-targeted
+   * project needs a second, framework-pinned evaluation — its items live in the per-framework inner
+   * build — but the common single-target project resolves in one process.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
+   */
+  private async evaluateProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const dotnet: string | null = await this.resolveDotnet();
     if (dotnet === null) {
       return null;
     }
-    const tfm: string | null = await this.effectiveFramework(dotnet, projectPath);
-    const items: { identity: string; link: string }[] | null = await this.queryItems(
-      dotnet,
-      projectPath,
-      tfm,
-    );
-    if (items === null) {
+    const combined: {
+      frameworks: { single: string; many: string };
+      items: { identity: string; link: string }[];
+    } | null = await this.queryProject(dotnet, projectPath);
+    if (combined === null) {
       return null;
+    }
+    let items: { identity: string; link: string }[] | null = combined.items;
+    if (combined.frameworks.single.length === 0 && combined.frameworks.many.length > 0) {
+      const framework: string = combined.frameworks.many.split(';')[0].trim();
+      items = await this.queryItems(dotnet, projectPath, framework);
+      if (items === null) {
+        return null;
+      }
     }
     return { projectPath, tree: this.buildItemTree(projectPath, items) };
   }
@@ -220,6 +290,9 @@ export class DotnetProjectSystem implements ProjectSystem {
     try {
       await execFileAsync(dotnet, ['build', projectPath, '-c', configurationName, '--nologo'], {
         maxBuffer: ITEM_QUERY_BUFFER,
+        timeout: BUILD_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        env: dotnetEnv(),
       });
     } catch (error: unknown) {
       return { target: null, error: `Build failed.\n${buildErrorText(error)}` };
@@ -267,8 +340,13 @@ export class DotnetProjectSystem implements ProjectSystem {
     try {
       const { stdout }: { stdout: string } = await execFileAsync(
         dotnet,
-        ['build', projectPath, '-c', configurationName, '--getProperty:TargetPath'],
-        { maxBuffer: ITEM_QUERY_BUFFER },
+        ['build', projectPath, '-c', configurationName, '--no-restore', '--getProperty:TargetPath'],
+        {
+          maxBuffer: ITEM_QUERY_BUFFER,
+          timeout: EVALUATION_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+          env: dotnetEnv(),
+        },
       );
       const targetPath: string = stdout.trim();
       return targetPath.length > 0 ? targetPath : null;
@@ -306,7 +384,11 @@ export class DotnetProjectSystem implements ProjectSystem {
     );
     for (const candidate of candidates) {
       try {
-        await execFileAsync(candidate, ['--version'], { maxBuffer: ITEM_QUERY_BUFFER });
+        await execFileAsync(candidate, ['--version'], {
+          maxBuffer: ITEM_QUERY_BUFFER,
+          timeout: PROBE_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+        });
         return candidate;
       } catch {
         // Try the next candidate.
@@ -316,72 +398,107 @@ export class DotnetProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Resolves the framework to evaluate a project against: its single `TargetFramework`, or the first of
-   * its `TargetFrameworks` when multi-targeted, or null when neither is set.
+   * Evaluates a project's frameworks and file items in one `dotnet` invocation. Evaluation-only
+   * (`--no-restore`, so no implicit restore can write into `obj/` and re-trigger the tree watcher),
+   * bounded by a timeout, and run with MSBuild's background-process reuse disabled.
    * @param dotnet The `dotnet` executable.
    * @param projectPath The absolute path of the project file.
-   * @returns Returns the framework moniker, or null.
+   * @returns Returns the frameworks and items, or null when evaluation fails.
    */
-  private async effectiveFramework(dotnet: string, projectPath: string): Promise<string | null> {
+  private async queryProject(
+    dotnet: string,
+    projectPath: string,
+  ): Promise<{
+    frameworks: { single: string; many: string };
+    items: { identity: string; link: string }[];
+  } | null> {
+    const args: string[] = [
+      'build',
+      projectPath,
+      '--no-restore',
+      '--getProperty:TargetFramework',
+      '--getProperty:TargetFrameworks',
+    ];
+    for (const type of ITEM_TYPES) {
+      args.push(`--getItem:${type}`);
+    }
     try {
-      const { stdout }: { stdout: string } = await execFileAsync(
-        dotnet,
-        ['build', projectPath, '--getProperty:TargetFramework', '--getProperty:TargetFrameworks'],
-        { maxBuffer: ITEM_QUERY_BUFFER },
-      );
-      const parsed: { Properties?: { TargetFramework?: string; TargetFrameworks?: string } } =
-        JSON.parse(stdout) as {
-          Properties?: { TargetFramework?: string; TargetFrameworks?: string };
-        };
-      const single: string = parsed.Properties?.TargetFramework?.trim() ?? '';
-      if (single.length > 0) {
-        return single;
-      }
-      const many: string = parsed.Properties?.TargetFrameworks?.trim() ?? '';
-      return many.length > 0 ? many.split(';')[0].trim() : null;
+      const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
+        maxBuffer: ITEM_QUERY_BUFFER,
+        timeout: EVALUATION_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        env: dotnetEnv(),
+      });
+      const parsed: {
+        Properties?: { TargetFramework?: string; TargetFrameworks?: string };
+        Items?: Record<string, { Identity?: string; Link?: string }[]>;
+      } = JSON.parse(stdout) as {
+        Properties?: { TargetFramework?: string; TargetFrameworks?: string };
+        Items?: Record<string, { Identity?: string; Link?: string }[]>;
+      };
+      return {
+        frameworks: {
+          single: parsed.Properties?.TargetFramework?.trim() ?? '',
+          many: parsed.Properties?.TargetFrameworks?.trim() ?? '',
+        },
+        items: this.collectItems(parsed.Items),
+      };
     } catch {
       return null;
     }
   }
 
   /**
-   * Evaluates a project's file items, optionally against a specific framework.
+   * Evaluates a project's file items against a specific framework — the second pass a multi-targeted
+   * project needs, since its items live in the per-framework inner build.
    * @param dotnet The `dotnet` executable.
    * @param projectPath The absolute path of the project file.
-   * @param framework The framework to evaluate against, or null for the default evaluation.
+   * @param framework The framework to evaluate against.
    * @returns Returns the items (identity and link), or null when evaluation fails.
    */
   private async queryItems(
     dotnet: string,
     projectPath: string,
-    framework: string | null,
+    framework: string,
   ): Promise<{ identity: string; link: string }[] | null> {
-    const args: string[] = ['build', projectPath];
+    const args: string[] = ['build', projectPath, '--no-restore'];
     for (const type of ITEM_TYPES) {
       args.push(`--getItem:${type}`);
     }
-    if (framework !== null) {
-      args.push(`-p:TargetFramework=${framework}`);
-    }
+    args.push(`-p:TargetFramework=${framework}`);
     try {
       const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
         maxBuffer: ITEM_QUERY_BUFFER,
+        timeout: EVALUATION_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        env: dotnetEnv(),
       });
       const parsed: { Items?: Record<string, { Identity?: string; Link?: string }[]> } = JSON.parse(
         stdout,
       ) as { Items?: Record<string, { Identity?: string; Link?: string }[]> };
-      const items: { identity: string; link: string }[] = [];
-      for (const type of ITEM_TYPES) {
-        for (const item of parsed.Items?.[type] ?? []) {
-          if (item.Identity !== undefined && item.Identity.length > 0) {
-            items.push({ identity: item.Identity, link: item.Link ?? '' });
-          }
-        }
-      }
-      return items;
+      return this.collectItems(parsed.Items);
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Collects the recognised item types from a parsed evaluation into identity/link pairs.
+   * @param parsed The parsed `Items` payload, or undefined.
+   * @returns Returns the items in item-type order.
+   */
+  private collectItems(
+    parsed: Record<string, { Identity?: string; Link?: string }[]> | undefined,
+  ): { identity: string; link: string }[] {
+    const items: { identity: string; link: string }[] = [];
+    for (const type of ITEM_TYPES) {
+      for (const item of parsed?.[type] ?? []) {
+        if (item.Identity !== undefined && item.Identity.length > 0) {
+          items.push({ identity: item.Identity, link: item.Link ?? '' });
+        }
+      }
+    }
+    return items;
   }
 
   /**
