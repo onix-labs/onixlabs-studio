@@ -23,6 +23,8 @@ import {
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
+import { pidJournal } from '../pid-journal';
+import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
@@ -33,6 +35,28 @@ import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-re
  * server that gets torn down mid-handshake would otherwise be re-spawned only to time out again.
  */
 const INITIALIZE_TIMEOUT_MS: number = 60000;
+
+/**
+ * Specifies how long, in milliseconds, to wait for a server's `shutdown` response when a session is
+ * stopped. Deliberately much shorter than the initialize timeout: a stop happens because the user
+ * closed a tab or workspace, and a server busy loading a large solution may not answer until the load
+ * finishes — the session must not keep burning CPU for up to a minute after its consumer is gone. The
+ * kill that follows escalates to SIGKILL on its own grace period.
+ */
+const SHUTDOWN_TIMEOUT_MS: number = 3000;
+
+/**
+ * The server notifications forwarded to the renderer — exactly the set the renderer's client
+ * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
+ * costs an IPC hop.
+ */
+const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
+  'textDocument/publishDiagnostics',
+  'workspace/projectInitializationComplete',
+  'workspace/semanticTokens/refresh',
+  'window/logMessage',
+  'window/showMessage',
+]);
 
 /**
  * Holds a running language-server session: its message connection, child process, and workspace root.
@@ -52,6 +76,21 @@ interface LspSession {
    * Holds the absolute workspace root the server is rooted at.
    */
   readonly rootPath: string;
+
+  /**
+   * Holds how many renderer clients are using this session. Several surfaces can open the same root
+   * (two tabs on one folder, a docked and a standalone editor): each Start increments, each Stop
+   * decrements, and the server is only torn down when the count reaches zero — one surface closing
+   * must not kill the server another is still using.
+   */
+  refCount: number;
+
+  /**
+   * Holds the outcome of the session's initialize handshake, shared with every client that starts
+   * the same session — a deduplicated Start must receive the real capabilities, not a bare success
+   * (a client without capabilities silently loses pull diagnostics and semantic tokens).
+   */
+  ready: Promise<LspStartResult>;
 }
 
 /**
@@ -149,8 +188,10 @@ export class LspManager {
     if (parsed === null) {
       return { success: false, error: 'Invalid start request' };
     }
-    if (this.sessions.has(parsed.sessionId)) {
-      return { success: true };
+    const existing: LspSession | undefined = this.sessions.get(parsed.sessionId);
+    if (existing !== undefined) {
+      existing.refCount += 1;
+      return existing.ready;
     }
     if (!this.isAllowedRoot(parsed)) {
       return { success: false, error: 'Workspace root is not open' };
@@ -166,14 +207,18 @@ export class LspManager {
 
     let child: ChildProcessWithoutNullStreams;
     try {
+      // Own process group, so tearing down reaches the server's children too (Roslyn's MSBuild
+      // BuildHost workers, jdtls's forked JVMs) — not just the server itself.
       child = spawn(spec.command, [...spec.args], {
         cwd: parsed.rootPath,
         env: { ...process.env, ...spec.env },
         stdio: ['pipe', 'pipe', 'pipe'],
+        ...detachedSpawnOptions(),
       });
     } catch (error: unknown) {
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
+    pidJournal()?.register(child.pid, 'lsp', spec.command);
     // Drain stderr so a chatty server cannot stall on a full pipe; its contents are diagnostic only.
     child.stderr.resume();
 
@@ -190,23 +235,33 @@ export class LspManager {
     );
     connection.listen();
 
-    const session: LspSession = { connection, child, rootPath: parsed.rootPath };
+    const session: LspSession = {
+      connection,
+      child,
+      rootPath: parsed.rootPath,
+      refCount: 1,
+      ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
+    };
     this.sessions.set(parsed.sessionId, session);
 
-    try {
-      const result: InitializeResult = await this.initialize(connection, parsed.rootPath, spec);
-      return {
-        success: true,
-        serverInfo: result.serverInfo,
-        capabilities: result.capabilities,
-      };
-    } catch (error: unknown) {
-      this.tearDown(parsed.sessionId);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Initialize failed',
-      };
-    }
+    // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
+    // later Start for the same session shares the real result instead of a capability-less success.
+    session.ready = this.initialize(connection, parsed.rootPath, spec)
+      .then(
+        (result: InitializeResult): LspStartResult => ({
+          success: true,
+          serverInfo: result.serverInfo,
+          capabilities: result.capabilities,
+        }),
+      )
+      .catch((error: unknown): LspStartResult => {
+        this.tearDown(parsed.sessionId);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Initialize failed',
+        };
+      });
+    return session.ready;
   }
 
   /**
@@ -280,17 +335,23 @@ export class LspManager {
   }
 
   /**
-   * Stops a session: asks the server to shut down, then tears the session down.
+   * Stops a session on behalf of one client: the reference count decrements, and only when the last
+   * client stops is the server asked to shut down and torn down — other surfaces sharing the session
+   * keep their working server.
    * @param id The session identifier.
-   * @returns Returns a promise that resolves once the session has been torn down.
+   * @returns Returns a promise that resolves once the stop has been applied.
    */
   private async stop(id: string): Promise<void> {
     const session: LspSession | undefined = this.sessions.get(id);
     if (session === undefined) {
       return;
     }
+    session.refCount -= 1;
+    if (session.refCount > 0) {
+      return;
+    }
     try {
-      await this.withTimeout(session.connection.sendRequest('shutdown'), INITIALIZE_TIMEOUT_MS);
+      await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
       void session.connection.sendNotification('exit');
     } catch {
       // The server is being killed regardless; ignore a failed graceful shutdown.
@@ -328,10 +389,9 @@ export class LspManager {
     } catch {
       // Ignore disposal failures; the process is killed regardless.
     }
-    try {
-      session.child.kill();
-    } catch {
-      // Best-effort cleanup; ignore kill failures.
+    pidJournal()?.unregister(session.child.pid);
+    if (session.child.pid !== undefined) {
+      killProcessTree(session.child.pid);
     }
   }
 
@@ -371,6 +431,12 @@ export class LspManager {
    * @param params The method parameters.
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
+    // Only the notifications the renderer actually consumes cross the IPC boundary. A loading server
+    // (Roslyn on a big solution) emits a large volume of progress and telemetry notifications; each
+    // forwarded one is a structured-clone plus a renderer handler invocation, only to be discarded.
+    if (!FORWARDED_NOTIFICATIONS.has(method)) {
+      return;
+    }
     const message: LspMessage = { sessionId, method, params };
     this.send(LspChannel.Notification, message);
   }

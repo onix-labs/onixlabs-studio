@@ -36,6 +36,12 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 
 /**
+ * How long, in milliseconds, streamed text deltas are buffered before they are folded into the
+ * transcript — roughly one frame, so a stream repaints at display cadence instead of once per token.
+ */
+const STREAM_FLUSH_MS: number = 16;
+
+/**
  * Identifies the kind of transcript item.
  */
 export type AgentItemKind =
@@ -590,6 +596,23 @@ export class Agent {
   private sequence: number = 0;
 
   /**
+   * Holds the streamed text accumulated since the last transcript flush, or null when none is
+   * buffered. Folding once per flush window instead of once per token is what keeps a fast stream
+   * from starving the renderer.
+   */
+  private pendingStream: {
+    kind: 'assistant' | 'thinking';
+    text: string;
+    parentToolId?: string;
+    messageUuid?: string;
+  } | null = null;
+
+  /**
+   * Holds the pending stream-flush timer, or null when none is scheduled.
+   */
+  private streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
    * Holds a value indicating whether the in-flight run is a compaction run, whose streamed text is
    * buffered into {@link compactionText} and folded into a single summary item rather than appended.
    */
@@ -1101,6 +1124,7 @@ export class Agent {
    */
   public clear(): void {
     this.resetAgentSession();
+    this.discardStream();
     this.log.set([]);
     this.activeRequestId = null;
     this.busy.set(false);
@@ -1142,6 +1166,7 @@ export class Agent {
     // Usage is not persisted with the conversation; it refills from the next turn's reported counts.
     this.contextTokensState.set(0);
     this.costUsdState.set(0);
+    this.discardStream();
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
       const parsed: number = Number.parseInt(item.id.replace(/^item-/, ''), 10);
       return Number.isFinite(parsed) && parsed > max ? parsed : max;
@@ -1252,6 +1277,11 @@ export class Agent {
     }
     if (event.requestId !== this.activeRequestId) {
       return;
+    }
+    // Anything other than a text delta must land AFTER whatever streamed text is buffered, so the
+    // transcript order matches arrival order.
+    if (event.kind !== 'text' && event.kind !== 'thinking') {
+      this.flushStream();
     }
     // A compaction run's output does not join the transcript: its text is buffered and folded into a
     // single summary item when the run completes.
@@ -1591,25 +1621,68 @@ export class Agent {
     parentToolId?: string,
     messageUuid?: string,
   ): void {
+    // Deltas are buffered and folded into the transcript at most once per flush window, not once
+    // per streamed token: every log write re-runs the transcript's row building, markdown parsing,
+    // and autoscroll layout, and a fast stream (or several agents streaming at once) starved the
+    // renderer — felt as input lag everywhere in the application. Ordering is preserved: any other
+    // transcript mutation flushes the buffer first.
+    const pending: typeof this.pendingStream = this.pendingStream;
+    if (pending !== null && pending.kind === kind && pending.parentToolId === parentToolId) {
+      pending.text += delta;
+      if (messageUuid !== undefined) {
+        pending.messageUuid = messageUuid;
+      }
+    } else {
+      this.flushStream();
+      this.pendingStream = { kind, text: delta, parentToolId, messageUuid };
+    }
+    this.streamFlushTimer ??= setTimeout((): void => {
+      this.streamFlushTimer = null;
+      this.flushStream();
+    }, STREAM_FLUSH_MS);
+  }
+
+  /**
+   * Folds the buffered streamed text into the transcript: into the trailing item when it continues
+   * it, or as a new item. A no-op when nothing is buffered.
+   */
+  private flushStream(): void {
+    const pending: typeof this.pendingStream = this.pendingStream;
+    if (pending === null) {
+      return;
+    }
+    this.pendingStream = null;
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
-    if (last?.kind === kind && last.parentToolId === parentToolId) {
+    if (last?.kind === pending.kind && last.parentToolId === pending.parentToolId) {
       // The matched item is the trailing one, so fold the chunk into the tail directly rather than
-      // scanning the whole transcript for it on every streamed token (the hot streaming path).
+      // scanning the whole transcript for it (the hot streaming path).
       this.updateLast(
         (existing: AgentItem): AgentItem => ({
           ...existing,
-          text: existing.text + delta,
-          ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
+          text: existing.text + pending.text,
+          ...(pending.messageUuid === undefined ? {} : { providerMessageId: pending.messageUuid }),
         }),
       );
     } else {
-      this.push({
-        kind,
-        text: delta,
-        ...(parentToolId === undefined ? {} : { parentToolId }),
-        ...(messageUuid === undefined ? {} : { providerMessageId: messageUuid }),
+      this.appendItem({
+        kind: pending.kind,
+        text: pending.text,
+        ...(pending.parentToolId === undefined ? {} : { parentToolId: pending.parentToolId }),
+        ...(pending.messageUuid === undefined ? {} : { providerMessageId: pending.messageUuid }),
       });
+    }
+  }
+
+  /**
+   * Drops any buffered streamed text and its flush timer, for transcript replacements (a clear, a
+   * restore) where flushing would resurrect text of a conversation that is being discarded.
+   */
+  private discardStream(): void {
+    this.pendingStream = null;
+    if (this.streamFlushTimer !== null) {
+      clearTimeout(this.streamFlushTimer);
+      this.streamFlushTimer = null;
     }
   }
 
@@ -1674,6 +1747,18 @@ export class Agent {
    * @param item The item without its id.
    */
   private push(item: Omit<AgentItem, 'id'>): void {
+    // Any buffered streamed text precedes this item chronologically; fold it in first so the
+    // transcript order matches arrival order.
+    this.flushStream();
+    this.appendItem(item);
+  }
+
+  /**
+   * Appends a new item with a fresh identifier, without touching the stream buffer (the flush path
+   * itself appends through here).
+   * @param item The item without its id.
+   */
+  private appendItem(item: Omit<AgentItem, 'id'>): void {
     this.sequence += 1;
     const created: AgentItem = { id: `item-${this.sequence}`, ...item };
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => [...items, created]);

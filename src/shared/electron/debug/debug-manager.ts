@@ -109,10 +109,15 @@ export class DebugManager {
   }
 
   /**
-   * Disposes every running session. Called on application shutdown.
+   * Disposes every running session. Called on application shutdown. Each adapter is asked to
+   * disconnect (terminating its debuggee) best-effort before its process tree is ended — shutdown
+   * cannot wait for an answer, but the transport's tree kill reaches the debuggee regardless.
    */
   public disposeAll(): void {
-    for (const id of [...this.sessions.keys()]) {
+    for (const [id, session] of [...this.sessions]) {
+      void session.client
+        .sendRequest('disconnect', { terminateDebuggee: true })
+        .catch((): void => undefined);
       this.tearDown(id);
     }
   }

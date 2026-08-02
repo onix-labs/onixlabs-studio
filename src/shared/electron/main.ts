@@ -8,6 +8,7 @@ import {
   IpcMainInvokeEvent,
   Menu,
   MenuItemConstructorOptions,
+  RenderProcessGoneDetails,
   shell,
   WebContents,
   WindowOpenHandlerResponse,
@@ -38,6 +39,12 @@ import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
+import {
+  createFileJournalStore,
+  installPidJournal,
+  pidJournal,
+  PidJournal,
+} from '@shared/electron/pid-journal';
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
@@ -471,6 +478,36 @@ class Program {
       event.preventDefault();
       this.dispatchOpenPath(filePath);
     });
+
+    // The child-process journal must exist before anything spawns, and the survivors of a previous
+    // force-killed run must be reaped before this run spawns lookalikes — a force-kill runs none of
+    // the shutdown paths, so this is the only cleanup those orphans ever get.
+    installPidJournal(
+      new PidJournal(createFileJournalStore(path.join(app.getPath('userData'), 'child-pids.json'))),
+    );
+    void pidJournal()?.reapStale();
+
+    // A shell-delivered SIGTERM/SIGINT skips Electron's quit sequence; tear the children down before
+    // exiting or they outlive the application.
+    const signalExit: () => void = (): void => {
+      this.disposeAll();
+      app.exit(0);
+    };
+    process.on('SIGTERM', signalExit);
+    process.on('SIGINT', signalExit);
+
+    // A crashed or OOM-killed renderer leaves every child (language servers, terminals, agent runs)
+    // working for a UI that no longer exists, and the fresh renderer knows nothing of them. Tear
+    // them down; the reloaded renderer re-spawns what it needs on demand.
+    app.on(
+      'render-process-gone',
+      (_event: ElectronEvent, contents: WebContents, details: RenderProcessGoneDetails): void => {
+        if (details.reason === 'clean-exit' || contents !== this.windows.main()?.webContents) {
+          return;
+        }
+        this.disposeAll();
+      },
+    );
 
     void app.whenReady().then(this.onReady.bind(this));
   }

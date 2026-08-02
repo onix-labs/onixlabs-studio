@@ -202,15 +202,24 @@ const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
 const PROVIDER_ID: string = 'lsp';
 
 /**
- * The window within which repeated server exits count as a crash loop.
+ * How many unsolicited exits a session may accumulate before the automatic restart stops for good
+ * (until a manual restart clears the count). Cumulative, not windowed: a server that OOM-crashes
+ * every minute under a too-large workspace never trips a rolling window, yet each respawn re-runs
+ * the whole workspace load — a treadmill that once kept a machine saturated indefinitely.
  */
-const CRASH_WINDOW_MS: number = 60_000;
+const MAX_AUTO_RESTARTS: number = 5;
 
 /**
- * How many exits within {@link CRASH_WINDOW_MS} stop the automatic restart, so a server that crashes
- * on startup cannot spin in a spawn/crash cycle. A manual restart clears the count.
+ * The base delay before a crashed session may be restarted automatically. Each further crash doubles
+ * it (up to {@link CRASH_BACKOFF_MAX_MS}), so a struggling server gets progressively longer breathers
+ * instead of an immediate respawn on the next keystroke.
  */
-const MAX_CRASHES_IN_WINDOW: number = 3;
+const CRASH_BACKOFF_BASE_MS: number = 5_000;
+
+/**
+ * The ceiling on the crash-restart backoff.
+ */
+const CRASH_BACKOFF_MAX_MS: number = 300_000;
 
 /**
  * How long a failed start blocks another automatic attempt, so a server that cannot come up is not
@@ -251,6 +260,19 @@ const DIAGNOSTIC_QUIET_MS: number = 400;
  * document's set, so redundant pulls (for example on a clean file) are harmless.
  */
 const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
+
+/**
+ * How many documents a recolour pass pulls diagnostics for concurrently. Each pull makes the server
+ * build that document's full semantic model, and the pass runs just as a heavy server finishes
+ * loading — so the fan-out is kept small.
+ */
+const RECOLOR_PULL_CONCURRENCY: number = 3;
+
+/**
+ * How far apart, per document, the reassociation pulls are staggered, so re-associating many open
+ * documents does not pull for all of them at the same instants.
+ */
+const REASSOCIATE_STAGGER_MS: number = 200;
 
 /**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
@@ -396,10 +418,28 @@ export class LspClient implements OnDestroy {
   private servedDisposer: (() => void) | null = null;
 
   /**
-   * Holds the recent exit timestamps per session, used to detect a crash loop and stop the automatic
-   * restart before it can spin.
+   * Holds the crash bookkeeping per session — how many unsolicited exits it has accumulated and when
+   * the last one happened — driving the exponential restart backoff and the cumulative cap.
    */
-  private readonly exitTimes: Map<string, number[]> = new Map<string, number[]>();
+  private readonly crashes: Map<string, { count: number; lastAt: number }> = new Map<
+    string,
+    { count: number; lastAt: number }
+  >();
+
+  /**
+   * Holds the pending reassociation-pull timers per session, cancellable when the session exits or
+   * this client is destroyed.
+   */
+  private readonly reassociateTimers: Map<string, Set<ReturnType<typeof setTimeout>>> = new Map<
+    string,
+    Set<ReturnType<typeof setTimeout>>
+  >();
+
+  /**
+   * Holds whether this client's sessions are currently suspended (its view hidden long enough to
+   * release its servers), so {@link resume} knows there is something to bring back.
+   */
+  private suspended: boolean = false;
 
   /**
    * Holds the failed-start bookkeeping per session: how many automatic attempts have been made and
@@ -503,10 +543,21 @@ export class LspClient implements OnDestroy {
         (tracked: TrackedDocument): boolean =>
           tracked.opened && `${tracked.rootPath}::${tracked.serverId}` === sessionId,
       );
+      // A bounded number of pulls at a time: each forces the server to build a document's full
+      // semantic model, and this pass fires right when a heavy server has just finished loading —
+      // an unbounded fan-out over many open documents would be a synchronized load spike.
+      const queue: TrackedDocument[] = [...documents];
+      const worker: () => Promise<void> = async (): Promise<void> => {
+        for (
+          let next: TrackedDocument | undefined = queue.shift();
+          next !== undefined;
+          next = queue.shift()
+        ) {
+          await this.pullDiagnostics(sessionId, next);
+        }
+      };
       await Promise.all(
-        documents.map(
-          (tracked: TrackedDocument): Promise<void> => this.pullDiagnostics(sessionId, tracked),
-        ),
+        Array.from({ length: Math.min(RECOLOR_PULL_CONCURRENCY, queue.length) }, worker),
       );
       // The pass ran after the session's refresh signals went quiet, so the server's compilation is
       // loaded and its tokens are trustworthy from here on.
@@ -589,12 +640,16 @@ export class LspClient implements OnDestroy {
     if (this.bridge === undefined || !this.pullCapable.has(sessionId)) {
       return;
     }
+    let index: number = 0;
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` !== sessionId || !tracked.opened) {
         continue;
       }
       // Re-send didOpen with the document's last-synced text so the server associates it with the
-      // now-loaded solution, then pull a few times as it analyses.
+      // now-loaded solution, then pull a few times as it analyses. The pulls are staggered per
+      // document and cancellable (see {@link clearReassociateTimers}): a burst of open documents
+      // must not hit the just-loaded server at the same instants, and a document that closes or a
+      // server that exits meanwhile must not still be pulled for.
       tracked.version += 1;
       this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
         textDocument: {
@@ -605,8 +660,38 @@ export class LspClient implements OnDestroy {
         },
       });
       for (const delay of REASSOCIATE_PULL_DELAYS_MS) {
-        setTimeout((): void => void this.pullDiagnostics(sessionId, tracked), delay);
+        const timers: Set<ReturnType<typeof setTimeout>> =
+          this.reassociateTimers.get(sessionId) ?? new Set<ReturnType<typeof setTimeout>>();
+        this.reassociateTimers.set(sessionId, timers);
+        const timer: ReturnType<typeof setTimeout> = setTimeout(
+          (): void => {
+            timers.delete(timer);
+            if (tracked.opened) {
+              void this.pullDiagnostics(sessionId, tracked);
+            }
+          },
+          delay + index * REASSOCIATE_STAGGER_MS,
+        );
+        timers.add(timer);
       }
+      index += 1;
+    }
+  }
+
+  /**
+   * Cancels a session's pending reassociation pulls: the server exited (or this client is being
+   * destroyed), so the timers would only pull against a gone or restarted session.
+   * @param sessionId The session whose pulls to cancel.
+   */
+  private clearReassociateTimers(sessionId: string): void {
+    const timers: Set<ReturnType<typeof setTimeout>> | undefined =
+      this.reassociateTimers.get(sessionId);
+    if (timers === undefined) {
+      return;
+    }
+    this.reassociateTimers.delete(sessionId);
+    for (const timer of timers) {
+      clearTimeout(timer);
     }
   }
 
@@ -766,7 +851,7 @@ export class LspClient implements OnDestroy {
     }
     // A manual restart is an explicit vote of confidence: clear the crash-loop and failed-start
     // bookkeeping so the session gets a fresh set of automatic attempts.
-    this.exitTimes.delete(sessionId);
+    this.crashes.delete(sessionId);
     this.startFailures.delete(sessionId);
     this.status.setState(sessionId, 'starting');
     await this.bridge.invoke(LspChannel.Stop, sessionId);
@@ -805,6 +890,45 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the server is rooted at.
    */
+  /**
+   * Suspends this client's sessions: each is stopped (the main process tears the server down once no
+   * other client shares it) and every tracked document is marked unopened, while the client itself
+   * stays fully usable. Called when this client's view has been hidden long enough that keeping a
+   * multi-gigabyte language server hot for it is a waste — {@link resume} brings everything back.
+   */
+  public suspend(): void {
+    if (this.sessions.size === 0) {
+      return;
+    }
+    this.suspended = true;
+    for (const sessionId of [...this.sessions.keys()]) {
+      void this.bridge?.invoke(LspChannel.Stop, sessionId);
+      this.status.remove(sessionId);
+      this.legends.delete(sessionId);
+      this.pullCapable.delete(sessionId);
+      this.settledSessions.delete(sessionId);
+      this.clearReassociateTimers(sessionId);
+    }
+    this.sessions.clear();
+    for (const tracked of this.tracked.values()) {
+      tracked.opened = false;
+    }
+  }
+
+  /**
+   * Resumes a suspended client: every tracked document is re-opened, lazily starting fresh sessions
+   * exactly as the original opens did. A client that was never suspended is left untouched.
+   */
+  public resume(): void {
+    if (!this.suspended) {
+      return;
+    }
+    this.suspended = false;
+    for (const tracked of this.tracked.values()) {
+      this.enqueue(tracked, (): Promise<void> => this.reopen(tracked));
+    }
+  }
+
   public prestartServer(serverId: string, rootPath: string): void {
     if (this.bridge === undefined || this.lspSettings.isDisabled(serverId)) {
       return;
@@ -848,6 +972,13 @@ export class LspClient implements OnDestroy {
       clearTimeout(timer);
     }
     this.diagnosticTimers.clear();
+    for (const sessionId of [...this.reassociateTimers.keys()]) {
+      this.clearReassociateTimers(sessionId);
+    }
+    for (const timer of this.recolorTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.recolorTimers.clear();
     this.sessions.clear();
     this.legends.clear();
     this.pullCapable.clear();
@@ -1092,11 +1223,8 @@ export class LspClient implements OnDestroy {
    * @returns Returns the human-readable block reason, or null when the start may proceed.
    */
   private startBlockReason(sessionId: string): string | null {
-    const now: number = Date.now();
-    const recentExits: number[] = (this.exitTimes.get(sessionId) ?? []).filter(
-      (time: number): boolean => now - time <= CRASH_WINDOW_MS,
-    );
-    if (recentExits.length >= MAX_CRASHES_IN_WINDOW) {
+    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
+    if (crash !== undefined && crash.count >= MAX_AUTO_RESTARTS) {
       return 'The server crashed repeatedly and was stopped. Restart it to try again.';
     }
     const failure: { attempts: number; lastAt: number } | undefined =
@@ -1108,15 +1236,28 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Determines whether a session's last failed start is recent enough that another automatic attempt
-   * must wait.
+   * Determines whether a session must wait before another automatic start: a recent failed start
+   * respects its fixed cooldown, and a crashed server respects an exponential backoff (doubling per
+   * accumulated crash) — each respawn replays the server's whole workspace load, so a struggling
+   * server must not be revived on every keystroke.
    * @param sessionId The session about to start.
-   * @returns Returns true when the session is within its retry cooldown.
+   * @returns Returns true when the session is within a cooldown or backoff.
    */
   private inStartCooldown(sessionId: string): boolean {
     const failure: { attempts: number; lastAt: number } | undefined =
       this.startFailures.get(sessionId);
-    return failure !== undefined && Date.now() - failure.lastAt < START_RETRY_COOLDOWN_MS;
+    if (failure !== undefined && Date.now() - failure.lastAt < START_RETRY_COOLDOWN_MS) {
+      return true;
+    }
+    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
+    if (crash === undefined) {
+      return false;
+    }
+    const backoff: number = Math.min(
+      CRASH_BACKOFF_BASE_MS * 2 ** (crash.count - 1),
+      CRASH_BACKOFF_MAX_MS,
+    );
+    return Date.now() - crash.lastAt < backoff;
   }
 
   /**
@@ -1226,19 +1367,15 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
-    // Remember when the exit happened (trimming entries outside the crash window), so a server that
-    // keeps dying is eventually left stopped instead of respawned forever.
-    const now: number = Date.now();
-    this.exitTimes.set(exit.sessionId, [
-      ...(this.exitTimes.get(exit.sessionId) ?? []).filter(
-        (time: number): boolean => now - time <= CRASH_WINDOW_MS,
-      ),
-      now,
-    ]);
+    // Remember the crash (cumulatively — no rolling window a slow crash cycle could slip through),
+    // so restarts back off exponentially and eventually stop instead of respawning forever.
+    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(exit.sessionId);
+    this.crashes.set(exit.sessionId, { count: (crash?.count ?? 0) + 1, lastAt: Date.now() });
     this.legends.delete(exit.sessionId);
     this.status.remove(exit.sessionId);
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
+    this.clearReassociateTimers(exit.sessionId);
     const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
       exit.sessionId,
     );

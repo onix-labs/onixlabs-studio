@@ -1,3 +1,4 @@
+import { ChildProcess, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import type {
   CanUseTool,
@@ -11,7 +12,11 @@ import type {
   SDKMessage,
   SDKUserMessage,
   SlashCommand,
+  SpawnedProcess,
+  SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
+import { pidJournal } from '../pid-journal';
+import { detachedSpawnOptions, killProcessTree, signalProcessTree } from '../process-tree';
 import {
   ASK_USER,
   DELETE_RUN_CONFIGURATIONS,
@@ -184,6 +189,60 @@ interface SdkTokenUsage {
 interface RunUsageState {
   lastCostUsd: number;
   lastAssistantUsage: SdkTokenUsage | null;
+}
+
+/**
+ * Builds the SDK option that puts the Claude CLI's spawning under this application's process
+ * lifecycle management. The CLI is spawned as its own process-group leader and recorded in the pid
+ * journal, so (a) ending the session ends the CLI's whole tool subtree — a Bash tool mid-`dotnet
+ * build` must not keep building headless — and (b) a force-killed application's surviving CLIs are
+ * reaped at the next startup. The SDK's own kill and its post-grace abort are both redirected at the
+ * group rather than the single pid.
+ * @returns Returns the `spawnClaudeCodeProcess` option fragment.
+ */
+function managedSpawnerOption(): Pick<Options, 'spawnClaudeCodeProcess'> {
+  return {
+    spawnClaudeCodeProcess: (spawnOptions: SdkSpawnOptions): SpawnedProcess => {
+      const child: ChildProcess = spawn(spawnOptions.command, spawnOptions.args, {
+        cwd: spawnOptions.cwd,
+        env: spawnOptions.env,
+        // The SDK reads only the interface's stdin/stdout; stderr has no reader here, so it must not
+        // be a pipe that could fill and stall the CLI.
+        stdio: ['pipe', 'pipe', 'ignore'],
+        windowsHide: true,
+        ...detachedSpawnOptions(),
+      });
+      pidJournal()?.register(child.pid, 'agent', spawnOptions.command);
+      child.once('exit', (): void => pidJournal()?.unregister(child.pid));
+      // The forwarded signal fires only after the SDK's stdin-EOF grace window: the CLI had its
+      // chance to exit cleanly, so end the whole tree.
+      spawnOptions.signal.addEventListener('abort', (): void => {
+        if (child.pid !== undefined) {
+          killProcessTree(child.pid);
+        }
+      });
+      return {
+        stdin: child.stdin!,
+        stdout: child.stdout!,
+        get killed(): boolean {
+          return child.killed;
+        },
+        get exitCode(): number | null {
+          return child.exitCode;
+        },
+        kill: (signal: NodeJS.Signals): boolean => {
+          if (child.pid === undefined) {
+            return false;
+          }
+          signalProcessTree(child.pid, signal);
+          return true;
+        },
+        on: child.on.bind(child),
+        once: child.once.bind(child),
+        off: child.off.bind(child),
+      };
+    },
+  };
 }
 
 /**
@@ -851,6 +910,9 @@ export class ClaudeAgentProvider implements AgentProvider {
     };
 
     const options: Options = {
+      // Spawn the CLI under this application's process-lifecycle management (own process group,
+      // pid-journal registration, tree kills).
+      ...managedSpawnerOption(),
       // The opening model is bound here; a later turn that changes it is applied live via
       // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
       model: openContext.model,
@@ -1096,7 +1158,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     executable: ClaudeExecutableChoice | undefined,
     createQuery: ClaudeQueryFactory = defaultClaudeQueryFactory,
   ): Promise<readonly ClaudeSdkModel[]> {
-    const options: Options = { ...this.executableOption(executable) };
+    const options: Options = { ...this.executableOption(executable), ...managedSpawnerOption() };
     let release: () => void = (): void => undefined;
     // The SDK's streaming-input mode keeps the session open until the prompt generator completes; it
     // yields nothing (discovery sends no turn) and returns once discovery is done.

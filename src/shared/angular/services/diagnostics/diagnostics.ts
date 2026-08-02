@@ -201,10 +201,13 @@ export class Diagnostics {
         }
       }
     }
+    // Ordinal file comparison, not localeCompare: this sort runs on every provider emission (each
+    // diagnostics stream from a loading server), and collator lookups per pair are measurably
+    // slower over thousands of entries for no user-visible ordering benefit here.
     merged.sort(
       (a: Diagnostic, b: Diagnostic): number =>
         SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
-        a.file.localeCompare(b.file) ||
+        (a.file < b.file ? -1 : a.file > b.file ? 1 : 0) ||
         a.line - b.line ||
         a.column - b.column,
     );

@@ -80,6 +80,15 @@ export class GitManager {
   private readonly roots: Map<string, number> = new Map<string, number>();
 
   /**
+   * Holds the in-flight read commands, keyed by working directory and argument vector, so identical
+   * concurrent reads share one git process.
+   */
+  private readonly inFlightReads: Map<string, Promise<GitRunResult>> = new Map<
+    string,
+    Promise<GitRunResult>
+  >();
+
+  /**
    * Initialises a new instance of the {@link GitManager} class.
    * @param windowGetter Returns the window dialogs are parented to when the requesting window is
    * gone, or null when none is open.
@@ -710,13 +719,46 @@ export class GitManager {
 
   /**
    * Invokes git with array arguments in a working directory, capturing its output. The optional
-   * environment overlay and timeout let network operations run non-interactively with a longer budget.
+   * environment overlay and timeout let network operations run non-interactively with a longer
+   * budget. Identical concurrent READ commands share one process: several renderer surfaces watch
+   * the same repository (the source-control view, the explorer's decorations, per-checkout views)
+   * and a change burst makes them all ask for the same status at once — on a large working tree
+   * each status is a full lstat crawl, so duplicates are pure waste.
    * @param cwd The working directory to run in.
    * @param args The git argument vector.
    * @param options The optional environment and timeout overrides.
    * @returns Returns the raw command result.
    */
   private run(
+    cwd: string,
+    args: readonly string[],
+    options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number },
+  ): Promise<GitRunResult> {
+    const dedupKey: string | null = options === undefined ? readDedupKey(cwd, args) : null;
+    if (dedupKey !== null) {
+      const existing: Promise<GitRunResult> | undefined = this.inFlightReads.get(dedupKey);
+      if (existing !== undefined) {
+        return existing;
+      }
+    }
+    const result: Promise<GitRunResult> = this.spawnGit(cwd, args, options);
+    if (dedupKey !== null) {
+      this.inFlightReads.set(dedupKey, result);
+      void result.finally((): void => {
+        this.inFlightReads.delete(dedupKey);
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Spawns the actual git process for {@link run}.
+   * @param cwd The working directory to run in.
+   * @param args The git argument vector.
+   * @param options The optional environment and timeout overrides.
+   * @returns Returns the raw command result.
+   */
+  private spawnGit(
     cwd: string,
     args: readonly string[],
     options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number },
@@ -745,4 +787,36 @@ export class GitManager {
       );
     });
   }
+}
+
+/**
+ * The git subcommands whose invocations are safe to share between concurrent identical callers:
+ * read-only forms that never mutate the repository, so two callers receiving one process's output is
+ * indistinguishable from two processes. `stash` is included only as `stash list`.
+ */
+const READ_DEDUP_SUBCOMMANDS: ReadonlySet<string> = new Set<string>([
+  'status',
+  'log',
+  'for-each-ref',
+  'rev-list',
+  'rev-parse',
+  'diff',
+  'show',
+]);
+
+/**
+ * Builds the dedup key for a read-only git invocation, or null when the command may mutate (and must
+ * therefore never be shared).
+ * @param cwd The working directory.
+ * @param args The git argument vector.
+ * @returns Returns the key, or null.
+ */
+function readDedupKey(cwd: string, args: readonly string[]): string | null {
+  const subcommand: string | undefined = args[0];
+  if (subcommand === undefined) {
+    return null;
+  }
+  const isRead: boolean =
+    READ_DEDUP_SUBCOMMANDS.has(subcommand) || (subcommand === 'stash' && args[1] === 'list');
+  return isRead ? `${cwd} ${args.join(' ')}` : null;
 }

@@ -117,13 +117,17 @@ export class TreeView {
       if (id === null) {
         return;
       }
-      // Row ids are arbitrary strings (file paths, composed keys), so match by attribute value
-      // rather than baking the id into a selector.
-      const row: HTMLElement | undefined = Array.from(
-        this.host.nativeElement.querySelectorAll<HTMLElement>('[data-tree-id]'),
-      ).find((candidate: HTMLElement): boolean => candidate.getAttribute('data-tree-id') === id);
+      // Row ids are arbitrary strings (file paths, composed keys); escaping them for a quoted
+      // attribute selector lets the row be matched in one query instead of materialising and
+      // scanning every rendered row — this runs after every render while a selection exists, so on
+      // large trees the scan was O(rows) per frame of tree churn. (Hand-rolled escape: backslashes
+      // and quotes are all a quoted CSS string needs, and jsdom lacks CSS.escape.)
+      const escaped: string = id.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+      const row: HTMLElement | null = this.host.nativeElement.querySelector<HTMLElement>(
+        `[data-tree-id="${escaped}"]`,
+      );
       // scrollIntoView is missing under jsdom; guard so unit tests of consumers never throw.
-      if (row !== undefined && typeof row.scrollIntoView === 'function') {
+      if (row !== null && typeof row.scrollIntoView === 'function') {
         row.scrollIntoView({ block: 'nearest' });
       }
     });

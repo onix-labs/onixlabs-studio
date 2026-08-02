@@ -128,17 +128,55 @@ export class TerminalBridge {
   }
 
   /**
-   * Subscribes to output data from sessions.
-   * @param listener Receives the terminal id, the output data chunk, and the chunk's sequence number
-   * in the session's output stream (used to reconcile live chunks with a replay snapshot).
+   * Holds the per-session data listeners. All sessions' chunks arrive on ONE bridge channel; with a
+   * listener per pane each chunk from any session would invoke every pane's callback (M panes × all
+   * traffic), so chunks are dispatched here by session id — one bridge subscription, one callback
+   * invocation per chunk.
+   */
+  private readonly dataListeners: Map<string, Set<(data: string, seq: number) => void>> = new Map<
+    string,
+    Set<(data: string, seq: number) => void>
+  >();
+
+  /**
+   * Holds the disposer of the single underlying data subscription, or null while none is active.
+   */
+  private dataSubscription: (() => void) | null = null;
+
+  /**
+   * Subscribes to one session's output data.
+   * @param id The terminal identifier whose chunks to receive.
+   * @param listener Receives each output chunk and its sequence number in the session's output
+   * stream (used to reconcile live chunks with a replay snapshot).
    * @returns Returns a function that removes the listener.
    */
-  public onData(listener: (id: string, data: string, seq: number) => void): () => void {
-    return (
-      this.bridge?.on(TerminalChannel.Data, (...args: unknown[]): void =>
-        listener(args[0] as string, args[1] as string, args[2] as number),
-      ) ?? ((): void => undefined)
-    );
+  public onDataFor(id: string, listener: (data: string, seq: number) => void): () => void {
+    if (this.bridge === undefined) {
+      return (): void => undefined;
+    }
+    this.dataSubscription ??= this.bridge.on(TerminalChannel.Data, (...args: unknown[]): void => {
+      const listeners: Set<(data: string, seq: number) => void> | undefined =
+        this.dataListeners.get(args[0] as string);
+      if (listeners !== undefined) {
+        for (const callback of listeners) {
+          callback(args[1] as string, args[2] as number);
+        }
+      }
+    });
+    let listeners: Set<(data: string, seq: number) => void> | undefined = this.dataListeners.get(id);
+    if (listeners === undefined) {
+      listeners = new Set<(data: string, seq: number) => void>();
+      this.dataListeners.set(id, listeners);
+    }
+    listeners.add(listener);
+    return (): void => {
+      const current: Set<(data: string, seq: number) => void> | undefined =
+        this.dataListeners.get(id);
+      current?.delete(listener);
+      if (current?.size === 0) {
+        this.dataListeners.delete(id);
+      }
+    };
   }
 
   /**

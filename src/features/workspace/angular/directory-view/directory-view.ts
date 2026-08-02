@@ -129,6 +129,14 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * How long a view must stay hidden before its language servers are released. Long enough that tab
+ * flipping never churns servers; short enough that a parked checkout stops holding a multi-gigabyte
+ * server for the rest of the session. Follow-up: make this configurable alongside
+ * `ai.agentSessionLifetime`.
+ */
+const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
+
+/**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
  * explorer, document well, and panels. The workspace's state services are provided here so each
  * directory tab is independent of the others; the dock and everything inside it resolve this tab's
@@ -255,6 +263,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   public readonly listing: InputSignal<DirectoryListing | null> = input<DirectoryListing | null>(
     null,
   );
+
+  /**
+   * Holds the path the focus-follow effect last revealed, so dock and document churn that leaves the
+   * active document unchanged re-runs no reveal walk.
+   */
+  private lastRevealedPath: string | null = null;
 
   /**
    * Gets the worktree checkout this view is scoped to, or null for an ordinary workspace view.
@@ -831,17 +845,38 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Start the structure-aware language server as soon as a recognised project model opens, rather
     // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
     // solution, the TypeScript server for a Node/npm workspace, jdtls for a Gradle/Maven JVM build.
+    // Only for the VISIBLE view: this component is kept alive per tab and per worktree checkout, and
+    // prestarting for every hidden instance would run one multi-gigabyte server per checkout at
+    // once. A hidden view prestarts when it becomes active (this effect re-runs on activation).
     effect((): void => {
       const model: ProjectModel | null = this.solutionModel.model();
       const serverId: string | null =
         model === null ? null : (PRESTART_SERVERS[model.kind] ?? null);
-      if (model !== null && serverId !== null) {
+      if (model !== null && serverId !== null && this.isActive()) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
     });
 
+    // Release a long-hidden view's language servers, and bring them back on activation. A worktree
+    // container keeps every visited checkout's view alive with its own LSP client; without a reap,
+    // each visited checkout would hold its own live server (Roslyn on a big solution is easily
+    // multi-gigabyte) for the life of the tab. Mirrors the agent sessions' idle-reap idea.
+    effect((onCleanup: (fn: () => void) => void): void => {
+      if (this.isActive()) {
+        untracked((): void => this.lspClient.resume());
+        return;
+      }
+      const reapTimer: ReturnType<typeof setTimeout> = setTimeout((): void => {
+        this.lspClient.suspend();
+      }, HIDDEN_LSP_REAP_MS);
+      onCleanup((): void => clearTimeout(reapTimer));
+    });
+
     // Focus follows the active document: when a document in the well becomes active, reveal and
     // select it in the File Explorer and the Solution Explorer, expanding the folders on the way.
+    // The effect's sources fire on every dock mutation and every document open/close; the reveal
+    // walks (tree expansion, solution-model scan, DOM scroll) only run when the ACTIVE PATH actually
+    // changed.
     effect((): void => {
       const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
       const activeId: string | null = well?.active ?? null;
@@ -849,9 +884,10 @@ export class DirectoryView implements OnInit, OnDestroy {
         return;
       }
       const path: string | null = this.documents.get(activeId)?.filePath() ?? null;
-      if (path === null) {
+      if (path === null || path === this.lastRevealedPath) {
         return;
       }
+      this.lastRevealedPath = path;
       untracked((): void => {
         void this.workspace.revealPath(path);
         this.solutionModel.revealPath(path);

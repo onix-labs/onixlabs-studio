@@ -1,9 +1,11 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
 
@@ -16,11 +18,13 @@ class FakeProject implements Bridge {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
+  public modelLoads: number = 0;
   public deferItems: boolean = false;
   private resolvers: (() => void)[] = [];
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     if (channel === (ProjectChannel.ModelLoad as string)) {
+      this.modelLoads += 1;
       return Promise.resolve(this.model as T);
     }
     if (channel === (ProjectChannel.ItemsLoad as string)) {
@@ -131,16 +135,40 @@ function flush(): Promise<void> {
 describe('SolutionModel', () => {
   let project: FakeProject;
   let root: WritableSignal<DirectoryListing | null>;
+  let treeChanged: ((event: DirectoryChangeEvent) => void) | null;
 
   /**
-   * Builds the service under test with the fakes wired in.
+   * Builds the service under test with the fakes wired in, capturing the tree-change callback the
+   * service registers with the directory watch.
    * @returns Returns the service.
    */
   function build(): SolutionModel {
     TestBed.configureTestingModule({
-      providers: [SolutionModel, { provide: Workspace, useValue: { root } }],
+      providers: [
+        SolutionModel,
+        { provide: Workspace, useValue: { root } },
+        {
+          provide: DirectoryWatch,
+          useValue: {
+            watch: (_root: string, onChange: (event: DirectoryChangeEvent) => void): (() => void) => {
+              treeChanged = onChange;
+              return (): void => undefined;
+            },
+          },
+        },
+      ],
     });
     return TestBed.inject(SolutionModel);
+  }
+
+  /**
+   * Waits long enough for the service's reload debounce to have fired.
+   * @returns Returns a promise that resolves once the debounce window has passed.
+   */
+  function waitForReloadDebounce(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 350);
+    });
   }
 
   /**
@@ -185,6 +213,7 @@ describe('SolutionModel', () => {
   beforeEach(() => {
     project = new FakeProject();
     root = signal<DirectoryListing | null>(null);
+    treeChanged = null;
     (window as unknown as { bridge: Bridge }).bridge = project;
   });
 
@@ -293,7 +322,7 @@ describe('SolutionModel', () => {
     expect(model.rows()).toEqual([]);
   });
 
-  it('open_loadsEveryProjectsContentsUpFront', async () => {
+  it('open_sweepsEveryProjectsContentsInTheBackground', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());
     const model: SolutionModel = build();
@@ -302,29 +331,81 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('rootNode_whileContentsLoad_staysCollapsedWithPerProjectSpinners_thenClears', async () => {
+  it('rootNode_whileContentsLoad_showsSpinnersOnlyForInFlightFetches_thenClears', async () => {
     project.model = sampleModel();
     project.deferItems = true;
     const model: SolutionModel = build();
     await open(model);
 
-    // The tree stays collapsed to the root while loading; the root, the folder above a still-loading
-    // project, and each still-loading top-level project carry the spinner, and a loading project cannot
-    // be expanded until its contents arrive.
+    // The background sweep fetches one project at a time: A (first in the model) is in flight, so it
+    // and the folder and root above it spin; B merely waits in the queue — no spinner, and it stays
+    // expandable so the user can pull it forward.
     expect(labels(model)).toEqual(['root', 'Group', 'B']);
     expect(rowFor(model, 'root')?.loading).toBe(true);
     expect(rowFor(model, 'Group')?.loading).toBe(true);
-    expect(rowFor(model, 'B')?.loading).toBe(true);
-    expect(rowFor(model, 'B')?.expandable).toBe(false);
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(rowFor(model, 'B')?.expandable).toBe(true);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
 
     project.resolveAll();
     await flush();
-    // Once every project's contents have loaded, the spinners clear and the tree stays collapsed.
+    // A settled, so the sweep moved on to B.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'B')?.loading).toBe(true);
+
+    project.resolveAll();
+    await flush();
     expect(rowFor(model, 'root')?.loading).toBe(false);
     expect(rowFor(model, 'Group')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.loading).toBe(false);
-    expect(rowFor(model, 'B')?.expandable).toBe(true);
     expect(labels(model)).toEqual(['root', 'Group', 'B']);
+  });
+
+  it('toggle_expandingAQueuedProject_fetchesItAheadOfTheBackgroundSweep', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    // A's fetch is in flight and B is queued behind it.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
+
+    model.toggle(rowFor(model, 'B')!);
+    await flush();
+
+    // B's fetch started immediately, without waiting for A to settle.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'B')?.loading).toBe(true);
+
+    project.resolveAll();
+    await flush();
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(labels(model)).toContain('b.cs');
+  });
+
+  it('treeChange_reloadsOnlyTheProjectsWhoseDirectoriesChanged', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+    const requestsAfterOpen: number = project.itemRequests.length;
+
+    treeChanged!({ root: '/root', directories: ['/root/A/Sub'], overflow: false });
+    await waitForReloadDebounce();
+
+    // The model re-parses, but only A — whose directory the burst touched — re-evaluates; B keeps
+    // its cached contents without spawning another evaluation.
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    expect(project.itemRequests.slice(requestsAfterOpen)).toEqual(['/root/A/A.csproj']);
+    void model;
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
@@ -389,5 +470,52 @@ describe('SolutionModel', () => {
     model.select('file:/root/A/g.cs');
 
     expect(model.selectedKey()).toBe('file:/root/A/g.cs');
+  });
+
+  it('treeChange_touchingSourceDirectories_reloadsTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    void model;
+  });
+
+  it('treeChange_confinedToGitAndStudioFolders_doesNotReloadTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    // Git bookkeeping and settings persistence change no project structure: neither a commit nor a
+    // dock-layout write may re-evaluate the solution.
+    treeChanged!({
+      root: '/root',
+      directories: ['/root/.git', '/root/.git/refs/heads', '/root/.studio'],
+      overflow: false,
+    });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen);
+    void model;
+  });
+
+  it('treeChange_overflowing_reloadsTheModel', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    // An overflow means a genuinely tree-wide change (the watcher drops build churn at the source),
+    // so the structure may well have changed.
+    treeChanged!({ root: '/root', directories: [], overflow: true });
+    await waitForReloadDebounce();
+
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    void model;
   });
 });

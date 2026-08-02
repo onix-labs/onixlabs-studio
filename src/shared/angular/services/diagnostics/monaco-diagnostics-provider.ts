@@ -12,6 +12,35 @@ const NO_OP: () => void = (): void => {
 };
 
 /**
+ * How long marker-change events are coalesced before the markers are collected and fanned out. A
+ * language server streaming diagnostics across many documents fires the change event per document;
+ * collecting once per burst instead of once per event keeps the cost flat.
+ */
+const MARKER_DEBOUNCE_MS: number = 100;
+
+/**
+ * The shared mirror of Monaco's global marker state: its subscribers, the last collection, and the
+ * single underlying subscription's teardown handles.
+ */
+interface MarkerMirror {
+  readonly subscribers: Set<(diagnostics: readonly Diagnostic[]) => void>;
+  last: readonly Diagnostic[];
+  disposable: MonacoApi.IDisposable | null;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * The shared mirrors, keyed by the Monaco namespace whose markers they observe (one in production;
+ * tests get one per fake). `onDidChangeMarkers` and `getModelMarkers({})` are global to a namespace —
+ * but this provider is constructed once per workspace view (each has its own
+ * {@link import('./diagnostics').Diagnostics} aggregate), and one collection per instance per change
+ * meant every marker change cost N full collections. All instances share one subscription per
+ * namespace instead; each workspace's aggregate still filters the shared collection down to its own
+ * documents.
+ */
+const sharedMirrors: WeakMap<object, MarkerMirror> = new WeakMap<object, MarkerMirror>();
+
+/**
  * Supplies diagnostics from Monaco's in-editor language services (the TypeScript/JavaScript/JSON/CSS
  * workers). It mirrors `monaco.editor.getModelMarkers` into the provider-agnostic {@link Diagnostic}
  * shape and re-emits whenever the markers change. This yields real diagnostics for Monaco's bundled
@@ -45,8 +74,9 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
   }
 
   /**
-   * Connects the provider: once Monaco is loaded, emits the current markers and subscribes to
-   * subsequent changes.
+   * Connects the provider: once Monaco is loaded, joins the shared marker mirror (creating it and
+   * its single global subscription on first use), receives its debounced collections, and emits the
+   * current state immediately.
    * @param onChange Receives the current diagnostics whenever the markers change.
    * @returns Returns a function that unsubscribes from marker changes.
    */
@@ -54,17 +84,53 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
     if (window.bridge === undefined) {
       return NO_OP;
     }
-    let disposable: MonacoApi.IDisposable | null = null;
+    let joined: { monaco: typeof MonacoApi; mirror: MarkerMirror } | null = null;
     void this.monaco.ensureLoaded().then((): void => {
       const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
       if (monaco === undefined) {
         return;
       }
-      const emit: () => void = (): void => onChange(this.collect(monaco));
-      emit();
-      disposable = monaco.editor.onDidChangeMarkers((): void => emit());
+      let mirror: MarkerMirror | undefined = sharedMirrors.get(monaco);
+      if (mirror === undefined) {
+        const created: MarkerMirror = {
+          subscribers: new Set<(diagnostics: readonly Diagnostic[]) => void>(),
+          last: this.collect(monaco),
+          disposable: null,
+          timer: null,
+        };
+        sharedMirrors.set(monaco, created);
+        created.disposable = monaco.editor.onDidChangeMarkers((): void => {
+          if (created.timer !== null) {
+            return;
+          }
+          created.timer = setTimeout((): void => {
+            created.timer = null;
+            created.last = this.collect(monaco);
+            for (const subscriber of created.subscribers) {
+              subscriber(created.last);
+            }
+          }, MARKER_DEBOUNCE_MS);
+        });
+        mirror = created;
+      }
+      joined = { monaco, mirror };
+      mirror.subscribers.add(onChange);
+      onChange(mirror.last);
     });
-    return (): void => disposable?.dispose();
+    return (): void => {
+      if (joined === null) {
+        return;
+      }
+      joined.mirror.subscribers.delete(onChange);
+      if (joined.mirror.subscribers.size === 0) {
+        joined.mirror.disposable?.dispose();
+        if (joined.mirror.timer !== null) {
+          clearTimeout(joined.mirror.timer);
+        }
+        sharedMirrors.delete(joined.monaco);
+      }
+      joined = null;
+    };
   }
 
   /**

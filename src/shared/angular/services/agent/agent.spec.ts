@@ -70,6 +70,18 @@ describe('Agent', () => {
     return items[items.length - 1];
   }
 
+  /**
+   * Waits past the stream-flush window, so buffered text deltas have folded into the transcript.
+   * Only needed when a test asserts directly after pure text deltas; any non-delta event (a tool
+   * start, a status change) flushes synchronously.
+   * @returns Returns a promise that resolves once buffered text has landed.
+   */
+  function settleStream(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 25);
+    });
+  }
+
   beforeEach(() => {
     localStorage.clear();
     runCalls = [];
@@ -263,11 +275,12 @@ describe('Agent', () => {
     expect(agent.hasMessages()).toBe(false);
   });
 
-  it('onText_whenStreamed_appendsToAnAssistantItem', () => {
+  it('onText_whenStreamed_appendsToAnAssistantItem', async () => {
     agent.send('hi');
 
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Hel' });
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'lo' });
+    await settleStream();
 
     expect(lastItem()?.kind).toBe('assistant');
     expect(lastItem()?.text).toBe('Hello');
@@ -526,7 +539,7 @@ describe('Agent', () => {
     expect(question?.inputChoices).toEqual([{ label: 'A' }, { label: 'B' }]);
   });
 
-  it('subagent_whenTextIsAttributed_doesNotMergeIntoTheTopLevelStream', () => {
+  it('subagent_whenTextIsAttributed_doesNotMergeIntoTheTopLevelStream', async () => {
     agent.send('hi');
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'top-level' });
     fireEvent({
@@ -538,6 +551,7 @@ describe('Agent', () => {
       agentType: 'Explore',
     });
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'nested', parentToolId: 'task-1' });
+    await settleStream();
 
     const items: readonly AgentItem[] = agent.items();
     const top: AgentItem | undefined = items.find(
@@ -1009,11 +1023,12 @@ describe('Agent', () => {
     expect(lastItem()?.images).toEqual([image]);
   });
 
-  it('onText_whenChunksCarryAMessageUuid_recordsTheBranchAnchor', () => {
+  it('onText_whenChunksCarryAMessageUuid_recordsTheBranchAnchor', async () => {
     agent.send('hi');
 
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Hel', messageUuid: 'uuid-1' });
     fireEvent({ requestId: 'run-1', kind: 'text', delta: 'lo', messageUuid: 'uuid-1' });
+    await settleStream();
 
     expect(lastItem()?.text).toBe('Hello');
     expect(lastItem()?.providerMessageId).toBe('uuid-1');
