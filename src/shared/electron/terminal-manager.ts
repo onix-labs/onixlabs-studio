@@ -6,6 +6,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { readFileSync } from 'node:fs';
+import { pidJournal } from './pid-journal';
+import { killProcessTree, signalProcessTree } from './process-tree';
 import {
   ShellInfo,
   TerminalChannel,
@@ -129,15 +131,14 @@ export class TerminalManager {
   }
 
   /**
-   * Disposes every running session. Called on application shutdown.
+   * Disposes every running session. Called on application shutdown. Each session's whole process
+   * tree is ended (with SIGKILL escalation), not just its shell: a `dotnet build` running in a
+   * terminal at quit must not leave MSBuild workers churning after the application is gone.
    */
   public disposeAll(): void {
     for (const terminal of this.terminals.values()) {
-      try {
-        terminal.kill();
-      } catch {
-        // Best-effort cleanup on shutdown; ignore individual kill failures.
-      }
+      pidJournal()?.unregister(terminal.pid);
+      killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
     }
     this.terminals.clear();
     this.scrollback.clear();
@@ -250,6 +251,7 @@ export class TerminalManager {
       });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
+        pidJournal()?.unregister(terminal.pid);
         // A disposed session was already removed (and possibly replaced under the same id by a
         // relaunch): its late exit must stay silent, or it would masquerade as the successor's.
         if (this.terminals.get(id) !== terminal) {
@@ -274,6 +276,7 @@ export class TerminalManager {
 
       this.terminals.set(id, terminal);
       this.kinds.set(id, kind);
+      pidJournal()?.register(terminal.pid, 'terminal', spec.file);
       return { success: true, pid: terminal.pid, shell: spec.file };
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : 'Unknown error';
@@ -342,37 +345,19 @@ export class TerminalManager {
       execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
       return true;
     }
-    this.signalTree(pid, 'SIGTERM');
+    signalProcessTree(pid, 'SIGTERM');
     if (!this.killTimers.has(id)) {
       this.killTimers.set(
         id,
         setTimeout((): void => {
           this.killTimers.delete(id);
           if (this.terminals.get(id) === terminal) {
-            this.signalTree(pid, 'SIGKILL');
+            signalProcessTree(pid, 'SIGKILL');
           }
         }, TERMINATE_GRACE_MS),
       );
     }
     return true;
-  }
-
-  /**
-   * Signals a process group by its leader's pid, falling back to the single process when the group
-   * signal fails.
-   * @param pid The group leader's process identifier.
-   * @param signal The signal to deliver.
-   */
-  private signalTree(pid: number, signal: NodeJS.Signals): void {
-    try {
-      process.kill(-pid, signal);
-    } catch {
-      try {
-        process.kill(pid, signal);
-      } catch {
-        // The process is already gone; nothing to signal.
-      }
-    }
   }
 
   /**
@@ -413,11 +398,10 @@ export class TerminalManager {
     if (terminal === undefined) {
       return hadScrollback;
     }
-    try {
-      terminal.kill();
-    } catch {
-      // Ignore kill failures; the session is removed regardless.
-    }
+    // End the whole tree, not just the shell: closing a tab whose terminal is mid-build must not
+    // leave the build's workers running headless.
+    pidJournal()?.unregister(terminal.pid);
+    killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
     this.terminals.delete(id);
     return true;
   }

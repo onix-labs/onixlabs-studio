@@ -35,6 +35,12 @@ const MAX_PREVIEW_LENGTH: number = 240;
 const MAX_LISTED_FILES: number = 20_000;
 
 /**
+ * Caps how long, in milliseconds, a ripgrep process may run. A pathological pattern over a huge tree
+ * would otherwise burn CPU with no cancel path (and survive an application force-kill).
+ */
+const RG_TIMEOUT_MS: number = 60_000;
+
+/**
  * Describes the shape of the ripgrep `--json` match event this manager consumes. Only the fields the
  * results tree needs are modelled.
  */
@@ -129,8 +135,15 @@ export class SearchManager {
         }
       });
 
+      const deadline: NodeJS.Timeout = setTimeout((): void => {
+        child.kill('SIGKILL');
+        finish();
+      }, RG_TIMEOUT_MS);
       child.on('error', (): void => finish());
-      child.on('close', (): void => finish());
+      child.on('close', (): void => {
+        clearTimeout(deadline);
+        finish();
+      });
     });
   }
 
@@ -217,8 +230,15 @@ export class SearchManager {
         }
       });
 
+      const deadline: NodeJS.Timeout = setTimeout((): void => {
+        child.kill('SIGKILL');
+        finish();
+      }, RG_TIMEOUT_MS);
       child.on('error', (): void => finish());
-      child.on('close', (): void => finish());
+      child.on('close', (): void => {
+        clearTimeout(deadline);
+        finish();
+      });
     });
   }
 

@@ -1,5 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { connect, Socket } from 'node:net';
+import { pidJournal } from '../pid-journal';
+import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 
 /**
  * How long, in milliseconds, to wait for a TCP debug-server process to announce the port it is listening
@@ -116,22 +118,27 @@ export class StdioTransport implements DapTransport {
     return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
       let child: ChildProcessWithoutNullStreams;
       try {
+        // Own process group, so disposal reaches the adapter's children too — a netcoredbg-launched
+        // debuggee is the adapter's child and must not outlive the session.
         child = spawn(this.command, [...this.args], {
           cwd: this.cwd,
           env: { ...process.env, ...this.env },
           stdio: ['pipe', 'pipe', 'pipe'],
+          ...detachedSpawnOptions(),
         });
       } catch (error: unknown) {
         reject(error instanceof Error ? error : new Error('Failed to spawn adapter'));
         return;
       }
+      pidJournal()?.register(child.pid, 'debug', this.command);
       // Drain stderr so a chatty adapter cannot stall on a full pipe; its contents are diagnostic only.
       child.stderr.resume();
       child.stdout.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
       child.on('error', (error: Error): void => reject(error));
-      child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
-        this.closeListener?.(code, signal ?? null),
-      );
+      child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
+        pidJournal()?.unregister(child.pid);
+        this.closeListener?.(code, signal ?? null);
+      });
       this.child = child;
       resolve();
     });
@@ -162,14 +169,13 @@ export class StdioTransport implements DapTransport {
   }
 
   /**
-   * Kills the spawned process.
+   * Ends the spawned process's tree: the adapter and anything it launched (its debuggee).
    */
   public dispose(): void {
     if (this.child !== null) {
-      try {
-        this.child.kill();
-      } catch {
-        // Best-effort cleanup; ignore kill failures.
+      pidJournal()?.unregister(this.child.pid);
+      if (this.child.pid !== undefined) {
+        killProcessTree(this.child.pid);
       }
       this.child = null;
     }
@@ -275,15 +281,19 @@ export class TcpServerTransport implements DapTransport {
     return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
       let child: ChildProcessWithoutNullStreams;
       try {
+        // Own process group, so disposal reaches every session the server hosts.
         child = spawn(this.command, [...this.args], {
           cwd: this.cwd,
           env: { ...process.env, ...this.env },
           stdio: ['pipe', 'pipe', 'pipe'],
+          ...detachedSpawnOptions(),
         });
       } catch (error: unknown) {
         reject(error instanceof Error ? error : new Error('Failed to spawn debug server'));
         return;
       }
+      pidJournal()?.register(child.pid, 'debug', this.command);
+      child.on('exit', (): void => pidJournal()?.unregister(child.pid));
       this.child = child;
       const timer: NodeJS.Timeout = setTimeout((): void => {
         reject(new Error('The debug server did not start listening in time.'));
@@ -343,7 +353,7 @@ export class TcpServerTransport implements DapTransport {
   }
 
   /**
-   * Destroys the socket and kills the server process (which ends every session it hosts).
+   * Destroys the socket and ends the server's process tree (which ends every session it hosts).
    */
   public dispose(): void {
     if (this.socket !== null) {
@@ -351,10 +361,9 @@ export class TcpServerTransport implements DapTransport {
       this.socket = null;
     }
     if (this.child !== null) {
-      try {
-        this.child.kill();
-      } catch {
-        // Best-effort cleanup; ignore kill failures.
+      pidJournal()?.unregister(this.child.pid);
+      if (this.child.pid !== undefined) {
+        killProcessTree(this.child.pid);
       }
       this.child = null;
     }

@@ -23,6 +23,8 @@ import {
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
+import { pidJournal } from '../pid-journal';
+import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 
@@ -33,6 +35,15 @@ import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-re
  * server that gets torn down mid-handshake would otherwise be re-spawned only to time out again.
  */
 const INITIALIZE_TIMEOUT_MS: number = 60000;
+
+/**
+ * Specifies how long, in milliseconds, to wait for a server's `shutdown` response when a session is
+ * stopped. Deliberately much shorter than the initialize timeout: a stop happens because the user
+ * closed a tab or workspace, and a server busy loading a large solution may not answer until the load
+ * finishes — the session must not keep burning CPU for up to a minute after its consumer is gone. The
+ * kill that follows escalates to SIGKILL on its own grace period.
+ */
+const SHUTDOWN_TIMEOUT_MS: number = 3000;
 
 /**
  * Holds a running language-server session: its message connection, child process, and workspace root.
@@ -166,14 +177,18 @@ export class LspManager {
 
     let child: ChildProcessWithoutNullStreams;
     try {
+      // Own process group, so tearing down reaches the server's children too (Roslyn's MSBuild
+      // BuildHost workers, jdtls's forked JVMs) — not just the server itself.
       child = spawn(spec.command, [...spec.args], {
         cwd: parsed.rootPath,
         env: { ...process.env, ...spec.env },
         stdio: ['pipe', 'pipe', 'pipe'],
+        ...detachedSpawnOptions(),
       });
     } catch (error: unknown) {
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
+    pidJournal()?.register(child.pid, 'lsp', spec.command);
     // Drain stderr so a chatty server cannot stall on a full pipe; its contents are diagnostic only.
     child.stderr.resume();
 
@@ -290,7 +305,7 @@ export class LspManager {
       return;
     }
     try {
-      await this.withTimeout(session.connection.sendRequest('shutdown'), INITIALIZE_TIMEOUT_MS);
+      await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
       void session.connection.sendNotification('exit');
     } catch {
       // The server is being killed regardless; ignore a failed graceful shutdown.
@@ -328,10 +343,9 @@ export class LspManager {
     } catch {
       // Ignore disposal failures; the process is killed regardless.
     }
-    try {
-      session.child.kill();
-    } catch {
-      // Best-effort cleanup; ignore kill failures.
+    pidJournal()?.unregister(session.child.pid);
+    if (session.child.pid !== undefined) {
+      killProcessTree(session.child.pid);
     }
   }
 
