@@ -8,6 +8,13 @@ import { Service, signal, Signal, WritableSignal } from '@angular/core';
 export const DEFAULT_CHANNEL: string = 'general';
 
 /**
+ * The most characters a channel's retained buffer holds (~2 MB). Past it, the oldest half is dropped
+ * at a line boundary — enough scrollback to diagnose from, without a chatty producer growing renderer
+ * memory for the life of the workspace.
+ */
+const MAX_CHANNEL_BUFFER_LENGTH: number = 2_000_000;
+
+/**
  * Describes a named output channel for display in the panel's channel selector.
  */
 export interface OutputChannelInfo {
@@ -188,13 +195,20 @@ export class Output {
   }
 
   /**
-   * Appends text to a channel, notifying its listeners.
+   * Appends text to a channel, notifying its listeners. The retained buffer is capped: a chatty
+   * long-lived source (a language server's log stream) would otherwise grow it without bound for the
+   * life of the workspace, so once past the cap the oldest half is dropped at a line boundary.
    * @param id The channel identifier.
    * @param text The text to append.
    */
   public appendTo(id: string, text: string): void {
     const state: ChannelState = this.ensure(id, id);
     state.buffer += text;
+    if (state.buffer.length > MAX_CHANNEL_BUFFER_LENGTH) {
+      const keepFrom: number = state.buffer.length - Math.floor(MAX_CHANNEL_BUFFER_LENGTH / 2);
+      const lineStart: number = state.buffer.indexOf('\n', keepFrom);
+      state.buffer = state.buffer.slice(lineStart === -1 ? keepFrom : lineStart + 1);
+    }
     for (const listener of state.writeListeners) {
       listener(text);
     }

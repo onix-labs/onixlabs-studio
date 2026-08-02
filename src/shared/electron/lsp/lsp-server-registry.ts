@@ -365,7 +365,9 @@ export class LspServerRegistry {
     return resolved(
       this.withExtraArgs('csharp', {
         command: server,
-        args: ['--logLevel', 'Information', '--extensionLogDirectory', logDir, '--stdio'],
+        // Warning, not Information: during a large solution load the Information stream is a
+        // firehose of per-project log notifications, each one an IPC hop to the renderer's Output.
+        args: ['--logLevel', 'Warning', '--extensionLogDirectory', logDir, '--stdio'],
         env,
         postInitialize,
       }),
