@@ -16,6 +16,17 @@ app-tree-view {
   padding-block-end: 0.375rem;
 }
 
+// Virtual mode: the CDK viewport owns the scrolling. Its absolutely-positioned content wrapper does
+// not stretch by default, so rows would collapse to their content width without the explicit
+// inline-size.
+.tree-list--virtual {
+  padding-block-end: 0;
+
+  .cdk-virtual-scroll-content-wrapper {
+    inline-size: 100%;
+  }
+}
+
 .tree-row {
   display: flex;
   align-items: center;

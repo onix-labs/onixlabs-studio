@@ -34,6 +34,12 @@ import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 type FindMode = 'find' | 'replace';
 
 /**
+ * The most match rows rendered in the results list at once. Beyond this the list adds no
+ * navigational value and every row is pure DOM cost; navigation still walks the full match set.
+ */
+const MAX_RENDERED_MATCHES: number = 1000;
+
+/**
  * Represents the shared find-and-replace panel used across every editing surface. The panel owns the
  * query text, replacement text, search options, and which view is shown, and drives whichever
  * {@link FindAdapter} its host supplies — a Monaco editor, a markdown document, or the workspace — so
@@ -156,6 +162,21 @@ export class FindPanel implements OnDestroy {
    */
   protected readonly matches: Signal<readonly FindResultItem[]> = computed(
     (): readonly FindResultItem[] => this.adapter()?.matches() ?? [],
+  );
+
+  /**
+   * Gets the matches actually rendered, capped so a broad query cannot materialise thousands of DOM
+   * rows; the counter and match navigation (Enter, the arrows) still cover the full set.
+   */
+  protected readonly visibleMatches: Signal<readonly FindResultItem[]> = computed(
+    (): readonly FindResultItem[] => this.matches().slice(0, MAX_RENDERED_MATCHES),
+  );
+
+  /**
+   * Gets how many matches lie beyond the rendered cap.
+   */
+  protected readonly matchOverflow: Signal<number> = computed((): number =>
+    Math.max(0, this.matches().length - MAX_RENDERED_MATCHES),
   );
 
   /**

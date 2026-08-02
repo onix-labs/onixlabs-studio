@@ -10,6 +10,7 @@
   <app-tree-view
     [rows]="rows()"
     [selectedId]="workspace.selectedPath()"
+    [virtual]="true"
     (rowClick)="onRowClick($event)"
   >
     <ng-template let-row>

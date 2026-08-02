@@ -8,9 +8,6 @@ import {
   Signal,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
-import { Agent } from '@shared/angular/services/agent/agent';
-import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
-import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
@@ -26,9 +23,9 @@ import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-pan
 @Component({
   selector: 'app-code-agent-panel',
   imports: [ToolPanel, AgentConversationPanel],
-  // The conversation is provided here, not by the shared conversation panel: the side-panel system
-  // keeps this host mounted while hidden, so the conversation (and an in-flight run) spans hide/show.
-  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
+  // The conversation is provided by the owning CodeView, not here: this panel mounts lazily on
+  // first show, so the conversation (an in-flight run, the Mission Control registration) must
+  // outlive it — it spans the tab, not the panel.
   templateUrl: './code-agent-panel.html',
   styleUrl: './code-agent-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

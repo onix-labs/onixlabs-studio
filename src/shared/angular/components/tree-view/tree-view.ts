@@ -1,8 +1,10 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   contentChild,
   ElementRef,
   inject,
@@ -12,6 +14,7 @@ import {
   OutputEmitterRef,
   Signal,
   TemplateRef,
+  viewChild,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -25,6 +28,25 @@ const BASE_INDENT: number = 8;
  * Specifies the additional left padding added per depth level, in pixels.
  */
 const INDENT_STEP: number = 14;
+
+/**
+ * Specifies a tree row's height in rem (mirrors `.tree-row`'s block-size in the shared tree styles);
+ * the virtual scroller needs it in pixels to size its scrollable extent.
+ */
+const ROW_HEIGHT_REM: number = 1.75;
+
+/**
+ * The fallback root font size, in pixels, when the document's computed size is unavailable (jsdom).
+ */
+const FALLBACK_ROOT_FONT_PX: number = 16;
+
+/**
+ * Whether the DOM is a headless test environment (jsdom), which performs no layout: a virtual
+ * scroller there measures a zero-size viewport and renders nothing, so virtualization falls back to
+ * the plain list and consumer specs keep exercising real rows.
+ */
+const HEADLESS_DOM: boolean =
+  typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
 
 /**
  * Describes one visible row of a tree: its identity, depth, and expansion state. Consumers carry their
@@ -65,10 +87,15 @@ export interface TreeRow {
  * projects a row-content template (`<ng-template let-row>`) that renders each row's icon, label, and
  * trailing decorations. Clicking a row emits {@link rowClick}; the consumer decides what that means
  * (toggle a folder, open a file, select a commit).
+ *
+ * Large-tree consumers (the explorers, whose hosts give the tree a bounded height) opt into
+ * {@link virtual} rendering: only the rows in the scrollport get DOM, so an expanded multi-thousand
+ * -file solution costs dozens of nodes rather than thousands. Size-to-content consumers (dialogs,
+ * sidebars) keep the plain list, which needs no bounded height.
  */
 @Component({
   selector: 'app-tree-view',
-  imports: [AppIcon, NgTemplateOutlet],
+  imports: [AppIcon, NgTemplateOutlet, ScrollingModule],
   templateUrl: './tree-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -89,6 +116,20 @@ export class TreeView {
   public readonly selectedId: InputSignal<string | null> = input<string | null>(null);
 
   /**
+   * Gets whether rows render through a virtual scroller (only the scrollport's rows get DOM).
+   * Requires the host to give the tree a bounded height; size-to-content hosts must leave this off.
+   */
+  public readonly virtual: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether the virtual scroller is actually used: what the consumer asked for, unless the DOM
+   * cannot lay a viewport out (headless tests).
+   */
+  protected readonly virtualActive: Signal<boolean> = computed(
+    (): boolean => this.virtual() && !HEADLESS_DOM,
+  );
+
+  /**
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
@@ -98,6 +139,19 @@ export class TreeView {
    * context value.
    */
   protected readonly content: Signal<TemplateRef<unknown> | undefined> = contentChild(TemplateRef);
+
+  /**
+   * Holds the virtual scroller's viewport when {@link virtual} rendering is active.
+   */
+  protected readonly viewport: Signal<CdkVirtualScrollViewport | undefined> = viewChild(
+    CdkVirtualScrollViewport,
+  );
+
+  /**
+   * Gets a row's height in pixels, for the virtual scroller's fixed-size strategy. Derived from the
+   * document's root font size, since the row height is authored in rem.
+   */
+  protected readonly itemSize: number = rowHeightPx();
 
   /**
    * Holds the component's host element, used to scroll the selected row into view.
@@ -113,8 +167,27 @@ export class TreeView {
   public constructor() {
     afterRenderEffect((): void => {
       const id: string | null = this.selectedId();
-      this.rows();
+      const rows: readonly TreeRow[] = this.rows();
       if (id === null) {
+        return;
+      }
+      const viewport: CdkVirtualScrollViewport | undefined = this.viewport();
+      if (this.virtualActive() && viewport !== undefined) {
+        // The selected row may have no DOM at all; scroll by index instead, reproducing
+        // scrollIntoView's `nearest` behaviour (no movement while already visible).
+        const index: number = rows.findIndex((row: TreeRow): boolean => row.id === id);
+        if (index < 0) {
+          return;
+        }
+        const offset: number = viewport.measureScrollOffset();
+        const size: number = viewport.getViewportSize();
+        const top: number = index * this.itemSize;
+        const bottom: number = top + this.itemSize;
+        if (top < offset) {
+          viewport.scrollToOffset(top);
+        } else if (bottom > offset + size) {
+          viewport.scrollToOffset(bottom - size);
+        }
         return;
       }
       // Row ids are arbitrary strings (file paths, composed keys); escaping them for a quoted
@@ -151,4 +224,26 @@ export class TreeView {
     event.preventDefault();
     this.rowClick.emit(row);
   }
+
+  /**
+   * Tracks a virtual row by its stable identity.
+   * @param _index The row's index.
+   * @param row The row.
+   * @returns Returns the row's id.
+   */
+  protected trackRow(_index: number, row: TreeRow): string {
+    return row.id;
+  }
+}
+
+/**
+ * Resolves a tree row's height in pixels from the document's root font size.
+ * @returns Returns the row height in pixels.
+ */
+function rowHeightPx(): number {
+  const parsed: number = Number.parseFloat(
+    getComputedStyle(document.documentElement).fontSize || '',
+  );
+  const rootPx: number = Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_ROOT_FONT_PX;
+  return Math.round(rootPx * ROW_HEIGHT_REM);
 }

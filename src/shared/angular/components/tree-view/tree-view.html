@@ -1,30 +1,47 @@
-<div class="tree-list" role="tree">
-  @for (row of rows(); track row.id) {
-    <div
-      class="tree-row"
-      role="treeitem"
-      tabindex="0"
-      [attr.data-tree-id]="row.id"
-      [class.active]="selectedId() !== null && row.id === selectedId()"
-      [style.padding-left.px]="indentFor(row.depth)"
-      [attr.aria-expanded]="row.expandable ? row.expanded : null"
-      [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
-      (click)="rowClick.emit(row)"
-      (keydown.enter)="activate($event, row)"
-      (keydown.space)="activate($event, row)"
-    >
-      @if (row.expandable) {
-        <app-icon
-          class="tree-chevron"
-          [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
-        />
-      } @else {
-        <span class="tree-spacer"></span>
-      }
-      <ng-container
-        [ngTemplateOutlet]="content() ?? null"
-        [ngTemplateOutletContext]="{ $implicit: row }"
+<!-- One row, shared by both rendering modes so their markup can never diverge. -->
+<ng-template #rowTemplate let-row>
+  <div
+    class="tree-row"
+    role="treeitem"
+    tabindex="0"
+    [attr.data-tree-id]="row.id"
+    [class.active]="selectedId() !== null && row.id === selectedId()"
+    [style.padding-left.px]="indentFor(row.depth)"
+    [attr.aria-expanded]="row.expandable ? row.expanded : null"
+    [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
+    (click)="rowClick.emit(row)"
+    (keydown.enter)="activate($event, row)"
+    (keydown.space)="activate($event, row)"
+  >
+    @if (row.expandable) {
+      <app-icon
+        class="tree-chevron"
+        [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
       />
-    </div>
-  }
-</div>
+    } @else {
+      <span class="tree-spacer"></span>
+    }
+    <ng-container
+      [ngTemplateOutlet]="content() ?? null"
+      [ngTemplateOutletContext]="{ $implicit: row }"
+    />
+  </div>
+</ng-template>
+
+@if (virtualActive()) {
+  <cdk-virtual-scroll-viewport
+    class="tree-list tree-list--virtual"
+    role="tree"
+    [itemSize]="itemSize"
+  >
+    <ng-container *cdkVirtualFor="let row of rows(); trackBy: trackRow">
+      <ng-container [ngTemplateOutlet]="rowTemplate" [ngTemplateOutletContext]="{ $implicit: row }" />
+    </ng-container>
+  </cdk-virtual-scroll-viewport>
+} @else {
+  <div class="tree-list" role="tree">
+    @for (row of rows(); track row.id) {
+      <ng-container [ngTemplateOutlet]="rowTemplate" [ngTemplateOutletContext]="{ $implicit: row }" />
+    }
+  </div>
+}

@@ -44,17 +44,19 @@
       </app-panel>
     }
 
-    <!-- The agent panel mounts eagerly (hidden until shown) so this tab's live agent registers with
-         Mission Control on open, whether or not the panel has been opened in the tab. -->
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentVisible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-binary-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
-    </app-panel>
+    <!-- The agent panel mounts on first show; Mission Control registration is service-only (the
+         view provides the agent and registers it in ngOnInit), so an unopened panel costs no DOM. -->
+    @if (agentMounted()) {
+      <app-panel
+        panelId="agent"
+        defaultEdge="right"
+        [visible]="agentVisible()"
+        [defaultSize]="360"
+        [minSize]="240"
+        [maxSize]="900"
+      >
+        <app-binary-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
+      </app-panel>
+    }
   </app-panel-layout>
 }

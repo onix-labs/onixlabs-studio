@@ -6,11 +6,19 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
   signal,
   Signal,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import {
   TextEditor,
   TextEditorCursor,
@@ -55,11 +63,16 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 @Component({
   selector: 'app-code-view',
   imports: [PanelLayout, Panel, CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel, FindPanel],
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel now
+  // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
+  // whole mounted/unmounted life — and register with Mission Control whether or not the panel was
+  // ever opened.
+  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView implements OnDestroy {
+export class CodeView implements OnInit, OnDestroy {
   /**
    * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
@@ -185,6 +198,16 @@ export class CodeView implements OnDestroy {
    * workspace owns document lifecycle and releases the document only when its panel actually closes.
    */
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
+   * life, service-only — the docked agent panel mounts lazily on first show, so registration cannot
+   * be left to its chat. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'editor',
+  });
 
   /**
    * Holds the string form of the pane's model URI while registered, or null when not registered.
@@ -321,6 +344,13 @@ export class CodeView implements OnDestroy {
   }
 
   /**
+   * Finalises the agent-host registration once the required tab-id input is readable.
+   */
+  public ngOnInit(): void {
+    this.agentHost.register(this.tabId());
+  }
+
+  /**
    * Detaches the change-margin, releases the command handler, and unregisters the editor when the
    * view is torn down, then releases the feature-owned state when this view owns its lifecycle. The
    * document core releases the backing document and the pane disposes the Monaco editor themselves.
@@ -454,6 +484,14 @@ export class CodeView implements OnDestroy {
    */
   protected terminalVisible(): boolean {
     return this.editorTerminals.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.codeAgents.isMounted(this.tabId());
   }
 
   /**

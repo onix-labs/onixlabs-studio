@@ -108,7 +108,7 @@
     </div>
 
     <div class="find-panel__results">
-      @for (item of matches(); track $index) {
+      @for (item of visibleMatches(); track $index) {
         <button
           type="button"
           class="find-panel__result"
@@ -123,6 +123,11 @@
             ><span class="find-panel__result-after">{{ item.after }}</span></span
           >
         </button>
+      }
+      @if (matchOverflow() > 0) {
+        <div class="find-panel__overflow">
+          …and {{ matchOverflow() }} more matches — refine the query to list them.
+        </div>
       }
     </div>
   </div>

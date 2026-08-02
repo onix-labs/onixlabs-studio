@@ -7,8 +7,16 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
   Signal,
 } from '@angular/core';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import {
   BinaryEditOp,
   BinaryEditor,
@@ -67,11 +75,15 @@ interface DisasmWindow {
 @Component({
   selector: 'app-binary-view',
   imports: [PanelLayout, Panel, BinaryEditor, BinaryDisasmPanel, BinaryInspector, BinaryAgentPanel],
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
+  // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
+  // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
+  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BinaryView implements OnDestroy {
+export class BinaryView implements OnInit, OnDestroy {
   /**
    * Holds the binary document registry the view resolves its document from.
    */
@@ -104,6 +116,16 @@ export class BinaryView implements OnDestroy {
    * Gets a value indicating whether this view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
+   * life, service-only — the docked agent panel mounts lazily on first show, so registration cannot
+   * be left to its chat. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'binary',
+  });
 
   /**
    * Holds the resolved binary document, or undefined when the tab has none.
@@ -167,6 +189,13 @@ export class BinaryView implements OnDestroy {
   }
 
   /**
+   * Finalises the agent-host registration once the required tab-id input is readable.
+   */
+  public ngOnInit(): void {
+    this.agentHost.register(this.tabId());
+  }
+
+  /**
    * Clears this view's status contribution and panel state when the tab closes.
    */
   public ngOnDestroy(): void {
@@ -219,6 +248,14 @@ export class BinaryView implements OnDestroy {
    */
   protected onHideInspector(): void {
     this.binaryPanels.hide(this.tabId(), 'inspector');
+  }
+
+  /**
+   * Gets whether the agent panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected agentMounted(): boolean {
+    return this.binaryPanels.isMounted(this.tabId(), 'agent');
   }
 
   /**

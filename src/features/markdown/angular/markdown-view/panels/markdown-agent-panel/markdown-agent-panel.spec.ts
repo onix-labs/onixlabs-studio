@@ -1,4 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 
 import { MarkdownAgentPanel } from './markdown-agent-panel';
 
@@ -9,6 +12,9 @@ describe('MarkdownAgentPanel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [MarkdownAgentPanel],
+      // The agent and conversation are provided by the owning MarkdownView in the app; the spec's
+      // TestBed stands in for that injector.
+      providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(MarkdownAgentPanel);

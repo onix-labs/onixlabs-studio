@@ -44,6 +44,13 @@ type SeverityFilter = 'all' | DiagnosticSeverity;
 const ALL_SOURCES: string = '';
 
 /**
+ * The most problem rows rendered at once. A large solution mid-analysis can hold many thousands of
+ * diagnostics; past this the list adds no navigational value — the filters are the tool — and every
+ * row past it is pure DOM cost.
+ */
+const MAX_RENDERED_PROBLEMS: number = 1000;
+
+/**
  * A severity filter option shown as a toggle button in the tool-strip.
  */
 interface SeverityOption {
@@ -164,6 +171,22 @@ export class ProblemsPanel {
             (source === ALL_SOURCES || diagnostic.source === source),
         );
     },
+  );
+
+  /**
+   * Gets the filtered diagnostics actually rendered, capped so a large solution's thousands of
+   * problems cannot materialise thousands of DOM rows; the toolbar counts still reflect the full
+   * set, and {@link overflowCount} tells the user what the list is holding back.
+   */
+  protected readonly visible: Signal<readonly Diagnostic[]> = computed(
+    (): readonly Diagnostic[] => this.filtered().slice(0, MAX_RENDERED_PROBLEMS),
+  );
+
+  /**
+   * Gets how many filtered diagnostics are beyond the rendered cap.
+   */
+  protected readonly overflowCount: Signal<number> = computed((): number =>
+    Math.max(0, this.filtered().length - MAX_RENDERED_PROBLEMS),
   );
 
   /**
