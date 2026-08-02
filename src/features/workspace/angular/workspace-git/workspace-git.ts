@@ -68,6 +68,17 @@ export class WorkspaceGit {
   private externalRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Holds whether an external refresh is currently running, so change bursts can never stack
+   * overlapping `git status` crawls of a large working tree.
+   */
+  private externalRefreshRunning: boolean = false;
+
+  /**
+   * Holds whether another burst arrived while a refresh was running, so one replay follows it.
+   */
+  private externalRefreshDirty: boolean = false;
+
+  /**
    * Holds the provider bound to the resolved repository root, or null when the folder is not a
    * repository.
    */
@@ -238,8 +249,31 @@ export class WorkspaceGit {
     }
     this.externalRefreshTimer = setTimeout((): void => {
       this.externalRefreshTimer = null;
-      void this.refresh();
+      void this.runExternalRefresh();
     }, EXTERNAL_REFRESH_DEBOUNCE_MS);
+  }
+
+  /**
+   * Runs one external refresh at a time: a tick arriving mid-refresh sets a dirty flag replayed once
+   * the running refresh settles, so sustained churn can never pile up concurrent status reads no
+   * matter how slow the working tree is to crawl.
+   * @returns Returns a promise that resolves once the refresh (and any replay) has started settling.
+   */
+  private async runExternalRefresh(): Promise<void> {
+    if (this.externalRefreshRunning) {
+      this.externalRefreshDirty = true;
+      return;
+    }
+    this.externalRefreshRunning = true;
+    try {
+      await this.refresh();
+    } finally {
+      this.externalRefreshRunning = false;
+      if (this.externalRefreshDirty) {
+        this.externalRefreshDirty = false;
+        void this.runExternalRefresh();
+      }
+    }
   }
 
   /**

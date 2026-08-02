@@ -15,6 +15,61 @@ import { DirectoryWatch } from '@shared/angular/services/directory-watch/directo
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
+ * How long, in milliseconds, external change bursts are accumulated before the affected loaded
+ * directories are re-read. The window is not extended by further events, so continuous churn
+ * refreshes at this cadence instead of starving.
+ */
+const TREE_REFRESH_DEBOUNCE_MS: number = 300;
+
+/**
+ * How many directory re-reads a refresh pass issues concurrently. A widely-expanded tree can have
+ * hundreds of loaded directories; an unbounded fan-out of IPC round-trips per burst starves the
+ * bridge for everything else.
+ */
+const TREE_REFRESH_CONCURRENCY: number = 8;
+
+/**
+ * The directory names "Expand All (entire tree)" never descends into: dependency caches and build
+ * outputs whose contents are enormous and never what the user meant to reveal.
+ */
+const EXPAND_SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
+  'node_modules',
+  '.git',
+  'bin',
+  'obj',
+  '.vs',
+]);
+
+/**
+ * How many directories "Expand All (entire tree)" reads concurrently, and the most it reads in one
+ * invocation before giving up on further depth — a bail-out so one click on an enormous repository
+ * cannot hang the application.
+ */
+const EXPAND_CONCURRENCY: number = 16;
+const EXPAND_DIRECTORY_CAP: number = 10_000;
+
+/**
+ * Runs a task over each item with a bounded number in flight at a time.
+ * @param items The items to process.
+ * @param limit The concurrency bound.
+ * @param task The per-item task.
+ * @returns Returns a promise that resolves once every task has settled.
+ */
+async function runBounded<T>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue: T[] = [...items];
+  const worker: () => Promise<void> = async (): Promise<void> => {
+    for (let next: T | undefined = queue.shift(); next !== undefined; next = queue.shift()) {
+      await task(next);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, worker));
+}
+
+/**
  * Represents a node in the renderer's lazy directory tree. Directories load their children on first
  * expansion; a null {@link children} means "not yet loaded", distinct from an empty array.
  */
@@ -100,6 +155,28 @@ export class Workspace {
    * Holds the disposer of the open root's directory watch, or null when no folder is open.
    */
   private watchDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the changed directories accumulated for the pending refresh window: undefined when none is
+   * pending, null when everything loaded must be treated as changed (an overflow burst).
+   */
+  private pendingRefreshDirs: Set<string> | null | undefined = undefined;
+
+  /**
+   * Holds the pending refresh-window timer, or null when none is running.
+   */
+  private refreshBurstTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds whether a refresh pass is currently running, so bursts never stack overlapping waves.
+   */
+  private treeRefreshRunning: boolean = false;
+
+  /**
+   * Holds the changes that arrived while a pass was running (null meaning everything), replayed once
+   * it settles, or undefined when none did.
+   */
+  private treeRefreshDirty: Set<string> | null | undefined = undefined;
 
   /**
    * Holds the open root listing, or null when no folder is open.
@@ -327,6 +404,12 @@ export class Workspace {
   public releaseFolder(): void {
     this.watchDisposer?.();
     this.watchDisposer = null;
+    if (this.refreshBurstTimer !== null) {
+      clearTimeout(this.refreshBurstTimer);
+      this.refreshBurstTimer = null;
+    }
+    this.pendingRefreshDirs = undefined;
+    this.treeRefreshDirty = undefined;
     this.rootListing.set(null);
     this.treeNodes.set([]);
     this.selection.set(null);
@@ -491,23 +574,76 @@ export class Workspace {
   }
 
   /**
-   * Handles a burst of external on-disk changes under the open root, re-reading the affected
-   * directories the tree has loaded and reconciling their entries in place. Directories the tree has
-   * not loaded yet need nothing: they read fresh from disk when first expanded.
+   * Handles a burst of external on-disk changes under the open root: the changed directories are
+   * accumulated across a short debounce window, then the ones the tree has loaded are re-read a
+   * bounded number at a time, with one refresh pass running at a time — a sustained burst (a large
+   * checkout) refreshes at the debounce cadence instead of stacking overlapping waves of re-reads.
+   * Directories the tree has not loaded need nothing: they read fresh from disk when first expanded.
    * @param event The change burst.
-   * @returns Returns a promise that resolves once the affected directories have been refreshed.
    */
-  private async onDirectoryChanged(event: DirectoryChangeEvent): Promise<void> {
+  private onDirectoryChanged(event: DirectoryChangeEvent): void {
     const root: string | undefined = this.rootListing()?.path;
     if (root === undefined || event.root !== root) {
       return;
     }
-    const targets: readonly string[] = event.overflow
-      ? this.loadedDirectories()
-      : event.directories.filter(
-          (directory: string): boolean => directory === root || this.isLoadedDirectory(directory),
-        );
-    await Promise.all(targets.map((directory: string): Promise<void> => this.refresh(directory)));
+    if (event.overflow) {
+      this.pendingRefreshDirs = null;
+    } else if (this.pendingRefreshDirs !== null) {
+      this.pendingRefreshDirs ??= new Set<string>();
+      for (const directory of event.directories) {
+        this.pendingRefreshDirs.add(directory);
+      }
+    }
+    if (this.refreshBurstTimer !== null) {
+      return;
+    }
+    this.refreshBurstTimer = setTimeout((): void => {
+      this.refreshBurstTimer = null;
+      const pending: ReadonlySet<string> | null = this.pendingRefreshDirs ?? new Set<string>();
+      this.pendingRefreshDirs = undefined;
+      void this.runTreeRefresh(pending);
+    }, TREE_REFRESH_DEBOUNCE_MS);
+  }
+
+  /**
+   * Runs one refresh pass at a time over the given changed directories (null meaning every loaded
+   * directory), re-reading a bounded number concurrently. Changes arriving mid-pass are merged and
+   * replayed once it settles.
+   * @param changed The changed directories, or null to refresh everything loaded.
+   * @returns Returns a promise that resolves once the pass (and any replay) has started settling.
+   */
+  private async runTreeRefresh(changed: ReadonlySet<string> | null): Promise<void> {
+    if (this.treeRefreshRunning) {
+      this.treeRefreshDirty =
+        changed === null || this.treeRefreshDirty === null
+          ? null
+          : new Set<string>([...(this.treeRefreshDirty ?? []), ...changed]);
+      return;
+    }
+    this.treeRefreshRunning = true;
+    try {
+      const root: string | undefined = this.rootListing()?.path;
+      if (root === undefined) {
+        return;
+      }
+      const targets: readonly string[] =
+        changed === null
+          ? this.loadedDirectories()
+          : [...changed].filter(
+              (directory: string): boolean =>
+                directory === root || this.isLoadedDirectory(directory),
+            );
+      await runBounded(targets, TREE_REFRESH_CONCURRENCY, (directory: string): Promise<void> =>
+        this.refresh(directory),
+      );
+    } finally {
+      this.treeRefreshRunning = false;
+      const dirty: ReadonlySet<string> | null | undefined = this.treeRefreshDirty;
+      this.treeRefreshDirty = undefined;
+      if (dirty !== undefined) {
+        void this.runTreeRefresh(dirty);
+      }
+    }
   }
 
   /**
@@ -755,25 +891,58 @@ export class Workspace {
    */
   private async expandEntireTree(): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
+    // Bound the walk: dependency caches and build outputs are never descended into, directory reads
+    // are limited to a fixed number in flight, and past a directory cap the remaining branches stay
+    // collapsed — one click on an enormous repository must not hang the application.
+    let active: number = 0;
+    const waiters: (() => void)[] = [];
+    const acquire: () => Promise<void> = (): Promise<void> => {
+      if (active < EXPAND_CONCURRENCY) {
+        active += 1;
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve: () => void): void => {
+        waiters.push((): void => {
+          active += 1;
+          resolve();
+        });
+      });
+    };
+    const release: () => void = (): void => {
+      active -= 1;
+      waiters.shift()?.();
+    };
+    let visited: number = 0;
     const expandNode: (node: WorkspaceTreeNode) => Promise<WorkspaceTreeNode> = async (
       node: WorkspaceTreeNode,
     ): Promise<WorkspaceTreeNode> => {
       if (node.type !== 'directory') {
         return node;
       }
+      if (EXPAND_SKIPPED_DIRECTORIES.has(node.name) || visited >= EXPAND_DIRECTORY_CAP) {
+        return node;
+      }
+      visited += 1;
       let children: readonly WorkspaceTreeNode[];
       if (node.children !== null) {
         children = node.children;
       } else {
-        const listing: DirectoryListing | null =
-          await (this.bridge?.invoke<DirectoryListing | null>(
-            WorkspaceChannel.ReadDirectory,
-            node.path,
-          ) ?? Promise.resolve(null));
-        children =
-          listing === null
-            ? []
-            : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
+        await acquire();
+        try {
+          const listing: DirectoryListing | null =
+            await (this.bridge?.invoke<DirectoryListing | null>(
+              WorkspaceChannel.ReadDirectory,
+              node.path,
+            ) ?? Promise.resolve(null));
+          children =
+            listing === null
+              ? []
+              : listing.entries.map(
+                  (entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry),
+                );
+        } finally {
+          release();
+        }
       }
       const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
       return { ...node, expanded: true, loading: false, children: expanded };

@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { RepositoryInfo } from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import {
@@ -103,6 +104,25 @@ export class Repository {
    * Holds the pending debounced external-refresh timer, or null when none is scheduled.
    */
   private externalRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds the strongest refresh kind accumulated for the pending debounce window, or null when none
+   * is pending. A burst that touched `.git` needs the full reload (history, refs, stashes); pure
+   * working-tree churn needs only a status pass.
+   */
+  private pendingExternalKind: 'status' | 'full' | null = null;
+
+  /**
+   * Holds whether an external refresh is currently running, so bursts can never stack overlapping
+   * git processes — on a large working tree a status alone can outlast the debounce window.
+   */
+  private externalRefreshRunning: boolean = false;
+
+  /**
+   * Holds the strongest refresh kind that arrived while a refresh was running, replayed once it
+   * finishes, or null when none did.
+   */
+  private externalDirtyKind: 'status' | 'full' | null = null;
 
   /**
    * Holds the active provider, or null when no repository is bound.
@@ -355,27 +375,104 @@ export class Repository {
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
     this.watchDisposer?.();
-    this.watchDisposer = this.directoryWatch.watch(info.root, (): void =>
-      this.scheduleExternalRefresh(),
+    this.watchDisposer = this.directoryWatch.watch(
+      info.root,
+      (event: DirectoryChangeEvent): void =>
+        this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
     );
     void this.refresh();
   }
 
   /**
+   * Classifies a change burst by the refresh it needs: anything touching `.git` (a commit, a branch
+   * switch, new refs) or an overflow needs the full reload; pure working-tree churn only moves the
+   * status, so history, refs, and stashes need not be re-read (or their graph rebuilt) for it.
+   * @param root The repository root.
+   * @param event The change burst.
+   * @returns Returns the refresh kind the burst needs.
+   */
+  private classifyBurst(root: string, event: DirectoryChangeEvent): 'status' | 'full' {
+    if (event.overflow) {
+      return 'full';
+    }
+    const gitDirectory: string = `${root.replaceAll('\\', '/')}/.git`;
+    const touchesGit: boolean = event.directories.some((directory: string): boolean => {
+      const normalized: string = directory.replaceAll('\\', '/');
+      return normalized === gitDirectory || normalized.startsWith(`${gitDirectory}/`);
+    });
+    return touchesGit ? 'full' : 'status';
+  }
+
+  /**
    * Schedules a coalesced refresh in response to external on-disk changes, so a burst of changes (a
    * checkout, a build) refreshes the repository once rather than per file. The window is not extended
-   * by further events — continuous churn refreshes at this cadence instead of starving. The
-   * application's own git reads never re-enter here: the main process runs them with optional index
-   * writes disabled, so a refresh leaves the repository untouched on disk.
+   * by further events — continuous churn refreshes at this cadence instead of starving — and the
+   * strongest kind the window accumulated wins. The application's own git reads never re-enter here:
+   * the main process runs them with optional index writes disabled, so a refresh leaves the
+   * repository untouched on disk.
+   * @param kind The refresh kind the triggering burst needs.
    */
-  private scheduleExternalRefresh(): void {
+  private scheduleExternalRefresh(kind: 'status' | 'full'): void {
+    this.pendingExternalKind =
+      kind === 'full' || this.pendingExternalKind === 'full' ? 'full' : 'status';
     if (this.externalRefreshTimer !== null) {
       return;
     }
     this.externalRefreshTimer = setTimeout((): void => {
       this.externalRefreshTimer = null;
-      void this.refresh();
+      const pending: 'status' | 'full' = this.pendingExternalKind ?? 'status';
+      this.pendingExternalKind = null;
+      void this.runExternalRefresh(pending);
     }, EXTERNAL_REFRESH_DEBOUNCE_MS);
+  }
+
+  /**
+   * Runs one external refresh at a time: a kind arriving mid-refresh is remembered (strongest wins)
+   * and replayed once the running refresh settles, so sustained churn can never pile up concurrent
+   * git processes no matter how slow the repository is.
+   * @param kind The refresh kind to run.
+   * @returns Returns a promise that resolves once the refresh (and any replay) has started settling.
+   */
+  private async runExternalRefresh(kind: 'status' | 'full'): Promise<void> {
+    if (this.externalRefreshRunning) {
+      this.externalDirtyKind =
+        kind === 'full' || this.externalDirtyKind === 'full' ? 'full' : 'status';
+      return;
+    }
+    this.externalRefreshRunning = true;
+    try {
+      if (kind === 'full') {
+        await this.refresh();
+      } else {
+        await this.refreshStatus();
+      }
+    } finally {
+      this.externalRefreshRunning = false;
+      const dirty: 'status' | 'full' | null = this.externalDirtyKind;
+      this.externalDirtyKind = null;
+      if (dirty !== null) {
+        void this.runExternalRefresh(dirty);
+      }
+    }
+  }
+
+  /**
+   * Reloads only the working-tree status (staged and unstaged changes) from the provider — the cheap
+   * pass for bursts that touched no `.git` state. A response arriving after the repository was closed
+   * or rebound is discarded.
+   * @returns Returns a promise that resolves once the status has been reloaded.
+   */
+  public async refreshStatus(): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return;
+    }
+    const status: ParsedStatus = await provider.getStatus();
+    if (this.provider !== provider) {
+      return;
+    }
+    this.stagedSignal.set(status.staged);
+    this.unstagedSignal.set(status.unstaged);
   }
 
   /**
@@ -389,6 +486,8 @@ export class Repository {
       clearTimeout(this.externalRefreshTimer);
       this.externalRefreshTimer = null;
     }
+    this.pendingExternalKind = null;
+    this.externalDirtyKind = null;
     const provider: SourceControlProvider | null = this.provider;
     this.provider = null;
     this.infoSignal.set(null);
