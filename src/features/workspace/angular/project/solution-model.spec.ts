@@ -322,7 +322,7 @@ describe('SolutionModel', () => {
     expect(model.rows()).toEqual([]);
   });
 
-  it('open_loadsEveryProjectsContentsUpFront', async () => {
+  it('open_sweepsEveryProjectsContentsInTheBackground', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());
     const model: SolutionModel = build();
@@ -331,29 +331,81 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
-  it('rootNode_whileContentsLoad_staysCollapsedWithPerProjectSpinners_thenClears', async () => {
+  it('rootNode_whileContentsLoad_showsSpinnersOnlyForInFlightFetches_thenClears', async () => {
     project.model = sampleModel();
     project.deferItems = true;
     const model: SolutionModel = build();
     await open(model);
 
-    // The tree stays collapsed to the root while loading; the root, the folder above a still-loading
-    // project, and each still-loading top-level project carry the spinner, and a loading project cannot
-    // be expanded until its contents arrive.
+    // The background sweep fetches one project at a time: A (first in the model) is in flight, so it
+    // and the folder and root above it spin; B merely waits in the queue — no spinner, and it stays
+    // expandable so the user can pull it forward.
     expect(labels(model)).toEqual(['root', 'Group', 'B']);
     expect(rowFor(model, 'root')?.loading).toBe(true);
     expect(rowFor(model, 'Group')?.loading).toBe(true);
-    expect(rowFor(model, 'B')?.loading).toBe(true);
-    expect(rowFor(model, 'B')?.expandable).toBe(false);
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(rowFor(model, 'B')?.expandable).toBe(true);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
 
     project.resolveAll();
     await flush();
-    // Once every project's contents have loaded, the spinners clear and the tree stays collapsed.
+    // A settled, so the sweep moved on to B.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'B')?.loading).toBe(true);
+
+    project.resolveAll();
+    await flush();
     expect(rowFor(model, 'root')?.loading).toBe(false);
     expect(rowFor(model, 'Group')?.loading).toBe(false);
     expect(rowFor(model, 'B')?.loading).toBe(false);
-    expect(rowFor(model, 'B')?.expandable).toBe(true);
     expect(labels(model)).toEqual(['root', 'Group', 'B']);
+  });
+
+  it('toggle_expandingAQueuedProject_fetchesItAheadOfTheBackgroundSweep', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    // A's fetch is in flight and B is queued behind it.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
+
+    model.toggle(rowFor(model, 'B')!);
+    await flush();
+
+    // B's fetch started immediately, without waiting for A to settle.
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'B')?.loading).toBe(true);
+
+    project.resolveAll();
+    await flush();
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+    expect(labels(model)).toContain('b.cs');
+  });
+
+  it('treeChange_reloadsOnlyTheProjectsWhoseDirectoriesChanged', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+    const requestsAfterOpen: number = project.itemRequests.length;
+
+    treeChanged!({ root: '/root', directories: ['/root/A/Sub'], overflow: false });
+    await waitForReloadDebounce();
+
+    // The model re-parses, but only A — whose directory the burst touched — re-evaluates; B keeps
+    // its cached contents without spawning another evaluation.
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+    expect(project.itemRequests.slice(requestsAfterOpen)).toEqual(['/root/A/A.csproj']);
+    void model;
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
