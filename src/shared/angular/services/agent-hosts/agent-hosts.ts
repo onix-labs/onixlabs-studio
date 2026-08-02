@@ -85,7 +85,8 @@ export class AgentHosts {
   private sequence: number = 0;
 
   /**
-   * Gets the live agent hosts, in registration order.
+   * Gets the live agent hosts, in display order: registration order until a surface reorders them via
+   * {@link reorder}.
    */
   public readonly hosts: Signal<readonly AgentHost[]> = this.hostList.asReadonly();
 
@@ -124,6 +125,31 @@ export class AgentHosts {
         current.filter((existing: AgentHost): boolean => existing !== full),
       );
     };
+  }
+
+  /**
+   * Moves the host identified by {@link sourceId} to the position of the host identified by
+   * {@link targetId}, preserving the order of the others. This is the single ordering source both the
+   * Mission Control rail and its columns read from, so a drag-reorder in the rail reorders the columns
+   * too. A no-op when either id is unknown or the two are the same.
+   * @param sourceId The id of the host being moved.
+   * @param targetId The id of the host whose position it should take.
+   */
+  public reorder(sourceId: string, targetId: string): void {
+    if (sourceId === targetId) {
+      return;
+    }
+    this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => {
+      const from: number = current.findIndex((host: AgentHost): boolean => host.id === sourceId);
+      const to: number = current.findIndex((host: AgentHost): boolean => host.id === targetId);
+      if (from < 0 || to < 0) {
+        return current;
+      }
+      const next: AgentHost[] = [...current];
+      const [moved]: AgentHost[] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
   }
 
   /**

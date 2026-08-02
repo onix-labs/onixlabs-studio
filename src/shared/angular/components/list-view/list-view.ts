@@ -1,3 +1,4 @@
+import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
@@ -13,6 +14,8 @@ import {
   Signal,
   TemplateRef,
 } from '@angular/core';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Describes one row of a list: its identity and the consumer's payload, rendered through the
@@ -31,6 +34,22 @@ export interface ListRow {
 }
 
 /**
+ * Describes a drag-reorder: the row being moved and the row whose position it should take, both by id
+ * so the consumer never has to reconcile indices against its own ordering.
+ */
+export interface ListReorder {
+  /**
+   * Gets the id of the row being moved.
+   */
+  readonly from: string;
+
+  /**
+   * Gets the id of the row whose position the moved row should take.
+   */
+  readonly to: string;
+}
+
+/**
  * A reusable flat-list presenter, the tree view's sibling for non-hierarchical row surfaces —
  * history lists, result lists, and the like. It owns the structural concerns — the scrolling row
  * list, hover and selection chrome (the same accent-tinted fill the tree uses), focus, keyboard
@@ -41,11 +60,16 @@ export interface ListRow {
  */
 @Component({
   selector: 'app-list-view',
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, CdkDropList, CdkDrag, CdkDragHandle, AppIcon],
   templateUrl: './list-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ListView {
+  /**
+   * Gets the grip glyph shown on each row's reorder handle, exposed for the template.
+   */
+  protected readonly gripIcon: Icon = Icon.GRIP_VERTICAL;
+
   /**
    * Gets the rows to render in order.
    */
@@ -62,9 +86,21 @@ export class ListView {
   public readonly emptyText: InputSignal<string> = input<string>('');
 
   /**
+   * Gets whether rows can be dragged to reorder them. When on, each row grows a trailing grip handle
+   * that starts the drag, and a settled drag emits {@link reorder}; the consumer owns the order, so it
+   * must apply the move for the list to change.
+   */
+  public readonly reorderable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits the row that was clicked or keyboard-activated.
    */
   public readonly rowClick: OutputEmitterRef<ListRow> = output<ListRow>();
+
+  /**
+   * Emits a drag-reorder, identifying the moved row and the row whose position it should take.
+   */
+  public readonly reorder: OutputEmitterRef<ListReorder> = output<ListReorder>();
 
   /**
    * Holds the projected row-content template, rendered for each row with the row as its implicit
@@ -108,5 +144,20 @@ export class ListView {
   protected activate(event: Event, row: ListRow): void {
     event.preventDefault();
     this.rowClick.emit(row);
+  }
+
+  /**
+   * Translates a settled drag into a {@link reorder}, mapping the drag's indices back to the moved and
+   * target row ids so the consumer never reconciles indices itself. The consumer owns the order and
+   * applies the move; nothing is mutated here.
+   * @param event The drag-drop event describing the move.
+   */
+  protected onDrop(event: CdkDragDrop<readonly ListRow[]>): void {
+    const rows: readonly ListRow[] = this.rows();
+    const from: ListRow | undefined = rows[event.previousIndex];
+    const to: ListRow | undefined = rows[event.currentIndex];
+    if (from !== undefined && to !== undefined && from.id !== to.id) {
+      this.reorder.emit({ from: from.id, to: to.id });
+    }
   }
 }

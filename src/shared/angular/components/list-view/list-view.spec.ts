@@ -1,6 +1,8 @@
+import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ListRow, ListView } from './list-view';
+import { By } from '@angular/platform-browser';
+import { ListReorder, ListRow, ListView } from './list-view';
 
 /**
  * Builds a list row carrying its id as the payload the projected template renders.
@@ -106,6 +108,10 @@ describe('ListView', () => {
     expect(rows[0].getAttribute('aria-selected')).toBe('false');
   });
 
+  it('reorderable_whenOff_rendersNoGripHandles', () => {
+    expect(host.querySelectorAll('.list-row__grip').length).toBe(0);
+  });
+
   it('selectedId_whenSetFromOutside_scrollsTheSelectedRowIntoView', async () => {
     // jsdom has no scrollIntoView; install a recording one on the element prototype.
     const scrolled: string[] = [];
@@ -124,5 +130,72 @@ describe('ListView', () => {
     } finally {
       delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
     }
+  });
+});
+
+@Component({
+  imports: [ListView],
+  template: `
+    <app-list-view [rows]="rows()" [reorderable]="true" (reorder)="onReorder($event)">
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-list-view>
+  `,
+})
+class ReorderableHost {
+  public readonly rows: WritableSignal<readonly ListRow[]> = signal<readonly ListRow[]>([
+    makeRow('one'),
+    makeRow('two'),
+    makeRow('three'),
+  ]);
+  public readonly reordered: ListReorder[] = [];
+
+  public onReorder(event: ListReorder): void {
+    this.reordered.push(event);
+  }
+}
+
+describe('ListView (reorderable)', () => {
+  let fixture: ComponentFixture<ReorderableHost>;
+  let component: ReorderableHost;
+  let host: HTMLElement;
+  let list: ListView;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ReorderableHost],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ReorderableHost);
+    component = fixture.componentInstance;
+    host = fixture.nativeElement as HTMLElement;
+    list = fixture.debugElement.query(By.directive(ListView)).componentInstance as ListView;
+    fixture.detectChanges();
+  });
+
+  it('render_growsAGripHandlePerRow', () => {
+    expect(host.querySelectorAll('.list-row__grip').length).toBe(3);
+    expect(host.querySelector('.list-row__grip')?.getAttribute('aria-label')).toBe(
+      'Drag to reorder',
+    );
+  });
+
+  it('onDrop_mapsTheDragIndicesToTheMovedAndTargetRowIds', () => {
+    (list as unknown as { onDrop(event: CdkDragDrop<readonly ListRow[]>): void }).onDrop({
+      previousIndex: 2,
+      currentIndex: 0,
+    } as CdkDragDrop<readonly ListRow[]>);
+
+    expect(component.reordered).toEqual([{ from: 'three', to: 'one' }]);
+  });
+
+  it('onDrop_whenDroppedInPlace_emitsNothing', () => {
+    (list as unknown as { onDrop(event: CdkDragDrop<readonly ListRow[]>): void }).onDrop({
+      previousIndex: 1,
+      currentIndex: 1,
+    } as CdkDragDrop<readonly ListRow[]>);
+
+    expect(component.reordered).toEqual([]);
   });
 });

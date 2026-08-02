@@ -18,7 +18,7 @@ import { AgentRequestCard } from '@shared/angular/components/agent-request-card/
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Icon } from '@shared/angular/icons/icon';
-import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
+import { ListReorder, ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
@@ -319,6 +319,16 @@ export class MissionControlPanel {
    */
   protected onRowClick(row: ListRow): void {
     this.tiles.reveal(row.id);
+  }
+
+  /**
+   * Applies a drag-reorder of the rail: moves the dragged host to the dropped-on host's position in the
+   * shared {@link AgentHosts} order, which the columns read from too, so reordering the rail reorders
+   * the horizontally-stacked columns.
+   * @param event The reorder describing the moved and target host ids.
+   */
+  protected onReorder(event: ListReorder): void {
+    this.agentHosts.reorder(event.from, event.to);
   }
 
   /**

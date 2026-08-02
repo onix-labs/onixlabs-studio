@@ -45,7 +45,12 @@
         <p class="panel__empty-text">Open an agent and it will appear here as a live column.</p>
       </div>
     } @else {
-      <app-list-view [rows]="rows()" (rowClick)="onRowClick($event)">
+      <app-list-view
+        [rows]="rows()"
+        [reorderable]="true"
+        (rowClick)="onRowClick($event)"
+        (reorder)="onReorder($event)"
+      >
         <ng-template let-row>
           @let item = itemOf(row);
           <div

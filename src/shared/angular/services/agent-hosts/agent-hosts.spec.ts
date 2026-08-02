@@ -125,6 +125,60 @@ describe('AgentHosts', () => {
     expect(registry.hosts()[0].label()).toBe('Second');
   });
 
+  it('reorder_movesTheSourceHostToTheTargetsPosition', () => {
+    registry.register(makeHost(makeAgent().agent, 'Alpha'));
+    registry.register(makeHost(makeAgent().agent, 'Beta'));
+    registry.register(makeHost(makeAgent().agent, 'Gamma'));
+
+    // Move the last host to the front.
+    registry.reorder('agent-host-3', 'agent-host-1');
+
+    expect(registry.hosts().map((host: AgentHost): string => host.label())).toEqual([
+      'Gamma',
+      'Alpha',
+      'Beta',
+    ]);
+  });
+
+  it('reorder_movingForwards_settlesAtTheTargetsIndex', () => {
+    registry.register(makeHost(makeAgent().agent, 'Alpha'));
+    registry.register(makeHost(makeAgent().agent, 'Beta'));
+    registry.register(makeHost(makeAgent().agent, 'Gamma'));
+
+    // Move the first host to where the last one is.
+    registry.reorder('agent-host-1', 'agent-host-3');
+
+    expect(registry.hosts().map((host: AgentHost): string => host.label())).toEqual([
+      'Beta',
+      'Gamma',
+      'Alpha',
+    ]);
+  });
+
+  it('reorder_withTheSameSourceAndTarget_leavesTheOrderUnchanged', () => {
+    registry.register(makeHost(makeAgent().agent, 'Alpha'));
+    registry.register(makeHost(makeAgent().agent, 'Beta'));
+
+    registry.reorder('agent-host-1', 'agent-host-1');
+
+    expect(registry.hosts().map((host: AgentHost): string => host.label())).toEqual([
+      'Alpha',
+      'Beta',
+    ]);
+  });
+
+  it('reorder_withAnUnknownId_leavesTheOrderUnchanged', () => {
+    registry.register(makeHost(makeAgent().agent, 'Alpha'));
+    registry.register(makeHost(makeAgent().agent, 'Beta'));
+
+    registry.reorder('agent-host-1', 'agent-host-404');
+
+    expect(registry.hosts().map((host: AgentHost): string => host.label())).toEqual([
+      'Alpha',
+      'Beta',
+    ]);
+  });
+
   it('runningCount_countsOnlyHostsWhoseAgentIsRunning', () => {
     const idle: FakeAgent = makeAgent(false);
     const busy: FakeAgent = makeAgent(true);

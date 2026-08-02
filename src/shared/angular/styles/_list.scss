@@ -47,6 +47,47 @@ app-list-view {
   }
 }
 
+// The trailing reorder handle, present only on a reorderable list. It sits on the row's trailing edge
+// (pushed there past the projected content), stays faint until the row is hovered so it never competes
+// with the row's own content, and shows the grab cursor to advertise the drag.
+.list-row__grip {
+  flex: none;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.4rem 0.6rem;
+  color: var(--gray-500);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--hover-transition);
+
+  .list-row:hover &,
+  .cdk-drag-preview & {
+    opacity: 1;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// The floating copy that follows the pointer during a drag keeps the row's surface so it reads as the
+// row itself lifted off the list.
+.cdk-drag-preview {
+  background: var(--dock-title-background-color--focused);
+  box-shadow: 0 0.5rem 1.25rem rgb(0 0 0 / 35%);
+}
+
+// The gap left behind in the list while a row is being dragged.
+.cdk-drag-placeholder {
+  opacity: 0.4;
+}
+
+// The eased settle of the other rows as a dragged row is dropped into its new slot.
+.cdk-drag-animating {
+  transition: transform 180ms cubic-bezier(0, 0, 0.2, 1);
+}
+
 // Empty state shown when a list has no content.
 .list-empty {
   padding: 1rem 0.6rem;
