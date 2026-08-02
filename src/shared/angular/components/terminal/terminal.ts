@@ -595,10 +595,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // number then tells which parked chunks it already contains, so nothing is lost or duplicated
     // while the two race.
     this.pendingChunks = [];
-    this.cleanupOnData = this.bridge.onData((targetId: string, data: string, seq: number): void => {
-      if (targetId !== id) {
-        return;
-      }
+    this.cleanupOnData = this.bridge.onDataFor(id, (data: string, seq: number): void => {
       if (this.pendingChunks !== null) {
         this.pendingChunks.push({ data, seq });
       } else {

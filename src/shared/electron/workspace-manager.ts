@@ -45,6 +45,13 @@ const FILE_ORDER: number = 1;
 const BINARY_SNIFF_LENGTH: number = 8000;
 
 /**
+ * The largest file opened as editable text (50 MB). Bigger files — huge logs, generated SQL, data
+ * dumps — open in the binary/hex editor, which windows its reads, instead of being decoded whole
+ * into one IPC payload and a Monaco model.
+ */
+const MAX_TEXT_FILE_BYTES: number = 50 * 1024 * 1024;
+
+/**
  * Specifies the byte value (NUL) whose presence marks a file as binary.
  */
 const NUL_BYTE: number = 0;
@@ -617,7 +624,11 @@ export class WorkspaceManager {
    * @returns Returns a text-file or binary selection.
    */
   private async readFileSelection(filePath: string): Promise<OpenSelection> {
-    if (await this.isBinaryFile(filePath)) {
+    // A text file past the cap opens in the binary/hex editor, which reads it in windows on demand:
+    // decoding a multi-hundred-megabyte log into one string, shipping it over IPC, and mounting it
+    // in Monaco would stall the whole application.
+    const stats: Stats = await fs.stat(filePath);
+    if (stats.size > MAX_TEXT_FILE_BYTES || (await this.isBinaryFile(filePath))) {
       return { kind: 'binary', path: filePath };
     }
     const content: string = await fs.readFile(filePath, 'utf-8');

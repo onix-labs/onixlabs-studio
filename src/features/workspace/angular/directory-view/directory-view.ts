@@ -265,6 +265,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   );
 
   /**
+   * Holds the path the focus-follow effect last revealed, so dock and document churn that leaves the
+   * active document unchanged re-runs no reveal walk.
+   */
+  private lastRevealedPath: string | null = null;
+
+  /**
    * Gets the worktree checkout this view is scoped to, or null for an ordinary workspace view.
    * Distinguishes the sub-views sharing one tab: keybinding scopes, pop-out dispatch, and status
    * ownership key on the combined view scope rather than the raw tab id.
@@ -868,6 +874,9 @@ export class DirectoryView implements OnInit, OnDestroy {
 
     // Focus follows the active document: when a document in the well becomes active, reveal and
     // select it in the File Explorer and the Solution Explorer, expanding the folders on the way.
+    // The effect's sources fire on every dock mutation and every document open/close; the reveal
+    // walks (tree expansion, solution-model scan, DOM scroll) only run when the ACTIVE PATH actually
+    // changed.
     effect((): void => {
       const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
       const activeId: string | null = well?.active ?? null;
@@ -875,9 +884,10 @@ export class DirectoryView implements OnInit, OnDestroy {
         return;
       }
       const path: string | null = this.documents.get(activeId)?.filePath() ?? null;
-      if (path === null) {
+      if (path === null || path === this.lastRevealedPath) {
         return;
       }
+      this.lastRevealedPath = path;
       untracked((): void => {
         void this.workspace.revealPath(path);
         this.solutionModel.revealPath(path);
