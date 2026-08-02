@@ -32,7 +32,6 @@ import {
   AgentItem,
   AgentItemKind,
   AgentQueuedMessage,
-  AgentToolState,
 } from '@shared/angular/services/agent/agent';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPrompt, AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
@@ -263,42 +262,6 @@ interface TranscriptRow {
 }
 
 /**
- * A sub-agent's transcript entry prepared for rendering inside its lane: a tool call (label, input
- * summary, state) or a block of assistant text.
- */
-interface LaneChild {
-  /**
-   * Gets the backing item's stable identity for tracking.
-   */
-  readonly id: string;
-
-  /**
-   * Gets whether this entry is a tool call or assistant text.
-   */
-  readonly kind: 'tool' | 'assistant';
-
-  /**
-   * Gets the friendly label of a tool entry.
-   */
-  readonly label?: string;
-
-  /**
-   * Gets the one-line input summary of a tool entry.
-   */
-  readonly detail?: string;
-
-  /**
-   * Gets the lifecycle state of a tool entry.
-   */
-  readonly state?: AgentToolState;
-
-  /**
-   * Gets the text of an assistant entry.
-   */
-  readonly text?: string;
-}
-
-/**
  * A sub-agent (Task) tool row prepared for rendering as a collapsible lane: a live status line while
  * it runs, a tools/tokens meta readout, and the nested activity revealed on expand.
  */
@@ -320,9 +283,12 @@ interface LaneInfo {
   readonly meta: string;
 
   /**
-   * Gets the sub-agent's own activity, rendered inside the expanded lane.
+   * Gets the sub-agent's own activity as its own timeline, built with the same shape as the parent
+   * transcript so it renders identically — the same rail, nodes, expandable tool rows, reasoning
+   * disclosures, and bubbles — only nested inside the lane. A sub-agent that itself spawns a
+   * sub-agent nests again through each tool row's own {@link TranscriptRow.lane}.
    */
-  readonly children: readonly LaneChild[];
+  readonly rows: readonly TranscriptRow[];
 }
 
 /**
@@ -948,6 +914,9 @@ export class AgentChat implements OnInit {
       const thinkingLive: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
         thinking(entry) && this.isRunning() && entry.item?.id === lastItemId;
 
+      const wordCountFor: (item: AgentItem | null) => string = (item: AgentItem | null): string =>
+        this.wordCountFor(item);
+
       const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
         kind === 'assistant' || kind === 'thinking' || kind === 'tool' || kind === 'working';
 
@@ -977,91 +946,89 @@ export class AgentChat implements OnInit {
         }
       };
 
-      return sequence.map((row: RailEntry, index: number): TranscriptRow => {
-        const timeline: boolean = onRail(row.kind);
-        const previous: RailEntry | undefined = sequence[index - 1];
-        const next: RailEntry | undefined = sequence[index + 1];
-        const lane: LaneInfo | undefined =
-          row.kind === 'tool' && row.item !== null
-            ? this.laneFor(row.item, children.get(row.item.toolId ?? ''))
-            : undefined;
+      // Prepares a Task tool item as a sub-agent lane, or returns undefined for an ordinary tool row
+      // (no sub-agent type and no nested activity). The lane's own rows are built with the passed rail
+      // builder so the sub-agent's activity is a real nested timeline, not a flattened list.
+      const laneFor: (
+        item: AgentItem,
+        build: (entries: readonly RailEntry[]) => readonly TranscriptRow[],
+      ) => LaneInfo | undefined = (
+        item: AgentItem,
+        build: (entries: readonly RailEntry[]) => readonly TranscriptRow[],
+      ): LaneInfo | undefined => {
+        const kids: readonly AgentItem[] = children.get(item.toolId ?? '') ?? [];
+        if (item.agentType === undefined && kids.length === 0) {
+          return undefined;
+        }
+        const tools: readonly AgentItem[] = kids.filter(
+          (kid: AgentItem): boolean => kid.kind === 'tool',
+        );
+        const active: AgentItem | undefined = [...tools]
+          .reverse()
+          .find((tool: AgentItem): boolean => tool.toolState === 'running');
+        const status: string =
+          item.toolState === 'running'
+            ? `${active !== undefined ? friendlyToolLabel(active.toolName) : 'Working'}…`
+            : item.toolState === 'error'
+              ? 'Failed'
+              : 'Done';
+        const meta: string[] = [];
+        if (tools.length > 0) {
+          meta.push(tools.length === 1 ? '1 tool' : `${tools.length} tools`);
+        }
+        const tokens: number = item.agentTokens ?? 0;
+        if (tokens > 0) {
+          meta.push(`${formatTokens(tokens)} tokens`);
+        }
         return {
-          id: row.item?.id ?? 'working',
-          kind: row.kind,
-          item: row.item,
-          timeline,
-          connectsUp: timeline && previous !== undefined && onRail(previous.kind),
-          connectsDown: timeline && next !== undefined && onRail(next.kind),
-          nodeIcon: nodeIconFor(row),
-          nodeSpin: row.kind === 'working' || running(row) || thinkingLive(row),
-          label:
-            row.kind === 'tool'
-              ? friendlyToolLabel(row.item?.toolName)
-              : thinking(row)
-                ? thinkingLive(row)
-                  ? 'Thinking…'
-                  : 'Thought process'
-                : undefined,
-          meta: thinking(row) ? this.wordCountFor(row.item) : undefined,
-          tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
-          lane,
+          title: item.agentType ?? 'Sub-agent',
+          status,
+          meta: meta.join(', '),
+          rows: build(kids.map((kid: AgentItem): RailEntry => ({ item: kid, kind: kid.kind }))),
         };
-      });
+      };
+
+      // Builds a run of rail rows (the top-level transcript, or a sub-agent's nested activity). A
+      // tool row that spawned a sub-agent carries a lane whose own rows are built by this same
+      // function, so a sub-agent renders exactly like the parent — the same rail, nodes, expandable
+      // tool rows, reasoning, and bubbles — nested to any depth. The `build` name lets the map
+      // callback recurse without a forward reference.
+      const buildRail: (entries: readonly RailEntry[]) => readonly TranscriptRow[] = function build(
+        entries: readonly RailEntry[],
+      ): readonly TranscriptRow[] {
+        return entries.map((row: RailEntry, index: number): TranscriptRow => {
+          const timeline: boolean = onRail(row.kind);
+          const previous: RailEntry | undefined = entries[index - 1];
+          const next: RailEntry | undefined = entries[index + 1];
+          const lane: LaneInfo | undefined =
+            row.kind === 'tool' && row.item !== null ? laneFor(row.item, build) : undefined;
+          return {
+            id: row.item?.id ?? 'working',
+            kind: row.kind,
+            item: row.item,
+            timeline,
+            connectsUp: timeline && previous !== undefined && onRail(previous.kind),
+            connectsDown: timeline && next !== undefined && onRail(next.kind),
+            nodeIcon: nodeIconFor(row),
+            nodeSpin: row.kind === 'working' || running(row) || thinkingLive(row),
+            label:
+              row.kind === 'tool'
+                ? friendlyToolLabel(row.item?.toolName)
+                : thinking(row)
+                  ? thinkingLive(row)
+                    ? 'Thinking…'
+                    : 'Thought process'
+                  : undefined,
+            meta: thinking(row) ? wordCountFor(row.item) : undefined,
+            tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
+            lane,
+          };
+        });
+      };
+
+      return buildRail(sequence);
     },
   );
-
-  /**
-   * Prepares a Task tool item for rendering as a sub-agent lane, or returns undefined for an
-   * ordinary tool row (no sub-agent type and no nested activity).
-   * @param item The tool item.
-   * @param kids The items attributed to this tool use, or undefined for none.
-   * @returns Returns the lane, or undefined.
-   */
-  private laneFor(item: AgentItem, kids: readonly AgentItem[] | undefined): LaneInfo | undefined {
-    const nested: readonly AgentItem[] = (kids ?? []).filter(
-      (kid: AgentItem): boolean => kid.kind !== 'thinking',
-    );
-    if (item.agentType === undefined && nested.length === 0) {
-      return undefined;
-    }
-    const tools: readonly AgentItem[] = nested.filter(
-      (kid: AgentItem): boolean => kid.kind === 'tool',
-    );
-    const active: AgentItem | undefined = [...tools]
-      .reverse()
-      .find((tool: AgentItem): boolean => tool.toolState === 'running');
-    const status: string =
-      item.toolState === 'running'
-        ? `${active !== undefined ? friendlyToolLabel(active.toolName) : 'Working'}…`
-        : item.toolState === 'error'
-          ? 'Failed'
-          : 'Done';
-    const meta: string[] = [];
-    if (tools.length > 0) {
-      meta.push(tools.length === 1 ? '1 tool' : `${tools.length} tools`);
-    }
-    const tokens: number = item.agentTokens ?? 0;
-    if (tokens > 0) {
-      meta.push(`${formatTokens(tokens)} tokens`);
-    }
-    return {
-      title: item.agentType ?? 'Sub-agent',
-      status,
-      meta: meta.join(', '),
-      children: nested.map(
-        (kid: AgentItem): LaneChild =>
-          kid.kind === 'tool'
-            ? {
-                id: kid.id,
-                kind: 'tool',
-                label: friendlyToolLabel(kid.toolName),
-                detail: kid.toolDetail,
-                state: kid.toolState,
-              }
-            : { id: kid.id, kind: 'assistant', text: kid.text },
-      ),
-    };
-  }
 
   /**
    * Initializes a new instance of the {@link AgentChat} class, lighting the hosting tab's attention dot

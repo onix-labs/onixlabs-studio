@@ -215,184 +215,177 @@
           </div>
         }
         @default {
-          <!-- The agent-activity timeline: assistant text, reasoning, tool calls, and the live
-               working indicator, connected down a shared left rail. -->
-          <div
-            class="agent__row"
-            [class.agent__row--up]="row.connectsUp"
-            [class.agent__row--down]="row.connectsDown"
-            [class.agent__row--working]="row.kind === 'working'"
-          >
-            <div class="agent__node" aria-hidden="true">
-              <span
-                class="agent__node-icon"
-                [class.agent__node-icon--error]="row.item?.toolState === 'error'"
-              >
-                <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
-              </span>
-            </div>
-
-            <div class="agent__row-content">
-              @switch (row.kind) {
-                @case ('assistant') {
-                  <div
-                    class="agent__bubble agent__markdown"
-                    [innerHTML]="row.item!.text | markdown"
-                  ></div>
-                  <span class="agent__msg-actions">
-                    <app-button
-                      variant="none"
-                      size="small"
-                      [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
-                      [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
-                      ariaLabel="Copy response"
-                      (click)="copy(row.item!)"
-                    />
-                    @if (retryTarget()?.assistantId === row.item!.id) {
-                      <app-button
-                        variant="none"
-                        size="small"
-                        [icon]="Icon.REFRESH"
-                        label="Retry"
-                        ariaLabel="Retry this turn"
-                        (click)="retryLast()"
-                      />
-                    }
-                  </span>
-                }
-                @case ('thinking') {
-                  <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
-                       the run produces it (the summary's word count ticks up as progress). -->
-                  <details class="agent__action agent__thinking">
-                    <summary class="agent__action-summary">
-                      <span class="agent__action-label">{{ row.label }}</span>
-                      <span class="agent__lane-meta">{{ row.meta }}</span>
-                      <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-                    </summary>
-                    <div
-                      class="agent__thinking-body agent__markdown"
-                      [innerHTML]="row.item!.text | markdown"
-                    ></div>
-                  </details>
-                }
-                @case ('working') {
-                  <p class="agent__working" aria-live="polite">Working…</p>
-                }
-                @default {
-                  <!-- The raw-detail sections shared by ordinary tool rows and sub-agent lanes: the
-                       tool's full input and its raw output (or error), each clipped behind "Show
-                       all" when long. -->
-                  <ng-template #payloads>
-                    @if (row.item!.toolInput; as payload) {
-                      <span class="agent__action-section">Input</span>
-                      <pre class="agent__action-cmd agent__action-payload">{{
-                        payloadText(row.item!.id, 'input', payload)
-                      }}</pre>
-                      @if (payloadClipped(row.item!.id, 'input', payload)) {
-                        <button
-                          type="button"
-                          class="agent__action-more"
-                          (click)="revealPayload(row.item!.id, 'input')"
-                        >
-                          {{ payloadMoreLabel(payload) }}
-                        </button>
-                      }
-                    }
-                    @if (row.item!.toolOutput; as payload) {
-                      <span class="agent__action-section">
-                        {{ row.item!.toolState === 'error' ? 'Error' : 'Output' }}
-                      </span>
-                      <pre
-                        class="agent__action-cmd agent__action-payload"
-                        [class.agent__action-payload--error]="row.item!.toolState === 'error'"
-                        >{{ payloadText(row.item!.id, 'output', payload) }}</pre
-                      >
-                      @if (payloadClipped(row.item!.id, 'output', payload)) {
-                        <button
-                          type="button"
-                          class="agent__action-more"
-                          (click)="revealPayload(row.item!.id, 'output')"
-                        >
-                          {{ payloadMoreLabel(payload) }}
-                        </button>
-                      }
-                    }
-                  </ng-template>
-                  @if (row.lane; as lane) {
-                    <!-- A sub-agent lane: a live status line while the Task runs, and its nested
-                         activity revealed on expand. -->
-                    <details
-                      class="agent__action agent__lane"
-                      [class.agent__action--error]="row.item!.toolState === 'error'"
-                    >
-                      <summary class="agent__action-summary agent__lane-summary">
-                        <app-icon
-                          class="agent__lane-icon"
-                          [icon]="Icon.SUBAGENT"
-                          aria-hidden="true"
-                        />
-                        <span class="agent__action-label">{{ lane.title }}</span>
-                        <span class="agent__lane-status">{{ lane.status }}</span>
-                        @if (lane.meta) {
-                          <span class="agent__lane-meta">{{ lane.meta }}</span>
-                        }
-                        <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-                      </summary>
-                      <div class="agent__action-detail agent__lane-body">
-                        @if (row.item!.toolDetail) {
-                          <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
-                        }
-                        @for (child of lane.children; track child.id) {
-                          @if (child.kind === 'tool') {
-                            <span
-                              class="agent__lane-tool"
-                              [class.agent__lane-tool--error]="child.state === 'error'"
-                            >
-                              <app-icon
-                                [icon]="child.state === 'running' ? Icon.SPINNER : Icon.ACTION"
-                                [class.agent__spin]="child.state === 'running'"
-                              />
-                              <span>{{ child.label }}</span>
-                              @if (child.detail) {
-                                <code class="agent__lane-tool-detail">{{ child.detail }}</code>
-                              }
-                            </span>
-                          } @else {
-                            <div
-                              class="agent__lane-text agent__markdown"
-                              [innerHTML]="child.text! | markdown"
-                            ></div>
-                          }
-                        }
-                        <ng-container [ngTemplateOutlet]="payloads" />
-                      </div>
-                    </details>
-                  } @else {
-                    <details
-                      class="agent__action"
-                      [class.agent__action--error]="row.item!.toolState === 'error'"
-                    >
-                      <summary class="agent__action-summary">
-                        <span class="agent__action-label">{{ row.label }}</span>
-                        <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-                      </summary>
-                      <div class="agent__action-detail">
-                        <span class="agent__action-tech">{{ row.tech }}</span>
-                        @if (row.item!.toolDetail) {
-                          <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
-                        }
-                        <ng-container [ngTemplateOutlet]="payloads" />
-                      </div>
-                    </details>
-                  }
-                }
-              }
-            </div>
-          </div>
+          <ng-container
+            [ngTemplateOutlet]="railRow"
+            [ngTemplateOutletContext]="{ $implicit: row }"
+          />
         }
       }
     }
   </div>
+
+  <!-- The agent-activity timeline row: assistant text, reasoning, tool calls, and the live working
+       indicator, connected down a shared left rail. Declared once and rendered both for the top-level
+       transcript and, recursively, for every sub-agent lane's nested activity — so a sub-agent looks
+       exactly like its parent agent, only nested. -->
+  <ng-template #railRow let-row>
+    <div
+      class="agent__row"
+      [class.agent__row--up]="row.connectsUp"
+      [class.agent__row--down]="row.connectsDown"
+      [class.agent__row--working]="row.kind === 'working'"
+    >
+      <div class="agent__node" aria-hidden="true">
+        <span
+          class="agent__node-icon"
+          [class.agent__node-icon--error]="row.item?.toolState === 'error'"
+        >
+          <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
+        </span>
+      </div>
+
+      <div class="agent__row-content">
+        @switch (row.kind) {
+          @case ('assistant') {
+            <div
+              class="agent__bubble agent__markdown"
+              [innerHTML]="row.item!.text | markdown"
+            ></div>
+            <span class="agent__msg-actions">
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
+                [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
+                ariaLabel="Copy response"
+                (click)="copy(row.item!)"
+              />
+              @if (retryTarget()?.assistantId === row.item!.id) {
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.REFRESH"
+                  label="Retry"
+                  ariaLabel="Retry this turn"
+                  (click)="retryLast()"
+                />
+              }
+            </span>
+          }
+          @case ('thinking') {
+            <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
+                       the run produces it (the summary's word count ticks up as progress). -->
+            <details class="agent__action agent__thinking">
+              <summary class="agent__action-summary">
+                <span class="agent__action-label">{{ row.label }}</span>
+                <span class="agent__lane-meta">{{ row.meta }}</span>
+                <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+              </summary>
+              <div
+                class="agent__thinking-body agent__markdown"
+                [innerHTML]="row.item!.text | markdown"
+              ></div>
+            </details>
+          }
+          @case ('working') {
+            <p class="agent__working" aria-live="polite">Working…</p>
+          }
+          @default {
+            <!-- The raw-detail sections shared by ordinary tool rows and sub-agent lanes: the
+                       tool's full input and its raw output (or error), each clipped behind "Show
+                       all" when long. -->
+            <ng-template #payloads>
+              @if (row.item!.toolInput; as payload) {
+                <span class="agent__action-section">Input</span>
+                <pre class="agent__action-cmd agent__action-payload">{{
+                  payloadText(row.item!.id, 'input', payload)
+                }}</pre>
+                @if (payloadClipped(row.item!.id, 'input', payload)) {
+                  <button
+                    type="button"
+                    class="agent__action-more"
+                    (click)="revealPayload(row.item!.id, 'input')"
+                  >
+                    {{ payloadMoreLabel(payload) }}
+                  </button>
+                }
+              }
+              @if (row.item!.toolOutput; as payload) {
+                <span class="agent__action-section">
+                  {{ row.item!.toolState === 'error' ? 'Error' : 'Output' }}
+                </span>
+                <pre
+                  class="agent__action-cmd agent__action-payload"
+                  [class.agent__action-payload--error]="row.item!.toolState === 'error'"
+                  >{{ payloadText(row.item!.id, 'output', payload) }}</pre
+                >
+                @if (payloadClipped(row.item!.id, 'output', payload)) {
+                  <button
+                    type="button"
+                    class="agent__action-more"
+                    (click)="revealPayload(row.item!.id, 'output')"
+                  >
+                    {{ payloadMoreLabel(payload) }}
+                  </button>
+                }
+              }
+            </ng-template>
+            @if (row.lane; as lane) {
+              <!-- A sub-agent lane: a live status line while the Task runs, and its nested
+                         activity revealed on expand. -->
+              <details
+                class="agent__action agent__lane"
+                [class.agent__action--error]="row.item!.toolState === 'error'"
+              >
+                <summary class="agent__action-summary agent__lane-summary">
+                  <app-icon class="agent__lane-icon" [icon]="Icon.SUBAGENT" aria-hidden="true" />
+                  <span class="agent__action-label">{{ lane.title }}</span>
+                  <span class="agent__lane-status">{{ lane.status }}</span>
+                  @if (lane.meta) {
+                    <span class="agent__lane-meta">{{ lane.meta }}</span>
+                  }
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                </summary>
+                <div class="agent__action-detail agent__lane-body">
+                  @if (row.item!.toolDetail) {
+                    <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
+                  }
+                  <!-- The sub-agent's own activity, rendered through the same rail template as
+                             the parent so it reads as a nested agent transcript, not a flat list. -->
+                  <div class="agent__lane-rail">
+                    @for (child of lane.rows; track child.id) {
+                      <ng-container
+                        [ngTemplateOutlet]="railRow"
+                        [ngTemplateOutletContext]="{ $implicit: child }"
+                      />
+                    }
+                  </div>
+                  <ng-container [ngTemplateOutlet]="payloads" />
+                </div>
+              </details>
+            } @else {
+              <details
+                class="agent__action"
+                [class.agent__action--error]="row.item!.toolState === 'error'"
+              >
+                <summary class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                </summary>
+                <div class="agent__action-detail">
+                  <span class="agent__action-tech">{{ row.tech }}</span>
+                  @if (row.item!.toolDetail) {
+                    <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
+                  }
+                  <ng-container [ngTemplateOutlet]="payloads" />
+                </div>
+              </details>
+            }
+          }
+        }
+      </div>
+    </div>
+  </ng-template>
 
   <form
     class="agent__composer"
