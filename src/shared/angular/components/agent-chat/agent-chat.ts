@@ -534,6 +534,30 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Holds each item's rendered word count, keyed by the item's identity. Items are immutable — a
+   * text update replaces the object — so the cache self-invalidates, and unchanged thinking rows
+   * stop re-splitting their whole text on every transcript rebuild.
+   */
+  private readonly wordCountCache: WeakMap<AgentItem, string> = new WeakMap<AgentItem, string>();
+
+  /**
+   * Renders a labelled word count for an item's text, memoized by item identity.
+   * @param item The item whose text to count, or null for none.
+   * @returns Returns the labelled count.
+   */
+  private wordCountFor(item: AgentItem | null): string {
+    if (item === null) {
+      return this.wordCountOf('');
+    }
+    let cached: string | undefined = this.wordCountCache.get(item);
+    if (cached === undefined) {
+      cached = this.wordCountOf(item.text);
+      this.wordCountCache.set(item, cached);
+    }
+    return cached;
+  }
+
+  /**
    * Gets a value indicating whether the composer's context meter has anything to show: reported
    * usage, or an estimate for attached-but-unsent context.
    */
@@ -978,7 +1002,7 @@ export class AgentChat implements OnInit {
                   ? 'Thinking…'
                   : 'Thought process'
                 : undefined,
-          meta: thinking(row) ? this.wordCountOf(row.item?.text ?? '') : undefined,
+          meta: thinking(row) ? this.wordCountFor(row.item) : undefined,
           tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
           lane,
         };
