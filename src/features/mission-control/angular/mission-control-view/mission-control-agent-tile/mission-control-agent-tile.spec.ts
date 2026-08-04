@@ -148,6 +148,21 @@ describe('MissionControlAgentTile', () => {
     expect(state.hidden()).toBe(false);
   });
 
+  it('hidden_whenHostHasAnOwningTab_isNeverHiddenRegardlessOfPreferences', () => {
+    // An agent backed by an open tab must stay reachable in Mission Control: its column is the only
+    // place to type to it, so New chat (which empties the transcript) must not make it disappear.
+    const { state, knobs } = setUp({ tabId: 'tab-9' });
+    knobs.hideEmpty.set(true);
+    knobs.hideIdle.set(true);
+
+    // Empty (fresh, just-cleared conversation).
+    expect(state.hidden()).toBe(false);
+
+    // Idle (settled conversation awaiting the next prompt).
+    knobs.items.set([{}]);
+    expect(state.hidden()).toBe(false);
+  });
+
   it('tab_whenHostHasNoOwningTab_hasNoTabAndKeysOnTheHostId', () => {
     const { state } = setUp({ tabId: null });
 

@@ -743,7 +743,12 @@ export class AiManager {
     }
     const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
     if (existing !== undefined) {
-      if (this.isCompatibleTurn(existing, request, context)) {
+      // Continue the held-open session only when it is still alive AND compatible. A session whose
+      // harness ended underneath it between turns (its pump exited with no in-flight turn to carry the
+      // failure) stays registered but can no longer take a turn — reusing it would leave the run stuck
+      // "Working" forever. Treat a dead session like an incompatible one: drop it and reopen, which
+      // cold-starts back onto its persisted context via the turn's `resumeSessionId`.
+      if (existing.session.alive && this.isCompatibleTurn(existing, request, context)) {
         existing.lifetimeMs = this.reapLifetimeMs(request);
         return this.runLiveTurn(key, existing, context);
       }

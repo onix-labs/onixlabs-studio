@@ -9,6 +9,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import {
   RecentItem,
   RecentItems,
@@ -103,6 +104,11 @@ export class WelcomeScreen {
   private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
+   * Holds the file client, used to pick a replacement location for a recent item that has moved.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Holds the operating-system shell client, used to reveal an item in the file manager.
    */
   private readonly shell: Shell = inject(Shell);
@@ -154,6 +160,14 @@ export class WelcomeScreen {
    * Holds a value indicating whether the "clear all recent items" confirmation is shown.
    */
   protected readonly confirmingClear: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the recent item that could not be opened — moved, renamed, or deleted since it was last
+   * used — while the user is asked what to do with it, or null when no such prompt is shown.
+   */
+  protected readonly missingItem: WritableSignal<RecentItem | null> = signal<RecentItem | null>(
+    null,
+  );
 
   /**
    * Gets the recent items to show, narrowed by the active filter and search query and ordered with
@@ -279,13 +293,69 @@ export class WelcomeScreen {
   }
 
   /**
-   * Re-opens a recent item and, when it opened, dismisses the welcome screen.
+   * Re-opens a recent item and, when it opened, dismisses the welcome screen. A recent item's path is
+   * one the user has opened before, so a failure to open it almost always means the file or folder has
+   * moved, been renamed, or been deleted; rather than doing nothing, the user is asked what to do with
+   * the now-missing item.
    * @param item The recent item to open.
    */
   protected async openRecent(item: RecentItem): Promise<void> {
     if (await this.reopen(item)) {
       this.welcomeModal.close();
+    } else {
+      this.missingItem.set(item);
     }
+  }
+
+  /**
+   * Dismisses the missing-item prompt, leaving the recent item in place so the user can try again.
+   */
+  protected dismissMissing(): void {
+    this.missingItem.set(null);
+  }
+
+  /**
+   * Removes the missing recent item from the list and dismisses the prompt.
+   */
+  protected removeMissing(): void {
+    const item: RecentItem | null = this.missingItem();
+    if (item !== null) {
+      this.recentItems.remove(item.path);
+    }
+    this.missingItem.set(null);
+  }
+
+  /**
+   * Lets the user point the missing recent item at its new location: a file picker (matching the item's
+   * kind) is shown, and the chosen path — now trusted because the user picked it through the dialog — is
+   * re-opened. On success the stale entry is dropped (the freshly opened path records its own entry),
+   * its pinned state is carried across, and the welcome screen is dismissed. Cancelling the picker or
+   * failing to open leaves the prompt up so the user can choose again, remove, or cancel.
+   */
+  protected async locateMissing(): Promise<void> {
+    const item: RecentItem | null = this.missingItem();
+    if (item === null) {
+      return;
+    }
+    const located: string | null = await this.fileSystem.pickPath(
+      item.kind === 'directory' ? 'folder' : 'file',
+    );
+    if (located === null) {
+      return;
+    }
+    const opened: boolean =
+      item.kind === 'directory'
+        ? await this.fileOpener.reopenDirectory(located)
+        : await this.fileOpener.reopenFile(located);
+    if (!opened) {
+      return;
+    }
+    if (item.pinned && located !== item.path) {
+      this.recentItems.togglePin(located);
+    }
+    this.recentItems.remove(item.path);
+    this.missingItem.set(null);
+    this.welcomeModal.close();
   }
 
   /**

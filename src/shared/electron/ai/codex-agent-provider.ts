@@ -300,6 +300,15 @@ export class CodexAgentSession implements AgentSession {
   }
 
   /**
+   * Gets a value indicating whether the session can still take a turn: true until it is closed. A Codex
+   * session runs each turn as its own `codex exec` process (there is no held-open subprocess to die
+   * between turns), so the only thing that ends it is {@link close}.
+   */
+  public get alive(): boolean {
+    return !this.closed;
+  }
+
+  /**
    * Runs a turn in this session, streaming its events through the context and settling when the turn
    * completes — leaving the thread open for the next turn. Opens the thread lazily on the first turn.
    * @param context The turn's context.

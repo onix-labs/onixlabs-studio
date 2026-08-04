@@ -354,6 +354,43 @@ export interface AiCommandsEvent extends AiEventBase {
 }
 
 /**
+ * Reports that a task the agent backgrounded (a `run_in_background` shell command, a backgrounded
+ * subagent) has settled. A live-harness holds its session open across turns, so this can arrive after
+ * the turn that launched the task has already finished and the conversation has gone idle — the agent
+ * said "I'll tell you when it's done" and only now can. Like {@link AiCommandsEvent} it is session-level,
+ * not per-turn, so it carries the agent session id to correlate it independent of which turn (if any)
+ * is in flight, and the renderer surfaces it as a spontaneous transcript note and a notification.
+ */
+export interface AiBackgroundTaskEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'background-task';
+
+  /**
+   * Gets the conversation (agent session) the task belongs to, so the renderer correlates it to the
+   * right agent regardless of which turn is in flight. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets how the task settled.
+   */
+  readonly status: 'completed' | 'failed' | 'stopped';
+
+  /**
+   * Gets the one-line summary of what the task did (the SDK's `summary`), shown on the note.
+   */
+  readonly summary: string;
+
+  /**
+   * Gets the `toolId` of the tool use that started the task (the SDK's `tool_use_id`), when known, so
+   * the note can reference the originating tool.
+   */
+  readonly toolId?: string;
+}
+
+/**
  * A streamed event from a running agent turn. Both providers parse their model output into this
  * provider-agnostic protocol.
  */
@@ -368,4 +405,5 @@ export type AiEvent =
   | AiSessionEvent
   | AiStatusEvent
   | AiUsageEvent
-  | AiCommandsEvent;
+  | AiCommandsEvent
+  | AiBackgroundTaskEvent;

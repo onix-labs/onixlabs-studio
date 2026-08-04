@@ -10,6 +10,7 @@ import type {
   PostToolUseHookInput,
   Query,
   SDKMessage,
+  SDKTaskNotificationMessage,
   SDKUserMessage,
   SlashCommand,
   SpawnedProcess,
@@ -1639,6 +1640,17 @@ export class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Gets a value indicating whether the session can still take a turn: it is neither closed nor has its
+   * held-open query ended underneath it. The pump sets {@link inputClosed} when its message stream ends
+   * (the SDK subprocess exited or the stream closed) even when no turn was in flight to carry the
+   * failure — after which a reused session would accept a turn that never settles. The manager reads
+   * this before reusing the session so a dead one is reopened instead of silently hanging.
+   */
+  public get alive(): boolean {
+    return !this.closed && !this.inputClosed;
+  }
+
+  /**
    * Runs a turn in this session, streaming its events through the context and settling when the turn's
    * `result` arrives — leaving the session open for the next turn. Opens the query lazily on the first
    * turn.
@@ -1781,6 +1793,23 @@ export class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Publishes a settled background task to the renderer through the current turn's context. Session-
+   * scoped like {@link publishCommands} (carries the agent session id), so the renderer surfaces it
+   * even when it arrives after the launching turn has ended and no run is in flight.
+   * @param message The SDK task-notification message.
+   */
+  private publishBackgroundTask(message: SDKTaskNotificationMessage): void {
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'background-task',
+      agentSessionId: this.currentContext.agentSessionId,
+      status: message.status,
+      summary: message.summary,
+      ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
+    });
+  }
+
+  /**
    * The streaming-input generator: yields queued messages, then parks until the next message is queued
    * or the input closes.
    * @returns Yields the session's user messages.
@@ -1833,6 +1862,14 @@ export class ClaudeAgentSession implements AgentSession {
           Array.isArray(changed.commands)
         ) {
           this.publishCommands(changed.commands);
+        }
+        // A backgrounded task (a `run_in_background` shell command or subagent) has settled: the SDK
+        // emits a `task_notification` on the held-open stream, which can arrive after the launching
+        // turn has ended and the conversation has gone idle. Surface it so the "I'll tell you when it
+        // finishes" promise is actually kept, rather than the completion being silently dropped.
+        const task: { type?: string; subtype?: string } = message;
+        if (task.type === 'system' && task.subtype === 'task_notification') {
+          this.publishBackgroundTask(message as SDKTaskNotificationMessage);
         }
         this.deps.handleMessage(message, this.currentContext, this.usageState);
         // A turn's `result` settles that turn but leaves the stream open for the next turn; an

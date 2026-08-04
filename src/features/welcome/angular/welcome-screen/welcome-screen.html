@@ -215,5 +215,32 @@
         </div>
       </ng-template>
     </app-modal>
+
+    <!-- Shown when a recent item cannot be opened: its path was one the user opened before, so the
+         failure means it has moved, been renamed, or been deleted. Rather than the click doing
+         nothing, the user is offered a way forward — point it at its new location, forget it, or
+         leave it be. Raised from the welcome window like the clear-confirmation above. -->
+    <app-modal
+      class="welcome__confirm"
+      [open]="missingItem() !== null"
+      [width]="30"
+      ariaLabel="Item not found"
+      (dismiss)="dismissMissing()"
+    >
+      <ng-template appModalContent>
+        @if (missingItem(); as missing) {
+          <h2 class="welcome__confirm-title">Can’t find this item</h2>
+          <p class="welcome__confirm-message">
+            “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
+          </p>
+          <p class="welcome__confirm-path">{{ display(missing.path) }}</p>
+          <div class="welcome__confirm-actions welcome__confirm-actions--stack">
+            <app-button variant="solid" label="Locate" (click)="locateMissing()" />
+            <app-button variant="outline" label="Remove" (click)="removeMissing()" />
+            <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
+          </div>
+        }
+      </ng-template>
+    </app-modal>
   </ng-template>
 </app-modal>

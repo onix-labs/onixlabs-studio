@@ -79,6 +79,7 @@ export type {
   AiUsageEvent,
   AiSlashCommand,
   AiCommandsEvent,
+  AiBackgroundTaskEvent,
   AiEvent,
 } from './ai/ai-event-types';
 export type {

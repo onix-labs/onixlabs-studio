@@ -1296,6 +1296,16 @@ export class Agent {
       }
       return;
     }
+    // A settled background task is session-level, not per-turn: it can arrive after the launching turn
+    // has ended (the conversation is idle, so activeRequestId is null and the per-turn filter below
+    // would drop it). Correlate it by agent session id — as for `commands` — and surface it as a
+    // spontaneous note plus a notification, keeping the agent's "I'll tell you when it's done" promise.
+    if (event.kind === 'background-task') {
+      if (event.agentSessionId === this.agentSessionId) {
+        this.onBackgroundTask(event.status, event.summary);
+      }
+      return;
+    }
     if (event.requestId !== this.activeRequestId) {
       return;
     }
@@ -1462,6 +1472,40 @@ export class Agent {
       ...(failed ? { detail: this.failureCause(detail) } : {}),
       actions,
       key: `agent:${tabId ?? 'panel'}`,
+      route: watching ? 'history-only' : 'default',
+    });
+  }
+
+  /**
+   * Surfaces a settled background task: appends a spontaneous note to the transcript so the completion
+   * the agent promised to report is actually recorded, and raises a notification so a conversation off
+   * screen still learns of it. Never touches the run state — the conversation may be idle (the common
+   * case, the task outliving its launching turn) or mid next-turn, and either way this is an out-of-band
+   * note, not a turn.
+   * @param status How the task settled.
+   * @param summary The one-line summary of what the task did.
+   */
+  private onBackgroundTask(status: 'completed' | 'failed' | 'stopped', summary: string): void {
+    const detail: string = summary.trim();
+    const word: string =
+      status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
+    const note: string =
+      detail.length > 0 ? `_Background task ${word}:_ ${detail}` : `_Background task ${word}._`;
+    this.push({ kind: 'assistant', text: note });
+    const tabId: string | undefined = this.lastOwningTabId;
+    const label: string =
+      this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
+    const watching: boolean = this.isConversationVisible(tabId);
+    const actions: readonly NotificationAction[] =
+      tabId === undefined || watching
+        ? []
+        : [{ label: 'Show', run: (): void => this.tabs.activate(tabId) }];
+    this.notifications.notify({
+      severity: status === 'failed' ? 'warning' : 'info',
+      title: `Background task ${word} — ${label}`,
+      ...(detail.length > 0 ? { detail } : {}),
+      actions,
+      key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
     });
   }

@@ -559,6 +559,33 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     await harness.session.close();
   });
 
+  it('alive_isTrueWhileHeldOpen_andFalseOnceTheStreamEndsBetweenTurns', async () => {
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn1;
+
+    // Idle between turns, the held-open session is still alive and can take another turn.
+    expect(harness.session.alive).toBe(true);
+
+    // The harness ends underneath the session with no turn in flight (the subprocess exited / the
+    // stream closed): the pump exits and marks the session dead. The manager reads this so it reopens
+    // rather than dispatching a turn that would never settle (the indefinite "Working" bug).
+    harness.query()?.endStream();
+    await flush();
+    expect(harness.session.alive).toBe(false);
+
+    await harness.session.close();
+  });
+
   it('close_endsTheStream_andAbortsTheMasterController', async () => {
     const events: AiEvent[] = [];
     const signal: AbortSignal = new AbortController().signal;

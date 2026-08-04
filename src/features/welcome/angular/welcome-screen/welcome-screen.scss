@@ -688,6 +688,28 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The stale absolute path of a missing item. Left-truncated with an ellipsis the same way the recent
+// rows are, so a long path shows its telling tail; the LTR mark added by `display` keeps a leading
+// slash in place. The `--stack` message above it carries the sentence, so this drops its own margin.
+.welcome__confirm-path {
+  margin: -0.8rem 0 1.3rem;
+  overflow: hidden;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+// Stacks the dialog's actions in a single full-width column, for a prompt whose buttons carry longer
+// labels than a two-button confirmation can sit side by side (here: Locate / Remove / Cancel).
+.welcome__confirm-actions--stack {
+  grid-auto-flow: row;
+  inline-size: auto;
+  margin-inline-start: 0;
+}
+
 // Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
 // a shrink-to-fit grid all take the width of the widest, and the auto inline margin holds the row
 // where a right-aligned flex row used to sit.

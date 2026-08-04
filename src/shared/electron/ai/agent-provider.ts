@@ -299,6 +299,16 @@ export interface AgentSession {
   readonly id: string | null;
 
   /**
+   * Gets a value indicating whether the session can still take a turn. It goes false when the session is
+   * closed, or when its held-open harness has ended underneath it (the subprocess exited, the message
+   * stream closed) — a state a caller cannot otherwise see. A turn dispatched to a session that is no
+   * longer alive would never settle (nothing remains to stream its events or resolve it), leaving the
+   * conversation stuck "Working" forever, so the manager checks this before reusing a held-open session
+   * and reopens a fresh one instead when it reads false.
+   */
+  readonly alive: boolean;
+
+  /**
    * Runs a turn in this session, streaming events through the context until the turn settles and leaving
    * the session open for the next turn.
    * @param context The turn's context.

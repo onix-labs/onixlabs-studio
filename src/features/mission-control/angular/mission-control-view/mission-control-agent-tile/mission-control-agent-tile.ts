@@ -196,12 +196,17 @@ export class MissionControlAgentTile {
 
   /**
    * Gets a value indicating whether the tile is hidden — an empty host while empty tiles are
-   * suppressed, or an idle host while idle tiles are suppressed.
+   * suppressed, or an idle host while idle tiles are suppressed. A host that belongs to an open tab
+   * is never hidden: its tab is the user's live surface, and its column is the only place to type to
+   * that agent, so hiding it would strand the agent (a New chat resets the column to empty — that
+   * must not make it vanish). The Hide Empty / Hide Idle toggles therefore only declutter the
+   * transient tab-less docked panels (workspace/repository), which is what they were meant for.
    */
   protected readonly hidden: Signal<boolean> = computed(
     (): boolean =>
-      (this.isEmpty() && this.missionControl.hideEmpty()) ||
-      (this.isIdle() && this.missionControl.hideIdle()),
+      this.host.tabId === null &&
+      ((this.isEmpty() && this.missionControl.hideEmpty()) ||
+        (this.isIdle() && this.missionControl.hideIdle())),
   );
 
   /**
