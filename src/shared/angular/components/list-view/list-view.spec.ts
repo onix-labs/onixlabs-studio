@@ -1,4 +1,4 @@
-import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { CdkDragDrop, CdkDragSortEvent } from '@angular/cdk/drag-drop';
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -181,21 +181,89 @@ describe('ListView (reorderable)', () => {
     );
   });
 
-  it('onDrop_mapsTheDragIndicesToTheMovedAndTargetRowIds', () => {
-    (list as unknown as { onDrop(event: CdkDragDrop<readonly ListRow[]>): void }).onDrop({
+  /**
+   * Drives the drag surface (the private handlers the CDK bindings call) for a reorder test.
+   * @param list The list view under test.
+   * @returns Returns the drag handlers cast off the component.
+   */
+  function drag(list: ListView): {
+    onDragStarted(): void;
+    onSorted(event: CdkDragSortEvent<readonly ListRow[]>): void;
+    onDrop(event: CdkDragDrop<readonly ListRow[]>): void;
+  } {
+    return list as unknown as {
+      onDragStarted(): void;
+      onSorted(event: CdkDragSortEvent<readonly ListRow[]>): void;
+      onDrop(event: CdkDragDrop<readonly ListRow[]>): void;
+    };
+  }
+
+  it('onSorted_emitsAMoveLiveForTheStep_mappingIndicesToRowIds', () => {
+    drag(list).onDragStarted();
+    drag(list).onSorted({
       previousIndex: 2,
       currentIndex: 0,
-    } as CdkDragDrop<readonly ListRow[]>);
+    } as CdkDragSortEvent<readonly ListRow[]>);
 
+    // The reorder is emitted during the drag (not on drop) so the consumer's order updates live.
     expect(component.reordered).toEqual([{ from: 'three', to: 'one' }]);
   });
 
-  it('onDrop_whenDroppedInPlace_emitsNothing', () => {
-    (list as unknown as { onDrop(event: CdkDragDrop<readonly ListRow[]>): void }).onDrop({
+  it('onSorted_acrossSuccessiveSteps_advancesTheMirrorSoTheIdsStayCorrect', () => {
+    drag(list).onDragStarted();
+    // three: index 2 -> 1, then 1 -> 0. The moved id stays 'three' as the mirror order advances.
+    drag(list).onSorted({ previousIndex: 2, currentIndex: 1 } as CdkDragSortEvent<
+      readonly ListRow[]
+    >);
+    drag(list).onSorted({ previousIndex: 1, currentIndex: 0 } as CdkDragSortEvent<
+      readonly ListRow[]
+    >);
+
+    expect(component.reordered).toEqual([
+      { from: 'three', to: 'two' },
+      { from: 'three', to: 'one' },
+    ]);
+  });
+
+  it('onSorted_whenAStepLandsInPlace_emitsNothing', () => {
+    drag(list).onDragStarted();
+    drag(list).onSorted({
       previousIndex: 1,
       currentIndex: 1,
-    } as CdkDragDrop<readonly ListRow[]>);
+    } as CdkDragSortEvent<readonly ListRow[]>);
 
     expect(component.reordered).toEqual([]);
+  });
+
+  it('onDrop_afterALiveDrag_emitsNothingFurther', () => {
+    drag(list).onDragStarted();
+    drag(list).onSorted({ previousIndex: 2, currentIndex: 0 } as CdkDragSortEvent<
+      readonly ListRow[]
+    >);
+    component.reordered.length = 0;
+
+    drag(list).onDrop({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<readonly ListRow[]>);
+
+    expect(component.reordered).toEqual([]);
+  });
+
+  it('duringADrag_rendersTheFrozenSnapshot_thenTheLiveRowsOnDrop', () => {
+    const labels = (): string[] =>
+      [...host.querySelectorAll('.probe-label')].map((node: Element): string =>
+        (node.textContent ?? '').trim(),
+      );
+    expect(labels()).toEqual(['one', 'two', 'three']);
+
+    // While dragging, a live reorder of the input must not re-order this list's own DOM (the toolkit
+    // is moving those elements); the frozen snapshot is rendered instead.
+    drag(list).onDragStarted();
+    component.rows.set([makeRow('three'), makeRow('one'), makeRow('two')]);
+    fixture.detectChanges();
+    expect(labels()).toEqual(['one', 'two', 'three']);
+
+    // On drop the snapshot is released and the settled live order is rendered.
+    drag(list).onDrop({ previousIndex: 0, currentIndex: 0 } as CdkDragDrop<readonly ListRow[]>);
+    fixture.detectChanges();
+    expect(labels()).toEqual(['three', 'one', 'two']);
   });
 });

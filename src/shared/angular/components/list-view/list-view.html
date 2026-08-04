@@ -1,11 +1,19 @@
-<div class="list-rows" role="listbox" cdkDropList (cdkDropListDropped)="onDrop($event)">
-  @for (row of rows(); track row.id) {
+<div
+  class="list-rows"
+  role="listbox"
+  cdkDropList
+  (cdkDropListSorted)="onSorted($event)"
+  (cdkDropListDropped)="onDrop($event)"
+>
+  @for (row of displayRows(); track row.id) {
     <div
       class="list-row"
       role="option"
       tabindex="0"
       cdkDrag
+      cdkDragLockAxis="y"
       [cdkDragDisabled]="!reorderable()"
+      (cdkDragStarted)="onDragStarted()"
       [attr.data-list-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
       [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"

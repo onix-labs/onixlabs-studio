@@ -172,6 +172,14 @@ export class AgentConversation implements AgentSessionHandle {
   );
 
   /**
+   * Holds the composer's unsent draft text. It lives on the conversation — not the transient chat
+   * component — because a mirror surface (a Mission Control column) unmounts its chat when its tab is
+   * left, and a draft held in the component would be lost on the next visit. Kept here it survives, and
+   * is shared by every surface driving this one conversation (tab, docked panel, mirror).
+   */
+  public readonly draft: WritableSignal<string> = signal<string>('');
+
+  /**
    * Holds whether the conversation-history list is shown.
    */
   private readonly historyOpenState: WritableSignal<boolean> = signal<boolean>(false);

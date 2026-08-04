@@ -14,6 +14,7 @@ import type {
 } from '@shared/api/ai-types';
 import type { AgentMode } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
 import { Search } from '@shared/angular/services/search/search';
@@ -63,9 +64,11 @@ describe('AgentChat', () => {
   let modeChanges: AgentMode[];
   let effortChanges: (AiEffort | null)[];
   let attachedContext: AgentContextRef[];
+  let conversationDraft: WritableSignal<string>;
 
   beforeEach(async () => {
     localStorage.clear();
+    conversationDraft = signal<string>('');
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -175,6 +178,12 @@ describe('AgentChat', () => {
         { provide: AgentEngine, useValue: engineStub },
         { provide: Workspace, useValue: workspaceStub },
         { provide: Search, useValue: searchStub },
+        // A host conversation carrying the persistent composer draft, so the chat's draft is backed by
+        // it exactly as it is in the app (the source of the survives-remount behaviour below).
+        {
+          provide: AgentConversation,
+          useValue: { draft: conversationDraft } as unknown as AgentConversation,
+        },
       ],
     })
       .overrideComponent(AgentChat, {
@@ -249,6 +258,18 @@ describe('AgentChat', () => {
 
     expect(sent).toEqual(['what can you do?']);
     expect(component.draft()).toBe('');
+  });
+
+  it('draft_isBackedByTheHostConversation_soItSurvivesTheChatUnmountingAndRemounting', () => {
+    // Typing writes through to the host conversation, which outlives the chat component.
+    component.onInput('half-typed prompt');
+    expect(conversationDraft()).toBe('half-typed prompt');
+
+    // A Mission Control column unmounts its chat when its tab is left and mounts a fresh one on the
+    // way back. A second chat over the same conversation reads the draft back rather than starting
+    // empty — the bug this guards against was the draft living on the (destroyed) component.
+    const remounted: AgentChat = TestBed.createComponent(AgentChat).componentInstance;
+    expect(remounted.draft()).toBe('half-typed prompt');
   });
 
   it('send_whenDraftBlank_doesNothing', () => {

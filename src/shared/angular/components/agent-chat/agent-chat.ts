@@ -437,9 +437,12 @@ export class AgentChat implements OnInit {
   public readonly mirror: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds the current composer text.
+   * Holds the current composer text. Backed by the host conversation's {@link AgentConversation.draft}
+   * when one is provided, so the draft persists (and stays shared) across a mirror chat being unmounted
+   * and remounted — a Mission Control column typed into, left, and returned to keeps its text. Falls
+   * back to a local signal when the component stands alone (tests).
    */
-  private readonly draftText: WritableSignal<string> = signal<string>('');
+  private readonly draftText: WritableSignal<string> = this.conversation?.draft ?? signal<string>('');
 
   /**
    * Holds a value indicating whether the markdown composer modal is open.

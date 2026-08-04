@@ -1,9 +1,17 @@
-import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
+import {
+  CdkDrag,
+  CdkDragDrop,
+  CdkDragHandle,
+  CdkDragSortEvent,
+  CdkDropList,
+  moveItemInArray,
+} from '@angular/cdk/drag-drop';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   contentChild,
   ElementRef,
   inject,
@@ -11,8 +19,10 @@ import {
   InputSignal,
   output,
   OutputEmitterRef,
+  signal,
   Signal,
   TemplateRef,
+  WritableSignal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
@@ -109,6 +119,34 @@ export class ListView {
   protected readonly content: Signal<TemplateRef<unknown> | undefined> = contentChild(TemplateRef);
 
   /**
+   * Holds a value indicating whether a reorder drag is in progress.
+   */
+  private readonly dragging: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the rows captured at drag start, rendered for the duration of the drag in place of the live
+   * {@link rows}. Reorder is emitted live (as the drag sorts), so the consumer's order — and any view
+   * driven off it — changes mid-drag; rendering the frozen snapshot keeps this list's own DOM stable
+   * so Angular does not re-order the very elements the drag toolkit is moving underneath it.
+   */
+  private readonly frozenRows: WritableSignal<readonly ListRow[]> = signal<readonly ListRow[]>([]);
+
+  /**
+   * Gets the rows to render: the live rows normally, or the drag-start snapshot while a drag is in
+   * progress.
+   */
+  protected readonly displayRows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.dragging() ? this.frozenRows() : this.rows(),
+  );
+
+  /**
+   * Holds the ids in their current drag order, mirroring the drag toolkit's own item shuffling so each
+   * sort step can be translated back to a moved/target id pair against a stable basis (the live
+   * {@link rows} are changing underneath the drag as reorder is applied).
+   */
+  private liveOrder: string[] = [];
+
+  /**
    * Holds the component's host element, used to scroll the selected row into view.
    */
   private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -147,17 +185,39 @@ export class ListView {
   }
 
   /**
-   * Translates a settled drag into a {@link reorder}, mapping the drag's indices back to the moved and
-   * target row ids so the consumer never reconciles indices itself. The consumer owns the order and
-   * applies the move; nothing is mutated here.
-   * @param event The drag-drop event describing the move.
+   * Captures the row order at drag start, so the list can render a stable snapshot while the live order
+   * reorders beneath it and the sort steps have a fixed index basis to translate against.
    */
-  protected onDrop(event: CdkDragDrop<readonly ListRow[]>): void {
+  protected onDragStarted(): void {
     const rows: readonly ListRow[] = this.rows();
-    const from: ListRow | undefined = rows[event.previousIndex];
-    const to: ListRow | undefined = rows[event.currentIndex];
-    if (from !== undefined && to !== undefined && from.id !== to.id) {
-      this.reorder.emit({ from: from.id, to: to.id });
+    this.frozenRows.set(rows);
+    this.liveOrder = rows.map((row: ListRow): string => row.id);
+    this.dragging.set(true);
+  }
+
+  /**
+   * Emits a {@link reorder} for each sort step of an in-progress drag, so the consumer's order (and any
+   * view driven off it, such as the Mission Control columns) reorders live rather than only on drop.
+   * Each step's indices are read against {@link liveOrder} — the toolkit's own running order — then that
+   * mirror is advanced in step, so the moved/target ids stay correct across successive swaps.
+   * @param event The sort event describing the step.
+   */
+  protected onSorted(event: CdkDragSortEvent<readonly ListRow[]>): void {
+    const from: string | undefined = this.liveOrder[event.previousIndex];
+    const to: string | undefined = this.liveOrder[event.currentIndex];
+    if (from !== undefined && to !== undefined && from !== to) {
+      this.reorder.emit({ from, to });
     }
+    moveItemInArray(this.liveOrder, event.previousIndex, event.currentIndex);
+  }
+
+  /**
+   * Ends the drag, dropping the frozen snapshot so the list returns to rendering the live rows — which,
+   * having been reordered live through {@link onSorted}, already hold the settled order. Nothing is
+   * emitted here: the move was applied step by step during the drag.
+   * @param _event The drag-drop event (its move was already applied live).
+   */
+  protected onDrop(_event: CdkDragDrop<readonly ListRow[]>): void {
+    this.dragging.set(false);
   }
 }
