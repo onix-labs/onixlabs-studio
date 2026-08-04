@@ -230,6 +230,33 @@ describe('dock-tree', () => {
 
       expect(pruneStack(tree, centre)).toBe(tree);
     });
+
+    it('pruneStack_whenPrimaryEmptiesButAnotherWellSurvives_prunesItAndHandsTheAnchorOver', () => {
+      // The centre anchor empties while a second document well is open elsewhere: the empty centre
+      // prunes (its sibling fills) and the anchor passes to the survivor, so one primary slot remains.
+      const centre: StackNode = mkStack('document', [], true);
+      const survivor: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [centre, survivor]);
+
+      const result: DockNode = pruneStack(tree, centre);
+
+      expect(findNode(result, centre.id)).toBeNull();
+      expect(asStack(findStackOfPanel(result, 'doc')).primary).toBe(true);
+    });
+
+    it('pruneStack_whenTheOnlyWellEmptiesButAPrimaryToolHoldsTheCentre_prunesTheWell', () => {
+      // A document well split beside a tool-occupied centre: closing its last document leaves an empty
+      // well that would once have been kept as "the last well" — but the primary tool is a home, so it
+      // prunes and the tool refills the space.
+      const agent: StackNode = mkStack('tool', ['agent'], true);
+      const well: StackNode = mkStack('document', []);
+      const tree: DockNode = mkSplit('row', [well, agent]);
+
+      const result: DockNode = pruneStack(tree, well);
+
+      expect(findStackOfPanel(result, 'agent')).not.toBeNull();
+      expect(firstStackOfRole(result, 'document')).toBeNull();
+    });
   });
 
   describe('findPrimaryStack', () => {
@@ -290,16 +317,35 @@ describe('dock-tree', () => {
       expect((inner as SplitNode).dir).toBe('row');
       expect((inner as SplitNode).sizes).toEqual([1, 1]);
 
-      // The demoted tool keeps its id; the new well leads (left) and inherits the centre flag.
+      // The new well leads (left) as an ordinary well; the tool keeps its id and the centre anchor,
+      // so closing the document later collapses the split back onto the tool.
       const well: StackNode = asStack(findStackOfPanel(result, 'doc'));
       const tool: StackNode = asStack(findStackOfPanel(result, 'agent'));
       expect((inner as SplitNode).children[0]).toBe(well);
       expect((inner as SplitNode).children[1]).toBe(tool);
       expect(well.role).toBe('document');
-      expect(well.primary).toBe(true);
+      expect(well.primary).toBeFalsy();
       expect(tool.id).toBe(centre.id);
       expect(tool.role).toBe('tool');
-      expect(tool.primary).toBe(false);
+      expect(tool.primary).toBe(true);
+    });
+
+    it('splitWellBeside_thenClosingTheDocument_collapsesBackOntoTheTool', () => {
+      // The user's scenario: agent fills the centre, a document splits it 50/50, then the document is
+      // closed — the empty well prunes and the agent refills the whole centre.
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const split: DockNode = splitWellBeside(tree, centre.id, 'doc');
+      const refilled: DockNode = removeFromLayout(split, 'doc');
+
+      // The row split is gone: the agent is a lone stack again, still the primary centre, and no
+      // document well lingers.
+      const agent: StackNode = asStack(findStackOfPanel(refilled, 'agent'));
+      expect(agent.id).toBe(centre.id);
+      expect(agent.primary).toBe(true);
+      expect(findStackOfPanel(refilled, 'doc')).toBeNull();
+      expect(firstStackOfRole(refilled, 'document')).toBeNull();
     });
   });
 
