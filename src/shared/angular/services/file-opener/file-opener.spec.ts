@@ -4,7 +4,11 @@ import { Bridge } from '@shared/api/bridge';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  findPrimaryStack,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspaces } from '../workspaces/workspaces';
@@ -168,6 +172,25 @@ describe('FileOpener', () => {
     };
     expect(await opener.openPath('/ws/main.ts')).toBe(true);
     expect(wellPanels()).toHaveLength(1);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('openPath_whenCentreIsToolOccupied_splitsAFreshWellForTheDocument', async () => {
+    // Occupy the empty centre with a tool, leaving no document well at all.
+    const centre: StackNode | null = findPrimaryStack(dockState.layout());
+    expect(centre).not.toBeNull();
+    dockState.occupyWell(centre!.id, 'agent');
+    expect(firstStackOfRole(dockState.layout(), 'document')).toBeNull();
+
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+    expect(await opener.openPath('/ws/main.ts')).toBe(true);
+
+    // A fresh well now holds the document, and the tool still lives alongside it (not swallowed).
+    expect(wellPanels()).toHaveLength(1);
+    expect(findStackOfPanel(dockState.layout(), 'agent')).not.toBeNull();
     expect(tabs.tabs()).toHaveLength(0);
   });
 

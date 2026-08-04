@@ -198,8 +198,29 @@ export function removeNode(tree: DockNode, id: string): DockNode | null {
 }
 
 /**
- * Removes a stack from the tree once it is empty, except the last remaining document well, which is
- * kept so documents always have a home. A non-empty stack is left untouched.
+ * Finds the primary (centre) slot: the single stack flagged {@link StackNode.primary}.
+ * @param tree The root of the tree to search.
+ * @returns Returns the primary stack, or null when none is flagged.
+ */
+export function findPrimaryStack(tree: DockNode): StackNode | null {
+  if (isStackNode(tree)) {
+    return tree.primary === true ? tree : null;
+  }
+  for (const child of tree.children) {
+    const found: StackNode | null = findPrimaryStack(child);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Removes a stack from the tree once it is empty, with two stacks kept so documents always have a
+ * home. The primary (centre) slot never prunes: emptied, it reverts to an empty document well, so
+ * the centre keeps a documents-home and a hoverable blank target even after a tool that had occupied
+ * it is closed or dragged away. The last remaining document well is likewise kept. A non-empty stack
+ * is left untouched.
  * @param tree The root of the tree to transform.
  * @param stack The stack to consider pruning.
  * @returns Returns the transformed tree.
@@ -208,10 +229,69 @@ export function pruneStack(tree: DockNode, stack: StackNode): DockNode {
   if (stack.panels.length > 0) {
     return tree;
   }
+  if (stack.primary === true) {
+    // The centre slot reverts to an empty document well rather than vanishing. A tool that occupied
+    // it flipped the role to `tool`; emptying it restores the well.
+    return stack.role === 'document'
+      ? tree
+      : replaceNode(tree, stack.id, { ...stack, role: 'document', active: null });
+  }
   if (stack.role === 'document' && countStacks(tree, 'document') <= 1) {
     return tree;
   }
   return removeNode(tree, stack.id) ?? tree;
+}
+
+/**
+ * Occupies the empty primary well with a tool: flips the centre slot's role from `document` to
+ * `tool` in place (keeping its id, position and primary flag) and seats the panel in it. This is how
+ * a tool dropped on the blank centre comes to fill it without ever joining the well's tab strip. The
+ * call is ignored unless the target is the empty primary document well.
+ * @param tree The root of the tree to transform.
+ * @param stackId The identifier of the primary well to occupy.
+ * @param panelId The identifier of the tool panel to seat in the centre.
+ * @returns Returns the transformed tree.
+ */
+export function occupyWell(tree: DockNode, stackId: string, panelId: string): DockNode {
+  const target: DockNode | null = findNode(tree, stackId);
+  if (
+    target === null ||
+    !isStackNode(target) ||
+    target.role !== 'document' ||
+    target.panels.length > 0
+  ) {
+    return tree;
+  }
+  return replaceNode(tree, stackId, {
+    ...target,
+    role: 'tool',
+    panels: [panelId],
+    active: panelId,
+  });
+}
+
+/**
+ * Splits a fresh document well off a tool-occupied centre: wraps the occupied stack in a new row
+ * split with the well (holding the given document) on the left at an even 50/50 share, and moves the
+ * primary (centre) flag from the tool stack to the new well. This runs when a document is opened
+ * while a tool holds the centre and no well exists. The call is ignored when the target is not a
+ * stack.
+ * @param tree The root of the tree to transform.
+ * @param stackId The identifier of the tool-occupied centre to split against.
+ * @param panelId The identifier of the document panel to seat in the new well.
+ * @returns Returns the transformed tree.
+ */
+export function splitWellBeside(tree: DockNode, stackId: string, panelId: string): DockNode {
+  const target: DockNode | null = findNode(tree, stackId);
+  if (target === null || !isStackNode(target)) {
+    return tree;
+  }
+  const demoted: StackNode = { ...target, primary: false };
+  const well: StackNode = mkStack('document', [panelId], true);
+  // Wrap the demoted tool stack in a fresh row split, well on the left, both at weight one (50/50),
+  // regardless of the parent's orientation — so the ratio is exactly the documented default.
+  const split: DockNode = wrap(demoted, well, 'row', true);
+  return replaceNode(tree, stackId, split);
 }
 
 /**
@@ -507,7 +587,7 @@ export function defaultLayout(): DockNode {
       mkStack('tool', ['files']),
       mkSplit(
         'col',
-        [mkStack('document', []), mkStack('tool', ['output', 'errors', 'terminal'])],
+        [mkStack('document', [], true), mkStack('tool', ['output', 'errors', 'terminal'])],
         [4, 1.5],
       ),
       mkStack('tool', ['agent']),

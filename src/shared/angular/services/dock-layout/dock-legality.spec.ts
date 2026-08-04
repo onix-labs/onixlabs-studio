@@ -47,6 +47,18 @@ describe('dock-legality', () => {
     it('guideLegality_whenToolOverTool_allowsEveryGuide', () => {
       expect(guideLegality('tool', 'tool').center).toBe(true);
     });
+
+    it('guideLegality_whenToolOverEmptyDocument_allowsOnlyTheCentre', () => {
+      // The blank centre: the tool takes the whole well (an occupy), so only the centre lights up —
+      // splitting a well with nothing in it makes no sense.
+      expect(guideLegality('tool', 'document', true)).toEqual({
+        center: true,
+        left: false,
+        right: false,
+        top: false,
+        bottom: false,
+      });
+    });
   });
 
   describe('resolveEdgeTarget', () => {
@@ -141,6 +153,26 @@ describe('dock-legality', () => {
       expect(resolveGroupTarget(200, 200, 'stack-1', 'document', group, 'tool')).toBeNull();
     });
 
+    it('resolveGroupTarget_whenToolOverEmptyDocumentCentre_occupiesTheWell', () => {
+      const resolution: DockResolution | null = resolveGroupTarget(
+        200,
+        200,
+        'stack-1',
+        'document',
+        group,
+        'tool',
+        true,
+      );
+
+      expect(resolution?.target).toEqual({ kind: 'occupy', stackId: 'stack-1' });
+      expect(resolution?.preview).toEqual(group);
+    });
+
+    it('resolveGroupTarget_whenToolOverEmptyDocumentEdge_returnsNull', () => {
+      // Over the blank centre only the centre is legal; the edge splits are suppressed.
+      expect(resolveGroupTarget(110, 200, 'stack-1', 'document', group, 'tool', true)).toBeNull();
+    });
+
     it('resolveGroupTarget_whenOutsideTheGroup_returnsNull', () => {
       expect(resolveGroupTarget(50, 50, 'stack-1', 'tool', group, 'tool')).toBeNull();
     });
@@ -214,6 +246,22 @@ describe('dock-legality', () => {
     it('resolveCompassTarget_whenOverAnIllegalGuide_returnsNull', () => {
       // A tool dragged over a document well may not tab into its centre.
       expect(resolveCompassTarget(cx, cy, cx, cy, 'stack-1', 'document', group, 'tool')).toBeNull();
+    });
+
+    it('resolveCompassTarget_whenToolOverEmptyDocumentCentreGuide_occupiesTheWell', () => {
+      const resolution: DockResolution | null = resolveCompassTarget(
+        cx,
+        cy,
+        cx,
+        cy,
+        'stack-1',
+        'document',
+        group,
+        'tool',
+        true,
+      );
+
+      expect(resolution?.target).toEqual({ kind: 'occupy', stackId: 'stack-1' });
     });
   });
 });

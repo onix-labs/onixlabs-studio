@@ -15,9 +15,9 @@ import {
 } from './dock-legality';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
-import { DockSide, StackNode } from './dock-node';
+import { DockNode, DockSide, isStackNode, StackNode } from './dock-node';
 import { DockState } from './dock-state';
-import { findStackOfPanel } from './dock-tree';
+import { findNode, findStackOfPanel } from './dock-tree';
 
 /**
  * Identifies a compass guide: the centre tab-into guide or one of the four split sides.
@@ -392,18 +392,32 @@ export class DockDrag {
     }
 
     // The compass centres on the hovered group; a guide the cursor is directly over wins, so the
-    // arrows are explicit targets, and the position-based zones serve as a fallback elsewhere.
+    // arrows are explicit targets, and the position-based zones serve as a fallback elsewhere. The
+    // hovered stack's emptiness gates the centre well's guides (occupy an empty centre, or split
+    // beside a well that holds documents).
     const centerX: number = hit.rect.left + hit.rect.width / 2;
     const centerY: number = hit.rect.top + hit.rect.height / 2;
+    const hovered: DockNode | null = findNode(this.dockState.layout(), hit.stackId);
+    const targetEmpty: boolean =
+      hovered !== null && isStackNode(hovered) && hovered.panels.length === 0;
     const resolution: DockResolution | null =
-      resolveCompassTarget(x, y, centerX, centerY, hit.stackId, hit.role, hit.rect, panel.role) ??
-      resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, panel.role);
+      resolveCompassTarget(
+        x,
+        y,
+        centerX,
+        centerY,
+        hit.stackId,
+        hit.role,
+        hit.rect,
+        panel.role,
+        targetEmpty,
+      ) ?? resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, panel.role, targetEmpty);
     this.currentTarget = resolution?.target ?? null;
     this.previewRect.set(resolution?.preview ?? null);
     this.compassState.set({
       x: centerX,
       y: centerY,
-      legality: guideLegality(panel.role, hit.role),
+      legality: guideLegality(panel.role, hit.role, targetEmpty),
       hot: resolution !== null ? guideKeyOf(resolution.target) : null,
     });
   }
@@ -454,6 +468,12 @@ export class DockDrag {
         this.dockState.removeFromLayout(panel.id);
         this.dockState.tabInto(target.stackId, panel.id);
         return;
+      case 'occupy':
+        // The tool takes over the empty centre well. Lift it from its source first (pruning that
+        // stack if it empties), then flip the well's slot to hold it.
+        this.dockState.removeFromLayout(panel.id);
+        this.dockState.occupyWell(target.stackId, panel.id);
+        return;
       case 'split':
         if (source !== null && source.id === target.stackId && source.panels.length <= 1) {
           return;
@@ -484,7 +504,7 @@ export class DockDrag {
  * @returns Returns the guide key.
  */
 function guideKeyOf(target: DockTarget): GuideKey | null {
-  if (target.kind === 'tab') {
+  if (target.kind === 'tab' || target.kind === 'occupy') {
     return 'center';
   }
   if (target.kind === 'split') {

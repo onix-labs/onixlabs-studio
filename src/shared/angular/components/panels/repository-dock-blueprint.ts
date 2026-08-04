@@ -20,7 +20,11 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['branches']),
-        mkSplit('col', [mkStack('document', []), mkStack('tool', ['history', 'terminal'])], [3, 2]),
+        mkSplit(
+          'col',
+          [mkStack('document', [], true), mkStack('tool', ['history', 'terminal'])],
+          [3, 2],
+        ),
         mkStack('tool', ['commit', 'agent']),
       ],
       [1.2, 3.4, 1.6],

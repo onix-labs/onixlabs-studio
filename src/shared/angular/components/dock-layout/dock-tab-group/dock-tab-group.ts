@@ -21,7 +21,7 @@ import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
-import { guideLegality, Rect } from '../../../services/dock-layout/dock-legality';
+import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
@@ -315,8 +315,11 @@ export class DockTabGroup {
   }
 
   /**
-   * Determines whether a dragged tab may enter this group's tab strip, enforcing that documents
-   * only drop into document wells and tools only into tool stacks.
+   * Determines whether a dragged tab may enter this group's tab strip, enforcing that a strip only
+   * ever holds panels of its own role — documents into document wells, tools into tool stacks. This
+   * is literal tab-strip membership, distinct from the compass's occupy rule: a tool taking over an
+   * empty centre well replaces the well (a compass drop through {@link DockDrag}), it never becomes a
+   * tab in a documents-only strip, so that case must not enter here.
    * @param drag The tab being dragged, whose data is the panel identifier.
    * @returns Returns true when the tab may drop here; otherwise, false.
    */
@@ -324,7 +327,7 @@ export class DockTabGroup {
     drag: CdkDrag<string>,
   ): boolean => {
     const panel: DockPanel | undefined = this.registry.get(drag.data);
-    return panel !== undefined && guideLegality(panel.role, this.stack().role).center;
+    return panel?.role === this.stack().role;
   };
 
   /**

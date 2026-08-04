@@ -56,10 +56,14 @@ export interface GuideLegality {
 }
 
 /**
- * A resolved drop target: tab into a stack, split beside a stack, or dock first-class to an edge.
+ * A resolved drop target: tab into a stack, occupy an empty centre well, split beside a stack, or
+ * dock first-class to an edge. `occupy` is distinct from `tab` — a tool dropped on the blank centre
+ * takes over the well's slot (its role flips to `tool`) rather than joining the well's tab strip,
+ * which documents-only wells never allow.
  */
 export type DockTarget =
   | { readonly kind: 'tab'; readonly stackId: string }
+  | { readonly kind: 'occupy'; readonly stackId: string }
   | { readonly kind: 'split'; readonly stackId: string; readonly side: DockSide }
   | { readonly kind: 'edge'; readonly side: DockSide };
 
@@ -144,21 +148,47 @@ export function nearestEdge(rect: Rect, workspace: Rect): DockSide {
 
 /**
  * Computes which compass guides are legal when dragging a panel of one role over a stack of
- * another. Tool windows dock anywhere; documents live only in document wells (tab into or split a
- * document well) and never edge-dock or tab into a tool window.
+ * another. Documents live only in document wells — they tab into or split a well and never
+ * edge-dock or enter a tool stack. Tools dock anywhere, with one asymmetry at the centre well: over
+ * an **empty** well only the centre lights up (the tool takes over the blank centre — an `occupy`,
+ * not a tab), while over a well that **holds documents** only the four splits light up (the tool
+ * cannot join a documents-only tab strip, so it docks beside instead).
  * @param panelRole The role of the panel being dragged.
  * @param targetRole The role of the stack being hovered.
+ * @param targetEmpty Whether the hovered stack currently holds no panels; only consulted for a tool
+ * over a document well.
  * @returns Returns the legality of each guide.
  */
-export function guideLegality(panelRole: StackRole, targetRole: StackRole): GuideLegality {
+export function guideLegality(
+  panelRole: StackRole,
+  targetRole: StackRole,
+  targetEmpty: boolean = false,
+): GuideLegality {
   if (panelRole === 'document') {
     const ok: boolean = targetRole === 'document';
     return { center: ok, left: ok, right: ok, top: ok, bottom: ok };
   }
   if (targetRole === 'document') {
-    return { center: false, left: true, right: true, top: true, bottom: true };
+    return targetEmpty
+      ? { center: true, left: false, right: false, top: false, bottom: false }
+      : { center: false, left: true, right: true, top: true, bottom: true };
   }
   return { center: true, left: true, right: true, top: true, bottom: true };
+}
+
+/**
+ * Resolves the drop target for the centre guide over a hovered stack, distinguishing an occupy (a
+ * tool taking over an empty centre well) from an ordinary tab-into. The caller has already checked
+ * the centre guide is legal.
+ * @param panelRole The role of the panel being dragged.
+ * @param targetRole The role of the hovered stack.
+ * @param stackId The identifier of the hovered stack.
+ * @returns Returns the centre drop target.
+ */
+function centerTarget(panelRole: StackRole, targetRole: StackRole, stackId: string): DockTarget {
+  return panelRole === 'tool' && targetRole === 'document'
+    ? { kind: 'occupy', stackId }
+    : { kind: 'tab', stackId };
 }
 
 /**
@@ -327,6 +357,7 @@ function splitPreview(side: DockSide, rect: Rect): Rect {
  * @param targetRole The role of the hovered stack.
  * @param rect The hovered group's rectangle.
  * @param panelRole The role of the panel being dragged.
+ * @param targetEmpty Whether the hovered stack currently holds no panels.
  * @returns Returns the group resolution, or null when the cursor is outside the group or the zone
  * is illegal.
  */
@@ -337,13 +368,14 @@ export function resolveGroupTarget(
   targetRole: StackRole,
   rect: Rect,
   panelRole: StackRole,
+  targetEmpty: boolean = false,
 ): DockResolution | null {
   const fx: number = (x - rect.left) / rect.width;
   const fy: number = (y - rect.top) / rect.height;
   if (fx < 0 || fx > 1 || fy < 0 || fy > 1) {
     return null;
   }
-  const legal: GuideLegality = guideLegality(panelRole, targetRole);
+  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty);
   const inCenter: boolean =
     fx >= CENTER_ZONE_FRACTION &&
     fx <= 1 - CENTER_ZONE_FRACTION &&
@@ -351,7 +383,9 @@ export function resolveGroupTarget(
     fy <= 1 - CENTER_ZONE_FRACTION;
 
   if (inCenter) {
-    return legal.center ? { target: { kind: 'tab', stackId }, preview: rect } : null;
+    return legal.center
+      ? { target: centerTarget(panelRole, targetRole, stackId), preview: rect }
+      : null;
   }
 
   const distances: Record<DockSide, number> = { left: fx, right: 1 - fx, top: fy, bottom: 1 - fy };
@@ -377,6 +411,7 @@ export function resolveGroupTarget(
  * @param targetRole The role of the hovered stack.
  * @param rect The hovered group's rectangle.
  * @param panelRole The role of the panel being dragged.
+ * @param targetEmpty Whether the hovered stack currently holds no panels.
  * @returns Returns the guide resolution, or null when the cursor is over no guide (so callers fall
  * back to the position-based zones) or over an illegal guide.
  */
@@ -389,6 +424,7 @@ export function resolveCompassTarget(
   targetRole: StackRole,
   rect: Rect,
   panelRole: StackRole,
+  targetEmpty: boolean = false,
 ): DockResolution | null {
   const guides: readonly {
     readonly key: 'center' | DockSide;
@@ -402,7 +438,7 @@ export function resolveCompassTarget(
     { key: 'bottom', dx: 0, dy: COMPASS_GUIDE_OFFSET },
   ];
   const half: number = COMPASS_GUIDE_SIZE / 2;
-  const legal: GuideLegality = guideLegality(panelRole, targetRole);
+  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty);
   for (const guide of guides) {
     if (Math.abs(x - (centerX + guide.dx)) > half || Math.abs(y - (centerY + guide.dy)) > half) {
       continue;
@@ -411,7 +447,7 @@ export function resolveCompassTarget(
       return null;
     }
     return guide.key === 'center'
-      ? { target: { kind: 'tab', stackId }, preview: rect }
+      ? { target: centerTarget(panelRole, targetRole, stackId), preview: rect }
       : {
           target: { kind: 'split', stackId, side: guide.key },
           preview: splitPreview(guide.key, rect),

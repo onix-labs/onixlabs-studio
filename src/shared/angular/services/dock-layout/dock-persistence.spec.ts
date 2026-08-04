@@ -79,6 +79,37 @@ describe('dock-persistence', () => {
     expect(restoreLayout(raw, new Set(['explorer']))).toBeNull();
   });
 
+  it('restoreLayout_keepsAToolOccupiedPrimaryCentreEvenWithNoDocumentWell', () => {
+    // The agent occupying the centre: a primary tool stack, no document well. It must restore (the
+    // slot reverts to a well when emptied) rather than reset the whole layout, and the primary flag
+    // must round-trip.
+    const raw: unknown = {
+      kind: 'split',
+      id: 'dock-1',
+      dir: 'row',
+      children: [
+        { kind: 'stack', id: 'dock-2', role: 'tool', panels: ['files'], active: 'files' },
+        {
+          kind: 'stack',
+          id: 'dock-3',
+          role: 'tool',
+          panels: ['agent'],
+          active: 'agent',
+          primary: true,
+        },
+      ],
+      sizes: [1, 3],
+    };
+
+    const result: SplitNode = restoreLayout(raw, new Set(['files', 'agent'])) as SplitNode;
+
+    expect(result).not.toBeNull();
+    const centre: StackNode = result.children[1] as StackNode;
+    expect(centre.role).toBe('tool');
+    expect(centre.panels).toEqual(['agent']);
+    expect(centre.primary).toBe(true);
+  });
+
   it('restoreLayout_reservesNodeIdentifiersPastTheRestoredTree', () => {
     // The node-id sequence is process-global and other spec files sharing this worker advance it,
     // so anchor the reserved id to the live counter rather than a fixed number — an absolute

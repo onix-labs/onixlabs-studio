@@ -38,7 +38,7 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
         mkStack('tool', ['files']),
         mkSplit(
           'col',
-          [mkStack('document', []), mkStack('tool', ['errors', 'terminal'])],
+          [mkStack('document', [], true), mkStack('tool', ['errors', 'terminal'])],
           [4, 1.5],
         ),
         mkStack('tool', ['agent']),

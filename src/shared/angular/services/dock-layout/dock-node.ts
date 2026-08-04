@@ -85,6 +85,16 @@ export interface StackNode {
    * expanded again. Document wells are never collapsed.
    */
   readonly collapsed?: boolean;
+
+  /**
+   * Gets whether this stack is the layout's primary (centre) slot. Exactly one stack carries the
+   * flag: the centre document well. The primary slot is special in two ways — it is never pruned
+   * away (when emptied it reverts to an empty document well rather than vanishing, so the centre
+   * always keeps a documents-home and a hoverable blank target), and it is the stack a tool
+   * occupies when dropped on the empty centre (its role flips to `tool` in place). The flag moves to
+   * the freshly split-off well when a document is opened against a tool-occupied centre.
+   */
+  readonly primary?: boolean;
 }
 
 /**
@@ -139,11 +149,24 @@ function highestNodeNumber(node: DockNode): number {
  * Creates a stack node with a fresh identifier, activating its first panel.
  * @param role The role of the stack, which governs docking legality.
  * @param panels The ordered identifiers of the panels the stack should hold.
+ * @param primary Whether this stack is the layout's primary (centre) slot; omitted for every stack
+ * but the centre well.
  * @returns Returns a new {@link StackNode} whose active panel is the first supplied panel, or
  * `null` when no panels are supplied.
  */
-export function mkStack(role: StackRole, panels: readonly string[]): StackNode {
-  return { kind: 'stack', id: nextNodeId(), role, panels: [...panels], active: panels[0] ?? null };
+export function mkStack(
+  role: StackRole,
+  panels: readonly string[],
+  primary: boolean = false,
+): StackNode {
+  return {
+    kind: 'stack',
+    id: nextNodeId(),
+    role,
+    panels: [...panels],
+    active: panels[0] ?? null,
+    ...(primary ? { primary: true } : {}),
+  };
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   dockEdge,
   dockNodeEdge,
   movePanel,
+  occupyWell,
   removeFromLayout,
   removeNode,
   reorderTab,
@@ -18,6 +19,7 @@ import {
   setCollapsed,
   setSizes,
   splitStack,
+  splitWellBeside,
   tabInto,
 } from './dock-tree';
 
@@ -138,6 +140,27 @@ export class DockState {
    */
   public dockEdge(panelId: string, side: DockSide): void {
     this.commit(dockEdge(this.tree(), panelId, side));
+  }
+
+  /**
+   * Occupies the empty primary (centre) well with a tool, flipping the centre slot to hold it. Used
+   * when a tool is dropped on the blank centre.
+   * @param stackId The identifier of the primary well to occupy.
+   * @param panelId The identifier of the tool panel to seat in the centre.
+   */
+  public occupyWell(stackId: string, panelId: string): void {
+    this.commit(occupyWell(this.tree(), stackId, panelId));
+  }
+
+  /**
+   * Splits a fresh document well (holding the given document) off a tool-occupied centre at an even
+   * 50/50 share, the well on the left. Used when a document is opened while a tool holds the centre
+   * and no well exists.
+   * @param stackId The identifier of the tool-occupied centre to split against.
+   * @param panelId The identifier of the document panel to seat in the new well.
+   */
+  public openWellBeside(stackId: string, panelId: string): void {
+    this.commit(splitWellBeside(this.tree(), stackId, panelId));
   }
 
   /**

@@ -1,5 +1,5 @@
 import { DockNode, isSplitNode, reserveNodeIds } from './dock-node';
-import { firstStackOfRole } from './dock-tree';
+import { findPrimaryStack, firstStackOfRole } from './dock-tree';
 
 /**
  * Rebuilds a dock layout tree from a value read out of persistence: validates its structure, prunes it
@@ -20,7 +20,12 @@ export function restoreLayout(raw: unknown, knownPanelIds: ReadonlySet<string>):
     return null;
   }
   const sanitized: DockNode | null = sanitizeNode(raw, knownPanelIds, new Set<string>());
-  if (sanitized === null || firstStackOfRole(sanitized, 'document') === null) {
+  // A usable layout must retain a documents-home: either a document well, or the primary centre slot
+  // (which may be tool-occupied but reverts to a well when emptied). Without either, seed fresh.
+  if (
+    sanitized === null ||
+    (firstStackOfRole(sanitized, 'document') === null && findPrimaryStack(sanitized) === null)
+  ) {
     return null;
   }
   reserveNodeIds(sanitized);
@@ -47,7 +52,8 @@ function isPersistedNode(value: unknown): value is DockNode {
       Array.isArray(node['panels']) &&
       node['panels'].every((panel: unknown): boolean => typeof panel === 'string') &&
       (node['active'] === null || typeof node['active'] === 'string') &&
-      (node['collapsed'] === undefined || typeof node['collapsed'] === 'boolean')
+      (node['collapsed'] === undefined || typeof node['collapsed'] === 'boolean') &&
+      (node['primary'] === undefined || typeof node['primary'] === 'boolean')
     );
   }
   if (node['kind'] === 'split') {

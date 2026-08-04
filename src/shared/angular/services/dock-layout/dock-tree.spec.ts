@@ -1,4 +1,12 @@
-import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
+import {
+  DockNode,
+  isSplitNode,
+  isStackNode,
+  mkSplit,
+  mkStack,
+  SplitNode,
+  StackNode,
+} from './dock-node';
 import {
   collectPanelIds,
   countStacks,
@@ -6,9 +14,11 @@ import {
   dockEdge,
   dockNodeEdge,
   findNode,
+  findPrimaryStack,
   findStackOfPanel,
   firstStackOfRole,
   movePanel,
+  occupyWell,
   pruneStack,
   removeFromLayout,
   removeNode,
@@ -17,6 +27,7 @@ import {
   setActive,
   setSizes,
   splitStack,
+  splitWellBeside,
   tabInto,
 } from './dock-tree';
 
@@ -198,6 +209,97 @@ describe('dock-tree', () => {
       const tree: DockNode = mkSplit('row', [emptyWell, otherWell]);
 
       expect(pruneStack(tree, emptyWell)).toBe(otherWell);
+    });
+
+    it('pruneStack_whenPrimaryToolCentreEmpties_revertsItToAnEmptyWell', () => {
+      // The centre slot a tool had occupied: closing the last tool must not prune it away — it
+      // reverts to an empty document well so the centre keeps a documents-home.
+      const centre: StackNode = mkStack('tool', [], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const reverted: StackNode = asStack(findNode(pruneStack(tree, centre), centre.id));
+
+      expect(reverted.role).toBe('document');
+      expect(reverted.panels).toEqual([]);
+      expect(reverted.primary).toBe(true);
+    });
+
+    it('pruneStack_whenPrimaryDocumentWellEmpties_keepsItUnchanged', () => {
+      const centre: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      expect(pruneStack(tree, centre)).toBe(tree);
+    });
+  });
+
+  describe('findPrimaryStack', () => {
+    it('findPrimaryStack_whenOneIsFlagged_returnsIt', () => {
+      const centre: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      expect(findPrimaryStack(tree)).toBe(centre);
+    });
+
+    it('findPrimaryStack_whenNoneIsFlagged_returnsNull', () => {
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), mkStack('document', [])]);
+
+      expect(findPrimaryStack(tree)).toBeNull();
+    });
+  });
+
+  describe('occupyWell', () => {
+    it('occupyWell_whenEmptyPrimaryWell_flipsItToAToolStackInPlace', () => {
+      const centre: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const occupied: StackNode = asStack(findNode(occupyWell(tree, centre.id, 'agent'), centre.id));
+
+      expect(occupied.id).toBe(centre.id);
+      expect(occupied.role).toBe('tool');
+      expect(occupied.panels).toEqual(['agent']);
+      expect(occupied.active).toBe('agent');
+      expect(occupied.primary).toBe(true);
+    });
+
+    it('occupyWell_whenWellIsNotEmpty_returnsTheSameReference', () => {
+      const centre: StackNode = mkStack('document', ['doc'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      expect(occupyWell(tree, centre.id, 'agent')).toBe(tree);
+    });
+
+    it('occupyWell_whenTargetIsNotADocumentStack_returnsTheSameReference', () => {
+      const toolStack: StackNode = mkStack('tool', []);
+      const tree: DockNode = mkSplit('row', [toolStack, mkStack('document', [], true)]);
+
+      expect(occupyWell(tree, toolStack.id, 'agent')).toBe(tree);
+    });
+  });
+
+  describe('splitWellBeside', () => {
+    it('splitWellBeside_whenCentreIsToolOccupied_splitsAWellOnTheLeftAtFiftyFifty', () => {
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: SplitNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const result: DockNode = splitWellBeside(tree, centre.id, 'doc');
+
+      // The occupied centre is replaced in the outer row by a fresh row split holding [well, tool].
+      expect(isSplitNode(result)).toBe(true);
+      const inner: DockNode = (result as SplitNode).children[1];
+      expect(isSplitNode(inner)).toBe(true);
+      expect((inner as SplitNode).dir).toBe('row');
+      expect((inner as SplitNode).sizes).toEqual([1, 1]);
+
+      // The demoted tool keeps its id; the new well leads (left) and inherits the centre flag.
+      const well: StackNode = asStack(findStackOfPanel(result, 'doc'));
+      const tool: StackNode = asStack(findStackOfPanel(result, 'agent'));
+      expect((inner as SplitNode).children[0]).toBe(well);
+      expect((inner as SplitNode).children[1]).toBe(tool);
+      expect(well.role).toBe('document');
+      expect(well.primary).toBe(true);
+      expect(tool.id).toBe(centre.id);
+      expect(tool.role).toBe('tool');
+      expect(tool.primary).toBe(false);
     });
   });
 

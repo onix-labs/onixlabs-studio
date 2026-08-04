@@ -11,7 +11,11 @@ import { DocumentPanel } from '../../components/panels/document-panel/document-p
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  findPrimaryStack,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
@@ -221,13 +225,18 @@ export class FileOpener {
    */
   private openInWell(fileInfo: FileInfo): boolean {
     const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
-    if (well === null) {
+    // With no document well the centre must be a tool-occupied primary slot; a fresh well is split
+    // off it (50/50, well on the left). When there is neither a well nor a centre to split, this dock
+    // has no document home at all and the caller falls back to opening a full tab.
+    const primary: StackNode | null =
+      well === null ? findPrimaryStack(this.dockState.layout()) : null;
+    if (well === null && primary === null) {
       return false;
     }
     // A file opened into a workspace's document well is not itself a recent item — only the workspace
     // (recorded by openDirectory) is. Recording the file here would surface it on the welcome screen.
     const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
-    if (existing !== undefined) {
+    if (existing !== undefined && well !== null) {
       this.dockState.setActive(well.id, existing);
       this.dockFocus.focus(well.id);
       return true;
@@ -245,8 +254,17 @@ export class FileOpener {
       ...(document === undefined ? {} : { dirty: document.dirty }),
       confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
     });
-    this.dockState.tabInto(well.id, id);
-    this.dockFocus.focus(well.id);
+    if (well !== null) {
+      this.dockState.tabInto(well.id, id);
+      this.dockFocus.focus(well.id);
+    } else {
+      // primary is non-null here (guarded above): split a fresh well off the tool-occupied centre.
+      this.dockState.openWellBeside(primary!.id, id);
+      const created: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
+      if (created !== null) {
+        this.dockFocus.focus(created.id);
+      }
+    }
     return true;
   }
 
