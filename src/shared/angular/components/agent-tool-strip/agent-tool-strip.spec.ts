@@ -14,6 +14,7 @@ describe('AgentToolStrip', () => {
   let historyToggles: number;
   let running: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
+  let hasMessages: WritableSignal<boolean>;
 
   /**
    * Finds a strip button by its accessible label.
@@ -35,10 +36,11 @@ describe('AgentToolStrip', () => {
     historyToggles = 0;
     running = signal<boolean>(false);
     historyOpen = signal<boolean>(false);
+    hasMessages = signal<boolean>(true);
     const conversationStub: Partial<AgentConversation> = {
       isRunning: running,
       historyOpen,
-      hasMessages: signal<boolean>(false),
+      hasMessages,
       newChat: (): void => void (newChats += 1),
       stop: (): void => undefined,
       compact: (): void => undefined,
@@ -78,6 +80,13 @@ describe('AgentToolStrip', () => {
     button('New chat').click();
 
     expect(newChats).toBe(1);
+  });
+
+  it('newChat_whenConversationIsAlreadyEmpty_isDisabled', () => {
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('New chat').disabled).toBe(true);
   });
 
   it('stop_whenNotRunning_isDisabled', () => {

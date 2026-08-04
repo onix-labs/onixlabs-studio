@@ -81,7 +81,7 @@ describe('WelcomeScreen', () => {
     fixture.detectChanges();
 
     expect(internals.missingItem()).toBe(item);
-    expect(host.querySelector('.welcome__confirm-path')).not.toBeNull();
+    expect(host.querySelector('.welcome__confirm-message')).not.toBeNull();
     expect(host.querySelectorAll('.welcome__confirm-actions--stack app-button').length).toBe(3);
   });
 

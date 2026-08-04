@@ -23,6 +23,7 @@
               <app-button
                 variant="none"
                 size="small"
+                [tone]="toneFor(toast.severity)"
                 [label]="action.label"
                 (click)="onAction(toast, action)"
               />
@@ -33,6 +34,7 @@
       <app-button
         variant="none"
         size="small"
+        [tone]="toneFor(toast.severity)"
         [icon]="Icon.CLOSE"
         [ariaLabel]="'Dismiss: ' + toast.title"
         (click)="onDismiss(toast)"

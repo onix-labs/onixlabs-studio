@@ -70,6 +70,7 @@
   background: transparent;
   border: none;
   border-radius: inherit;
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
 
   &:focus-visible {

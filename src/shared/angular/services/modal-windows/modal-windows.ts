@@ -65,6 +65,15 @@ export interface ModalWindowRequest {
    * window never flashes a colour its content does not have.
    */
   readonly background: string | null;
+
+  /**
+   * Gets a value indicating whether the window omits its top drag strip and the inset that reserves
+   * room for it. Content that supplies its own top spacing and does not need the window movable by a
+   * top band (the welcome screen) says true, and its content then sits flush to the top edge. Left
+   * false, the window carries the drag strip so it can be moved and its controls do not overlap the
+   * content.
+   */
+  readonly dragless?: boolean;
 }
 
 /**
@@ -228,17 +237,24 @@ export class ModalWindows implements OnDestroy {
     this.styling.adopt(child);
     this.styling.appendStyles(doc, MODAL_STYLES);
     // Set on the body, not the root: the root's `style` attribute is mirrored from the opener by
-    // the styling service, which would wipe anything written there.
+    // the styling service, which would wipe anything written there. A dragless window reserves no
+    // inset, so the panel's `padding-block-start: max(panel-padding, drag-height)` falls back to the
+    // plain panel padding and its content sits flush to the top.
     doc.body.style.setProperty(
       '--modal-window-drag-height',
-      `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
+      request.dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
     );
 
-    const drag: HTMLElement = doc.createElement('div');
-    drag.className = 'modal-window__drag';
+    // The drag strip is both the band that moves the frameless window and the inset its controls sit
+    // in; a dragless window wants neither, so it is left out entirely rather than rendered at zero
+    // height.
+    if (!request.dragless) {
+      const drag: HTMLElement = doc.createElement('div');
+      drag.className = 'modal-window__drag';
+      doc.body.appendChild(drag);
+    }
     const contentHost: HTMLElement = doc.createElement('main');
     contentHost.className = 'modal-window__content';
-    doc.body.appendChild(drag);
     doc.body.appendChild(contentHost);
 
     this.children.add(child);

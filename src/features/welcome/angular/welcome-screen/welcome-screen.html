@@ -9,6 +9,7 @@
   [closable]="true"
   [freestanding]="standsAlone()"
   [expandable]="true"
+  [chromeless]="true"
   [width]="64"
   [height]="45"
   [minWidth]="60"
@@ -233,7 +234,6 @@
           <p class="welcome__confirm-message">
             “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
           </p>
-          <p class="welcome__confirm-path">{{ display(missing.path) }}</p>
           <div class="welcome__confirm-actions welcome__confirm-actions--stack">
             <app-button variant="solid" label="Locate" (click)="locateMissing()" />
             <app-button variant="outline" label="Remove" (click)="removeMissing()" />

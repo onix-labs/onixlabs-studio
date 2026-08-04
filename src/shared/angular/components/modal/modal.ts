@@ -198,6 +198,14 @@ export class Modal implements OnDestroy {
   public readonly expandable: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the modal's window omits its top drag strip and the inset that
+   * reserves room for it, so the content sits flush to the top edge. For content that provides its
+   * own top spacing (the welcome screen). The window is then not movable by a top band and its
+   * platform controls overlay the content, so only content designed for that opts in.
+   */
+  public readonly chromeless: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets the caller's marked content template, when it has declared one. Only templated content can
    * be presented in a window; anything else falls back to the inline presentation.
    */
@@ -324,6 +332,7 @@ export class Modal implements OnDestroy {
         parented: !this.freestanding(),
         position: null,
         background: this.openingBackground(),
+        dragless: this.chromeless(),
         minimum: this.bound(this.minWidth(), this.minHeight()),
         maximum: this.bound(this.maxWidth(), this.maxHeight()),
       },

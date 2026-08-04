@@ -12,9 +12,14 @@
   padding: 0.75rem;
 }
 
-// The card matches the menu chrome (surface, border, radius, shadow) so toasts read as part of the
-// application's overlay family; the severity colours only the leading edge and icon.
+// The severity colours the whole card: a tinted fill, a state-toned border all round, and a heavier
+// leading edge in the solid state colour. Everything below reads one local variable each severity
+// repoints, defaulting to the accent for a general notification with no specific state. The tint is
+// mixed into the opaque menu surface (not laid over it as a translucent wash) so the card stays
+// legible above whatever content sits beneath the stack.
 .toast {
+  --toast-color: var(--accent-color);
+
   pointer-events: auto;
   display: flex;
   align-items: flex-start;
@@ -22,44 +27,34 @@
   inline-size: 22.5rem;
   max-inline-size: calc(100vw - 1.5rem);
   padding: 0.625rem 0.75rem;
-  background: var(--menu-background-color);
-  border: 0.0625rem solid var(--menu-border-color);
-  border-inline-start: 0.1875rem solid var(--info-color);
+  background: color-mix(in srgb, var(--toast-color) 14%, var(--menu-background-color));
+  border: 0.0625rem solid color-mix(in srgb, var(--toast-color) 55%, var(--menu-border-color));
+  border-inline-start: 0.25rem solid var(--toast-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
   animation: toast-in 160ms ease-out;
 
   &--info {
-    border-inline-start-color: var(--info-color);
-    .toast__icon {
-      color: var(--info-color);
-    }
+    --toast-color: var(--info-color);
   }
 
   &--success {
-    border-inline-start-color: var(--success-color);
-    .toast__icon {
-      color: var(--success-color);
-    }
+    --toast-color: var(--success-color);
   }
 
   &--warning {
-    border-inline-start-color: var(--warning-color);
-    .toast__icon {
-      color: var(--warning-color);
-    }
+    --toast-color: var(--warning-color);
   }
 
   &--error {
-    border-inline-start-color: var(--error-color);
-    .toast__icon {
-      color: var(--error-color);
-    }
+    --toast-color: var(--danger-color);
   }
 
   &__icon {
     flex: none;
     margin-block-start: 0.0625rem;
+    color: var(--toast-color);
   }
 
   &__body {

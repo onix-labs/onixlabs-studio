@@ -130,6 +130,23 @@ describe('ModalWindows', () => {
     expect(owner.child.document.title).toBe('Rename conversation');
     expect(modal!.contentHost.className).toContain('modal-window__content');
     expect(owner.child.document.querySelector('.modal-window__drag')).not.toBeNull();
+    expect(
+      owner.child.document.body.style.getPropertyValue('--modal-window-drag-height'),
+    ).not.toBe('0rem');
+  });
+
+  it('open_whenDragless_omitsTheDragStripAndReservesNoInset', () => {
+    const modal: ModalWindow | null = open({ dragless: true });
+
+    expect(modal).not.toBeNull();
+    // No drag strip is rendered, and the panel's top inset (keyed off the drag height) collapses so
+    // the content sits flush to the top — the welcome screen's chromeless presentation.
+    expect(owner.child.document.querySelector('.modal-window__drag')).toBeNull();
+    expect(owner.child.document.body.style.getPropertyValue('--modal-window-drag-height')).toBe(
+      '0rem',
+    );
+    // The content host is still built, so the modal renders exactly as usual otherwise.
+    expect(modal!.contentHost.className).toContain('modal-window__content');
   });
 
   it('features_carryTheRequestedSizeAndChrome', () => {

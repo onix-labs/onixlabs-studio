@@ -105,6 +105,7 @@ button.tile__name {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: 0.125rem;
     border-radius: calc(0.25rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
   }
 }
 

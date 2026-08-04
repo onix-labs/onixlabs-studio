@@ -42,6 +42,7 @@
     padding: 4px 10px;
     border: 1px solid var(--form-control-border-color);
     border-radius: calc(4px * var(--border-radius-multiplier, 1));
+    corner-shape: var(--app-corner-shape, squircle);
     background: var(--form-control-background-color);
     color: inherit;
     font: inherit;

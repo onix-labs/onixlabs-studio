@@ -98,6 +98,7 @@
   background: transparent;
   border: none;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
 
   &:focus-visible {

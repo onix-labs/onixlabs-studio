@@ -111,6 +111,7 @@
   margin-inline-end: 0.375rem;
   padding-inline: 0.25rem;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   background: var(--dock-title-background-color--focused);
 }
 

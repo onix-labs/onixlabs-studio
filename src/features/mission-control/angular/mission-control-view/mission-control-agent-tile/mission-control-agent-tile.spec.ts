@@ -148,19 +148,37 @@ describe('MissionControlAgentTile', () => {
     expect(state.hidden()).toBe(false);
   });
 
-  it('hidden_whenHostHasAnOwningTab_isNeverHiddenRegardlessOfPreferences', () => {
-    // An agent backed by an open tab must stay reachable in Mission Control: its column is the only
-    // place to type to it, so New chat (which empties the transcript) must not make it disappear.
+  it('hidden_whenTabBackedAndEmpty_isNotHiddenEvenWithHideEmpty', () => {
+    // An agent backed by an open tab must stay reachable in Mission Control while empty: New chat
+    // empties the transcript, and its column is the only place to type to it, so Hide Empty must not
+    // make it vanish out from under the button the user just clicked (bug: agent disappears on New
+    // chat). Hide Empty is therefore only allowed to hide tab-less docked panels.
     const { state, knobs } = setUp({ tabId: 'tab-9' });
     knobs.hideEmpty.set(true);
+
+    // Empty (fresh, just-cleared conversation) — stays visible despite Hide Empty.
+    expect(state.hidden()).toBe(false);
+  });
+
+  it('hidden_whenTabBackedAndIdle_followsTheHideIdlePreference', () => {
+    // Hide Idle is a general declutter and applies to agent tabs too — an idle column (a settled
+    // conversation) has no New-chat vanish hazard and is reachable via its tab and by toggling off.
+    // This is the behaviour that regressed when the whole hide condition was gated on `tabId===null`.
+    const { state, knobs } = setUp({ tabId: 'tab-9' });
+    knobs.items.set([{}]); // idle: has messages, not running
+
+    expect(state.hidden()).toBe(false);
     knobs.hideIdle.set(true);
+    expect(state.hidden()).toBe(true);
+  });
 
-    // Empty (fresh, just-cleared conversation).
-    expect(state.hidden()).toBe(false);
+  it('hidden_whenTabLessAndEmpty_isHiddenByHideEmpty', () => {
+    // The other side of the split: a transient tab-less panel (workspace/repository) IS decluttered
+    // by Hide Empty, so the toggle is not a no-op.
+    const { state, knobs } = setUp({ tabId: null });
+    knobs.hideEmpty.set(true);
 
-    // Idle (settled conversation awaiting the next prompt).
-    knobs.items.set([{}]);
-    expect(state.hidden()).toBe(false);
+    expect(state.hidden()).toBe(true);
   });
 
   it('tab_whenHostHasNoOwningTab_hasNoTabAndKeysOnTheHostId', () => {

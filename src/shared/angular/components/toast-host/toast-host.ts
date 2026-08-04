@@ -7,7 +7,7 @@ import {
   Signal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { severityIcon } from '@shared/angular/icons/severity-icon';
 import {
@@ -177,6 +177,17 @@ export class ToastHost implements OnDestroy {
    */
   protected iconFor(severity: NotificationSeverity): Icon {
     return severityIcon(severity);
+  }
+
+  /**
+   * Resolves the button tone a severity carries, so a toast's action and dismiss buttons take the same
+   * state colour as the card. `error` maps to the `danger` tone (the same red under a different name);
+   * every other severity shares its tone's name.
+   * @param severity The toast's severity.
+   * @returns Returns the matching button tone.
+   */
+  protected toneFor(severity: NotificationSeverity): ButtonTone {
+    return severity === 'error' ? 'danger' : severity;
   }
 
   /**

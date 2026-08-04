@@ -568,7 +568,7 @@ app-markdown-editor .milkdown .ProseMirror {
   ol > .milkdown-list-item-block > .list-item > .label-wrapper .label.ordered::before {
     content: counter(list-counter, decimal) '.';
     font-size: var(--markdown-font-size, 16px);
-    color: var(--crepe-color-outline);
+    color: var(--crepe-color-on-surface);
   }
 
   ol .children ol > .milkdown-list-item-block > .list-item > .label-wrapper .label.ordered::before {
@@ -633,6 +633,67 @@ app-markdown-editor .milkdown .ProseMirror {
     > .label-wrapper
     .label.ordered::before {
     content: counter(list-counter, lower-alpha) '.';
+  }
+}
+
+// -----------------------------------------------------------------------------
+// List marker placement and colour
+// -----------------------------------------------------------------------------
+// Crepe lays each list item out as a fixed 24×32px marker column that is right-aligned in a box taller
+// than the text line, beside a paragraph padded 4px top/bottom, inside a <ul>/<ol> indented 24px. That
+// combination is what pushed every marker in from the margin, sat it a few pixels above its text, and
+// left a wide gap before the text. Re-lay it so bullets, numbers, and task checkboxes sit flush to the
+// text margin, tight to their text, centred on the first line, in the body colour.
+app-markdown-editor .milkdown .ProseMirror {
+  // The 24px inline-start padding on each list is Crepe's per-level nesting step; only the outermost
+  // list (a direct child of the editor) is flush with the surrounding text, so zero it there alone and
+  // leave nested lists their indent.
+  > ul,
+  > ol {
+    padding-inline-start: 0;
+  }
+
+  // A small, even gap between the marker and its text, in place of Crepe's fixed 10px beside a 24px
+  // column (which read as ~26px of dead space once the marker was pulled left).
+  .milkdown-list-item-block > .list-item {
+    gap: 0.5em;
+  }
+
+  // The marker column hugs its marker (no fixed width), pulls it to the left edge, and centres it on a
+  // single line-height box so it lands on the first text line; painted in the body colour so bullets
+  // and numbers are not Crepe's grey.
+  .milkdown-list-item-block li .label-wrapper {
+    inline-size: auto;
+    min-inline-size: 0;
+    block-size: 1.6em;
+    justify-content: flex-start;
+    align-items: center;
+    color: var(--crepe-color-on-surface);
+  }
+
+  // Drop Crepe's 32px/4px right-aligned label box so the marker sizes to its glyph and centres cleanly.
+  .milkdown-list-item-block li .label-wrapper .label {
+    inline-size: auto;
+    block-size: auto;
+    padding: 0;
+    text-align: start;
+  }
+
+  // Crepe pads the list paragraph 4px top/bottom, which drops the text below the centred marker; zero
+  // it so the first text line shares the marker's centre-line.
+  .milkdown-list-item-block .children p {
+    padding-block: 0;
+  }
+
+  // The task checkbox is an SVG icon: the UNCHECKED box takes the body text colour, and the CHECKED
+  // box the active accent (`--crepe-color-primary` maps to `--accent-color`) so a done item reads at a
+  // glance.
+  .milkdown-list-item-block li .label-wrapper .unchecked svg {
+    fill: var(--crepe-color-on-surface);
+  }
+
+  .milkdown-list-item-block li .label-wrapper .checked svg {
+    fill: var(--crepe-color-primary);
   }
 }
 

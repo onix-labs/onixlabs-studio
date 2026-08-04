@@ -4,6 +4,7 @@
     [icon]="Icon.PLUS"
     ariaLabel="New chat"
     tooltip="New chat"
+    [disabled]="!conversation.hasMessages()"
     (click)="conversation.newChat()"
   />
   <app-button
