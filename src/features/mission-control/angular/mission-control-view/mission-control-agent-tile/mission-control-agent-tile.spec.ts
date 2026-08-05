@@ -47,6 +47,7 @@ interface Knobs {
 function setUp(options: { tabId?: string | null; branch?: Signal<string | null> } = {}): {
   state: TileState;
   knobs: Knobs;
+  fixture: ComponentFixture<MissionControlAgentTile>;
 } {
   const running: WritableSignal<boolean> = signal<boolean>(false);
   const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
@@ -90,7 +91,7 @@ function setUp(options: { tabId?: string | null; branch?: Signal<string | null> 
   const fixture: ComponentFixture<MissionControlAgentTile> =
     TestBed.createComponent(MissionControlAgentTile);
   const state: TileState = fixture.componentInstance as unknown as TileState;
-  return { state, knobs: { running, items, hideEmpty, hideIdle } };
+  return { state, knobs: { running, items, hideEmpty, hideIdle }, fixture };
 }
 
 describe('MissionControlAgentTile', () => {
@@ -148,16 +149,30 @@ describe('MissionControlAgentTile', () => {
     expect(state.hidden()).toBe(false);
   });
 
-  it('hidden_whenTabBackedAndEmpty_isNotHiddenEvenWithHideEmpty', () => {
-    // An agent backed by an open tab must stay reachable in Mission Control while empty: New chat
-    // empties the transcript, and its column is the only place to type to it, so Hide Empty must not
-    // make it vanish out from under the button the user just clicked (bug: agent disappears on New
-    // chat). Hide Empty is therefore only allowed to hide tab-less docked panels.
+  it('hidden_whenTabBackedAndEmptyWithoutFocus_isHiddenByHideEmpty', () => {
+    // Hide Empty declutters agent tabs too: an empty column the user is not working in is decluttered
+    // like any other. (The focus exemption below is what preserves the New-chat protection.)
     const { state, knobs } = setUp({ tabId: 'tab-9' });
     knobs.hideEmpty.set(true);
 
-    // Empty (fresh, just-cleared conversation) — stays visible despite Hide Empty.
+    expect(state.hidden()).toBe(true);
+  });
+
+  it('hidden_whenEmptyAndFocused_isExemptFromHideEmpty', () => {
+    // The column the user is actively in stays put: New chat empties the transcript while focus is
+    // still inside the tile (on the tool-strip button / composer), so Hide Empty must not make it
+    // vanish out from under the button just clicked. The exemption lifts once focus leaves.
+    const { state, knobs, fixture } = setUp({ tabId: 'tab-9' });
+    knobs.hideEmpty.set(true);
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    // Empty + Hide Empty, but focus is inside the tile — stays visible.
+    element.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     expect(state.hidden()).toBe(false);
+
+    // Focus leaves the tile entirely — it is decluttered like any other empty column.
+    element.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    expect(state.hidden()).toBe(true);
   });
 
   it('hidden_whenTabBackedAndIdle_followsTheHideIdlePreference', () => {

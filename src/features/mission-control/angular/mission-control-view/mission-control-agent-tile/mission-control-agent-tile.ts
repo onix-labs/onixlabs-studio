@@ -124,6 +124,14 @@ export class MissionControlAgentTile {
   protected readonly focusOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether keyboard focus currently rests inside this tile — the user is actively working in this
+   * column (typing to the agent, or having just clicked its tool-strip New chat). While this is set, the
+   * tile is exempt from Hide Empty, so New chat cannot make the very column the user is interacting with
+   * vanish out from under them; the exemption lifts the moment focus leaves.
+   */
+  private readonly focusWithin: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the tile's stable key — the origin tab id, or the host's own id for hosts with no tab.
    */
   protected readonly key: Signal<string> = computed((): string => this.host.tabId ?? this.host.id);
@@ -199,17 +207,18 @@ export class MissionControlAgentTile {
    * suppressed, or an idle host while idle tiles are suppressed.
    *
    * Hide Idle applies to every tile: an idle column (a settled conversation) is decluttered wherever
-   * it lives, and remains reachable through its tab and by turning the toggle back off. Hide Empty is
-   * different: it is only allowed to hide a host with NO owning tab (a transient workspace/repository
-   * panel). A tab-backed agent must never be hidden while empty, because New chat empties the
-   * transcript — hiding it then would make the agent vanish out from under the button the user just
-   * clicked, with its own column (the place to type to it) gone. Guarding only the empty branch keeps
-   * that protection while letting Hide Idle work for agent tabs, which is what it is for.
+   * it lives, and remains reachable through its tab and by turning the toggle back off. Hide Empty
+   * likewise declutters every empty column — including agent tabs, which is what the toggle is for —
+   * with one exception: the tile the user is actively working in ({@link focusWithin}) is never hidden
+   * while empty. That keeps the New-chat protection (New chat empties the transcript, and hiding the
+   * column out from under the button the user just clicked is the bug we are avoiding) without
+   * neutering Hide Empty for every other empty agent tab, which no longer has focus and can be
+   * decluttered normally.
    */
   protected readonly hidden: Signal<boolean> = computed(
     (): boolean =>
       (this.isIdle() && this.missionControl.hideIdle()) ||
-      (this.isEmpty() && this.missionControl.hideEmpty() && this.host.tabId === null),
+      (this.isEmpty() && this.missionControl.hideEmpty() && !this.focusWithin()),
   );
 
   /**
@@ -226,8 +235,28 @@ export class MissionControlAgentTile {
    */
   public constructor() {
     // Register this tile's element so the rail can scroll it into view; unregister on destroy.
-    const unregister: () => void = this.tiles.register(this.host.id, this.elementRef.nativeElement);
-    inject(DestroyRef).onDestroy(unregister);
+    const element: HTMLElement = this.elementRef.nativeElement;
+    const unregister: () => void = this.tiles.register(this.host.id, element);
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(unregister);
+
+    // Track whether focus rests inside this tile, so the column the user is working in is exempt from
+    // Hide Empty (see the `hidden` computed). `focusin`/`focusout` bubble from the descendants; on the
+    // way out, only clear the flag when focus is genuinely leaving the tile rather than moving between
+    // its own children.
+    const onFocusIn: () => void = (): void => this.focusWithin.set(true);
+    const onFocusOut: (event: FocusEvent) => void = (event: FocusEvent): void => {
+      const next: Node | null = event.relatedTarget as Node | null;
+      if (next === null || !element.contains(next)) {
+        this.focusWithin.set(false);
+      }
+    };
+    element.addEventListener('focusin', onFocusIn);
+    element.addEventListener('focusout', onFocusOut);
+    destroyRef.onDestroy((): void => {
+      element.removeEventListener('focusin', onFocusIn);
+      element.removeEventListener('focusout', onFocusOut);
+    });
 
     let previousId: string | null | undefined = undefined;
     effect((): void => {
