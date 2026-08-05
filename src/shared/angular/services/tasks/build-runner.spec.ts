@@ -326,6 +326,22 @@ describe('BuildRunner', () => {
     expect(sessions.launchCalls[1].sessionId).not.toBe(sessions.launchCalls[0].sessionId);
   });
 
+  it('launchingTasks_holdAConfigWhileItStarts_thenClearWhenTheTerminalStarts', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.runConfiguration(configuration('web', 'Web'));
+    // Synchronously after dispatch — before the launch resolves — the config is launching, even though
+    // it is already in the run pool. This is the window a Run control shows a spinner for.
+    expect([...runner.launchingTasks()]).toEqual(['web']);
+    expect(runner.activeRuns().map((run: ActiveRun): string => run.taskId)).toEqual(['web']);
+
+    await settle();
+
+    // The terminal has started: no longer launching, but running.
+    expect(runner.launchingTasks().size).toBe(0);
+    expect(runner.running()).toBe(true);
+  });
+
   it('runsSeveralConfigurationsAtOnce_eachInItsOwnSessionWithItsOwnStop', async () => {
     const runner: BuildRunner = await discover();
 

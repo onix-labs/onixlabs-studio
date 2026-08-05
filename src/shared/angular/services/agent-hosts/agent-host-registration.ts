@@ -54,7 +54,10 @@ export function createAgentHostRegistrar(options: {
    */
   readonly run?: {
     readonly defaultConfiguration: () => RunConfiguration | null;
+    readonly starting: () => boolean;
+    readonly running: () => boolean;
     readonly run: () => void;
+    readonly stop: () => void;
   };
 }): AgentHostRegistrar {
   const agent: Agent = inject(Agent);
@@ -64,8 +67,15 @@ export function createAgentHostRegistrar(options: {
   const tabs: Tabs = inject(Tabs);
   const destroyRef: DestroyRef = inject(DestroyRef);
   const resolveBranch: (() => string | null) | undefined = options.branch;
-  const runOptions: { defaultConfiguration: () => RunConfiguration | null; run: () => void } | undefined =
-    options.run;
+  const runOptions:
+    | {
+        defaultConfiguration: () => RunConfiguration | null;
+        starting: () => boolean;
+        running: () => boolean;
+        run: () => void;
+        stop: () => void;
+      }
+    | undefined = options.run;
 
   return {
     register(tabId: string): void {
@@ -81,7 +91,10 @@ export function createAgentHostRegistrar(options: {
               defaultConfiguration: computed(
                 (): RunConfiguration | null => runOptions.defaultConfiguration(),
               ),
+              starting: computed((): boolean => runOptions.starting()),
+              running: computed((): boolean => runOptions.running()),
               run: (): void => runOptions.run(),
+              stop: (): void => runOptions.stop(),
             };
       destroyRef.onDestroy(
         requests.register({

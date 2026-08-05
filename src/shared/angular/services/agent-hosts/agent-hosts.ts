@@ -18,10 +18,29 @@ export interface HostRunLauncher {
   readonly defaultConfiguration: Signal<RunConfiguration | null>;
 
   /**
+   * Gets whether the default configuration is launching: requested but its process not yet started.
+   * A Run button shows a spinner and disables itself for this window (which may be brief, or long for
+   * a slow toolchain), so a press gives immediate feedback rather than looking inert.
+   */
+  readonly starting: Signal<boolean>;
+
+  /**
+   * Gets whether the default configuration is running: its process has started and not yet exited. A
+   * Run button becomes a Stop button while this holds.
+   */
+  readonly running: Signal<boolean>;
+
+  /**
    * Runs the workspace's default configuration in its own workspace (not the active one), a no-op when
    * there is no default to run.
    */
   run(): void;
+
+  /**
+   * Stops the default configuration's in-flight run (or, for a compound default, each of its members),
+   * a no-op when it is not running.
+   */
+  stop(): void;
 }
 
 /**

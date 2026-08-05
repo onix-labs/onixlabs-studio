@@ -10,6 +10,11 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
+ * The glyph shown, spinning, in place of a button's icon while it is {@link Button.loading}.
+ */
+const LOADING_ICON: Icon = Icon.SPINNER;
+
+/**
  * Names how a button is drawn. This is its SHAPE, not its meaning: the meaning a button carries lives
  * on the separate {@link ButtonTone} axis, so any variant can wear any tone without the two disturbing
  * each other.
@@ -73,6 +78,7 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--small]': "size() === 'small'",
     '[class.button--icon-only]': 'isIconOnly()',
     '[class.button--pressed]': 'pressed() === true',
+    '[class.button--loading]': 'loading()',
   },
 })
 export class Button {
@@ -130,6 +136,13 @@ export class Button {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets whether the button is showing work in progress: it disables itself and shows a spinning
+   * glyph in place of its {@link icon}, for an action (a Run that has to launch, a Save that has to
+   * write) whose effect is not instant. The button owns this state so no caller hand-rolls a spinner.
+   */
+  public readonly loading: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets whether a TOGGLE button is currently on, or undefined for an ordinary button that does not
    * hold a state. A toggle announces itself with `aria-pressed` and, while on, wears the same accent
    * surface it takes on hover — so a filter or layout switch reads as engaged rather than as merely
@@ -152,5 +165,20 @@ export class Button {
    */
   protected readonly isIconOnly: Signal<boolean> = computed(
     (): boolean => this.icon() !== undefined && this.label().length === 0,
+  );
+
+  /**
+   * Gets whether the button is non-interactive: either explicitly disabled or busy loading, so a
+   * loading button cannot be pressed again while its action is in flight.
+   */
+  protected readonly nonInteractive: Signal<boolean> = computed(
+    (): boolean => this.disabled() || this.loading(),
+  );
+
+  /**
+   * Gets the glyph actually drawn: the spinner while loading, otherwise the caller's icon.
+   */
+  protected readonly displayIcon: Signal<Icon | undefined> = computed((): Icon | undefined =>
+    this.loading() ? LOADING_ICON : this.icon(),
   );
 }

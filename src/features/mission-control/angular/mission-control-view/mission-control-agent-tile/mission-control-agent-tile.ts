@@ -204,6 +204,21 @@ export class MissionControlAgentTile {
   );
 
   /**
+   * Gets whether the default configuration is launching, so the Run button shows a spinner and
+   * disables itself between the press and the process starting.
+   */
+  protected readonly runStarting: Signal<boolean> = computed(
+    (): boolean => this.host.run?.starting() ?? false,
+  );
+
+  /**
+   * Gets whether the default configuration is running, so the Run button becomes a Stop button.
+   */
+  protected readonly runRunning: Signal<boolean> = computed(
+    (): boolean => this.host.run?.running() ?? false,
+  );
+
+  /**
    * Gets the text shown on the column's branch line: the branch, or a placeholder for a column with no
    * repository behind it — so every column carries the same two-line header rather than shifting its
    * chrome depending on what the agent is attached to.
@@ -294,6 +309,13 @@ export class MissionControlAgentTile {
    */
   protected onRun(): void {
     this.host.run?.run();
+  }
+
+  /**
+   * Stops the host workspace's running default configuration from Mission Control.
+   */
+  protected onStop(): void {
+    this.host.run?.stop();
   }
 
   /**

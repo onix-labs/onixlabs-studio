@@ -30,7 +30,27 @@ interface TileState {
   readonly branch: Signal<string | null>;
   readonly branchLabel: Signal<string>;
   readonly defaultRun: Signal<RunConfiguration | null>;
+  readonly runStarting: Signal<boolean>;
+  readonly runRunning: Signal<boolean>;
   onRun(): void;
+  onStop(): void;
+}
+
+/**
+ * Builds a host Run launcher whose signals and callbacks the tests drive, defaulting the parts a test
+ * does not care about so a test states only what it exercises.
+ * @param overrides The launcher parts to override.
+ * @returns Returns the launcher.
+ */
+function runLauncher(overrides: Partial<HostRunLauncher> = {}): HostRunLauncher {
+  return {
+    defaultConfiguration: signal<RunConfiguration | null>(null),
+    starting: signal<boolean>(false),
+    running: signal<boolean>(false),
+    run: (): void => undefined,
+    stop: (): void => undefined,
+    ...overrides,
+  };
 }
 
 /**
@@ -269,7 +289,7 @@ describe('MissionControlAgentTile', () => {
       signal<RunConfiguration | null>(configuration);
     const { state } = setUp({
       tabId: 'tab-9',
-      run: { defaultConfiguration: defaultConfiguration.asReadonly(), run: (): void => undefined },
+      run: runLauncher({ defaultConfiguration: defaultConfiguration.asReadonly() }),
     });
 
     expect(state.defaultRun()?.id).toBe('web');
@@ -279,20 +299,44 @@ describe('MissionControlAgentTile', () => {
     expect(state.defaultRun()).toBeNull();
   });
 
-  it('onRun_invokesTheHostsRunLauncher', () => {
-    let ran: number = 0;
-    const configuration: RunConfiguration = { id: 'web', name: 'Web', providerKind: 'node', mode: 'run' };
+  it('run_reflectsTheStartingThenRunningStatesLive', () => {
+    const starting: WritableSignal<boolean> = signal<boolean>(false);
+    const running: WritableSignal<boolean> = signal<boolean>(false);
     const { state } = setUp({
       tabId: 'tab-9',
-      run: {
-        defaultConfiguration: signal<RunConfiguration | null>(configuration),
+      run: runLauncher({ starting: starting.asReadonly(), running: running.asReadonly() }),
+    });
+
+    expect(state.runStarting()).toBe(false);
+    expect(state.runRunning()).toBe(false);
+
+    // Pressed: launching (spinner) — then the process starts (Stop).
+    starting.set(true);
+    expect(state.runStarting()).toBe(true);
+    starting.set(false);
+    running.set(true);
+    expect(state.runStarting()).toBe(false);
+    expect(state.runRunning()).toBe(true);
+  });
+
+  it('onRun_andOnStop_invokeTheHostsRunLauncher', () => {
+    let ran: number = 0;
+    let stopped: number = 0;
+    const { state } = setUp({
+      tabId: 'tab-9',
+      run: runLauncher({
         run: (): void => {
           ran += 1;
         },
-      },
+        stop: (): void => {
+          stopped += 1;
+        },
+      }),
     });
 
     state.onRun();
+    state.onStop();
     expect(ran).toBe(1);
+    expect(stopped).toBe(1);
   });
 });

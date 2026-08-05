@@ -173,6 +173,15 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly runs: WritableSignal<readonly ActiveRun[]> = signal<readonly ActiveRun[]>([]);
 
   /**
+   * Holds the task ids whose run has been dispatched but whose terminal has not yet started — the
+   * launch window a surface shows a spinner for. A run enters {@link runs} synchronously on dispatch,
+   * so this is the only signal that distinguishes "launching" from "started".
+   */
+  private readonly launching: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
    * Gets the discovered tasks.
    */
   public readonly tasks: Signal<readonly BuildTask[]> = this.discovered.asReadonly();
@@ -181,6 +190,12 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Gets the in-flight runs, in launch order.
    */
   public readonly activeRuns: Signal<readonly ActiveRun[]> = this.runs.asReadonly();
+
+  /**
+   * Gets the task ids currently launching (dispatched, terminal not yet started), so a Run control can
+   * show a spinner between the press and the process actually starting.
+   */
+  public readonly launchingTasks: Signal<ReadonlySet<string>> = this.launching.asReadonly();
 
   /**
    * Gets whether anything is running.
@@ -362,6 +377,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     // Only this task's problems are stale; another run's diagnostics stay published.
     this.problemsByTask.delete(task.id);
     this.republishProblems();
+    this.markLaunching(task.id, true);
     void this.runInSession(task, sessionId, token);
   }
 
@@ -374,16 +390,22 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @param token The launch token guarding against superseded completions.
    */
   private async runInSession(task: BuildTask, sessionId: string, token: symbol): Promise<void> {
-    const launch: TerminalLaunch = await this.sessions.launch({
-      sessionId,
-      name: `Run: ${task.label}`,
-      kind: 'run',
-      command: task.command,
-      args: task.args,
-      env: task.env,
-      cwd: task.cwd,
-      presentation: task.presentation,
-    });
+    let launch: TerminalLaunch;
+    try {
+      launch = await this.sessions.launch({
+        sessionId,
+        name: `Run: ${task.label}`,
+        kind: 'run',
+        command: task.command,
+        args: task.args,
+        env: task.env,
+        cwd: task.cwd,
+        presentation: task.presentation,
+      });
+    } finally {
+      // The terminal has started (or the launch failed): the launching window is over either way.
+      this.markLaunching(task.id, false);
+    }
     const exitCode: number = await launch.exited;
     const stoppedByUser: boolean = this.stoppedRuns.delete(sessionId);
     if (this.currentRuns.get(sessionId) !== token) {
@@ -459,6 +481,26 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   private runSessionId(taskId: string): string {
     return `${this.runSessionPrefix}:${taskId}`;
+  }
+
+  /**
+   * Adds or removes a task id from the launching set, replacing the set so the signal notifies.
+   * @param taskId The task id to mark.
+   * @param launching Whether the task is launching.
+   */
+  private markLaunching(taskId: string, launching: boolean): void {
+    this.launching.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      if (current.has(taskId) === launching) {
+        return current;
+      }
+      const next: Set<string> = new Set<string>(current);
+      if (launching) {
+        next.add(taskId);
+      } else {
+        next.delete(taskId);
+      }
+      return next;
+    });
   }
 
   /**

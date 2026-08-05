@@ -85,7 +85,8 @@ import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { RUN_PROJECT_MODEL } from '@shared/angular/services/tasks/run-project-model';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { WorkspaceRunConfigurations } from '@shared/angular/services/studio/workspace-run-configurations';
-import { RunConfiguration } from '@shared/api/studio';
+import { expandRunConfiguration, RunConfiguration } from '@shared/api/studio';
+import { ActiveRun } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -340,7 +341,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     run: {
       defaultConfiguration: (): RunConfiguration | null =>
         this.workspaceRunConfigurations.defaultConfiguration(),
+      starting: (): boolean => this.defaultRunStarting(),
+      running: (): boolean => this.defaultRunRunning(),
       run: (): void => this.runDefaultConfiguration(),
+      stop: (): void => this.stopDefaultConfiguration(),
     },
   });
 
@@ -417,6 +421,51 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly workspaceRunConfigurations: WorkspaceRunConfigurations = inject(
     WorkspaceRunConfigurations,
   );
+
+  /**
+   * Gets the leaf task ids the default configuration launches: itself, or a compound default's
+   * resolved members — the ids the in-flight and launching runs are matched against.
+   */
+  private readonly defaultRunLeafIds: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const configuration: RunConfiguration | null =
+        this.workspaceRunConfigurations.defaultConfiguration();
+      if (configuration === null) {
+        return new Set<string>();
+      }
+      return new Set<string>(
+        expandRunConfiguration(
+          configuration,
+          this.workspaceRunConfigurations.configurations(),
+        ).map((leaf: RunConfiguration): string => leaf.id),
+      );
+    },
+  );
+
+  /**
+   * Gets whether the default configuration is launching (dispatched, terminal not yet started), for
+   * the Run button's spinner.
+   */
+  private readonly defaultRunStarting: Signal<boolean> = computed((): boolean => {
+    const ids: ReadonlySet<string> = this.defaultRunLeafIds();
+    const launching: ReadonlySet<string> = this.buildRunner.launchingTasks();
+    for (const id of ids) {
+      if (launching.has(id)) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  /**
+   * Gets whether the default configuration has a run in flight, for the Run button's Stop state.
+   */
+  private readonly defaultRunRunning: Signal<boolean> = computed((): boolean => {
+    const ids: ReadonlySet<string> = this.defaultRunLeafIds();
+    return this.buildRunner
+      .activeRuns()
+      .some((run: ActiveRun): boolean => ids.has(run.taskId));
+  });
 
   /**
    * Holds the root build seam this tab registers its runner with while active.
@@ -1111,6 +1160,19 @@ export class DirectoryView implements OnInit, OnDestroy {
       configuration,
       this.workspaceRunConfigurations.configurations(),
     );
+  }
+
+  /**
+   * Stops the default configuration's in-flight runs (each member, for a compound default), for
+   * Mission Control's per-agent Stop button. A no-op when nothing of it is running.
+   */
+  private stopDefaultConfiguration(): void {
+    const ids: ReadonlySet<string> = this.defaultRunLeafIds();
+    for (const run of this.buildRunner.activeRuns()) {
+      if (ids.has(run.taskId)) {
+        this.buildRunner.cancel(run.id);
+      }
+    }
   }
 
   /**

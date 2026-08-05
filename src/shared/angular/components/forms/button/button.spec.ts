@@ -129,4 +129,29 @@ describe('Button', () => {
     expect(host.classList.contains('button--solid')).toBe(true);
     expect(host.classList.contains('button--tone-danger')).toBe(true);
   });
+
+  it('loading_disablesTheButton_andShowsASpinningGlyphInPlaceOfTheIcon', () => {
+    render({ icon: Icon.PLAY, ariaLabel: 'Run', loading: true });
+
+    const button: HTMLButtonElement = host.querySelector('button')!;
+    // Disabled while in flight, so the action cannot be fired again; announced busy for assistive tech.
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    // The provided icon is replaced by the spinner, marked to spin.
+    const glyph: Element | null = host.querySelector('.button__icon');
+    expect(glyph?.classList.contains('button__icon--spin')).toBe(true);
+    expect(glyph?.querySelector('.ph-circle-notch')).not.toBeNull();
+    expect(glyph?.querySelector('.ph-play')).toBeNull();
+    expect(host.classList.contains('button--loading')).toBe(true);
+  });
+
+  it('loading_whenFalse_showsTheCallersIconAndIsNotBusy', () => {
+    render({ icon: Icon.PLAY, ariaLabel: 'Run', loading: false });
+
+    expect(host.querySelector('.button__icon')?.classList.contains('button__icon--spin')).toBe(
+      false,
+    );
+    expect(host.querySelector('button')?.hasAttribute('aria-busy')).toBe(false);
+    expect(host.querySelector('.ph-play')).not.toBeNull();
+  });
 });

@@ -4,13 +4,19 @@
 <button
   class="button"
   [type]="type()"
-  [disabled]="disabled()"
+  [disabled]="nonInteractive()"
+  [attr.aria-busy]="loading() ? true : null"
   [attr.aria-label]="ariaLabel()"
   [attr.aria-pressed]="pressed()"
   [attr.title]="tooltip()"
 >
-  @if (icon(); as glyph) {
-    <app-icon class="button__icon" [icon]="glyph" [rotation]="iconRotation()" />
+  @if (displayIcon(); as glyph) {
+    <app-icon
+      class="button__icon"
+      [class.button__icon--spin]="loading()"
+      [icon]="glyph"
+      [rotation]="iconRotation()"
+    />
   }
   @if (label(); as text) {
     <span class="button__label">{{ text }}</span>
