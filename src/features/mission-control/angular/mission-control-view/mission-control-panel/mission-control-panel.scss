@@ -110,7 +110,9 @@ app-list-view {
   }
 }
 
-// The header line of a rail row: the agent's icon and label with its run-state on the trailing edge.
+// The head of a rail row: one centred flex row of two columns — the icon-and-text block (column 1,
+// which grows) and the run-state (column 2, a fixed width). The list's own reorder grip is column 3,
+// beside this. Centring vertically keeps the run-state and grip aligned against the two-line column 1.
 .rail__head {
   display: flex;
   align-items: center;
@@ -119,13 +121,30 @@ app-list-view {
   color: var(--dock-title-foreground-color--focused);
 }
 
+// Column 1: the agent icon beside its title-over-branch text stack. Grows to fill; the icon centres
+// against the two lines of text.
+.rail__main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
 .rail__icon {
   flex: none;
 }
 
-.rail__name {
-  flex: 1 1 auto;
+// The title over the branch, stacked. `min-inline-size: 0` lets both lines truncate rather than push
+// the run-state column out of the row.
+.rail__text {
+  display: flex;
+  flex-direction: column;
   min-inline-size: 0;
+  gap: 0.05rem;
+}
+
+.rail__name {
   font-size: 0.88rem;
   font-weight: 500;
   white-space: nowrap;
@@ -133,12 +152,8 @@ app-list-view {
   text-overflow: ellipsis;
 }
 
-// The branch a workspace or repository agent is working on, on the line beneath the row's head and
-// indented to sit under the name (past the agent icon), so a long branch never squeezes the name.
+// The branch a workspace or repository agent is working on, beneath its title in the same column.
 .rail__branch {
-  inline-size: 100%;
-  margin-block-start: -0.3rem;
-  padding-inline-start: 1.5rem;
   font-size: 0.72rem;
   color: var(--gray-500);
   white-space: nowrap;

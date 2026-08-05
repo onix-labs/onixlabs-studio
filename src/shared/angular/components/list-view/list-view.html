@@ -3,7 +3,7 @@
   role="listbox"
   cdkDropList
   (cdkDropListSorted)="onSorted($event)"
-  (cdkDropListDropped)="onDrop($event)"
+  (cdkDropListDropped)="onDrop()"
 >
   @for (row of displayRows(); track row.id) {
     <div
@@ -32,7 +32,7 @@
           aria-label="Drag to reorder"
           title="Drag to reorder"
         >
-          <app-icon [icon]="gripIcon" [size]="1" />
+          <app-icon [icon]="gripIcon()" [size]="1" />
         </span>
       }
     </div>

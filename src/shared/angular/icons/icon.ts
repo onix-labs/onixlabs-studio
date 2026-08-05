@@ -631,6 +631,12 @@ export class Icon {
    */
   public static readonly GRIP_VERTICAL: Icon = new Icon('ph ph-dots-six-vertical');
 
+  /**
+   * Gets the bold vertical drag-handle (grip) icon, for a reorder handle that should read heavier than
+   * the default.
+   */
+  public static readonly GRIP_VERTICAL_BOLD: Icon = new Icon('ph-bold ph-dots-six-vertical');
+
   // --- File Explorer: tree files ---
 
   /**

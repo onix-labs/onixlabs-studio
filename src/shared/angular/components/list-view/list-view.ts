@@ -1,6 +1,5 @@
 import {
   CdkDrag,
-  CdkDragDrop,
   CdkDragHandle,
   CdkDragSortEvent,
   CdkDropList,
@@ -76,9 +75,10 @@ export interface ListReorder {
 })
 export class ListView {
   /**
-   * Gets the grip glyph shown on each row's reorder handle, exposed for the template.
+   * Gets the grip glyph shown on each row's reorder handle. Defaults to the standard vertical grip; a
+   * consumer whose rows want a heavier handle can state another (for example the bold grip).
    */
-  protected readonly gripIcon: Icon = Icon.GRIP_VERTICAL;
+  public readonly gripIcon: InputSignal<Icon> = input<Icon>(Icon.GRIP_VERTICAL);
 
   /**
    * Gets the rows to render in order.
@@ -213,11 +213,10 @@ export class ListView {
 
   /**
    * Ends the drag, dropping the frozen snapshot so the list returns to rendering the live rows — which,
-   * having been reordered live through {@link onSorted}, already hold the settled order. Nothing is
-   * emitted here: the move was applied step by step during the drag.
-   * @param _event The drag-drop event (its move was already applied live).
+   * having been reordered live through {@link onSorted}, already hold the settled order. The drop event
+   * is unread and nothing is emitted here: the move was applied step by step during the drag.
    */
-  protected onDrop(_event: CdkDragDrop<readonly ListRow[]>): void {
+  protected onDrop(): void {
     this.dragging.set(false);
   }
 }

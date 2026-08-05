@@ -48,6 +48,7 @@
       <app-list-view
         [rows]="rows()"
         [reorderable]="true"
+        [gripIcon]="Icon.GRIP_VERTICAL_BOLD"
         (rowClick)="onRowClick($event)"
         (reorder)="onReorder($event)"
       >
@@ -58,9 +59,26 @@
             [class.rail__item--pending]="item.entries.length > 0"
             [title]="'Scroll to ' + item.label"
           >
+            <!-- The head is one centred flex row: column 1 (the agent icon beside its title-over-branch
+                 stack) grows to fill, column 2 (the run-state) holds a fixed width so it and the list's
+                 trailing reorder grip line up down the rail. -->
             <div class="rail__head">
-              <app-icon class="rail__icon" [icon]="item.icon" [size]="1.05" />
-              <span class="rail__name">{{ item.label }}</span>
+              <div class="rail__main">
+                <app-icon class="rail__icon" [icon]="item.icon" [size]="1.05" />
+                <div class="rail__text">
+                  <span class="rail__name">{{ item.label }}</span>
+                  <!-- A workspace or repository agent names the branch it is working on beneath its
+                       title; an agent with no repository behind it says so, so every row reads the
+                       same way. -->
+                  <span
+                    class="rail__branch"
+                    [class.rail__branch--none]="item.branch === null"
+                    [title]="item.branch === null ? 'No repository' : 'On branch ' + item.branch"
+                  >
+                    {{ item.branch ?? 'No repository' }}
+                  </span>
+                </div>
+              </div>
               <span
                 class="rail__status"
                 [class.rail__status--busy]="item.isRunning"
@@ -73,17 +91,6 @@
                 />
                 <span class="rail__status-label">{{ item.statusLabel }}</span>
               </span>
-            </div>
-
-            <!-- A workspace or repository agent names the branch it is working on, on its own line so
-                 the row's narrow head never has to trade the agent's name against it. An agent with no
-                 repository behind it says so, so every row reads the same way. -->
-            <div
-              class="rail__branch"
-              [class.rail__branch--none]="item.branch === null"
-              [title]="item.branch === null ? 'No repository' : 'On branch ' + item.branch"
-            >
-              {{ item.branch ?? 'No repository' }}
             </div>
 
             @if (item.entries.length > 0) {
