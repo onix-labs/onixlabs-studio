@@ -218,7 +218,7 @@ export class WelcomeScreen {
    * underlying show condition so the latch clears itself whenever that condition next changes (a tab
    * appears, or the last one closes), letting the screen show again the next time it is summoned.
    */
-  protected readonly dismissed: WritableSignal<boolean> = linkedSignal<boolean>({
+  protected readonly dismissed: WritableSignal<boolean> = linkedSignal<boolean, boolean>({
     source: (): boolean => this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen(),
     computation: (): boolean => false,
   });
