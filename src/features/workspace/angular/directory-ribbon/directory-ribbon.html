@@ -12,9 +12,8 @@
     />
   </app-ribbon-strip-group>
 
-  <!-- Everything that acts on the well's focused document, the tidying pair included: they tidy a
-       document, not a build, so they live with the other document actions rather than behind the
-       Solution group's Clean button (which an ecosystem with no build step never renders). -->
+  <!-- Everything that acts on the well's focused document: the clipboard trio and the history and
+       find actions. -->
   <app-ribbon-strip-group title="Edit">
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
@@ -25,20 +24,6 @@
       <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
       <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
       <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-    </app-ribbon-strip-column>
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.FORMAT"
-        label="Format"
-        [disabled]="!hasActiveEditor()"
-        (action)="onFormatDocument()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.CODE_CLEANUP"
-        label="Code Cleanup"
-        [disabled]="!canCodeCleanup()"
-        (action)="onCodeCleanup()"
-      />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
@@ -86,6 +71,25 @@
       </app-ribbon-strip-column>
     }
   </app-ribbon-strip-group>
+
+  <!-- Every control here is gated on the provider declaring the action behind it: an ecosystem with
+       no build step shows no Solution group at all, rather than a row of permanently dead buttons.
+       Build actions gate on the Build terminal alone (never on runs, so a build can start while a
+       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
+       asks whether to stop the running build and start this action instead. -->
+  @if (solutionGroupVisible()) {
+    <app-ribbon-strip-group title="Solution">
+      @if (canBuild()) {
+        <app-ribbon-strip-button [icon]="Icon.BUILD" label="Build" (action)="onBuild()" />
+      }
+      @if (canRebuild()) {
+        <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" (action)="onRebuild()" />
+      }
+      @if (canClean()) {
+        <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" (action)="onClean()" />
+      }
+    </app-ribbon-strip-group>
+  }
 
   <app-ribbon-strip-group title="Run">
     <!-- While anything is in flight the primary button is Stop: pressing it stops every run, and its
@@ -142,54 +146,6 @@
       </app-ribbon-strip-row>
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
-
-  <!-- Every control here is gated on the provider declaring the action behind it: an ecosystem with
-       no build step shows no Solution group at all, rather than a row of permanently dead buttons.
-       Build actions gate on the Build terminal alone (never on runs, so a build can start while a
-       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
-       asks whether to stop the running build and start this action instead. -->
-  @if (solutionGroupVisible()) {
-    <app-ribbon-strip-group title="Solution">
-      @if (canRebuild()) {
-        <app-ribbon-strip-menu-button
-          [icon]="Icon.BUILD"
-          label="Build"
-          [items]="buildMenuItems()"
-          [disabled]="!canBuild()"
-          (action)="onBuild()"
-          (selected)="onBuildMenuItem($event)"
-        />
-      } @else if (canBuild()) {
-        <app-ribbon-strip-button [icon]="Icon.BUILD" label="Build" (action)="onBuild()" />
-      }
-      @if (canClean()) {
-        <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" (action)="onClean()" />
-      }
-    </app-ribbon-strip-group>
-  }
-
-  @if (targetGroupVisible()) {
-    <app-ribbon-strip-group title="Target">
-      <app-ribbon-strip-column [spread]="true">
-        @if (buildConfigNames().length > 0) {
-          <app-ribbon-strip-field
-            label="Configuration"
-            [options]="buildConfigNames()"
-            [value]="buildConfigValue()"
-            (changed)="onSelectBuildConfiguration($event)"
-          />
-        }
-        @if (targetAxis() !== null) {
-          <app-ribbon-strip-field
-            [label]="targetAxis()!.label"
-            [options]="targetNames()"
-            [value]="targetValue()"
-            (changed)="onSelectTarget($event)"
-          />
-        }
-      </app-ribbon-strip-column>
-    </app-ribbon-strip-group>
-  }
 
   <!-- The repo-global git actions, and only those: Commit (which sets the stage rather than
        committing here — the Commit panel owns the message and the file selection), the three network

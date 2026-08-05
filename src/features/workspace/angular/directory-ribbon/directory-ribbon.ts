@@ -19,7 +19,7 @@ import { Debugger } from '@shared/angular/services/debug/debugger';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
-import { ProjectCapabilities, TargetAxis } from '@shared/api/project-system';
+import { ProjectCapabilities } from '@shared/api/project-system';
 import {
   expandRunConfiguration,
   isCompoundConfiguration,
@@ -42,7 +42,6 @@ import {
   RibbonStripMenuButton,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
@@ -54,11 +53,6 @@ import { Radio } from '@shared/angular/components/forms/radio/radio';
  * Identifies the Save All item in the File group's Save split button menu.
  */
 const SAVE_ALL: string = 'save-all';
-
-/**
- * Identifies the Rebuild item in the Solution group's Build split button menu.
- */
-const BUILD_REBUILD: string = 'rebuild';
 
 /**
  * Identifies the Stash item in the Source Control group's Commit split button menu.
@@ -79,12 +73,12 @@ const COMMIT_STASH: string = 'stash';
  * run is in flight, a run-configuration dropdown (sourced solely from the workspace's authored
  * `.studio` configurations — nothing is inferred), a Debug button that launches the selected
  * configuration under the {@link Debugger} seam, and a Configure button. Solution dispatches through
- * the {@link Builds} seam: Build (with Rebuild behind it) and Clean. Solution and Target gate
- * themselves on the active provider's declared {@link ProjectCapabilities}: an undeclared action is
- * not rendered at all, the Solution group goes with the last of them (so an ecosystem with nothing to
- * build — Python, a Node package with no scripts — shows no dead buttons), and Target is hidden when
- * the provider declares no build-configuration or target axis. Source Control is the workspace's
- * one-stop git group, dispatching through the {@link SourceControlCommands} and
+ * the {@link Builds} seam: Build, Rebuild, and Clean, each its own button. Solution gates itself on
+ * the active provider's declared {@link ProjectCapabilities}: an undeclared action is not rendered at
+ * all, and the group goes with the last of them (so an ecosystem with nothing to build — Python, a
+ * Node package with no scripts — shows no dead buttons). The build configuration and target axis are
+ * no longer a ribbon-wide selector; they belong to a run configuration. Source Control is the
+ * workspace's one-stop git group, dispatching through the {@link SourceControlCommands} and
  * {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
@@ -99,7 +93,6 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripMenuButton,
-    RibbonStripField,
     RibbonStripRow,
     Checkbox,
     Dropdown,
@@ -330,62 +323,6 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether the Target group is shown at all: only when the provider declares a build-configuration
-   * or target axis (so, for example, an interpreted ecosystem shows no Target group).
-   */
-  protected readonly targetGroupVisible: Signal<boolean> = computed((): boolean => {
-    const capabilities: ProjectCapabilities | null = this.capabilities();
-    return (
-      capabilities !== null &&
-      (capabilities.buildConfigurations.length > 0 || capabilities.target !== null)
-    );
-  });
-
-  /**
-   * Gets the build-configuration names offered by the Configuration selector.
-   */
-  protected readonly buildConfigNames: Signal<readonly string[]> = computed(
-    (): readonly string[] =>
-      this.capabilities()?.buildConfigurations.map((configuration) => configuration.name) ?? [],
-  );
-
-  /**
-   * Gets the display name of the selected build configuration.
-   */
-  protected readonly buildConfigValue: Signal<string> = computed((): string => {
-    const capabilities: ProjectCapabilities | null = this.capabilities();
-    const selectedId: string | undefined =
-      this.studio.lastBuildConfiguration() ?? capabilities?.buildConfigurations[0]?.id;
-    return (
-      capabilities?.buildConfigurations.find((configuration) => configuration.id === selectedId)
-        ?.name ?? ''
-    );
-  });
-
-  /**
-   * Gets the active provider's target axis, or null when it has none.
-   */
-  protected readonly targetAxis: Signal<TargetAxis | null> = computed(
-    (): TargetAxis | null => this.capabilities()?.target ?? null,
-  );
-
-  /**
-   * Gets the target-option names offered by the target selector.
-   */
-  protected readonly targetNames: Signal<readonly string[]> = computed(
-    (): readonly string[] => this.targetAxis()?.options.map((option) => option.name) ?? [],
-  );
-
-  /**
-   * Gets the display name of the selected target option.
-   */
-  protected readonly targetValue: Signal<string> = computed((): string => {
-    const axis: TargetAxis | null = this.targetAxis();
-    const selectedId: string | undefined = this.studio.lastTarget() ?? axis?.options[0]?.id;
-    return axis?.options.find((option) => option.id === selectedId)?.name ?? '';
-  });
-
-  /**
    * Gets the run configurations offered by the dropdown: the workspace's authored `.studio`
    * configurations, and nothing else. Studio never infers what a workspace should run, so a workspace
    * with no configurations offers none.
@@ -500,24 +437,6 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Gets the Build split button's menu: Rebuild. The button carries the menu only where the provider
-   * declares Rebuild, so the item is never a dead entry.
-   */
-  protected readonly buildMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
-    (): readonly RibbonMenuItem[] => [{ id: BUILD_REBUILD, label: 'Rebuild', icon: Icon.REBUILD }],
-  );
-
-  /**
-   * Gets whether the well has a focused editor the document-level tidying actions can act on.
-   */
-  protected readonly hasActiveEditor: Signal<boolean> = this.commands.hasActiveEditor;
-
-  /**
-   * Gets whether the well's focused editor supports Code Cleanup.
-   */
-  protected readonly canCodeCleanup: Signal<boolean> = this.commands.canCodeCleanup;
-
-  /**
    * Runs the active workspace's default build task.
    */
   protected onBuild(): void {
@@ -536,30 +455,6 @@ export class DirectoryRibbon {
    */
   protected onRebuild(): void {
     this.requestBuildAction('rebuild');
-  }
-
-  /**
-   * Handles a choice from the Build split button's menu.
-   * @param id The chosen item's identifier.
-   */
-  protected onBuildMenuItem(id: string): void {
-    if (id === BUILD_REBUILD) {
-      this.onRebuild();
-    }
-  }
-
-  /**
-   * Formats the focused editor's document.
-   */
-  protected onFormatDocument(): void {
-    this.commands.formatDocument();
-  }
-
-  /**
-   * Runs Code Cleanup over the focused editor's document.
-   */
-  protected onCodeCleanup(): void {
-    void this.commands.codeCleanup();
   }
 
   /**
@@ -662,32 +557,6 @@ export class DirectoryRibbon {
       this.builds.runAction(action, { restart });
     } else if (action === 'build') {
       this.builds.build({ restart });
-    }
-  }
-
-  /**
-   * Records the selected build configuration, mapping its display name back to its id.
-   * @param name The chosen build configuration's display name.
-   */
-  protected onSelectBuildConfiguration(name: string): void {
-    const id: string | undefined = this.capabilities()?.buildConfigurations.find(
-      (configuration): boolean => configuration.name === name,
-    )?.id;
-    if (id !== undefined) {
-      void this.studio.setLastBuildConfiguration(id);
-    }
-  }
-
-  /**
-   * Records the selected target option, mapping its display name back to its id.
-   * @param name The chosen target option's display name.
-   */
-  protected onSelectTarget(name: string): void {
-    const id: string | undefined = this.targetAxis()?.options.find(
-      (option): boolean => option.name === name,
-    )?.id;
-    if (id !== undefined) {
-      void this.studio.setLastTarget(id);
     }
   }
 
