@@ -126,7 +126,12 @@ test.describe('welcome & tabs', () => {
     expect(chrome.height).toBe(720);
     // It may be resized down to its minimum, but it has no size to maximize to.
     expect(chrome.resizable).toBe(true);
-    expect(chrome.maximizable).toBe(false);
+    // The window is created with `maximizable: false`, but only macOS and Windows honour that flag —
+    // on Linux/X11 the window manager owns the maximize affordance and reports the window maximizable
+    // regardless, so the readback is only meaningful off Linux.
+    if (process.platform !== 'linux') {
+      expect(chrome.maximizable).toBe(false);
+    }
   });
 
   test('summonedOverTabs_dismissesWhenTheBackdropIsClicked', async ({ app, page }) => {
