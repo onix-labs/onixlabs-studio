@@ -72,79 +72,25 @@
     }
   </app-ribbon-strip-group>
 
-  <!-- Every control here is gated on the provider declaring the action behind it: an ecosystem with
-       no build step shows no Solution group at all, rather than a row of permanently dead buttons.
-       Build actions gate on the Build terminal alone (never on runs, so a build can start while a
-       run configuration is in flight). While a build is busy the buttons stay enabled: pressing one
-       asks whether to stop the running build and start this action instead. -->
-  @if (solutionGroupVisible()) {
-    <app-ribbon-strip-group title="Solution">
-      @if (canBuild()) {
-        <app-ribbon-strip-button [icon]="Icon.BUILD" label="Build" (action)="onBuild()" />
-      }
-      @if (canRebuild()) {
-        <app-ribbon-strip-button [icon]="Icon.REBUILD" label="Rebuild" (action)="onRebuild()" />
-      }
-      @if (canClean()) {
-        <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clean" (action)="onClean()" />
-      }
-    </app-ribbon-strip-group>
-  }
-
-  <app-ribbon-strip-group title="Run">
-    <!-- While anything is in flight the primary button is Stop: pressing it stops every run, and its
-         menu lists them so one can be stopped on its own. -->
-    @if (running()) {
-      <app-ribbon-strip-menu-button
-        [icon]="Icon.STOP"
-        [label]="stopLabel()"
-        [items]="runMenuItems()"
-        (action)="onStop()"
-        (selected)="onStopRun($event)"
-      />
-    } @else {
-      <app-ribbon-strip-button
-        [icon]="Icon.PLAY"
-        label="Start"
-        [disabled]="!canRun()"
-        (action)="onRun()"
-      />
-    }
-    <app-ribbon-strip-column [spread]="true">
-      <!-- Selectable while running: runs are concurrent, so picking another configuration and starting
-           it does not disturb what is already in flight. -->
-      <app-dropdown
-        [options]="runOptions()"
-        [value]="selectedRunId() ?? ''"
-        [disabled]="!canRun()"
-        [fullWidth]="true"
-        ariaLabel="Run configuration"
-        (valueChange)="onSelectRunItem($event)"
-      />
-      <app-ribbon-strip-row>
-        <!-- The big button is Stop while running, so Start stays reachable here to launch another. -->
-        @if (running()) {
-          <app-ribbon-strip-button-small
-            [icon]="Icon.PLAY"
-            label="Start"
-            [disabled]="!canRun()"
-            (action)="onRun()"
-          />
-        }
-        <app-ribbon-strip-button-small
-          [icon]="Icon.DEBUG"
-          label="Debug"
-          [disabled]="!canDebug()"
-          (action)="onDebug()"
-        />
-        <app-ribbon-strip-button-small
-          [icon]="Icon.SETTINGS"
-          [iconRotation]="30"
-          label="Configure"
-          (action)="onConfigure()"
-        />
-      </app-ribbon-strip-row>
-    </app-ribbon-strip-column>
+  <!-- Everything you launch against the project, as one group. Actions is a large button with no
+       primary action of its own: its whole face opens a dropdown listing the workspace's run
+       configurations, each coloured and glyphed by whether it is running — a running one is red and
+       stops on click, a stopped one is green and starts on click. Configure opens the run
+       configurations dialog, where those configurations are authored. -->
+  <app-ribbon-strip-group title="Solution">
+    <app-ribbon-strip-actions-button
+      [icon]="Icon.ROCKET_LAUNCH"
+      label="Actions"
+      [items]="actionItems()"
+      [disabled]="!hasActions()"
+      (selected)="onActionItem($event)"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.SETTINGS"
+      [iconRotation]="30"
+      label="Configure"
+      (action)="onConfigure()"
+    />
   </app-ribbon-strip-group>
 
   <!-- The repo-global git actions, and only those: Commit (which sets the stage rather than

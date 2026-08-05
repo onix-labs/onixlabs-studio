@@ -33,6 +33,9 @@ interface RibbonInternals {
   onRun(): void;
   onSelectRunItem(id: string): void;
   onStop(): void;
+  actionItems(): readonly RibbonMenuItem[];
+  onActionItem(id: string): void;
+  hasActions(): boolean;
   canBuild(): boolean;
   canClean(): boolean;
   canRebuild(): boolean;
@@ -474,6 +477,59 @@ describe('DirectoryRibbon', () => {
     internals().onRun();
 
     expect(builds.runConfigurationCalls).toEqual([]);
+  });
+
+  describe('the Actions button', () => {
+    it('listsEachConfigurationColouredAndGlyphedByWhetherItRuns', () => {
+      studio.runConfigurations.set([configuration('a', 'App'), configuration('b', 'Web')]);
+      // 'a' is running (an active run carries its configuration id as the task id); 'b' is idle.
+      builds.runs.set([{ id: 'run:a', label: 'App', taskId: 'a', startedAt: 0 }]);
+
+      const items: readonly RibbonMenuItem[] = internals().actionItems();
+
+      // The name stays as the label; the running/stopped state rides on the status and the icon tone.
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['App', 'Web']);
+      expect(items.map((item: RibbonMenuItem): string | undefined => item.status)).toEqual([
+        '(running)',
+        '(stopped)',
+      ]);
+      expect(items.map((item: RibbonMenuItem): string | undefined => item.tone)).toEqual([
+        'danger',
+        'success',
+      ]);
+    });
+
+    it('startsAStoppedConfigurationWhenChosen', () => {
+      const config: RunConfiguration = configuration('a', 'App');
+      studio.runConfigurations.set([config]);
+
+      internals().onActionItem('a');
+
+      expect(builds.runConfigurationCalls).toEqual([config]);
+      expect(builds.runConfigurationOptions[0]).toEqual({ restart: false });
+    });
+
+    it('stopsEveryRunOfARunningConfigurationWhenChosen_leavingOthersAlone', () => {
+      studio.runConfigurations.set([configuration('a', 'App')]);
+      builds.runs.set([
+        { id: 'run:a1', label: 'App', taskId: 'a', startedAt: 0 },
+        { id: 'run:a2', label: 'App', taskId: 'a', startedAt: 1 },
+        { id: 'run:other', label: 'Other', taskId: 'z', startedAt: 2 },
+      ]);
+
+      internals().onActionItem('a');
+
+      expect(builds.cancelledRunIds).toEqual(['run:a1', 'run:a2']);
+      expect(builds.runConfigurationCalls).toEqual([]);
+    });
+
+    it('isDisabledUntilTheWorkspaceHasAConfiguration', () => {
+      expect(internals().hasActions()).toBe(false);
+
+      studio.runConfigurations.set([configuration('a', 'App')]);
+
+      expect(internals().hasActions()).toBe(true);
+    });
   });
 
   it('selectingAConfigurationPersistsTheChoice', () => {

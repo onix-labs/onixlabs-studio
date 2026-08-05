@@ -37,6 +37,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripActionsButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-actions-button/ribbon-strip-actions-button';
 import {
   RibbonMenuItem,
   RibbonStripMenuButton,
@@ -65,20 +66,17 @@ const COMMIT_STASH: string = 'stash';
  *
  * File saves the well's documents through the {@link WorkspaceDocumentCommands} seam — the well is
  * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. Edit
- * routes through the {@link EditorCommands} seam, and holds every document-level action — the
- * clipboard and history pair, Find, and the tidying pair (Format and Code Cleanup), which act on the
- * well's focused editor and so belong nowhere near the build. View drives layout presets: the big button applies
- * the DEFAULT preset (named on its face) and its menu lists every preset, while Save, Save As and
- * Manage write them. Run is the Tier-1 universal widget: a Start button that toggles to Stop while a
- * run is in flight, a run-configuration dropdown (sourced solely from the workspace's authored
- * `.studio` configurations — nothing is inferred), a Debug button that launches the selected
- * configuration under the {@link Debugger} seam, and a Configure button. Solution dispatches through
- * the {@link Builds} seam: Build, Rebuild, and Clean, each its own button. Solution gates itself on
- * the active provider's declared {@link ProjectCapabilities}: an undeclared action is not rendered at
- * all, and the group goes with the last of them (so an ecosystem with nothing to build — Python, a
- * Node package with no scripts — shows no dead buttons). The build configuration and target axis are
- * no longer a ribbon-wide selector; they belong to a run configuration. Source Control is the
- * workspace's one-stop git group, dispatching through the {@link SourceControlCommands} and
+ * routes through the {@link EditorCommands} seam, and holds the document-level actions — the clipboard
+ * trio, the history pair, and Find. View drives layout presets: the big button applies the DEFAULT
+ * preset (named on its face) and its menu lists every preset, while Save, Save As and Manage write
+ * them. Solution is the single group for launching the project. Actions is a large button with no
+ * primary action of its own: its whole face opens a dropdown of the workspace's authored `.studio` run
+ * configurations (nothing is inferred), each coloured and glyphed by whether it is running — a running
+ * configuration is red and stops on click, a stopped one is green and starts on click, both through the
+ * {@link Builds} seam. Configure opens the run configurations dialog where those are authored. (The
+ * Start/Stop, Debug, and Build/Rebuild/Clean seams remain wired on this component but are not currently
+ * surfaced, pending where they land in the run-configuration model.) Source Control is the workspace's
+ * one-stop git group, dispatching through the {@link SourceControlCommands} and
  * {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
@@ -92,6 +90,7 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripButtonSmall,
+    RibbonStripActionsButton,
     RibbonStripMenuButton,
     RibbonStripRow,
     Checkbox,
@@ -363,6 +362,34 @@ export class DirectoryRibbon {
   );
 
   /**
+   * Gets the Actions dropdown's rows: one per authored run configuration, coloured and glyphed by
+   * whether it is currently running. A running configuration is red and wears the stop glyph — choosing
+   * it stops it; a stopped one is green and wears the start glyph — choosing it starts it. Compounds
+   * count as running when any of their resolved members is.
+   */
+  protected readonly actionItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] =>
+      this.studio.runConfigurations().map((configuration: RunConfiguration): RibbonMenuItem => {
+        const running: boolean = this.isConfigurationRunning(configuration);
+        return {
+          id: configuration.id,
+          label: configuration.name,
+          status: running ? '(running)' : '(stopped)',
+          icon: running ? Icon.STOP : Icon.PLAY,
+          tone: running ? 'danger' : 'success',
+        };
+      }),
+  );
+
+  /**
+   * Gets whether there are any run configurations for the Actions button to list. It is disabled when
+   * the workspace has authored none — Configure is then the way to create the first.
+   */
+  protected readonly hasActions: Signal<boolean> = computed(
+    (): boolean => this.studio.runConfigurations().length > 0,
+  );
+
+  /**
    * Gets the selected `.studio` run configuration, or undefined when the workspace has none. Both Start
    * and Debug launch this one.
    */
@@ -586,6 +613,46 @@ export class DirectoryRibbon {
    */
   protected onConfigure(): void {
     this.configureDialog.open();
+  }
+
+  /**
+   * Toggles a run configuration chosen from the Actions dropdown: a running configuration is stopped, a
+   * stopped one is started. Starting only ever happens from a stopped state, so no stop-and-restart
+   * prompt is needed — choosing a running row is itself the explicit stop.
+   * @param id The chosen configuration's id.
+   */
+  protected onActionItem(id: string): void {
+    const configuration: RunConfiguration | undefined = this.studio
+      .runConfigurations()
+      .find((candidate: RunConfiguration): boolean => candidate.id === id);
+    if (configuration === undefined) {
+      return;
+    }
+    if (this.isConfigurationRunning(configuration)) {
+      this.stopConfiguration(configuration);
+    } else {
+      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+        restart: false,
+      });
+    }
+  }
+
+  /**
+   * Stops every in-flight run belonging to a configuration (or, for a compound, to any of its resolved
+   * members), leaving other configurations' runs untouched.
+   * @param configuration The configuration to stop.
+   */
+  private stopConfiguration(configuration: RunConfiguration): void {
+    const leafIds: ReadonlySet<string> = new Set<string>(
+      expandRunConfiguration(configuration, this.studio.runConfigurations()).map(
+        (leaf: RunConfiguration): string => leaf.id,
+      ),
+    );
+    for (const run of this.activeRuns()) {
+      if (leafIds.has(run.taskId)) {
+        this.builds.cancel(run.id);
+      }
+    }
   }
 
   /**
