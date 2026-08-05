@@ -11,34 +11,36 @@
       (mouseenter)="pause(toast)"
       (mouseleave)="resume(toast)"
     >
-      <app-icon class="toast__icon" [icon]="iconFor(toast.severity)" [size]="1.4" />
-      <div class="toast__body">
+      <!-- Header: the severity icon, the title, and the close button on one line, vertically centred. -->
+      <div class="toast__header">
+        <app-icon class="toast__icon" [icon]="iconFor(toast.severity)" [size]="1.4" />
         <p class="toast__title">{{ toast.title }}</p>
-        @if (toast.detail) {
-          <p class="toast__detail">{{ toast.detail }}</p>
-        }
-        @if (toast.actions.length > 0) {
-          <div class="toast__actions">
-            @for (action of toast.actions; track action.label) {
-              <app-button
-                variant="none"
-                size="small"
-                [tone]="toneFor(toast.severity)"
-                [label]="action.label"
-                (click)="onAction(toast, action)"
-              />
-            }
-          </div>
-        }
+        <app-button
+          class="toast__close"
+          variant="none"
+          size="small"
+          [tone]="toneFor(toast.severity)"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Dismiss: ' + toast.title"
+          (click)="onDismiss(toast)"
+        />
       </div>
-      <app-button
-        variant="none"
-        size="small"
-        [tone]="toneFor(toast.severity)"
-        [icon]="Icon.CLOSE"
-        [ariaLabel]="'Dismiss: ' + toast.title"
-        (click)="onDismiss(toast)"
-      />
+      @if (toast.detail) {
+        <p class="toast__detail">{{ toast.detail }}</p>
+      }
+      @if (toast.actions.length > 0) {
+        <div class="toast__actions">
+          @for (action of toast.actions; track action.label) {
+            <app-button
+              variant="none"
+              size="small"
+              [tone]="toneFor(toast.severity)"
+              [label]="action.label"
+              (click)="onAction(toast, action)"
+            />
+          }
+        </div>
+      }
     </article>
   }
 </div>

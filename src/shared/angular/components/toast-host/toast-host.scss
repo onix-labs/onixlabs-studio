@@ -22,8 +22,8 @@
 
   pointer-events: auto;
   display: flex;
-  align-items: flex-start;
-  gap: 0.625rem;
+  flex-direction: column;
+  gap: 0.5rem;
   inline-size: 22.5rem;
   max-inline-size: calc(100vw - 1.5rem);
   padding: 0.625rem 0.75rem;
@@ -51,25 +51,33 @@
     --toast-color: var(--danger-color);
   }
 
+  // The header lays the icon, title, and close button on one line, all vertically centred against
+  // each other. The title grows to fill so the close button is pushed to the trailing edge.
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
   &__icon {
     flex: none;
-    margin-block-start: 0.0625rem;
     color: var(--toast-color);
   }
 
-  &__body {
-    flex: 1;
-    min-inline-size: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
   &__title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
     margin: 0;
     font-size: 0.8125rem;
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  // Nudge the close button out to the card's edge, trimming the button atom's own padding so its glyph
+  // lines up with the card inset rather than sitting inset from it.
+  &__close {
+    flex: none;
+    margin-inline-end: -0.25rem;
   }
 
   // Detail can carry multi-line tool output (a git error); preserve its line breaks but cap its
@@ -84,10 +92,11 @@
     overflow-y: auto;
   }
 
+  // The action buttons sit below the content, aligned to the trailing edge of the card.
   &__actions {
     display: flex;
+    justify-content: flex-end;
     gap: 0.375rem;
-    margin-block-start: 0.125rem;
   }
 }
 
