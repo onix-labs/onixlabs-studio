@@ -46,6 +46,16 @@ export class Icon {
   public static readonly HIDE_IDLE: Icon = new Icon('ph-duotone ph-pause-circle');
 
   /**
+   * Gets the icon marking a shown agent on Mission Control's per-agent hide toggle.
+   */
+  public static readonly AGENT_VISIBLE: Icon = new Icon('ph ph-eye');
+
+  /**
+   * Gets the icon marking a hidden agent on Mission Control's per-agent hide toggle.
+   */
+  public static readonly AGENT_HIDDEN: Icon = new Icon('ph ph-eye-slash');
+
+  /**
    * Gets the close icon shown on tab close buttons.
    */
   public static readonly CLOSE: Icon = new Icon('ph ph-x');

@@ -38,6 +38,15 @@ export class MissionControl {
   private readonly hideIdleState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the ids of the hosts the user has manually hidden, keyed by host id (the stable id shared by
+   * the rail rows and the tiles). Manual hiding is OR-ed with Hide Empty and Hide Idle: an agent is
+   * hidden when the user has hidden it, or when a blanket toggle catches it.
+   */
+  private readonly hiddenHostsState: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
    * Gets whether empty agent tiles are hidden.
    */
   public readonly hideEmpty: Signal<boolean> = this.hideEmptyState.asReadonly();
@@ -46,6 +55,11 @@ export class MissionControl {
    * Gets whether idle agent tiles are hidden.
    */
   public readonly hideIdle: Signal<boolean> = this.hideIdleState.asReadonly();
+
+  /**
+   * Gets the set of host ids the user has manually hidden.
+   */
+  public readonly hiddenHosts: Signal<ReadonlySet<string>> = this.hiddenHostsState.asReadonly();
 
   /**
    * Gets the width, in pixels, a tile should render at: the user's override for that key, or the
@@ -92,5 +106,43 @@ export class MissionControl {
    */
   public setHideIdle(value: boolean): void {
     this.hideIdleState.set(value);
+  }
+
+  /**
+   * Gets whether the user has manually hidden the given host.
+   * @param id The host id.
+   * @returns Returns true when the host is manually hidden.
+   */
+  public isHostHidden(id: string): boolean {
+    return this.hiddenHostsState().has(id);
+  }
+
+  /**
+   * Sets whether the given host is manually hidden, leaving the set untouched when already in the
+   * desired state so unrelated tiles do not recompute.
+   * @param id The host id.
+   * @param value Whether to hide the host.
+   */
+  public setHostHidden(id: string, value: boolean): void {
+    this.hiddenHostsState.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      if (current.has(id) === value) {
+        return current;
+      }
+      const next: Set<string> = new Set<string>(current);
+      if (value) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Toggles whether the given host is manually hidden.
+   * @param id The host id.
+   */
+  public toggleHostHidden(id: string): void {
+    this.setHostHidden(id, !this.hiddenHostsState().has(id));
   }
 }

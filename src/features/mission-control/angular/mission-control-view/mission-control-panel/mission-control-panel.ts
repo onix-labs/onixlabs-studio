@@ -24,6 +24,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlTiles } from '../mission-control-tiles';
 
 /**
@@ -137,6 +138,11 @@ export class MissionControlPanel {
    * Holds the view-scoped tile registry, used to scroll a column into view.
    */
   private readonly tiles: MissionControlTiles = inject(MissionControlTiles);
+
+  /**
+   * Holds the shared Mission Control view state, backing the per-agent hide toggle.
+   */
+  private readonly missionControl: MissionControl = inject(MissionControl);
 
   /**
    * Holds the settings service backing the policy-mode selector and the reorder preference.
@@ -320,6 +326,26 @@ export class MissionControlPanel {
    */
   protected onRowClick(row: ListRow): void {
     this.tiles.reveal(row.id);
+  }
+
+  /**
+   * Gets whether the given agent (by host id) is manually hidden, driving the rail row's hide toggle.
+   * @param id The host id.
+   * @returns Returns true when the agent's column is hidden.
+   */
+  protected isHidden(id: string): boolean {
+    return this.missionControl.isHostHidden(id);
+  }
+
+  /**
+   * Toggles whether the given agent's column is hidden, from the rail row's hide button. Stops the
+   * click from bubbling to the row so toggling visibility does not also scroll the column into view.
+   * @param item The rail item whose column to hide or show.
+   * @param event The originating click, whose propagation is stopped.
+   */
+  protected onToggleHidden(item: RailItem, event: Event): void {
+    event.stopPropagation();
+    this.missionControl.toggleHostHidden(item.id);
   }
 
   /**

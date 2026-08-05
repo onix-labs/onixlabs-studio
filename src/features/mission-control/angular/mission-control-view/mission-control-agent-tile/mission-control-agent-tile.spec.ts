@@ -61,6 +61,7 @@ interface Knobs {
   readonly items: WritableSignal<readonly unknown[]>;
   readonly hideEmpty: WritableSignal<boolean>;
   readonly hideIdle: WritableSignal<boolean>;
+  readonly hiddenHosts: WritableSignal<ReadonlySet<string>>;
 }
 
 /**
@@ -86,6 +87,9 @@ function setUp(
   const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
   const hideEmpty: WritableSignal<boolean> = signal<boolean>(false);
   const hideIdle: WritableSignal<boolean> = signal<boolean>(false);
+  const hiddenHosts: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
 
   const agentStub: unknown = { isRunning: running, items };
   const hostStub: unknown = {
@@ -102,6 +106,7 @@ function setUp(
   const missionControlStub: Partial<MissionControl> = {
     hideEmpty: hideEmpty.asReadonly(),
     hideIdle: hideIdle.asReadonly(),
+    hiddenHosts: hiddenHosts.asReadonly(),
     widthFor: (): number => 320,
     setWidth: (): void => undefined,
   };
@@ -125,7 +130,7 @@ function setUp(
   const fixture: ComponentFixture<MissionControlAgentTile> =
     TestBed.createComponent(MissionControlAgentTile);
   const state: TileState = fixture.componentInstance as unknown as TileState;
-  return { state, knobs: { running, items, hideEmpty, hideIdle }, fixture };
+  return { state, knobs: { running, items, hideEmpty, hideIdle, hiddenHosts }, fixture };
 }
 
 describe('MissionControlAgentTile', () => {
@@ -181,6 +186,17 @@ describe('MissionControlAgentTile', () => {
     knobs.hideIdle.set(true);
 
     expect(state.hidden()).toBe(false);
+  });
+
+  it('hidden_whenManuallyHidden_isHiddenEvenWhileRunning', () => {
+    // The per-agent hide toggle is OR-ed with (and carries no exemption from) the blanket toggles: a
+    // manually hidden agent is hidden even while running, when Hide Empty and Hide Idle are both off.
+    const { state, knobs } = setUp();
+    knobs.running.set(true);
+    expect(state.hidden()).toBe(false);
+
+    knobs.hiddenHosts.set(new Set<string>(['host-1']));
+    expect(state.hidden()).toBe(true);
   });
 
   it('hidden_whenTabBackedAndEmptyWithoutFocus_isHiddenByHideEmpty', () => {
