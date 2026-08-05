@@ -198,8 +198,9 @@ describe('resolveDefaultRunConfiguration', () => {
     expect(parsed.runConfigurations[0].default).toBe(true);
     // A truthy-but-not-true value is coerced away, so only a genuine flag survives.
     expect(
-      parseWorkspace({ runConfigurations: [{ id: 'x', name: 'X', providerKind: 'node', default: 1 }] })
-        .runConfigurations[0].default,
+      parseWorkspace({
+        runConfigurations: [{ id: 'x', name: 'X', providerKind: 'node', default: 1 }],
+      }).runConfigurations[0].default,
     ).toBeUndefined();
   });
 });

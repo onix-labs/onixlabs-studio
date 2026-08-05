@@ -178,8 +178,8 @@ export class ProblemsPanel {
    * problems cannot materialise thousands of DOM rows; the toolbar counts still reflect the full
    * set, and {@link overflowCount} tells the user what the list is holding back.
    */
-  protected readonly visible: Signal<readonly Diagnostic[]> = computed(
-    (): readonly Diagnostic[] => this.filtered().slice(0, MAX_RENDERED_PROBLEMS),
+  protected readonly visible: Signal<readonly Diagnostic[]> = computed((): readonly Diagnostic[] =>
+    this.filtered().slice(0, MAX_RENDERED_PROBLEMS),
   );
 
   /**

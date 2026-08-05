@@ -546,8 +546,7 @@ export class Modal implements OnDestroy {
     }
     for (const property of ['--modal-panel-background-color', '--body-background-color']) {
       const value: string = style.getPropertyValue(property).trim();
-      const hex: string | null =
-        toHexColour(value) ?? toHexColour(this.resolveColour(value) ?? '');
+      const hex: string | null = toHexColour(value) ?? toHexColour(this.resolveColour(value) ?? '');
       if (hex !== null) {
         return hex;
       }

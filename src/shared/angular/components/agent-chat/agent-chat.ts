@@ -442,7 +442,8 @@ export class AgentChat implements OnInit {
    * and remounted — a Mission Control column typed into, left, and returned to keeps its text. Falls
    * back to a local signal when the component stands alone (tests).
    */
-  private readonly draftText: WritableSignal<string> = this.conversation?.draft ?? signal<string>('');
+  private readonly draftText: WritableSignal<string> =
+    this.conversation?.draft ?? signal<string>('');
 
   /**
    * Holds a value indicating whether the markdown composer modal is open.

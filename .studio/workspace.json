@@ -6,10 +6,7 @@
       "name": "Studio (Electron, dev)",
       "providerKind": "node",
       "program": "npm",
-      "args": [
-        "run",
-        "electron:serve"
-      ],
+      "args": ["run", "electron:serve"],
       "mode": "run",
       "default": true
     },
@@ -18,10 +15,7 @@
       "name": "Web (ng serve)",
       "providerKind": "node",
       "program": "npm",
-      "args": [
-        "run",
-        "start"
-      ],
+      "args": ["run", "start"],
       "mode": "run"
     },
     {
@@ -29,10 +23,7 @@
       "name": "Unit Tests (watch)",
       "providerKind": "node",
       "program": "npm",
-      "args": [
-        "run",
-        "test"
-      ],
+      "args": ["run", "test"],
       "mode": "run"
     },
     {
@@ -40,10 +31,7 @@
       "name": "E2E (Playwright)",
       "providerKind": "node",
       "program": "npm",
-      "args": [
-        "run",
-        "e2e"
-      ],
+      "args": ["run", "e2e"],
       "mode": "run"
     }
   ]

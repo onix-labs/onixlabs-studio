@@ -125,7 +125,9 @@ export function resolvedVersionLabel(resolvedModel: string | undefined): string 
     .replace(/\[[^\]]*\]/g, '') // drop the [1m] context-window suffix
     .replace(/-\d{8}$/, '') // drop a trailing date snapshot
     .replace(/^claude-/, ''); // drop the provider prefix
-  const parts: readonly string[] = bare.split('-').filter((part: string): boolean => part.length > 0);
+  const parts: readonly string[] = bare
+    .split('-')
+    .filter((part: string): boolean => part.length > 0);
   if (parts.length === 0) {
     return null;
   }
@@ -178,7 +180,11 @@ export function formatClaudeLabel(model: ClaudeSdkModel): string {
  * @returns Returns the model info.
  */
 export function mapClaudeModel(model: ClaudeSdkModel): AiModelInfo {
-  return { id: model.value, label: formatClaudeLabel(model), contextWindow: claudeContextWindow(model) };
+  return {
+    id: model.value,
+    label: formatClaudeLabel(model),
+    contextWindow: claudeContextWindow(model),
+  };
 }
 
 /**
@@ -264,7 +270,10 @@ export async function runClaudeDiscovery(
     };
   }
 
-  const merged: AiModelInfo[] = mergeClaudeModels(connection.models, discovered.map(mapClaudeModel));
+  const merged: AiModelInfo[] = mergeClaudeModels(
+    connection.models,
+    discovered.map(mapClaudeModel),
+  );
   const added: number = merged.length - connection.models.length;
   return {
     ok: true,

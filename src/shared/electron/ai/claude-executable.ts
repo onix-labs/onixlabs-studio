@@ -74,7 +74,9 @@ export function resolveExecutableOnPath(name: string): string | undefined {
  * @param choice The user's CLI choice, or undefined for the bundled default.
  * @returns Returns the absolute executable path, or undefined to let the SDK use its bundled CLI.
  */
-export function resolveClaudeExecutable(choice: ClaudeExecutableChoice | undefined): string | undefined {
+export function resolveClaudeExecutable(
+  choice: ClaudeExecutableChoice | undefined,
+): string | undefined {
   if (choice === undefined || choice.mode === 'bundled') {
     return resolveBundledClaudeExecutable();
   }

@@ -608,7 +608,9 @@ export class AiManager {
         ? request.effort
         : null;
     const agentShell: string | null = sanitizeAgentShell(request.agentShell);
-    const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(request.claudeExecutable);
+    const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(
+      request.claudeExecutable,
+    );
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );

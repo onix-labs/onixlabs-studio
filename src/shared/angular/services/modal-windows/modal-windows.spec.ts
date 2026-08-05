@@ -130,9 +130,9 @@ describe('ModalWindows', () => {
     expect(owner.child.document.title).toBe('Rename conversation');
     expect(modal!.contentHost.className).toContain('modal-window__content');
     expect(owner.child.document.querySelector('.modal-window__drag')).not.toBeNull();
-    expect(
-      owner.child.document.body.style.getPropertyValue('--modal-window-drag-height'),
-    ).not.toBe('0rem');
+    expect(owner.child.document.body.style.getPropertyValue('--modal-window-drag-height')).not.toBe(
+      '0rem',
+    );
   });
 
   it('open_whenDragless_omitsTheDragStripAndReservesNoInset', () => {

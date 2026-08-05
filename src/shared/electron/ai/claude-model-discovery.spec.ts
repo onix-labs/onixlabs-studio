@@ -73,7 +73,11 @@ describe('claudeContextWindow', () => {
 
   it('claudeContextWindow_whenResolvedHasSuffix_usesIt', () => {
     expect(
-      claudeContextWindow({ value: 'default', resolvedModel: 'claude-opus-5[1m]', displayName: 'x' }),
+      claudeContextWindow({
+        value: 'default',
+        resolvedModel: 'claude-opus-5[1m]',
+        displayName: 'x',
+      }),
     ).toBe(1_000_000);
   });
 
@@ -121,7 +125,9 @@ describe('resolvedVersionLabel', () => {
 
 describe('versionFromDescription', () => {
   it('versionFromDescription_readsLeadingFamilyVersion', () => {
-    expect(versionFromDescription('Opus 4.8 with 1M context · Best for everyday tasks')).toBe('Opus 4.8');
+    expect(versionFromDescription('Opus 4.8 with 1M context · Best for everyday tasks')).toBe(
+      'Opus 4.8',
+    );
     expect(versionFromDescription('Sonnet 4.6 · Efficient for routine tasks')).toBe('Sonnet 4.6');
     expect(versionFromDescription('Fable 5 · Most capable')).toBe('Fable 5');
   });
@@ -136,7 +142,11 @@ describe('formatClaudeLabel', () => {
   // The SDK-bundled CLI omits resolvedModel but carries the version in the description — the real case.
   it('formatClaudeLabel_fromDescription_foldsVersionIntoPlainFamily', () => {
     expect(
-      formatClaudeLabel({ value: 'sonnet', displayName: 'Sonnet', description: 'Sonnet 4.6 · Efficient' }),
+      formatClaudeLabel({
+        value: 'sonnet',
+        displayName: 'Sonnet',
+        description: 'Sonnet 4.6 · Efficient',
+      }),
     ).toBe('Sonnet 4.6');
   });
 
@@ -162,9 +172,13 @@ describe('formatClaudeLabel', () => {
   });
 
   it('formatClaudeLabel_whenPlainFamily_appendsVersion', () => {
-    expect(formatClaudeLabel({ value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet' })).toBe(
-      'Sonnet 5',
-    );
+    expect(
+      formatClaudeLabel({
+        value: 'sonnet',
+        resolvedModel: 'claude-sonnet-5',
+        displayName: 'Sonnet',
+      }),
+    ).toBe('Sonnet 5');
   });
 
   it('formatClaudeLabel_whenFamilyHasQualifier_insertsVersionAfterFamily', () => {
@@ -225,7 +239,9 @@ describe('mergeClaudeModels', () => {
     const existing: readonly AiModelInfo[] = [
       { id: 'my-custom', label: 'my-custom', contextWindow: 32_768 },
     ];
-    const discovered: readonly AiModelInfo[] = [{ id: 'sonnet', label: 'Sonnet 5', contextWindow: 1_000_000 }];
+    const discovered: readonly AiModelInfo[] = [
+      { id: 'sonnet', label: 'Sonnet 5', contextWindow: 1_000_000 },
+    ];
 
     const merged: AiModelInfo[] = mergeClaudeModels(existing, discovered);
 

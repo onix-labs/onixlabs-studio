@@ -633,8 +633,10 @@ export class Workspace {
               (directory: string): boolean =>
                 directory === root || this.isLoadedDirectory(directory),
             );
-      await runBounded(targets, TREE_REFRESH_CONCURRENCY, (directory: string): Promise<void> =>
-        this.refresh(directory),
+      await runBounded(
+        targets,
+        TREE_REFRESH_CONCURRENCY,
+        (directory: string): Promise<void> => this.refresh(directory),
       );
     } finally {
       this.treeRefreshRunning = false;

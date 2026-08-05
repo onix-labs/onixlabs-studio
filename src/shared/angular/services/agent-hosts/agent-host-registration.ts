@@ -88,8 +88,8 @@ export function createAgentHostRegistrar(options: {
         runOptions === undefined
           ? undefined
           : {
-              defaultConfiguration: computed(
-                (): RunConfiguration | null => runOptions.defaultConfiguration(),
+              defaultConfiguration: computed((): RunConfiguration | null =>
+                runOptions.defaultConfiguration(),
               ),
               starting: computed((): boolean => runOptions.starting()),
               running: computed((): boolean => runOptions.running()),

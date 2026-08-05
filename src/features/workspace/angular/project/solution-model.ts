@@ -655,9 +655,7 @@ export class SolutionModel {
     this.searchQuery.set('');
     this.selectedKeySignal.set(null);
     this.loadingProjects.set(new Set<string>());
-    this.expandedKeys.set(
-      model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>(),
-    );
+    this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
 
   /**

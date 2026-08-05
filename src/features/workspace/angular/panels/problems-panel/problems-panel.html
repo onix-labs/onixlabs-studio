@@ -50,7 +50,9 @@
       </li>
     }
     @if (overflowCount() > 0) {
-      <li class="problems-overflow">…and {{ overflowCount() }} more — narrow the filters to see them.</li>
+      <li class="problems-overflow">
+        …and {{ overflowCount() }} more — narrow the filters to see them.
+      </li>
     }
   </ul>
 } @else if (diagnostics.all().length > 0) {

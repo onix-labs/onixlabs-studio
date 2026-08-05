@@ -35,13 +35,19 @@
     [itemSize]="itemSize"
   >
     <ng-container *cdkVirtualFor="let row of rows(); trackBy: trackRow">
-      <ng-container [ngTemplateOutlet]="rowTemplate" [ngTemplateOutletContext]="{ $implicit: row }" />
+      <ng-container
+        [ngTemplateOutlet]="rowTemplate"
+        [ngTemplateOutletContext]="{ $implicit: row }"
+      />
     </ng-container>
   </cdk-virtual-scroll-viewport>
 } @else {
   <div class="tree-list" role="tree">
     @for (row of rows(); track row.id) {
-      <ng-container [ngTemplateOutlet]="rowTemplate" [ngTemplateOutletContext]="{ $implicit: row }" />
+      <ng-container
+        [ngTemplateOutlet]="rowTemplate"
+        [ngTemplateOutletContext]="{ $implicit: row }"
+      />
     }
   </div>
 }

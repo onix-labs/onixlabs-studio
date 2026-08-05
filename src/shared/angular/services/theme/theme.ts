@@ -292,7 +292,9 @@ export class Theme {
       this.modeSignal.set(this.settings.get<ThemeMode>(MODE_KEY, DEFAULT_MODE));
     });
     this.settings.onExternalChange(ACCENT_KEY, (): void => {
-      this.accentSignal.set(normaliseAccent(this.settings.get<unknown>(ACCENT_KEY, DEFAULT_ACCENT)));
+      this.accentSignal.set(
+        normaliseAccent(this.settings.get<unknown>(ACCENT_KEY, DEFAULT_ACCENT)),
+      );
     });
 
     effect((): void => {

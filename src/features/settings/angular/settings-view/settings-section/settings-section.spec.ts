@@ -80,7 +80,9 @@ describe('SettingsSection', () => {
     expect(element.querySelectorAll('app-setting-row').length).toBe(6);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
-    expect(element.querySelectorAll('app-accent-picker option').length).toBe(ACCENT_PRESETS.length + 1);
+    expect(element.querySelectorAll('app-accent-picker option').length).toBe(
+      ACCENT_PRESETS.length + 1,
+    );
     expect(element.querySelector('app-toggle')).toBeTruthy();
   });
 

@@ -14,7 +14,11 @@
        one at a time (spinner at rest, and — for an interactive loading button — the icon on hover), so
        the swap is a pure CSS crossfade with no re-render. -->
   @if (icon(); as glyph) {
-    <app-icon class="button__icon button__icon--content" [icon]="glyph" [rotation]="iconRotation()" />
+    <app-icon
+      class="button__icon button__icon--content"
+      [icon]="glyph"
+      [rotation]="iconRotation()"
+    />
   }
   @if (loading()) {
     <app-icon class="button__icon button__icon--spinner button__icon--spin" [icon]="spinnerIcon" />

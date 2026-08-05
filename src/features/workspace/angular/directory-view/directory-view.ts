@@ -443,10 +443,9 @@ export class DirectoryView implements OnInit, OnDestroy {
         return new Set<string>();
       }
       return new Set<string>(
-        expandRunConfiguration(
-          configuration,
-          this.workspaceRunConfigurations.configurations(),
-        ).map((leaf: RunConfiguration): string => leaf.id),
+        expandRunConfiguration(configuration, this.workspaceRunConfigurations.configurations()).map(
+          (leaf: RunConfiguration): string => leaf.id,
+        ),
       );
     },
   );
@@ -481,9 +480,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private readonly defaultRunRunning: Signal<boolean> = computed((): boolean => {
     const ids: ReadonlySet<string> = this.defaultRunLeafIds();
-    return this.buildRunner
-      .activeRuns()
-      .some((run: ActiveRun): boolean => ids.has(run.taskId));
+    return this.buildRunner.activeRuns().some((run: ActiveRun): boolean => ids.has(run.taskId));
   });
 
   /**

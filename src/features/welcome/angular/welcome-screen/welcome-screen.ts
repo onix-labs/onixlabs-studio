@@ -231,8 +231,7 @@ export class WelcomeScreen {
    */
   protected readonly visible: Signal<boolean> = computed(
     (): boolean =>
-      !this.dismissed() &&
-      (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
+      !this.dismissed() && (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
   );
 
   /**

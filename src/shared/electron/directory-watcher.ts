@@ -100,14 +100,11 @@ export class DirectoryWatcher {
    * Registers the directory-watch IPC handlers.
    */
   public register(): void {
-    ipcMain.handle(
-      FileChannel.WatchDirectory,
-      (event: IpcMainInvokeEvent, root: unknown): void => {
-        if (typeof root === 'string') {
-          this.watch(root, event.sender);
-        }
-      },
-    );
+    ipcMain.handle(FileChannel.WatchDirectory, (event: IpcMainInvokeEvent, root: unknown): void => {
+      if (typeof root === 'string') {
+        this.watch(root, event.sender);
+      }
+    });
     ipcMain.handle(
       FileChannel.UnwatchDirectory,
       (event: IpcMainInvokeEvent, root: unknown): void => {

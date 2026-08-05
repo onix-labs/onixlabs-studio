@@ -143,9 +143,8 @@ export class TreeView {
   /**
    * Holds the virtual scroller's viewport when {@link virtual} rendering is active.
    */
-  protected readonly viewport: Signal<CdkVirtualScrollViewport | undefined> = viewChild(
-    CdkVirtualScrollViewport,
-  );
+  protected readonly viewport: Signal<CdkVirtualScrollViewport | undefined> =
+    viewChild(CdkVirtualScrollViewport);
 
   /**
    * Gets a row's height in pixels, for the virtual scroller's fixed-size strategy. Derived from the

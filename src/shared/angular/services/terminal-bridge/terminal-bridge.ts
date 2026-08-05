@@ -163,7 +163,8 @@ export class TerminalBridge {
         }
       }
     });
-    let listeners: Set<(data: string, seq: number) => void> | undefined = this.dataListeners.get(id);
+    let listeners: Set<(data: string, seq: number) => void> | undefined =
+      this.dataListeners.get(id);
     if (listeners === undefined) {
       listeners = new Set<(data: string, seq: number) => void>();
       this.dataListeners.set(id, listeners);

@@ -49,7 +49,8 @@ export class WorkspaceRunConfigurations {
   /**
    * Holds the current snapshot for this workspace's root, defaulting to an empty snapshot.
    */
-  private readonly current: WritableSignal<StudioSnapshot> = signal<StudioSnapshot>(emptySnapshot());
+  private readonly current: WritableSignal<StudioSnapshot> =
+    signal<StudioSnapshot>(emptySnapshot());
 
   /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in

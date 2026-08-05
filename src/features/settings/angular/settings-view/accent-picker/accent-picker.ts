@@ -133,9 +133,7 @@ export class AccentPicker {
   protected readonly saturation: Signal<number> = computed((): number => {
     const accent: Accent = this.value();
     const raw: number =
-      accent.kind === 'custom'
-        ? accent.saturation
-        : hexToHsl(resolveAccent(accent).hex).saturation;
+      accent.kind === 'custom' ? accent.saturation : hexToHsl(resolveAccent(accent).hex).saturation;
     return clampSaturation(raw);
   });
 

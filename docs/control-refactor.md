@@ -246,7 +246,7 @@ inherited 1rem label's — so four controls that each looked reasonable alone co
 ### Done — dock panel title controls (2026-07-30)
 
 - [x] The dock's own panel controls (Auto Hide, Float, Open in New Window, Close) are `app-button
-  variant="none" size="small"` — the same button a tool panel's header wears. They had been a
+variant="none" size="small"` — the same button a tool panel's header wears. They had been a
       fourth hand-rolled variant: 1.125rem square, a `--dock-title-*--focused` hover, and in the
       floating panel a hardcoded `rgb(255 255 255 / 25%)`.
 - [x] The same row in `dock-floating-layer` (Dock, Close) and the collapsed peek flyout

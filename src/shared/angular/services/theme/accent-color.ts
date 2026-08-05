@@ -163,8 +163,7 @@ export function rgbToHsl(rgb: Rgb): Hsl {
   }
 
   const delta: number = max - min;
-  const saturation: number =
-    lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  const saturation: number = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
 
   let hue: number;
   switch (max) {
@@ -219,5 +218,7 @@ function hueToChannel(p: number, q: number, t: number): number {
  * @returns Returns the two-digit hex string.
  */
 function channelToHex(channel: number): string {
-  return Math.min(255, Math.max(0, Math.round(channel))).toString(16).padStart(2, '0');
+  return Math.min(255, Math.max(0, Math.round(channel)))
+    .toString(16)
+    .padStart(2, '0');
 }

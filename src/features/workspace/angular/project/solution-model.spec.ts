@@ -150,7 +150,10 @@ describe('SolutionModel', () => {
         {
           provide: DirectoryWatch,
           useValue: {
-            watch: (_root: string, onChange: (event: DirectoryChangeEvent) => void): (() => void) => {
+            watch: (
+              _root: string,
+              onChange: (event: DirectoryChangeEvent) => void,
+            ): (() => void) => {
               treeChanged = onChange;
               return (): void => undefined;
             },

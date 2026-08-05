@@ -800,7 +800,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'ai.claudeExecutablePath',
         title: 'Claude CLI path',
-        description: 'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
+        description:
+          'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
         control: { kind: 'text', placeholder: '/usr/local/bin/claude' },
         default: '',
       },

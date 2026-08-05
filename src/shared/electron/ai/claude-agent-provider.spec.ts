@@ -821,7 +821,12 @@ describe('ClaudeAgentProvider.listSupportedModels', () => {
   it('listSupportedModels_mapsSdkModelsAndTearsDownTheQuery', async () => {
     const fake: { query: Query; interrupted: () => boolean } = fakeQuery([
       { value: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5', description: '' },
-      { value: 'opus[1m]', displayName: 'Opus (1M)', resolvedModel: 'claude-opus-5[1m]', description: '' },
+      {
+        value: 'opus[1m]',
+        displayName: 'Opus (1M)',
+        resolvedModel: 'claude-opus-5[1m]',
+        description: '',
+      },
     ]);
 
     const models: readonly ClaudeSdkModel[] = await provider.listSupportedModels(
@@ -831,7 +836,12 @@ describe('ClaudeAgentProvider.listSupportedModels', () => {
 
     expect(models).toEqual([
       { value: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5', description: '' },
-      { value: 'opus[1m]', displayName: 'Opus (1M)', resolvedModel: 'claude-opus-5[1m]', description: '' },
+      {
+        value: 'opus[1m]',
+        displayName: 'Opus (1M)',
+        resolvedModel: 'claude-opus-5[1m]',
+        description: '',
+      },
     ]);
     expect(fake.interrupted()).toBe(true);
   });

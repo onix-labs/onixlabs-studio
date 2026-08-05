@@ -375,10 +375,8 @@ export class Repository {
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
     this.watchDisposer?.();
-    this.watchDisposer = this.directoryWatch.watch(
-      info.root,
-      (event: DirectoryChangeEvent): void =>
-        this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
+    this.watchDisposer = this.directoryWatch.watch(info.root, (event: DirectoryChangeEvent): void =>
+      this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
     );
     void this.refresh();
   }

@@ -279,7 +279,9 @@ describe('dock-tree', () => {
       const centre: StackNode = mkStack('document', [], true);
       const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
 
-      const occupied: StackNode = asStack(findNode(occupyWell(tree, centre.id, 'agent'), centre.id));
+      const occupied: StackNode = asStack(
+        findNode(occupyWell(tree, centre.id, 'agent'), centre.id),
+      );
 
       expect(occupied.id).toBe(centre.id);
       expect(occupied.role).toBe('tool');
