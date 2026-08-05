@@ -17,6 +17,11 @@ export interface DockTool {
   readonly icon: Icon;
 
   /**
+   * Gets the clockwise rotation of the tool's icon, in degrees. Defaults to none.
+   */
+  readonly iconRotation?: number;
+
+  /**
    * Gets the tooltip and accessible label for the tool.
    */
   readonly label: string;

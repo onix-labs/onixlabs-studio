@@ -190,7 +190,7 @@ export class DockTabGroup {
   protected readonly documentTools: readonly DockTool[] = [
     { id: 'split', icon: Icon.LAYOUT_SPLIT, label: 'Split Editor' },
     { id: 'find', icon: Icon.SEARCH, label: 'Find in File' },
-    { id: 'settings', icon: Icon.SETTINGS, label: 'Editor Settings' },
+    { id: 'settings', icon: Icon.SETTINGS, iconRotation: 30, label: 'Editor Settings' },
     { id: 'more', icon: Icon.GRID_DOTS, label: 'More Actions' },
   ];
 

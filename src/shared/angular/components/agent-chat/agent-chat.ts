@@ -1469,6 +1469,16 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Gets the clockwise rotation for a suggestion row's icon, in degrees. The manage row's settings
+   * gear is tilted to match the gear everywhere else it appears; every other row stays upright.
+   * @param option The suggestion.
+   * @returns Returns the icon rotation in degrees.
+   */
+  protected suggestIconRotation(option: ComposerSuggestion): number {
+    return option.kind === 'manage' ? 30 : 0;
+  }
+
+  /**
    * Accepts a suggestion: a built-in command executes, a library prompt's text replaces the token, a
    * mention attaches the file and leaves a readable `@basename` in the draft, and the manage entry
    * opens the prompt-library modal.

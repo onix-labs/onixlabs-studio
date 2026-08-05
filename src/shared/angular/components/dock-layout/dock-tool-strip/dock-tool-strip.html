@@ -6,6 +6,6 @@
     [title]="tool.label"
     [attr.aria-label]="tool.label"
   >
-    <app-icon [icon]="tool.icon" />
+    <app-icon [icon]="tool.icon" [rotation]="tool.iconRotation ?? 0" />
   </button>
 }
