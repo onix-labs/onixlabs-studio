@@ -84,6 +84,8 @@ import {
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { RUN_PROJECT_MODEL } from '@shared/angular/services/tasks/run-project-model';
 import { Builds } from '@shared/angular/services/tasks/builds';
+import { WorkspaceRunConfigurations } from '@shared/angular/services/studio/workspace-run-configurations';
+import { RunConfiguration } from '@shared/api/studio';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -155,6 +157,7 @@ const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
     Output,
     Diagnostics,
     BuildRunner,
+    WorkspaceRunConfigurations,
     {
       // Give the build runner this workspace's project model so a run configuration's
       // provider-default command resolves real targets (a .NET project name to its file).
@@ -330,6 +333,15 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Mission Control shows the open folder's branch beside this column's title. Read through a
     // closure because this tab's git state is constructed after this field initializer runs.
     branch: (): string | null => this.workspaceGit.branch(),
+    // Mission Control's per-agent Run button runs this workspace's default configuration in this
+    // workspace's own build runner (not the active one) — so a background workspace's agent can be
+    // launched without flipping to its tab. Read through closures for the same field-initializer
+    // reason as the branch above.
+    run: {
+      defaultConfiguration: (): RunConfiguration | null =>
+        this.workspaceRunConfigurations.defaultConfiguration(),
+      run: (): void => this.runDefaultConfiguration(),
+    },
   });
 
   /**
@@ -396,6 +408,15 @@ export class DirectoryView implements OnInit, OnDestroy {
    * active so the root ribbon's build actions reach this workspace.
    */
   private readonly buildRunner: BuildRunner = inject(BuildRunner);
+
+  /**
+   * Holds this tab's scoped reader of its own `.studio` run configurations, so Mission Control's
+   * per-agent Run button can resolve and launch this workspace's default even while the tab is not the
+   * active one.
+   */
+  private readonly workspaceRunConfigurations: WorkspaceRunConfigurations = inject(
+    WorkspaceRunConfigurations,
+  );
 
   /**
    * Holds the root build seam this tab registers its runner with while active.
@@ -1072,6 +1093,24 @@ export class DirectoryView implements OnInit, OnDestroy {
     } else {
       void this.workspace.closeFolder();
     }
+  }
+
+  /**
+   * Runs this workspace's default run configuration in its own build runner, for Mission Control's
+   * per-agent Run button. A no-op when no default is designated (the button is hidden in that case, so
+   * this only guards a race). The workspace's other configurations are passed as siblings so a default
+   * that is a compound resolves its members.
+   */
+  private runDefaultConfiguration(): void {
+    const configuration: RunConfiguration | null =
+      this.workspaceRunConfigurations.defaultConfiguration();
+    if (configuration === null) {
+      return;
+    }
+    this.buildRunner.runConfiguration(
+      configuration,
+      this.workspaceRunConfigurations.configurations(),
+    );
   }
 
   /**

@@ -1,8 +1,9 @@
 import { computed, DestroyRef, inject, Signal } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
+import type { RunConfiguration } from '@shared/api/studio';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
-import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
+import { AgentHosts, HostRunLauncher } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -45,6 +46,16 @@ export function createAgentHostRegistrar(options: {
    * is created in a field initializer.
    */
   readonly branch?: () => string | null;
+  /**
+   * Provides the host's ability to Run its workspace's default configuration, or undefined for a view
+   * with no workspace behind it. Both members are read lazily, for the same field-initializer reason
+   * as {@link branch}: the workspace's run-configuration reader and build runner are constructed after
+   * the registrar. `defaultConfiguration` is wrapped in a reactive computed at registration.
+   */
+  readonly run?: {
+    readonly defaultConfiguration: () => RunConfiguration | null;
+    readonly run: () => void;
+  };
 }): AgentHostRegistrar {
   const agent: Agent = inject(Agent);
   const conversation: AgentConversation = inject(AgentConversation);
@@ -53,6 +64,8 @@ export function createAgentHostRegistrar(options: {
   const tabs: Tabs = inject(Tabs);
   const destroyRef: DestroyRef = inject(DestroyRef);
   const resolveBranch: (() => string | null) | undefined = options.branch;
+  const runOptions: { defaultConfiguration: () => RunConfiguration | null; run: () => void } | undefined =
+    options.run;
 
   return {
     register(tabId: string): void {
@@ -61,6 +74,15 @@ export function createAgentHostRegistrar(options: {
       );
       const branch: Signal<string | null> | undefined =
         resolveBranch === undefined ? undefined : computed((): string | null => resolveBranch());
+      const run: HostRunLauncher | undefined =
+        runOptions === undefined
+          ? undefined
+          : {
+              defaultConfiguration: computed(
+                (): RunConfiguration | null => runOptions.defaultConfiguration(),
+              ),
+              run: (): void => runOptions.run(),
+            };
       destroyRef.onDestroy(
         requests.register({
           agent,
@@ -73,6 +95,7 @@ export function createAgentHostRegistrar(options: {
           tabId,
           label,
           branch,
+          run,
           surface: options.surface,
           agent,
           conversation,

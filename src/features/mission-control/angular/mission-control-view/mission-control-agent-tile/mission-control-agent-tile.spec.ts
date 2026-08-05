@@ -2,7 +2,12 @@ import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Agent } from '@shared/angular/services/agent/agent';
-import { AGENT_HOST, AgentHost } from '@shared/angular/services/agent-hosts/agent-hosts';
+import {
+  AGENT_HOST,
+  AgentHost,
+  HostRunLauncher,
+} from '@shared/angular/services/agent-hosts/agent-hosts';
+import { RunConfiguration } from '@shared/api/studio';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
@@ -24,6 +29,8 @@ interface TileState {
   readonly key: Signal<string>;
   readonly branch: Signal<string | null>;
   readonly branchLabel: Signal<string>;
+  readonly defaultRun: Signal<RunConfiguration | null>;
+  onRun(): void;
 }
 
 /**
@@ -44,7 +51,13 @@ interface Knobs {
  * for a host with no project behind it).
  * @returns Returns the tile's derived state and the knobs backing it.
  */
-function setUp(options: { tabId?: string | null; branch?: Signal<string | null> } = {}): {
+function setUp(
+  options: {
+    tabId?: string | null;
+    branch?: Signal<string | null>;
+    run?: HostRunLauncher;
+  } = {},
+): {
   state: TileState;
   knobs: Knobs;
   fixture: ComponentFixture<MissionControlAgentTile>;
@@ -60,6 +73,7 @@ function setUp(options: { tabId?: string | null; branch?: Signal<string | null> 
     tabId: options.tabId ?? null,
     label: signal<string>('Alpha'),
     branch: options.branch,
+    run: options.run,
     surface: 'agent',
     agent: agentStub,
     conversation: {},
@@ -233,5 +247,52 @@ describe('MissionControlAgentTile', () => {
     branch.set(null);
     expect(state.branch()).toBeNull();
     expect(state.branchLabel()).toBe('No repository');
+  });
+
+  it('run_whenHostHasNoRunCapability_hasNoDefault', () => {
+    // A host with no workspace behind it carries no Run capability, so the header's Run button (gated
+    // on defaultRun()) never shows.
+    const { state } = setUp({ tabId: 'tab-9' });
+
+    expect(state.defaultRun()).toBeNull();
+  });
+
+  it('run_followsTheHostsDefaultConfigurationLive', () => {
+    const configuration: RunConfiguration = {
+      id: 'web',
+      name: 'Web',
+      providerKind: 'node',
+      mode: 'run',
+      default: true,
+    };
+    const defaultConfiguration: WritableSignal<RunConfiguration | null> =
+      signal<RunConfiguration | null>(configuration);
+    const { state } = setUp({
+      tabId: 'tab-9',
+      run: { defaultConfiguration: defaultConfiguration.asReadonly(), run: (): void => undefined },
+    });
+
+    expect(state.defaultRun()?.id).toBe('web');
+
+    // Clearing the workspace's default (in Configure) retracts the button without a re-mount.
+    defaultConfiguration.set(null);
+    expect(state.defaultRun()).toBeNull();
+  });
+
+  it('onRun_invokesTheHostsRunLauncher', () => {
+    let ran: number = 0;
+    const configuration: RunConfiguration = { id: 'web', name: 'Web', providerKind: 'node', mode: 'run' };
+    const { state } = setUp({
+      tabId: 'tab-9',
+      run: {
+        defaultConfiguration: signal<RunConfiguration | null>(configuration),
+        run: (): void => {
+          ran += 1;
+        },
+      },
+    });
+
+    state.onRun();
+    expect(ran).toBe(1);
   });
 });

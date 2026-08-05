@@ -1,7 +1,28 @@
 import { computed, InjectionToken, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
+import type { RunConfiguration } from '@shared/api/studio';
 import type { Agent } from '@shared/angular/services/agent/agent';
 import type { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+
+/**
+ * A host's ability to single-press Run its workspace's default configuration, carried by a
+ * workspace-backed host so a surface such as Mission Control can offer a Run button without knowing
+ * anything about run configurations. Absent on a host with no workspace behind it (a file, terminal,
+ * or repository agent), which is what tells such a surface not to show the button at all.
+ */
+export interface HostRunLauncher {
+  /**
+   * Gets the workspace's default run configuration, or null when none is designated — read reactively
+   * so a Run button appears and disappears as the default is set or cleared.
+   */
+  readonly defaultConfiguration: Signal<RunConfiguration | null>;
+
+  /**
+   * Runs the workspace's default configuration in its own workspace (not the active one), a no-op when
+   * there is no default to run.
+   */
+  run(): void;
+}
 
 /**
  * A live agent conversation host, registered app-wide so surfaces such as Mission Control can mirror
@@ -35,6 +56,13 @@ export interface AgentHost {
    * are told apart by the branch each is working on.
    */
   readonly branch?: Signal<string | null>;
+
+  /**
+   * Gets the host's ability to Run its workspace's default configuration, or undefined for a host with
+   * no workspace behind it. Present only on workspace-backed hosts, so a surface offers a Run button
+   * exactly where it makes sense.
+   */
+  readonly run?: HostRunLauncher;
 
   /**
    * Gets the tool surface the host's runs act on.

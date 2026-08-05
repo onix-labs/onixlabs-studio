@@ -306,6 +306,14 @@ export class ConfigureDialogPanel {
   );
 
   /**
+   * Gets whether the selected configuration is the workspace's default — the one Mission Control's Run
+   * button single-presses.
+   */
+  protected readonly isDefault: Signal<boolean> = computed(
+    (): boolean => this.selected()?.default === true,
+  );
+
+  /**
    * Gets whether the selected configuration presents its terminal in its own OS window.
    */
   protected readonly isWindowPresentation: Signal<boolean> = computed(
@@ -512,6 +520,30 @@ export class ConfigureDialogPanel {
    */
   protected onModeChange(debug: boolean): void {
     this.patch({ mode: debug ? 'debug' : 'run' });
+  }
+
+  /**
+   * Sets or clears the selected configuration as the workspace's default. A workspace has at most one
+   * default, so turning this on clears the flag on every other configuration; the flag is dropped
+   * rather than written false, keeping the persisted file minimal.
+   * @param isDefault Whether the selected configuration should be the default.
+   */
+  protected onDefaultChange(isDefault: boolean): void {
+    const id: string | null = this.selectedId();
+    if (id === null) {
+      return;
+    }
+    this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] =>
+      list.map((configuration: RunConfiguration): RunConfiguration => {
+        if (configuration.id === id) {
+          return { ...configuration, default: isDefault ? true : undefined };
+        }
+        // Only one default per workspace: setting this one the default clears any other's flag.
+        return isDefault && configuration.default === true
+          ? { ...configuration, default: undefined }
+          : configuration;
+      }),
+    );
   }
 
   /**

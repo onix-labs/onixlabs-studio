@@ -8,6 +8,7 @@ import {
   isCompoundConfiguration,
   parseUser,
   parseWorkspace,
+  resolveDefaultRunConfiguration,
   resolveSelectedRunConfiguration,
   RunConfiguration,
   serializeUser,
@@ -160,6 +161,46 @@ describe('resolveSelectedRunConfiguration', () => {
     const configs: RunConfiguration[] = [config('a', 'A'), config('b', 'B')];
     expect(resolveSelectedRunConfiguration(snapshot(configs, 'gone'))?.id).toBe('a');
     expect(resolveSelectedRunConfiguration(snapshot(configs))?.id).toBe('a');
+  });
+});
+
+describe('resolveDefaultRunConfiguration', () => {
+  it('returnsNullWhenNoneIsFlagged', () => {
+    expect(resolveDefaultRunConfiguration([])).toBeNull();
+    expect(resolveDefaultRunConfiguration([config('a', 'A'), config('b', 'B')])).toBeNull();
+  });
+
+  it('returnsTheFlaggedConfiguration', () => {
+    const configs: RunConfiguration[] = [config('a', 'A'), { ...config('b', 'B'), default: true }];
+    expect(resolveDefaultRunConfiguration(configs)?.id).toBe('b');
+  });
+
+  it('doesNotFallBackToTheFirstWhenNoneIsFlagged', () => {
+    // Unlike the selected configuration, the default is deliberate — no fall back — so a surface can
+    // tell "no default" from "the first one".
+    expect(resolveDefaultRunConfiguration([config('a', 'A')])).toBeNull();
+  });
+
+  it('takesTheFirstWhenSeveralAreFlagged', () => {
+    const configs: RunConfiguration[] = [
+      { ...config('a', 'A'), default: true },
+      { ...config('b', 'B'), default: true },
+    ];
+    expect(resolveDefaultRunConfiguration(configs)?.id).toBe('a');
+  });
+
+  it('parsesTheDefaultFlagAndRoundTrips', () => {
+    const workspace: StudioWorkspace = {
+      version: STUDIO_SCHEMA_VERSION,
+      runConfigurations: [{ ...config('a', 'A'), default: true }],
+    };
+    const parsed: StudioWorkspace = parseWorkspace(JSON.parse(serializeWorkspace(workspace)));
+    expect(parsed.runConfigurations[0].default).toBe(true);
+    // A truthy-but-not-true value is coerced away, so only a genuine flag survives.
+    expect(
+      parseWorkspace({ runConfigurations: [{ id: 'x', name: 'X', providerKind: 'node', default: 1 }] })
+        .runConfigurations[0].default,
+    ).toBeUndefined();
   });
 });
 

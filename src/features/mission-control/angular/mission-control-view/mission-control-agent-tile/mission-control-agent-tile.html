@@ -33,6 +33,19 @@
     <span class="tile__status-label">{{ statusLabel() }}</span>
   </div>
   <div class="tile__actions">
+    <!-- Run the workspace's default configuration in its own workspace. Shown only for a
+         workspace-backed column that designates a default (defaultRun() is null otherwise), so the
+         button is present and enabled exactly when there is something to single-press. -->
+    @if (defaultRun(); as configuration) {
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.PLAY"
+        ariaLabel="Run"
+        [tooltip]="'Run ' + configuration.name"
+        (click)="onRun()"
+      />
+    }
     <app-button
       variant="none"
       size="small"

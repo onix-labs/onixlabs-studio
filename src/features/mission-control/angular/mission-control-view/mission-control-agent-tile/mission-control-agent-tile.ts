@@ -25,6 +25,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
+import { RunConfiguration } from '@shared/api/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlTiles } from '../mission-control-tiles';
@@ -194,6 +195,15 @@ export class MissionControlAgentTile {
   );
 
   /**
+   * Gets the host's workspace default run configuration, or null when this host is not workspace-backed
+   * or its workspace designates no default. Drives the header's Run button: shown only when this is
+   * non-null, so the button appears exactly for a workspace column that has something to single-press.
+   */
+  protected readonly defaultRun: Signal<RunConfiguration | null> = computed(
+    (): RunConfiguration | null => this.host.run?.defaultConfiguration() ?? null,
+  );
+
+  /**
    * Gets the text shown on the column's branch line: the branch, or a placeholder for a column with no
    * repository behind it — so every column carries the same two-line header rather than shifting its
    * chrome depending on what the agent is attached to.
@@ -275,6 +285,15 @@ export class MissionControlAgentTile {
    */
   protected toggleHistory(): void {
     this.historyOpen.update((open: boolean): boolean => !open);
+  }
+
+  /**
+   * Runs the host workspace's default configuration in its own workspace, so a background workspace's
+   * agent can be launched from Mission Control without flipping to its tab. A no-op when the host has
+   * no Run capability (not workspace-backed), which is also when the button is hidden.
+   */
+  protected onRun(): void {
+    this.host.run?.run();
   }
 
   /**

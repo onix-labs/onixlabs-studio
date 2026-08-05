@@ -124,6 +124,15 @@ export interface RunConfiguration {
    * configuration. A compound's own command fields are ignored — its members carry them.
    */
   readonly members?: readonly string[];
+
+  /**
+   * Gets whether this is the workspace's default configuration — the one a single-press Run acts on
+   * without a picker (Mission Control's per-agent Run button, for instance). At most one configuration
+   * in a workspace should carry it; when a hand-edited file marks several, the first in declaration
+   * order wins ({@link resolveDefaultRunConfiguration}). Undefined (the common case) means not the
+   * default, and a workspace with no default simply offers nothing to single-press.
+   */
+  readonly default?: boolean;
 }
 
 /**
@@ -288,6 +297,7 @@ export function parseRunConfiguration(value: unknown): RunConfiguration | null {
           ? 'panel'
           : undefined,
     members,
+    default: record['default'] === true ? true : undefined,
   };
 }
 
@@ -445,6 +455,26 @@ export function resolveSelectedRunConfiguration(snapshot: StudioSnapshot): RunCo
       configuration.id === snapshot.user.selectedRunConfigurationId,
   );
   return selected ?? configurations[0];
+}
+
+/**
+ * Resolves a workspace's default run configuration: the one flagged {@link RunConfiguration.default},
+ * or null when none is. Unlike {@link resolveSelectedRunConfiguration} there is deliberately no fall
+ * back to the first configuration — the default is an explicit designation, and its absence is exactly
+ * what tells a single-press surface (the Mission Control Run button) it has nothing to run. When a
+ * hand-edited file flags more than one, the first in declaration order wins, so the result is always a
+ * single configuration or null.
+ * @param configurations The workspace's run configurations.
+ * @returns Returns the default configuration, or null when none is flagged.
+ */
+export function resolveDefaultRunConfiguration(
+  configurations: readonly RunConfiguration[],
+): RunConfiguration | null {
+  return (
+    configurations.find(
+      (configuration: RunConfiguration): boolean => configuration.default === true,
+    ) ?? null
+  );
 }
 
 /**

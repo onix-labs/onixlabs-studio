@@ -80,6 +80,13 @@
               <app-text-field [value]="configuration.name" (valueChange)="onName($event)" />
             </app-setting-row>
 
+            <app-setting-row
+              label="Default"
+              description="Run this on a single press, from Mission Control's Run button"
+            >
+              <app-toggle [checked]="isDefault()" (checkedChange)="onDefaultChange($event)" />
+            </app-setting-row>
+
             @if (hasBuildConfigs()) {
               <app-setting-row label="Configuration">
                 <app-dropdown

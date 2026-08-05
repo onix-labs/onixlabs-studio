@@ -44,6 +44,8 @@ interface DialogInternals {
   onArgs(text: string): void;
   onEnv(text: string): void;
   onModeChange(debug: boolean): void;
+  isDefault(): boolean;
+  onDefaultChange(isDefault: boolean): void;
   onSave(): void;
   onCancel(): void;
 }
@@ -372,6 +374,37 @@ describe('ConfigureDialogPanel', () => {
 
     expect(internals().selected()?.mode).toBe('debug');
     expect(internals().isDebug()).toBe(true);
+  });
+
+  it('markingAConfigurationDefault_clearsAnyOtherDefault', () => {
+    studio.runConfigurations.set([
+      config({ id: 'a', name: 'A', default: true }),
+      config({ id: 'b', name: 'B' }),
+    ]);
+    dialog.open();
+    tick();
+
+    // Select B and make it the default: the workspace keeps exactly one default, so A's flag drops.
+    internals().onRowClick(internals().rows()[2]);
+    expect(internals().selected()?.id).toBe('b');
+    internals().onDefaultChange(true);
+
+    internals().onSave();
+    const saved: readonly RunConfiguration[] = studio.saved[0];
+    expect(saved.find((c: RunConfiguration): boolean => c.id === 'a')?.default).toBeUndefined();
+    expect(saved.find((c: RunConfiguration): boolean => c.id === 'b')?.default).toBe(true);
+  });
+
+  it('clearingTheDefault_dropsTheFlagRatherThanWritingItFalse', () => {
+    studio.runConfigurations.set([config({ id: 'a', name: 'A', default: true })]);
+    dialog.open();
+    tick();
+    expect(internals().isDefault()).toBe(true);
+
+    internals().onDefaultChange(false);
+
+    expect(internals().selected()?.default).toBeUndefined();
+    expect(internals().isDefault()).toBe(false);
   });
 });
 
