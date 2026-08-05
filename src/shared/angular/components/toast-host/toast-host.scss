@@ -12,11 +12,11 @@
   padding: 0.75rem;
 }
 
-// The severity colours the whole card: a tinted fill, a state-toned border all round, and a heavier
-// leading edge in the solid state colour. Everything below reads one local variable each severity
-// repoints, defaulting to the accent for a general notification with no specific state. The tint is
-// mixed into the opaque menu surface (not laid over it as a translucent wash) so the card stays
-// legible above whatever content sits beneath the stack.
+// The severity colours the whole card: a tinted fill and a border all round in the solid state colour,
+// heavier on the leading edge. Everything below reads one local variable each severity repoints,
+// defaulting to the accent for a general notification with no specific state. The tint is mixed into
+// the opaque menu surface (not laid over it as a translucent wash) so the card stays legible above
+// whatever content sits beneath the stack.
 .toast {
   --toast-color: var(--accent-color);
 
@@ -28,9 +28,9 @@
   max-inline-size: calc(100vw - 1.5rem);
   padding: 0.625rem 0.75rem;
   background: color-mix(in srgb, var(--toast-color) 14%, var(--menu-background-color));
-  border: 0.0625rem solid color-mix(in srgb, var(--toast-color) 55%, var(--menu-border-color));
+  border: 0.0625rem solid var(--toast-color);
   border-inline-start: 0.25rem solid var(--toast-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  border-radius: calc(1rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
   animation: toast-in 160ms ease-out;
