@@ -11,7 +11,7 @@
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >
-  <app-icon [icon]="icon()" [size]="1.5" />
+  <app-icon [icon]="icon()" [size]="1.5" [rotation]="iconRotation()" />
   @if (!iconOnly()) {
     <span>{{ label() }}</span>
   }

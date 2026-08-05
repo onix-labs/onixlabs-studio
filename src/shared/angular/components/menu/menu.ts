@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { MENU_POSITIONS, MenuPlacement } from './menu-position';
 
 /**
@@ -44,6 +45,20 @@ export interface MenuItem {
    * Gets a value indicating whether the item is inert (shown muted and not selectable).
    */
   readonly disabled?: boolean;
+
+  /**
+   * Gets the meaning the row carries, which colours its **glyph** so its state reads at a glance (a
+   * green `success`, a red `danger`) — for example a start/stop list where each row's icon tracks
+   * whether it is running. The label stays in the menu's normal foreground; omitted (or `accent`)
+   * leaves the glyph there too.
+   */
+  readonly tone?: ButtonTone;
+
+  /**
+   * Gets a trailing status shown after the label in a muted foreground — a secondary note that reads
+   * as state without competing with the label (for example `(running)` on a start/stop row).
+   */
+  readonly status?: string;
 }
 
 /**

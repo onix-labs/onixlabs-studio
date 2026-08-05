@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu } from '@shared/angular/components/menu/menu';
+import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -40,6 +41,19 @@ export interface RibbonMenuItem {
    * Gets a value indicating whether the item is inert (shown muted and not selectable).
    */
   readonly disabled?: boolean;
+
+  /**
+   * Gets the meaning the row carries, which colours its glyph so its state reads at a glance (a green
+   * `success`, a red `danger`). Omitted (or `accent`) leaves the glyph in the menu's default
+   * foreground.
+   */
+  readonly tone?: ButtonTone;
+
+  /**
+   * Gets a trailing status shown after the label in a muted foreground — a secondary state note (for
+   * example `(running)`) that does not compete with the label.
+   */
+  readonly status?: string;
 }
 
 /**

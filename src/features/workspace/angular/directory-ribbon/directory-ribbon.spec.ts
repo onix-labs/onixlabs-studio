@@ -33,14 +33,13 @@ interface RibbonInternals {
   onRun(): void;
   onSelectRunItem(id: string): void;
   onStop(): void;
+  actionItems(): readonly RibbonMenuItem[];
+  onActionItem(id: string): void;
+  hasActions(): boolean;
   canBuild(): boolean;
   canClean(): boolean;
   canRebuild(): boolean;
   solutionGroupVisible(): boolean;
-  targetGroupVisible(): boolean;
-  buildConfigNames(): readonly string[];
-  buildConfigValue(): string;
-  targetNames(): readonly string[];
   onBuild(): void;
   onClean(): void;
   onRebuild(): void;
@@ -50,8 +49,6 @@ interface RibbonInternals {
   pendingBuildAction(): 'build' | 'rebuild' | 'clean' | null;
   confirmBuildRestart(): void;
   cancelBuildRestart(): void;
-  onSelectBuildConfiguration(name: string): void;
-  onSelectTarget(name: string): void;
   canDebug(): boolean;
   onDebug(): void;
   canSave(): boolean;
@@ -60,10 +57,6 @@ interface RibbonInternals {
   onSave(): void;
   onSaveAll(): void;
   onSaveMenuItem(id: string): void;
-  buildMenuItems(): readonly RibbonMenuItem[];
-  onBuildMenuItem(id: string): void;
-  hasActiveEditor(): boolean;
-  canCodeCleanup(): boolean;
   commitMenuItems(): readonly RibbonMenuItem[];
   onCommitMenuItem(id: string): void;
   presets(): readonly LayoutPresetInfo[];
@@ -486,6 +479,59 @@ describe('DirectoryRibbon', () => {
     expect(builds.runConfigurationCalls).toEqual([]);
   });
 
+  describe('the Actions button', () => {
+    it('listsEachConfigurationColouredAndGlyphedByWhetherItRuns', () => {
+      studio.runConfigurations.set([configuration('a', 'App'), configuration('b', 'Web')]);
+      // 'a' is running (an active run carries its configuration id as the task id); 'b' is idle.
+      builds.runs.set([{ id: 'run:a', label: 'App', taskId: 'a', startedAt: 0 }]);
+
+      const items: readonly RibbonMenuItem[] = internals().actionItems();
+
+      // The name stays as the label; the running/stopped state rides on the status and the icon tone.
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['App', 'Web']);
+      expect(items.map((item: RibbonMenuItem): string | undefined => item.status)).toEqual([
+        '(running)',
+        '(stopped)',
+      ]);
+      expect(items.map((item: RibbonMenuItem): string | undefined => item.tone)).toEqual([
+        'danger',
+        'success',
+      ]);
+    });
+
+    it('startsAStoppedConfigurationWhenChosen', () => {
+      const config: RunConfiguration = configuration('a', 'App');
+      studio.runConfigurations.set([config]);
+
+      internals().onActionItem('a');
+
+      expect(builds.runConfigurationCalls).toEqual([config]);
+      expect(builds.runConfigurationOptions[0]).toEqual({ restart: false });
+    });
+
+    it('stopsEveryRunOfARunningConfigurationWhenChosen_leavingOthersAlone', () => {
+      studio.runConfigurations.set([configuration('a', 'App')]);
+      builds.runs.set([
+        { id: 'run:a1', label: 'App', taskId: 'a', startedAt: 0 },
+        { id: 'run:a2', label: 'App', taskId: 'a', startedAt: 1 },
+        { id: 'run:other', label: 'Other', taskId: 'z', startedAt: 2 },
+      ]);
+
+      internals().onActionItem('a');
+
+      expect(builds.cancelledRunIds).toEqual(['run:a1', 'run:a2']);
+      expect(builds.runConfigurationCalls).toEqual([]);
+    });
+
+    it('isDisabledUntilTheWorkspaceHasAConfiguration', () => {
+      expect(internals().hasActions()).toBe(false);
+
+      studio.runConfigurations.set([configuration('a', 'App')]);
+
+      expect(internals().hasActions()).toBe(true);
+    });
+  });
+
   it('selectingAConfigurationPersistsTheChoice', () => {
     studio.runConfigurations.set([configuration('a', 'A'), configuration('b', 'B')]);
 
@@ -578,18 +624,15 @@ describe('DirectoryRibbon', () => {
     expect(internals().canDebug()).toBe(false);
   });
 
-  it('enablesBuildCleanRebuildAndShowsTheTargetGroupForDotnet', () => {
+  it('enablesBuildCleanRebuildForDotnet', () => {
     capabilities.capabilities.set(dotnetCapabilities());
 
     expect(internals().canBuild()).toBe(true);
     expect(internals().canClean()).toBe(true);
     expect(internals().canRebuild()).toBe(true);
-    expect(internals().targetGroupVisible()).toBe(true);
-    expect(internals().buildConfigNames()).toEqual(['Debug', 'Release']);
-    expect(internals().targetNames()).toEqual(['Any CPU', 'x64']);
   });
 
-  it('hidesTheSolutionAndTargetGroupsForAnEcosystemWithNoBuildStep', () => {
+  it('hidesTheSolutionGroupForAnEcosystemWithNoBuildStep', () => {
     // Python, or a Node package whose manifest backs no build/clean script: nothing to show, so the
     // group disappears rather than standing as a row of permanently disabled buttons.
     capabilities.capabilities.set(actionlessCapabilities());
@@ -598,7 +641,6 @@ describe('DirectoryRibbon', () => {
     expect(internals().canClean()).toBe(false);
     expect(internals().canRebuild()).toBe(false);
     expect(internals().solutionGroupVisible()).toBe(false);
-    expect(internals().targetGroupVisible()).toBe(false);
   });
 
   it('showsTheSolutionGroupForAProviderDeclaringOnlySomeActions', () => {
@@ -609,7 +651,6 @@ describe('DirectoryRibbon', () => {
     expect(internals().canClean()).toBe(false);
     expect(internals().canRebuild()).toBe(false);
     expect(internals().solutionGroupVisible()).toBe(true);
-    expect(internals().targetGroupVisible()).toBe(false);
   });
 
   it('fallsBackToTheDiscoveredBuildTaskForBuildWhenThereAreNoCapabilities', () => {
@@ -619,7 +660,6 @@ describe('DirectoryRibbon', () => {
     expect(internals().canBuild()).toBe(true);
     expect(internals().canClean()).toBe(false);
     expect(internals().solutionGroupVisible()).toBe(true);
-    expect(internals().targetGroupVisible()).toBe(false);
 
     // ...and with no discovered task either, the group has nothing left to show.
     builds.canBuild.set(false);
@@ -699,24 +739,6 @@ describe('DirectoryRibbon', () => {
     expect(builds.actionCalls).toEqual(['build']);
   });
 
-  it('showsTheSelectedBuildConfigurationAndTargetByName', () => {
-    capabilities.capabilities.set(dotnetCapabilities());
-    studio.lastBuildConfiguration.set('release');
-    studio.lastTarget.set('x64');
-
-    expect(internals().buildConfigValue()).toBe('Release');
-  });
-
-  it('mapsSelectedConfigurationAndTargetNamesBackToIdsWhenPersisting', () => {
-    capabilities.capabilities.set(dotnetCapabilities());
-
-    internals().onSelectBuildConfiguration('Release');
-    internals().onSelectTarget('x64');
-
-    expect(studio.buildConfigCalls).toEqual(['release']);
-    expect(studio.targetCalls).toEqual(['x64']);
-  });
-
   describe('the File group', () => {
     it('saveAndSaveAll_routeThroughTheWorkspaceDocumentSeam', () => {
       internals().onSave();
@@ -744,30 +766,16 @@ describe('DirectoryRibbon', () => {
     });
   });
 
-  describe('the Solution group', () => {
-    it('buildMenu_carriesRebuildAlone_neverAsADeadEntry', () => {
-      // The button carries the menu only where Rebuild is declared, so the item is always live.
-      const items: readonly RibbonMenuItem[] = internals().buildMenuItems();
-
-      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['Rebuild']);
-      expect(items[0].disabled).toBeUndefined();
-    });
-
-    it('buildMenu_dispatchesRebuildThroughTheActionPath', () => {
-      capabilities.capabilities.set(dotnetCapabilities());
-
-      internals().onBuildMenuItem('rebuild');
-
-      expect(builds.actionCalls).toEqual(['rebuild']);
-    });
-  });
-
   describe('the Edit group', () => {
-    it('tidyingActions_areInertWithoutAFocusedEditor', () => {
-      // Format and Code Cleanup act on the well's focused document, not on the build — no editor is
-      // registered in this bare fixture, so both stay inert.
-      expect(internals().hasActiveEditor()).toBe(false);
-      expect(internals().canCodeCleanup()).toBe(false);
+    it('carriesOnlyTheClipboardAndHistoryActions_notTheTidyingPair', () => {
+      // Format and Code Cleanup were removed from the ribbon; the group is now the clipboard trio and
+      // the history/find actions alone.
+      const ribbon: Record<string, unknown> = internals() as unknown as Record<string, unknown>;
+
+      expect(ribbon['onFormatDocument']).toBeUndefined();
+      expect(ribbon['onCodeCleanup']).toBeUndefined();
+      expect(typeof ribbon['onCut']).toBe('function');
+      expect(typeof ribbon['onFind']).toBe('function');
     });
   });
 

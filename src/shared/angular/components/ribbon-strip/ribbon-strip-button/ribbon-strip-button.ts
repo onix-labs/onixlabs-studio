@@ -37,6 +37,12 @@ export class RibbonStripButton {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the clockwise rotation of the icon, in degrees. Defaults to none; used, for example, to tilt
+   * the settings gear to match how it reads elsewhere.
+   */
+  public readonly iconRotation: InputSignal<number> = input<number>(0);
+
+  /**
    * Gets the meaning the button carries, which colours it. Defaults to the accent, matching every
    * other ribbon button; a caller states a state tone (a destructive `danger`) for a command whose
    * meaning should read at a glance. It colours the glyph and label without changing the button's

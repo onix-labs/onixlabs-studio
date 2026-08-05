@@ -5,6 +5,10 @@
         type="button"
         class="app-menu-panel__item"
         [class.app-menu-panel__item--active]="item.active ?? false"
+        [class.app-menu-panel__item--tone-success]="item.tone === 'success'"
+        [class.app-menu-panel__item--tone-warning]="item.tone === 'warning'"
+        [class.app-menu-panel__item--tone-danger]="item.tone === 'danger'"
+        [class.app-menu-panel__item--tone-info]="item.tone === 'info'"
         cdkMenuItem
         [cdkMenuItemDisabled]="item.disabled ?? false"
         (cdkMenuItemTriggered)="onSelect(item.id)"
@@ -13,6 +17,9 @@
           <app-icon [icon]="icon" />
         }
         <span class="app-menu-panel__item-label">{{ item.label }}</span>
+        @if (item.status; as status) {
+          <span class="app-menu-panel__item-status">{{ status }}</span>
+        }
       </button>
     }
   </div>

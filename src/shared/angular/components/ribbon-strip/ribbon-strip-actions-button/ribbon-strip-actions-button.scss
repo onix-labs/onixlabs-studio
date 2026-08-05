@@ -1,0 +1,59 @@
+// The dropdown panel renders through the CDK overlay (outside this component), so it reuses the
+// global popup-menu surface defined in _menu.scss rather than styles encapsulated here.
+:host {
+  display: block;
+}
+
+// A large button whose whole face is the dropdown trigger: icon over label over a caret that signals
+// the menu. Styled like the plain large command button (same size, hover, focus) so it sits amongst
+// its neighbours; the caret and the open state are what mark it as a dropdown.
+.ribbon-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  block-size: 4rem;
+  inline-size: 4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  // Hover and the open state both lift the button onto the accent surface, so an open dropdown reads
+  // as belonging to its trigger.
+  &:hover,
+  &[aria-expanded='true'] {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}
+
+.ribbon-actions__label {
+  line-height: 1;
+}
+
+// The caret sits just under the label, muted, marking the button as a dropdown without taking a full
+// row's worth of vertical space.
+.ribbon-actions__caret {
+  margin-block-start: -0.05rem;
+  opacity: 0.7;
+}

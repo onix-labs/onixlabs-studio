@@ -1,0 +1,15 @@
+<button
+  type="button"
+  class="ribbon-actions"
+  [disabled]="disabled()"
+  [cdkMenuTriggerFor]="menu.panel() ?? null"
+  [cdkMenuPosition]="menu.position()"
+>
+  <app-icon [icon]="icon()" [size]="1.5" />
+  <span class="ribbon-actions__label">{{ label() }}</span>
+  <app-icon class="ribbon-actions__caret" [icon]="Icon.CARET_DOWN" [size]="0.75" />
+</button>
+
+<!-- The dropdown renders into the CDK overlay outside this component, reusing the global popup-menu
+     surface; the trigger above binds to its panel and position. -->
+<app-menu #menu [items]="items()" (selected)="onSelect($event)" />

@@ -250,8 +250,33 @@
   font-weight: 600;
 }
 
+// Tone colours the row's glyph alone onto a state colour, so its state reads at a glance (a running
+// row's icon red, a stopped one green) while the label stays in the menu's normal foreground. The
+// colour holds through hover, which only changes the row's background.
+.app-menu-panel__item--tone-success app-icon {
+  color: var(--success-color);
+}
+
+.app-menu-panel__item--tone-warning app-icon {
+  color: var(--warning-color);
+}
+
+.app-menu-panel__item--tone-danger app-icon {
+  color: var(--danger-color);
+}
+
+.app-menu-panel__item--tone-info app-icon {
+  color: var(--info-color);
+}
+
 .app-menu-panel__item-label {
   flex: 1;
+}
+
+// A trailing status note, right-aligned by the label filling the row: muted, so it reads as secondary
+// state beside the label rather than competing with it.
+.app-menu-panel__item-status {
+  color: var(--form-muted-foreground-color);
 }
 
 // The status strip's language-server drop-up. It reuses the popup-menu surface but lists servers
