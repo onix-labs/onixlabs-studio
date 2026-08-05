@@ -10,7 +10,7 @@
   (keydown.enter)="selectTab.emit()"
   (cdkDragStarted)="onDragStarted($event)"
 >
-  <app-icon [icon]="tab().icon" [size]="1.5" />
+  <app-icon [icon]="tab().icon" [size]="1.5" [rotation]="tab().iconRotation ?? 0" />
   <span class="tab-title"
     ><bdi>{{ tab().title }}</bdi></span
   >
@@ -31,7 +31,7 @@
   </button>
 
   <div class="tab-chip" *cdkDragPreview>
-    <app-icon [icon]="tab().icon" [size]="1.5" />
+    <app-icon [icon]="tab().icon" [size]="1.5" [rotation]="tab().iconRotation ?? 0" />
     <span class="tab-title"
       ><bdi>{{ tab().title }}</bdi></span
     >

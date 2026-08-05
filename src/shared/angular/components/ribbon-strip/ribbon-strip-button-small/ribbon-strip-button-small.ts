@@ -31,6 +31,11 @@ export class RibbonStripButtonSmall {
   public readonly icon: InputSignal<Icon> = input.required<Icon>();
 
   /**
+   * Gets the clockwise rotation of the icon, in degrees. Defaults to none.
+   */
+  public readonly iconRotation: InputSignal<number> = input<number>(0);
+
+  /**
    * Gets the label displayed beside the icon.
    */
   public readonly label: InputSignal<string> = input.required<string>();

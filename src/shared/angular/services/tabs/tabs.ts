@@ -271,6 +271,7 @@ export class Tabs {
       type,
       title: metadata.label,
       icon: metadata.icon,
+      iconRotation: metadata.iconRotation,
       resourceKey,
     };
   }

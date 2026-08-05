@@ -38,6 +38,12 @@ export interface Tab {
   readonly icon: Icon;
 
   /**
+   * Gets the clockwise rotation of the tab's icon, in degrees. Defaults to none; the Settings gear
+   * is tilted to match the Settings button on the title strip.
+   */
+  readonly iconRotation?: number;
+
+  /**
    * Gets a value indicating whether the tab has unsaved changes. Surfaced as a dirty indicator on
    * the tab; defaults to false for tabs without a document.
    */
@@ -71,6 +77,11 @@ export interface TabTypeMetadata {
    * Gets the icon for the tab type.
    */
   readonly icon: Icon;
+
+  /**
+   * Gets the clockwise rotation of the tab type's icon, in degrees. Defaults to none.
+   */
+  readonly iconRotation?: number;
 }
 
 /**
@@ -84,5 +95,5 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   terminal: { label: 'Terminal', icon: Icon.TERMINAL },
   agent: { label: 'Agent', icon: Icon.AGENT },
   'mission-control': { label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },
-  settings: { label: 'Settings', icon: Icon.SETTINGS },
+  settings: { label: 'Settings', icon: Icon.SETTINGS, iconRotation: 30 },
 };
