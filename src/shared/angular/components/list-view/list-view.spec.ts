@@ -248,7 +248,7 @@ describe('ListView (reorderable)', () => {
   });
 
   it('duringADrag_rendersTheFrozenSnapshot_thenTheLiveRowsOnDrop', () => {
-    const labels = (): string[] =>
+    const labels: () => string[] = (): string[] =>
       [...host.querySelectorAll('.probe-label')].map((node: Element): string =>
         (node.textContent ?? '').trim(),
       );

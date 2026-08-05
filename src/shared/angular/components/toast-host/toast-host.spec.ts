@@ -1,4 +1,4 @@
-import { signal, Signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
@@ -28,7 +28,7 @@ interface ToastHostInternals {
  */
 function setUp(): ToastHostInternals {
   const notificationsStub: Partial<Notifications> = {
-    toasts: signal<readonly Notification[]>([]) as Signal<readonly Notification[]>,
+    toasts: signal<readonly Notification[]>([]),
     dismiss: (): void => undefined,
   };
   const settingsStub: Partial<Settings> = {
