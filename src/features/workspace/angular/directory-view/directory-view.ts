@@ -87,6 +87,7 @@ import { Builds } from '@shared/angular/services/tasks/builds';
 import { WorkspaceRunConfigurations } from '@shared/angular/services/studio/workspace-run-configurations';
 import { expandRunConfiguration, RunConfiguration } from '@shared/api/studio';
 import { ActiveRun } from '@shared/angular/services/tasks/builds';
+import { createMinimumHold, MinimumHold } from '@shared/angular/services/minimum-hold/minimum-hold';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -138,6 +139,14 @@ const PRESTART_SERVERS: Readonly<Record<string, string>> = {
  * `ai.agentSessionLifetime`.
  */
 const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
+
+/**
+ * The minimum time the Mission Control Run button shows its launching spinner after a press. A fast
+ * toolchain (an already-warm `npm run`) can start its terminal near-instantly, which would flash the
+ * spinner past too quickly to register; holding it for this long makes the press always read as "it
+ * heard me and is starting" before settling into Stop.
+ */
+const RUN_SPINNER_MINIMUM_MS: number = 5_000;
 
 /**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
@@ -443,10 +452,20 @@ export class DirectoryView implements OnInit, OnDestroy {
   );
 
   /**
+   * Holds the minimum-duration latch on the Run button's spinner, so a near-instant launch still
+   * shows a spinner long enough to register the press.
+   */
+  private readonly runStartingHold: MinimumHold = createMinimumHold(RUN_SPINNER_MINIMUM_MS);
+
+  /**
    * Gets whether the default configuration is launching (dispatched, terminal not yet started), for
-   * the Run button's spinner.
+   * the Run button's spinner — held on for a minimum window after a press so a fast start still reads
+   * as one.
    */
   private readonly defaultRunStarting: Signal<boolean> = computed((): boolean => {
+    if (this.runStartingHold.active()) {
+      return true;
+    }
     const ids: ReadonlySet<string> = this.defaultRunLeafIds();
     const launching: ReadonlySet<string> = this.buildRunner.launchingTasks();
     for (const id of ids) {
@@ -1117,6 +1136,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Closes the workspace folder when the tab is torn down, releasing its root in the main process.
    */
   public ngOnDestroy(): void {
+    this.runStartingHold.dispose();
     this.builds.unregister(this.buildRunner);
     this.debugger.unregister(this.debugSession);
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
@@ -1156,6 +1176,8 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (configuration === null) {
       return;
     }
+    // Latch the spinner first, so a near-instant launch still shows one long enough to register.
+    this.runStartingHold.begin();
     this.buildRunner.runConfiguration(
       configuration,
       this.workspaceRunConfigurations.configurations(),
