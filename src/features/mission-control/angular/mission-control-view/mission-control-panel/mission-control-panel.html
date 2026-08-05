@@ -108,11 +108,10 @@
           <!-- The hide toggle sits at the row's trailing edge, immediately left of the list's reorder
                grip (the grip is appended by the list view after this projected content). It hides this
                single agent's column independently of the blanket Hide Empty / Hide Idle toggles (the
-               three are OR-ed), and stays revealed while the agent is hidden so the column can always be
-               brought back. -->
+               three are OR-ed). It is always visible so the column can be hidden or brought back at
+               any time. -->
           <app-button
             class="rail__hide"
-            [class.rail__hide--active]="isHidden(item.id)"
             variant="none"
             size="small"
             [icon]="isHidden(item.id) ? Icon.AGENT_HIDDEN : Icon.AGENT_VISIBLE"

@@ -193,24 +193,12 @@ app-list-view {
   gap: 0.5rem;
 }
 
-// The per-agent hide toggle at the row's trailing edge, paired with the list's reorder grip (which the
-// list view appends after it). Like the grip it stays faint until the row is hovered so it never
-// competes with the row content — but an agent that is currently hidden keeps its toggle revealed
-// (`--active`) so the hidden column can always be brought back from the rail.
+// The per-agent hide toggle sits at the row's trailing edge, paired with the list's reorder grip
+// (which the list view appends after it). It stays permanently visible — independent of row hover — so
+// an agent's column can always be hidden or brought back straight from the rail.
 .rail__hide {
   flex: none;
   align-self: center;
-  opacity: 0;
-  transition: opacity var(--hover-transition);
-
-  .list-row:hover &,
-  .cdk-drag-preview & {
-    opacity: 1;
-  }
-
-  &--active {
-    opacity: 1;
-  }
 }
 
 .panel__group {
