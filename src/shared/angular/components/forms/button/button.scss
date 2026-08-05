@@ -145,15 +145,33 @@
   }
 }
 
-// Loading: the button is disabled while its action is in flight, but a spinner should read as active
-// work rather than a greyed-out control, so the loading state keeps full opacity where `:disabled`
-// would otherwise dim it.
+// Loading: a disabled loading button keeps full opacity, so its spinner reads as active work rather
+// than a greyed-out control (the `:disabled` dim above would otherwise mute it).
 :host(.button--loading) .button:disabled {
   opacity: 1;
 }
 
-// The spinner glyph turns for as long as the button is loading. Scoped to the button so it does not
-// depend on any global spin keyframes.
+// While loading, the spinner stands in for the caller's icon: the icon is hidden and the spinner
+// shown in its place, so an icon-only button stays a single glyph square.
+:host(.button--loading) .button__icon--content {
+  display: none;
+}
+
+// A cancellable (interactive) loading button stays pressable and, on hover or focus, reveals the
+// caller's icon — the action available now, such as Stop — swapping the spinner out for it. Nothing
+// re-renders: both glyphs are in the DOM and only their visibility flips.
+:host(.button--loading-interactive) .button:hover .button__icon--content,
+:host(.button--loading-interactive) .button:focus-visible .button__icon--content {
+  display: inline-flex;
+}
+
+:host(.button--loading-interactive) .button:hover .button__icon--spinner,
+:host(.button--loading-interactive) .button:focus-visible .button__icon--spinner {
+  display: none;
+}
+
+// The spinner glyph turns for as long as it is shown. Scoped to the button so it does not depend on
+// any global spin keyframes.
 .button__icon--spin {
   animation: button-spin 0.8s linear infinite;
 }

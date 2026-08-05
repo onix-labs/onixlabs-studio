@@ -35,17 +35,20 @@
   <div class="tile__actions">
     <!-- Run the workspace's default configuration in its own workspace, shown only for a
          workspace-backed column that designates a default (defaultRun() is null otherwise). The one
-         button carries three states: a spinner while the run is launching (disabled), a red Stop while
-         it runs, and Play otherwise. -->
+         button carries three states: while launching, a red spinner that reveals Stop on hover and
+         stops on click; a plain red Stop once running; and Play otherwise. -->
     @if (defaultRun(); as configuration) {
       @if (runStarting()) {
         <app-button
           variant="none"
           size="small"
-          [icon]="Icon.PLAY"
+          tone="danger"
+          [icon]="Icon.STOP"
           [loading]="true"
-          ariaLabel="Starting"
-          tooltip="Starting…"
+          [loadingInteractive]="true"
+          ariaLabel="Stop"
+          [tooltip]="'Stop ' + configuration.name"
+          (click)="onStop()"
         />
       } @else if (runRunning()) {
         <app-button

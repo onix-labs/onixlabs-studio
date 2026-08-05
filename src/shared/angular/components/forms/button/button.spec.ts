@@ -130,28 +130,39 @@ describe('Button', () => {
     expect(host.classList.contains('button--tone-danger')).toBe(true);
   });
 
-  it('loading_disablesTheButton_andShowsASpinningGlyphInPlaceOfTheIcon', () => {
+  it('loading_disablesTheButton_andRendersASpinnerAlongsideTheIcon', () => {
     render({ icon: Icon.PLAY, ariaLabel: 'Run', loading: true });
 
     const button: HTMLButtonElement = host.querySelector('button')!;
     // Disabled while in flight, so the action cannot be fired again; announced busy for assistive tech.
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('aria-busy')).toBe('true');
-    // The provided icon is replaced by the spinner, marked to spin.
-    const glyph: Element | null = host.querySelector('.button__icon');
-    expect(glyph?.classList.contains('button__icon--spin')).toBe(true);
-    expect(glyph?.querySelector('.ph-circle-notch')).not.toBeNull();
-    expect(glyph?.querySelector('.ph-play')).toBeNull();
     expect(host.classList.contains('button--loading')).toBe(true);
+    expect(host.classList.contains('button--loading-interactive')).toBe(false);
+    // The spinner is present and spins; the caller's icon is still in the DOM (hidden by the
+    // stylesheet), so it can be revealed without a re-render.
+    const spinner: Element | null = host.querySelector('.button__icon--spinner');
+    expect(spinner?.classList.contains('button__icon--spin')).toBe(true);
+    expect(spinner?.querySelector('.ph-circle-notch')).not.toBeNull();
+    expect(host.querySelector('.button__icon--content .ph-play')).not.toBeNull();
   });
 
-  it('loading_whenFalse_showsTheCallersIconAndIsNotBusy', () => {
+  it('loadingInteractive_staysPressable_andMarksTheHostSoTheStylesheetRevealsTheIconOnHover', () => {
+    render({ icon: Icon.STOP, ariaLabel: 'Stop', loading: true, loadingInteractive: true });
+
+    // A cancellable loading button is not disabled — pointing at it and clicking is how you stop.
+    expect(host.querySelector('button')!.disabled).toBe(false);
+    expect(host.classList.contains('button--loading-interactive')).toBe(true);
+    // Both glyphs are present; the stylesheet swaps them on hover.
+    expect(host.querySelector('.button__icon--spinner .ph-circle-notch')).not.toBeNull();
+    expect(host.querySelector('.button__icon--content .ph-stop')).not.toBeNull();
+  });
+
+  it('loading_whenFalse_showsOnlyTheCallersIconAndIsNotBusy', () => {
     render({ icon: Icon.PLAY, ariaLabel: 'Run', loading: false });
 
-    expect(host.querySelector('.button__icon')?.classList.contains('button__icon--spin')).toBe(
-      false,
-    );
+    expect(host.querySelector('.button__icon--spinner')).toBeNull();
     expect(host.querySelector('button')?.hasAttribute('aria-busy')).toBe(false);
-    expect(host.querySelector('.ph-play')).not.toBeNull();
+    expect(host.querySelector('.button__icon--content .ph-play')).not.toBeNull();
   });
 });

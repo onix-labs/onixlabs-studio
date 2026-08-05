@@ -79,6 +79,7 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--icon-only]': 'isIconOnly()',
     '[class.button--pressed]': 'pressed() === true',
     '[class.button--loading]': 'loading()',
+    '[class.button--loading-interactive]': 'loading() && loadingInteractive()',
   },
 })
 export class Button {
@@ -136,11 +137,20 @@ export class Button {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets whether the button is showing work in progress: it disables itself and shows a spinning
-   * glyph in place of its {@link icon}, for an action (a Run that has to launch, a Save that has to
-   * write) whose effect is not instant. The button owns this state so no caller hand-rolls a spinner.
+   * Gets whether the button is showing work in progress: it shows a spinning glyph in place of its
+   * {@link icon}, for an action (a Run that has to launch, a Save that has to write) whose effect is
+   * not instant. By default it also disables itself; a {@link loadingInteractive} button stays
+   * pressable. The button owns this state so no caller hand-rolls a spinner.
    */
   public readonly loading: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether a {@link loading} button stays pressable and reveals its {@link icon} — the action
+   * available now, such as a Stop — on hover or focus, swapping the spinner out for it. For an
+   * in-progress action the user may cancel: the spinner reads as busy, and pointing at it offers the
+   * way out. Ignored unless {@link loading} is set.
+   */
+  public readonly loadingInteractive: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets whether a TOGGLE button is currently on, or undefined for an ordinary button that does not
@@ -168,17 +178,16 @@ export class Button {
   );
 
   /**
-   * Gets whether the button is non-interactive: either explicitly disabled or busy loading, so a
-   * loading button cannot be pressed again while its action is in flight.
+   * Gets whether the button is non-interactive: either explicitly disabled, or busy loading and not
+   * marked {@link loadingInteractive} — so an ordinary loading button cannot be pressed again while
+   * its action is in flight, but a cancellable one stays pressable.
    */
   protected readonly nonInteractive: Signal<boolean> = computed(
-    (): boolean => this.disabled() || this.loading(),
+    (): boolean => this.disabled() || (this.loading() && !this.loadingInteractive()),
   );
 
   /**
-   * Gets the glyph actually drawn: the spinner while loading, otherwise the caller's icon.
+   * Gets the spinner glyph, exposed for the template's loading overlay.
    */
-  protected readonly displayIcon: Signal<Icon | undefined> = computed((): Icon | undefined =>
-    this.loading() ? LOADING_ICON : this.icon(),
-  );
+  protected readonly spinnerIcon: Icon = LOADING_ICON;
 }
