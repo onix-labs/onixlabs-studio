@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   inject,
+  linkedSignal,
   signal,
   Signal,
   WritableSignal,
@@ -210,12 +211,28 @@ export class WelcomeScreen {
   );
 
   /**
+   * Holds a value indicating whether an open or new action has just dismissed the welcome screen.
+   * The screen otherwise follows the tab count, which only rises once the action's async work has
+   * registered its tab — long enough, intermittently, to leave the screen lingering empty in the
+   * gap. Latching this the moment an action fires hides it at once instead. It is derived from the
+   * underlying show condition so the latch clears itself whenever that condition next changes (a tab
+   * appears, or the last one closes), letting the screen show again the next time it is summoned.
+   */
+  protected readonly dismissed: WritableSignal<boolean> = linkedSignal<boolean>({
+    source: (): boolean => this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen(),
+    computation: (): boolean => false,
+  });
+
+  /**
    * Gets a value indicating whether the welcome screen is currently shown. The overlay stays mounted
    * so it can animate in and out; this drives its visible state. It is shown at a cold start (no tabs)
-   * and whenever it is explicitly summoned as a modal over the content.
+   * and whenever it is explicitly summoned as a modal over the content, unless an action has just
+   * dismissed it.
    */
   protected readonly visible: Signal<boolean> = computed(
-    (): boolean => this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen(),
+    (): boolean =>
+      !this.dismissed() &&
+      (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
   );
 
   /**
@@ -301,6 +318,7 @@ export class WelcomeScreen {
    */
   protected async openRecent(item: RecentItem): Promise<void> {
     if (await this.reopen(item)) {
+      this.dismissed.set(true);
       this.welcomeModal.close();
     } else {
       this.missingItem.set(item);
@@ -416,6 +434,7 @@ export class WelcomeScreen {
    */
   protected async openFiles(): Promise<void> {
     if (await this.fileOpener.openInteractive()) {
+      this.dismissed.set(true);
       this.welcomeModal.close();
     }
   }
@@ -433,8 +452,9 @@ export class WelcomeScreen {
    * @param type The type of tab to create.
    */
   protected create(type: TabType): void {
-    this.tabsService.open(type);
+    this.dismissed.set(true);
     this.welcomeModal.close();
+    this.tabsService.open(type);
   }
 
   /**
