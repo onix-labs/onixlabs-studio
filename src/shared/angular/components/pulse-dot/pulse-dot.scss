@@ -40,23 +40,22 @@
   --pulse-dot-color-rgb: var(--info-color-rgb);
 }
 
-// The pulse: a ring that grows out of the dot's edge, from 0 and opaque to a few pixels and
-// transparent, while the dot itself stays solid. A box-shadow spread rather than a real border, so it
-// grows outward and never affects layout.
-:host(.pulse-dot--pulsing)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  animation: pulse-dot-ring 1.4s ease-out infinite;
+// The pulse turns the dot into a donut and back: its fill fades to transparent while an opaque ring
+// grows out of its edge (leaving a hole where the dot was), then reverses. The ring is a box-shadow
+// spread rather than a real border, so it grows outward and never affects layout.
+:host(.pulse-dot--pulsing) {
+  animation: pulse-dot-donut 1.4s ease-in-out infinite;
 }
 
-@keyframes pulse-dot-ring {
-  from {
-    box-shadow: 0 0 0 0 rgba(var(--pulse-dot-color-rgb), 0.7);
+@keyframes pulse-dot-donut {
+  0%,
+  100% {
+    background: rgba(var(--pulse-dot-color-rgb), 1);
+    box-shadow: 0 0 0 0 rgba(var(--pulse-dot-color-rgb), 0);
   }
 
-  to {
-    box-shadow: 0 0 0 4px rgba(var(--pulse-dot-color-rgb), 0);
+  50% {
+    background: rgba(var(--pulse-dot-color-rgb), 0);
+    box-shadow: 0 0 0 0.25rem rgba(var(--pulse-dot-color-rgb), 1);
   }
 }
