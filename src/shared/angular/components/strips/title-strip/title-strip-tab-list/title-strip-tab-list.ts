@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { isPinnedTabType, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
 
 /**
@@ -151,13 +151,28 @@ export class TitleStripTabList {
   }
 
   /**
-   * Determines whether a dragged tab may settle at the given index, keeping the pinned settings
-   * tab at the front by forbidding any other tab from displacing index 0 during a drag.
+   * Determines whether a dragged tab may settle at the given index, keeping the pinned front prefix
+   * (Settings, then Mission Control) immovable by forbidding any other tab from displacing a pinned
+   * slot during a drag. The prefix is however many pinned tabs currently lead the strip, so an
+   * ordinary tab can never be dropped ahead of one.
    * @param index The candidate index the dragged tab would occupy.
    * @returns Returns true when the index may receive the tab; otherwise, false.
    */
   protected readonly sortPredicate: (index: number) => boolean = (index: number): boolean =>
-    index > 0 || this.tabs()[0]?.type !== 'settings';
+    index >= this.pinnedPrefixCount();
+
+  /**
+   * Counts the pinned tabs that currently lead the strip, forming the immovable front prefix.
+   * @returns Returns the number of leading pinned tabs.
+   */
+  private pinnedPrefixCount(): number {
+    const openTabs: readonly Tab[] = this.tabs();
+    let count: number = 0;
+    while (count < openTabs.length && isPinnedTabType(openTabs[count].type)) {
+      count++;
+    }
+    return count;
+  }
 
   /**
    * Handles roving keyboard navigation across the tablist, where the arrow keys, Home, and End
