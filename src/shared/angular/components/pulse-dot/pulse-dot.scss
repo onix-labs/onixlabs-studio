@@ -46,7 +46,7 @@
 // ring is a box-shadow spread rather than a real border, so it grows outward and never affects
 // layout, and the fully-transparent ring at 100% matches the 0% state for a seamless loop.
 :host(.pulse-dot--pulsing) {
-  animation: pulse-dot-donut 1.4s ease-in-out infinite;
+  animation: pulse-dot-donut 1.4s linear infinite;
 }
 
 @keyframes pulse-dot-donut {
