@@ -66,8 +66,12 @@
                 [class.rail__status--busy]="item.isRunning"
                 [class.rail__status--pending]="item.entries.length > 0"
               >
+                <app-pulse-dot
+                  [tone]="item.isRunning || item.entries.length > 0 ? 'accent' : 'neutral'"
+                  [pulse]="item.isRunning"
+                  [size]="0.45"
+                />
                 <span class="rail__status-label">{{ item.statusLabel }}</span>
-                <span class="rail__status-dot"></span>
               </span>
             </div>
 

@@ -16,6 +16,7 @@ import {
 } from '@shared/angular/services/agent-requests/agent-requests';
 import { AgentRequestCard } from '@shared/angular/components/agent-request-card/agent-request-card';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Icon } from '@shared/angular/icons/icon';
 import { ListReorder, ListRow, ListView } from '@shared/angular/components/list-view/list-view';
@@ -106,7 +107,7 @@ interface RulePreview {
  */
 @Component({
   selector: 'app-mission-control-panel',
-  imports: [Button, AppIcon, AgentRequestCard, Dropdown, ListView],
+  imports: [Button, AppIcon, PulseDot, AgentRequestCard, Dropdown, ListView],
   templateUrl: './mission-control-panel.html',
   styleUrl: './mission-control-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -20,6 +20,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
 import { AgentToolStrip } from '@shared/angular/components/agent-tool-strip/agent-tool-strip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -47,6 +48,7 @@ import { MissionControlTiles } from '../mission-control-tiles';
     AgentChat,
     AgentConversationList,
     AppIcon,
+    PulseDot,
     Modal,
     ModalContent,
     NgTemplateOutlet,

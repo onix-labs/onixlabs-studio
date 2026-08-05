@@ -153,44 +153,22 @@ app-list-view {
   }
 }
 
+// The leading pulse dot sits first, then the label. A fixed width anchors the block so the dot lands
+// at the same x on every row (the label right-pads into the spare space), keeping the dots aligned
+// down the rail regardless of whether a row reads Working, Ready, or Idle.
 .rail__status {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   flex: none;
+  inline-size: 4.75rem;
+  justify-content: flex-start;
   font-size: 0.72rem;
   color: var(--gray-500);
 
   &--busy,
   &--pending {
     color: var(--accent-color);
-  }
-}
-
-.rail__status-dot {
-  inline-size: 0.45rem;
-  block-size: 0.45rem;
-  border-radius: 50%;
-  background: var(--gray-500);
-
-  .rail__status--busy &,
-  .rail__status--pending & {
-    background: var(--accent-color);
-  }
-
-  .rail__status--busy & {
-    animation: rail-pulse 1.4s ease-in-out infinite;
-  }
-}
-
-@keyframes rail-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.35;
   }
 }
 

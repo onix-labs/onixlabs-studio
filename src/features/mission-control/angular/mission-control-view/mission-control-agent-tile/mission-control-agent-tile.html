@@ -29,7 +29,7 @@
     </span>
   </div>
   <div class="tile__status" [class.tile__status--busy]="isRunning()">
-    <span class="tile__status-dot"></span>
+    <app-pulse-dot [tone]="isRunning() ? 'accent' : 'neutral'" [pulse]="isRunning()" />
     <span class="tile__status-label">{{ statusLabel() }}</span>
   </div>
   <div class="tile__actions">
@@ -132,7 +132,7 @@
             </span>
           </div>
           <div class="tile__status" [class.tile__status--busy]="isRunning()">
-            <span class="tile__status-dot"></span>
+            <app-pulse-dot [tone]="isRunning() ? 'accent' : 'neutral'" [pulse]="isRunning()" />
             <span class="tile__status-label">{{ statusLabel() }}</span>
           </div>
         </header>

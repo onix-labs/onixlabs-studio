@@ -125,31 +125,8 @@ button.tile__name {
   color: var(--gray-500);
 }
 
-.tile__status-dot {
-  inline-size: 0.5rem;
-  block-size: 0.5rem;
-  border-radius: 50%;
-  background: var(--gray-500);
-}
-
 .tile__status--busy {
   color: var(--accent-color);
-
-  .tile__status-dot {
-    background: var(--accent-color);
-    animation: tile-pulse 1.4s ease-in-out infinite;
-  }
-}
-
-@keyframes tile-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .tile__body {

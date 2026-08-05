@@ -1,0 +1,62 @@
+// The dot: a solid circle whose colour comes from the tone (below). `position: relative` anchors the
+// pulse ring; `flex: none` keeps it from being squeezed in a flex row.
+:host {
+  // The tone's colour and its rgb triple (the ring fades the same hue to transparent). Defaults to the
+  // neutral grey; a tone class repoints both.
+  --pulse-dot-color: var(--gray-500);
+  --pulse-dot-color-rgb: 173, 181, 189;
+
+  display: inline-block;
+  flex: none;
+  position: relative;
+  inline-size: var(--pulse-dot-size, 0.5rem);
+  block-size: var(--pulse-dot-size, 0.5rem);
+  border-radius: 50%;
+  background: var(--pulse-dot-color);
+}
+
+:host(.pulse-dot--accent) {
+  --pulse-dot-color: var(--accent-color);
+  --pulse-dot-color-rgb: var(--accent-color-rgb);
+}
+
+:host(.pulse-dot--success) {
+  --pulse-dot-color: var(--success-color);
+  --pulse-dot-color-rgb: var(--success-color-rgb);
+}
+
+:host(.pulse-dot--warning) {
+  --pulse-dot-color: var(--warning-color);
+  --pulse-dot-color-rgb: var(--warning-color-rgb);
+}
+
+:host(.pulse-dot--danger) {
+  --pulse-dot-color: var(--danger-color);
+  --pulse-dot-color-rgb: var(--danger-color-rgb);
+}
+
+:host(.pulse-dot--info) {
+  --pulse-dot-color: var(--info-color);
+  --pulse-dot-color-rgb: var(--info-color-rgb);
+}
+
+// The pulse: a ring that grows out of the dot's edge, from 0 and opaque to a few pixels and
+// transparent, while the dot itself stays solid. A box-shadow spread rather than a real border, so it
+// grows outward and never affects layout.
+:host(.pulse-dot--pulsing)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: pulse-dot-ring 1.4s ease-out infinite;
+}
+
+@keyframes pulse-dot-ring {
+  from {
+    box-shadow: 0 0 0 0 rgba(var(--pulse-dot-color-rgb), 0.7);
+  }
+
+  to {
+    box-shadow: 0 0 0 4px rgba(var(--pulse-dot-color-rgb), 0);
+  }
+}
