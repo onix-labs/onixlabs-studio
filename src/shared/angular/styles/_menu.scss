@@ -287,6 +287,11 @@
   flex-direction: column;
   min-inline-size: 15rem;
   padding: 0.25rem;
+  // Lift it to sit just above the status strip. It is end-aligned to the article icon, which sits well
+  // left of the notifications bell, so a larger negative inline-end margin pulls it right toward the
+  // strip's right edge (roughly level with the notifications flyout).
+  margin-block-end: 0.9375rem;
+  margin-inline-end: -3.5rem;
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
@@ -362,6 +367,10 @@
   max-block-size: 24rem;
   overflow-y: auto;
   padding: 0.25rem;
+  // Lift the upward-opening flyout to sit just above the status strip, and pull it out toward the
+  // strip's right edge (a negative inline-end margin shifts it right, past the button's right edge).
+  margin-block-end: 0.9375rem;
+  margin-inline-end: -0.5625rem;
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);

@@ -9,31 +9,11 @@ import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
- * Summarises the language servers of the active workspace for the status strip's trigger button.
- */
-interface LspSummary {
-  /**
-   * Gets the overall state, favouring an in-progress start, then a ready server, then an unavailable one.
-   */
-  readonly state: LspServerState;
-
-  /**
-   * Gets the trigger label: the single server's description, or a count when several are running.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the icon shown on the trigger.
-   */
-  readonly icon: Icon;
-}
-
-/**
- * The status strip's language-server control: a drop-up menu listing every language server running
- * for the active workspace, each with its live state (a spinner while it loads, a tick once ready, a
- * warning when unavailable) and a restart action. It replaces the single-server text indicator so the
- * several servers a workspace runs at once are all visible and individually restartable. The trigger
- * button summarises them and is hidden when the active workspace runs none.
+ * The status strip's language-server control: a plain article icon that opens a drop-up menu listing
+ * every language server running for the active workspace, each with its live state (a spinner while it
+ * loads, a tick once ready, a warning when unavailable) and a restart action. The trigger is a static
+ * icon — the several servers a workspace runs are all visible and individually restartable inside the
+ * menu — and is hidden when the active workspace runs none.
  */
 @Component({
   selector: 'app-status-strip-lsp-menu',
@@ -72,30 +52,17 @@ export class StatusStripLspMenu {
   });
 
   /**
-   * Gets the summary shown on the trigger button, or null when the active workspace runs no servers
-   * (so the trigger is hidden).
+   * Gets whether the active workspace runs any language servers, gating the trigger's visibility.
    */
-  protected readonly summary: Signal<LspSummary | null> = computed((): LspSummary | null => {
-    const servers: readonly LspServer[] = this.servers();
-    if (servers.length === 0) {
-      return null;
-    }
-    const state: LspServerState = servers.some(
-      (server: LspServer): boolean => server.state === 'starting',
-    )
-      ? 'starting'
-      : servers.some((server: LspServer): boolean => server.state === 'ready')
-        ? 'ready'
-        : 'unavailable';
-    // The trigger names the category, not the individual servers, since the menu can list several;
-    // each server's own name and state are shown in the list it opens.
-    return { state, label: 'Language Servers', icon: this.iconFor(state) };
-  });
+  protected readonly hasServers: Signal<boolean> = computed(
+    (): boolean => this.servers().length > 0,
+  );
 
   /**
-   * Gets the position that opens the menu upward from the trigger, its left edges aligned.
+   * Gets the position that opens the menu upward from the trigger, their right edges aligned (matching
+   * the notifications flyout).
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-start'];
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-end'];
 
   /**
    * Restarts a server through the registry, which tears its session down and re-opens its documents.

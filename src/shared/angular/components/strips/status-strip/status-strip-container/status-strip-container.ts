@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu/status-strip-notifications-menu';
@@ -21,11 +20,6 @@ import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatusStripContainer {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Holds the status bar content registry.
    */

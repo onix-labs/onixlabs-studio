@@ -59,7 +59,8 @@ export class StatusStripNotificationsMenu {
   });
 
   /**
-   * Gets the position that opens the flyout upward from the trigger, their right edges aligned.
+   * Gets the position that opens the flyout upward from the trigger, their right edges aligned. The gap
+   * that lifts it clear of the button is a `margin-block-end` on the panel (see `_menu.scss`).
    */
   protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-end'];
 

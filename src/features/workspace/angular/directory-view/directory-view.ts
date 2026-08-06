@@ -805,33 +805,57 @@ export class DirectoryView implements OnInit, OnDestroy {
     // creation order, so a shared owner key could be wiped by a later-created sibling deactivating.
     effect((): void => {
       const owner: string = `${STATUS_OWNER}:${this.viewScope()}`;
-      if (!this.isActive() || !this.repository.isBound()) {
+      const root: DirectoryListing | null = this.workspace.root();
+      if (!this.isActive() || root === null) {
         this.statusBar.clearOwner(owner);
         return;
       }
-      const branch: GitBranch | undefined = this.repository.currentBranch();
-      const changes: number = this.repository.changeCount();
+      // The workspace segment: the open folder, always shown while the workspace is in view — whether
+      // or not it is a git repository. A checkout's directory is a GUID, so a container tab names the
+      // container instead.
+      const workspaceName: string =
+        this.containerName() ?? root.name ?? this.repository.repoName();
       const leading: StatusSegment[] = [
-        { id: 'sc-branch', text: branch?.name ?? 'detached HEAD', icon: Icon.SOURCE_CONTROL },
+        { id: 'ws-folder', text: workspaceName, icon: Icon.FOLDER_SIMPLE, title: workspaceName },
       ];
-      // The worktree indicator: which checkout the container tab is scoped to. Shown only when it
-      // says something the branch segment does not (an alias) — an unaliased checkout's label IS
-      // its branch, and "main main" is noise.
-      if (this.worktreeSession.isContainer()) {
-        const label: string | null = this.worktreeSession.activeLabel();
-        if (label !== null && label !== (branch?.name ?? '')) {
-          leading.unshift({ id: 'sc-worktree', text: label, icon: Icon.WORKTREE });
+      // The git segments follow, only when the folder is a repository: branch, then the commits to
+      // push and to pull, left to right.
+      if (this.repository.isBound()) {
+        const branch: GitBranch | undefined = this.repository.currentBranch();
+        // The worktree indicator: which checkout the container tab is scoped to. Shown only when it
+        // says something the branch segment does not (an alias) — an unaliased checkout's label IS
+        // its branch, and "main main" is noise.
+        if (this.worktreeSession.isContainer()) {
+          const label: string | null = this.worktreeSession.activeLabel();
+          if (label !== null && label !== (branch?.name ?? '')) {
+            leading.push({ id: 'ws-worktree', text: label, icon: Icon.WORKTREE, title: label });
+          }
+        }
+        const branchName: string = branch?.name ?? 'detached HEAD';
+        leading.push({
+          id: 'ws-branch',
+          text: branchName,
+          icon: Icon.BRANCH,
+          title: `On branch ${branchName}`,
+        });
+        if (branch !== undefined) {
+          leading.push(
+            {
+              id: 'ws-push',
+              text: `${branch.ahead}`,
+              icon: Icon.COMMITS_AHEAD,
+              title: `${branch.ahead} commit(s) to push`,
+            },
+            {
+              id: 'ws-pull',
+              text: `${branch.behind}`,
+              icon: Icon.COMMITS_BEHIND,
+              title: `${branch.behind} commit(s) to pull`,
+            },
+          );
         }
       }
-      if (branch !== undefined && (branch.ahead > 0 || branch.behind > 0)) {
-        leading.push({ id: 'sc-sync', text: `↑${branch.ahead} ↓${branch.behind}` });
-      }
-      const trailing: StatusSegment[] = [
-        { id: 'sc-changes', text: `${changes} changed`, icon: Icon.PENCIL },
-        // A checkout's directory is a GUID, so the container tab names the container instead.
-        { id: 'sc-repo', text: this.containerName() ?? this.repository.repoName() },
-      ];
-      this.statusBar.contribute(owner, { leading, trailing }, STATUS_PRIORITY);
+      this.statusBar.contribute(owner, { leading, trailing: [] }, STATUS_PRIORITY);
     });
 
     // Register this workspace's source-control handlers while active: the workspace facade (open

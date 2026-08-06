@@ -1,7 +1,7 @@
 <footer>
   <div class="status-strip__group">
     @for (segment of leading(); track segment.id) {
-      <span class="status-strip__segment">
+      <span class="status-strip__segment" [title]="segment.title ?? segment.text">
         @if (segment.icon; as icon) {
           <app-icon [icon]="icon" />
         }
@@ -11,7 +11,7 @@
   </div>
   <div class="status-strip__group">
     @for (segment of trailing(); track segment.id) {
-      <span class="status-strip__segment">
+      <span class="status-strip__segment" [title]="segment.title ?? segment.text">
         @if (segment.icon; as icon) {
           <app-icon [icon]="icon" />
         }
@@ -20,6 +20,5 @@
     }
     <app-status-strip-lsp-menu />
     <app-status-strip-notifications-menu />
-    <app-icon [icon]="Icon.NOTCHES" />
   </div>
 </footer>

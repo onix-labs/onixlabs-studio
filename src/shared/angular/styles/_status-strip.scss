@@ -1,0 +1,11 @@
+// Status strip.
+//
+// The strip's icons read a touch larger than its 16px text so they stay legible at a glance. Sizing
+// `app-icon` here — once, for the whole strip — rather than per instance means every icon in the strip
+// picks the size up through the cascade: the segment icons, the language-server and notification
+// drop-up triggers in the embedded child components (which the container's own encapsulated styles
+// could not reach), and any icon added later. Only icons are affected; the strip's text keeps the
+// inherited size. An icon that asks for an explicit `size` still wins, through its own inline style.
+app-status-strip-container app-icon {
+  font-size: 1.125rem; // 18px
+}
