@@ -818,8 +818,8 @@ export class DirectoryView implements OnInit, OnDestroy {
       const leading: StatusSegment[] = [
         { id: 'ws-folder', text: workspaceName, icon: Icon.FOLDER_SIMPLE, title: workspaceName },
       ];
-      // The git segments follow, only when the folder is a repository: branch, then a single
-      // ahead|behind sync count, left to right.
+      // The git segments follow, only when the folder is a repository: branch, then the commits to
+      // push and to pull, left to right.
       if (this.repository.isBound()) {
         const branch: GitBranch | undefined = this.repository.currentBranch();
         // The worktree indicator: which checkout the container tab is scoped to. Shown only when it
@@ -835,16 +835,24 @@ export class DirectoryView implements OnInit, OnDestroy {
         leading.push({
           id: 'ws-branch',
           text: branchName,
-          icon: Icon.SOURCE_CONTROL,
+          icon: Icon.BRANCH,
           title: `On branch ${branchName}`,
         });
         if (branch !== undefined) {
-          leading.push({
-            id: 'ws-sync',
-            text: `${branch.ahead}|${branch.behind}`,
-            icon: Icon.COMMITS_SYNC,
-            title: `${branch.ahead} commit(s) to push, ${branch.behind} commit(s) to pull`,
-          });
+          leading.push(
+            {
+              id: 'ws-push',
+              text: `${branch.ahead}`,
+              icon: Icon.COMMITS_AHEAD,
+              title: `${branch.ahead} commit(s) to push`,
+            },
+            {
+              id: 'ws-pull',
+              text: `${branch.behind}`,
+              icon: Icon.COMMITS_BEHIND,
+              title: `${branch.behind} commit(s) to pull`,
+            },
+          );
         }
       }
       this.statusBar.contribute(owner, { leading, trailing: [] }, STATUS_PRIORITY);
