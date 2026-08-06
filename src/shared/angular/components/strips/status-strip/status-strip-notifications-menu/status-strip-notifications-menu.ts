@@ -59,13 +59,10 @@ export class StatusStripNotificationsMenu {
   });
 
   /**
-   * Gets the position that opens the flyout upward from the trigger, their right edges aligned, lifted
-   * a few pixels clear of the button so it does not sit flush against it. The negative offset moves the
-   * upward-opening flyout further up; a copy is offset so the shared position definition is untouched.
+   * Gets the position that opens the flyout upward from the trigger, their right edges aligned. The gap
+   * that lifts it clear of the button is a `margin-block-end` on the panel (see `_menu.scss`).
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-end'].map(
-    (position: ConnectedPosition): ConnectedPosition => ({ ...position, offsetY: -6 }),
-  );
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-end'];
 
   /**
    * Marks every notification seen once the flyout opens, clearing the bell's count.
