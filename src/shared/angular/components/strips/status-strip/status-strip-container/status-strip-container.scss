@@ -4,8 +4,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.5rem;
-    padding-inline-start: 1rem;
+    padding-block: 0.5rem;
+    padding-inline: 1rem;
     color: var(--status-strip-foreground-color);
     background-color: var(--status-strip-background-color);
   }
