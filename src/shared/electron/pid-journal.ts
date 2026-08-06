@@ -53,6 +53,61 @@ export interface JournalEntry {
    * Gets when the child was spawned, in epoch milliseconds.
    */
   readonly spawnTimeMs: number;
+
+  /**
+   * Gets the process id of the application instance that spawned this child, or undefined for a legacy
+   * entry written before ownership was recorded. A child whose owner is still alive is not an orphan —
+   * another instance is running against this same userData — so {@link PidJournal.reapStale} leaves it
+   * be rather than killing a live instance's work.
+   */
+  readonly ownerPid?: number;
+
+  /**
+   * Gets the owning instance's executable base name, used with {@link ownerStartTimeMs} to confirm the
+   * owner pid still belongs to that instance (rather than a recycled pid) before sparing the child.
+   */
+  readonly ownerComm?: string;
+
+  /**
+   * Gets when the owning instance started, in epoch milliseconds.
+   */
+  readonly ownerStartTimeMs?: number;
+}
+
+/**
+ * Identifies the application instance that owns the children it spawns: its process id, executable
+ * base name, and start time. Stamped onto every journal entry so a later run can tell a dead run's
+ * orphans (safe to reap) from another live instance's working children (must be spared).
+ */
+export interface OwnerIdentity {
+  /**
+   * Gets the owning instance's process id.
+   */
+  readonly pid: number;
+
+  /**
+   * Gets the owning instance's executable base name.
+   */
+  readonly comm: string;
+
+  /**
+   * Gets the owning instance's start time in epoch milliseconds.
+   */
+  readonly startTimeMs: number;
+}
+
+/**
+ * Resolves the identity of the current application instance, stamped onto the children it spawns. The
+ * start time is derived from the process uptime; second-level precision is ample against the reap-time
+ * tolerance.
+ * @returns Returns this instance's owner identity.
+ */
+export function currentOwner(): OwnerIdentity {
+  return {
+    pid: process.pid,
+    comm: path.basename(process.execPath),
+    startTimeMs: Date.now() - Math.round(process.uptime() * 1000),
+  };
 }
 
 /**
@@ -143,6 +198,11 @@ export class PidJournal {
   private readonly killer: (pid: number) => void;
 
   /**
+   * Holds the identity of this instance, stamped onto every child it registers.
+   */
+  private readonly owner: OwnerIdentity;
+
+  /**
    * Holds the live entries of this run, keyed by pid.
    */
   private readonly entries: Map<number, JournalEntry> = new Map<number, JournalEntry>();
@@ -152,15 +212,18 @@ export class PidJournal {
    * @param store The persistence adapter.
    * @param probe The process probe, defaulting to `ps`/`tasklist`.
    * @param killer The stale-entry killer, defaulting to SIGKILL of the process group.
+   * @param owner This instance's identity, stamped onto the children it registers.
    */
   public constructor(
     store: { load(): string | null; save(text: string): void },
     probe: (pid: number) => Promise<ProcessProbe | null> = probeProcess,
     killer: (pid: number) => void = (pid: number): void => signalProcessTree(pid, 'SIGKILL'),
+    owner: OwnerIdentity = currentOwner(),
   ) {
     this.store = store;
     this.probe = probe;
     this.killer = killer;
+    this.owner = owner;
   }
 
   /**
@@ -179,6 +242,9 @@ export class PidJournal {
       kind,
       comm: path.basename(command),
       spawnTimeMs: Date.now(),
+      ownerPid: this.owner.pid,
+      ownerComm: this.owner.comm,
+      ownerStartTimeMs: this.owner.startTimeMs,
     });
     this.persist();
   }
@@ -204,6 +270,17 @@ export class PidJournal {
     const stale: JournalEntry[] = parseJournal(this.loadSafely());
     let reaped: number = 0;
     for (const entry of stale) {
+      // A child whose owning instance is still alive is not an orphan: another Studio is running
+      // against this same userData — the common case being a development build launched from an
+      // installed Studio while developing Studio itself — and this entry is that instance's working
+      // language server, terminal, or Claude Code agent. Reaping it would SIGKILL a running
+      // instance's work, so spare it and keep it journalled for its own owner to reap later.
+      if (await this.ownerAlive(entry)) {
+        if (!this.entries.has(entry.pid)) {
+          this.entries.set(entry.pid, entry);
+        }
+        continue;
+      }
       const probe: ProcessProbe | null = await this.probe(entry.pid).catch((): null => null);
       if (probe !== null && matchesEntry(entry, probe)) {
         this.killer(entry.pid);
@@ -212,6 +289,32 @@ export class PidJournal {
     }
     this.persist();
     return reaped;
+  }
+
+  /**
+   * Determines whether the instance that spawned a journalled child is still running, so its children
+   * are spared from reaping. Legacy entries carry no owner and are treated as ownerless (reaped as
+   * before). The recorded owner pid is probed and verified against the recorded executable name and
+   * start time so a pid the OS has since recycled does not masquerade as the still-live owner.
+   * @param entry The journal entry whose owner is checked.
+   * @returns Returns true when the owning instance is still alive.
+   */
+  private async ownerAlive(entry: JournalEntry): Promise<boolean> {
+    if (
+      typeof entry.ownerPid !== 'number' ||
+      typeof entry.ownerComm !== 'string' ||
+      typeof entry.ownerStartTimeMs !== 'number'
+    ) {
+      return false;
+    }
+    const probe: ProcessProbe | null = await this.probe(entry.ownerPid).catch((): null => null);
+    if (probe === null) {
+      return false;
+    }
+    return matchesEntry(
+      { pid: entry.ownerPid, kind: 'owner', comm: entry.ownerComm, spawnTimeMs: entry.ownerStartTimeMs },
+      probe,
+    );
   }
 
   /**

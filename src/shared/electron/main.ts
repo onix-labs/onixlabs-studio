@@ -463,6 +463,12 @@ class Program {
     // enforced in production only; in development (ELECTRON_START_URL set) it is skipped so
     // `npm run electron:serve` can open a second window alongside an already-running Studio instead
     // of silently quitting on the lock.
+    // Whether this instance is the sole owner of its userData directory. It gates the journal reap
+    // below: a second instance sharing this userData must not reap the running instance's live
+    // children (its language servers, terminals, and Claude Code agent). The commonest way two
+    // instances share a userData is a development build launched from an installed Studio while
+    // developing Studio itself — the installed instance holds the lock, so the dev instance sees it.
+    let soleInstance: boolean = true;
     if (Program.START_URL === undefined) {
       if (!app.requestSingleInstanceLock()) {
         app.quit();
@@ -471,6 +477,16 @@ class Program {
       app.on('second-instance', (_event: ElectronEvent, argv: string[]): void =>
         this.onSecondInstance(argv),
       );
+    } else {
+      // Development deliberately does not quit a second instance (so a dev window can run alongside an
+      // already-running Studio), but it must still learn whether another instance already owns this
+      // userData. Probe the lock without retaining it — releasing straight away so a later production
+      // launch is never blocked by this dev instance — and decline to reap when another instance holds
+      // it.
+      soleInstance = app.requestSingleInstanceLock();
+      if (soleInstance) {
+        app.releaseSingleInstanceLock();
+      }
     }
     // macOS delivers OS-opened files as open-file events (never argv). Registered before the app is
     // ready so a double-click that launches the app is captured and queued for the renderer.
@@ -485,7 +501,12 @@ class Program {
     installPidJournal(
       new PidJournal(createFileJournalStore(path.join(app.getPath('userData'), 'child-pids.json'))),
     );
-    void pidJournal()?.reapStale();
+    // Reap only as the sole instance. The journal is also owner-aware — it spares any child whose
+    // spawning instance is still alive — but skipping the reap entirely when another instance is
+    // present also protects children recorded by an older build that predates owner stamping.
+    if (soleInstance) {
+      void pidJournal()?.reapStale();
+    }
 
     // A shell-delivered SIGTERM/SIGINT skips Electron's quit sequence; tear the children down before
     // exiting or they outlive the application.
