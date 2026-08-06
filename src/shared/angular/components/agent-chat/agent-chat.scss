@@ -26,6 +26,15 @@
   overflow: auto;
 }
 
+// The "load earlier" affordance shown at the top of the list when older rows are held out of the DOM
+// (see CONVERSATION_WINDOW). Centred, and it does not stretch to the full row width.
+.agent__earlier {
+  display: flex;
+  justify-content: center;
+  flex: none;
+  padding-block-end: 0.5rem;
+}
+
 // The empty-conversation state: the agent's brain glyph centred in the message area above a caption.
 // `margin: auto` centres it within the flex column, both axes.
 .agent__empty {
