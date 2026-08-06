@@ -287,10 +287,10 @@
   flex-direction: column;
   min-inline-size: 15rem;
   padding: 0.25rem;
-  // Match the notifications flyout: lift it to sit just above the status strip, and pull it out by the
-  // same amount on its start edge (this flyout is start-aligned, mirroring the notifications' end nudge).
+  // Match the notifications flyout: lift it to sit just above the status strip, and give it the same
+  // right inset (this flyout is end-aligned, like the notifications flyout).
   margin-block-end: 0.9375rem;
-  margin-inline-start: -0.5rem;
+  margin-inline-end: -0.5rem;
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);

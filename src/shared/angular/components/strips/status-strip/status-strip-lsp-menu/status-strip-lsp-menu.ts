@@ -59,9 +59,10 @@ export class StatusStripLspMenu {
   );
 
   /**
-   * Gets the position that opens the menu upward from the trigger, its left edges aligned.
+   * Gets the position that opens the menu upward from the trigger, their right edges aligned (matching
+   * the notifications flyout).
    */
-  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-start'];
+  protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-end'];
 
   /**
    * Restarts a server through the registry, which tears its session down and re-opens its documents.
