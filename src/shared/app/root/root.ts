@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { ScrollReveal } from '@shared/angular/services/scroll-reveal/scroll-reveal';
 import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
@@ -61,6 +62,12 @@ export class Root {
    * screen stands in for it. Injected for its effect; the shell never calls it.
    */
   private readonly presence: ShellPresence = inject(ShellPresence);
+
+  /**
+   * Holds the scrollbar reveal service, which flashes a container's custom scrollbar while it scrolls.
+   * Injected for its effect; the shell never calls it.
+   */
+  private readonly scrollReveal: ScrollReveal = inject(ScrollReveal);
 
   /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content

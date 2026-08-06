@@ -2,6 +2,11 @@
   --body-background-color: var(--gray-900);
   --body-foreground-color: var(--gray-100);
 
+  // The reveal-on-interaction scrollbar thumb (see _base.scss): a translucent light pill on the dark
+  // surface, brighter while the pointer rests on the thumb itself.
+  --scrollbar-thumb-color: rgba(255, 255, 255, 0.22);
+  --scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.4);
+
   // On the dark surface the base accent reads dull as hover content, so brighten it toward white.
   --accent-surface-foreground-color: color-mix(in srgb, var(--accent-color), white 15%);
 

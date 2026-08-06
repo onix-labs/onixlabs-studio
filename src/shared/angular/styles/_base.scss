@@ -59,3 +59,47 @@ select:focus-visible {
   outline: none !important;
   border-color: var(--accent-color) !important;
 }
+
+// Custom, reveal-on-interaction scrollbars, app-wide. Without these Chromium falls back to the native
+// macOS scrollbar, which flips between a thin auto-hiding overlay bar and a wide persistent gutter
+// depending on the "Show scroll bars" system setting and whether a mouse is attached — the source of
+// the inconsistent, chunky bars. Giving `::-webkit-scrollbar` a fixed size takes every scroll
+// container off that native path onto a single custom-drawn bar; the thumb stays transparent until the
+// area is interacted with, so it reads like the macOS overlay: hidden at rest, shown while the pointer
+// is over the area (`:hover`) or while it is actively scrolling (`[data-app-scrolling]`, toggled by the
+// ScrollReveal service so wheel, keyboard, and programmatic scrolls flash it too). The track reserves
+// its width only while a container actually overflows, so there is no empty channel and no shift when
+// the thumb reveals. Monaco and xterm paint their own scrollbars (not native overflow), so none of this
+// reaches editor or terminal content.
+::-webkit-scrollbar {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+// Inset the thumb with a transparent border (clipped to the padding box) so it reads as a slim pill
+// floating in the wider hit area rather than filling the gutter edge to edge.
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 0.1875rem solid transparent;
+  border-radius: 1rem;
+  background-clip: padding-box;
+}
+
+// Reveal: the pointer is anywhere within the scroll container, or it is mid-scroll.
+:hover::-webkit-scrollbar-thumb,
+[data-app-scrolling]::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-color);
+  background-clip: padding-box;
+}
+
+// Emphasis while the pointer rests on the thumb itself. Ordered last so it wins over the reveal rule
+// at equal specificity.
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover-color);
+  background-clip: padding-box;
+}
