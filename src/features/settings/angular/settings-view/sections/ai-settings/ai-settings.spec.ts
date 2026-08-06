@@ -34,6 +34,15 @@ describe('AiSettingsSection', () => {
     return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__item'));
   }
 
+  /**
+   * Selects which slice of the settings the section renders, then applies the change.
+   * @param view The view to show.
+   */
+  function show(view: 'general' | 'security' | 'agents'): void {
+    fixture.componentRef.setInput('view', view);
+    fixture.detectChanges();
+  }
+
   beforeEach(async () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
@@ -51,18 +60,25 @@ describe('AiSettingsSection', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_whenShown_rendersARowPerGlobalControl', () => {
-    // Permission posture, token cap, run timeout, session lifetime, agent shell, Claude CLI, CLI path.
-    expect(host.querySelectorAll('app-setting-row').length).toBe(7);
+  it('render_whenGeneralView_rendersARowPerGlobalControl', () => {
+    // Token cap, run timeout, session lifetime, agent shell.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(4);
   });
 
-  it('render_whenShown_rendersAnItemPerSeedConnection', () => {
+  it('render_whenSecurityView_rendersThePermissionPostureRow', () => {
+    show('security');
+    expect(rowSelect('Permission posture')).toBeTruthy();
+  });
+
+  it('render_whenAgentsView_rendersAnItemPerSeedConnection', () => {
+    show('agents');
     const settings: Settings = TestBed.inject(Settings);
     expect(items().length).toBe(settings.aiConnections().length);
     expect(items().length).toBeGreaterThan(0);
   });
 
   it('posture_whenChanged_persistsToSettings', () => {
+    show('security');
     const settings: Settings = TestBed.inject(Settings);
     const select: HTMLSelectElement = rowSelect('Permission posture');
 
@@ -73,6 +89,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('add_whenClicked_appendsAConnectionAndExpandsIt', () => {
+    show('agents');
     const settings: Settings = TestBed.inject(Settings);
     const before: number = settings.aiConnections().length;
 
@@ -89,6 +106,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('toggle_whenClicked_expandsTheConnectionEditor', () => {
+    show('agents');
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 
     const toggle: HTMLButtonElement | null =

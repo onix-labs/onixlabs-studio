@@ -1,5 +1,19 @@
-// The connection manager sits above the section's setting rows and is laid out by hand rather than
-// through app-setting-row, since it is a list of expandable editors rather than a single control.
+// The AI settings are split across navigation sub-sections — General, Security & Permissions, and
+// Agents & Providers — each rendered on its own as a plain stack of setting rows beneath the pane's
+// section title.
+.ai-group {
+  display: flex;
+  flex-direction: column;
+}
+
+// The first setting row in a group needs no top divider (the shared section rule would otherwise add
+// one to every non-first-child row).
+.ai-group app-setting-row:first-of-type {
+  border-block-start: none;
+}
+
+// The connection manager is laid out by hand rather than through app-setting-row, since it is a list
+// of expandable editors rather than a single control.
 .ai-connections {
   display: flex;
   flex-direction: column;

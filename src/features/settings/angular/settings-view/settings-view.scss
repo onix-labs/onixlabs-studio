@@ -16,56 +16,19 @@
   background: var(--settings-background-color);
 }
 
-// The left navigation lists the settings sections.
+// The left navigation is a tree of settings sections (each an expandable root with a "General" leaf).
+// The projected TreeView owns the row chrome and its own scrolling, so the nav is just the framed
+// container around it.
 .settings__nav {
   display: flex;
   flex: 0 0 16rem;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  overflow: auto;
+  padding-block: 0.5rem;
+  overflow: hidden;
   border: 0.0625rem solid var(--settings-border-color);
   border-radius: calc(1rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   background: var(--settings-nav-background-color);
-}
-
-.settings__nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  font: inherit;
-  font-size: 0.9rem;
-  color: var(--settings-muted-foreground-color);
-  text-align: start;
-  background: transparent;
-  border: none;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition: var(--hover-transition);
-
-  i {
-    font-size: 1.1rem;
-  }
-
-  &:hover {
-    color: var(--body-foreground-color);
-    background: var(--settings-control-background-color);
-  }
-
-  &:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: -0.125rem;
-  }
-
-  // The selected item sits on the accent fill, so its text is a fixed light tone.
-  &--selected,
-  &--selected:hover {
-    color: var(--gray-100);
-    background: var(--accent-color);
-  }
 }
 
 // The right pane shows the selected section's controls, with the restart banner pinned beneath them.
@@ -98,11 +61,20 @@
   border-radius: calc(0.625rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 }
+// A static breadcrumb (ROOT › LEAF) naming the selected settings sub-section. Not interactive.
 .settings__section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   margin: 0 0 1rem;
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--settings-muted-foreground-color);
+}
+
+.settings__crumb-separator {
+  font-size: 0.75rem;
+  opacity: 0.6;
 }

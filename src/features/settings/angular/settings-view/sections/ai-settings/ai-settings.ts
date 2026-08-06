@@ -3,6 +3,8 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   signal,
   Signal,
   WritableSignal,
@@ -37,10 +39,17 @@ const ADD_KIND_OPTIONS: readonly DropdownOption[] = [
 ];
 
 /**
+ * Selects which slice of the AI settings a section instance renders, so the navigation can present
+ * General, Security & Permissions, and Agents & Providers as distinct sub-sections.
+ */
+export type AiSettingsView = 'general' | 'security' | 'agents';
+
+/**
  * Represents the AI section of the settings view: a manager for the user's provider connections (add,
  * edit, reorder, and remove; each with its credential and model list) plus the default permission
  * posture and per-request token cap. Connection state is owned by {@link AiConnections}, which persists
- * the collection and keeps each key in the main process.
+ * the collection and keeps each key in the main process. The {@link view} input selects which slice —
+ * General, Security & Permissions, or Agents & Providers — a given instance renders.
  */
 @Component({
   selector: 'app-ai-settings',
@@ -63,6 +72,12 @@ export class AiSettingsSection {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets which slice of the AI settings to render (General, Security & Permissions, or Agents &
+   * Providers). Defaults to General.
+   */
+  public readonly view: InputSignal<AiSettingsView> = input<AiSettingsView>('general');
 
   /**
    * Gets the kind options for the add-connection picker.

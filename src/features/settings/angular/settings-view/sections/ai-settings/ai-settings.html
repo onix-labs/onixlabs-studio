@@ -1,139 +1,155 @@
-<div class="ai-connections">
-  <div class="ai-connections__head">
-    <div class="ai-connections__heading">
-      <h3 class="ai-connections__title">Connections</h3>
-      <p class="ai-connections__subtitle">
-        Providers the agent can run through. Each keeps its own credential and model list.
-      </p>
-    </div>
-    <div class="ai-connections__actions">
-      <app-button [icon]="Icon.RESTART" label="Restore defaults" (click)="restoreDefaults()" />
-      <div class="ai-connections__add">
-        <app-dropdown
-          [options]="addKindOptions"
-          [value]="selectedAddKind()"
-          (valueChange)="onAddKindChange($event)"
-        />
-        <app-button [icon]="Icon.PLUS" label="Add" (click)="addConnection()" />
-      </div>
-    </div>
-  </div>
+<!-- General: settings that apply to every agent, whichever provider it runs through. -->
+@if (view() === 'general') {
+  <section class="ai-group">
+    <app-setting-row
+      label="Per-request token cap"
+      description="Token budget per turn. 0 means no cap (the provider default)."
+    >
+      <app-setting-control key="ai.tokenCap" />
+    </app-setting-row>
 
-  @if (!isAvailable) {
-    <p class="ai-connections__hint">
-      Credentials and model discovery are only available inside Studio.
-    </p>
-  }
+    <app-setting-row
+      label="Run timeout"
+      description="How long a single agent run may take before it is cancelled, in minutes."
+    >
+      <app-setting-control key="ai.runTimeoutMinutes" />
+    </app-setting-row>
 
-  <ul class="ai-connections__list">
-    @for (
-      connection of connections();
-      track connection.id;
-      let index = $index;
-      let count = $count
-    ) {
-      <li class="ai-connections__item">
-        <div class="ai-connections__row">
-          <button
-            type="button"
-            class="ai-connections__toggle"
-            [attr.aria-expanded]="isExpanded(connection.id)"
-            (click)="toggle(connection.id)"
-          >
-            <app-icon
-              class="ai-connections__chevron"
-              [class.ai-connections__chevron--open]="isExpanded(connection.id)"
-              [icon]="Icon.CARET_RIGHT"
+    <app-setting-row
+      label="Keep agent sessions alive for"
+      description="How long an idle agent keeps its live session — and its background process — before it is reaped to free resources. The conversation reopens transparently on your next message, keeping its context. 'Indefinitely' never reaps on idle."
+    >
+      <app-setting-control key="ai.agentSessionLifetime" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Agent shell"
+      description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
+    >
+      <app-dropdown
+        [options]="shellOptions()"
+        [value]="agentShell()"
+        (valueChange)="onAgentShellChange($event)"
+      />
+    </app-setting-row>
+  </section>
+}
+
+<!-- Security & permissions: global limits on what any agent may do and where it may write. -->
+@if (view() === 'security') {
+  <section class="ai-group">
+    <app-setting-row
+      label="Permission posture"
+      description="How much the agent may do before asking you."
+    >
+      <app-setting-control key="ai.permissionPosture" />
+    </app-setting-row>
+
+    <app-ai-tool-policies />
+
+    <app-ai-write-paths />
+  </section>
+}
+
+<!-- Agents & providers: the provider back-ends and settings specific to individual agents. -->
+@if (view() === 'agents') {
+  <section class="ai-group">
+    <div class="ai-connections">
+      <div class="ai-connections__head">
+        <div class="ai-connections__heading">
+          <h4 class="ai-connections__title">Connections</h4>
+          <p class="ai-connections__subtitle">
+            Providers the agent can run through. Each keeps its own credential and model list.
+          </p>
+        </div>
+        <div class="ai-connections__actions">
+          <app-button [icon]="Icon.RESTART" label="Restore defaults" (click)="restoreDefaults()" />
+          <div class="ai-connections__add">
+            <app-dropdown
+              [options]="addKindOptions"
+              [value]="selectedAddKind()"
+              (valueChange)="onAddKindChange($event)"
             />
-            <span class="ai-connections__label">{{ connection.label }}</span>
-            <app-icon
-              class="ai-connections__status"
-              [class.ai-connections__status--ok]="status(connection.id).available"
-              [icon]="status(connection.id).available ? Icon.SUCCESS : Icon.WARNING"
-            />
-          </button>
-          <div class="ai-connections__reorder">
-            <app-button
-              variant="none"
-              size="small"
-              [icon]="Icon.CARET_UP"
-              ariaLabel="Move up"
-              [disabled]="index === 0"
-              (click)="moveUp(connection.id)"
-            />
-            <app-button
-              variant="none"
-              size="small"
-              [icon]="Icon.CARET_DOWN"
-              ariaLabel="Move down"
-              [disabled]="index === count - 1"
-              (click)="moveDown(connection.id)"
-            />
+            <app-button [icon]="Icon.PLUS" label="Add" (click)="addConnection()" />
           </div>
         </div>
-        @if (isExpanded(connection.id)) {
-          <div class="ai-connections__body">
-            <app-ai-connection-editor [connection]="connection" />
-          </div>
+      </div>
+
+      @if (!isAvailable) {
+        <p class="ai-connections__hint">
+          Credentials and model discovery are only available inside Studio.
+        </p>
+      }
+
+      <ul class="ai-connections__list">
+        @for (
+          connection of connections();
+          track connection.id;
+          let index = $index;
+          let count = $count
+        ) {
+          <li class="ai-connections__item">
+            <div class="ai-connections__row">
+              <button
+                type="button"
+                class="ai-connections__toggle"
+                [attr.aria-expanded]="isExpanded(connection.id)"
+                (click)="toggle(connection.id)"
+              >
+                <app-icon
+                  class="ai-connections__chevron"
+                  [class.ai-connections__chevron--open]="isExpanded(connection.id)"
+                  [icon]="Icon.CARET_RIGHT"
+                />
+                <span class="ai-connections__label">{{ connection.label }}</span>
+                <app-icon
+                  class="ai-connections__status"
+                  [class.ai-connections__status--ok]="status(connection.id).available"
+                  [icon]="status(connection.id).available ? Icon.SUCCESS : Icon.WARNING"
+                />
+              </button>
+              <div class="ai-connections__reorder">
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.CARET_UP"
+                  ariaLabel="Move up"
+                  [disabled]="index === 0"
+                  (click)="moveUp(connection.id)"
+                />
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.CARET_DOWN"
+                  ariaLabel="Move down"
+                  [disabled]="index === count - 1"
+                  (click)="moveDown(connection.id)"
+                />
+              </div>
+            </div>
+            @if (isExpanded(connection.id)) {
+              <div class="ai-connections__body">
+                <app-ai-connection-editor [connection]="connection" />
+              </div>
+            }
+          </li>
         }
-      </li>
-    }
-  </ul>
-</div>
+      </ul>
+    </div>
 
-<app-setting-row
-  label="Permission posture"
-  description="How much the agent may do before asking you."
->
-  <app-setting-control key="ai.permissionPosture" />
-</app-setting-row>
+    <!-- Claude (local login) agent-specific settings. -->
+    <app-setting-row
+      label="Claude CLI"
+      description="Which Claude Code CLI the Claude (local login) agent uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
+    >
+      <app-setting-control key="ai.claudeExecutable" />
+    </app-setting-row>
 
-<app-ai-tool-policies />
-
-<app-ai-write-paths />
-
-<app-setting-row
-  label="Per-request token cap"
-  description="Token budget per turn. 0 means no cap (the provider default)."
->
-  <app-setting-control key="ai.tokenCap" />
-</app-setting-row>
-
-<app-setting-row
-  label="Run timeout"
-  description="How long a single agent run may take before it is cancelled, in minutes."
->
-  <app-setting-control key="ai.runTimeoutMinutes" />
-</app-setting-row>
-
-<app-setting-row
-  label="Keep agent sessions alive for"
-  description="How long an idle agent keeps its live session — and its background process — before it is reaped to free resources. The conversation reopens transparently on your next message, keeping its context. 'Indefinitely' never reaps on idle."
->
-  <app-setting-control key="ai.agentSessionLifetime" />
-</app-setting-row>
-
-<app-setting-row
-  label="Agent shell"
-  description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
->
-  <app-dropdown
-    [options]="shellOptions()"
-    [value]="agentShell()"
-    (valueChange)="onAgentShellChange($event)"
-  />
-</app-setting-row>
-
-<app-setting-row
-  label="Claude CLI"
-  description="Which Claude Code CLI the Claude (local login) agent uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
->
-  <app-setting-control key="ai.claudeExecutable" />
-</app-setting-row>
-
-<app-setting-row
-  label="Claude CLI path"
-  description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
->
-  <app-setting-control key="ai.claudeExecutablePath" />
-</app-setting-row>
+    <app-setting-row
+      label="Claude CLI path"
+      description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
+    >
+      <app-setting-control key="ai.claudeExecutablePath" />
+    </app-setting-row>
+  </section>
+}
