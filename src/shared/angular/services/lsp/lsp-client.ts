@@ -1387,7 +1387,17 @@ export class LspClient implements OnDestroy {
     const crash: { count: number; lastAt: number } | undefined = this.crashes.get(exit.sessionId);
     this.crashes.set(exit.sessionId, { count: (crash?.count ?? 0) + 1, lastAt: Date.now() });
     this.legends.delete(exit.sessionId);
-    this.status.remove(exit.sessionId);
+    // Keep the crashed server listed as unavailable — with its restart affordance — rather than
+    // removing it from the status strip. Removing it made the whole status-strip control vanish (its
+    // trigger is mounted only while a server is listed for the workspace), stranding the user with no
+    // way to bring the server back until an incidental document sync happened to re-register it. A
+    // later sync still auto-restarts it (startSession re-registers it in the starting state); until
+    // then the row's Restart button lets the user recover it by hand.
+    this.status.setState(
+      exit.sessionId,
+      'unavailable',
+      'The server stopped unexpectedly. Restart it to try again.',
+    );
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
     this.clearReassociateTimers(exit.sessionId);

@@ -696,6 +696,30 @@ describe('LspClient', () => {
     expect(status.stateOf('/root::typescript')).toBe('starting');
   });
 
+  it('serverExit_keepsTheServerListedAsUnavailable_soItsRestartAffordanceSurvives', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    expect(status.stateOf('/root::typescript')).toBe('starting');
+
+    lsp.exit('/root::typescript');
+
+    // The status-strip trigger is mounted only while a server is listed, so a crashed server must
+    // stay in the list (as unavailable) rather than vanish — otherwise the whole control disappears
+    // and the user has no way to restart it.
+    const server: LspServer | undefined = status
+      .servers()
+      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    expect(server?.state).toBe('unavailable');
+    expect(server?.detail).toContain('stopped unexpectedly');
+  });
+
   it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
     const realNow: () => number = Date.now;
     let now: number = realNow();
