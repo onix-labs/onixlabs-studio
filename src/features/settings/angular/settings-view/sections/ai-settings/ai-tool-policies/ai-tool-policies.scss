@@ -1,50 +1,6 @@
+// Each tool's row is a shared app-setting-row (label + description + control), so its typography
+// matches every other setting. This wrapper only stacks the rows.
 .tool-policies {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-
-  &__heading {
-    margin-block-end: 8px;
-  }
-
-  &__title {
-    margin: 0 0 2px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  &__subtitle {
-    margin: 0;
-    font-size: 12px;
-    color: var(--form-muted-foreground-color);
-  }
-
-  &__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 4px 0;
-  }
-
-  &__info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-inline-size: 0;
-  }
-
-  &__label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__description {
-    font-size: 12px;
-    color: var(--form-muted-foreground-color);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }

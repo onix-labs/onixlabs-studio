@@ -1,59 +1,63 @@
 <div class="write-paths">
   <div class="write-paths__group">
-    <div class="write-paths__heading">
-      <h3 class="write-paths__title">Allowed write paths</h3>
-      <p class="write-paths__subtitle">
-        Absolute directories the agent may write to beyond the workspace root (e.g.
-        <code>/tmp</code>). A write is otherwise confined to the workspace.
-      </p>
-    </div>
+    <app-setting-row
+      label="Allowed write paths"
+      description="Absolute directories the agent may write to beyond the workspace root. A write is otherwise confined to the workspace."
+    >
+      <app-button
+        variant="solid"
+        [icon]="Icon.FOLDER_PLUS"
+        label="Add folder…"
+        (click)="choose('allow')"
+      />
+    </app-setting-row>
 
-    @for (path of allowed(); track $index) {
-      <div class="write-paths__row">
-        <app-text-field
-          class="write-paths__field"
-          placeholder="/absolute/path"
-          [value]="path"
-          (valueChange)="update('allow', $index, $event)"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Remove allowed path ' + path"
-          (click)="remove('allow', $index)"
-        />
-      </div>
+    @if (allowed().length) {
+      <ul class="write-paths__list">
+        @for (path of allowed(); track $index) {
+          <li class="write-paths__item">
+            <span class="write-paths__path">{{ path }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove allowed path ' + path"
+              (click)="remove('allow', $index)"
+            />
+          </li>
+        }
+      </ul>
     }
-    <app-button [icon]="Icon.PLUS" label="Add allowed path" (click)="add('allow')" />
   </div>
 
   <div class="write-paths__group">
-    <div class="write-paths__heading">
-      <h3 class="write-paths__title">Denied write paths</h3>
-      <p class="write-paths__subtitle">
-        Paths the agent may never write to, even inside the workspace: an absolute path, or a name
-        matched anywhere in the path (e.g. <code>.git</code>, <code>.env</code>).
-      </p>
-    </div>
+    <app-setting-row
+      label="Denied write paths"
+      description="Directories the agent may never write to, even inside the workspace."
+    >
+      <app-button
+        variant="solid"
+        [icon]="Icon.FOLDER_PLUS"
+        label="Add folder…"
+        (click)="choose('deny')"
+      />
+    </app-setting-row>
 
-    @for (path of denied(); track $index) {
-      <div class="write-paths__row">
-        <app-text-field
-          class="write-paths__field"
-          placeholder=".env or /absolute/path"
-          [value]="path"
-          (valueChange)="update('deny', $index, $event)"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Remove denied path ' + path"
-          (click)="remove('deny', $index)"
-        />
-      </div>
+    @if (denied().length) {
+      <ul class="write-paths__list">
+        @for (path of denied(); track $index) {
+          <li class="write-paths__item">
+            <span class="write-paths__path">{{ path }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove denied path ' + path"
+              (click)="remove('deny', $index)"
+            />
+          </li>
+        }
+      </ul>
     }
-    <app-button [icon]="Icon.PLUS" label="Add denied path" (click)="add('deny')" />
   </div>
 </div>

@@ -1,24 +1,25 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Which write-path list a row belongs to: the allow list (extra writable directories) or the deny
- * list (never-writable paths/segments).
+ * list (never-writable directories).
  */
 type ListKind = 'allow' | 'deny';
 
 /**
- * Represents the write-path editor embedded in the AI settings section (#310): two editable lists —
- * allowed write directories and denied write paths — each a list of text rows with add/remove. Values
- * are held in settings; blank rows are ignored by the main process, so an empty row can sit while the
- * user types.
+ * Represents the write-path editor embedded in the AI settings section (#310): two directory lists —
+ * allowed write directories and denied write directories — each presented as a labelled setting row
+ * whose control opens a directory picker (files are ignored), with the chosen directories listed
+ * beneath. Values are held in settings; the main process ignores blanks.
  */
 @Component({
   selector: 'app-ai-write-paths',
-  imports: [Button, TextField],
+  imports: [Button, SettingRow],
   templateUrl: './ai-write-paths.html',
   styleUrl: './ai-write-paths.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,40 +36,41 @@ export class AiWritePaths {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the file-system bridge used to show the directory picker.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Gets the allowed write directories.
    */
   protected readonly allowed: Signal<readonly string[]> = this.settings.aiAllowedWritePaths;
 
   /**
-   * Gets the denied write paths.
+   * Gets the denied write directories.
    */
   protected readonly denied: Signal<readonly string[]> = this.settings.aiDeniedWritePaths;
 
   /**
-   * Appends a blank row to a list for the user to fill in.
+   * Opens a directory picker (files are ignored) and appends the chosen directory to a list, skipping
+   * a directory already present.
    * @param kind Which list to add to.
    */
-  protected add(kind: ListKind): void {
-    this.commit(kind, [...this.current(kind), '']);
+  protected async choose(kind: ListKind): Promise<void> {
+    const path: string | null = await this.fileSystem.pickPath('folder');
+    if (path === null) {
+      return;
+    }
+    const current: readonly string[] = this.current(kind);
+    if (current.includes(path)) {
+      return;
+    }
+    this.commit(kind, [...current, path]);
   }
 
   /**
-   * Updates a row's value.
-   * @param kind Which list the row is in.
-   * @param index The row index.
-   * @param value The new value.
-   */
-  protected update(kind: ListKind, index: number, value: string): void {
-    this.commit(
-      kind,
-      this.current(kind).map((entry: string, i: number): string => (i === index ? value : entry)),
-    );
-  }
-
-  /**
-   * Removes a row.
-   * @param kind Which list the row is in.
-   * @param index The row index.
+   * Removes a directory from a list.
+   * @param kind Which list the directory is in.
+   * @param index The entry index.
    */
   protected remove(kind: ListKind, index: number): void {
     this.commit(

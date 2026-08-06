@@ -1,22 +1,30 @@
 <div class="settings">
   <nav class="settings__nav" aria-label="Settings sections">
-    @for (section of sections; track section.id) {
-      <button
-        type="button"
-        class="settings__nav-item"
-        [class.settings__nav-item--selected]="selectedSection() === section.id"
-        [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
-        (click)="selectSection(section.id)"
-      >
-        <app-icon [icon]="section.icon" />
-        <span>{{ section.label }}</span>
-      </button>
-    }
+    <app-tree-view [rows]="rows()" [selectedId]="selectedRowId()" (rowClick)="onRowClick($event)">
+      <ng-template let-row>
+        @let node = dataOf(row);
+        @if (node.icon) {
+          <app-icon class="tree-icon" [icon]="node.icon" />
+        }
+        <span class="tree-name" [class.bold]="node.kind === 'section'">{{ node.label }}</span>
+      </ng-template>
+    </app-tree-view>
   </nav>
 
   <div class="settings__content">
     <section class="settings__section">
-      <h2 class="settings__section-title">{{ selectedSectionLabel() }}</h2>
+      <h2 class="settings__section-title">
+        @for (crumb of selectedTrail(); track $index; let last = $last) {
+          <span class="settings__crumb">{{ crumb }}</span>
+          @if (!last) {
+            <app-icon
+              class="settings__crumb-separator"
+              [icon]="Icon.CARET_RIGHT"
+              aria-hidden="true"
+            />
+          }
+        }
+      </h2>
 
       @switch (selectedSection()) {
         @case ('appearance') {
@@ -45,7 +53,13 @@
           <app-keyboard-settings />
         }
         @case ('ai') {
-          <app-ai-settings />
+          <app-ai-settings view="general" />
+        }
+        @case ('ai-security') {
+          <app-ai-settings view="security" />
+        }
+        @case ('ai-agents') {
+          <app-ai-settings view="agents" />
         }
         @case ('mission-control') {
           <app-settings-section sectionId="mission-control" />

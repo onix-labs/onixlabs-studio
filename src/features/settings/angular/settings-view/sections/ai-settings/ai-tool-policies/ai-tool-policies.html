@@ -1,24 +1,12 @@
 <div class="tool-policies">
-  <div class="tool-policies__heading">
-    <h3 class="tool-policies__title">Tool permissions</h3>
-    <p class="tool-policies__subtitle">
-      A per-tool default. <strong>Deny</strong> blocks a tool even when the posture would auto-allow
-      it; <strong>Allow</strong> skips the prompt; <strong>Ask</strong> uses the posture above.
-    </p>
-  </div>
-
   @for (tool of tools; track tool.name) {
-    <div class="tool-policies__row">
-      <span class="tool-policies__info">
-        <span class="tool-policies__label">{{ tool.label }}</span>
-        <span class="tool-policies__description">{{ tool.description }}</span>
-      </span>
-      <app-button-group
+    <app-setting-row [label]="tool.label" [description]="tool.description">
+      <app-dropdown
         [options]="policyOptions"
         [value]="policyFor(tool.name)"
         [ariaLabel]="'Permission for ' + tool.label"
         (valueChange)="setPolicy(tool.name, $event)"
       />
-    </div>
+    </app-setting-row>
   }
 </div>
