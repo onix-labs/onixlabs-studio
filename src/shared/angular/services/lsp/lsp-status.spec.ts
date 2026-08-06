@@ -1,12 +1,24 @@
 import { TestBed } from '@angular/core/testing';
+import { afterEach, vi } from 'vitest';
 import { LspServer, LspStatus } from './lsp-status';
+
+/**
+ * The readiness-watchdog window (mirrors READINESS_WATCHDOG_MS in lsp-status.ts). A server left in its
+ * starting state for this long is marked unavailable.
+ */
+const WATCHDOG_MS: number = 120_000;
 
 describe('LspStatus', () => {
   let status: LspStatus;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     TestBed.configureTestingModule({});
     status = TestBed.inject(LspStatus);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /**
@@ -103,5 +115,44 @@ describe('LspStatus', () => {
     status.remove('/root::java');
 
     expect(status.servers()).toEqual([]);
+  });
+
+  it('watchdog_whenStartingTooLong_marksServerUnavailable', () => {
+    register('/root::java', 'java', '/root');
+
+    vi.advanceTimersByTime(WATCHDOG_MS);
+
+    const server: LspServer = status.servers()[0];
+    expect(server.state).toBe('unavailable');
+    expect(server.detail).toContain('Restart it');
+  });
+
+  it('watchdog_whenServerBecomesReadyFirst_leavesItReady', () => {
+    register('/root::typescript', 'typescript', '/root');
+    status.setState('/root::typescript', 'ready');
+
+    vi.advanceTimersByTime(WATCHDOG_MS);
+
+    expect(status.servers()[0].state).toBe('ready');
+  });
+
+  it('watchdog_whenServerRemovedFirst_doesNotResurrectIt', () => {
+    register('/root::java', 'java', '/root');
+    status.remove('/root::java');
+
+    vi.advanceTimersByTime(WATCHDOG_MS);
+
+    expect(status.servers()).toEqual([]);
+  });
+
+  it('watchdog_isReArmedByARestartBackToStarting', () => {
+    register('/root::java', 'java', '/root');
+    status.setState('/root::java', 'ready');
+    // A restart drops the server back to starting; the watchdog must re-arm from that moment.
+    status.setState('/root::java', 'starting');
+
+    vi.advanceTimersByTime(WATCHDOG_MS);
+
+    expect(status.servers()[0].state).toBe('unavailable');
   });
 });
