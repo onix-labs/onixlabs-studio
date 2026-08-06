@@ -523,6 +523,26 @@ export class Icon {
    */
   public static readonly ARROW_DOWN: Icon = new Icon('ph ph-arrow-down');
 
+  /**
+   * Gets the commits-to-push (bent up arrow) icon shown on the workspace status bar's ahead count.
+   */
+  public static readonly COMMITS_AHEAD: Icon = new Icon('ph ph-arrow-bend-left-up');
+
+  /**
+   * Gets the commits-to-pull (bent down arrow) icon shown on the workspace status bar's behind count.
+   */
+  public static readonly COMMITS_BEHIND: Icon = new Icon('ph ph-arrow-bend-right-down');
+
+  /**
+   * Gets the workspace-folder icon shown on the workspace status bar's name segment.
+   */
+  public static readonly FOLDER_SIMPLE: Icon = new Icon('ph-duotone ph-folder-simple');
+
+  /**
+   * Gets the language-servers (article) icon shown on the workspace status bar's language-server menu.
+   */
+  public static readonly ARTICLE: Icon = new Icon('ph-duotone ph-article');
+
   // --- Ribbon: agent and terminal ---
 
   /**

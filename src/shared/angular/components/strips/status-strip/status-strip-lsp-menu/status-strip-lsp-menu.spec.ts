@@ -38,7 +38,7 @@ describe('StatusStripLspMenu', () => {
     ).toBeNull();
   });
 
-  it('render_labelsTheCategoryAndReflectsTheStartingState', () => {
+  it('render_whenActiveWorkspaceHasServers_showsTheTrigger', () => {
     status.register('/root::java', {
       serverId: 'java',
       rootPath: '/root',
@@ -50,30 +50,10 @@ describe('StatusStripLspMenu', () => {
     const trigger: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
       '.lsp-status-menu__trigger',
     );
-    // The trigger names the category; the server's own name and state live in the menu it opens, while
-    // its aggregate state is carried by the trigger's modifier class.
-    expect(trigger?.textContent).toContain('Language Servers');
-    expect(trigger?.classList).toContain('lsp-status-menu__trigger--starting');
-  });
-
-  it('render_whenSeveralServers_stillLabelsTheCategory', () => {
-    status.register('/root::java', {
-      serverId: 'java',
-      rootPath: '/root',
-      restart: (): void => undefined,
-    });
-    status.register('/root::typescript', {
-      serverId: 'typescript',
-      rootPath: '/root',
-      restart: (): void => undefined,
-    });
-    rootPath.set('/root');
-    fixture.detectChanges();
-
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('.lsp-status-menu__trigger')
-        ?.textContent,
-    ).toContain('Language Servers');
+    // The trigger is a static icon that opens the menu; each server's own name and state live in the
+    // menu it opens rather than on the trigger.
+    expect(trigger).not.toBeNull();
+    expect(trigger?.getAttribute('title')).toBe('Language Servers');
   });
 
   it('restart_delegatesToTheStatusRegistry', () => {
