@@ -367,6 +367,58 @@ describe('AgentChat', () => {
     expect(sent).toHaveLength(0);
   });
 
+  /**
+   * Builds a transcript of the given number of user messages, numbered from one.
+   * @param count How many messages to create.
+   * @returns Returns the messages.
+   */
+  function userMessages(count: number): readonly AgentItem[] {
+    return Array.from(
+      { length: count },
+      (_: unknown, index: number): AgentItem => ({
+        id: `m-${index + 1}`,
+        kind: 'user',
+        text: `message ${index + 1}`,
+      }),
+    );
+  }
+
+  it('rows_whenTranscriptExceedsTheWindow_rendersOnlyTheMostRecentAndOffersTheRest', () => {
+    items.set(userMessages(250));
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    // Only the most-recent 200 of 250 are in the DOM; the oldest 50 are offered by the affordance.
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(200);
+    expect(host.querySelector('.agent__earlier')?.textContent).toContain('Show 50 earlier');
+    // The window is anchored to the tail: the first rendered bubble is message 51, not message 1.
+    const first: Element | null = host.querySelector('.agent__message--user .agent__bubble');
+    expect(first?.innerHTML).toContain('message 51');
+  });
+
+  it('rows_whenTranscriptWithinTheWindow_rendersEveryRowWithNoAffordance', () => {
+    items.set(userMessages(10));
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
+    expect(host.querySelector('.agent__earlier')).toBeNull();
+  });
+
+  it('showEarlier_whenCalled_revealsTheNextBatchOfOlderRows', () => {
+    items.set(userMessages(250));
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(200);
+
+    component.showEarlier();
+    fixture.detectChanges();
+
+    // One batch (200) more than the window covers all 250, so the affordance disappears.
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(250);
+    expect(host.querySelector('.agent__earlier')).toBeNull();
+  });
+
   it('historyKeys_whenArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
     items.set([
       { id: 'item-1', kind: 'user', text: 'first prompt' },

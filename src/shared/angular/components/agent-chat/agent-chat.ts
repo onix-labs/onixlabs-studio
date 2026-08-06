@@ -62,6 +62,27 @@ import { friendlyToolLabel, technicalToolName } from './tool-summary';
 const BOTTOM_THRESHOLD_PX: number = 24;
 
 /**
+ * How many of the most-recent top-level transcript rows the conversation renders by default. Older
+ * rows are kept in memory but left out of the DOM, so a very long conversation costs a bounded number
+ * of bubbles to render and — crucially — a bounded amount of change-detection work per keystroke in
+ * the composer (every rendered bubble's bindings are re-checked when the draft signal changes). Rows
+ * beyond the window are revealed in {@link CONVERSATION_WINDOW_CHUNK}-sized batches on demand.
+ */
+const CONVERSATION_WINDOW: number = 200;
+
+/**
+ * How many further older rows are revealed each time earlier history is loaded (by the affordance at
+ * the top of the list, or by scrolling to the top).
+ */
+const CONVERSATION_WINDOW_CHUNK: number = 200;
+
+/**
+ * How close (px) to the top of the message list triggers loading the next batch of earlier rows, so a
+ * reader scrolling up back through history keeps finding more without reaching for the button.
+ */
+const TOP_THRESHOLD_PX: number = 96;
+
+/**
  * How many characters of a raw tool payload (full input or output) show before it is clipped behind
  * the "Show all" affordance. The full text is always present on the item; this only bounds what an
  * expanded tool row renders by default.
@@ -481,6 +502,20 @@ export class AgentChat implements OnInit {
    * pauses it and scrolling back down resumes it. Reset to true on send so a new turn re-pins.
    */
   private readonly atBottom: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds how many of the most-recent top-level rows the list renders (see {@link CONVERSATION_WINDOW}).
+   * Grows by {@link CONVERSATION_WINDOW_CHUNK} as the reader loads earlier history; only ever caps
+   * rendering when the transcript is longer than the window.
+   */
+  private readonly windowSize: WritableSignal<number> = signal<number>(CONVERSATION_WINDOW);
+
+  /**
+   * Holds the reader's distance from the bottom of the list (px) captured just before earlier rows are
+   * loaded, so their prepend can be absorbed by restoring that distance — keeping the viewport visually
+   * still rather than jumping. Null when no load is pending.
+   */
+  private pendingScrollAnchor: number | null = null;
 
   /**
    * Gets the composer's live word count, labelled for the hint line.
@@ -1035,6 +1070,27 @@ export class AgentChat implements OnInit {
   );
 
   /**
+   * Gets the rows actually rendered: the most-recent {@link windowSize} top-level rows. Slicing the
+   * top-level list keeps each row (and its nested sub-agent lane) intact, and stays anchored to the
+   * tail as the transcript grows, so streaming and follow-the-tail are unaffected.
+   */
+  protected readonly windowedRows: Signal<readonly TranscriptRow[]> = computed(
+    (): readonly TranscriptRow[] => {
+      const rows: readonly TranscriptRow[] = this.rows();
+      const size: number = this.windowSize();
+      return rows.length <= size ? rows : rows.slice(rows.length - size);
+    },
+  );
+
+  /**
+   * Gets how many older top-level rows are held back from the DOM — the count offered by the
+   * "load earlier" affordance, and zero when the whole transcript is rendered.
+   */
+  protected readonly earlierCount: Signal<number> = computed(
+    (): number => this.rows().length - this.windowedRows().length,
+  );
+
+  /**
    * Initializes a new instance of the {@link AgentChat} class, lighting the hosting tab's attention dot
    * while the conversation awaits a permission decision in the background.
    */
@@ -1095,6 +1151,21 @@ export class AgentChat implements OnInit {
         element.scrollTop = element.scrollHeight;
       }
     });
+
+    // After earlier rows are prepended, restore the reader's distance from the bottom so the content
+    // they were reading stays put rather than jumping down by the height of the newly-revealed rows.
+    afterRenderEffect((): void => {
+      this.windowedRows();
+      const anchor: number | null = this.pendingScrollAnchor;
+      if (anchor === null) {
+        return;
+      }
+      this.pendingScrollAnchor = null;
+      const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+      if (element !== undefined) {
+        element.scrollTop = element.scrollHeight - anchor;
+      }
+    });
   }
 
   /**
@@ -1151,6 +1222,26 @@ export class AgentChat implements OnInit {
   public onScroll(element: HTMLElement): void {
     const distance: number = element.scrollHeight - element.scrollTop - element.clientHeight;
     this.atBottom.set(distance <= BOTTOM_THRESHOLD_PX);
+    // Reaching the top pulls the next batch of older rows into view, keeping the scroll position
+    // stable (see the anchor-restore effect). Guarded so the restore's landing does not re-trigger.
+    if (
+      element.scrollTop <= TOP_THRESHOLD_PX &&
+      this.earlierCount() > 0 &&
+      this.pendingScrollAnchor === null
+    ) {
+      this.showEarlier(element);
+    }
+  }
+
+  /**
+   * Reveals the next batch of older rows, anchoring the scroll position to the bottom so the prepend
+   * does not shift what the reader is looking at.
+   * @param element The scrolling message list, when a scroll position should be preserved.
+   */
+  public showEarlier(element?: HTMLElement): void {
+    const list: HTMLElement | undefined = element ?? this.messagesRef()?.nativeElement;
+    this.pendingScrollAnchor = list !== undefined ? list.scrollHeight - list.scrollTop : null;
+    this.windowSize.update((size: number): number => size + CONVERSATION_WINDOW_CHUNK);
   }
 
   /**

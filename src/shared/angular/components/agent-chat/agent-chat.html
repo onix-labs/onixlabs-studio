@@ -13,7 +13,20 @@
       </div>
     }
 
-    @for (row of rows(); track row.id) {
+    @if (earlierCount() > 0) {
+      <div class="agent__earlier">
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CARET_UP"
+          [label]="'Show ' + earlierCount() + ' earlier'"
+          ariaLabel="Show earlier messages"
+          (click)="showEarlier()"
+        />
+      </div>
+    }
+
+    @for (row of windowedRows(); track row.id) {
       @switch (row.kind) {
         @case ('user') {
           <div class="agent__message agent__message--user">
