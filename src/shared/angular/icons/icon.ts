@@ -524,14 +524,9 @@ export class Icon {
   public static readonly ARROW_DOWN: Icon = new Icon('ph ph-arrow-down');
 
   /**
-   * Gets the commits-to-push (bent up arrow) icon shown on the workspace status bar's ahead count.
+   * Gets the ahead/behind (up-down arrows) icon shown on the workspace status bar's sync count.
    */
-  public static readonly COMMITS_AHEAD: Icon = new Icon('ph ph-arrow-bend-left-up');
-
-  /**
-   * Gets the commits-to-pull (bent down arrow) icon shown on the workspace status bar's behind count.
-   */
-  public static readonly COMMITS_BEHIND: Icon = new Icon('ph ph-arrow-bend-right-down');
+  public static readonly COMMITS_SYNC: Icon = new Icon('ph ph-arrows-down-up');
 
   /**
    * Gets the workspace-folder icon shown on the workspace status bar's name segment.
