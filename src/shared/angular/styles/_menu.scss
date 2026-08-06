@@ -362,10 +362,10 @@
   max-block-size: 24rem;
   overflow-y: auto;
   padding: 0.25rem;
-  // Lift the upward-opening flyout to sit just above the status strip, and tuck it slightly in from the
-  // strip's right edge.
+  // Lift the upward-opening flyout to sit just above the status strip, and pull it out toward the
+  // strip's right edge (a negative inline-end margin shifts it right, past the button's right edge).
   margin-block-end: 0.75rem;
-  margin-inline-end: 0.3125rem;
+  margin-inline-end: -0.4375rem;
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
