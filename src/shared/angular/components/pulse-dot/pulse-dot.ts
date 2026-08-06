@@ -17,10 +17,10 @@ export type PulseTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' 
  * A small round status dot, optionally pulsing. THE status dot, used everywhere a status dot is used,
  * so the shape, size, colour, and pulse live in one place rather than being redrawn per surface.
  *
- * The dot itself is always solid; when {@link pulse} is set it emits a ring that grows out of the
- * dot's edge — from nothing to a few pixels — fading to transparent as it grows, then repeats. The
- * ring is a box-shadow spread, so it never affects layout (a row of dots stays aligned whether or not
- * they pulse). Colour comes from {@link tone}; size from {@link size}.
+ * The dot itself is always solid; when {@link pulse} is set it fades its opacity in and out — from
+ * fully opaque down to 10% and back — indefinitely. There's no ring, so it never affects layout (a row
+ * of dots stays aligned whether or not they pulse). Colour comes from {@link tone}; size from
+ * {@link size}.
  */
 @Component({
   selector: 'app-pulse-dot',
@@ -54,10 +54,10 @@ export class PulseDot {
   public readonly pulse: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets the dot's diameter in rem. Defaults to 0.5rem; a denser surface (a compact list row) may ask
-   * for a little less.
+   * Gets the dot's diameter in rem. Defaults to 0.25rem (4px); a roomier surface may ask for a little
+   * more.
    */
-  public readonly size: InputSignal<number> = input<number>(0.5);
+  public readonly size: InputSignal<number> = input<number>(0.25);
 
   /**
    * Gets the diameter as a rem length, for the host's size custom property.

@@ -9,8 +9,8 @@
   display: inline-block;
   flex: none;
   position: relative;
-  inline-size: var(--pulse-dot-size, 0.5rem);
-  block-size: var(--pulse-dot-size, 0.5rem);
+  inline-size: var(--pulse-dot-size, 0.25rem);
+  block-size: var(--pulse-dot-size, 0.25rem);
   border-radius: 50%;
   background: var(--pulse-dot-color);
 }
@@ -40,28 +40,19 @@
   --pulse-dot-color-rgb: var(--info-color-rgb);
 }
 
-// The pulse turns the dot into a donut, then ripples it away: first the fill fades to transparent
-// while an opaque 2px ring grows out of the dot's edge (leaving a hole where the dot was); then the
-// fill returns while the ring keeps growing to 4px and fades to transparent, rippling outward. The
-// ring is a box-shadow spread rather than a real border, so it grows outward and never affects
-// layout, and the fully-transparent ring at 100% matches the 0% state for a seamless loop.
+// The whole dot simply fades its opacity in and out — no ring, no layout change. It pulses from fully
+// opaque down to 10% and back, indefinitely.
 :host(.pulse-dot--pulsing) {
-  animation: pulse-dot-donut 1.4s linear infinite;
+  animation: pulse-dot-fade 1.4s ease-in-out infinite;
 }
 
-@keyframes pulse-dot-donut {
-  0% {
-    background: rgba(var(--pulse-dot-color-rgb), 1);
-    box-shadow: 0 0 0 0 rgba(var(--pulse-dot-color-rgb), 0);
+@keyframes pulse-dot-fade {
+  0%,
+  100% {
+    opacity: 1;
   }
 
   50% {
-    background: rgba(var(--pulse-dot-color-rgb), 0);
-    box-shadow: 0 0 0 0.125rem rgba(var(--pulse-dot-color-rgb), 1);
-  }
-
-  100% {
-    background: rgba(var(--pulse-dot-color-rgb), 1);
-    box-shadow: 0 0 0 0.25rem rgba(var(--pulse-dot-color-rgb), 0);
+    opacity: 0.1;
   }
 }

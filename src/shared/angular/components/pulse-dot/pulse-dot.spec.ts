@@ -39,7 +39,7 @@ describe('PulseDot', () => {
     expect(host.classList.contains('pulse-dot--danger')).toBe(false);
   });
 
-  it('pulse_whenSet_marksTheHost_soTheStylesheetAnimatesTheRing', () => {
+  it('pulse_whenSet_marksTheHost_soTheStylesheetAnimatesTheDot', () => {
     render({ pulse: true });
 
     expect(host.classList.contains('pulse-dot--pulsing')).toBe(true);
