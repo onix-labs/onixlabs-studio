@@ -1210,6 +1210,21 @@ export class LspClient implements OnDestroy {
           }
         }
         return result.success;
+      })
+      .catch((error: unknown): boolean => {
+        // A rejected start invoke (for example the main process stalling under a heavy build) would
+        // otherwise leave the session registered as starting forever, and — because this rejected
+        // promise stays cached in `this.sessions` — every later open would re-throw it until the app
+        // restarts. Treat it exactly like a failed start: surface it, record the failure for the
+        // cooldown, and forget the session so a later sync can retry.
+        this.status.setState(
+          sessionId,
+          'unavailable',
+          error instanceof Error ? error.message : 'The language server failed to start.',
+        );
+        this.recordStartFailure(sessionId);
+        this.sessions.delete(sessionId);
+        return false;
       });
     this.sessions.set(sessionId, pending);
     return pending;

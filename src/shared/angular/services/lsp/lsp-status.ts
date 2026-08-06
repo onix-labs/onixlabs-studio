@@ -6,6 +6,17 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 export type LspServerState = 'starting' | 'ready' | 'unavailable';
 
 /**
+ * How long a server may sit in its starting state before the watchdog gives up on it and marks it
+ * unavailable. Readiness is inferred from behavioural signals (first diagnostics, an answered feature
+ * request, an initialization notification); a server that starts but never delivers one of those would
+ * otherwise spin in the status strip forever. This backstop bounds that wait, leaving the session with
+ * its restart affordance rather than an endless spinner. It sits comfortably above the main process's
+ * 60-second `initialize` timeout — a genuine handshake failure resolves as unavailable well before the
+ * watchdog fires — so this only catches the case where a started server never proves itself ready.
+ */
+const READINESS_WATCHDOG_MS: number = 120_000;
+
+/**
  * Holds a tracked server's identity, current state, and the callback that restarts it. One entry
  * exists per running session; the owning {@link import('./lsp-client').LspClient} supplies the
  * restart callback so a restart re-opens that client's documents against a fresh server.
@@ -101,6 +112,15 @@ export class LspStatus {
   >(new Map<string, ServerEntry>());
 
   /**
+   * Holds the pending readiness-watchdog timer for each session still in its starting state, so it can
+   * be re-armed on a fresh start and cleared once the server settles or is removed.
+   */
+  private readonly watchdogs: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
    * Gets every running server, ordered by language name then root, for the drop-up menu.
    */
   public readonly servers: Signal<readonly LspServer[]> = computed((): readonly LspServer[] =>
@@ -140,6 +160,7 @@ export class LspStatus {
       restart: server.restart,
     });
     this.entries.set(next);
+    this.armWatchdog(sessionId);
   }
 
   /**
@@ -156,6 +177,13 @@ export class LspStatus {
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     next.set(sessionId, { ...current, state, detail });
     this.entries.set(next);
+    // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable
+    // retires it.
+    if (state === 'starting') {
+      this.armWatchdog(sessionId);
+    } else {
+      this.clearWatchdog(sessionId);
+    }
   }
 
   /**
@@ -187,6 +215,44 @@ export class LspStatus {
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     next.delete(sessionId);
     this.entries.set(next);
+    this.clearWatchdog(sessionId);
+  }
+
+  /**
+   * Arms (or re-arms) the readiness watchdog for a session that has just entered its starting state.
+   * When it fires, a session still stuck in starting is marked unavailable so it reads as recoverable
+   * (with its restart affordance) rather than spinning forever; a later readiness signal that beats the
+   * watchdog clears it via {@link setState}, and a genuinely ready server that answers slowly afterwards
+   * still flips itself back to ready.
+   * @param sessionId The session to watch.
+   */
+  private armWatchdog(sessionId: string): void {
+    this.clearWatchdog(sessionId);
+    this.watchdogs.set(
+      sessionId,
+      setTimeout((): void => {
+        this.watchdogs.delete(sessionId);
+        if (this.entries().get(sessionId)?.state === 'starting') {
+          this.setState(
+            sessionId,
+            'unavailable',
+            'The server did not report ready in time. Restart it to try again.',
+          );
+        }
+      }, READINESS_WATCHDOG_MS),
+    );
+  }
+
+  /**
+   * Cancels a session's pending readiness watchdog, if any.
+   * @param sessionId The session whose watchdog is cleared.
+   */
+  private clearWatchdog(sessionId: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.watchdogs.get(sessionId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.watchdogs.delete(sessionId);
+    }
   }
 
   /**
