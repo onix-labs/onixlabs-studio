@@ -370,7 +370,7 @@
   // Lift the upward-opening flyout to sit just above the status strip, and pull it out toward the
   // strip's right edge (a negative inline-end margin shifts it right, past the button's right edge).
   margin-block-end: 0.9375rem;
-  margin-inline-end: -0.5rem;
+  margin-inline-end: -0.5625rem;
   background: var(--menu-background-color);
   color: var(--menu-foreground-color);
   border: 0.0625rem solid var(--menu-border-color);
