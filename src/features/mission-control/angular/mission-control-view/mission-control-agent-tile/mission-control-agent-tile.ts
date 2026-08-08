@@ -259,6 +259,15 @@ export class MissionControlAgentTile {
   );
 
   /**
+   * Gets whether the user has manually hidden this agent — the same per-agent state the rail's hide
+   * toggle drives — so the header's hide button reflects and toggles it (independently of the blanket
+   * Hide Empty/Hide Idle suppression that also feeds {@link hidden}).
+   */
+  protected readonly manuallyHidden: Signal<boolean> = computed((): boolean =>
+    this.missionControl.isHostHidden(this.host.id),
+  );
+
+  /**
    * Initializes a new instance of the {@link MissionControlAgentTile} class, closing the local history
    * view whenever a conversation is opened (its id changes) so picking one from the list returns to the
    * chat, matching the shared panel's behaviour.
@@ -321,6 +330,15 @@ export class MissionControlAgentTile {
    */
   protected onStop(): void {
     this.host.run?.stop();
+  }
+
+  /**
+   * Toggles whether this agent is manually hidden, from the header's hide button — the same per-agent
+   * toggle the rail row carries. Hiding collapses this column (and its rail row's state); it is shown
+   * again from the rail, which stays visible.
+   */
+  protected toggleHidden(): void {
+    this.missionControl.toggleHostHidden(this.host.id);
   }
 
   /**

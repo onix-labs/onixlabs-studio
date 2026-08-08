@@ -75,6 +75,17 @@
         />
       }
     }
+    <!-- The per-agent hide toggle, mirroring the rail row's, sitting immediately left of the Focus
+         (modal) button. Hiding collapses this column; it is shown again from the rail. -->
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="manuallyHidden() ? Icon.AGENT_HIDDEN : Icon.AGENT_VISIBLE"
+      [pressed]="manuallyHidden()"
+      [ariaLabel]="manuallyHidden() ? 'Show agent column' : 'Hide agent column'"
+      [tooltip]="manuallyHidden() ? 'Show agent column' : 'Hide agent column'"
+      (click)="toggleHidden()"
+    />
     <app-button
       variant="none"
       size="small"
