@@ -1,9 +1,13 @@
 import {
   baseAddressFromIndex,
   fetchLatestVersion,
+  fetchSearch,
   FlatContainerCache,
   latestStableFromVersions,
+  parseNuGetSearch,
+  searchServiceFromIndex,
 } from './nuget-registry';
+import { PackageSearchResult } from '@shared/api/package-management';
 import { NuGetSource } from './nuget-sources';
 import { HttpFetch, HttpResponse } from './package-manager';
 
@@ -23,6 +27,7 @@ function response(ok: boolean, body: unknown): HttpResponse {
 const SERVICE_INDEX: unknown = {
   resources: [
     { '@type': 'PackageBaseAddress/3.0.0', '@id': 'https://api.nuget.org/v3-flatcontainer/' },
+    { '@type': 'SearchQueryService/3.5.0', '@id': 'https://azuresearch-usnc.nuget.org/query' },
   ],
 };
 
@@ -107,5 +112,74 @@ describe('fetchLatestVersion', () => {
         : Promise.resolve(response(false, {}));
     const cache: FlatContainerCache = new Map<string, string | null>();
     await expect(fetchLatestVersion('Missing', [nugetOrg], fetchFn, cache)).resolves.toBeNull();
+  });
+});
+
+describe('searchServiceFromIndex', () => {
+  it('reads the versioned SearchQueryService resource', () => {
+    expect(searchServiceFromIndex(SERVICE_INDEX)).toBe('https://azuresearch-usnc.nuget.org/query');
+  });
+
+  it('is null when absent', () => {
+    expect(searchServiceFromIndex({ resources: [] })).toBeNull();
+  });
+});
+
+describe('parseNuGetSearch', () => {
+  it('maps result data and the total, tagging the source', () => {
+    const body: unknown = {
+      totalHits: 2,
+      data: [
+        { id: 'Serilog', version: '3.1.1', description: 'Logging', totalDownloads: 500_000_000, verified: true },
+        { id: 'NoMeta' },
+      ],
+    };
+    const parsed: { items: unknown[]; total: number } = parseNuGetSearch(body, 'nuget.org');
+    expect(parsed.total).toBe(2);
+    expect(parsed.items).toEqual([
+      {
+        name: 'Serilog',
+        version: '3.1.1',
+        description: 'Logging',
+        downloads: 500_000_000,
+        verified: true,
+        sourceName: 'nuget.org',
+      },
+      { name: 'NoMeta', version: '', description: '', downloads: null, verified: false, sourceName: 'nuget.org' },
+    ]);
+  });
+});
+
+describe('fetchSearch', () => {
+  it('resolves the search service, queries it with auth, and reports paging', async () => {
+    const seenAuth: (string | undefined)[] = [];
+    const fetchFn: HttpFetch = (url: string, init?: { headers?: Record<string, string> }): Promise<HttpResponse> => {
+      seenAuth.push(init?.headers?.['Authorization']);
+      if (url.endsWith('/v3/index.json')) {
+        return Promise.resolve(response(true, SERVICE_INDEX));
+      }
+      expect(url).toContain('https://azuresearch-usnc.nuget.org/query?q=json');
+      expect(url).toContain('prerelease=true');
+      return Promise.resolve(
+        response(true, { totalHits: 10, data: [{ id: 'Json.More', version: '1.0.0' }] }),
+      );
+    };
+    const source: { name: string; url: string; headers: Record<string, string> } = {
+      name: 'nuget.org',
+      url: 'https://api.nuget.org/v3/index.json',
+      headers: { Authorization: 'Basic abc' },
+    };
+    const cache: FlatContainerCache = new Map<string, string | null>();
+    const result: PackageSearchResult = await fetchSearch(
+      source,
+      'json',
+      { skip: 0, take: 1, prerelease: true },
+      fetchFn,
+      cache,
+    );
+    expect(result.total).toBe(10);
+    expect(result.hasMore).toBe(true);
+    expect(result.items.map((item): string => item.name)).toEqual(['Json.More']);
+    expect(seenAuth).toContain('Basic abc');
   });
 });

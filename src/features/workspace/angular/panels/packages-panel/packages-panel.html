@@ -1,76 +1,164 @@
-<app-panel-toolbar role="group" aria-label="Package Management">
+<app-panel-toolbar role="group" aria-label="Package view">
   <app-button
     variant="none"
-    [icon]="Icon.ARROW_UP"
-    label="Updates only"
-    [pressed]="packages.outdatedOnly()"
-    tooltip="Show only packages with updates"
-    (click)="toggleOutdatedOnly()"
+    [icon]="Icon.PACKAGES"
+    label="Installed"
+    [pressed]="mode() === 'installed'"
+    tooltip="Installed dependencies"
+    (click)="setMode('installed')"
   />
   <app-button
     variant="none"
-    [icon]="Icon.REFRESH"
-    label="Refresh"
-    tooltip="Re-check installed and latest versions"
-    (click)="refresh()"
+    [icon]="Icon.SEARCH"
+    label="Explore"
+    [pressed]="mode() === 'explore'"
+    tooltip="Browse and search packages"
+    (click)="setMode('explore')"
   />
-  <span class="panel-toolbar__spacer"></span>
-  @if (packages.outdatedCount() > 0) {
-    <span class="packages-count packages-count--outdated">
-      <app-icon [icon]="Icon.ARROW_UP" />
-      {{ packages.outdatedCount() }}
-    </span>
-  }
 </app-panel-toolbar>
 
-@if (packages.loading() && packages.model() === null) {
-  <div class="packages-empty">
-    <app-icon [icon]="Icon.SPINNER" />
-    <p>Resolving packages…</p>
-  </div>
-} @else if (tableRows().length > 0) {
-  <app-table
-    class="packages-table"
-    [columns]="columns"
-    [rows]="tableRows()"
-    [collapsible]="true"
-    (rowClick)="onRowClick($event)"
-    (sortChange)="onSortChange($event)"
-  >
-    <ng-template appTableGroup let-row>
-      <span class="packages-group">
-        <app-icon class="packages-group__icon" [icon]="Icon.PROJECT" />
-        <span class="packages-group__name">{{ group(row).name }}</span>
-        @if (group(row).outdated > 0) {
-          <span class="packages-group__badge">{{ group(row).outdated }}</span>
-        }
+@if (mode() === 'installed') {
+  <app-panel-toolbar role="group" aria-label="Installed packages">
+    <app-button
+      variant="none"
+      [icon]="Icon.ARROW_UP"
+      label="Updates only"
+      [pressed]="packages.outdatedOnly()"
+      tooltip="Show only packages with updates"
+      (click)="toggleOutdatedOnly()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.REFRESH"
+      label="Refresh"
+      tooltip="Re-check installed and latest versions"
+      (click)="refresh()"
+    />
+    <span class="panel-toolbar__spacer"></span>
+    @if (packages.outdatedCount() > 0) {
+      <span class="packages-count packages-count--outdated">
+        <app-icon [icon]="Icon.ARROW_UP" />
+        {{ packages.outdatedCount() }}
       </span>
-    </ng-template>
+    }
+  </app-panel-toolbar>
 
-    <ng-template appTableRow let-row>
-      <td [class]="'packages-name packages-name--' + pkg(row).status">
-        <app-icon class="packages-name__icon" [icon]="iconFor(pkg(row).status)" />
-        <span class="packages-name__text">{{ pkg(row).name }}</span>
-      </td>
-      <td class="packages-scope">{{ pkg(row).scope }}</td>
-      <td class="packages-installed">{{ pkg(row).installed ?? pkg(row).requested }}</td>
-      <td class="packages-latest packages-latest--{{ pkg(row).status }}">
-        @if (pkg(row).status === 'outdated') {
-          {{ pkg(row).latest }}
-        } @else {
-          <span class="packages-latest__dash">—</span>
-        }
-      </td>
-    </ng-template>
-  </app-table>
-} @else if (packages.model() !== null && packages.outdatedOnly()) {
-  <div class="packages-empty">
-    <app-icon [icon]="Icon.CHECK" />
-    <p>Everything is up to date.</p>
-  </div>
+  @if (packages.loading() && packages.model() === null) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.SPINNER" />
+      <p>Resolving packages…</p>
+    </div>
+  } @else if (installedRows().length > 0) {
+    <app-table
+      class="packages-table"
+      [columns]="installedColumns"
+      [rows]="installedRows()"
+      [collapsible]="true"
+      (rowClick)="onRowClick($event)"
+      (sortChange)="onInstalledSort($event)"
+    >
+      <ng-template appTableGroup let-row>
+        <span class="packages-group">
+          <app-icon class="packages-group__icon" [icon]="Icon.PROJECT" />
+          <span class="packages-group__name">{{ group(row).name }}</span>
+          @if (group(row).outdated > 0) {
+            <span class="packages-group__badge">{{ group(row).outdated }}</span>
+          }
+        </span>
+      </ng-template>
+
+      <ng-template appTableRow let-row>
+        <td [class]="'packages-name packages-name--' + pkg(row).status">
+          <app-icon class="packages-name__icon" [icon]="iconFor(pkg(row).status)" />
+          <span class="packages-name__text">{{ pkg(row).name }}</span>
+        </td>
+        <td class="packages-scope">{{ pkg(row).scope }}</td>
+        <td class="packages-installed">{{ pkg(row).installed ?? pkg(row).requested }}</td>
+        <td class="packages-latest packages-latest--{{ pkg(row).status }}">
+          @if (pkg(row).status === 'outdated') {
+            {{ pkg(row).latest }}
+          } @else {
+            <span class="packages-latest__dash">—</span>
+          }
+        </td>
+      </ng-template>
+    </app-table>
+  } @else if (packages.model() !== null && packages.outdatedOnly()) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.CHECK" />
+      <p>Everything is up to date.</p>
+    </div>
+  } @else {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.SEARCH" />
+      <p>No packages found.</p>
+    </div>
+  }
 } @else {
-  <div class="packages-empty">
-    <app-icon [icon]="Icon.SEARCH" />
-    <p>No packages found.</p>
-  </div>
+  <app-panel-toolbar role="group" aria-label="Explore packages">
+    @if (explorer.sources().length > 0) {
+      <app-dropdown
+        [options]="sourceOptions()"
+        [value]="explorer.selectedSource() ?? ''"
+        (valueChange)="explorer.selectSource($event)"
+        ariaLabel="Package source"
+      />
+    }
+    <app-text-field
+      class="packages-search"
+      [value]="explorer.query()"
+      (valueChange)="explorer.setQuery($event)"
+      placeholder="Search packages…"
+      ariaLabel="Search packages"
+    />
+    <span class="panel-toolbar__spacer"></span>
+    <span class="packages-prerelease">
+      <app-toggle
+        [checked]="explorer.prerelease()"
+        (checkedChange)="explorer.setPrerelease($event)"
+        ariaLabel="Include prereleases"
+      />
+      Prereleases
+    </span>
+  </app-panel-toolbar>
+
+  @if (explorer.sources().length === 0) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.INFO" />
+      <p>Exploration isn't available for this workspace.</p>
+    </div>
+  } @else {
+    <app-table
+      class="packages-table"
+      [columns]="exploreColumns"
+      [rows]="exploreRows()"
+      (sortChange)="onExploreSort($event)"
+    >
+      <ng-template appTableRow let-row>
+        <td class="packages-explore-name">
+          @if (item(row).verified) {
+            <app-icon class="packages-explore-name__verified" [icon]="Icon.CHECK" [size]="0.8" />
+          }
+          <span class="packages-explore-name__text">{{ item(row).name }}</span>
+        </td>
+        <td class="packages-version">{{ item(row).version }}</td>
+        <td class="packages-downloads">{{ formatDownloads(item(row).downloads) }}</td>
+        <td class="packages-desc">{{ item(row).description }}</td>
+      </ng-template>
+    </app-table>
+
+    <div class="packages-footer">
+      @if (explorer.loading()) {
+        <app-icon [icon]="Icon.SPINNER" />
+        <span>Loading…</span>
+      } @else if (exploreRows().length === 0) {
+        <span>No packages found.</span>
+      } @else {
+        <span class="packages-footer__count">{{ exploreRows().length }} of {{ explorer.total() }}</span>
+        @if (explorer.hasMore()) {
+          <app-button variant="none" label="Load more" (click)="explorer.loadMore()" />
+        }
+      }
+    </div>
+  }
 }

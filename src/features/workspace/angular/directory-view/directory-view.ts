@@ -74,6 +74,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { PackageModel } from '@features/workspace/angular/project/package-model';
+import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { GitBranch } from '@shared/angular/services/repository/repository-data';
@@ -179,6 +180,7 @@ const RUN_SPINNER_MINIMUM_MS: number = 5_000;
     LspClient,
     SolutionModel,
     PackageModel,
+    PackageExplorer,
     FileOpener,
     WorkspaceGit,
     Repository,

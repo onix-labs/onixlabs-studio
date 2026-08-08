@@ -87,6 +87,93 @@ export interface PackageProject {
 }
 
 /**
+ * A package source available to browse and search for a workspace root (a configured registry/feed).
+ * Only the name is surfaced to the renderer — never any credential.
+ */
+export interface PackageSourceInfo {
+  /**
+   * Gets the source's display name (for example `nuget.org` or a private feed's name).
+   */
+  readonly name: string;
+}
+
+/**
+ * The paging and filter options for a package search.
+ */
+export interface PackageSearchOptions {
+  /**
+   * Gets how many results to skip (for paging).
+   */
+  readonly skip: number;
+
+  /**
+   * Gets how many results to take.
+   */
+  readonly take: number;
+
+  /**
+   * Gets whether prerelease versions are included.
+   */
+  readonly prerelease: boolean;
+}
+
+/**
+ * A single result of a package search/browse: a package available on a source, with the metadata the
+ * exploration view renders.
+ */
+export interface PackageSearchItem {
+  /**
+   * Gets the package name/id.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the latest (or latest matching the prerelease filter) version.
+   */
+  readonly version: string;
+
+  /**
+   * Gets the package description, or an empty string when none is published.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the total download count, or null when the source does not report it.
+   */
+  readonly downloads: number | null;
+
+  /**
+   * Gets whether the source marks the package as verified/owned.
+   */
+  readonly verified: boolean;
+
+  /**
+   * Gets the name of the source the result came from.
+   */
+  readonly sourceName: string;
+}
+
+/**
+ * A page of package search/browse results.
+ */
+export interface PackageSearchResult {
+  /**
+   * Gets the results on this page.
+   */
+  readonly items: readonly PackageSearchItem[];
+
+  /**
+   * Gets the total number of matches the source reports (across all pages).
+   */
+  readonly total: number;
+
+  /**
+   * Gets whether more results are available beyond this page.
+   */
+  readonly hasMore: boolean;
+}
+
+/**
  * A package-management model for a workspace root: the projects it holds and the packages each
  * declares.
  */

@@ -10,7 +10,12 @@ import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { ProjectItems, ProjectModel } from '@shared/api/project-system';
-import { PackageManagerModel } from '@shared/api/package-management';
+import {
+  PackageManagerModel,
+  PackageSearchOptions,
+  PackageSearchResult,
+  PackageSourceInfo,
+} from '@shared/api/package-management';
 import { FileInfo } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { PackageChannel } from '@shared/api/package-channels';
@@ -223,6 +228,21 @@ export class WorkspaceManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> =>
         this.loadPackageModel(root),
     );
+    ipcMain.handle(
+      PackageChannel.Sources,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly PackageSourceInfo[]> =>
+        this.loadPackageSources(root),
+    );
+    ipcMain.handle(
+      PackageChannel.Search,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        sourceName: unknown,
+        query: unknown,
+        options: unknown,
+      ): Promise<PackageSearchResult> => this.searchPackages(root, sourceName, query, options),
+    );
   }
 
   /**
@@ -241,6 +261,65 @@ export class WorkspaceManager {
       return null;
     }
     return manager.load(root, this.httpFetch);
+  }
+
+  /**
+   * Lists the package sources available to browse for an open workspace root. Confined to open roots.
+   * @param root The candidate workspace root.
+   * @returns Returns the sources, or an empty list when the root is not open or has no searchable manager.
+   */
+  private async loadPackageSources(root: unknown): Promise<readonly PackageSourceInfo[]> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return [];
+    }
+    const manager: PackageManager | null = await packageManagers.match(root);
+    return (await manager?.listSources?.(root)) ?? [];
+  }
+
+  /**
+   * Searches (or browses) a source's packages for an open workspace root. Confined to open roots; the
+   * paging options are clamped so the renderer cannot request an unbounded page.
+   * @param root The candidate workspace root.
+   * @param sourceName The source to search.
+   * @param query The search text.
+   * @param options The paging and prerelease options.
+   * @returns Returns a page of results, empty when the root is not open or the manager cannot search.
+   */
+  private async searchPackages(
+    root: unknown,
+    sourceName: unknown,
+    query: unknown,
+    options: unknown,
+  ): Promise<PackageSearchResult> {
+    const empty: PackageSearchResult = { items: [], total: 0, hasMore: false };
+    if (
+      typeof root !== 'string' ||
+      !this.workspace.isRoot(root) ||
+      typeof sourceName !== 'string' ||
+      typeof query !== 'string'
+    ) {
+      return empty;
+    }
+    const manager: PackageManager | null = await packageManagers.match(root);
+    if (manager?.search === undefined) {
+      return empty;
+    }
+    return manager.search(root, sourceName, query, this.searchOptions(options), this.httpFetch);
+  }
+
+  /**
+   * Sanitises the renderer-supplied search options: a non-negative skip and a positive take bounded to
+   * a sane page size, with prerelease defaulting off.
+   * @param options The candidate options.
+   * @returns Returns the clamped options.
+   */
+  private searchOptions(options: unknown): PackageSearchOptions {
+    const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
+      typeof options === 'object' && options !== null ? options : {};
+    const skip: number = typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
+    const take: number =
+      typeof record.take === 'number' && record.take > 0 ? Math.min(Math.floor(record.take), 100) : 50;
+    return { skip, take, prerelease: record.prerelease === true };
   }
 
   /**

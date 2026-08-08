@@ -107,6 +107,55 @@
   opacity: 0.4;
 }
 
+// The Explore search box grows to fill the tool-strip between the source picker and the toggle.
+.packages-search {
+  flex: 1 1 auto;
+  min-inline-size: 6rem;
+}
+
+// The prerelease toggle sits with its label at the trailing end of the tool-strip.
+.packages-prerelease {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+// The Explore package-name cell: an optional verified tick before the name.
+.packages-explore-name {
+  &__verified {
+    margin-inline-end: 0.3rem;
+    color: var(--success-color);
+    vertical-align: -0.05em;
+  }
+}
+
+.packages-version,
+.packages-downloads {
+  font-variant-numeric: tabular-nums;
+}
+
+.packages-desc {
+  opacity: 0.8;
+}
+
+// The Explore footer: the loaded/total count and the load-more control.
+.packages-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.625rem;
+  font-size: 0.76rem;
+  color: var(--dock-tab-foreground-color);
+  border-block-start: 1px solid var(--dock-container-background-color);
+
+  &__count {
+    opacity: 0.7;
+  }
+}
+
 // The empty / loading state, centred in the panel.
 .packages-empty {
   flex: 1 1 auto;

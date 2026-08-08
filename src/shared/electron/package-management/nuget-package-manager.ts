@@ -6,6 +6,9 @@ import {
   PackageEcosystem,
   PackageManagerModel,
   PackageProject,
+  PackageSearchOptions,
+  PackageSearchResult,
+  PackageSourceInfo,
 } from '@shared/api/package-management';
 import {
   NuGetReference,
@@ -15,7 +18,7 @@ import {
   parsePackageVersions,
   parsePackagesConfig,
 } from './nuget-manifests';
-import { fetchLatestVersion, FlatContainerCache } from './nuget-registry';
+import { fetchLatestVersion, fetchSearch, FlatContainerCache } from './nuget-registry';
 import { NuGetSource, readNuGetSources } from './nuget-sources';
 import { HttpFetch, PackageManager } from './package-manager';
 import { compareReleaseVersions, deriveStatus } from './versions';
@@ -92,6 +95,12 @@ export class NuGetPackageManager implements PackageManager {
   >();
 
   /**
+   * Caches each source's resolved search-query service URL, so browsing/paging does not refetch the
+   * service index per query.
+   */
+  private readonly searchServiceCache: FlatContainerCache = new Map<string, string | null>();
+
+  /**
    * Determines whether the root holds a .NET solution or any .NET projects.
    * @param root The absolute workspace root.
    * @returns Returns true when a solution file or at least one project is found.
@@ -151,6 +160,43 @@ export class NuGetPackageManager implements PackageManager {
       });
     }
     return { ecosystem: 'nuget', root, projects };
+  }
+
+  /**
+   * Lists the package sources available to browse for a workspace root (user + repo-root nuget.config,
+   * seeded with nuget.org). Only names are returned.
+   * @param root The absolute workspace root.
+   * @returns Returns the available sources.
+   */
+  public async listSources(root: string): Promise<readonly PackageSourceInfo[]> {
+    const sources: readonly NuGetSource[] = await readNuGetSources(root, process.env);
+    return sources.map((source: NuGetSource): PackageSourceInfo => ({ name: source.name }));
+  }
+
+  /**
+   * Searches (or browses, with an empty query) a named source's packages for a workspace root.
+   * @param root The absolute workspace root.
+   * @param sourceName The source to search.
+   * @param query The search text, or an empty string to browse.
+   * @param options The paging and prerelease options.
+   * @param fetchFn The HTTP fetch used for registry queries.
+   * @returns Returns a page of results (empty when the source is unknown or unsearchable).
+   */
+  public async search(
+    root: string,
+    sourceName: string,
+    query: string,
+    options: PackageSearchOptions,
+    fetchFn: HttpFetch,
+  ): Promise<PackageSearchResult> {
+    const sources: readonly NuGetSource[] = await readNuGetSources(root, process.env);
+    const source: NuGetSource | undefined = sources.find(
+      (candidate: NuGetSource): boolean => candidate.name === sourceName,
+    );
+    if (source === undefined) {
+      return { items: [], total: 0, hasMore: false };
+    }
+    return fetchSearch(source, query, options, fetchFn, this.searchServiceCache);
   }
 
   /**

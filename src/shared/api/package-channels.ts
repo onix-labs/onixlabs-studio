@@ -11,4 +11,14 @@ export enum PackageChannel {
    * Loads the package model for a workspace root, resolving installed and latest versions (invoke).
    */
   ModelLoad = 'package:model-load',
+
+  /**
+   * Lists the configured package sources available to browse/search for a workspace root (invoke).
+   */
+  Sources = 'package:sources',
+
+  /**
+   * Searches (or browses, with an empty query) a source's packages for a workspace root (invoke).
+   */
+  Search = 'package:search',
 }

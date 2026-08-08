@@ -9,12 +9,19 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { InstalledPackage, PackageUpdateStatus } from '@shared/api/package-management';
+import {
+  InstalledPackage,
+  PackageSearchItem,
+  PackageUpdateStatus,
+} from '@shared/api/package-management';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import {
   Table,
@@ -25,6 +32,13 @@ import {
   TableSort,
 } from '@shared/angular/components/table/table';
 import { PackageModel, PackageRow } from '@features/workspace/angular/project/package-model';
+import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
+
+/**
+ * The panel's two modes: the installed dependencies of the workspace's projects, or exploring a
+ * source's catalogue.
+ */
+type PackageMode = 'installed' | 'explore';
 
 /**
  * The payload of a project group row: the project's name, the manifest to open on click, and how many
@@ -63,10 +77,10 @@ const STATUS_ICONS: Readonly<Record<PackageUpdateStatus, Icon>> = {
 };
 
 /**
- * The table columns: the package name (flexing), its scope, the installed version, and the latest the
- * registry offers.
+ * The Installed-mode columns: the package name (flexing), its scope, the installed version, and the
+ * latest the registry offers.
  */
-const COLUMNS: readonly TableColumn[] = [
+const INSTALLED_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Package', sortable: true },
   { id: 'scope', header: 'Scope', width: '6rem', sortable: true },
   { id: 'installed', header: 'Installed', width: '7rem', align: 'end' },
@@ -74,16 +88,36 @@ const COLUMNS: readonly TableColumn[] = [
 ];
 
 /**
- * Renders the {@link PackageModel} as the body of the Package Management dock panel: a tool-strip that
- * toggles an outdated-only filter and refreshes the model, over a {@link Table} whose header stays fixed
- * while the body scrolls. Each project is a group header (click to open its manifest, with an outdated
- * badge); each package is a data row showing its scope, installed version, and the latest the registry
- * offers with an upgrade badge. Read-only — it visualises dependency and upgrade state; it does not
- * install or modify anything.
+ * The Explore-mode columns: the package name, its latest version, download count, and description.
+ */
+const EXPLORE_COLUMNS: readonly TableColumn[] = [
+  { id: 'name', header: 'Package', width: '18rem', sortable: true },
+  { id: 'version', header: 'Version', width: '7rem', align: 'end' },
+  { id: 'downloads', header: 'Downloads', width: '7rem', align: 'end', sortable: true },
+  { id: 'description', header: 'Description' },
+];
+
+/**
+ * Renders the {@link PackageModel} and {@link PackageExplorer} as the body of the Package Management
+ * dock panel, with two modes. Installed: a collapsible {@link Table} grouped by project, each package
+ * showing its scope, installed version, and the latest with an upgrade badge. Explore: a source picker,
+ * a debounced search box, and a prerelease toggle over a table of the source's packages (browse with an
+ * empty query — a private feed's full catalogue, or a public registry's popular listing). Read-only —
+ * it visualises and browses; it does not install or modify anything.
  */
 @Component({
   selector: 'app-packages-panel',
-  imports: [Button, AppIcon, PanelToolbar, Table, TableRowDef, TableGroupDef],
+  imports: [
+    Button,
+    AppIcon,
+    Dropdown,
+    TextField,
+    Toggle,
+    PanelToolbar,
+    Table,
+    TableRowDef,
+    TableGroupDef,
+  ],
   templateUrl: './packages-panel.html',
   styleUrl: './packages-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -95,9 +129,14 @@ export class PackagesPanel {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the table columns, exposed for the template.
+   * Gets the Installed-mode table columns.
    */
-  protected readonly columns: readonly TableColumn[] = COLUMNS;
+  protected readonly installedColumns: readonly TableColumn[] = INSTALLED_COLUMNS;
+
+  /**
+   * Gets the Explore-mode table columns.
+   */
+  protected readonly exploreColumns: readonly TableColumn[] = EXPLORE_COLUMNS;
 
   /**
    * Gets the dock panel descriptor this body renders. Supplied by the dock outlet; unused here because
@@ -106,9 +145,14 @@ export class PackagesPanel {
   public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
 
   /**
-   * Gets the package model rendered by this panel.
+   * Gets the installed package model rendered by this panel.
    */
   protected readonly packages: PackageModel = inject(PackageModel);
+
+  /**
+   * Gets the exploration model rendered by this panel.
+   */
+  protected readonly explorer: PackageExplorer = inject(PackageExplorer);
 
   /**
    * Holds the file opener used to open a project's manifest when its header is clicked.
@@ -116,23 +160,38 @@ export class PackagesPanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Holds the active header sort, or null when unsorted. Applied within each project group, so sorting
-   * reorders a project's packages without shuffling the projects themselves.
+   * Holds the active panel mode.
    */
-  private readonly activeSort: WritableSignal<TableSort | null> = signal<TableSort | null>(null);
+  protected readonly mode: WritableSignal<PackageMode> = signal<PackageMode>('installed');
 
   /**
-   * Gets the model's flattened rows adapted to the table's row shape: a project becomes a group header
-   * carrying its manifest and outdated count, and its packages become data rows. When a header sort is
-   * active it reorders each project's packages by the chosen column; otherwise the model's own order
-   * (outdated first) is kept.
+   * Holds the active Installed-mode sort, applied within each project group.
    */
-  protected readonly tableRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
-    const sort: TableSort | null = this.activeSort();
+  private readonly installedSort: WritableSignal<TableSort | null> = signal<TableSort | null>(null);
+
+  /**
+   * Holds the active Explore-mode sort, applied client-side to the loaded results.
+   */
+  private readonly exploreSort: WritableSignal<TableSort | null> = signal<TableSort | null>(null);
+
+  /**
+   * Gets the source options for the Explore picker.
+   */
+  protected readonly sourceOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.explorer.sources().map((source): DropdownOption => ({ value: source.name, label: source.name })),
+  );
+
+  /**
+   * Gets the Installed-mode rows adapted to the table's row shape: a project becomes a group header
+   * carrying its manifest and outdated count, its packages become data rows, sorted within each group.
+   */
+  protected readonly installedRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const sort: TableSort | null = this.installedSort();
     const result: TableRow[] = [];
     let buffer: PackageDataRow[] = [];
     const flush: () => void = (): void => {
-      for (const row of this.sortPackages(buffer, sort)) {
+      for (const row of this.sortInstalled(buffer, sort)) {
         result.push({ id: row.key, data: row.package });
       }
       buffer = [];
@@ -151,35 +210,126 @@ export class PackagesPanel {
   });
 
   /**
-   * Toggles the outdated-only filter.
+   * Gets the Explore-mode rows: the loaded results, client-side sorted when a header sort is active.
+   */
+  protected readonly exploreRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
+    this.sortExplore(this.explorer.results(), this.exploreSort()).map(
+      (item: PackageSearchItem): TableRow => ({ id: `${item.sourceName}:${item.name}`, data: item }),
+    ),
+  );
+
+  /**
+   * Switches the panel mode, loading the exploration sources the first time Explore is opened.
+   * @param mode The mode to switch to.
+   */
+  protected setMode(mode: PackageMode): void {
+    this.mode.set(mode);
+    if (mode === 'explore') {
+      void this.explorer.ensureSources();
+    }
+  }
+
+  /**
+   * Toggles the Installed-mode outdated-only filter.
    */
   protected toggleOutdatedOnly(): void {
     this.packages.setOutdatedOnly(!this.packages.outdatedOnly());
   }
 
   /**
-   * Reloads the model, re-resolving installed and latest versions.
+   * Reloads the installed model, re-resolving installed and latest versions.
    */
   protected refresh(): void {
     this.packages.refreshNow();
   }
 
   /**
-   * Records the header sort chosen in the table, so the rows recompute in the new order.
-   * @param sort The new sort, or null when sorting is cleared.
+   * Handles a table row click: in Installed mode, opens the manifest of a project group header.
+   * @param row The clicked table row.
    */
-  protected onSortChange(sort: TableSort | null): void {
-    this.activeSort.set(sort);
+  protected onRowClick(row: TableRow): void {
+    if (row.group === true) {
+      void this.fileOpener.openPath((row.data as PackageGroupData).manifestPath);
+    }
   }
 
   /**
-   * Orders a project's package rows by the active sort — by package name or scope — or returns them
-   * untouched (the model's outdated-first order) when there is no sort.
+   * Records the Installed-mode header sort.
+   * @param sort The new sort, or null when cleared.
+   */
+  protected onInstalledSort(sort: TableSort | null): void {
+    this.installedSort.set(sort);
+  }
+
+  /**
+   * Records the Explore-mode header sort.
+   * @param sort The new sort, or null when cleared.
+   */
+  protected onExploreSort(sort: TableSort | null): void {
+    this.exploreSort.set(sort);
+  }
+
+  /**
+   * Reads a group row's payload for the template.
+   * @param row The group table row.
+   * @returns Returns the project group data.
+   */
+  protected group(row: TableRow): PackageGroupData {
+    return row.data as PackageGroupData;
+  }
+
+  /**
+   * Reads an Installed-mode data row's payload for the template.
+   * @param row The package table row.
+   * @returns Returns the package.
+   */
+  protected pkg(row: TableRow): InstalledPackage {
+    return row.data as InstalledPackage;
+  }
+
+  /**
+   * Reads an Explore-mode data row's payload for the template.
+   * @param row The result table row.
+   * @returns Returns the search result item.
+   */
+  protected item(row: TableRow): PackageSearchItem {
+    return row.data as PackageSearchItem;
+  }
+
+  /**
+   * Resolves the icon for an upgrade status.
+   * @param status The upgrade status.
+   * @returns Returns the status icon.
+   */
+  protected iconFor(status: PackageUpdateStatus): Icon {
+    return STATUS_ICONS[status];
+  }
+
+  /**
+   * Formats a download count compactly (for example `12.3M`), or an em dash when unknown.
+   * @param downloads The download count, or null.
+   * @returns Returns the formatted count.
+   */
+  protected formatDownloads(downloads: number | null): string {
+    if (downloads === null) {
+      return '—';
+    }
+    if (downloads >= 1_000_000) {
+      return `${(downloads / 1_000_000).toFixed(1)}M`;
+    }
+    if (downloads >= 1_000) {
+      return `${(downloads / 1_000).toFixed(1)}K`;
+    }
+    return String(downloads);
+  }
+
+  /**
+   * Orders a project's package rows by the active Installed-mode sort, or returns them untouched.
    * @param rows The project's package rows.
    * @param sort The active sort, or null.
    * @returns Returns the ordered rows.
    */
-  private sortPackages(
+  private sortInstalled(
     rows: readonly PackageDataRow[],
     sort: TableSort | null,
   ): readonly PackageDataRow[] {
@@ -197,40 +347,24 @@ export class PackagesPanel {
   }
 
   /**
-   * Handles a table row click: opens the manifest of a project group header; a package row does
-   * nothing.
-   * @param row The clicked table row.
+   * Orders the loaded Explore results by the active sort (by name or downloads), or returns the source's
+   * own order when there is no sort.
+   * @param items The loaded results.
+   * @param sort The active sort, or null.
+   * @returns Returns the ordered items.
    */
-  protected onRowClick(row: TableRow): void {
-    if (row.group === true) {
-      void this.fileOpener.openPath((row.data as PackageGroupData).manifestPath);
+  private sortExplore(
+    items: readonly PackageSearchItem[],
+    sort: TableSort | null,
+  ): readonly PackageSearchItem[] {
+    if (sort === null) {
+      return items;
     }
-  }
-
-  /**
-   * Reads a group row's payload for the template.
-   * @param row The group table row.
-   * @returns Returns the project group data.
-   */
-  protected group(row: TableRow): PackageGroupData {
-    return row.data as PackageGroupData;
-  }
-
-  /**
-   * Reads a data row's payload for the template.
-   * @param row The package table row.
-   * @returns Returns the package.
-   */
-  protected pkg(row: TableRow): InstalledPackage {
-    return row.data as InstalledPackage;
-  }
-
-  /**
-   * Resolves the icon for an upgrade status.
-   * @param status The upgrade status.
-   * @returns Returns the status icon.
-   */
-  protected iconFor(status: PackageUpdateStatus): Icon {
-    return STATUS_ICONS[status];
+    const factor: number = sort.direction === 'asc' ? 1 : -1;
+    return [...items].sort((a: PackageSearchItem, b: PackageSearchItem): number =>
+      sort.columnId === 'downloads'
+        ? ((a.downloads ?? 0) - (b.downloads ?? 0)) * factor
+        : a.name.localeCompare(b.name) * factor,
+    );
   }
 }

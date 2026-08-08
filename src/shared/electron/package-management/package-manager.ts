@@ -1,4 +1,10 @@
-import { PackageEcosystem, PackageManagerModel } from '@shared/api/package-management';
+import {
+  PackageEcosystem,
+  PackageManagerModel,
+  PackageSearchOptions,
+  PackageSearchResult,
+  PackageSourceInfo,
+} from '@shared/api/package-management';
 
 /**
  * A minimal HTTP response shape, so a package manager's registry queries do not depend on the DOM or
@@ -60,6 +66,33 @@ export interface PackageManager {
    * @returns Returns the model, or null when the root has nothing this manager can model.
    */
   load(root: string, fetchFn: HttpFetch): Promise<PackageManagerModel | null>;
+
+  /**
+   * Lists the package sources available to browse/search for a workspace root. Optional: a manager that
+   * does not support exploration omits it (the renderer then offers no Explore mode). Only source names
+   * are returned — never credentials.
+   * @param root The absolute workspace root.
+   * @returns Returns the available sources.
+   */
+  listSources?(root: string): Promise<readonly PackageSourceInfo[]>;
+
+  /**
+   * Searches (or browses, with an empty query) a source's packages for a workspace root. Optional,
+   * paired with {@link listSources}.
+   * @param root The absolute workspace root.
+   * @param sourceName The source to search, as named by {@link listSources}.
+   * @param query The search text, or an empty string to browse the source's curated/full listing.
+   * @param options The paging and prerelease options.
+   * @param fetchFn The HTTP fetch used for registry queries.
+   * @returns Returns a page of results.
+   */
+  search?(
+    root: string,
+    sourceName: string,
+    query: string,
+    options: PackageSearchOptions,
+    fetchFn: HttpFetch,
+  ): Promise<PackageSearchResult>;
 }
 
 /**
