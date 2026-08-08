@@ -1,0 +1,130 @@
+// The Package Management dock panel body. The dock supplies the title bar and the shared table owns the
+// scrolling body and fixed header; this styles the tool-strip and the cell content projected into the
+// table. Colours come from the shipped dock tokens and the accent palette's status colours.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+
+  --package-outdated: var(--warning-color);
+  --package-current: var(--success-color);
+  --package-unknown: var(--info-color);
+}
+
+// The table fills the space beneath the tool-strip.
+.packages-table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The outdated tally sits at the trailing end of the tool-strip.
+.packages-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+
+  &--outdated {
+    color: var(--package-outdated);
+  }
+}
+
+// A project group header's content, projected into the table's full-width group cell.
+.packages-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  inline-size: 100%;
+
+  &__icon {
+    flex: 0 0 auto;
+    opacity: 0.85;
+  }
+
+  &__name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__badge {
+    flex: 0 0 auto;
+    min-inline-size: 1.1rem;
+    padding: 0 0.35rem;
+    border-radius: 0.7rem;
+    background: var(--package-outdated);
+    color: var(--accent-contrast-color, #fff);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+  }
+}
+
+// The package-name cell: a status icon and the name, indented under its group.
+.packages-name {
+  padding-inline-start: 1.5rem !important;
+
+  &__icon {
+    margin-inline-end: 0.375rem;
+    font-size: 0.85rem;
+    vertical-align: -0.1em;
+  }
+
+  &--outdated .packages-name__icon {
+    color: var(--package-outdated);
+  }
+
+  &--current .packages-name__icon {
+    color: var(--package-current);
+  }
+
+  &--unknown .packages-name__icon {
+    color: var(--package-unknown);
+  }
+}
+
+.packages-scope {
+  opacity: 0.6;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.packages-installed,
+.packages-latest {
+  font-variant-numeric: tabular-nums;
+}
+
+.packages-latest--outdated {
+  color: var(--package-outdated);
+  font-weight: 600;
+}
+
+.packages-latest__dash {
+  opacity: 0.4;
+}
+
+// The empty / loading state, centred in the panel.
+.packages-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  opacity: 0.7;
+  text-align: center;
+
+  app-icon {
+    font-size: 1.5rem;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.82rem;
+  }
+}

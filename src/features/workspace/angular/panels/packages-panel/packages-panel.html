@@ -1,0 +1,76 @@
+<app-panel-toolbar role="group" aria-label="Package Management">
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_UP"
+    label="Updates only"
+    [pressed]="packages.outdatedOnly()"
+    tooltip="Show only packages with updates"
+    (click)="toggleOutdatedOnly()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.REFRESH"
+    label="Refresh"
+    tooltip="Re-check installed and latest versions"
+    (click)="refresh()"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  @if (packages.outdatedCount() > 0) {
+    <span class="packages-count packages-count--outdated">
+      <app-icon [icon]="Icon.ARROW_UP" />
+      {{ packages.outdatedCount() }}
+    </span>
+  }
+</app-panel-toolbar>
+
+@if (packages.loading() && packages.model() === null) {
+  <div class="packages-empty">
+    <app-icon [icon]="Icon.SPINNER" />
+    <p>Resolving packages…</p>
+  </div>
+} @else if (tableRows().length > 0) {
+  <app-table
+    class="packages-table"
+    [columns]="columns"
+    [rows]="tableRows()"
+    [collapsible]="true"
+    (rowClick)="onRowClick($event)"
+    (sortChange)="onSortChange($event)"
+  >
+    <ng-template appTableGroup let-row>
+      <span class="packages-group">
+        <app-icon class="packages-group__icon" [icon]="Icon.PROJECT" />
+        <span class="packages-group__name">{{ group(row).name }}</span>
+        @if (group(row).outdated > 0) {
+          <span class="packages-group__badge">{{ group(row).outdated }}</span>
+        }
+      </span>
+    </ng-template>
+
+    <ng-template appTableRow let-row>
+      <td [class]="'packages-name packages-name--' + pkg(row).status">
+        <app-icon class="packages-name__icon" [icon]="iconFor(pkg(row).status)" />
+        <span class="packages-name__text">{{ pkg(row).name }}</span>
+      </td>
+      <td class="packages-scope">{{ pkg(row).scope }}</td>
+      <td class="packages-installed">{{ pkg(row).installed ?? pkg(row).requested }}</td>
+      <td class="packages-latest packages-latest--{{ pkg(row).status }}">
+        @if (pkg(row).status === 'outdated') {
+          {{ pkg(row).latest }}
+        } @else {
+          <span class="packages-latest__dash">—</span>
+        }
+      </td>
+    </ng-template>
+  </app-table>
+} @else if (packages.model() !== null && packages.outdatedOnly()) {
+  <div class="packages-empty">
+    <app-icon [icon]="Icon.CHECK" />
+    <p>Everything is up to date.</p>
+  </div>
+} @else {
+  <div class="packages-empty">
+    <app-icon [icon]="Icon.SEARCH" />
+    <p>No packages found.</p>
+  </div>
+}

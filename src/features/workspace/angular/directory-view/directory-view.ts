@@ -73,6 +73,7 @@ import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsav
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
+import { PackageModel } from '@features/workspace/angular/project/package-model';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { GitBranch } from '@shared/angular/services/repository/repository-data';
@@ -177,6 +178,7 @@ const RUN_SPINNER_MINIMUM_MS: number = 5_000;
     DebugSession,
     LspClient,
     SolutionModel,
+    PackageModel,
     FileOpener,
     WorkspaceGit,
     Repository,
@@ -382,6 +384,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped solution model, whose presence drives the Solution Explorer panel.
    */
   private readonly solutionModel: SolutionModel = inject(SolutionModel);
+
+  /**
+   * Holds this tab's scoped package model, whose presence drives the Package Management panel.
+   */
+  private readonly packageModel: PackageModel = inject(PackageModel);
 
   /**
    * Holds this tab's scoped language-server client, started eagerly for a .NET solution.
@@ -934,6 +941,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       untracked((): void => this.syncSolutionPanel(hasModel));
     });
 
+    // Show the Package Management panel only while this tab's root has a recognised package ecosystem,
+    // docking it beside the File Explorer; remove it when the model goes away. Layout reads/writes are
+    // untracked so the effect reacts to the model alone.
+    effect((): void => {
+      const hasModel: boolean = this.packageModel.model() !== null;
+      untracked((): void => this.syncPackagesPanel(hasModel));
+    });
+
     // Reveal the Debug panel (call stack / variables / watch) while a debug session runs, tabbing it
     // beside the Error List; remove it when the session ends. Layout reads/writes are untracked
     // so the effect reacts to the session state alone.
@@ -1077,6 +1092,33 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     } else if (!hasModel && present) {
       this.dockState.removeFromLayout('solution');
+    }
+  }
+
+  /**
+   * Adds or removes the Package Management panel to match whether a package model is present, tabbing
+   * it into the bottom tool group alongside the Error List, Terminal, and Logs when shown (without
+   * stealing the active tab from the user). Mirrors {@link syncSolutionPanel}: presence is derived from
+   * the live layout so a tab's close/reopen does not accumulate duplicates.
+   * @param hasModel Whether this tab currently has a package model.
+   */
+  private syncPackagesPanel(hasModel: boolean): void {
+    const present: boolean = collectPanelIds(this.dockState.layout()).includes('packages');
+    if (hasModel && !present) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
+        findStackOfPanel(this.dockState.layout(), 'terminal') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor === null) {
+        return;
+      }
+      const previous: string | null = anchor.active;
+      this.dockState.tabInto(anchor.id, 'packages');
+      if (previous !== null) {
+        this.dockState.setActive(anchor.id, previous);
+      }
+    } else if (!hasModel && present) {
+      this.dockState.removeFromLayout('packages');
     }
   }
 

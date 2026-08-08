@@ -10,8 +10,10 @@ import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { PackageManagerModel } from '@shared/api/package-management';
 import { FileInfo } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
+import { PackageChannel } from '@shared/api/package-channels';
 import {
   BinaryChunk,
   BinaryPatch,
@@ -25,6 +27,8 @@ import {
 import type { FileHandle } from 'node:fs/promises';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
+import { packageManagers } from './package-management/default-package-managers';
+import { HttpFetch, PackageManager } from './package-management/package-manager';
 import { TrustedPaths } from './trusted-paths';
 import { WorkspaceContext } from './workspace-context';
 
@@ -84,6 +88,15 @@ export class WorkspaceManager {
    * Holds the store of paths the user has opened through a dialog, used to authorise re-opens.
    */
   private readonly trusted: TrustedPaths;
+
+  /**
+   * Holds the HTTP fetch used for package-registry queries (the main-process global fetch), referenced
+   * through `globalThis` so this module carries no ambient fetch-type dependency.
+   */
+  private readonly httpFetch: HttpFetch = (
+    url: string,
+    init?: { headers?: Record<string, string> },
+  ): ReturnType<HttpFetch> => (globalThis as unknown as { fetch: HttpFetch }).fetch(url, init);
 
   /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
@@ -205,6 +218,29 @@ export class WorkspaceManager {
       (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> =>
         this.loadProjectItems(projectPath),
     );
+    ipcMain.handle(
+      PackageChannel.ModelLoad,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> =>
+        this.loadPackageModel(root),
+    );
+  }
+
+  /**
+   * Loads the package model for an open workspace root, resolving the package manager that applies to
+   * it. Confined to open roots so the renderer cannot drive a filesystem scan (or registry queries) of
+   * arbitrary locations.
+   * @param root The candidate workspace root.
+   * @returns Returns the model, or null when the root is not open or no package manager applies.
+   */
+  private async loadPackageModel(root: unknown): Promise<PackageManagerModel | null> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return null;
+    }
+    const manager: PackageManager | null = await packageManagers.match(root);
+    if (manager === null) {
+      return null;
+    }
+    return manager.load(root, this.httpFetch);
   }
 
   /**

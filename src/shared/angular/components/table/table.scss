@@ -1,0 +1,158 @@
+// A reusable table whose header stays fixed while the body scrolls. The dock (or any consumer) supplies
+// the surrounding chrome; this fills its host and scrolls. One real <table> laid out with a fixed
+// algorithm keeps the sticky header's columns aligned with the body's.
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+}
+
+// The scroll container: the header pins to its top edge while the body scrolls beneath.
+.table-scroll {
+  block-size: 100%;
+  overflow: auto;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.8rem;
+}
+
+// The fixed header row: pinned to the top of the scroll container, opaque so body rows do not show
+// through as they scroll under it.
+.table-head th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  padding: 0.3rem 0.625rem;
+  background: var(--dock-title-background-color);
+  color: var(--dock-tab-foreground-color);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: inset 0 -1px 0 var(--dock-container-background-color);
+}
+
+// A sortable header: the whole cell reads as clickable, and the label plus its sort caret sit in a
+// borderless button so the header stays keyboard-focusable. The button is inline so the cell's
+// text-align (per-column, below) still positions it.
+.table-th--sortable {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+}
+
+.table-th__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-inline-size: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.table-th__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-th__sort {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+// Per-column alignment: the component sets `--table-col-<n>` on the table from each column's `align`,
+// and the header cell and the consumer's projected body cells of that column both read it — so the
+// columns stay aligned to their headers without the consumer aligning its own cells. Covers a generous
+// column count; unused indices simply never have a variable set (falling back to `start`).
+@for $index from 1 through 24 {
+  .table-head th:nth-child(#{$index}) {
+    text-align: var(--table-col-#{$index}, start);
+  }
+
+  .table-row ::ng-deep td:nth-child(#{$index}) {
+    text-align: var(--table-col-#{$index}, start);
+  }
+}
+
+// A data row. Cells are the consumer's; the row owns hover chrome only.
+.table-row {
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  // The consumer's cells inherit consistent padding and vertical rhythm.
+  ::ng-deep td {
+    padding: 0.2rem 0.625rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// A full-width group header row.
+.table-group {
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--dock-title-background-color--focused);
+  }
+
+  // The cell stays a real table cell so its colspan spans every column; the flex layout lives on an
+  // inner wrapper (setting `display: flex` on the cell itself would drop `display: table-cell` and make
+  // the browser ignore the colspan).
+  &__cell {
+    padding: 0.3rem 0.625rem;
+    font-weight: 600;
+  }
+
+  &__inner {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  // A collapsible group reads as clickable across the whole header row.
+  &--collapsible {
+    cursor: pointer;
+  }
+
+  // The expand/collapse twisty: a borderless caret button, keyboard-focusable, that never shrinks.
+  &__twisty {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0.75;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.table-empty {
+  padding: 1rem 0.625rem;
+  color: var(--dock-tab-foreground-color);
+  opacity: 0.7;
+  text-align: center;
+}

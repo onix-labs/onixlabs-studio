@@ -1,0 +1,92 @@
+<div class="table-scroll">
+  <table class="table" [style]="alignStyles()">
+    <colgroup>
+      @for (column of columns(); track column.id) {
+        <col [style.width]="column.width ?? null" />
+      }
+    </colgroup>
+    <thead class="table-head">
+      <tr>
+        @for (column of columns(); track column.id) {
+          <th
+            class="table-th"
+            [class.table-th--sortable]="column.sortable"
+            [attr.title]="column.headerTooltip ?? null"
+            [attr.aria-sort]="
+              column.sortable && sort()?.columnId === column.id
+                ? sort()!.direction === 'asc'
+                  ? 'ascending'
+                  : 'descending'
+                : column.sortable
+                  ? 'none'
+                  : null
+            "
+            scope="col"
+          >
+            @if (column.sortable) {
+              <button type="button" class="table-th__button" (click)="toggleSort(column)">
+                <span class="table-th__label">{{ column.header }}</span>
+                @if (sort()?.columnId === column.id) {
+                  <app-icon
+                    class="table-th__sort"
+                    [icon]="sort()!.direction === 'asc' ? Icon.CARET_UP : Icon.CARET_DOWN"
+                    [size]="0.75"
+                  />
+                }
+              </button>
+            } @else {
+              {{ column.header }}
+            }
+          </th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of visibleRows(); track row.id) {
+        @if (row.group) {
+          <tr
+            class="table-group"
+            [class.table-group--collapsible]="collapsible()"
+            (click)="rowClick.emit(row)"
+          >
+            <td class="table-group__cell" [attr.colspan]="columns().length">
+              <div class="table-group__inner">
+                @if (collapsible()) {
+                  <button
+                    type="button"
+                    class="table-group__twisty"
+                    [attr.aria-expanded]="!isCollapsed(row.id)"
+                    [attr.aria-label]="isCollapsed(row.id) ? 'Expand group' : 'Collapse group'"
+                    (click)="$event.stopPropagation(); toggleGroup(row)"
+                  >
+                    <app-icon
+                      [icon]="isCollapsed(row.id) ? Icon.CARET_RIGHT : Icon.CARET_DOWN"
+                      [size]="0.75"
+                    />
+                  </button>
+                }
+                <ng-container
+                  [ngTemplateOutlet]="groupTemplate()?.template ?? null"
+                  [ngTemplateOutletContext]="{ $implicit: row }"
+                />
+              </div>
+            </td>
+          </tr>
+        } @else {
+          <tr class="table-row" (click)="rowClick.emit(row)">
+            <ng-container
+              [ngTemplateOutlet]="rowTemplate()?.template ?? null"
+              [ngTemplateOutletContext]="{ $implicit: row }"
+            />
+          </tr>
+        }
+      } @empty {
+        @if (emptyText().length > 0) {
+          <tr>
+            <td class="table-empty" [attr.colspan]="columns().length">{{ emptyText() }}</td>
+          </tr>
+        }
+      }
+    </tbody>
+  </table>
+</div>

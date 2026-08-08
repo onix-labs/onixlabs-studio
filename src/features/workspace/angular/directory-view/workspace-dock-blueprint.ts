@@ -1,6 +1,7 @@
 import { AgentPanel } from '@shared/angular/components/panels/agent-panel/agent-panel';
 import { DebugPanel } from '@features/workspace/angular/panels/debug-panel/debug-panel';
 import { OutputPanel } from '@features/workspace/angular/panels/output-panel/output-panel';
+import { PackagesPanel } from '@features/workspace/angular/panels/packages-panel/packages-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
@@ -90,6 +91,18 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       ownsToolStrip: true,
     },
     { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
+    {
+      // The Package Management panel: dependencies and their upgrade state. Catalogued for every
+      // workspace tab but added to the layout only when the open root has a recognised package
+      // ecosystem (the directory view syncs it), in the bottom tool group alongside the Error List,
+      // Terminal, and Logs.
+      id: 'packages',
+      title: 'Packages',
+      icon: Icon.PACKAGES,
+      role: 'tool',
+      component: PackagesPanel,
+      ownsToolStrip: true,
+    },
     {
       // The container overview and switcher. Catalogued for every workspace tab but added to the
       // layout only while the tab hosts a worktree container (the directory view syncs it).

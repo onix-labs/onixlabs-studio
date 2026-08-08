@@ -690,6 +690,11 @@ export class Icon {
   public static readonly PROJECT: Icon = new Icon('ph-duotone ph-cube');
 
   /**
+   * Gets the icon for the Package Management panel.
+   */
+  public static readonly PACKAGES: Icon = new Icon('ph-duotone ph-package');
+
+  /**
    * Gets the hidden (dotfile) icon.
    */
   public static readonly FILE_HIDDEN: Icon = new Icon('ph ph-file-dashed');
