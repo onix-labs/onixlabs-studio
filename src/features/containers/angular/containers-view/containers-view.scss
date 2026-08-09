@@ -1,7 +1,13 @@
-// The Containers view fills its tab and scrolls its content. It is a lean dashboard over the Docker
-// backend: two sections (containers, then images) of simple rows.
+// The Containers view fills its tab: a panel layout with the list in the main area and the logs/shell
+// terminals docked below. It is a lean dashboard over the Docker backend: two sections (containers,
+// then images) of simple rows.
 :host {
   display: block;
+  block-size: 100%;
+}
+
+// The main area (list) scrolls within itself; the terminal panel is a separate docked region.
+.containers-main {
   block-size: 100%;
   overflow: auto;
 }
@@ -11,6 +17,80 @@
   flex-direction: column;
   gap: 1.5rem;
   padding: 1rem 1.25rem;
+}
+
+// The docked logs/shell terminals: a tab strip over the active pane.
+.containers__terminal {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.containers__terminal-tabs {
+  display: flex;
+  flex: none;
+  gap: 0.15rem;
+  padding: 0.25rem 0.35rem 0;
+  overflow-x: auto;
+}
+
+.containers__terminal-tab {
+  display: flex;
+  align-items: center;
+  border-start-start-radius: calc(0.35rem * var(--border-radius-multiplier, 1));
+  border-start-end-radius: calc(0.35rem * var(--border-radius-multiplier, 1));
+
+  &--active {
+    background-color: var(--accent-surface-background-color);
+  }
+}
+
+.containers__terminal-tab-select {
+  appearance: none;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  .containers__terminal-tab--active & {
+    color: var(--body-foreground-color);
+  }
+}
+
+.containers__terminal-tab-close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+}
+
+.containers__terminal-panes {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.containers__terminal-pane {
+  position: absolute;
+  inset: 0;
+
+  &--hidden {
+    display: none;
+  }
 }
 
 .containers__section {

@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { DockerChannel } from '@shared/api/docker-channels';
 import { ContainerSummary, DockerStatus } from '@shared/api/docker-types';
+import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
 
 /**
@@ -101,5 +102,31 @@ describe('ContainersView', () => {
     expect(
       calls.some((call: RecordedCall): boolean => (call.channel as DockerChannel) === DockerChannel.Start),
     ).toBe(true);
+  });
+
+  it('viewLogs_opensADockerLogsTerminalSession', async () => {
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
+
+    (fixture.componentInstance as unknown as { viewLogs(container: ContainerSummary): void }).viewLogs(
+      CONTAINER,
+    );
+
+    expect(terminals.sessions()).toHaveLength(1);
+    expect(terminals.sessions()[0].name).toContain('Logs');
+  });
+
+  it('openShell_opensADockerExecTerminalSession', async () => {
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
+
+    (fixture.componentInstance as unknown as { openShell(container: ContainerSummary): void }).openShell(
+      CONTAINER,
+    );
+
+    expect(terminals.sessions()).toHaveLength(1);
+    expect(terminals.sessions()[0].name).toContain('shell');
   });
 });

@@ -14,8 +14,13 @@ import {
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary, ImageSummary } from '@shared/api/docker-types';
+import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersCommandHandler, ContainersCommands } from '../containers-commands/containers-commands';
 import { ContainersStatus } from '../containers-status/containers-status';
 import { Docker } from '../docker/docker';
@@ -28,9 +33,10 @@ import { Docker } from '../docker/docker';
  */
 @Component({
   selector: 'app-containers-view',
-  imports: [Button, AppIcon],
+  imports: [Button, AppIcon, PanelLayout, Panel, Terminal],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
+  providers: [ContainerTerminals],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContainersView implements OnDestroy {
@@ -65,6 +71,16 @@ export class ContainersView implements OnDestroy {
    * Holds the ribbon command registry the active view registers its handler with.
    */
   private readonly commands: ContainersCommands = inject(ContainersCommands);
+
+  /**
+   * Holds the docker logs/shell terminals opened from container rows, hosted in the bottom panel.
+   */
+  protected readonly terminals: ContainerTerminals = inject(ContainerTerminals);
+
+  /**
+   * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
+   */
+  protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
 
   /**
    * Holds whether the daemon is reachable: null while first loading, then true/false.
@@ -228,6 +244,25 @@ export class ContainersView implements OnDestroy {
    */
   protected remove(id: string): void {
     void this.actOn(id, (target: string): Promise<boolean> => this.docker.remove(target));
+  }
+
+  /**
+   * Streams a container's logs (`docker logs -f`) in a terminal in the bottom panel.
+   * @param container The container to tail.
+   */
+  protected viewLogs(container: ContainerSummary): void {
+    this.terminals.open(`Logs: ${this.displayName(container)}`, `docker logs -f ${container.id}`);
+  }
+
+  /**
+   * Opens an interactive shell in a running container (`docker exec`, bash when present, else sh).
+   * @param container The container to open a shell in.
+   */
+  protected openShell(container: ContainerSummary): void {
+    this.terminals.open(
+      `${this.displayName(container)} — shell`,
+      `docker exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
+    );
   }
 
   /**
