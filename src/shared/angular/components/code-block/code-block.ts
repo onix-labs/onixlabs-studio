@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
@@ -9,10 +10,13 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
+import { Theme } from '@shared/angular/services/theme/theme';
 
 /**
  * The info-string languages a fenced code block is treated as a runnable shell command. A block in one
@@ -41,13 +45,28 @@ const SHELL_LANGUAGES: ReadonlySet<string> = new Set<string>([
 const COPIED_FEEDBACK_MS: number = 1500;
 
 /**
- * Renders one fenced code block from a markdown bubble: a header with the language label, a copy-to-
- * clipboard action, and — for a shell command — a play action that runs it in a new terminal tab, over
- * the (escaped, non-executed) code. Reusable, but shaped for the agent bubbles it renders in.
+ * Escapes the HTML-significant characters in text so raw code can be bound as trusted HTML without
+ * being interpreted as markup. Used for the plain-text fallback shown before Monaco has highlighted
+ * the block.
+ * @param text The raw text.
+ * @returns Returns the escaped text.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Renders one fenced code block from a markdown bubble: the (escaped, non-executed, Monaco-
+ * highlighted) code over a footer carrying the language label at the leading edge and, at the trailing
+ * edge, a copy-to-clipboard action and — for a shell command — a play action that runs it in a new
+ * terminal tab. Reusable, but shaped for the agent bubbles it renders in.
  */
 @Component({
   selector: 'app-code-block',
-  imports: [AppIcon, Button],
+  imports: [Button],
   templateUrl: './code-block.html',
   styleUrl: './code-block.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -75,9 +94,51 @@ export class CodeBlock {
   private readonly terminals: TerminalSessions | null = inject(TerminalSessions, { optional: true });
 
   /**
+   * Holds the Monaco loader, read for its ready signal so the block re-highlights once Monaco arrives.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the shared colorizer that turns the code into syntax-highlighted HTML.
+   */
+  private readonly highlighter: MonacoHighlighter = inject(MonacoHighlighter);
+
+  /**
+   * Holds the theme service, read for its resolved mode so the block re-highlights when the user
+   * switches between light and dark (Monaco's token colours are mode-specific).
+   */
+  private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds the sanitizer used to bind Monaco's (already-escaped) highlighted HTML as trusted.
+   */
+  private readonly sanitizer: DomSanitizer = inject(DomSanitizer);
+
+  /**
+   * Identifies the most recent highlight request, so a slower earlier colorize cannot overwrite a
+   * later one when the code, language or theme changes in quick succession.
+   */
+  private highlightRequest: number = 0;
+
+  /**
+   * Holds the Monaco-highlighted HTML, or null before it is available (Monaco still loading, or under
+   * the test runner), in which case the escaped-plain-text fallback is shown instead.
+   */
+  private readonly highlighted: WritableSignal<SafeHtml | null> = signal<SafeHtml | null>(null);
+
+  /**
    * Holds whether the copy action is showing its confirmed state.
    */
   protected readonly copied: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the HTML rendered into the code panel: Monaco's highlighted output once available, otherwise
+   * the raw code escaped and shown as plain text so the block is legible immediately.
+   */
+  protected readonly body: Signal<SafeHtml> = computed(
+    (): SafeHtml =>
+      this.highlighted() ?? this.sanitizer.bypassSecurityTrustHtml(escapeHtml(this.code())),
+  );
 
   /**
    * Gets the language label shown in the header (the info string's first word, lower-cased), or an
@@ -95,6 +156,39 @@ export class CodeBlock {
   protected readonly runnable: Signal<boolean> = computed(
     (): boolean => SHELL_LANGUAGES.has(this.label()) && (this.terminals?.isRooted() ?? false),
   );
+
+  /**
+   * Constructs the block, wiring the effect that (re-)highlights the code whenever the code, its
+   * language, the light/dark mode or Monaco's readiness changes. Before Monaco is ready the effect
+   * clears the highlight so the plain-text fallback shows; a stale in-flight colorize is discarded.
+   */
+  public constructor() {
+    effect((): void => {
+      const code: string = this.code();
+      const lang: string = this.lang();
+      // Read as dependencies so the block re-highlights when Monaco finishes loading and when the
+      // user toggles light/dark (which changes the token colours Monaco emits).
+      const ready: boolean = this.monaco.isLoaded();
+      this.theme.resolvedMode();
+      const request: number = ++this.highlightRequest;
+      if (!ready) {
+        this.highlighted.set(null);
+        return;
+      }
+      void this.highlighter
+        .colorize(code, lang)
+        .then((html: string): void => {
+          if (this.highlightRequest === request) {
+            this.highlighted.set(html.length > 0 ? this.sanitizer.bypassSecurityTrustHtml(html) : null);
+          }
+        })
+        .catch((): void => {
+          if (this.highlightRequest === request) {
+            this.highlighted.set(null);
+          }
+        });
+    });
+  }
 
   /**
    * Copies the block's code to the clipboard, briefly confirming on success.

@@ -1,23 +1,28 @@
 <div class="code-block">
-  <pre class="code-block__pre"><code>{{ code() }}</code></pre>
+  <pre class="code-block__pre"><code [innerHTML]="body()"></code></pre>
   <div class="code-block__footer">
-    <app-button
-      variant="none"
-      size="small"
-      [icon]="copied() ? Icon.CHECK : Icon.COPY"
-      [ariaLabel]="copied() ? 'Copied' : 'Copy code'"
-      [tooltip]="copied() ? 'Copied' : 'Copy code'"
-      (click)="copy()"
-    />
-    @if (runnable()) {
+    @if (label()) {
+      <span class="code-block__lang">{{ label() }}</span>
+    }
+    <div class="code-block__actions">
       <app-button
         variant="none"
         size="small"
-        [icon]="Icon.PLAY"
-        ariaLabel="Run in terminal"
-        tooltip="Run in a new terminal"
-        (click)="run()"
+        [icon]="copied() ? Icon.CHECK : Icon.COPY"
+        [ariaLabel]="copied() ? 'Copied' : 'Copy code'"
+        [tooltip]="copied() ? 'Copied' : 'Copy code'"
+        (click)="copy()"
       />
-    }
+      @if (runnable()) {
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.PLAY"
+          ariaLabel="Run in terminal"
+          tooltip="Run in a new terminal"
+          (click)="run()"
+        />
+      }
+    </div>
   </div>
 </div>

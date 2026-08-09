@@ -38,13 +38,13 @@
     }
   }
 
-  // The footer: actions at the leading (left) edge, in a band a step lighter than the panel, joined
-  // directly beneath it. Rounded across its bottom two corners; its top joins the panel squarely.
+  // The footer: the language label at the leading (left) edge and the actions at the trailing (right)
+  // edge, in a band a step lighter than the panel, joined directly beneath it. Rounded across its
+  // bottom two corners; its top joins the panel squarely.
   &__footer {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 0.125rem;
+    gap: 0.5rem;
     padding: 0.3rem 0.5rem;
     background: rgba(0, 0, 0, 0.14);
     border-start-start-radius: 0;
@@ -52,6 +52,25 @@
     border-end-start-radius: calc(0.5rem * var(--border-radius-multiplier));
     border-end-end-radius: calc(0.5rem * var(--border-radius-multiplier));
     corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  // The language label, sat quietly at the leading edge in the block's monospace, dimmed so the
+  // actions remain the footer's focus.
+  &__lang {
+    font-family: var(--monospace-font-family, monospace);
+    font-size: 0.72rem;
+    line-height: 1;
+    opacity: 0.6;
+    user-select: none;
+  }
+
+  // The actions, held at the trailing edge: `margin-inline-start: auto` pushes them right whether or
+  // not a language label precedes them.
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    margin-inline-start: auto;
   }
 }
 

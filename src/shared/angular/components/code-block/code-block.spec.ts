@@ -54,6 +54,11 @@ describe('CodeBlock', () => {
     expect(host.querySelector('code')?.textContent).toBe('npm test');
   });
 
+  it('shows the language label in the footer', () => {
+    const { host } = build(null);
+    expect(host.querySelector('.code-block__lang')?.textContent).toBe('bash');
+  });
+
   it('offers a play button for a shell language', () => {
     const { host } = build(new FakeTerminals());
     expect(host.querySelector('[aria-label="Run in terminal"]')).not.toBeNull();
