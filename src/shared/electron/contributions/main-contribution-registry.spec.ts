@@ -61,7 +61,7 @@ function contextFactory(): (contribution: MainContribution, track: TrackedIpc) =
     handle: (channel: string, handler: InvokeHandler): void => track.handle(channel, handler),
     on: (channel: string, listener: ContributionListener): void => track.on(channel, listener),
     send: vi.fn(),
-    capability: <T>(): T => {
+    permission: <T>(): T => {
       throw new Error('not granted');
     },
     mainWindow: (): null => null,

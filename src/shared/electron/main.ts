@@ -24,7 +24,6 @@ import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
 import { mainContributions } from '@shared/electron/contributions';
 import {
-  CapabilityRequest,
   ContributionContext,
   ContributionListener,
   ContributionLogger,
@@ -35,6 +34,17 @@ import {
   MainContributionRegistry,
   TrackedIpc,
 } from '@shared/electron/contributions/main-contribution-registry';
+import {
+  PermissionAuditEntry,
+  PermissionId,
+  sanitizePermissions,
+} from '@shared/electron/contributions/permissions/permission';
+import { DefaultGrantPolicy } from '@shared/electron/contributions/permissions/grant-policy';
+import {
+  PermissionBroker,
+  PermissionFactory,
+} from '@shared/electron/contributions/permissions/permission-broker';
+import { DockerSocketFactory } from '@shared/electron/contributions/permissions/brokers/docker-socket';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
@@ -431,6 +441,18 @@ class Program {
   private readonly debugLaunchResolver: DebugLaunchResolver = new DebugLaunchResolver(
     projectSystems,
     this.workspaceContext,
+  );
+
+  /**
+   * Brokers the privileged permissions contributions declare: the declared set is the ceiling, the
+   * grant policy decides (first-party granted, everything else denied for now), every decision is
+   * audited, and a refusal throws. v0 brokers a single permission — the Docker Engine socket, minted
+   * as the sole handle P3's backend reaches the engine through.
+   */
+  private readonly permissionBroker: PermissionBroker = new PermissionBroker(
+    new Map<PermissionId, PermissionFactory>([['docker.socket', new DockerSocketFactory()]]),
+    new DefaultGrantPolicy(),
+    (entry: PermissionAuditEntry): void => this.auditPermission(entry),
   );
 
   /**
@@ -961,8 +983,10 @@ class Program {
 
   /**
    * Builds the context a main-process contribution is handed at activation: IPC registered through it
-   * is tracked (and removed automatically on disposal), pushes target the main window, and the
-   * capability resolver refuses everything for now — capability granting arrives in P2 (#390).
+   * is tracked (and removed automatically on disposal), pushes target the main window, and permissions
+   * resolve through the broker — the declared set is the ceiling, and a refusal throws a
+   * {@link PermissionDeniedError} rather than returning nothing. Every entry in the static manifest is
+   * first-party; the loader (#295) will tag discovered contributions third-party.
    * @param contribution The contribution the context is being built for.
    * @param track The tracker owning the contribution's IPC registrations.
    * @returns Returns the contribution context.
@@ -971,6 +995,7 @@ class Program {
     contribution: MainContribution,
     track: TrackedIpc,
   ): ContributionContext {
+    const declared: ReadonlySet<PermissionId> = sanitizePermissions(contribution.permissions);
     return {
       handle: (channel: string, handler: InvokeHandler): void => track.handle(channel, handler),
       on: (channel: string, listener: ContributionListener): void => track.on(channel, listener),
@@ -980,14 +1005,29 @@ class Program {
           window.webContents.send(channel, ...payload);
         }
       },
-      capability: <T>(request: CapabilityRequest): T => {
-        // P1 stub: there is no grantor yet, so no capability resolves. P2 (#390) supplies the real
-        // resolution that turns a declared request into its granted resource (or a refusal).
-        throw new Error(`capability '${request}' not granted`);
-      },
+      permission: <T>(request: PermissionId): T =>
+        this.permissionBroker.resolve<T>(
+          { contributionId: contribution.id, origin: 'first-party', declared },
+          request,
+        ),
       mainWindow: (): BrowserWindow | null => this.windows.main(),
       log: this.contributionLogger(contribution.id),
     };
+  }
+
+  /**
+   * Records one permission grant or denial to the log, namespaced under `permissions`. A grant is
+   * informational; a denial is a warning so refused privileged access is visible in the log.
+   * @param entry The audit record from the broker.
+   */
+  private auditPermission(entry: PermissionAuditEntry): void {
+    const log: ContributionLogger = this.contributionLogger('permissions');
+    const line: string = `${entry.contributionId} → ${entry.permission}: ${entry.decision} (${entry.source})`;
+    if (entry.decision === 'allow') {
+      log.info(line);
+    } else {
+      log.warn(line);
+    }
   }
 
   /**

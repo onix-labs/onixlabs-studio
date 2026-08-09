@@ -12,7 +12,7 @@ export const SAMPLE_PING_CHANNEL: string = 'contribution:sample:ping';
  * A no-op sample contribution that proves the main-process contribution seam end to end: it activates
  * through the registry, registers one invoke channel over the context (so the renderer can round-trip
  * it), and needs no explicit teardown — the registry removes the channel it registered on dispose.
- * This is the P1 north-star at runtime; it declares no capabilities and touches nothing else.
+ * This is the P1 north-star at runtime; it declares no permissions and touches nothing else.
  */
 export const sampleContribution: MainContribution = {
   id: 'sample',

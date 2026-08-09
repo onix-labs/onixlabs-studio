@@ -100,7 +100,7 @@ export class TrackedIpc {
 /**
  * The backend analog of the renderer's feature registry: the collection the application iterates so a
  * feature can bring its own main-process backend (IPC handlers, a renderer push channel, declared
- * capabilities) without any edit to core construction or teardown. Contributions run *alongside* the
+ * permissions) without any edit to core construction or teardown. Contributions run *alongside* the
  * existing hard-wired managers; this registry does not own or migrate them.
  */
 export class MainContributionRegistry {

@@ -1,12 +1,5 @@
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
-
-/**
- * Names a privileged capability a contribution declares it needs (for example `docker.socket`). In
- * this phase the field is threaded through but never granted or denied; capability enforcement — the
- * grantor that turns a request into a resource, or refuses it — arrives in P2 (#390). Kept as a bare
- * string here so it can be refined into a richer shape without churning every contribution.
- */
-export type CapabilityRequest = string;
+import { PermissionId } from './permissions/permission';
 
 /**
  * Handles a renderer `invoke` and returns its reply (invoke → handle). Mirrors the shape
@@ -77,12 +70,13 @@ export interface ContributionContext {
   send(channel: string, ...payload: unknown[]): void;
 
   /**
-   * Resolves a declared capability to its granted resource, or throws when it is not granted. In this
-   * phase there is no grantor, so this always throws; P2 (#390) supplies the real resolution.
-   * @param request The capability the contribution declared.
-   * @returns Returns the granted resource for the capability.
+   * Resolves a declared permission to its granted resource handle, or throws
+   * {@link import('./permissions/permission').PermissionDeniedError} when it is not declared or not
+   * granted. Possession of the returned handle is the authority to reach the privileged resource.
+   * @param request The permission the contribution declared.
+   * @returns Returns the granted resource handle for the permission.
    */
-  capability<T = unknown>(request: CapabilityRequest): T;
+  permission<T = unknown>(request: PermissionId): T;
 
   /**
    * Gets the main window, for the rare contribution that needs it directly, or null when there is none.
@@ -98,7 +92,7 @@ export interface ContributionContext {
 
 /**
  * A main-process feature contribution — the backend analog of a renderer feature descriptor. A
- * contribution brings its own IPC handlers, its renderer push channel, and its declared capabilities,
+ * contribution brings its own IPC handlers, its renderer push channel, and its declared permissions,
  * and is activated and disposed by the {@link import('./main-contribution-registry').MainContributionRegistry}
  * without any edit to the application's construction or teardown logic.
  */
@@ -110,10 +104,10 @@ export interface MainContribution {
   readonly id: string;
 
   /**
-   * Gets the privileged capabilities this contribution needs. Threaded through in this phase; gated
-   * in P2 (#390).
+   * Gets the privileged permissions this contribution needs. The declared set is the ceiling the
+   * permission broker enforces — a contribution can never resolve a permission it did not declare.
    */
-  readonly capabilities?: readonly CapabilityRequest[];
+  readonly permissions?: readonly PermissionId[];
 
   /**
    * Wires IPC and starts work. May be asynchronous. A throw is isolated by the registry: the
