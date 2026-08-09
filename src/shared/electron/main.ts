@@ -22,6 +22,19 @@ import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/wind
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
+import { mainContributions } from '@shared/electron/contributions';
+import {
+  CapabilityRequest,
+  ContributionContext,
+  ContributionListener,
+  ContributionLogger,
+  InvokeHandler,
+  MainContribution,
+} from '@shared/electron/contributions/main-contribution';
+import {
+  MainContributionRegistry,
+  TrackedIpc,
+} from '@shared/electron/contributions/main-contribution-registry';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
@@ -421,6 +434,21 @@ class Program {
   );
 
   /**
+   * Activates the main-process feature contributions declared in the static manifest — the backend
+   * analog of the renderer's feature registry. Contributions run alongside the hard-wired managers
+   * above; a feature adds its backend by appending to the manifest, never by editing this class. Kept
+   * last so every field it reaches through the context (the window accessor, the logger) is already
+   * initialized.
+   */
+  private readonly contributions: MainContributionRegistry = new MainContributionRegistry(
+    mainContributions,
+    ipcMain,
+    (contribution: MainContribution, track: TrackedIpc): ContributionContext =>
+      this.makeContributionContext(contribution, track),
+    this.contributionLogger('contributions'),
+  );
+
+  /**
    * Initializes a new instance of the Program class.
    */
   private constructor() {
@@ -693,6 +721,10 @@ class Program {
     this.lspManager.register();
     this.debugManager.register();
     this.debugLaunchResolver.register();
+
+    // Activate the main-process contributions after the hard-wired managers above, alongside (not in
+    // place of) them. A failing contribution is isolated by the registry and never aborts startup.
+    void this.contributions.activateAll();
   }
 
   /**
@@ -928,6 +960,59 @@ class Program {
   }
 
   /**
+   * Builds the context a main-process contribution is handed at activation: IPC registered through it
+   * is tracked (and removed automatically on disposal), pushes target the main window, and the
+   * capability resolver refuses everything for now — capability granting arrives in P2 (#390).
+   * @param contribution The contribution the context is being built for.
+   * @param track The tracker owning the contribution's IPC registrations.
+   * @returns Returns the contribution context.
+   */
+  private makeContributionContext(
+    contribution: MainContribution,
+    track: TrackedIpc,
+  ): ContributionContext {
+    return {
+      handle: (channel: string, handler: InvokeHandler): void => track.handle(channel, handler),
+      on: (channel: string, listener: ContributionListener): void => track.on(channel, listener),
+      send: (channel: string, ...payload: unknown[]): void => {
+        const window: BrowserWindow | null = this.windows.main();
+        if (window !== null && !window.isDestroyed()) {
+          window.webContents.send(channel, ...payload);
+        }
+      },
+      capability: <T>(request: CapabilityRequest): T => {
+        // P1 stub: there is no grantor yet, so no capability resolves. P2 (#390) supplies the real
+        // resolution that turns a declared request into its granted resource (or a refusal).
+        throw new Error(`capability '${request}' not granted`);
+      },
+      mainWindow: (): BrowserWindow | null => this.windows.main(),
+      log: this.contributionLogger(contribution.id),
+    };
+  }
+
+  /**
+   * Adapts the application {@link Logger} to the narrow {@link ContributionLogger} a contribution
+   * sees, prefixing every line with the contribution's id so its output is attributable.
+   * @param id The contribution id (or `contributions` for the registry itself).
+   * @returns Returns the namespaced logger.
+   */
+  private contributionLogger(id: string): ContributionLogger {
+    const emit: (level: 'info' | 'warn' | 'error', message: string, details: unknown[]) => void = (
+      level: 'info' | 'warn' | 'error',
+      message: string,
+      details: unknown[],
+    ): void => {
+      const suffix: string = details.length > 0 ? ` ${details.map(String).join(' ')}` : '';
+      this.logger.write('main', level, `[${id}] ${message}${suffix}`);
+    };
+    return {
+      error: (message: string, ...details: unknown[]): void => emit('error', message, details),
+      warn: (message: string, ...details: unknown[]): void => emit('warn', message, details),
+      info: (message: string, ...details: unknown[]): void => emit('info', message, details),
+    };
+  }
+
+  /**
    * Disposes every subsystem that owns OS resources. Called once at shutdown.
    */
   private disposeAll(): void {
@@ -938,6 +1023,7 @@ class Program {
     this.aiManager.disposeAll();
     this.lspManager.disposeAll();
     this.debugManager.disposeAll();
+    void this.contributions.disposeAll();
   }
 
   /**
