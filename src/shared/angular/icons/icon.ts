@@ -927,6 +927,16 @@ export class Icon {
    */
   public static readonly WELCOME_AI_MODELS: Icon = new Icon('ph-light ph-cpu');
 
+  /**
+   * Gets the light-weight API Explorer icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_API_EXPLORER: Icon = new Icon('ph-light ph-plugs-connected');
+
+  /**
+   * Gets the light-weight Database Explorer icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_DATABASE: Icon = new Icon('ph-light ph-database');
+
   // --- Status bar ---
 
   /**

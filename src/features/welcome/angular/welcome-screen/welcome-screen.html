@@ -40,7 +40,7 @@
         title="Settings"
         (click)="create('settings')"
       >
-        <app-icon [icon]="Icon.SETTINGS" />
+        <app-icon [icon]="Icon.SETTINGS" [rotation]="15" />
       </button>
     </header>
 
@@ -72,6 +72,14 @@
             <button type="button" class="welcome__action" (click)="create('agent')">
               <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AGENT" />
               <span class="welcome__action-label">New Agent</span>
+            </button>
+            <button type="button" class="welcome__action" (click)="comingSoon()">
+              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_API_EXPLORER" />
+              <span class="welcome__action-label">New API Explorer</span>
+            </button>
+            <button type="button" class="welcome__action" (click)="comingSoon()">
+              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DATABASE" />
+              <span class="welcome__action-label">New Database Explorer</span>
             </button>
           </div>
         </section>

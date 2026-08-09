@@ -233,13 +233,12 @@
   min-block-size: 0;
 }
 
-// The left column stacks the action groups (Get Started, Tools, …) and scrolls if they overrun.
+// The left column stacks the action groups (Get Started, Tools, …). It is not a scroll container, so
+// an action's hover scale and glow are never clipped.
 .welcome__left {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  min-block-size: 0;
-  overflow-y: auto;
 }
 
 // A titled group of actions; also the shape of the recent-items column.
@@ -274,6 +273,7 @@
 // Each action is a compact row — an icon and a label — kept small so many actions fit; the row lifts
 // to an accent-tinted wash on hover.
 .welcome__action {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -289,13 +289,19 @@
   cursor: default;
   transition:
     background 150ms ease,
-    border-color 150ms ease;
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 
   &:hover,
   &:focus-visible {
+    // Lift above its neighbours so the scale and glow are never covered by the next row.
+    z-index: 1;
     background: rgba(var(--accent-color-rgb), 0.12);
     border-color: rgba(var(--accent-color-rgb), 0.6);
+    box-shadow: 0 0.75rem 2rem -0.75rem rgba(var(--accent-color-rgb), 0.55);
     outline: none;
+    transform: scale(1.1);
 
     .welcome__action-icon,
     .welcome__action-label {
