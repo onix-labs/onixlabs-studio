@@ -35,10 +35,13 @@ import { githubAlertPlugin } from '@shared/angular/milkdown/github-alert-plugin'
 import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
 import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
 import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
+import { createMonacoCodeBlockPlugin } from '@shared/angular/milkdown/monaco-code-block-plugin';
 import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
 import { searchPlugin } from '@shared/angular/milkdown/search-plugin';
 import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
 import {
   ImageAlignment,
   ImageSizing,
@@ -98,6 +101,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Holds the settings service supplying the markdown editor preferences, watched to re-apply styles.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the Monaco loader/theme service, threaded into the Monaco code-block node view.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the shared colorizer, threaded into the Monaco code-block node view.
+   */
+  private readonly highlighter: MonacoHighlighter = inject(MonacoHighlighter);
 
   /**
    * Holds the Angular zone, used to create the editor outside change detection.
@@ -480,6 +493,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       });
 
       crepe.editor.use(pasteCleanPlugin);
+      // Registered after Crepe's features have loaded, so its Monaco code_block node view overrides
+      // CodeMirror's (which stays enabled for the Latex feature that depends on it).
+      crepe.editor.use(
+        createMonacoCodeBlockPlugin({ monaco: this.monaco, highlighter: this.highlighter }),
+      );
       crepe.editor.use(subscriptSuperscriptPlugin);
       crepe.editor.use(htmlImagePlugin);
       crepe.editor.use(collapsePlugin);

@@ -292,6 +292,73 @@ app-markdown-editor .milkdown .ProseMirror {
     }
   }
 
+  // A fenced code block, boxed as a callout like the blockquotes above — the same surface fill,
+  // rounded corners and border — but without their thick left accent: a thin 1px (in rem) border all
+  // around. The header, the static placeholder and the mounted editor all share the callout surface,
+  // with no dividing border, so the block reads as one seamless panel.
+  .milkdown-monaco-code-block {
+    margin: 1rem 0;
+    border: 0.0625rem solid var(--crepe-color-outline);
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    overflow: hidden;
+    background: var(--crepe-color-surface);
+
+    &__header {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0.25rem 0.5rem;
+      background: var(--crepe-color-surface);
+    }
+
+    // The language field: quiet and monospace, brightening on focus. A raw input (rather than a form
+    // atom) because the node view is plain DOM built outside Angular.
+    &__language {
+      all: unset;
+      min-width: 5rem;
+      font-family: var(--crepe-font-code);
+      font-size: 0.72rem;
+      text-align: end;
+      opacity: 0.55;
+      cursor: text;
+
+      &:focus {
+        opacity: 1;
+      }
+    }
+
+    &__placeholder {
+      margin: 0;
+      padding: 0.5rem 0.75rem;
+      overflow-x: auto;
+      background: var(--crepe-color-surface);
+      // The font family, size and line height are set inline by the plugin from the code-editor
+      // settings, matching the mounted Monaco editor exactly.
+
+      // Block code, not inline: drop the inline-code chrome the `code` rule below adds.
+      code {
+        padding: 0;
+        border: none;
+        background: none;
+        white-space: pre;
+        font-family: inherit;
+      }
+    }
+
+    &__editor {
+      width: 100%;
+    }
+
+    // Let the mounted Monaco editor take the callout surface too, so entering a fence does not change
+    // its background from the static placeholder's. Monaco paints the editor background on these
+    // layers from the theme; clearing them reveals the block's own `--crepe-color-surface`.
+    &__editor .monaco-editor,
+    &__editor .monaco-editor-background,
+    &__editor .monaco-editor .margin {
+      background-color: transparent !important;
+    }
+  }
+
   hr {
     border: none !important;
     height: 4px !important;
