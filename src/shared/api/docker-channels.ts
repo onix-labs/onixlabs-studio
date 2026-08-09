@@ -37,6 +37,12 @@ export enum DockerChannel {
   Status = 'docker:status',
 
   /**
+   * Attempts to launch Docker Desktop through the operating system (invoke); resolves true when the
+   * launch was issued. Reliable on macOS; best-effort on Windows and Linux.
+   */
+  LaunchDesktop = 'docker:launch-desktop',
+
+  /**
    * Pushes a normalised Docker engine event to the renderer as it happens (main→renderer).
    */
   Events = 'docker:events',

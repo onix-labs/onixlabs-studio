@@ -3,6 +3,7 @@ import { DockerChannel } from '@shared/api/docker-channels';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { launchDockerDesktop } from './docker-desktop';
 import { DockerEngine } from './docker-engine';
 import { DockerStreamHandle } from './docker-transport';
 
@@ -54,6 +55,7 @@ export class DockerContribution implements MainContribution {
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.remove(String(id)),
     );
     context.handle(DockerChannel.Status, (): Promise<unknown> => engine.status());
+    context.handle(DockerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
 
     this.watchHandle = engine.watch((event): void => context.send(DockerChannel.Events, event));
   }

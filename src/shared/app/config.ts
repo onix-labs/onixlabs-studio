@@ -14,6 +14,8 @@ import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Theme } from '@shared/angular/services/theme/theme';
+import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { featureContributions } from '@shared/app/feature-contributions';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
@@ -73,6 +75,19 @@ export const config: ApplicationConfig = {
     provideMissionControlFeature(),
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
+    // The one-time renderer lazy-load driver (the analog of the main process's contribution registry):
+    // resolve every lazily-contributed feature and register its descriptor with the shell. A feature
+    // added this way touches no shell component — only its own slice and the featureContributions
+    // manifest. Registration is fire-and-forget: the FeatureRegistry is signal-backed, so the shell
+    // lights the feature up when its chunk resolves, even after first paint.
+    provideAppInitializer((): void => {
+      const registry: FeatureRegistry = inject(FeatureRegistry);
+      for (const load of featureContributions) {
+        void load().then((module: { descriptor: FeatureDescriptor }): void =>
+          registry.register(module.descriptor),
+        );
+      }
+    }),
     // Contribute the text-document store to the unsaved-work seam the lifecycle walks at close
     // time; features with their own document models (binary) contribute themselves alongside.
     provideUnsavedWork(Documents),

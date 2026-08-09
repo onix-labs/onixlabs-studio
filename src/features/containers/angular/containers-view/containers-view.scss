@@ -1,0 +1,162 @@
+// The Containers view fills its tab and scrolls its content. It is a lean dashboard over the Docker
+// backend: two sections (containers, then images) of simple rows.
+:host {
+  display: block;
+  block-size: 100%;
+  overflow: auto;
+}
+
+.containers {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
+}
+
+.containers__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.containers__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.containers__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.containers__none {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.containers__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.containers__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier, 1));
+  cursor: pointer;
+  transition: background-color var(--hover-transition, 0.12s ease);
+
+  &:hover {
+    background-color: var(--accent-surface-background-color);
+  }
+
+  &--selected {
+    background-color: var(--accent-surface-background-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+  }
+
+  &--static {
+    cursor: default;
+
+    &:hover {
+      background-color: transparent;
+    }
+  }
+}
+
+// A small dot that reads container state at a glance: muted when stopped, green when running.
+.containers__state {
+  flex: 0 0 auto;
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 50%;
+  background-color: var(--form-muted-foreground-color);
+
+  &--running {
+    background-color: var(--success-color);
+  }
+}
+
+.containers__image-icon {
+  flex: 0 0 auto;
+  color: var(--form-muted-foreground-color);
+}
+
+.containers__name {
+  flex: 0 0 auto;
+  min-inline-size: 10rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--body-foreground-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.containers__image {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.containers__status {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.containers__actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.15rem;
+  margin-inline-start: auto;
+}
+
+// The daemon-absent / loading placeholder, centred in the tab.
+.containers__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  block-size: 100%;
+  padding: 2rem;
+  text-align: center;
+}
+
+.containers__empty-icon {
+  font-size: 2.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.containers__empty-text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.containers__empty-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.containers__empty-actions {
+  display: flex;
+  gap: 0.5rem;
+}

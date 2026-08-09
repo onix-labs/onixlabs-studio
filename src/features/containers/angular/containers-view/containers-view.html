@@ -1,0 +1,123 @@
+@if (available() === null) {
+  <div class="containers__empty">
+    <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
+    <p class="containers__empty-text">Connecting to Docker…</p>
+  </div>
+} @else if (available() === false) {
+  <div class="containers__empty">
+    <app-icon class="containers__empty-icon" [icon]="Icon.WARNING" />
+    <p class="containers__empty-text">Docker isn't running</p>
+    @if (launching()) {
+      <p class="containers__empty-hint">Starting Docker… this can take a moment.</p>
+    } @else {
+      <p class="containers__empty-hint">Start Docker to manage containers and images.</p>
+      <div class="containers__empty-actions">
+        <app-button
+          variant="solid"
+          [icon]="Icon.PLAY"
+          label="Start Docker"
+          (click)="startDocker()"
+        />
+        <app-button variant="outline" [icon]="Icon.REFRESH" label="Refresh" (click)="refresh()" />
+      </div>
+    }
+  </div>
+} @else {
+  <div class="containers">
+    <section class="containers__section">
+      <header class="containers__header">
+        <h2 class="containers__title">Containers</h2>
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.REFRESH"
+          ariaLabel="Refresh"
+          tooltip="Refresh"
+          [disabled]="busy()"
+          (click)="refresh()"
+        />
+      </header>
+
+      @if (containers().length === 0) {
+        <p class="containers__none">No containers.</p>
+      } @else {
+        <ul class="containers__list">
+          @for (container of containers(); track container.id) {
+            <li
+              class="containers__row"
+              [class.containers__row--selected]="container.id === selectedId()"
+              tabindex="0"
+              (click)="select(container.id)"
+              (keydown.enter)="select(container.id)"
+              (keydown.space)="select(container.id)"
+            >
+              <span
+                class="containers__state"
+                [class.containers__state--running]="isRunning(container)"
+                [title]="container.state"
+              ></span>
+              <span class="containers__name">{{ displayName(container) }}</span>
+              <span class="containers__image">{{ container.image }}</span>
+              <span class="containers__status">{{ container.status }}</span>
+              <span class="containers__actions">
+                @if (isRunning(container)) {
+                  <app-button
+                    variant="none"
+                    size="small"
+                    tone="warning"
+                    [icon]="Icon.STOP"
+                    ariaLabel="Stop"
+                    tooltip="Stop"
+                    [disabled]="busy()"
+                    (click)="stop(container.id)"
+                  />
+                } @else {
+                  <app-button
+                    variant="none"
+                    size="small"
+                    tone="success"
+                    [icon]="Icon.PLAY"
+                    ariaLabel="Start"
+                    tooltip="Start"
+                    [disabled]="busy()"
+                    (click)="start(container.id)"
+                  />
+                }
+                <app-button
+                  variant="none"
+                  size="small"
+                  tone="danger"
+                  [icon]="Icon.TRASH"
+                  ariaLabel="Remove"
+                  tooltip="Remove"
+                  [disabled]="busy()"
+                  (click)="remove(container.id)"
+                />
+              </span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="containers__section">
+      <header class="containers__header">
+        <h2 class="containers__title">Images</h2>
+      </header>
+
+      @if (images().length === 0) {
+        <p class="containers__none">No images.</p>
+      } @else {
+        <ul class="containers__list">
+          @for (image of images(); track image.id) {
+            <li class="containers__row containers__row--static">
+              <app-icon class="containers__image-icon" [icon]="Icon.CONTAINERS" />
+              <span class="containers__name">{{ displayTag(image) }}</span>
+              <span class="containers__status">{{ formatSize(image.size) }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  </div>
+}

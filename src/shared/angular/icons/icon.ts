@@ -143,6 +143,11 @@ export class Icon {
   public static readonly TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');
 
   /**
+   * Gets the Containers (Docker) content icon.
+   */
+  public static readonly CONTAINERS: Icon = new Icon('ph-duotone ph-shipping-container');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
@@ -906,6 +911,11 @@ export class Icon {
    * Gets the light-weight terminal icon shown on the welcome screen.
    */
   public static readonly WELCOME_TERMINAL: Icon = new Icon('ph-light ph-terminal-window');
+
+  /**
+   * Gets the light-weight Containers icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_CONTAINERS: Icon = new Icon('ph-light ph-shipping-container');
 
   /**
    * Gets the light-weight agent icon shown on the welcome screen.

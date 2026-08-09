@@ -1,0 +1,29 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Container">
+    <app-ribbon-strip-button
+      [icon]="Icon.PLAY"
+      label="Start"
+      tone="success"
+      [disabled]="!hasSelection() || selectionRunning()"
+      (action)="onStart()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.STOP"
+      label="Stop"
+      tone="warning"
+      [disabled]="!hasSelection() || !selectionRunning()"
+      (action)="onStop()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.TRASH"
+      label="Remove"
+      tone="danger"
+      [disabled]="!hasSelection()"
+      (action)="onRemove()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>
