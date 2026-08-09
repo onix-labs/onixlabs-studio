@@ -1,0 +1,69 @@
+// A fenced code block inside a markdown bubble: the code in a dark panel joined directly to a lighter
+// footer bar beneath it holding the copy (and, for shell commands, run) actions. Three layers read as
+// nested: the code panel is the darkest, the footer sits a step lighter, and the bubble behind is
+// lighter still.
+//
+// The two are one continuous block: only the outermost corners are rounded — the panel's top two and
+// the footer's bottom two — with the seam between them square, and no gap. The squircle is applied to
+// each element directly (not via a clipping container: `overflow: hidden` clips to a plain rounded
+// rect, not the corner-shape, so it would hide the squircle behind the full-bleed children).
+:host {
+  display: block;
+}
+
+.code-block {
+  margin-block: 0.5rem;
+
+  &__pre {
+    // The code panel: the darkest layer. Rounded across its top two corners; its bottom joins the
+    // footer squarely.
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    overflow-x: auto;
+    background: rgba(0, 0, 0, 0.18);
+    border-start-start-radius: calc(0.5rem * var(--border-radius-multiplier));
+    border-start-end-radius: calc(0.5rem * var(--border-radius-multiplier));
+    // Square the seam explicitly. The bubble's global `.agent__markdown pre` sets the `border-radius`
+    // shorthand (all four corners) at a higher specificity than this rule, so the bottom corners need
+    // `!important` to stay square — a shorthand without it cannot beat a longhand with it.
+    border-end-start-radius: 0 !important;
+    border-end-end-radius: 0 !important;
+    corner-shape: var(--app-corner-shape, squircle);
+    font-size: 0.8rem;
+    line-height: 1.45;
+
+    code {
+      font-family: var(--monospace-font-family, monospace);
+      white-space: pre;
+    }
+  }
+
+  // The footer: actions at the leading (left) edge, in a band a step lighter than the panel, joined
+  // directly beneath it. Rounded across its bottom two corners; its top joins the panel squarely.
+  &__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.125rem;
+    padding: 0.3rem 0.5rem;
+    background: rgba(0, 0, 0, 0.14);
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+    border-end-start-radius: calc(0.5rem * var(--border-radius-multiplier));
+    border-end-end-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+}
+
+// In light mode the same black overlays would read as a heavy grey on the light bubble; use gentler
+// overlays that keep the layering (code panel darkest, footer one shade brighter, bubble lightest)
+// without dulling the bubble.
+:host-context([data-theme-mode='light']) {
+  .code-block__pre {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  .code-block__footer {
+    background: rgba(0, 0, 0, 0.045);
+  }
+}

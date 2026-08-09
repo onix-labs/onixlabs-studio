@@ -254,6 +254,17 @@ export class TerminalSessions implements OnDestroy {
   public readonly activeId: Signal<string | null> = this.active.asReadonly();
 
   /**
+   * Gets whether these sessions are rooted at a folder — that is, they belong to a real terminal-
+   * hosting view (a workspace or repository tab) whose dock can surface a launched session. The
+   * app-wide instance a non-hosting surface resolves is unrooted, so callers can offer terminal
+   * actions (a bubble's Run) only where the terminal can actually be shown.
+   * @returns Returns true when a root folder is set.
+   */
+  public isRooted(): boolean {
+    return this.root !== null;
+  }
+
+  /**
    * Sets the folder the sessions are rooted at. Announced by the owning view (not the panel — a
    * session can be launched before the panel ever mounts, and the panel's first mount must not
    * disturb it). Moving to a different folder (or to none, when the folder closes) disposes the

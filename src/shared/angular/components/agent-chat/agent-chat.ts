@@ -52,7 +52,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { MarkdownPipe } from './markdown-pipe';
+import { MarkdownView } from '@shared/angular/components/markdown-view/markdown-view';
 import { friendlyToolLabel, technicalToolName } from './tool-summary';
 
 /**
@@ -350,7 +350,7 @@ interface ContextChip {
     Modal,
     ModalContent,
     MarkdownEditor,
-    MarkdownPipe,
+    MarkdownView,
     NgTemplateOutlet,
     Radio,
     Dropdown,

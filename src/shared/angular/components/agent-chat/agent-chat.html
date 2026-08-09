@@ -43,10 +43,7 @@
                   }
                 </div>
               }
-              <div
-                class="agent__bubble agent__markdown"
-                [innerHTML]="row.item!.text | markdown"
-              ></div>
+              <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
               <span class="agent__msg-actions">
                 <app-button
                   variant="none"
@@ -260,10 +257,7 @@
       <div class="agent__row-content">
         @switch (row.kind) {
           @case ('assistant') {
-            <div
-              class="agent__bubble agent__markdown"
-              [innerHTML]="row.item!.text | markdown"
-            ></div>
+            <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
             <span class="agent__msg-actions">
               <app-button
                 variant="none"
@@ -294,10 +288,10 @@
                 <span class="agent__lane-meta">{{ row.meta }}</span>
                 <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
               </summary>
-              <div
+              <app-markdown-view
                 class="agent__thinking-body agent__markdown"
-                [innerHTML]="row.item!.text | markdown"
-              ></div>
+                [text]="row.item!.text"
+              />
             </details>
           }
           @case ('working') {

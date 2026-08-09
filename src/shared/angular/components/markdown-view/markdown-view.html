@@ -1,0 +1,7 @@
+@for (block of blocks(); track trackBy($index)) {
+  @if (block.kind === 'html') {
+    <div class="markdown-view__prose" [innerHTML]="asHtml(block).safe"></div>
+  } @else {
+    <app-code-block [code]="asCode(block).code" [lang]="asCode(block).lang" />
+  }
+}

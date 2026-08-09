@@ -43,6 +43,7 @@
             ],
             "styles": [
               "node_modules/@xterm/xterm/css/xterm.css",
+              "node_modules/katex/dist/katex.min.css",
               "node_modules/@milkdown/crepe/lib/theme/common/style.css",
               "node_modules/@milkdown/crepe/lib/theme/frame/style.css",
               "node_modules/@phosphor-icons/web/src/thin/style.css",

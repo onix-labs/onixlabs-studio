@@ -1,0 +1,13 @@
+// The markdown bubble body: prose blocks interleaved with code-block components. Prose inherits the
+// bubble's own typography (the host carries the bubble's markdown class); only concerns specific to the
+// split rendering live here.
+:host {
+  display: block;
+}
+
+// KaTeX sizes its own boxes precisely; the bubble must not impose overflow clipping on them (setting
+// overflow-x also forces overflow-y non-visible, which clipped the bottom of tall expressions). Give
+// display math its normal breathing room and let a long equation overflow naturally.
+.markdown-view__prose ::ng-deep .katex-display {
+  margin-block: 0.5em;
+}
