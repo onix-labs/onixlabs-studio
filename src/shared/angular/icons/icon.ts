@@ -940,7 +940,7 @@ export class Icon {
   /**
    * Gets the light-weight Orchestration icon shown on the welcome screen.
    */
-  public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-light ph-tree-structure');
+  public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-light ph-computer-tower');
 
   /**
    * Gets the light-weight System Monitor icon shown on the welcome screen.
