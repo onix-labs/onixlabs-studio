@@ -85,8 +85,11 @@ describe('WelcomeScreen', () => {
     expect(host.textContent).not.toContain('New Terminal');
   });
 
-  it('header_settingsButtonOpensTheSettingsTab', () => {
-    host.querySelector<HTMLButtonElement>('.welcome__settings')?.click();
+  it('tools_settingsActionOpensTheSettingsTab', () => {
+    clickGroupHeader('Tools');
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__action'))
+      .find((action: HTMLButtonElement): boolean => action.textContent?.trim() === 'Settings')
+      ?.click();
     expect(tabs.tabs().some((tab): boolean => tab.type === 'settings')).toBe(true);
   });
 

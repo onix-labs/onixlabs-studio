@@ -192,35 +192,6 @@
   color: var(--wl-faint);
 }
 
-// The settings button sits at the header's trailing edge without disturbing the centred identity.
-.welcome__settings {
-  position: absolute;
-  inset-block-start: 0;
-  inset-inline-end: 0;
-  // The header is a drag region; the button opts out so it stays clickable.
-  -webkit-app-region: no-drag;
-  display: grid;
-  place-items: center;
-  inline-size: 2.4rem;
-  block-size: 2.4rem;
-  font-size: 1.35rem;
-  color: var(--wl-muted);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    color 120ms ease,
-    background 120ms ease;
-
-  &:hover,
-  &:focus-visible {
-    color: var(--wl-text);
-    background: var(--wl-surface);
-    outline: none;
-  }
-}
-
 // The body: a fixed-width column of grouped actions on the left, recent items filling the right.
 .welcome__body {
   position: relative;

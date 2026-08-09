@@ -937,6 +937,26 @@ export class Icon {
    */
   public static readonly WELCOME_DATABASE: Icon = new Icon('ph-light ph-database');
 
+  /**
+   * Gets the light-weight Orchestration icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-light ph-tree-structure');
+
+  /**
+   * Gets the light-weight System Monitor icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_SYSTEM_MONITOR: Icon = new Icon('ph-light ph-gauge');
+
+  /**
+   * Gets the light-weight Plugin Manager icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_PLUGINS: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light-weight Settings icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
+
   // --- Status bar ---
 
   /**
