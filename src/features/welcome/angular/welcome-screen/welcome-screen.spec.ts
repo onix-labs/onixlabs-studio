@@ -50,6 +50,24 @@ describe('WelcomeScreen', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
+  it('body_groupsAreGetStartedThenToolsThenRecentItems', () => {
+    const titles: (string | undefined)[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.welcome__group-title'),
+    ).map((heading: HTMLElement): string | undefined => heading.textContent?.trim());
+    expect(titles).toEqual(['Get Started', 'Tools', 'Recent Items']);
+  });
+
+  it('tools_offerContainersAndTheAiModelManager', () => {
+    const tools: string = host.querySelector<HTMLElement>('.welcome__left')?.textContent ?? '';
+    expect(tools).toContain('Containers');
+    expect(tools).toContain('AI Model Manager');
+  });
+
+  it('header_settingsButtonOpensTheSettingsTab', () => {
+    host.querySelector<HTMLButtonElement>('.welcome__settings')?.click();
+    expect(tabs.tabs().some((tab): boolean => tab.type === 'settings')).toBe(true);
+  });
+
   it('coldStart_whenNoTabs_isVisibleWithItsGlow', () => {
     expect(host.querySelector('.modal--visible')).not.toBeNull();
     expect(host.querySelector('.welcome__glow')).not.toBeNull();

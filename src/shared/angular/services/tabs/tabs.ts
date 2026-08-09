@@ -6,7 +6,11 @@ import { Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
  * the existing tab rather than creating a duplicate. These tabs are not backed by a resource, so the
  * resource-key dedup does not apply to them.
  */
-const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['settings', 'mission-control']);
+const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>([
+  'settings',
+  'mission-control',
+  'containers',
+]);
 
 /**
  * Specifies the tab types pinned to the front of the strip, in their fixed left-to-right order. A

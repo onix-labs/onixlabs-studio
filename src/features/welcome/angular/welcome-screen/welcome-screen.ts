@@ -447,6 +447,14 @@ export class WelcomeScreen {
   }
 
   /**
+   * Placeholder for a tool that does not exist yet (the AI Model Manager). Wiring is deferred until
+   * the feature lands; for now the action takes no effect.
+   */
+  protected comingSoon(): void {
+    // No feature behind this tool yet; it is sketched on the welcome screen to shape the dialog.
+  }
+
+  /**
    * Creates and activates a new tab of the given type, dismissing the welcome screen.
    * @param type The type of tab to create.
    */

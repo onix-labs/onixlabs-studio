@@ -922,6 +922,11 @@ export class Icon {
    */
   public static readonly WELCOME_AGENT: Icon = new Icon('ph-light ph-brain');
 
+  /**
+   * Gets the light-weight AI Model Manager icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_AI_MODELS: Icon = new Icon('ph-light ph-cpu');
+
   // --- Status bar ---
 
   /**
