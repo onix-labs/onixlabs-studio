@@ -46,10 +46,23 @@
 
     <div class="welcome__body">
       <div class="welcome__left">
-        <section class="welcome__group">
-          <h2 class="welcome__group-title">Get Started</h2>
-          <div class="welcome__actions">
-            <button type="button" class="welcome__action" (click)="openFiles()">
+        <section class="welcome__group" [class.welcome__group--open]="openGroup() === 'get-started'">
+          <button
+            type="button"
+            class="welcome__group-header"
+            [attr.aria-expanded]="openGroup() === 'get-started'"
+            (click)="toggleGroup('get-started')"
+          >
+            <span class="welcome__group-title">Get Started</span>
+            <app-icon
+              class="welcome__group-caret"
+              [icon]="Icon.CARET_RIGHT"
+              [rotation]="openGroup() === 'get-started' ? 90 : 0"
+            />
+          </button>
+          @if (openGroup() === 'get-started') {
+            <div class="welcome__actions">
+              <button type="button" class="welcome__action" (click)="openFiles()">
               <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DIRECTORY" />
               <span class="welcome__action-label">Open Directory or File</span>
             </button>
@@ -81,13 +94,27 @@
               <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DATABASE" />
               <span class="welcome__action-label">New Database Explorer</span>
             </button>
-          </div>
+            </div>
+          }
         </section>
 
-        <section class="welcome__group">
-          <h2 class="welcome__group-title">Tools</h2>
-          <div class="welcome__actions">
-            <button type="button" class="welcome__action" (click)="create('containers')">
+        <section class="welcome__group" [class.welcome__group--open]="openGroup() === 'tools'">
+          <button
+            type="button"
+            class="welcome__group-header"
+            [attr.aria-expanded]="openGroup() === 'tools'"
+            (click)="toggleGroup('tools')"
+          >
+            <span class="welcome__group-title">Tools</span>
+            <app-icon
+              class="welcome__group-caret"
+              [icon]="Icon.CARET_RIGHT"
+              [rotation]="openGroup() === 'tools' ? 90 : 0"
+            />
+          </button>
+          @if (openGroup() === 'tools') {
+            <div class="welcome__actions">
+              <button type="button" class="welcome__action" (click)="create('containers')">
               <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_CONTAINERS" />
               <span class="welcome__action-label">Containers</span>
             </button>
@@ -95,7 +122,8 @@
               <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AI_MODELS" />
               <span class="welcome__action-label">AI Model Manager</span>
             </button>
-          </div>
+            </div>
+          }
         </section>
       </div>
 

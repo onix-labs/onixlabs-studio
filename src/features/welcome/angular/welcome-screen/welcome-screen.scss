@@ -241,17 +241,60 @@
   gap: 1.25rem;
 }
 
-// A titled group of actions; also the shape of the recent-items column.
+// A titled group of actions; also the shape of the recent-items column. In the left column the groups
+// are a single-open accordion (see --open); the recent column is a plain grid item.
 .welcome__group {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+// The expanded accordion group takes the left column's slack so its actions fill the space.
+.welcome__group--open {
+  flex: 1;
+  min-block-size: 0;
 }
 
 // The right-hand recent column fills the body height so its list scrolls internally.
 .welcome__group--recent {
   min-inline-size: 0;
   min-block-size: 0;
+}
+
+// The accordion header: the group's title and a caret that turns to point down when open. Bespoke to
+// the welcome surface, like the rest of this screen.
+.welcome__group-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.15rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+
+    .welcome__group-title,
+    .welcome__group-caret {
+      color: var(--wl-text);
+    }
+  }
+}
+
+.welcome__group-caret {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--wl-muted);
+  transition: color 120ms ease;
 }
 
 // A small, quiet section heading (Get Started / Tools / Recent Items), aligned across both columns.
@@ -262,18 +305,24 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--wl-muted);
+  transition: color 120ms ease;
 }
 
+// The open group's actions fill the remaining height; the buttons share it equally.
 .welcome__actions {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.35rem;
+  min-block-size: 0;
 }
 
 // Each action is a compact row — an icon and a label — kept small so many actions fit; the row lifts
 // to an accent-tinted wash on hover.
 .welcome__action {
   position: relative;
+  // Share the open group's height equally so the actions fill the available space.
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   gap: 0.6rem;

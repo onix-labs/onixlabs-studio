@@ -50,6 +50,17 @@ describe('WelcomeScreen', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
+  /**
+   * Clicks the accordion header of the group with the given title.
+   * @param title The group title.
+   */
+  function clickGroupHeader(title: string): void {
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__group-header'))
+      .find((header: HTMLButtonElement): boolean => header.textContent?.trim().startsWith(title) ?? false)
+      ?.click();
+    fixture.detectChanges();
+  }
+
   it('body_groupsAreGetStartedThenToolsThenRecentItems', () => {
     const titles: (string | undefined)[] = Array.from(
       host.querySelectorAll<HTMLElement>('.welcome__group-title'),
@@ -57,10 +68,21 @@ describe('WelcomeScreen', () => {
     expect(titles).toEqual(['Get Started', 'Tools', 'Recent Items']);
   });
 
-  it('tools_offerContainersAndTheAiModelManager', () => {
-    const tools: string = host.querySelector<HTMLElement>('.welcome__left')?.textContent ?? '';
-    expect(tools).toContain('Containers');
-    expect(tools).toContain('AI Model Manager');
+  it('accordion_opensGetStartedByDefaultAndOnlyOneGroupAtATime', () => {
+    // Get Started open: its actions show. Tools collapsed: its actions are absent.
+    expect(host.textContent).toContain('New Terminal');
+    expect(host.textContent).not.toContain('Containers');
+
+    // Opening Tools collapses Get Started.
+    clickGroupHeader('Tools');
+    expect(host.textContent).toContain('Containers');
+    expect(host.textContent).toContain('AI Model Manager');
+    expect(host.textContent).not.toContain('New Terminal');
+
+    // Clicking the open group collapses it — both closed.
+    clickGroupHeader('Tools');
+    expect(host.textContent).not.toContain('Containers');
+    expect(host.textContent).not.toContain('New Terminal');
   });
 
   it('header_settingsButtonOpensTheSettingsTab', () => {

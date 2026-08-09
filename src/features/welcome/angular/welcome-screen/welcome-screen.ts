@@ -54,6 +54,11 @@ interface RecentFilter {
 }
 
 /**
+ * Names the collapsible action groups in the left column.
+ */
+type WelcomeGroup = 'get-started' | 'tools';
+
+/**
  * The ids emitted by the per-row overflow menu.
  */
 const ROW_ACTION_REVEAL: string = 'reveal';
@@ -146,6 +151,13 @@ export class WelcomeScreen {
     { id: ROW_ACTION_REVEAL, label: 'Show in Finder', icon: Icon.FOLDER_OPEN },
     { id: ROW_ACTION_REMOVE, label: 'Remove Item', icon: Icon.TRASH },
   ];
+
+  /**
+   * Holds which left-column group is expanded, or null when both are collapsed. The groups behave as
+   * a single-open accordion; Get Started is open at first.
+   */
+  protected readonly openGroup: WritableSignal<WelcomeGroup | null> =
+    signal<WelcomeGroup | null>('get-started');
 
   /**
    * Holds the currently selected filter pill.
@@ -444,6 +456,17 @@ export class WelcomeScreen {
    */
   protected newProject(): void {
     // No project-creation flow exists yet; this action is a design placeholder.
+  }
+
+  /**
+   * Toggles a left-column group: opens it (collapsing the other), or collapses it when it is already
+   * open — so at most one group is expanded at a time.
+   * @param group The group to toggle.
+   */
+  protected toggleGroup(group: WelcomeGroup): void {
+    this.openGroup.update((current: WelcomeGroup | null): WelcomeGroup | null =>
+      current === group ? null : group,
+    );
   }
 
   /**
