@@ -297,11 +297,11 @@
   &:focus-visible {
     // Lift above its neighbours so the scale and glow are never covered by the next row.
     z-index: 1;
-    background: rgba(var(--accent-color-rgb), 0.12);
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-    box-shadow: 0 0.75rem 2rem -0.75rem rgba(var(--accent-color-rgb), 0.55);
+    background: rgba(var(--accent-color-rgb), 0.25);
+    border-color: rgba(var(--accent-color-rgb), 1);
+    box-shadow: 0 0 2rem -0.25rem rgba(var(--accent-color-rgb), 1);
     outline: none;
-    transform: scale(1.1);
+    transform: scale(1.03);
 
     .welcome__action-icon,
     .welcome__action-label {
