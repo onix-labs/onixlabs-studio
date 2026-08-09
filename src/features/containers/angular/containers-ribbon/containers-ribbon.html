@@ -23,6 +23,21 @@
     />
   </app-ribbon-strip-group>
 
+  <app-ribbon-strip-group title="Terminal">
+    <app-ribbon-strip-button
+      [icon]="Icon.ARTICLE"
+      label="Logs"
+      [disabled]="!hasSelection()"
+      (action)="onLogs()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.TERMINAL"
+      label="Shell"
+      [disabled]="!hasSelection() || !selectionRunning()"
+      (action)="onShell()"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
   </app-ribbon-strip-group>

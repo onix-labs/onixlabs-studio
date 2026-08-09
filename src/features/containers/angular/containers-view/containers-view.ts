@@ -150,6 +150,8 @@ export class ContainersView implements OnDestroy {
     start: (): void => this.startSelected(),
     stop: (): void => this.stopSelected(),
     remove: (): void => this.removeSelected(),
+    viewLogs: (): void => this.logsSelected(),
+    shell: (): void => this.shellSelected(),
     refresh: (): void => void this.load(),
   };
 
@@ -343,6 +345,37 @@ export class ContainersView implements OnDestroy {
     if (id !== null) {
       this.remove(id);
     }
+  }
+
+  /**
+   * Streams the selected container's logs (ribbon action).
+   */
+  private logsSelected(): void {
+    const container: ContainerSummary | undefined = this.selectedContainer();
+    if (container !== undefined) {
+      this.viewLogs(container);
+    }
+  }
+
+  /**
+   * Opens a shell in the selected running container (ribbon action).
+   */
+  private shellSelected(): void {
+    const container: ContainerSummary | undefined = this.selectedContainer();
+    if (container !== undefined && this.isRunning(container)) {
+      this.openShell(container);
+    }
+  }
+
+  /**
+   * Gets the currently-selected container, or undefined when none is selected.
+   * @returns Returns the selected container, or undefined.
+   */
+  private selectedContainer(): ContainerSummary | undefined {
+    const id: string | null = this.selectedId();
+    return id === null
+      ? undefined
+      : this.containers().find((container: ContainerSummary): boolean => container.id === id);
   }
 
   /**

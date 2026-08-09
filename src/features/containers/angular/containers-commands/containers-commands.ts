@@ -32,6 +32,16 @@ export interface ContainersCommandHandler {
   remove(): void;
 
   /**
+   * Streams the selected container's logs in a terminal.
+   */
+  viewLogs(): void;
+
+  /**
+   * Opens an interactive shell in the selected (running) container.
+   */
+  shell(): void;
+
+  /**
    * Reloads the container and image lists.
    */
   refresh(): void;
@@ -100,6 +110,20 @@ export class ContainersCommands {
    */
   public remove(): void {
     this.handler()?.remove();
+  }
+
+  /**
+   * Streams the selected container's logs in the active view.
+   */
+  public viewLogs(): void {
+    this.handler()?.viewLogs();
+  }
+
+  /**
+   * Opens a shell in the active view's selected container.
+   */
+  public shell(): void {
+    this.handler()?.shell();
   }
 
   /**

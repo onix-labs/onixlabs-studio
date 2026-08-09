@@ -10,6 +10,8 @@ interface FakeHandler {
   readonly start: Mock;
   readonly stop: Mock;
   readonly remove: Mock;
+  readonly viewLogs: Mock;
+  readonly shell: Mock;
   readonly refresh: Mock;
 }
 
@@ -22,6 +24,8 @@ function fakeHandler(running: boolean): FakeHandler {
   const start: Mock = vi.fn();
   const stop: Mock = vi.fn();
   const remove: Mock = vi.fn();
+  const viewLogs: Mock = vi.fn();
+  const shell: Mock = vi.fn();
   const refresh: Mock = vi.fn();
   const handler: ContainersCommandHandler = {
     hasSelection: computed((): boolean => true),
@@ -29,9 +33,11 @@ function fakeHandler(running: boolean): FakeHandler {
     start,
     stop,
     remove,
+    viewLogs,
+    shell,
     refresh,
   };
-  return { handler, start, stop, remove, refresh };
+  return { handler, start, stop, remove, viewLogs, shell, refresh };
 }
 
 describe('ContainersCommands', () => {
@@ -46,11 +52,15 @@ describe('ContainersCommands', () => {
     commands.start();
     commands.stop();
     commands.remove();
+    commands.viewLogs();
+    commands.shell();
     commands.refresh();
 
     expect(fake.start).toHaveBeenCalledTimes(1);
     expect(fake.stop).toHaveBeenCalledTimes(1);
     expect(fake.remove).toHaveBeenCalledTimes(1);
+    expect(fake.viewLogs).toHaveBeenCalledTimes(1);
+    expect(fake.shell).toHaveBeenCalledTimes(1);
     expect(fake.refresh).toHaveBeenCalledTimes(1);
   });
 

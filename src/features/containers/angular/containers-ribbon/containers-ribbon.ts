@@ -61,6 +61,20 @@ export class ContainersRibbon {
   }
 
   /**
+   * Streams the selected container's logs in a terminal.
+   */
+  protected onLogs(): void {
+    this.commands.viewLogs();
+  }
+
+  /**
+   * Opens a shell in the selected running container.
+   */
+  protected onShell(): void {
+    this.commands.shell();
+  }
+
+  /**
    * Refreshes the container and image lists.
    */
   protected onRefresh(): void {
