@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { logger } from '../../logger';
 
 /**
  * How to launch Docker Desktop on a given platform: the executable, its arguments, and whether the
@@ -88,7 +89,10 @@ export function launchDockerDesktop(
         detached: !command.waitForExit,
         stdio: 'ignore',
       });
-      child.once('error', (): void => settle(false));
+      child.once('error', (error: Error): void => {
+        logger.warn('docker-desktop', 'Docker Desktop launch failed', error);
+        settle(false);
+      });
       if (command.waitForExit) {
         child.once('exit', (code: number | null): void => settle(code === 0));
       } else {
@@ -96,7 +100,8 @@ export function launchDockerDesktop(
         // Detached, long-lived process: no clean exit to await — success is spawning without an error.
         setTimeout((): void => settle(true), 200);
       }
-    } catch {
+    } catch (error: unknown) {
+      logger.warn('docker-desktop', 'Docker Desktop launch failed to spawn', error);
       settle(false);
     }
   });

@@ -6,6 +6,7 @@ import {
 } from './keybinding-catalogue';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines a single keyboard accelerator registration: the catalogued command identifier and the
@@ -92,6 +93,11 @@ export class Keybindings {
    * Holds the settings store the user's chord overrides persist in.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the logging client for reporting registrations skipped as uncatalogued.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the feature-contributed keybinding catalogue entries.
@@ -224,7 +230,10 @@ export class Keybindings {
       if (this.catalogueById.has(binding.id)) {
         known.push(binding);
       } else {
-        console.warn(`Keybindings: '${binding.id}' is not in the keybinding catalogue; skipped.`);
+        this.log.warn(
+          'keybindings',
+          `'${binding.id}' is not in the keybinding catalogue; skipped.`,
+        );
       }
     }
     this.scopes.set(scope, known);

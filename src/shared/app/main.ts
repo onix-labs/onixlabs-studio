@@ -1,4 +1,5 @@
 import { bootstrapApplication } from '@angular/platform-browser';
+import { LogChannel } from '@shared/api/log-channels';
 import { config } from './config';
 import { warmIconFonts } from './icon-fonts';
 import { Root } from './root/root';
@@ -47,5 +48,12 @@ if (shouldReduceEffects()) {
 warmIconFonts();
 
 bootstrapApplication(Root, config).catch((error: unknown): void => {
+  // The forwarder may not have installed if bootstrap failed this early, so send the record straight
+  // over the bridge as well as to the console (for DevTools).
+  window.bridge?.send(LogChannel.Append, {
+    severity: 'error',
+    source: 'bootstrap',
+    message: `Application failed to bootstrap: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+  });
   console.error(error);
 });
