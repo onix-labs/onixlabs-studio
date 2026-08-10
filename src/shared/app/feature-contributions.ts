@@ -17,4 +17,6 @@ import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 export const featureContributions: readonly (() => Promise<{ descriptor: FeatureDescriptor }>)[] = [
   (): Promise<{ descriptor: FeatureDescriptor }> =>
     import('@features/containers/angular/containers.feature'),
+  (): Promise<{ descriptor: FeatureDescriptor }> =>
+    import('@features/system-monitor/angular/system-monitor.feature'),
 ];

@@ -1,0 +1,107 @@
+// The System Monitor view fills its tab. This phase is the log audit: a filter toolbar over a
+// scrolling, column-aligned table. The metric tiles land above the audit in a later phase.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.system-monitor {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.system-monitor__audit {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The filter toolbar: session picker, severity chips, free-text search, and a match count.
+.system-monitor__toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-block-end: 1px solid var(--dock-border-color);
+}
+
+.system-monitor__session {
+  flex: none;
+  min-inline-size: 14rem;
+}
+
+.system-monitor__severities {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+}
+
+.system-monitor__search {
+  flex: 1 1 auto;
+  min-inline-size: 8rem;
+}
+
+.system-monitor__count {
+  flex: none;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--form-muted-foreground-color);
+}
+
+// The audit table (the shared app-table) fills the remaining height and scrolls its own body.
+.system-monitor__table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The severity badge: a small, colour-coded pill.
+.system-monitor__badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier, 1));
+  color: #fff;
+  background-color: var(--form-muted-foreground-color);
+
+  &--trace {
+    background-color: color-mix(in srgb, var(--form-muted-foreground-color) 70%, transparent);
+  }
+  &--debug {
+    background-color: var(--info-color, #4a90d9);
+  }
+  &--info {
+    background-color: var(--accent-color);
+  }
+  &--warning {
+    background-color: var(--warning-color, #d99e2b);
+  }
+  &--error {
+    background-color: var(--danger-color, #e5484d);
+  }
+}
+
+.system-monitor__where {
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.system-monitor__message {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--body-foreground-color);
+}
+
+.system-monitor__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+}

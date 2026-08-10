@@ -1,0 +1,182 @@
+import { Signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
+import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Log } from '@shared/angular/services/log/log';
+import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
+import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
+import { SystemMonitorView } from './system-monitor-view';
+
+/**
+ * Builds a record with sensible defaults, overridable per test.
+ * @param over The fields to override.
+ * @returns Returns the record.
+ */
+function record(over: Partial<LogRecord> = {}): LogRecord {
+  return {
+    id: 1,
+    sessionId: 'current',
+    timestamp: '2026-08-10T10:00:00.000Z',
+    severity: 'info',
+    origin: 'main',
+    source: 'test',
+    message: 'hello',
+    ...over,
+  };
+}
+
+/**
+ * A fake logging client that records its calls and lets a test drive the record push.
+ */
+class FakeLog {
+  public records: LogRecord[] = [];
+  public sessionList: LogSession[] = [
+    { id: 'current', startedAt: '2026-08-10T09:00:00.000Z', current: true },
+    { id: 'past', startedAt: '2026-08-09T09:00:00.000Z', current: false },
+  ];
+  public queries: LogQuery[] = [];
+  public listener: ((record: LogRecord) => void) | null = null;
+
+  public query(query: LogQuery = {}): Promise<LogRecord[]> {
+    this.queries.push(query);
+    return Promise.resolve(this.records);
+  }
+
+  public sessions(): Promise<LogSession[]> {
+    return Promise.resolve(this.sessionList);
+  }
+
+  public onRecord(listener: (record: LogRecord) => void): () => void {
+    this.listener = listener;
+    return (): void => {
+      this.listener = null;
+    };
+  }
+}
+
+/**
+ * Exposes the view's protected surface for assertions.
+ */
+interface Testable {
+  filtered: Signal<readonly LogRecord[]>;
+  records: WritableSignal<readonly LogRecord[]>;
+  text: WritableSignal<string>;
+  sessionOptions: Signal<readonly DropdownOption[]>;
+  selectedSessionValue: Signal<string>;
+  selectSession(sessionId: string): void;
+  toggleSeverity(severity: Severity): void;
+  isEnabled(severity: Severity): boolean;
+}
+
+describe('SystemMonitorView', () => {
+  let fixture: ComponentFixture<SystemMonitorView>;
+  let view: Testable;
+  let fake: FakeLog;
+
+  /**
+   * Creates the view with the fake log and the given seeded records, and settles the initial load.
+   * @param records The records the fake returns from a query.
+   * @returns Returns a promise that resolves once the view has loaded.
+   */
+  async function create(records: LogRecord[] = []): Promise<void> {
+    fake = new FakeLog();
+    fake.records = records;
+    await TestBed.configureTestingModule({
+      imports: [SystemMonitorView],
+      providers: [{ provide: Log, useValue: fake }],
+    }).compileComponents();
+    fixture = TestBed.createComponent(SystemMonitorView);
+    fixture.componentRef.setInput('tabId', 'tab-1');
+    fixture.componentRef.setInput('isActive', true);
+    view = fixture.componentInstance as unknown as Testable;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('load_populatesTheRecordsFromTheLiveSession', async () => {
+    await create([record({ id: 1 }), record({ id: 2 })]);
+    expect(view.records()).toHaveLength(2);
+    expect(view.filtered()).toHaveLength(2);
+  });
+
+  it('toggleSeverity_hidesThatSeverity', async () => {
+    await create([record({ id: 1, severity: 'info' }), record({ id: 2, severity: 'error' })]);
+    view.toggleSeverity('info');
+    expect(view.isEnabled('info')).toBe(false);
+    expect(view.filtered().map((r: LogRecord): number => r.id)).toEqual([2]);
+  });
+
+  it('text_filtersOnSourceOrMessageCaseInsensitively', async () => {
+    await create([
+      record({ id: 1, source: 'DockerEngine', message: 'up' }),
+      record({ id: 2, source: 'Composer', message: 'DOCKED' }),
+      record({ id: 3, source: 'Other', message: 'nope' }),
+    ]);
+    view.text.set('dock');
+    expect(view.filtered().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
+  });
+
+  it('onRecord_appendsLiveRecordsForTheCurrentSession', async () => {
+    await create([record({ id: 1 })]);
+    fake.listener?.(record({ id: 2, sessionId: 'current', message: 'live' }));
+    expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
+  });
+
+  it('onRecord_ignoresRecordsFromAnotherSession', async () => {
+    await create([record({ id: 1 })]);
+    fake.listener?.(record({ id: 9, sessionId: 'past' }));
+    expect(view.records()).toHaveLength(1);
+  });
+
+  it('selectSession_queriesThatSessionAndStopsLiveAppends', async () => {
+    await create([record({ id: 1 })]);
+    view.selectSession('past');
+    await fixture.whenStable();
+    expect(fake.queries.at(-1)).toEqual({ sessionId: 'past' });
+    fake.listener?.(record({ id: 2, sessionId: 'current' }));
+    expect(view.records().every((r: LogRecord): boolean => r.id !== 2)).toBe(true);
+  });
+
+  it('sessionOptions_marksTheLiveSessionAndDefaultsToIt', async () => {
+    await create([]);
+    expect(view.sessionOptions()[0].label).toContain('Current session');
+    expect(view.selectedSessionValue()).toBe('current');
+  });
+
+  it('whenActive_registersWithTheRibbonCommandsAndReportsRecords', async () => {
+    await create([record({ id: 1 })]);
+    expect(TestBed.inject(SystemMonitorCommands).hasRecords()).toBe(true);
+  });
+
+  it('clearFilters_command_resetsSeverityAndText', async () => {
+    await create([record({ id: 1 })]);
+    view.toggleSeverity('info');
+    view.text.set('needle');
+    TestBed.inject(SystemMonitorCommands).clearFilters();
+    expect(view.isEnabled('info')).toBe(true);
+    expect(view.text()).toBe('');
+  });
+
+  it('refresh_command_reloadsTheRecords', async () => {
+    await create([record({ id: 1 })]);
+    const before: number = fake.queries.length;
+    TestBed.inject(SystemMonitorCommands).refresh();
+    await fixture.whenStable();
+    expect(fake.queries.length).toBeGreaterThan(before);
+  });
+
+  it('copy_command_writesTheShownRecordsToTheClipboard', async () => {
+    const writeText: Mock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await create([
+      record({ id: 1, severity: 'error', source: 'S', message: 'boom', timestamp: '2026-08-10T10:00:00.000Z' }),
+    ]);
+    TestBed.inject(SystemMonitorCommands).copy();
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:00.000Z [error] S: boom');
+  });
+});

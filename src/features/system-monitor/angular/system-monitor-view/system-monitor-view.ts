@@ -1,0 +1,353 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+  signal,
+  WritableSignal,
+} from '@angular/core';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { Log } from '@shared/angular/services/log/log';
+import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
+import {
+  SystemMonitorCommandHandler,
+  SystemMonitorCommands,
+} from '../system-monitor-commands/system-monitor-commands';
+
+/**
+ * The audit table's columns: a fixed-width severity badge and timestamp bracket a fixed-width source
+ * and the flexing message.
+ */
+const AUDIT_COLUMNS: readonly TableColumn[] = [
+  { id: 'severity', header: 'Severity', width: '6rem' },
+  { id: 'where', header: 'Where', width: '12rem' },
+  { id: 'message', header: 'Message' },
+  { id: 'timestamp', header: 'Timestamp', width: '9rem' },
+];
+
+/**
+ * The System Monitor tab. This phase (epic #395 P2 / #397) is the per-session **log audit**: a live,
+ * filterable table of every log record — main-process and every renderer window — for the selected app
+ * session, sourced from the P1 logging service. The live session streams in over the record push; a
+ * past session is loaded from disk. Severity and free-text filters apply client-side over the buffered
+ * records. The metric tiles (CPU/Memory/Network/Disk/GPU) land above this in P3/P4.
+ */
+@Component({
+  selector: 'app-system-monitor-view',
+  imports: [Button, Dropdown, TextField, Table, TableRowDef],
+  templateUrl: './system-monitor-view.html',
+  styleUrl: './system-monitor-view.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class SystemMonitorView {
+  /**
+   * Gets the severities in display order, exposed for the filter chips.
+   */
+  protected readonly severities: readonly Severity[] = SEVERITIES;
+
+  /**
+   * Gets the audit table's columns.
+   */
+  protected readonly columns: readonly TableColumn[] = AUDIT_COLUMNS;
+
+  /**
+   * Gets the identifier of the tab hosting this view.
+   */
+  public readonly tabId: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets whether this tab is the active one.
+   */
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the logging client the view reads and streams through.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the records of the selected session, oldest first.
+   */
+  protected readonly records: WritableSignal<readonly LogRecord[]> = signal<readonly LogRecord[]>([]);
+
+  /**
+   * Holds the known app sessions, newest first.
+   */
+  protected readonly sessions: WritableSignal<readonly LogSession[]> = signal<readonly LogSession[]>([]);
+
+  /**
+   * Holds the identifier of the live (current) session, so a selection can be recognised as live.
+   */
+  private readonly currentSessionId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the identifier of the session being viewed; null until sessions load, then the live session.
+   */
+  protected readonly selectedSessionId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the severities currently shown; all are shown initially.
+   */
+  protected readonly enabled: WritableSignal<ReadonlySet<Severity>> = signal<ReadonlySet<Severity>>(
+    new Set<Severity>(SEVERITIES),
+  );
+
+  /**
+   * Holds the case-insensitive text the source or message must contain; empty shows all.
+   */
+  protected readonly text: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets whether the viewed session is the live one, so new records stream into it.
+   */
+  private readonly viewingLive: Signal<boolean> = computed((): boolean => {
+    const selected: string | null = this.selectedSessionId();
+    return selected === null || selected === this.currentSessionId();
+  });
+
+  /**
+   * Gets the records after the severity and text filters, oldest first.
+   */
+  protected readonly filtered: Signal<readonly LogRecord[]> = computed((): readonly LogRecord[] => {
+    const enabled: ReadonlySet<Severity> = this.enabled();
+    const needle: string = this.text().trim().toLowerCase();
+    return this.records().filter((record: LogRecord): boolean => {
+      if (!enabled.has(record.severity)) {
+        return false;
+      }
+      if (needle.length > 0 && !`${record.source} ${record.message}`.toLowerCase().includes(needle)) {
+        return false;
+      }
+      return true;
+    });
+  });
+
+  /**
+   * Gets the filtered records adapted to the table's row shape, oldest first.
+   */
+  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
+    this.filtered().map((record: LogRecord): TableRow => ({ id: String(record.id), data: record })),
+  );
+
+  /**
+   * Gets whether the audit currently shows any records, gating the ribbon's Copy action.
+   */
+  private readonly hasRecords: Signal<boolean> = computed((): boolean => this.filtered().length > 0);
+
+  /**
+   * Holds the command registry the ribbon drives this view through while active.
+   */
+  private readonly commands: SystemMonitorCommands = inject(SystemMonitorCommands);
+
+  /**
+   * Holds the handler the ribbon drives the active view through.
+   */
+  private readonly commandHandler: SystemMonitorCommandHandler = {
+    hasRecords: this.hasRecords,
+    refresh: (): void => this.refresh(),
+    clearFilters: (): void => this.clearFilters(),
+    copy: (): void => void this.copy(),
+  };
+
+  /**
+   * Gets the session picker options, newest first, the live session marked.
+   */
+  protected readonly sessionOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.sessions().map(
+        (session: LogSession): DropdownOption => ({
+          value: session.id,
+          label: session.current ? `Current session — ${this.formatDate(session.startedAt)}` : this.formatDate(session.startedAt),
+        }),
+      ),
+  );
+
+  /**
+   * Gets the value shown in the session picker: the selection, falling back to the live session.
+   */
+  protected readonly selectedSessionValue: Signal<string> = computed(
+    (): string => this.selectedSessionId() ?? this.currentSessionId() ?? '',
+  );
+
+  /**
+   * Loads the sessions and the live session's records, then streams new live records in.
+   */
+  public constructor() {
+    void this.loadSessions();
+    void this.loadRecords();
+
+    const unsubscribe: () => void = this.log.onRecord((record: LogRecord): void => {
+      if (this.viewingLive() && record.sessionId === this.currentSessionId()) {
+        this.records.update((records: readonly LogRecord[]): readonly LogRecord[] => [...records, record]);
+      }
+    });
+    const destroy: DestroyRef = inject(DestroyRef);
+    destroy.onDestroy(unsubscribe);
+    destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
+
+    effect((): void => {
+      if (this.isActive()) {
+        this.commands.register(this.commandHandler);
+      } else {
+        this.commands.unregister(this.commandHandler);
+      }
+    });
+  }
+
+  /**
+   * Reloads the sessions and the viewed session's records (ribbon action).
+   */
+  protected refresh(): void {
+    void this.loadSessions();
+    void this.loadRecords();
+  }
+
+  /**
+   * Resets the severity and text filters to their defaults (ribbon action).
+   */
+  protected clearFilters(): void {
+    this.enabled.set(new Set<Severity>(SEVERITIES));
+    this.text.set('');
+  }
+
+  /**
+   * Copies the currently-shown records to the clipboard as one human-readable line each (ribbon
+   * action). A no-op where the clipboard is unavailable.
+   * @returns Returns a promise that resolves once the copy settles.
+   */
+  protected async copy(): Promise<void> {
+    const text: string = this.filtered()
+      .map(
+        (record: LogRecord): string =>
+          `${record.timestamp} [${record.severity}] ${record.source}: ${record.message}`,
+      )
+      .join('\n');
+    try {
+      await navigator.clipboard?.writeText(text);
+    } catch {
+      // A denied or unavailable clipboard is deliberately swallowed.
+    }
+  }
+
+  /**
+   * Switches the viewed session and loads its records.
+   * @param sessionId The session to view.
+   */
+  protected selectSession(sessionId: string): void {
+    this.selectedSessionId.set(sessionId);
+    void this.loadRecords();
+  }
+
+  /**
+   * Toggles whether a severity is shown.
+   * @param severity The severity to toggle.
+   */
+  protected toggleSeverity(severity: Severity): void {
+    this.enabled.update((enabled: ReadonlySet<Severity>): ReadonlySet<Severity> => {
+      const next: Set<Severity> = new Set<Severity>(enabled);
+      if (next.has(severity)) {
+        next.delete(severity);
+      } else {
+        next.add(severity);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Determines whether a severity is currently shown.
+   * @param severity The severity to test.
+   * @returns Returns true when the severity is shown.
+   */
+  protected isEnabled(severity: Severity): boolean {
+    return this.enabled().has(severity);
+  }
+
+  /**
+   * Clears the text filter.
+   */
+  protected clearText(): void {
+    this.text.set('');
+  }
+
+  /**
+   * Reads a table row's record payload.
+   * @param row The table row.
+   * @returns Returns the row's log record.
+   */
+  protected rec(row: TableRow): LogRecord {
+    return row.data as LogRecord;
+  }
+
+  /**
+   * Gets the display label for a severity (its upper-cased name).
+   * @param severity The severity.
+   * @returns Returns the label.
+   */
+  protected severityLabel(severity: Severity): string {
+    return severity.toUpperCase();
+  }
+
+  /**
+   * Builds the "Where" tooltip for a record: its origin and, for a renderer record, its window.
+   * @param record The record.
+   * @returns Returns the tooltip text.
+   */
+  protected origin(record: LogRecord): string {
+    return record.window ? `${record.origin} · ${record.window}` : record.origin;
+  }
+
+  /**
+   * Formats a record timestamp as a locale time with milliseconds.
+   * @param timestamp The ISO-8601 timestamp.
+   * @returns Returns the formatted time.
+   */
+  protected formatTime(timestamp: string): string {
+    const date: Date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleTimeString();
+  }
+
+  /**
+   * Formats a session start time as a locale date and time.
+   * @param timestamp The ISO-8601 timestamp.
+   * @returns Returns the formatted date and time.
+   */
+  private formatDate(timestamp: string): string {
+    const date: Date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString();
+  }
+
+  /**
+   * Loads the known sessions and adopts the live one as the initial selection.
+   * @returns Returns a promise that resolves once the sessions have loaded.
+   */
+  private async loadSessions(): Promise<void> {
+    const sessions: LogSession[] = await this.log.sessions();
+    this.sessions.set(sessions);
+    const current: LogSession | undefined = sessions.find((session: LogSession): boolean => session.current);
+    this.currentSessionId.set(current?.id ?? null);
+    if (this.selectedSessionId() === null) {
+      this.selectedSessionId.set(current?.id ?? null);
+    }
+  }
+
+  /**
+   * Loads the viewed session's records.
+   * @returns Returns a promise that resolves once the records have loaded.
+   */
+  private async loadRecords(): Promise<void> {
+    const sessionId: string | null = this.selectedSessionId();
+    const records: LogRecord[] = await this.log.query(
+      sessionId === null ? {} : { sessionId },
+    );
+    this.records.set(records);
+  }
+}

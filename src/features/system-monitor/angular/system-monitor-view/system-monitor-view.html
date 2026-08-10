@@ -1,0 +1,57 @@
+<div class="system-monitor">
+  <!-- Metric tiles (CPU/Memory/Network/Disk/GPU) mount here in P3/P4. This phase ships the audit. -->
+
+  <section class="system-monitor__audit">
+    <header class="system-monitor__toolbar">
+      <app-dropdown
+        class="system-monitor__session"
+        ariaLabel="Session"
+        [options]="sessionOptions()"
+        [value]="selectedSessionValue()"
+        (valueChange)="selectSession($event)"
+      />
+
+      <div class="system-monitor__severities" role="group" aria-label="Filter by severity">
+        @for (severity of severities; track severity) {
+          <app-button
+            class="system-monitor__severity"
+            variant="outline"
+            size="small"
+            [label]="severityLabel(severity)"
+            [pressed]="isEnabled(severity)"
+            (click)="toggleSeverity(severity)"
+          />
+        }
+      </div>
+
+      <app-text-field
+        class="system-monitor__search"
+        placeholder="Filter messages…"
+        ariaLabel="Filter messages"
+        [value]="text()"
+        (valueChange)="text.set($event)"
+        (escape)="clearText()"
+      />
+
+      <span class="system-monitor__count">{{ filtered().length }} / {{ records().length }}</span>
+    </header>
+
+    <app-table
+      class="system-monitor__table"
+      [columns]="columns"
+      [rows]="rows()"
+      emptyText="No log records match the current filters."
+    >
+      <ng-template appTableRow let-row>
+        <td>
+          <span class="system-monitor__badge system-monitor__badge--{{ rec(row).severity }}">
+            {{ severityLabel(rec(row).severity) }}
+          </span>
+        </td>
+        <td class="system-monitor__where" [title]="origin(rec(row))">{{ rec(row).source }}</td>
+        <td class="system-monitor__message" [title]="rec(row).message">{{ rec(row).message }}</td>
+        <td class="system-monitor__time">{{ formatTime(rec(row).timestamp) }}</td>
+      </ng-template>
+    </app-table>
+  </section>
+</div>

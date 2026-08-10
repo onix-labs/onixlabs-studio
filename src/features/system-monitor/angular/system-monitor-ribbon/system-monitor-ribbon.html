@@ -1,0 +1,15 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Audit">
+    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
+    <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clear Filters" (action)="onClear()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Clipboard">
+    <app-ribbon-strip-button
+      [icon]="Icon.COPY"
+      label="Copy"
+      [disabled]="!hasRecords()"
+      (action)="onCopy()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

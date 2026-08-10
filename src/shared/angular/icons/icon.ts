@@ -148,6 +148,11 @@ export class Icon {
   public static readonly CONTAINERS: Icon = new Icon('ph-duotone ph-shipping-container');
 
   /**
+   * Gets the System Monitor content icon.
+   */
+  public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
