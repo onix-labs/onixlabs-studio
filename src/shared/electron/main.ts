@@ -52,6 +52,7 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger } from '@shared/electron/logger';
+import { consoleLevelToSeverity } from '@shared/api/log-channels';
 import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
@@ -720,6 +721,7 @@ class Program {
       }
     });
 
+    this.logger.useMainWindow((): number | null => this.windows.main()?.webContents.id ?? null);
     this.logger.register();
     this.securityManager.register();
     this.mediaProtocol.register();
@@ -1043,7 +1045,12 @@ class Program {
       details: unknown[],
     ): void => {
       const suffix: string = details.length > 0 ? ` ${details.map(String).join(' ')}` : '';
-      this.logger.write('main', level, `[${id}] ${message}${suffix}`);
+      this.logger.log({
+        origin: 'main',
+        severity: consoleLevelToSeverity(level),
+        source: id,
+        message: `${message}${suffix}`,
+      });
     };
     return {
       error: (message: string, ...details: unknown[]): void => emit('error', message, details),
